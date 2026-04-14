@@ -1,5 +1,7 @@
 # GEOFlow 服务器部署文档
 
+> Languages: [简体中文](DEPLOYMENT.md) | [English](DEPLOYMENT_en.md) | [日本語](DEPLOYMENT_ja.md) | [Español](DEPLOYMENT_es.md) | [Русский](DEPLOYMENT_ru.md)
+
 更新时间：2026-04-14
 
 ## 1. 推荐方式

@@ -1,5 +1,7 @@
 # GEOFlow 文档中心
 
+> Languages: [简体中文](README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
+
 公开仓库只保留对外用户真正有用的文档：
 
 - 安装与部署

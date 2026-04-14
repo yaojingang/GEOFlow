@@ -1,5 +1,7 @@
 # GEOFlow
 
+> Languages: [简体中文](README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
+
 > 一个面向 GEO / SEO 内容运营场景的开源内容生产系统。它把模型配置、素材管理、任务调度、草稿审核和前台发布串成一条完整链路，适合搭建自动化内容站点或内部内容运营后台。
 
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-blue)](https://www.php.net/)
@@ -139,6 +141,16 @@ open http://localhost:8080/geo_admin/
 - 上传文章草稿
 - 审核和发布文章
 - 检查任务与 job 状态
+
+---
+
+## 🌍 多语言文档
+
+- [English README](README_en.md)
+- [日本語 README](README_ja.md)
+- [Español README](README_es.md)
+- [Русский README](README_ru.md)
+- [文档中心](docs/README.md)
 
 ---
 

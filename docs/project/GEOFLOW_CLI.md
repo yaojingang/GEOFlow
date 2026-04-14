@@ -1,30 +1,20 @@
 # GEOFlow CLI 使用说明
 
+> Languages: [简体中文](GEOFLOW_CLI.md) | [English](GEOFLOW_CLI_en.md) | [日本語](GEOFLOW_CLI_ja.md) | [Español](GEOFLOW_CLI_es.md) | [Русский](GEOFLOW_CLI_ru.md)
+
 `geoflow` 是第一阶段 API 的本地命令行入口。
 
 它只通过正式 `/api/v1` 与系统通信，不直接访问数据库，也不复用后台 session。
 
----
-
 ## 1. 命令入口
 
-项目内命令入口：
-
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow help
+./bin/geoflow help
 ```
 
-也可以给脚本执行权限后直接运行：
+## 2. 配置优先级
 
-```bash
-/Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow help
-```
-
----
-
-## 2. 配置方式
-
-支持三种方式提供连接信息：
+支持三种来源：
 
 1. CLI 参数
 2. 环境变量
@@ -34,12 +24,10 @@ php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow help
 
 `CLI 参数 > 环境变量 > .geoflow.json > ~/.config/geoflow/config.json`
 
-### 2.1 推荐登录
-
-推荐优先使用管理员账号密码完成首次登录，CLI 会自动换取 token 并保存本地配置：
+## 3. 推荐首次登录
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow \
+./bin/geoflow \
   login \
   --base-url http://127.0.0.1:18080 \
   --username admin
@@ -47,115 +35,59 @@ php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow \
 
 如果不传 `--password`，CLI 会在终端里安全提示输入密码。
 
-### 2.2 手动初始化
-
-如果你已经有可用 token，也可以手动初始化：
+如果你已经有 token，也可以手动初始化：
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow \
+./bin/geoflow \
   config init \
   --base-url http://127.0.0.1:18080 \
   --token gf_xxx
 ```
 
-默认会写入：
-
-```text
-~/.config/geoflow/config.json
-```
-
-配置文件格式：
-
-```json
-{
-  "base_url": "http://127.0.0.1:18080",
-  "token": "gf_xxx",
-  "timeout": 30
-}
-```
-
-### 2.3 查看当前配置
+查看当前配置：
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow config show
+./bin/geoflow config show
 ```
 
-### 2.4 临时覆盖
+## 4. 常用命令
+
+获取资源字典：
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow \
-  --config /tmp/geoflow.json \
-  catalog
+./bin/geoflow catalog
 ```
-
----
-
-## 3. 常用命令
-
-### 3.1 获取资源字典
-
-```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow catalog
-```
-
-### 3.0 首次登录示例
-
-```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow \
-  login \
-  --base-url http://127.0.0.1:18080 \
-  --username admin
-```
-
-或者显式传密码：
-
-```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow \
-  login \
-  --base-url http://127.0.0.1:18080 \
-  --username admin \
-  --password your-password
-```
-
-### 3.2 任务管理
 
 查询任务：
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow task list --status active
+./bin/geoflow task list --status active
 ```
 
 创建任务：
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow task create --json ./task.json
+./bin/geoflow task create --json ./task.json
 ```
 
-启动任务：
+启动任务并立即入队：
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow task start 12
+./bin/geoflow task start 12
+./bin/geoflow task enqueue 12
 ```
 
-立即入队：
+查看任务和 job：
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow task enqueue 12
+./bin/geoflow task jobs 12 --limit 20
+./bin/geoflow job get 88
 ```
 
-查看任务 job：
+上传文章草稿：
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow task jobs 12 --limit 20
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow job get 88
-```
-
-### 3.3 文章管理
-
-直接上传文章草稿：
-
-```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow article create \
+./bin/geoflow article create \
   --title "CLI 测试文章" \
   --content-file ./article.md \
   --task-id 12 \
@@ -163,31 +95,16 @@ php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow arti
   --category-id 2
 ```
 
-通过 JSON 创建：
+审核并发布：
 
 ```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow article create --json ./article.json
+./bin/geoflow article review 101 --status approved --note "CLI review pass"
+./bin/geoflow article publish 101
 ```
 
-审核通过：
+## 5. JSON 输入示例
 
-```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow article review 101 \
-  --status approved \
-  --note "CLI review pass"
-```
-
-发布文章：
-
-```bash
-php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow article publish 101
-```
-
----
-
-## 4. JSON 输入
-
-### 4.1 任务创建示例
+任务创建：
 
 ```json
 {
@@ -211,7 +128,7 @@ php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow arti
 }
 ```
 
-### 4.2 文章创建示例
+文章创建：
 
 ```json
 {
@@ -227,9 +144,7 @@ php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow arti
 }
 ```
 
----
-
-## 5. 幂等键
+## 6. 幂等键
 
 所有写操作都支持：
 
@@ -237,7 +152,7 @@ php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow arti
 --idempotency-key <key>
 ```
 
-推荐在这些命令里使用：
+推荐用于：
 
 - `task create`
 - `task update`
@@ -250,13 +165,9 @@ php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow arti
 - `article publish`
 - `article trash`
 
-这样 CLI 或后续 skill 在重试时不会重复创建资源。
+## 7. 当前支持范围
 
----
-
-## 6. 当前支持范围
-
-当前 CLI 已覆盖第一阶段 API 主链路：
+当前 CLI 已覆盖：
 
 - `login`
 - `catalog`
@@ -269,6 +180,4 @@ php /Users/laoyao/AI\ Coding/01-Projects/Active/GEO官网系统/bin/geoflow arti
 - URL 导入
 - 标题异步生成
 - 图片上传编排
-- 批量工作流封装
-
-这些更适合在下一阶段通过 skill 再做一层高阶封装。
+- 更高阶的批量工作流
