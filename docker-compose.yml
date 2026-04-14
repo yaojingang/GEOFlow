@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: "${DB_PASSWORD:-geo_password}"
       TZ: Asia/Shanghai
     ports:
-      - "${DB_EXPOSE_PORT:-15432}:5432"
+      - "127.0.0.1:${DB_EXPOSE_PORT:-15432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
