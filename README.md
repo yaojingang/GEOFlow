@@ -1,5 +1,7 @@
 # GEOFlow
 
+> 📖 **For English users, please refer to [README_en.md](README_en.md).**
+
 > 一个面向 GEO / SEO 内容运营场景的开源内容生产系统。它把模型配置、素材管理、任务调度、草稿审核和前台发布串成一条完整链路，适合搭建自动化内容站点或内部内容运营后台。
 
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-blue)](https://www.php.net/)

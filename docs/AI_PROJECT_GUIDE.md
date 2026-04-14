@@ -1,5 +1,7 @@
 # GEO+AI 智能内容生成系统 - AI开发指南
 
+> 📖 **For English users, please refer to [AI_PROJECT_GUIDE_en.md](AI_PROJECT_GUIDE_en.md).**
+
 > **文档目的**: 帮助AI助手快速理解项目架构、核心逻辑和开发规范，提高开发效率
 > **最后更新**: 2026-01-31
 > **项目版本**: 1.0

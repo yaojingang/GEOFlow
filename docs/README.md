@@ -1,5 +1,7 @@
 # GEOFlow 文档中心
 
+> 📖 **For English users, please refer to [README_en.md](README_en.md).**
+
 公开仓库只保留对外用户真正有用的文档：
 
 - 安装与部署

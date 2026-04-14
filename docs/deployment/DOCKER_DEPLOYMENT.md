@@ -1,5 +1,7 @@
 # Docker 部署文档
 
+> 📖 **For English users, please refer to [DOCKER_DEPLOYMENT_en.md](DOCKER_DEPLOYMENT_en.md).**
+
 更新时间：2026-04-14
 
 ## 1. 适用范围
