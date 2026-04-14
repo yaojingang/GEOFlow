@@ -238,6 +238,14 @@ function isActiveMenu($page, $current_page, $sub_page_mapping) {
         <?php if (isset($error) && !empty($error)): ?>
             <div class="admin-flash-alert mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
                 <span class="block sm:inline"><?php echo htmlspecialchars($error); ?></span>
+                <?php if (!empty($error_action_url) && !empty($error_action_label)): ?>
+                    <div class="mt-3">
+                        <a href="<?php echo htmlspecialchars($error_action_url); ?>" class="inline-flex items-center px-3 py-1.5 border border-red-300 text-xs font-medium rounded-md text-red-700 bg-white hover:bg-red-50">
+                            <i data-lucide="external-link" class="w-4 h-4 mr-1"></i>
+                            <?php echo htmlspecialchars($error_action_label); ?>
+                        </a>
+                    </div>
+                <?php endif; ?>
                 <button onclick="this.parentElement.style.display='none'" class="absolute top-0 bottom-0 right-0 px-4 py-3">
                     <i data-lucide="x" class="w-4 h-4"></i>
                 </button>

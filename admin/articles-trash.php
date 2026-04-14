@@ -106,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // 获取筛选参数
 $search = trim($_GET['search'] ?? '');
+$author_id = max(0, intval($_GET['author_id'] ?? 0));
 $page = max(1, intval($_GET['page'] ?? 1));
 $per_page = 20;
 
@@ -117,6 +118,11 @@ if (!empty($search)) {
     $where_conditions[] = '(a.title LIKE ? OR a.content LIKE ?)';
     $params[] = "%{$search}%";
     $params[] = "%{$search}%";
+}
+
+if ($author_id > 0) {
+    $where_conditions[] = 'a.author_id = ?';
+    $params[] = $author_id;
 }
 
 $where_clause = implode(' AND ', $where_conditions);
@@ -170,6 +176,14 @@ $stats = [
         AND sl.type = 'sensitive_word'
     ")->fetch()['count']
 ];
+
+$authors = $db->query("SELECT id, name FROM authors ORDER BY name")->fetchAll();
+$current_author_name = '';
+if ($author_id > 0) {
+    $stmt = $db->prepare("SELECT name FROM authors WHERE id = ?");
+    $stmt->execute([$author_id]);
+    $current_author_name = $stmt->fetchColumn() ?: '';
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -302,6 +316,16 @@ $stats = [
         <div class="bg-white shadow rounded-lg mb-6">
             <div class="px-6 py-4">
                 <form method="GET" class="flex items-center space-x-4">
+                    <div class="w-56">
+                        <select name="author_id" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                            <option value="">所有作者</option>
+                            <?php foreach ($authors as $author): ?>
+                                <option value="<?php echo intval($author['id']); ?>" <?php echo $author_id === intval($author['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($author['name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                     <div class="flex-1">
                         <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>"
                                placeholder="搜索已删除的文章..."
@@ -316,6 +340,11 @@ $stats = [
                         清空
                     </a>
                 </form>
+                <?php if ($author_id > 0 && $current_author_name): ?>
+                    <div class="mt-3 text-sm text-gray-600">
+                        当前仅显示作者“<?php echo htmlspecialchars($current_author_name); ?>”的回收站文章。
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -328,6 +357,12 @@ $stats = [
                         <span class="text-sm text-gray-500">(共 <?php echo $total_articles; ?> 篇)</span>
                     </h3>
                     <div class="flex space-x-2">
+                        <?php if ($total_articles > 0): ?>
+                            <button onclick="emptyTrash()" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
+                                <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
+                                一键清空
+                            </button>
+                        <?php endif; ?>
                         <button onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="check-square" class="w-4 h-4 mr-1"></i>
                             批量操作

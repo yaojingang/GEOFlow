@@ -188,6 +188,10 @@ class DatabaseAdmin {
             id BIGSERIAL PRIMARY KEY,
             name VARCHAR(100) NOT NULL,
             bio TEXT DEFAULT '',
+            email VARCHAR(100) DEFAULT '',
+            avatar VARCHAR(200) DEFAULT '',
+            website VARCHAR(200) DEFAULT '',
+            social_links TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -683,6 +687,13 @@ class DatabaseAdmin {
             ],
             'ai_models' => [
                 'model_type' => "ALTER TABLE ai_models ADD COLUMN model_type VARCHAR(20) DEFAULT 'chat'",
+            ],
+            'authors' => [
+                'email' => "ALTER TABLE authors ADD COLUMN email VARCHAR(100) DEFAULT ''",
+                'avatar' => "ALTER TABLE authors ADD COLUMN avatar VARCHAR(200) DEFAULT ''",
+                'website' => "ALTER TABLE authors ADD COLUMN website VARCHAR(200) DEFAULT ''",
+                'social_links' => "ALTER TABLE authors ADD COLUMN social_links TEXT DEFAULT ''",
+                'updated_at' => "ALTER TABLE authors ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             ],
             'knowledge_chunks' => [
                 'embedding_model_id' => "ALTER TABLE knowledge_chunks ADD COLUMN embedding_model_id INTEGER DEFAULT NULL",

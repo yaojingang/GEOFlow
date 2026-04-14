@@ -268,7 +268,10 @@ class Database {
             id BIGSERIAL PRIMARY KEY,
             name VARCHAR(100) NOT NULL,
             bio TEXT DEFAULT '',
+            email VARCHAR(100) DEFAULT '',
             avatar VARCHAR(200) DEFAULT '',
+            website VARCHAR(200) DEFAULT '',
+            social_links TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -698,9 +701,11 @@ class Database {
                 'featured_image' => "ALTER TABLE articles ADD COLUMN featured_image VARCHAR(500) DEFAULT ''",
             ],
             'authors' => [
+                'email' => "ALTER TABLE authors ADD COLUMN email VARCHAR(100) DEFAULT ''",
                 'updated_at' => "ALTER TABLE authors ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
                 'avatar' => "ALTER TABLE authors ADD COLUMN avatar VARCHAR(200) DEFAULT ''",
                 'website' => "ALTER TABLE authors ADD COLUMN website VARCHAR(200) DEFAULT ''",
+                'social_links' => "ALTER TABLE authors ADD COLUMN social_links TEXT DEFAULT ''",
             ],
         ];
 
