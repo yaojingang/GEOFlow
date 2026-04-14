@@ -1,55 +1,34 @@
 # Docker 部署文档
 
-更新时间：2026-03-27
+更新时间：2026-04-14
 
 ## 1. 适用范围
 
-本文档用于当前项目的 Docker 部署方案，适用于：
-
-- 单机部署
-- Docker Compose 部署
-- PHP 单体应用 + PostgreSQL + 本地调度器场景
-
-当前结构：
+本文档适用于当前公开仓库的 Docker Compose 部署方式。
 
 - `docker-compose.yml`
-  - 开发环境默认配置
+  - 开发环境
+  - 挂载源码，便于本地调试
 - `docker-compose.prod.yml`
-  - 生产环境独立配置
+  - 生产环境
+  - 使用镜像内代码，不挂载源码
+  - 默认包含 `web + postgres + scheduler + worker`
 
-## 2. 运行逻辑
-
-服务说明：
+## 2. 服务结构
 
 - `web`
-  - 使用 PHP 8.3 CLI 内置服务器
-  - 对外监听 `8080`
-  - 对应前台与后台站点
+  - 提供前台与后台 HTTP 访问
+- `postgres`
+  - PostgreSQL 运行时数据库
+  - 生产编排默认不对宿主机暴露端口
 - `scheduler`
-  - 循环执行 `bin/cron.php`
-  - 用于自动任务调度
-  - 生产环境默认启动
+  - 轮询执行 `bin/cron.php`
+- `worker`
+  - 常驻消费任务队列并调用 AI 生成内容
 
-生产环境和开发环境的核心差异：
+## 3. 环境变量
 
-- 开发环境挂载整个项目源码，方便热更新
-- 生产环境不挂载源码，只持久化数据目录
-
-## 3. 必要文件
-
-确保存在以下文件：
-
-- [docker-compose.yml](/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/docker-compose.yml)
-- [docker-compose.prod.yml](/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/docker-compose.prod.yml)
-- [docker/Dockerfile](/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/docker/Dockerfile)
-- [docker/entrypoint.sh](/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/docker/entrypoint.sh)
-- [docker/scheduler.sh](/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/docker/scheduler.sh)
-
-## 4. 生产部署步骤
-
-### 4.1 准备环境变量
-
-复制模板：
+从模板复制一份生产配置：
 
 ```bash
 cp .env.example .env.prod
@@ -58,8 +37,17 @@ cp .env.example .env.prod
 至少修改以下变量：
 
 ```env
+HOST_PORT=18080
 SITE_URL=https://your-domain.com
-APP_SECRET_KEY=请替换成高强度随机字符串
+APP_SECRET_KEY=replace-with-a-long-random-secret
+
+DB_DRIVER=pgsql
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=geo_system
+DB_USER=geo_user
+DB_PASSWORD=change-this-password
+
 CRON_INTERVAL=60
 TZ=Asia/Shanghai
 REQUIRE_STRONG_APP_SECRET=true
@@ -68,57 +56,59 @@ REQUIRE_STRONG_APP_SECRET=true
 说明：
 
 - `APP_SECRET_KEY` 必须长期稳定保存
-- 如果你更换了它，数据库里现有加密的 AI Key 会失效，除非同步做重加密迁移
+- `DB_HOST=postgres` 表示容器内连接 Compose 内的 PostgreSQL 服务
+- 如需从宿主机连接数据库，请自行在 Compose 覆盖文件中显式暴露 PostgreSQL 端口，不建议默认对外开放
 
-### 4.2 启动服务
+## 4. 启动生产环境
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-### 4.3 查看状态
+查看状态：
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 ```
 
-### 4.4 查看日志
+查看日志：
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f web
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f scheduler
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f worker
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f postgres
 ```
 
 ## 5. 数据持久化
 
-生产环境使用命名卷：
+生产环境使用以下命名卷：
 
+- `pgdata`
 - `geo_data`
 - `geo_uploads`
 - `geo_logs`
 
-对应容器内目录：
+对应关键数据：
 
-- `/var/www/html/data`
-- `/var/www/html/uploads`
-- `/var/www/html/logs`
-
-其中关键数据：
-
-- PostgreSQL 数据卷：Docker named volume `pgdata`
-- 图片上传：`/var/www/html/uploads/images`
-- 知识库文件：`/var/www/html/uploads/knowledge`
-- 运行日志：`/var/www/html/logs`
+- `pgdata`
+  - PostgreSQL 数据文件
+- `geo_uploads`
+  - 图片库、知识库上传文件
+- `geo_logs`
+  - 运行日志
+- `geo_data`
+  - 运行时辅助数据
 
 ## 6. 更新部署
 
-拉取新代码后执行：
+拉取新代码后：
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-如果只是重启：
+仅重启服务：
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod restart
@@ -132,25 +122,17 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod restart
 docker compose -f docker-compose.prod.yml --env-file .env.prod down
 ```
 
-如果连数据卷一起删除：
+停止并删除卷：
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod down -v
 ```
 
-注意：
-
-- `down -v` 会删除数据库、上传文件和日志
+`down -v` 会删除 PostgreSQL 数据、上传文件和日志卷。
 
 ## 8. 当前约束
 
-- 当前使用的是 PHP 内置服务器，不是 Nginx + PHP-FPM
-- 当前数据库是 PostgreSQL，适合多进程/多容器并发运行
-- 生产环境中 `scheduler` 默认随主站一起启动
-- AI 模型密钥已加密存储，但依赖 `APP_SECRET_KEY` 正确注入
-
-## 9. 建议
-
-- 生产环境将 `.env.prod` 放在受控目录，不要提交到仓库
-- 首次部署后备份 `pgdata` 卷与 `uploads/`、`logs/` 数据
-- 如需导入旧 SQLite 数据，使用 `php bin/migrate_sqlite_to_pg.php`
+- 当前公开版运行时数据库为 PostgreSQL
+- 生产编排默认不暴露 PostgreSQL 到宿主机网络
+- `scheduler` 与 `worker` 默认随生产环境一起启动
+- AI 模型密钥加密依赖 `APP_SECRET_KEY`

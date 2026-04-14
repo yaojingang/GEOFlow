@@ -1,6 +1,23 @@
 name: geo-system-docker
 
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: geo-system-postgres
+    environment:
+      POSTGRES_DB: "${DB_NAME:-geo_system}"
+      POSTGRES_USER: "${DB_USER:-geo_user}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-geo_password}"
+      TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-geo_user} -d ${DB_NAME:-geo_system}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   web:
     build:
       context: .
@@ -12,6 +29,12 @@ services:
     ports:
       - "${HOST_PORT:-18080}:8080"
     environment:
+      DB_DRIVER: "${DB_DRIVER:-pgsql}"
+      DB_HOST: "${DB_HOST:-postgres}"
+      DB_PORT: "${DB_PORT:-5432}"
+      DB_NAME: "${DB_NAME:-geo_system}"
+      DB_USER: "${DB_USER:-geo_user}"
+      DB_PASSWORD: "${DB_PASSWORD:-geo_password}"
       APP_PORT: 8080
       SITE_URL: "${SITE_URL}"
       APP_SECRET_KEY: "${APP_SECRET_KEY}"
@@ -22,6 +45,9 @@ services:
       - geo_uploads:/var/www/html/uploads
       - geo_logs:/var/www/html/logs
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/"]
       interval: 30s
@@ -38,6 +64,12 @@ services:
     container_name: geo-system-scheduler
     init: true
     environment:
+      DB_DRIVER: "${DB_DRIVER:-pgsql}"
+      DB_HOST: "${DB_HOST:-postgres}"
+      DB_PORT: "${DB_PORT:-5432}"
+      DB_NAME: "${DB_NAME:-geo_system}"
+      DB_USER: "${DB_USER:-geo_user}"
+      DB_PASSWORD: "${DB_PASSWORD:-geo_password}"
       CRON_INTERVAL: "${CRON_INTERVAL:-60}"
       APP_SECRET_KEY: "${APP_SECRET_KEY}"
       REQUIRE_STRONG_APP_SECRET: "true"
@@ -48,6 +80,8 @@ services:
       - geo_logs:/var/www/html/logs
     restart: unless-stopped
     depends_on:
+      postgres:
+        condition: service_healthy
       web:
         condition: service_healthy
 
@@ -61,6 +95,12 @@ services:
     init: true
     command: ["php", "/var/www/html/bin/worker.php"]
     environment:
+      DB_DRIVER: "${DB_DRIVER:-pgsql}"
+      DB_HOST: "${DB_HOST:-postgres}"
+      DB_PORT: "${DB_PORT:-5432}"
+      DB_NAME: "${DB_NAME:-geo_system}"
+      DB_USER: "${DB_USER:-geo_user}"
+      DB_PASSWORD: "${DB_PASSWORD:-geo_password}"
       APP_SECRET_KEY: "${APP_SECRET_KEY}"
       REQUIRE_STRONG_APP_SECRET: "true"
       TZ: "${TZ:-Asia/Shanghai}"
@@ -70,10 +110,13 @@ services:
       - geo_logs:/var/www/html/logs
     restart: unless-stopped
     depends_on:
+      postgres:
+        condition: service_healthy
       web:
         condition: service_healthy
 
 volumes:
+  pgdata:
   geo_data:
   geo_uploads:
   geo_logs:
