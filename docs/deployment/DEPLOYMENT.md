@@ -1,5 +1,7 @@
 # GEOFlow 服务器部署文档
 
+> 📖 **For English users, please refer to [DEPLOYMENT_en.md](DEPLOYMENT_en.md).**
+
 更新时间：2026-04-14
 
 ## 1. 推荐方式

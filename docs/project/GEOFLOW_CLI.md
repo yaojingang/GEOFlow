@@ -1,5 +1,7 @@
 # GEOFlow CLI 使用说明
 
+> 📖 **For English users, please refer to [GEOFLOW_CLI_en.md](GEOFLOW_CLI_en.md).**
+
 `geoflow` 是第一阶段 API 的本地命令行入口。
 
 它只通过正式 `/api/v1` 与系统通信，不直接访问数据库，也不复用后台 session。

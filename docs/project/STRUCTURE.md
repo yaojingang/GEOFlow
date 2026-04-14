@@ -1,5 +1,7 @@
 # 项目结构说明
 
+> 📖 **For English users, please refer to [STRUCTURE_en.md](STRUCTURE_en.md).**
+
 本文档用于固定当前项目的正式目录规范，便于后续继续整理时保持一致。
 
 ## 目录职责

@@ -1,5 +1,7 @@
 # API v1 接口设计稿
 
+> 📖 **For English users, please refer to [API_V1_REFERENCE_DRAFT_en.md](API_V1_REFERENCE_DRAFT_en.md).**
+
 ## 1. 文档定位
 
 本文档是 `GEOFlow` 第一阶段正式 API 的接口设计稿。

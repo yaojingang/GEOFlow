@@ -1,5 +1,7 @@
 # GEOFlow FAQ
 
+> 📖 **For English users, please refer to [FAQ_en.md](FAQ_en.md).**
+
 ## 1. 默认后台地址和账号是什么？
 
 - 后台地址：`/geo_admin/`
