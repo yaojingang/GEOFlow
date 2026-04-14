@@ -13,7 +13,7 @@ It is based on the following premises:
 
 For the overall plan, see:
 
-- [API_CLI_PHASE1_PLAN.md](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/docs/project/API_CLI_PHASE1_PLAN.md)
+- [API_CLI_PHASE1_PLAN.md](API_CLI_PHASE1_PLAN.md)
 
 ---
 
