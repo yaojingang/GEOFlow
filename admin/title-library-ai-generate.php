@@ -308,7 +308,7 @@ try {
                     $random_keyword = $keywords[array_rand($keywords)];
 
                     // 保存标题
-                    $stmt = $db->prepare("INSERT INTO titles (library_id, title, keyword, is_ai_generated) VALUES (?, ?, ?, 1)");
+                    $stmt = $db->prepare("INSERT INTO titles (library_id, title, keyword, is_ai_generated) VALUES (?, ?, ?, TRUE)");
                     $stmt->execute([$library_id, $title, $random_keyword]);
                     $saved_count++;
                 }
