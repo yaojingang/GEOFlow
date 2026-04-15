@@ -46,8 +46,9 @@ post_max_size = 10M
 ### Method 1: Using the One-Click Startup Script (Recommended)
 
 ```bash
-# 1. Navigate to the project directory
-cd "AI Coding/Tool/GEO网站系统"
+# 1. Clone the repository and navigate to the project directory
+git clone https://github.com/yaojingang/GEOFlow.git
+cd GEOFlow
 
 # 2. Grant execution permissions
 chmod +x start.sh check-env.sh open.sh
@@ -66,7 +67,8 @@ chmod +x start.sh check-env.sh open.sh
 
 ```bash
 # Navigate to the project directory
-cd "AI Coding/Tool/GEO网站系统"
+git clone https://github.com/yaojingang/GEOFlow.git
+cd GEOFlow
 
 # Start the PHP built-in server
 php -S localhost:8080 router.php
@@ -241,11 +243,11 @@ psql -h 127.0.0.1 -U geo_user -d geo_system
 ### Backup Database
 
 ```bash
-# Create a backup
-cp data/db/blog.db data/db/blog_backup_$(date +%Y%m%d_%H%M%S).db
+# Create a PostgreSQL backup
+pg_dump -h 127.0.0.1 -U geo_user -d geo_system > data/db/geo_system_backup_$(date +%Y%m%d_%H%M%S).sql
 
 # View backups
-ls -lh data/db/blog_backup_*.db
+ls -lh data/db/geo_system_backup_*.sql
 ```
 
 ---
@@ -302,8 +304,8 @@ php -S localhost:8080 router.php -d display_errors=1
 # 2. Check error logs
 tail -f logs/$(date +%Y-%m-%d).log
 
-# 3. Check the database
-ls -lh data/db/blog.db
+# 3. Check the database connection
+php bin/db_maintenance.php check
 ```
 
 ### Issue 2: Unable to Start the Server
@@ -329,24 +331,23 @@ php --version
 ### Issue 3: Database Error
 
 **Possible Causes**:
-- Database file does not exist
-- Insufficient permissions
-- SQLite extension not installed
+- PostgreSQL service not running
+- Incorrect connection credentials
+- pdo_pgsql extension not installed
 
 **Solution**:
 ```bash
-# 1. Check database file
-ls -lh data/db/blog.db
+# 1. Check PostgreSQL service status
+sudo systemctl status postgresql
 
-# 2. Check permissions
-chmod 755 data/db
-chmod 644 data/db/blog.db
+# 2. Test database connection
+psql -h 127.0.0.1 -U geo_user -d geo_system -c "SELECT 1;"
 
-# 3. Check SQLite extension
-php -m | grep sqlite
+# 3. Check pdo_pgsql extension
+php -m | grep pgsql
 
-# 4. Reinitialize
-Visit: http://localhost:8080/install.php
+# 4. Restart PostgreSQL if needed
+sudo systemctl restart postgresql
 ```
 
 ### Issue 4: Unable to Log into the Admin Panel
