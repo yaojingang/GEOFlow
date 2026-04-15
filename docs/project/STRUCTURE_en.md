@@ -38,7 +38,7 @@ Static resources including CSS, JS, images, etc.
 
 ### `data/`
 
-SQLite databases, runtime data, and backup files.
+Runtime data, backup files, and legacy SQLite databases (migration-only).
 
 ### `logs/`
 
