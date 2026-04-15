@@ -1,5 +1,7 @@
 # GEOFlow
 
+> Languages: [简体中文](README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
+
 > An open-source content production system designed for GEO / SEO content operations. It chains together model configuration, material management, task scheduling, draft review, and front-end publishing into a complete pipeline — ideal for building automated content sites or internal content operations dashboards.
 
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-blue)](https://www.php.net/)

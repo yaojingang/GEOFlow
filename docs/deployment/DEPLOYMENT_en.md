@@ -1,5 +1,7 @@
 # GEOFlow Server Deployment Documentation
 
+> Languages: [简体中文](DEPLOYMENT.md) | [English](DEPLOYMENT_en.md) | [日本語](DEPLOYMENT_ja.md) | [Español](DEPLOYMENT_es.md) | [Русский](DEPLOYMENT_ru.md)
+
 Updated: 2026-04-14
 
 ## 1. Recommended Approach

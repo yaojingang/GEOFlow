@@ -1,5 +1,7 @@
 # GEOFlow Documentation Center
 
+> Languages: [简体中文](README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
+
 The public repository only retains documentation that is truly useful for external users:
 
 - Installation and deployment

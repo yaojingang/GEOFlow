@@ -1,5 +1,7 @@
 # GEOFlow FAQ
 
+> Languages: [简体中文](FAQ.md) | [English](FAQ_en.md) | [日本語](FAQ_ja.md) | [Español](FAQ_es.md) | [Русский](FAQ_ru.md)
+
 ## 1. What is the default admin URL and account?
 
 - Admin URL: `/geo_admin/`

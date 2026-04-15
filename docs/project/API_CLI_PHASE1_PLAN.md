@@ -1,5 +1,7 @@
 # API / CLI 第一阶段实施方案
 
+> [English version](API_CLI_PHASE1_PLAN_en.md)
+
 ## 1. 文档目的
 
 本文档用于确定 `GEOFlow` 第一阶段外部接口体系的正式实施方案。

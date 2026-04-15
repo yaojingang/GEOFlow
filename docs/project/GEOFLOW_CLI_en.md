@@ -1,5 +1,7 @@
 # GEOFlow CLI User Guide
 
+> Languages: [简体中文](GEOFLOW_CLI.md) | [English](GEOFLOW_CLI_en.md) | [日本語](GEOFLOW_CLI_ja.md) | [Español](GEOFLOW_CLI_es.md) | [Русский](GEOFLOW_CLI_ru.md)
+
 `geoflow` is the local command-line entry point for the Phase 1 API.
 
 It communicates with the system exclusively through the official `/api/v1` — it does not directly access the database, nor does it reuse admin sessions.

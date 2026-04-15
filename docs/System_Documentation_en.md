@@ -417,9 +417,8 @@ Or set up auto-publishing
 
 ## 📞 Technical Support
 
-- **Project Location**: `/Users/laoyao/AI Coding/Tool/GEO网站系统`
-- **Git Repository**: Initialized (main branch)
-- **Development Environment**: macOS (Darwin 25.2.0)
+- **Git Repository**: https://github.com/yaojingang/GEOFlow
+- **Development Environment**: macOS / Linux / Windows
 - **PHP Version**: 7.4+
 - **Database**: PostgreSQL
 
