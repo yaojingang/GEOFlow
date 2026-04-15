@@ -13,8 +13,9 @@
 
 ### Backend Technologies
 - **Language**: PHP 7.4+
-- **Database**: SQLite (file-based database)
-  - Location: `/data/db/blog.db`
+- **Database**: PostgreSQL (runtime database)
+  - Configured via environment variables (`DB_DRIVER=pgsql`)
+  - Note: SQLite (`/data/db/blog.db`) may exist only as a legacy/migration artifact and is not the primary runtime database
 - **Server**: PHP built-in development server (localhost:8080)
 - **Core Libraries**: PDO (database access), cURL (API calls)
 
@@ -74,7 +75,7 @@ GEO Website System/
 │   ├── /js/                   # JavaScript files
 │   └── /images/               # Image resources
 │
-├── /data/db/                  # SQLite database storage directory
+├── /data/db/                  # PostgreSQL data / legacy SQLite storage directory
 ├── /logs/                     # Application logs and process tracking
 ├── /uploads/                  # User uploaded files
 │   ├── /images/               # Article images
@@ -232,7 +233,7 @@ Logs written to /logs/batch_*.log
 
 ### Admin Access Flow
 ```
-1. Login at /geo_admin/ (default: admin / yaodashuai)
+1. Login at /geo_admin/ (default: admin / admin888)
 2. Dashboard displays system statistics
 3. Navigate to task/article/material management
 4. Perform CRUD operations
@@ -250,7 +251,7 @@ Logs written to /logs/batch_*.log
 ### Important Constants
 ```php
 SITE_NAME: "智能GEO内容系统"
-DB_PATH: "/data/db/blog.db"
+DB_DRIVER: "pgsql"  // PostgreSQL via environment variables
 UPLOAD_PATH: "/assets/images/"
 SESSION_TIMEOUT: 3600 seconds
 MAX_FILE_SIZE: 2MB
@@ -258,7 +259,7 @@ MAX_FILE_SIZE: 2MB
 
 ### Default Admin Account
 - **Username**: `admin`
-- **Password**: `yaodashuai`
+- **Password**: `admin888`
 - **Encryption**: bcrypt
 - ⚠️ Please change the password immediately after first use
 
@@ -293,9 +294,10 @@ MAX_FILE_SIZE: 2MB
 - **Process Info**: `/logs/batch_*.pid`
 
 ### Database
-- SQLite file-based database
-- Location: `/data/db/blog.db`
+- PostgreSQL runtime database
+- Configured via environment variables (`DB_DRIVER=pgsql`)
 - Schema automatically created on first run
+- Backup with `pg_dump`
 
 ---
 
@@ -359,7 +361,7 @@ A: Check the "Draft Limit" and "Auto-Publish" settings in the task configuration
 A: Check the `/logs/batch_*.log` files
 
 ### Q: Where is the database?
-A: `/data/db/blog.db` (SQLite file)
+A: PostgreSQL database, configured via environment variables (`DB_DRIVER=pgsql`). A legacy SQLite file may exist at `/data/db/blog.db` but is not the primary runtime database.
 
 ---
 
@@ -419,7 +421,7 @@ Or set up auto-publishing
 - **Git Repository**: Initialized (main branch)
 - **Development Environment**: macOS (Darwin 25.2.0)
 - **PHP Version**: 7.4+
-- **Database**: SQLite
+- **Database**: PostgreSQL
 
 ---
 
