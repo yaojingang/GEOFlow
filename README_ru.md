@@ -11,6 +11,19 @@
 
 Released under the Apache License 2.0.
 
+## Предпросмотр интерфейса
+
+<p>
+  <img src="docs/images/screenshots/home.png" alt="Предпросмотр главной страницы GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/task-management.png" alt="Предпросмотр управления задачами GEOFlow" width="48%" />
+</p>
+<p>
+  <img src="docs/images/screenshots/article-management.png" alt="Предпросмотр управления статьями GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/ai-config.png" alt="Предпросмотр конфигуратора ИИ GEOFlow" width="48%" />
+</p>
+
+Эти четыре экрана показывают главную страницу, управление задачами, workflow статей и настройку моделей. Остальные страницы админки вынесены в `docs/`.
+
 ## Что умеет GEOFlow
 
 - Запускать AI-задачи по генерации GEO / SEO контента

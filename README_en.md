@@ -11,6 +11,19 @@
 
 Released under the Apache License 2.0.
 
+## UI Preview
+
+<p>
+  <img src="docs/images/screenshots/home.png" alt="GEOFlow home preview" width="48%" />
+  <img src="docs/images/screenshots/task-management.png" alt="GEOFlow task management preview" width="48%" />
+</p>
+<p>
+  <img src="docs/images/screenshots/article-management.png" alt="GEOFlow article management preview" width="48%" />
+  <img src="docs/images/screenshots/ai-config.png" alt="GEOFlow AI configurator preview" width="48%" />
+</p>
+
+These four screens cover the homepage, task scheduling, article workflow, and model configuration. Additional admin pages are documented in `docs/`.
+
 ## What GEOFlow Does
 
 - Run AI-powered GEO / SEO content generation tasks
