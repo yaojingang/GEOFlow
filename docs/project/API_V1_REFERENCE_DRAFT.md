@@ -15,7 +15,7 @@
 
 对应总方案见：
 
-- [API_CLI_PHASE1_PLAN.md](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/docs/project/API_CLI_PHASE1_PLAN.md)
+- [API_CLI_PHASE1_PLAN.md](./API_CLI_PHASE1_PLAN.md)
 
 ---
 
@@ -206,27 +206,27 @@ X-Idempotency-Key: optional-uuid
 
 真实逻辑来源：
 
-- [task-create.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/task-create.php)
-- [tasks.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/tasks.php)
-- [start_task_batch.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/start_task_batch.php)
-- [task_service.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/includes/task_service.php)
-- [job_queue_service.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/includes/job_queue_service.php)
+- [task-create.php](admin/task-create.php)
+- [tasks.php](admin/tasks.php)
+- [start_task_batch.php](admin/start_task_batch.php)
+- [task_service.php](includes/task_service.php)
+- [job_queue_service.php](includes/job_queue_service.php)
 
 ## 5.2 文章相关
 
 真实逻辑来源：
 
-- [article-create.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/article-create.php)
-- [article-edit.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/article-edit.php)
-- [article-view.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/article-view.php)
-- [articles.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/articles.php)
-- [articles-review.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/articles-review.php)
-- [functions.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/includes/functions.php#L380)
+- [article-create.php](admin/article-create.php)
+- [article-edit.php](admin/article-edit.php)
+- [article-view.php](admin/article-view.php)
+- [articles.php](admin/articles.php)
+- [articles-review.php](admin/articles-review.php)
+- [functions.php](includes/functions.php#L380)
 
 ## 5.3 不纳入第一阶段的现有接口
 
-- [title_generate_async.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/title_generate_async.php)
-- [url-import-start.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/url-import-start.php)
+- [title_generate_async.php](admin/title_generate_async.php)
+- [url-import-start.php](admin/url-import-start.php)
 
 ---
 
@@ -392,7 +392,7 @@ X-Idempotency-Key: optional-uuid
 
 ### 数据来源
 
-以 [tasks.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/tasks.php) 的列表查询逻辑为主。
+以 [tasks.php](admin/tasks.php) 的列表查询逻辑为主。
 
 ### 排序
 
@@ -461,7 +461,7 @@ X-Idempotency-Key: optional-uuid
 
 ### 校验规则
 
-复用 [task-create.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/task-create.php) 现有逻辑：
+复用 [task-create.php](admin/task-create.php) 现有逻辑：
 
 - 名称不能为空
 - 标题库必须存在
@@ -538,7 +538,7 @@ X-Idempotency-Key: optional-uuid
 
 ### 数据来源
 
-主要参考 [tasks.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/tasks.php) 的任务列表聚合查询。
+主要参考 [tasks.php](admin/tasks.php) 的任务列表聚合查询。
 
 ---
 
@@ -599,7 +599,7 @@ X-Idempotency-Key: optional-uuid
 
 ### 规则
 
-复用 [start_task_batch.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/start_task_batch.php) 和 [tasks.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/tasks.php) 的现有语义：
+复用 [start_task_batch.php](admin/start_task_batch.php) 和 [tasks.php](admin/tasks.php) 的现有语义：
 
 - `status = active`
 - `schedule_enabled = 1`
@@ -641,7 +641,7 @@ X-Idempotency-Key: optional-uuid
 
 ### 规则
 
-复用 [start_task_batch.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/start_task_batch.php)：
+复用 [start_task_batch.php](admin/start_task_batch.php)：
 
 - `status = paused`
 - `schedule_enabled = 0`
@@ -832,7 +832,7 @@ X-Idempotency-Key: optional-uuid
 
 ### 数据来源
 
-参考 [articles.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/articles.php) 的筛选逻辑。
+参考 [articles.php](admin/articles.php) 的筛选逻辑。
 
 ### 默认条件
 
@@ -875,7 +875,7 @@ X-Idempotency-Key: optional-uuid
 
 ### 校验规则
 
-复用 [article-create.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/article-create.php)：
+复用 [article-create.php](admin/article-create.php)：
 
 - `title` 必填
 - `content` 必填
@@ -932,7 +932,7 @@ X-Idempotency-Key: optional-uuid
 
 参考：
 
-- [article-view.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/article-view.php)
+- [article-view.php](admin/article-view.php)
 
 `images` 来自：
 
@@ -970,7 +970,7 @@ X-Idempotency-Key: optional-uuid
 
 参考：
 
-- [article-edit.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/article-edit.php)
+- [article-edit.php](admin/article-edit.php)
 
 ---
 
@@ -1004,8 +1004,8 @@ X-Idempotency-Key: optional-uuid
 
 复用：
 
-- [articles-review.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/articles-review.php)
-- [functions.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/includes/functions.php#L380)
+- [articles-review.php](admin/articles-review.php)
+- [functions.php](includes/functions.php#L380)
 
 具体规则：
 
@@ -1106,7 +1106,7 @@ X-Idempotency-Key: optional-uuid
 
 参考：
 
-- [articles.php](/Users/laoyao/AI%20Coding/01-Projects/Active/GEO官网系统/admin/articles.php)
+- [articles.php](admin/articles.php)
 
 ### 响应
 
@@ -1159,14 +1159,14 @@ CREATE TABLE IF NOT EXISTS api_idempotency_keys (
 
 ## 11.1 新增文件
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/api/v1/index.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/api_auth.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/api_request.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/api_response.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/api_token_service.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/catalog_service.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/task_lifecycle_service.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/article_service.php`
+- `api/v1/index.php`
+- `includes/api_auth.php`
+- `includes/api_request.php`
+- `includes/api_response.php`
+- `includes/api_token_service.php`
+- `includes/catalog_service.php`
+- `includes/task_lifecycle_service.php`
+- `includes/article_service.php`
 
 ## 11.2 Dispatcher 建议
 

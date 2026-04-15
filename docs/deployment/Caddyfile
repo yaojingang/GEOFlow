@@ -8,11 +8,11 @@
 
 localhost:8080 {
     # 网站根目录
-    root * "/Users/laoyao/AI Coding/Tool/GEO网站系统"
+    root * /var/www/geoflow
 
     # 日志配置
     log {
-        output file "/Users/laoyao/AI Coding/Tool/GEO网站系统/logs/caddy_access.log" {
+        output file /var/www/geoflow/logs/caddy_access.log {
             roll_size 10mb
             roll_keep 5
         }

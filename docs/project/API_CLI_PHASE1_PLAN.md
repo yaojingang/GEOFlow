@@ -66,10 +66,10 @@
 
 相关核心文件：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/bin/cron.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/bin/worker.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/job_queue_service.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/ai_engine.php`
+- `bin/cron.php`
+- `bin/worker.php`
+- `includes/job_queue_service.php`
+- `includes/ai_engine.php`
 
 ### 3.2 不推翻现有数据库语义
 
@@ -94,10 +94,10 @@
 
 第一阶段不能让 CLI 直接调用这些现有页面配套接口：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/start_task_batch.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/get_task_status.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/title_generate_async.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/url-import-start.php`
+- `admin/start_task_batch.php`
+- `admin/get_task_status.php`
+- `admin/title_generate_async.php`
+- `admin/url-import-start.php`
 
 原因：
 
@@ -141,13 +141,13 @@
 
 典型文件：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/task-create.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/tasks.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/articles.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/articles-review.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/article-create.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/article-edit.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/article-view.php`
+- `admin/task-create.php`
+- `admin/tasks.php`
+- `admin/articles.php`
+- `admin/articles-review.php`
+- `admin/article-create.php`
+- `admin/article-edit.php`
+- `admin/article-view.php`
 
 这是现状，不是问题本身。第一阶段不要求把后台改成 MVC。
 
@@ -155,7 +155,7 @@
 
 后台运行时数据库由 `database_admin.php` 负责建表和补 schema：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/database_admin.php`
+- `includes/database_admin.php`
 
 核心业务表包括：
 
@@ -184,10 +184,10 @@
 
 关键文件：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/bin/cron.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/job_queue_service.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/bin/worker.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/ai_engine.php`
+- `bin/cron.php`
+- `includes/job_queue_service.php`
+- `bin/worker.php`
+- `includes/ai_engine.php`
 
 这条链路已经是第一阶段 API 的最大复用基础。
 
@@ -199,7 +199,7 @@
 
 当前任务创建页面：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/task-create.php`
+- `admin/task-create.php`
 
 现有行为：
 
@@ -235,10 +235,10 @@
 当前有两套相关逻辑：
 
 1. 页面内切换状态：
-   `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/tasks.php`
+   `admin/tasks.php`
 
 2. JSON 端点手动启停 / 入队：
-   `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/start_task_batch.php`
+   `admin/start_task_batch.php`
 
 现有行为：
 
@@ -282,11 +282,11 @@
 
 当前文章手动创建页面：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/article-create.php`
+- `admin/article-create.php`
 
 当前文章编辑页面：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/article-edit.php`
+- `admin/article-edit.php`
 
 现有行为：
 
@@ -308,10 +308,10 @@
 
 当前相关文件：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/articles-review.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/article-view.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/articles.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/functions.php`
+- `admin/articles-review.php`
+- `admin/article-view.php`
+- `admin/articles.php`
+- `includes/functions.php`
 
 核心规则在：
 
@@ -343,7 +343,7 @@
 
 ### 6.1 统一 JSON 响应工具
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/config.php`
+- `includes/config.php`
 
 现有 `json_response()` 可以继续复用，但需要在 API 层之上再封一层标准 envelope。
 
@@ -365,7 +365,7 @@
 
 ## 7.1 session 型“异步接口”
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/title_generate_async.php`
+- `admin/title_generate_async.php`
 
 问题：
 
@@ -378,7 +378,7 @@
 
 ## 7.2 请求内同步执行的采集接口
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/url-import-start.php`
+- `admin/url-import-start.php`
 
 问题：
 
@@ -604,11 +604,11 @@ X-Idempotency-Key: optional
 
 应复用：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/task-create.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/tasks.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/start_task_batch.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/task_service.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/job_queue_service.php`
+- `admin/task-create.php`
+- `admin/tasks.php`
+- `admin/start_task_batch.php`
+- `includes/task_service.php`
+- `includes/job_queue_service.php`
 
 说明：
 
@@ -630,12 +630,12 @@ X-Idempotency-Key: optional
 
 应复用：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/article-create.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/article-edit.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/article-view.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/articles.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/articles-review.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/functions.php`
+- `admin/article-create.php`
+- `admin/article-edit.php`
+- `admin/article-view.php`
+- `admin/articles.php`
+- `admin/articles-review.php`
+- `includes/functions.php`
 
 特别要求：
 
@@ -651,7 +651,7 @@ X-Idempotency-Key: optional
 
 建议先做单入口：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/api/v1/index.php`
+- `api/v1/index.php`
 
 配合基础组件：
 
@@ -672,7 +672,7 @@ X-Idempotency-Key: optional
 
 只需要在：
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/router.php`
+- `router.php`
 
 增加一条 `/api/v1/*` 路由映射即可。
 
@@ -720,22 +720,22 @@ X-Idempotency-Key: optional
 
 ### API 入口与基础设施
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/api/v1/index.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/api_auth.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/api_request.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/api_response.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/api_token_service.php`
+- `api/v1/index.php`
+- `includes/api_auth.php`
+- `includes/api_request.php`
+- `includes/api_response.php`
+- `includes/api_token_service.php`
 
 ### 业务服务层
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/catalog_service.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/task_lifecycle_service.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/article_service.php`
+- `includes/catalog_service.php`
+- `includes/task_lifecycle_service.php`
+- `includes/article_service.php`
 
 ### 文档
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/docs/project/API_CLI_PHASE1_PLAN.md`
-- 后续可补：`/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/docs/project/API_V1_REFERENCE.md`
+- `API_CLI_PHASE1_PLAN.md`
+- 后续可补：`API_V1_REFERENCE.md`
 
 ---
 
@@ -743,7 +743,7 @@ X-Idempotency-Key: optional
 
 ## 15.1 Router
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/router.php`
+- `router.php`
 
 改动：
 
@@ -751,7 +751,7 @@ X-Idempotency-Key: optional
 
 ## 15.2 数据库初始化
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/database_admin.php`
+- `includes/database_admin.php`
 
 改动：
 
@@ -760,7 +760,7 @@ X-Idempotency-Key: optional
 
 ## 15.3 TaskService
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/task_service.php`
+- `includes/task_service.php`
 
 改动：
 
@@ -780,25 +780,25 @@ X-Idempotency-Key: optional
 
 ### 16.1 不动 worker 主循环
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/bin/worker.php`
+- `bin/worker.php`
 
 ### 16.2 不动 cron 调度策略
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/bin/cron.php`
+- `bin/cron.php`
 
 ### 16.3 不动 AI 引擎主生成逻辑
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/includes/ai_engine.php`
+- `includes/ai_engine.php`
 
 ### 16.4 不动 URL 导入体系
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/url-import-start.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/url-import-status.php`
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/url-import-commit.php`
+- `admin/url-import-start.php`
+- `admin/url-import-status.php`
+- `admin/url-import-commit.php`
 
 ### 16.5 不动标题异步生成体系
 
-- `/Users/laoyao/AI Coding/01-Projects/Active/GEO官网系统/admin/title_generate_async.php`
+- `admin/title_generate_async.php`
 
 ### 16.6 不重构后台页面
 
