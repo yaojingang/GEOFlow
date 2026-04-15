@@ -98,7 +98,7 @@ php bin/geoflow \
 php bin/geoflow catalog
 ```
 
-### 3.0 First Login Example
+### 3.2 First Login Example
 
 ```bash
 php bin/geoflow \
@@ -117,7 +117,7 @@ php bin/geoflow \
   --password your-password
 ```
 
-### 3.2 Task Management
+### 3.3 Task Management
 
 List tasks:
 
@@ -150,7 +150,7 @@ php bin/geoflow task jobs 12 --limit 20
 php bin/geoflow job get 88
 ```
 
-### 3.3 Article Management
+### 3.4 Article Management
 
 Upload an article draft directly:
 
