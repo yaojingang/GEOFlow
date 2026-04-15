@@ -48,7 +48,7 @@ GEO Website System/
 │   ├── seo_functions.php        # SEO optimization functions
 │   ├── header.php / footer.php  # Frontend layout templates
 │
-├── /geo_admin/                       # Admin management system
+├── /admin/                       # Admin management system (physical dir; served at /geo_admin/ URL via router.php)
 │   ├── dashboard.php            # Dashboard (data statistics)
 │   ├── tasks-new.php            # Task management main page
 │   ├── articles-new.php         # Article management main page
@@ -56,13 +56,13 @@ GEO Website System/
 │   ├── ai-models.php            # AI model management
 │   ├── ai-prompts.php           # Prompt management
 │   ├── materials-new.php        # Material library entry
-│   ├── start_task_batch.php     # Batch execution launcher ⭐Core
+│   ├── start_task_batch.php     # Batch task queue launcher ⭐Core
 │   └── includes/header.php      # Admin layout template
 │
 ├── index.php                     # Frontend homepage
 ├── article.php                   # Article detail page
 ├── bin/
-│   ├── batch_execute_task.php    # Batch execution worker process ⭐Core
+│   ├── worker.php                # job_queue worker process ⭐Core
 │   └── cron.php                  # Task scheduler
 ├── router.php                    # URL routing (development environment)
 ├── install.php                   # Installation script
@@ -247,19 +247,24 @@ Start Batch Execution:
     ↓
 start_task_batch.php:
     1. Verify admin permissions
-    2. Check task status
-    3. Clean up orphaned processes
-    4. Update task status to 'running'
-    5. Start background process: php bin/batch_execute_task.php {task_id} &
+    2. Check task status and whether it can be started
+    3. Update task status / execution metadata as needed
+    4. Enqueue a task execution job via JobQueueService
+    5. Return the enqueue result to the admin panel
     ↓
-bin/batch_execute_task.php (background process):
-    1. Record process PID to file
-    2. Enter infinite loop
-    3. Each iteration:
-        a. Check for stop signal
-        b. Check draft limit
-        c. Call AIEngine::executeTask()
-        d. Wait for publishing interval duration
+job_queue + bin/worker.php:
+    1. The queued job is stored in the job_queue table
+    2. bin/worker.php continuously polls for pending jobs
+    3. After claiming the job, the worker executes the task
+    4. During execution, the worker:
+        a. Checks task status / stop conditions
+        b. Checks draft limit and other execution constraints
+        c. Calls AIEngine::executeTask()
+        d. Reschedules or continues according to the publishing interval / queue logic
+    5. Troubleshooting focus:
+        a. Verify the corresponding record in job_queue
+        b. Confirm bin/worker.php is running and consuming jobs
+        c. Check worker logs / task status updates instead of PID files
     ↓
 AIEngine::executeTask():
     1. Get task configuration
@@ -329,7 +334,7 @@ bin/cron.php:
     
 Note: 
 - bin/cron.php is for single execution (generates 1 article per run)
-- bin/batch_execute_task.php is for batch execution (continuous generation)
+- bin/worker.php is the long-running queue consumer for batch execution (continuous generation)
 ```
 
 ---
@@ -462,8 +467,11 @@ tail -f logs/batch_{task_id}.log
 # View task manager logs
 tail -f logs/task_manager_$(date +%Y-%m-%d).log
 
-# Check process status
-ps aux | grep batch_execute_task.php
+# Check process status (direct deployment)
+ps aux | grep bin/worker.php
+
+# Check worker container status (Docker deployment)
+docker ps --filter "name=worker"
 ```
 
 ---

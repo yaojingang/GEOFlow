@@ -50,17 +50,11 @@ post_max_size = 10M
 git clone https://github.com/yaojingang/GEOFlow.git
 cd GEOFlow
 
-# 2. Grant execution permissions
-chmod +x start.sh check-env.sh open.sh
+# 2. Grant execution permission to the startup script
+chmod +x start.sh
 
-# 3. Check the environment
-./check-env.sh
-
-# 4. Start the server
+# 3. Start the server
 ./start.sh
-
-# 5. Open the browser (in a new terminal window)
-./open.sh
 ```
 
 ### Method 2: Manual Startup
@@ -134,13 +128,16 @@ php --version
 ### 4. Directory Permission Settings
 
 ```bash
+# Create required directories first
+mkdir -p data/backups logs uploads
+
 # Ensure key directories are writable
-chmod -R 755 data/db
+chmod -R 755 data/backups
 chmod -R 755 logs
 chmod -R 755 uploads
 
 # If needed, change the owner
-chown -R $(whoami) data logs uploads
+chown -R $(whoami) data/backups logs uploads
 ```
 
 ### 5. Configuration File Description
@@ -154,14 +151,20 @@ The core system configuration file, containing:
 - Upload configuration
 
 **Important Configuration Items**:
-```php
-define('SITE_NAME', 'Intelligent GEO Content System');
+
+Environment variables (set in your shell or `.env` file):
+```bash
 DB_DRIVER=pgsql
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_NAME=geo_system
 DB_USER=geo_user
 DB_PASSWORD=geo_password
+```
+
+PHP constants defined in `includes/config.php`:
+```php
+define('SITE_NAME', 'Intelligent GEO Content System');
 define('ADMIN_USERNAME', 'admin');
 define('SECRET_KEY', 'your-secret-key-change-this-in-production');
 ```
@@ -195,10 +198,7 @@ Ctrl + C
 ### Environment Check
 
 ```bash
-# Run the environment check script
-./check-env.sh
-
-# Manually check PHP version
+# Check PHP version
 php --version
 
 # Check PHP extensions
@@ -244,10 +244,10 @@ psql -h 127.0.0.1 -U geo_user -d geo_system
 
 ```bash
 # Create a PostgreSQL backup
-pg_dump -h 127.0.0.1 -U geo_user -d geo_system > data/db/geo_system_backup_$(date +%Y%m%d_%H%M%S).sql
+pg_dump -h 127.0.0.1 -U geo_user -d geo_system > data/backups/geo_system_backup_$(date +%Y%m%d_%H%M%S).sql
 
 # View backups
-ls -lh data/db/geo_system_backup_*.sql
+ls -lh data/backups/geo_system_backup_*.sql
 ```
 
 ---
@@ -359,8 +359,12 @@ sudo systemctl restart postgresql
 
 **Solution**:
 ```bash
-# 1. Reset admin password
+# 1. Generate a new password hash
 php -r "echo password_hash('admin888', PASSWORD_DEFAULT);"
+
+# 2. Update the admin password in the database
+psql -h 127.0.0.1 -U geo_user -d geo_system -c \
+  "UPDATE admins SET password_hash = '$(php -r "echo password_hash('admin888', PASSWORD_DEFAULT);")' WHERE username = 'admin';"
 
 # 2. Check session directory
 php -r "echo session_save_path();"
@@ -407,7 +411,8 @@ logs/task_manager_*.log - Task manager logs
 
 ### Environment Check
 ```bash
-./check-env.sh
+php --version
+php -m | grep -E "pdo|pgsql|json|mbstring|curl"
 ```
 
 ---

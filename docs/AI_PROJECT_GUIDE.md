@@ -64,7 +64,7 @@ GEO网站系统/
 ├── index.php                     # 前台首页
 ├── article.php                   # 文章详情页
 ├── bin/
-│   ├── batch_execute_task.php    # 批量执行工作进程 ⭐核心
+│   ├── worker.php                # job_queue 队列消费进程 ⭐核心
 │   └── cron.php                  # 任务调度器
 ├── router.php                    # URL路由（开发环境）
 ├── install.php                   # 安装脚本
@@ -249,19 +249,20 @@ authors (id, name, bio, avatar)
     ↓
 start_task_batch.php:
     1. 验证管理员权限
-    2. 检查任务状态
-    3. 清理孤儿进程
-    4. 更新任务状态为 'running'
-    5. 启动后台进程: php bin/batch_execute_task.php {task_id} &
+    2. 检查任务状态及是否可启动
+    3. 更新任务状态/执行元数据
+    4. 通过 JobQueueService 将任务执行作业入队
+    5. 返回入队结果给管理后台
     ↓
-bin/batch_execute_task.php (后台进程):
-    1. 记录进程PID到文件
-    2. 进入无限循环
-    3. 每次循环:
-        a. 检查停止信号
-        b. 检查草稿限制
+job_queue + bin/worker.php:
+    1. 入队的作业存储在 job_queue 表中
+    2. bin/worker.php 持续轮询待处理作业
+    3. 认领作业后，worker 执行任务
+    4. 执行过程中，worker:
+        a. 检查任务状态/停止条件
+        b. 检查草稿限制及其他执行约束
         c. 调用 AIEngine::executeTask()
-        d. 等待发布间隔时间
+        d. 根据发布间隔/队列逻辑重新调度或继续
     ↓
 AIEngine::executeTask():
     1. 获取任务配置
@@ -331,7 +332,7 @@ bin/cron.php:
     
 注意: 
 - bin/cron.php 用于单次执行（每次生成1篇）
-- bin/batch_execute_task.php 用于批量执行（持续生成）
+- bin/worker.php 是长期运行的队列消费进程，用于批量执行（持续生成）
 ```
 
 ---
@@ -463,8 +464,11 @@ tail -f logs/batch_{task_id}.log
 # 查看任务管理器日志
 tail -f logs/task_manager_$(date +%Y-%m-%d).log
 
-# 检查进程状态
-ps aux | grep batch_execute_task.php
+# 检查进程状态（直接部署）
+ps aux | grep bin/worker.php
+
+# 检查 worker 容器状态（Docker 部署）
+docker ps --filter "name=worker"
 ```
 
 ---

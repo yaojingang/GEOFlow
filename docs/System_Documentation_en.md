@@ -39,7 +39,7 @@
 
 ```
 GEO Website System/
-├── /geo_admin/                    # Admin management system (56 files)
+├── /admin/                        # Admin management system (physical directory; served at /geo_admin/ URL via router.php / ADMIN_BASE_PATH)
 │   ├── dashboard.php          # Admin dashboard - statistics display
 │   ├── tasks-new.php          # Task management - create and manage AI generation tasks
 │   ├── articles-new.php       # Article management - CRUD operations
@@ -54,7 +54,7 @@ GEO Website System/
 │   ├── authors-new.php        # Author management
 │   ├── categories.php         # Category management
 │   ├── articles-review.php    # Article review workflow
-│   ├── start_task_batch.php   # Batch execution launcher
+│   ├── start_task_batch.php   # Batch execution launcher (enqueues jobs via JobQueueService)
 │   └── includes/              # Admin-specific include files
 │
 ├── /includes/                 # Core system files (19 files)
@@ -85,10 +85,10 @@ GEO Website System/
 ├── article.php                # Article detail page
 ├── archive.php                # Article archive page
 ├── category.php               # Category page
-├── /bin/                      # CLI execution scripts
-│   ├── cron.php               # Task scheduler
-│   ├── batch_execute_task.php # Batch execution worker process
-│   └── health_check_cron.php  # Health check script
+├── /bin/                      # CLI execution scripts for the cron + job_queue + worker pipeline
+│   ├── cron.php               # Task scheduler that enqueues due jobs into the job queue
+│   ├── worker.php             # Queue worker that pulls jobs from job_queue and executes them
+│   └── health_check_cron.php  # Health check script for cron / worker processing
 ├── router.php                 # URL routing (development environment)
 ├── install.php                # Installation script
 └── *.sh                       # Deployment scripts
@@ -220,15 +220,17 @@ GEO Website System/
 
 ### Task Execution Flow
 ```
-start_task_batch.php (Launch batch execution)
+admin/start_task_batch.php (Create batch task from admin UI)
     ↓
-bin/batch_execute_task.php (Background worker process)
+Insert job into job_queue (Queued for background processing)
+    ↓
+bin/worker.php (Long-running queue consumer must be running)
     ↓
 AIEngine::executeTask() (Generate single article)
     ↓
-TaskStatusManager (Manage process lifecycle)
+TaskStatusManager (Manage job lifecycle and status updates)
     ↓
-Logs written to /logs/batch_*.log
+Logs written by the worker/job-processing pipeline
 ```
 
 ### Admin Access Flow
@@ -404,7 +406,8 @@ Configure: Title library, AI model, prompt, publishing settings
 ### 6. Start Batch Execution
 ```
 Admin panel → Task Management → Click the "Start Batch Execution" button
-Or run: php bin/batch_execute_task.php
+Or run the worker locally: php bin/worker.php
+Or start the Docker worker service
 ```
 
 ### 7. Review and Publish

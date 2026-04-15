@@ -12,7 +12,6 @@ The root directory only holds site entry files and the most commonly used local 
 - `article.php`: Article detail page
 - `category.php`: Category page
 - `archive.php`: Archive page
-- `detail.php`: Legacy detail page compatibility entry
 - `router.php`: Local development environment router
 - `start.sh`: Local startup entry
 
@@ -21,7 +20,7 @@ The root directory only holds site entry files and the most commonly used local 
 Only CLI scripts:
 
 - `bin/cron.php`: Task scheduler
-- `bin/batch_execute_task.php`: Batch execution worker
+- `bin/worker.php`: Queue worker that pulls jobs from job_queue and executes them
 - `bin/health_check_cron.php`: Health check script
 
 ### `admin/`

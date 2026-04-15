@@ -204,27 +204,27 @@ Failure:
 
 Actual logic sources:
 
-- [task-create.php](admin/task-create.php)
-- [tasks.php](admin/tasks.php)
-- [start_task_batch.php](admin/start_task_batch.php)
-- [task_service.php](includes/task_service.php)
-- [job_queue_service.php](includes/job_queue_service.php)
+- [task-create.php](../../admin/task-create.php)
+- [tasks.php](../../admin/tasks.php)
+- [start_task_batch.php](../../admin/start_task_batch.php)
+- [task_service.php](../../includes/task_service.php)
+- [job_queue_service.php](../../includes/job_queue_service.php)
 
 ## 5.2 Article-Related
 
 Actual logic sources:
 
-- [article-create.php](admin/article-create.php)
-- [article-edit.php](admin/article-edit.php)
-- [article-view.php](admin/article-view.php)
-- [articles.php](admin/articles.php)
-- [articles-review.php](admin/articles-review.php)
-- [functions.php](includes/functions.php#L380)
+- [article-create.php](../../admin/article-create.php)
+- [article-edit.php](../../admin/article-edit.php)
+- [article-view.php](../../admin/article-view.php)
+- [articles.php](../../admin/articles.php)
+- [articles-review.php](../../admin/articles-review.php)
+- [functions.php](../../includes/functions.php#L380)
 
 ## 5.3 Existing Interfaces Not Included in Phase 1
 
-- [title_generate_async.php](admin/title_generate_async.php)
-- [url-import-start.php](admin/url-import-start.php)
+- [title_generate_async.php](../../admin/title_generate_async.php)
+- [url-import-start.php](../../admin/url-import-start.php)
 
 ---
 
@@ -390,7 +390,7 @@ None
 
 ### Data Source
 
-Based primarily on the list query logic in [tasks.php](admin/tasks.php).
+Based primarily on the list query logic in [tasks.php](../../admin/tasks.php).
 
 ### Sorting
 
@@ -459,7 +459,7 @@ Optional:
 
 ### Validation Rules
 
-Reuses existing logic from [task-create.php](admin/task-create.php):
+Reuses existing logic from [task-create.php](../../admin/task-create.php):
 
 - Name cannot be empty
 - Title library must exist
@@ -536,7 +536,7 @@ If the client includes `X-Idempotency-Key`, the same response should be reused b
 
 ### Data Source
 
-Primarily references the task list aggregate query in [tasks.php](admin/tasks.php).
+Primarily references the task list aggregate query in [tasks.php](../../admin/tasks.php).
 
 ---
 
@@ -597,7 +597,7 @@ Activate a task, allowing scheduling.
 
 ### Rules
 
-Reuses existing semantics from [start_task_batch.php](admin/start_task_batch.php) and [tasks.php](admin/tasks.php):
+Reuses existing semantics from [start_task_batch.php](../../admin/start_task_batch.php) and [tasks.php](../../admin/tasks.php):
 
 - `status = active`
 - `schedule_enabled = 1`
@@ -639,7 +639,7 @@ Pause a task, cancel pending jobs.
 
 ### Rules
 
-Reuses [start_task_batch.php](admin/start_task_batch.php):
+Reuses [start_task_batch.php](../../admin/start_task_batch.php):
 
 - `status = paused`
 - `schedule_enabled = 0`
@@ -830,7 +830,7 @@ Data sources:
 
 ### Data Source
 
-References the filtering logic in [articles.php](admin/articles.php).
+References the filtering logic in [articles.php](../../admin/articles.php).
 
 ### Default Conditions
 
@@ -873,7 +873,7 @@ Create an article directly through the API, suitable for:
 
 ### Validation Rules
 
-Reuses [article-create.php](admin/article-create.php):
+Reuses [article-create.php](../../admin/article-create.php):
 
 - `title` is required
 - `content` is required
@@ -930,7 +930,7 @@ Returns:
 
 References:
 
-- [article-view.php](admin/article-view.php)
+- [article-view.php](../../admin/article-view.php)
 
 `images` comes from:
 
@@ -968,7 +968,7 @@ References:
 
 References:
 
-- [article-edit.php](admin/article-edit.php)
+- [article-edit.php](../../admin/article-edit.php)
 
 ---
 
@@ -1002,8 +1002,8 @@ Update the review result.
 
 Reuses:
 
-- [articles-review.php](admin/articles-review.php)
-- [functions.php](includes/functions.php#L380)
+- [articles-review.php](../../admin/articles-review.php)
+- [functions.php](../../includes/functions.php#L380)
 
 Specific rules:
 
@@ -1104,7 +1104,7 @@ Soft delete an article.
 
 References:
 
-- [articles.php](admin/articles.php)
+- [articles.php](../../admin/articles.php)
 
 ### Response
 

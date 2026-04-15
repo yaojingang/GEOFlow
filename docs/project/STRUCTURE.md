@@ -14,7 +14,6 @@
 - `article.php`：文章详情页
 - `category.php`：分类页
 - `archive.php`：归档页
-- `detail.php`：历史详情页兼容入口
 - `router.php`：本地开发环境路由器
 - `start.sh`：本地启动入口
 
@@ -23,7 +22,7 @@
 只放 CLI 运行脚本：
 
 - `bin/cron.php`：任务调度器
-- `bin/batch_execute_task.php`：批量执行 worker
+- `bin/worker.php`：队列消费进程（从 job_queue 拉取并执行任务）
 - `bin/health_check_cron.php`：健康检查脚本
 
 ### `admin/`
