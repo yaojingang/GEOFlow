@@ -272,8 +272,13 @@ MAX_FILE_SIZE: 2MB
 ## 🔌 API Integration
 
 ### AI API Integration
-- **Provider**: 兔子API (Tuzi API)
-- **Endpoint**: `https://apicdn.tu-zi.com/v1/chat/completions`
+- **Supported Providers**: Any service exposing an OpenAI-compatible `/v1/chat/completions` endpoint
+- **API URL Rule**: Enter only the provider base URL in the admin panel; GEOFlow appends `/v1/chat/completions` automatically
+- **Common Examples**:
+  - MiniMax: `https://api.minimax.io`
+  - OpenAI: `https://api.openai.com`
+  - DeepSeek: `https://api.deepseek.com`
+  - Tu-zi API: `https://api.tu-zi.com`
 - **Authentication**: Bearer Token (API key)
 - **Parameter Configuration**:
   - Model ID: Configurable
