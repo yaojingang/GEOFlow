@@ -477,6 +477,30 @@ require_once __DIR__ . '/includes/header.php';
                         <input type="hidden" name="action" id="formAction" value="create_model">
                         <input type="hidden" name="id" id="modelId" value="">
 
+                        <!-- 服务商快速填充 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">服务商快速填充</label>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" onclick="fillPreset('minimax')"
+                                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    MiniMax
+                                </button>
+                                <button type="button" onclick="fillPreset('minimax_highspeed')"
+                                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    MiniMax Highspeed
+                                </button>
+                                <button type="button" onclick="fillPreset('openai')"
+                                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    OpenAI
+                                </button>
+                                <button type="button" onclick="fillPreset('deepseek')"
+                                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    DeepSeek
+                                </button>
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">点击自动填充服务商配置，填写 API 密钥后即可保存</p>
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label for="name" class="block text-sm font-medium text-gray-700">模型名称 *</label>
@@ -598,6 +622,48 @@ require_once __DIR__ . '/includes/header.php';
         // 关闭模态框
         function closeModelModal() {
             document.getElementById('modelModal').classList.add('hidden');
+        }
+
+        // 服务商预设配置
+        const PROVIDER_PRESETS = {
+            'minimax': {
+                name: 'MiniMax M2.7',
+                version: 'M2.7',
+                model_id: 'MiniMax-M2.7',
+                api_url: 'https://api.minimax.io',
+                model_type: 'chat',
+            },
+            'minimax_highspeed': {
+                name: 'MiniMax M2.7 Highspeed',
+                version: 'M2.7',
+                model_id: 'MiniMax-M2.7-highspeed',
+                api_url: 'https://api.minimax.io',
+                model_type: 'chat',
+            },
+            'openai': {
+                name: 'GPT-4o',
+                version: '',
+                model_id: 'gpt-4o',
+                api_url: 'https://api.openai.com',
+                model_type: 'chat',
+            },
+            'deepseek': {
+                name: 'DeepSeek Chat',
+                version: '',
+                model_id: 'deepseek-chat',
+                api_url: 'https://api.deepseek.com',
+                model_type: 'chat',
+            },
+        };
+
+        function fillPreset(provider) {
+            const preset = PROVIDER_PRESETS[provider];
+            if (!preset) return;
+            document.getElementById('name').value = preset.name;
+            document.getElementById('version').value = preset.version;
+            document.getElementById('model_id').value = preset.model_id;
+            document.getElementById('api_url').value = preset.api_url;
+            document.getElementById('model_type').value = preset.model_type;
         }
 
         // 删除模型

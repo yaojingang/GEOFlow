@@ -352,8 +352,12 @@ define('SECRET_KEY', 'your-secret-key-change-this-in-production');
 
 ### 2. AI API配置
 ```
-提供商: 兔子API (Tu-zi API)
-默认端点: https://apicdn.tu-zi.com/v1/chat/completions
+支持服务商（任何提供 OpenAI 兼容 /v1/chat/completions 接口的平台均可接入）：
+- MiniMax:  https://api.minimax.io   （模型：MiniMax-M2.7、MiniMax-M2.7-highspeed）
+- OpenAI:   https://api.openai.com   （模型：gpt-4o 等）
+- DeepSeek: https://api.deepseek.com （模型：deepseek-chat 等）
+- 兔子API:   https://api.tu-zi.com    （聚合代理，支持多种模型）
+
 认证方式: Bearer Token
 请求格式: OpenAI兼容
 ```

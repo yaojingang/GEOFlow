@@ -173,7 +173,15 @@ TZ=Asia/Shanghai
 Visit `/geo_admin/` and sign in with the admin account. Default credentials: `admin / admin888`. You can change these after logging in.
 
 2. Configure AI Models  
-Go to "AI Configuration Center → AI Model Management" to add models — fill in the API URL, model ID, and API key.
+Go to "AI Configuration Center → AI Model Management" to add models — fill in the API URL, model ID, and API key. Use the **Quick Provider Fill** buttons to pre-fill settings for popular providers:
+
+   | Provider | API Base URL | Model ID |
+   |----------|-------------|---------|
+   | **MiniMax** | `https://api.minimax.io` | `MiniMax-M2.7` / `MiniMax-M2.7-highspeed` |
+   | OpenAI | `https://api.openai.com` | `gpt-4o` |
+   | DeepSeek | `https://api.deepseek.com` | `deepseek-chat` |
+
+   Any provider that exposes an OpenAI-compatible `/v1/chat/completions` endpoint can be added the same way.
 
 3. Prepare Materials  
 Create title libraries, image libraries, knowledge bases, and prompt templates.
