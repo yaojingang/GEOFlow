@@ -152,14 +152,17 @@ The core system configuration file, containing:
 
 **Important Configuration Items**:
 
-Environment variables (set in your shell or `.env` file):
+Environment variables for local PHP runs (**export these in your shell**):
+
+> **Note**: This application does **not** automatically load variables from a `.env` file for direct local runs. A `.env` file is only used when it is passed to tooling that reads it (for example, Docker Compose with `--env-file`), or if you add another explicit loading mechanism yourself.
+
 ```bash
-DB_DRIVER=pgsql
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_NAME=geo_system
-DB_USER=geo_user
-DB_PASSWORD=geo_password
+export DB_DRIVER=pgsql
+export DB_HOST=127.0.0.1
+export DB_PORT=5432
+export DB_NAME=geo_system
+export DB_USER=geo_user
+export DB_PASSWORD=geo_password
 ```
 
 PHP constants defined in `includes/config.php`:
@@ -299,7 +302,7 @@ Password: admin888
 **Solution**:
 ```bash
 # 1. Enable error display
-php -S localhost:8080 router.php -d display_errors=1
+php -d display_errors=1 -S localhost:8080 router.php
 
 # 2. Check error logs
 tail -f logs/$(date +%Y-%m-%d).log
@@ -360,13 +363,14 @@ sudo systemctl restart postgresql
 **Solution**:
 ```bash
 # 1. Generate a new password hash
-php -r "echo password_hash('admin888', PASSWORD_DEFAULT);"
+HASH=$(php -r "echo password_hash('admin888', PASSWORD_DEFAULT);")
+echo "$HASH"
 
 # 2. Update the admin password in the database
 psql -h 127.0.0.1 -U geo_user -d geo_system -c \
-  "UPDATE admins SET password_hash = '$(php -r "echo password_hash('admin888', PASSWORD_DEFAULT);")' WHERE username = 'admin';"
+  "UPDATE admins SET password_hash = '$HASH' WHERE username = 'admin';"
 
-# 2. Check session directory
+# 3. Check session directory
 php -r "echo session_save_path();"
 
 # 3. Clear sessions
@@ -391,7 +395,7 @@ rm -rf /tmp/sess_*
 
 - [AI_PROJECT_GUIDE.md](./AI_PROJECT_GUIDE.md) - AI Development Guide
 - [系统说明文档.md](./系统说明文档.md) - System User Manual
-- [任务管理系统分析报告.md](./任务管理系统分析报告.md) - Task System Documentation
+- [system_diagnostics.php](../admin/system_diagnostics.php) - System diagnostics and troubleshooting guidance
 
 ---
 

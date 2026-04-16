@@ -15,7 +15,7 @@
 - **Language**: PHP 7.4+
 - **Database**: PostgreSQL (runtime database)
   - Configured via environment variables (`DB_DRIVER=pgsql`)
-  - Note: SQLite (`/data/db/blog.db`) may exist only as a legacy/migration artifact and is not the primary runtime database
+  - Note: SQLite (`data/db/blog.db`) may exist only as a legacy/migration artifact and is not the primary runtime database
 - **Server**: PHP built-in development server (localhost:8080)
 - **Core Libraries**: PDO (database access), cURL (API calls)
 
@@ -31,14 +31,14 @@
 - MVC architecture concept
 - Singleton pattern (Database class)
 - Service class pattern (AIService, TaskService)
-- Process lifecycle management (TaskStatusManager)
+- Queue-based task processing (job_queue + worker pipeline)
 
 ---
 
 ## 📁 Directory Structure
 
 ```
-GEO Website System/
+GEOFlow/
 ├── /admin/                        # Admin management system (physical directory; served at /geo_admin/ URL via router.php / ADMIN_BASE_PATH)
 │   ├── dashboard.php          # Admin dashboard - statistics display
 │   ├── tasks-new.php          # Task management - create and manage AI generation tasks
@@ -65,7 +65,8 @@ GEO Website System/
 │   ├── ai_engine.php          # AI content generation engine - core logic
 │   ├── ai_service.php         # AI API service wrapper
 │   ├── task_service.php       # Task management service
-│   ├── task_status_manager.php# Process lifecycle management
+│   ├── job_queue_service.php  # Job queue orchestration/service
+│   ├── task_lifecycle_service.php # Task lifecycle management
 │   ├── security.php           # Security functions - CSRF, input validation
 │   ├── seo_functions.php      # SEO optimization functions
 │   └── header.php, footer.php # Layout templates
@@ -131,7 +132,8 @@ GEO Website System/
 - **settings** - Site configuration (key-value pairs)
 - **admins** - Administrator accounts
 - **sensitive_words** - Sensitive word filtering
-- **task_status_manager** - Process status tracking
+- **job_queue** - Background job processing queue
+- **worker_heartbeats** - Worker liveness tracking
 
 ---
 
@@ -228,7 +230,7 @@ bin/worker.php (Long-running queue consumer must be running)
     ↓
 AIEngine::executeTask() (Generate single article)
     ↓
-TaskStatusManager (Manage job lifecycle and status updates)
+Job status updated in job_queue (completed / failed / retry)
     ↓
 Logs written by the worker/job-processing pipeline
 ```
@@ -282,18 +284,16 @@ MAX_FILE_SIZE: 2MB
 
 ## 🚀 Deployment and Operations
 
-### Startup Scripts
+### Startup Commands
 ```bash
-./start-server.sh        # Start PHP development server
-./start-ai-system.sh     # Initialize AI system
-./setup-cron.sh          # Configure scheduled tasks
-./monitor_server.sh      # Server monitoring
+./start.sh                         # Start the application using the repository's startup script
+php -S localhost:8080 router.php   # Start the PHP built-in development server manually
 ```
 
 ### Logging System
 - **Daily Logs**: `/logs/YYYY-MM-DD.log`
-- **Batch Logs**: `/logs/batch_*.log`
-- **Process Info**: `/logs/batch_*.pid`
+- **Batch Logs**: `/logs/batch_{task_id}.log`
+- **Worker/Queue Observability**: Database-backed status in `worker_heartbeats` and `job_queue`
 
 ### Database
 - PostgreSQL runtime database
@@ -348,7 +348,7 @@ MAX_FILE_SIZE: 2MB
 ## 🆘 FAQ
 
 ### Q: How to start the system?
-A: Run `./start-server.sh` to start the PHP server, then visit `http://localhost:8080`
+A: Run `./start.sh` or `php -S localhost:8080 router.php` to start the PHP server, then visit `http://localhost:8080`
 
 ### Q: How to configure an AI model?
 A: Log in to admin panel → AI Configuration Center → AI Model Management → Add API key
@@ -360,10 +360,10 @@ A: Admin panel → Task Management → New Task → Follow the wizard to configu
 A: Check the "Draft Limit" and "Auto-Publish" settings in the task configuration
 
 ### Q: How to view task execution logs?
-A: Check the `/logs/batch_*.log` files
+A: Check the `/logs/batch_{task_id}.log` files or query the `job_queue` table status
 
 ### Q: Where is the database?
-A: PostgreSQL database, configured via environment variables (`DB_DRIVER=pgsql`). A legacy SQLite file may exist at `/data/db/blog.db` but is not the primary runtime database.
+A: PostgreSQL database, configured via environment variables (`DB_DRIVER=pgsql`). A legacy SQLite file may exist at `data/db/blog.db` but is not the primary runtime database.
 
 ---
 

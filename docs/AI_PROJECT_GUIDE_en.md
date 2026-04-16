@@ -35,7 +35,7 @@ AI Integration: Tu-zi API (Tuzi API) - OpenAI-compatible interface
 ### 1. Directory Structure (Key Files)
 
 ```
-GEO Website System/
+GEOFlow/
 ├── /includes/                    # Core system libraries
 │   ├── config.php               # Global configuration (constant definitions)
 │   ├── database.php             # Database class (singleton pattern)
@@ -43,7 +43,8 @@ GEO Website System/
 │   ├── ai_engine.php            # AI content generation engine ⭐Core
 │   ├── ai_service.php           # AI API service wrapper
 │   ├── task_service.php         # Task management service
-│   ├── task_status_manager.php  # Process lifecycle management ⭐Important
+│   ├── job_queue_service.php    # Job queue orchestration/service
+│   ├── task_lifecycle_service.php # Task lifecycle management ⭐Important
 │   ├── security.php             # Security functions
 │   ├── seo_functions.php        # SEO optimization functions
 │   ├── header.php / footer.php  # Frontend layout templates
@@ -67,11 +68,9 @@ GEO Website System/
 ├── router.php                    # URL routing (development environment)
 ├── install.php                   # Installation script
 │
-├── /data/db/blog.db             # Legacy SQLite database (migration-only)
+├── data/db/blog.db              # Legacy SQLite database (project-relative, migration-only)
 ├── /logs/                        # Log directory
-│   ├── batch_*.log              # Batch execution logs
-│   ├── batch_*.pid              # Process PID files
-│   └── task_manager_*.log       # Task manager logs
+│   └── batch_{task_id}.log      # Per-task batch execution logs
 │
 └── /uploads/                     # Uploaded files
     ├── /images/                 # Article images
@@ -123,22 +122,29 @@ class AIEngine {
 }
 ```
 
-#### TaskStatusManager Class (includes/task_status_manager.php)
+#### TaskLifecycleService Class (includes/task_lifecycle_service.php)
 ```php
-// Process lifecycle manager - prevents process leaks and state inconsistencies
-class TaskStatusManager {
-    // Status constants
-    const STATUS_IDLE = null;
-    const STATUS_RUNNING = 'running';
-    const STATUS_STOPPED = 'stopped';
-    const STATUS_ERROR = 'error';
-    const STATUS_COMPLETED = 'completed';
+// Task lifecycle management - handles task state transitions via job_queue
+class TaskLifecycleService {
+    // Manages task status transitions through the job_queue pipeline
+    // Works with JobQueueService to enqueue, track, and update task execution
     
     // Core methods
-    public function atomicStatusUpdate($task_id, $new_status, $reason)
-    public function cleanupOrphanedProcesses()  // Clean up orphaned processes
-    public function safeStopProcess($task_id)   // Safely stop process (prevent accidentally killing the server)
-    public function performHealthCheck()        // Health check
+    public function startBatchExecution($task_id)  // Enqueue task execution job
+    public function stopBatchExecution($task_id)   // Request stop for running task
+    public function getTaskExecutionStatus($task_id) // Get current task/job status
+}
+```
+
+#### JobQueueService Class (includes/job_queue_service.php)
+```php
+// Job queue orchestration - manages background job processing
+class JobQueueService {
+    // Core methods
+    public function enqueue($job_type, $payload)   // Add job to queue
+    public function claimJob($worker_id)           // Claim next pending job
+    public function completeJob($job_id, $result)  // Mark job as completed
+    public function failJob($job_id, $error)       // Mark job as failed
 }
 ```
 
@@ -291,34 +297,50 @@ Frontend Display:
 
 ```
 Start Process:
-    start_task_batch.php
+    admin/start_task_batch.php
     ↓
-    Create PID file: /logs/batch_{task_id}.pid
-    Create info file: /logs/batch_{task_id}.pid.info
-    Update database: batch_status='running'
+    Validate batch/task parameters
     ↓
-    Background process running...
-    
+    Create one or more records in job_queue
+        - initial job status: 'pending' / 'queued' (depending on job type)
+    ↓
+    Update batch/task record to reflect that work has been submitted
+    ↓
+    bin/worker.php polls job_queue
+    ↓
+    Worker claims an available job
+        - job status: queued → running
+    ↓
+    Worker executes content generation / processing logic
+    ↓
+    Persist result and update job status
+        - running → completed
+        - running → failed
+        - running → retry/queued (if retry logic applies)
+
 Stop Process:
-    User clicks "Stop" button
+    User clicks "Stop" button for a batch/task
     ↓
-    Create stop flag: /logs/stop_{task_id}.flag
+    System updates database state to request stop/cancel
+        - prevents undispatched queued jobs from being started
+        - in-progress jobs are handled by normal worker/job state checks
     ↓
-    TaskStatusManager::safeStopProcess():
-        1. Read PID file
-        2. Verify process type (prevent accidentally killing server processes)
-        3. Send TERM signal
-        4. Wait for graceful process exit
-        5. Clean up PID file
+    No PID files or stop-flag files are used by the current implementation
     ↓
-    Update database: batch_status='stopped'
-    
-Health Check (periodic execution):
-    TaskStatusManager::performHealthCheck()
+    Batch/task status is derived from the underlying job_queue records
+        - all jobs completed      → batch completed
+        - any jobs failed         → batch failed/partial failure (per business rules)
+        - remaining jobs canceled → batch stopped/canceled
+
+Monitoring / Health Check:
+    Primary source of truth: job_queue status transitions
     ↓
-    1. Clean up orphaned processes (PID file exists but process doesn't)
-    2. Auto-recover errored tasks
-    3. Check long-running tasks (>2 hours)
+    Worker liveness: worker_heartbeats
+    ↓
+    Typical checks:
+        1. Detect workers that stopped heartbeating
+        2. Find jobs stuck in running for too long
+        3. Requeue or mark stalled jobs according to recovery rules
 ```
 
 ### 3. Scheduled Task Dispatch Flow
@@ -432,7 +454,7 @@ $clean_input = sanitize_input($_POST['data']);
 ### Starting the Development Environment
 ```bash
 # 1. Start the PHP server
-./start-server.sh
+./start.sh
 # or
 php -S localhost:8080 router.php
 

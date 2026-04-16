@@ -107,15 +107,15 @@ Phase 1 scopes:
 
 ### Scope to Endpoint Mapping
 
-- `GET /catalog` -> `catalog:read`
-- `GET /tasks*` -> `tasks:read`
-- `POST /tasks*` / `PATCH /tasks*` -> `tasks:write`
-- `GET /jobs*` -> `jobs:read`
-- `GET /articles*` -> `articles:read`
-- `POST /articles` / `PATCH /articles*` -> `articles:write`
-- `POST /articles/{id}/review` -> `articles:publish`
-- `POST /articles/{id}/publish` -> `articles:publish`
-- `POST /articles/{id}/trash` -> `articles:write`
+- `GET /api/v1/catalog` -> `catalog:read`
+- `GET /api/v1/tasks*` -> `tasks:read`
+- `POST /api/v1/tasks*` / `PATCH /api/v1/tasks*` -> `tasks:write`
+- `GET /api/v1/jobs*` -> `jobs:read`
+- `GET /api/v1/articles*` -> `articles:read`
+- `POST /api/v1/articles` / `PATCH /api/v1/articles*` -> `articles:write`
+- `POST /api/v1/articles/{id}/review` -> `articles:publish`
+- `POST /api/v1/articles/{id}/publish` -> `articles:publish`
+- `POST /api/v1/articles/{id}/trash` -> `articles:write`
 
 ---
 
