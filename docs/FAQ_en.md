@@ -5,67 +5,73 @@
 ## 1. What is the default admin URL and account?
 
 - Admin URL: `/geo_admin/`
-- Default username: `admin`
-- Default password: `admin888`
+- Default admin username: `admin`
+- Default admin password: `admin888`
 
-Change the admin password and `APP_SECRET_KEY` after the first login.
+After first login, it is recommended to immediately change the admin password and `APP_SECRET_KEY`.
 
-## 2. Do I have to use Docker?
+## 2. Is Docker required?
 
 No.
 
-You can either:
+You can:
 
-- run `web + postgres + scheduler + worker` with Docker Compose
-- or run PHP locally with PostgreSQL and `php -S`
+- Use Docker Compose to start `web + postgres + scheduler + worker`
+- Or install PHP and PostgreSQL locally and run `php -S` directly
 
-If you want the shortest path, use Docker.
+If you just want to get started as quickly as possible, Docker is the preferred option.
 
-## 3. Is PostgreSQL required?
+## 3. Is PostgreSQL required at runtime?
 
-Yes. The public runtime target is PostgreSQL.
+Yes.
 
-## 4. Why are there no image, knowledge-base, or article data files in the repo?
+The current public version uses PostgreSQL as the official runtime database. The repository does not include any production database files.
 
-Those are runtime or business data:
+## 4. Why are there no image libraries, knowledge bases, or article data in the repository?
 
-- image libraries
-- knowledge base source files
-- generated articles
-- logs and backups
+Because these are all runtime or business data:
 
-The public repo ships source code and configuration templates only.
+- Image libraries
+- Knowledge base source files
+- Generated articles
+- Logs and backups
+
+The public repository only provides source code and configuration templates — it does not include these.
 
 ## 5. How do I connect an AI model?
 
-In the admin panel, go to `AI Configuration Center → AI Model Management` and fill in:
+After logging into the admin panel, go to "AI Configuration Center → AI Model Management" and add a model by filling in:
 
 - API URL
-- model ID
-- Bearer token
+- Model ID
+- Bearer Token
 
-GEOFlow expects an OpenAI-compatible API shape.
+The system is compatible with OpenAI-style APIs.
 
-## 6. What is the article generation flow?
+## 6. What is the article generation pipeline?
 
-1. Configure models, prompts, and materials
+The basic flow is:
+
+1. Configure models, prompts, and material libraries
 2. Create a task
-3. Scheduler enqueues jobs
-4. Worker calls AI to generate content
-5. Draft / review / publish
-6. Front-end renders the article
+3. Scheduler enqueues
+4. Worker executes AI generation
+5. Draft / Review / Publish
+6. Front-end displays the article
 
 ## 7. Is there a CLI or skill?
 
 Yes.
 
-- CLI guide: [project/GEOFLOW_CLI_en.md](project/GEOFLOW_CLI_en.md)
-- Skill repository: [yaojingang/yao-geo-skills](https://github.com/yaojingang/yao-geo-skills)
-- Skill name: `geoflow-cli-ops`
+- CLI documentation: [project/GEOFLOW_CLI_en.md](project/GEOFLOW_CLI_en.md)
+- Companion skill repository: [yaojingang/yao-geo-skills](https://github.com/yaojingang/yao-geo-skills)
+- Corresponding skill: `skills/geoflow-cli-ops`
 
-## 8. Which docs should I read first for secondary development?
+## 8. Which documents should I read first for secondary development?
 
-- [System documentation](系统说明文档.md)
-- [AI project guide](AI_PROJECT_GUIDE.md)
-- [Project structure](project/STRUCTURE.md)
-- [API v1 reference draft](project/API_V1_REFERENCE_DRAFT.md)
+Start with these:
+
+- [System Documentation](System_Documentation_en.md)
+- [AI Development Guide](AI_PROJECT_GUIDE_en.md)
+- [Project Structure](project/STRUCTURE_en.md)
+- [API v1 Reference Draft](project/API_V1_REFERENCE_DRAFT_en.md)

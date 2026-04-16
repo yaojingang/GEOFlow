@@ -1,44 +1,45 @@
-# GEOFlow Docs
+# GEOFlow Documentation Center
 
 > Languages: [简体中文](README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
 
-This public repository keeps only the documentation that external users actually need:
+The public repository only retains documentation that is truly useful for external users:
 
 - Installation and deployment
 - Local environment setup
 - System architecture and core modules
-- API / CLI / skill access
-- Frequently asked questions
+- API / CLI / skill integration
+- FAQ
 
 ## Recommended Reading Order
 
-1. [Local environment setup](本地环境配置指南.md)
-2. [Deployment](deployment/DEPLOYMENT_en.md)
-3. [System overview](系统说明文档.md)
-4. [AI project guide](AI_PROJECT_GUIDE.md)
+1. [Local Environment Setup Guide](Local_Environment_Setup_Guide_en.md)
+2. [Deployment Docs](deployment/DEPLOYMENT_en.md)
+3. [System Documentation](System_Documentation_en.md)
+4. [AI Development Guide](AI_PROJECT_GUIDE_en.md)
 5. [FAQ](FAQ_en.md)
 
 ## Document List
 
-### Installation and deployment
-- [Local environment setup](本地环境配置指南.md)
-- [Deployment](deployment/DEPLOYMENT_en.md)
-- [Docker deployment](deployment/DOCKER_DEPLOYMENT.md)
+### Installation & Deployment
+- [Local Environment Setup Guide](Local_Environment_Setup_Guide_en.md)
+- [Deployment Docs](deployment/DEPLOYMENT_en.md)
+- [Docker Deployment Docs](deployment/DOCKER_DEPLOYMENT_en.md)
+- [Caddy Example Configuration](deployment/Caddyfile)
 
-### Architecture and core modules
-- [System documentation](系统说明文档.md)
-- [AI project guide](AI_PROJECT_GUIDE.md)
-- [Project structure](project/STRUCTURE.md)
+### Architecture & Core Modules
+- [System Documentation](System_Documentation_en.md)
+- [AI Development Guide](AI_PROJECT_GUIDE_en.md)
+- [Project Structure](project/STRUCTURE_en.md)
 
 ### API / CLI / Skill
-- [Phase 1 API / CLI plan](project/API_CLI_PHASE1_PLAN.md)
-- [API v1 reference draft](project/API_V1_REFERENCE_DRAFT.md)
-- [GEOFlow CLI guide](project/GEOFLOW_CLI_en.md)
+- [API / CLI Phase 1 Implementation Plan](project/API_CLI_PHASE1_PLAN_en.md)
+- [API v1 Reference Draft](project/API_V1_REFERENCE_DRAFT_en.md)
+- [GEOFlow CLI User Guide](project/GEOFLOW_CLI_en.md)
 
 ### FAQ
 - [FAQ](FAQ_en.md)
 
 ## Notes
 
-- The public repository does not include production databases, uploaded files, or real API keys.
-- Runtime logs, internal maintenance scripts, and internal repair notes are intentionally excluded.
+- The repository does not include production databases, uploaded files, or real API keys.
+- Runtime logs, maintenance scripts, internal fix records, and release strategy documents are no longer placed in the public `docs/` directory.

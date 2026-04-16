@@ -1,32 +1,32 @@
-# GEOFlow Deployment Guide
+# GEOFlow Server Deployment Documentation
 
 > Languages: [简体中文](DEPLOYMENT.md) | [English](DEPLOYMENT_en.md) | [日本語](DEPLOYMENT_ja.md) | [Español](DEPLOYMENT_es.md) | [Русский](DEPLOYMENT_ru.md)
 
-Updated: 2026-04-15
+Updated: 2026-04-14
 
-## 1. Recommended Path
+## 1. Recommended Approach
 
-The public version should be deployed with Docker Compose.
+The current public version recommends deployment using Docker Compose.
 
-Why:
+Reasons:
 
-- shortest deployment path
-- matches the repository runtime shape
-- includes `web + postgres + scheduler + worker`
-- avoids stale SQLite / Caddy / PHP-FPM instructions
+- Shortest deployment path
+- Includes `web + postgres + scheduler + worker` by default
+- Consistent with the repository's current runtime structure
+- Avoids confusion from legacy SQLite / Caddy / PHP-FPM documentation
 
-If you want the direct path, start with:
+If you just want to go live quickly, read this first:
 
-- `docs/deployment/DOCKER_DEPLOYMENT.md`
+- `docs/deployment/DOCKER_DEPLOYMENT_en.md`
 
 ## 2. Minimum Requirements
 
 - Docker 24+
 - Docker Compose v2
-- at least 2 CPU / 2 GB RAM / 20 GB disk
-- a Linux host with internet access
+- At least 2 CPU cores / 2 GB RAM / 20 GB disk
+- A Linux server with internet access
 
-## 3. Basic Deployment Flow
+## 3. Basic Deployment Process
 
 ```bash
 git clone https://github.com/yaojingang/GEOFlow.git
@@ -41,11 +41,11 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 After deployment:
 
 - Front-end: `https://your-domain.com/`
-- Admin: `https://your-domain.com/geo_admin/`
+- Admin panel: `https://your-domain.com/geo_admin/`
 
 ## 4. Required Configuration
 
-At minimum, confirm these values in `.env.prod`:
+In `.env.prod`, confirm at minimum:
 
 ```env
 SITE_URL=https://your-domain.com
@@ -64,22 +64,26 @@ TZ=Asia/Shanghai
 REQUIRE_STRONG_APP_SECRET=true
 ```
 
-## 5. Runtime Services
+## 5. Runtime Structure
 
-- `web`: front-end and admin HTTP service
-- `postgres`: runtime database
-- `scheduler`: task scanning, enqueueing, and auto-publish
-- `worker`: model execution and content generation
+- `web`
+  - Serves front-end and admin pages
+- `postgres`
+  - Provides the runtime database
+- `scheduler`
+  - Handles task scanning, enqueuing, and auto-publishing
+- `worker`
+  - Handles actual model calls to generate content
 
-## 6. Security Notes
+## 6. Security Recommendations
 
-- change the admin password right after first deployment
-- replace `APP_SECRET_KEY` in production
-- do not commit `.env.prod`
-- do not expose PostgreSQL publicly by default
-- only expose HTTP/HTTPS at the reverse proxy layer
+- Change the admin password immediately after first deployment
+- Replace `APP_SECRET_KEY` for production use
+- Do not commit `.env.prod` to the repository
+- Do not expose the PostgreSQL port externally by default
+- The reverse proxy layer should only expose HTTP/HTTPS
 
-## 7. Update and Rollback
+## 7. Updates & Rollbacks
 
 Update:
 
@@ -90,11 +94,11 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 
 Rollback:
 
-- checkout the target commit or tag
-- rerun the same `docker compose ... up -d --build`
+- Check out the target commit/tag
+- Re-run the same `docker compose ... up -d --build` command
 
-## 8. Scope
+## 8. Notes
 
-This document only describes the deployment path that matches the current public repository.
+This file only documents the deployment method corresponding to the current public repository.
 
-Legacy SQLite, local script deployments, and old Caddy / PHP-FPM instructions are not the recommended path for the public version.
+Historical SQLite, local script-based deployment, and legacy Caddy/PHP-FPM approaches are no longer recommended for the current public version.
