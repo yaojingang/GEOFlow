@@ -397,8 +397,8 @@ rm -f "${SESSION_DIR%/}"/sess_*
 
 ## 📚 Related Documentation
 
-- [AI_PROJECT_GUIDE.md](./AI_PROJECT_GUIDE.md) - AI Development Guide
-- [系统说明文档.md](./系统说明文档.md) - System User Manual
+- [AI_PROJECT_GUIDE_en.md](./AI_PROJECT_GUIDE_en.md) - AI Development Guide
+- [System_Documentation_en.md](./System_Documentation_en.md) - System User Manual
 - [system_diagnostics.php](../admin/system_diagnostics.php) - System diagnostics and troubleshooting guidance
 
 ---
