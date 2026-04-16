@@ -442,11 +442,11 @@ class Database {
         // 插入示例AI模型配置（开源安全占位，不包含真实密钥）
         $stmt = $this->pdo->prepare("INSERT INTO ai_models (name, version, api_key, model_id, api_url, daily_limit, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
-            'Sample AI Model',
-            'example',
+            'MiniMax M2.7 (示例)',
+            'M2.7',
             '',
-            'replace-with-your-model-id',
-            'https://api.openai.com/v1/chat/completions',
+            'MiniMax-M2.7',
+            'https://api.minimax.io',
             0,
             'inactive'
         ]);

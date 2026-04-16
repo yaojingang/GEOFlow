@@ -380,8 +380,12 @@ define('SECRET_KEY', 'your-secret-key-change-this-in-production');
 
 ### 2. AI API Configuration
 ```
-Provider: Tu-zi API (Tuzi API)
-Default Endpoint: https://apicdn.tu-zi.com/v1/chat/completions
+Supported Providers (any OpenAI-compatible /v1/chat/completions endpoint):
+- MiniMax:  https://api.minimax.io   (models: MiniMax-M2.7, MiniMax-M2.7-highspeed)
+- OpenAI:   https://api.openai.com   (models: gpt-4o, etc.)
+- DeepSeek: https://api.deepseek.com (models: deepseek-chat, etc.)
+- Tu-zi:    https://api.tu-zi.com    (aggregator, supports many models)
+
 Authentication: Bearer Token
 Request Format: OpenAI-compatible
 ```
