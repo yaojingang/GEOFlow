@@ -76,7 +76,7 @@ GEOFlow/
 │   ├── /js/                   # JavaScript files
 │   └── /images/               # Image resources
 │
-├── /data/db/                  # PostgreSQL data / legacy SQLite storage directory
+├── /data/db/                  # Application runtime data/backups; legacy SQLite storage only
 ├── /logs/                     # Application logs and process tracking
 ├── /uploads/                  # User uploaded files
 │   ├── /images/               # Article images
