@@ -41,7 +41,7 @@ Runtime data, backup files, and legacy SQLite databases (migration-only).
 
 ### `logs/`
 
-Application logs, task logs, PID files, and status files.
+Application logs and task log files.
 
 ### `uploads/`
 
