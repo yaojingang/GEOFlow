@@ -47,6 +47,19 @@ if (!function_exists('db_password')) {
     }
 }
 
+if (!function_exists('db_timezone')) {
+    function db_timezone(): string {
+        $value = getenv('TZ');
+        $timezone = is_string($value) && trim($value) !== '' ? trim($value) : 'Asia/Shanghai';
+
+        if (!preg_match('/^[A-Za-z0-9_+\\/-]+$/', $timezone)) {
+            return 'Asia/Shanghai';
+        }
+
+        return $timezone;
+    }
+}
+
 if (!function_exists('db_create_pgsql_pdo')) {
     function db_create_pgsql_pdo(): PDO {
         $options = [
@@ -61,6 +74,7 @@ if (!function_exists('db_create_pgsql_pdo')) {
 
         $pdo = new PDO($dsn, db_username(), db_password(), $options);
         $pdo->exec("SET NAMES 'UTF8'");
+        $pdo->exec("SET TIME ZONE '" . db_timezone() . "'");
         return $pdo;
     }
 }
@@ -130,6 +144,51 @@ if (!function_exists('db_column_exists')) {
 if (!function_exists('db_last_insert_id')) {
     function db_last_insert_id(PDO $pdo, string $table): int {
         return (int) $pdo->lastInsertId($table . '_id_seq');
+    }
+}
+
+if (!function_exists('db_normalize_content_asset_paths')) {
+    function db_normalize_content_asset_paths(PDO $pdo): void {
+        if (!db_is_pgsql()) {
+            return;
+        }
+
+        $pdo->exec("
+            UPDATE articles
+            SET content = REPLACE(content, '](uploads/', '](/uploads/'),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE content LIKE '%](uploads/%'
+        ");
+        $pdo->exec("
+            UPDATE articles
+            SET content = REPLACE(content, '](assets/', '](/assets/'),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE content LIKE '%](assets/%'
+        ");
+        $pdo->exec("
+            UPDATE articles
+            SET content = REPLACE(content, 'src=\"uploads/', 'src=\"/uploads/'),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE content LIKE '%src=\"uploads/%'
+        ");
+        $pdo->exec("
+            UPDATE articles
+            SET content = REPLACE(content, 'src=\"assets/', 'src=\"/assets/'),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE content LIKE '%src=\"assets/%'
+        ");
+        $pdo->exec("
+            UPDATE articles
+            SET content = REPLACE(content, \"src='uploads/\", \"src='/uploads/\"),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE content LIKE '%src=''uploads/%'
+        ");
+        $pdo->exec("
+            UPDATE articles
+            SET content = REPLACE(content, \"src='assets/\", \"src='/assets/\"),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE content LIKE '%src=''assets/%'
+        ");
     }
 }
 

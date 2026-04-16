@@ -4,11 +4,13 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: geo-system-postgres
+    command: postgres -c timezone=${TZ:-Asia/Shanghai}
     environment:
       POSTGRES_DB: "${DB_NAME:-geo_system}"
       POSTGRES_USER: "${DB_USER:-geo_user}"
       POSTGRES_PASSWORD: "${DB_PASSWORD:-geo_password}"
-      TZ: Asia/Shanghai
+      TZ: "${TZ:-Asia/Shanghai}"
+      PGTZ: "${TZ:-Asia/Shanghai}"
     ports:
       - "127.0.0.1:${DB_EXPOSE_PORT:-15432}:5432"
     volumes:
@@ -41,7 +43,7 @@ services:
       SITE_URL: "http://localhost:${HOST_PORT:-18080}"
       APP_SECRET_KEY: "${APP_SECRET_KEY}"
       REQUIRE_STRONG_APP_SECRET: "${REQUIRE_STRONG_APP_SECRET:-false}"
-      TZ: Asia/Shanghai
+      TZ: "${TZ:-Asia/Shanghai}"
     volumes:
       - ./:/var/www/html
     restart: unless-stopped
@@ -74,7 +76,7 @@ services:
       CRON_INTERVAL: "${CRON_INTERVAL:-60}"
       APP_SECRET_KEY: "${APP_SECRET_KEY}"
       REQUIRE_STRONG_APP_SECRET: "${REQUIRE_STRONG_APP_SECRET:-false}"
-      TZ: Asia/Shanghai
+      TZ: "${TZ:-Asia/Shanghai}"
     volumes:
       - ./:/var/www/html
     restart: unless-stopped
@@ -103,7 +105,7 @@ services:
       DB_PASSWORD: "${DB_PASSWORD:-geo_password}"
       APP_SECRET_KEY: "${APP_SECRET_KEY}"
       REQUIRE_STRONG_APP_SECRET: "${REQUIRE_STRONG_APP_SECRET:-false}"
-      TZ: Asia/Shanghai
+      TZ: "${TZ:-Asia/Shanghai}"
     volumes:
       - ./:/var/www/html
     restart: unless-stopped

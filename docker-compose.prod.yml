@@ -4,11 +4,13 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: geo-system-postgres
+    command: postgres -c timezone=${TZ:-Asia/Shanghai}
     environment:
       POSTGRES_DB: "${DB_NAME:-geo_system}"
       POSTGRES_USER: "${DB_USER:-geo_user}"
       POSTGRES_PASSWORD: "${DB_PASSWORD:-geo_password}"
       TZ: "${TZ:-Asia/Shanghai}"
+      PGTZ: "${TZ:-Asia/Shanghai}"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped

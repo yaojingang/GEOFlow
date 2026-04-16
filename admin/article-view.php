@@ -114,6 +114,10 @@ $stmt = $db->prepare("
 ");
 $stmt->execute([$article_id]);
 $article_images = $stmt->fetchAll();
+foreach ($article_images as &$articleImage) {
+    $articleImage['file_path'] = normalize_content_asset_url((string) ($articleImage['file_path'] ?? ''));
+}
+unset($articleImage);
 
 $page_title = '查看文章';
 $page_header = '

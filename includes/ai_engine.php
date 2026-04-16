@@ -444,7 +444,8 @@ class AIEngine {
             if ($image_index >= count($images)) break;
             
             $image = $images[$image_index];
-            $image_markdown = "\n![" . $image['original_name'] . "](" . $image['file_path'] . ")\n";
+            $imagePath = $this->normalizeImageAssetPath((string) ($image['file_path'] ?? ''));
+            $image_markdown = "\n![" . $image['original_name'] . "](" . $imagePath . ")\n";
             
             if ($pos < count($lines)) {
                 array_splice($lines, $pos + $image_index, 0, $image_markdown);
@@ -461,6 +462,23 @@ class AIEngine {
             'content' => implode("\n", $lines),
             'images' => $used_images
         ];
+    }
+
+    private function normalizeImageAssetPath(string $path): string {
+        $trimmed = trim($path);
+        if ($trimmed === '') {
+            return $trimmed;
+        }
+
+        if (preg_match('#^(https?:)?//#i', $trimmed) || str_starts_with($trimmed, 'data:') || str_starts_with($trimmed, '/')) {
+            return $trimmed;
+        }
+
+        if (preg_match('#^(uploads|assets)/#i', $trimmed)) {
+            return '/' . ltrim($trimmed, '/');
+        }
+
+        return $trimmed;
     }
     
     /**
