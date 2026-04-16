@@ -179,13 +179,13 @@ if (!function_exists('db_normalize_content_asset_paths')) {
         ");
         $pdo->exec("
             UPDATE articles
-            SET content = REPLACE(content, \"src='uploads/\", \"src='/uploads/\"),
+            SET content = REPLACE(content, 'src=''uploads/', 'src=''/uploads/'),
                 updated_at = CURRENT_TIMESTAMP
             WHERE content LIKE '%src=''uploads/%'
         ");
         $pdo->exec("
             UPDATE articles
-            SET content = REPLACE(content, \"src='assets/\", \"src='/assets/\"),
+            SET content = REPLACE(content, 'src=''assets/', 'src=''/assets/'),
                 updated_at = CURRENT_TIMESTAMP
             WHERE content LIKE '%src=''assets/%'
         ");
