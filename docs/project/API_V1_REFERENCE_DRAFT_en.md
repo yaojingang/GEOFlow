@@ -13,7 +13,7 @@ It is based on the following premises:
 
 For the overall plan, see:
 
-- [API_CLI_PHASE1_PLAN.md](API_CLI_PHASE1_PLAN.md)
+- [API_CLI_PHASE1_PLAN_en.md](API_CLI_PHASE1_PLAN_en.md)
 
 ---
 
