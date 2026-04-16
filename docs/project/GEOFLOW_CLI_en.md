@@ -19,7 +19,7 @@ php bin/geoflow help
 You can also grant the script execute permission and run it directly:
 
 ```bash
-bin/geoflow help
+./bin/geoflow help
 ```
 
 ---
