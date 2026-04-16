@@ -874,6 +874,8 @@ class Database {
                 }
             }
         }
+
+        db_normalize_content_asset_paths($this->pdo);
     }
 
     private function ensureIndexes() {
