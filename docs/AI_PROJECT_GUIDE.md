@@ -358,7 +358,6 @@ define('SECRET_KEY', 'your-secret-key-change-this-in-production');
 - DeepSeek: https://api.deepseek.com （模型：deepseek-chat 等）
 - 智谱 GLM: https://open.bigmodel.cn/api/paas/v4 （模型：glm-4.6、glm-5 等）
 - 火山方舟: https://ark.cn-beijing.volces.com/api/v3 （模型通常填写推理接入点 ID，如 ep-xxxx）
-- DeepSeek: https://api.deepseek.com （模型：deepseek-chat 等）
 
 认证方式: Bearer Token
 请求格式: OpenAI兼容

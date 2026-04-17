@@ -386,7 +386,6 @@ Supported Providers (any OpenAI-compatible chat completions endpoint):
 - DeepSeek: https://api.deepseek.com (models: deepseek-chat, etc.)
 - Zhipu GLM: https://open.bigmodel.cn/api/paas/v4 (models: glm-4.6, glm-5, etc.)
 - Volcengine Ark: https://ark.cn-beijing.volces.com/api/v3 (usually uses inference endpoint IDs such as ep-xxxx)
-- DeepSeek: https://api.deepseek.com (model: deepseek-chat, etc.)
 
 Authentication: Bearer Token
 Request Format: OpenAI-compatible
