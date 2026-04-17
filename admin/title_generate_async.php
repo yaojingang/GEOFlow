@@ -212,7 +212,7 @@ try {
             $ch = curl_init();
             apply_curl_network_defaults($ch);
             curl_setopt_array($ch, [
-                CURLOPT_URL => $ai_model['api_url'] . '/v1/chat/completions',
+                CURLOPT_URL => ai_chat_endpoint_from_url($ai_model['api_url']),
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => json_encode($api_data),

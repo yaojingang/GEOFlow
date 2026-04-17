@@ -361,7 +361,7 @@ define('SECRET_KEY', 'your-secret-key-change-this-in-production');
 
 认证方式: Bearer Token
 请求格式: OpenAI兼容
-说明: 后台支持填写服务商基础地址或完整聊天接口 URL。系统默认补全 OpenAI 风格的 `/v1/chat/completions`，并会自动识别智谱 `/api/paas/v4` 与火山方舟 `/api/v3` 这类版本化基础路径。
+说明: 后台支持填写服务商基础地址或完整接口 URL。聊天模型默认补全 OpenAI 风格的 `/v1/chat/completions`，embedding 模型默认补全 `/v1/embeddings`，并会自动识别智谱 `/api/paas/v4` 与火山方舟 `/api/v3` 这类版本化基础路径。独立 rerank 模型配置仍待补齐。
 ```
 
 ### 3. 提示词变量系统

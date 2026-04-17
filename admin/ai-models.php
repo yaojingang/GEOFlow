@@ -359,7 +359,8 @@ require_once __DIR__ . '/includes/header.php';
                 </div>
                 <div class="px-6 py-5 space-y-3 text-sm text-gray-700">
                     <p><span class="font-medium text-gray-900">聊天模型：</span>用于任务中心正文生成、关键词生成、描述生成和标题 AI 生成。</p>
-                    <p><span class="font-medium text-gray-900">Embedding 模型：</span>用于知识库切块向量化和检索召回，不会出现在任务中心的 AI 模型下拉框里。</p>
+                    <p><span class="font-medium text-gray-900">Embedding 模型：</span>用于知识库切块向量化和检索召回，支持填写基础地址或完整 embedding 接口，不会出现在任务中心的 AI 模型下拉框里。</p>
+                    <p><span class="font-medium text-gray-900">Rerank / 重排序：</span>当前后台尚未接入独立 rerank 模型配置和调用链路，后续会沿用同样的 provider URL 规则补齐。</p>
                     <p><span class="font-medium text-gray-900">回退策略：</span>如果当前数据库没启用 pgvector 或 embedding 模型不可用，系统会自动回退到轻量检索，不会阻断文章生成。</p>
                 </div>
             </div>
@@ -479,7 +480,7 @@ require_once __DIR__ . '/includes/header.php';
 
                         <!-- 服务商快速填充 -->
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">服务商快速填充</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">服务商快速填充（聊天模型）</label>
                             <div class="flex flex-wrap gap-2">
                                 <button type="button" onclick="fillPreset('minimax')"
                                         class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -506,7 +507,18 @@ require_once __DIR__ . '/includes/header.php';
                                     火山方舟
                                 </button>
                             </div>
-                            <p class="mt-1 text-xs text-gray-500">点击自动填充常见服务商配置。火山方舟通常使用推理接入点 ID（如 <code>ep-xxxx</code>）作为模型 ID。</p>
+                            <label class="block text-sm font-medium text-gray-700 mt-4 mb-2">服务商快速填充（Embedding 模型）</label>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" onclick="fillPreset('openai_embedding')"
+                                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    OpenAI Embedding
+                                </button>
+                                <button type="button" onclick="fillPreset('zhipu_embedding')"
+                                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    智谱 Embedding
+                                </button>
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">点击自动填充常见服务商配置。聊天模型会按 provider 规则补全聊天接口；embedding 模型会按同样规则补全 <code>/v1/embeddings</code> 或版本化 provider 的 <code>/embeddings</code>。火山方舟聊天通常使用推理接入点 ID（如 <code>ep-xxxx</code>）作为模型 ID。</p>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -532,7 +544,7 @@ require_once __DIR__ . '/includes/header.php';
                                 <option value="chat">聊天模型</option>
                                 <option value="embedding">Embedding 检索模型</option>
                             </select>
-                            <p class="mt-1 text-xs text-gray-500">聊天模型用于任务中心生成内容；embedding 模型用于知识库向量化与召回。</p>
+                            <p class="mt-1 text-xs text-gray-500">聊天模型用于任务中心生成内容；embedding 模型用于知识库向量化与召回；Rerank / 重排序接口当前暂未接入。</p>
                         </div>
 
                         <div>
@@ -551,12 +563,12 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
 
                         <div>
-                            <label for="api_url" class="block text-sm font-medium text-gray-700">API地址（基础地址或完整聊天接口）</label>
+                            <label for="api_url" class="block text-sm font-medium text-gray-700">API地址（基础地址或完整接口）</label>
                             <input type="url" name="api_url" id="api_url"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                                    value="https://api.deepseek.com"
-                                   placeholder="例如：https://api.openai.com 或 https://open.bigmodel.cn/api/paas/v4 或完整 .../chat/completions">
-                            <p class="mt-1 text-xs text-gray-500">支持填写基础地址或完整聊天接口。OpenAI / DeepSeek / MiniMax 默认补全 <code>/v1/chat/completions</code>；智谱 <code>/api/paas/v4</code> 和火山方舟 <code>/api/v3</code> 会自动识别为对应聊天接口。</p>
+                                   placeholder="例如：https://api.openai.com 或 https://open.bigmodel.cn/api/paas/v4 或完整 .../chat/completions / .../embeddings">
+                            <p class="mt-1 text-xs text-gray-500">支持填写基础地址或完整接口 URL。聊天模型默认补全 <code>/v1/chat/completions</code>，embedding 模型默认补全 <code>/v1/embeddings</code>；智谱 <code>/api/paas/v4</code>、火山方舟 <code>/api/v3</code> 这类版本化基础地址会自动补全各自对应的 capability 路径。</p>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -676,6 +688,20 @@ require_once __DIR__ . '/includes/header.php';
                 model_id: '',
                 api_url: 'https://ark.cn-beijing.volces.com/api/v3',
                 model_type: 'chat',
+            },
+            'openai_embedding': {
+                name: 'OpenAI Embedding 3 Small',
+                version: '',
+                model_id: 'text-embedding-3-small',
+                api_url: 'https://api.openai.com',
+                model_type: 'embedding',
+            },
+            'zhipu_embedding': {
+                name: '智谱 Embedding-3',
+                version: 'v4',
+                model_id: 'embedding-3',
+                api_url: 'https://open.bigmodel.cn/api/paas/v4',
+                model_type: 'embedding',
             },
         };
 

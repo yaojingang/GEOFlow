@@ -106,7 +106,7 @@ function embedding_service_get_default_model(PDO $db): ?array {
 }
 
 function embedding_service_call_api(array $model, array $inputs): array {
-    $apiUrl = rtrim((string) ($model['api_url'] ?? ''), '/');
+    $apiUrl = trim((string) ($model['api_url'] ?? ''));
     $modelId = trim((string) ($model['model_id'] ?? ''));
     $apiKey = trim((string) ($model['api_key'] ?? ''));
 
@@ -122,7 +122,7 @@ function embedding_service_call_api(array $model, array $inputs): array {
     $ch = curl_init();
     apply_curl_network_defaults($ch);
     curl_setopt_array($ch, [
-        CURLOPT_URL => $apiUrl . '/v1/embeddings',
+        CURLOPT_URL => ai_embedding_endpoint_from_url($apiUrl),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),

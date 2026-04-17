@@ -183,7 +183,7 @@ Go to "AI Configuration Center → AI Model Management" to add models — fill i
    | Zhipu GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4.6` / `glm-5` |
    | Volcengine Ark | `https://ark.cn-beijing.volces.com/api/v3` | inference endpoint ID such as `ep-xxxx` |
 
-   You can enter either a provider base URL or a full chat endpoint URL. OpenAI / DeepSeek / MiniMax default to `/v1/chat/completions`; GEOFlow also auto-detects Zhipu `/api/paas/v4` and Volcengine Ark `/api/v3` style bases and expands them to the correct chat endpoint.
+   You can enter either a provider base URL or a full endpoint URL. Chat models default to `/v1/chat/completions`, while embedding models default to `/v1/embeddings`. GEOFlow also auto-detects Zhipu `/api/paas/v4` and Volcengine Ark `/api/v3` style bases and expands them to the correct capability-specific path. Dedicated rerank model wiring is not available yet.
 
 3. Prepare Materials  
 Create title libraries, image libraries, knowledge bases, and prompt templates.

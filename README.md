@@ -193,7 +193,7 @@ TZ=Asia/Shanghai
    | 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4.6` / `glm-5` |
    | 火山方舟 | `https://ark.cn-beijing.volces.com/api/v3` | 推理接入点 ID（如 `ep-xxxx`） |
 
-   支持填写服务商基础地址或完整聊天接口 URL。OpenAI / DeepSeek / MiniMax 默认补全 `/v1/chat/completions`；智谱 `/api/paas/v4` 与火山方舟 `/api/v3` 会自动识别并补全各自的聊天接口。
+   支持填写服务商基础地址或完整接口 URL。聊天模型默认补全 `/v1/chat/completions`，embedding 模型默认补全 `/v1/embeddings`；智谱 `/api/paas/v4` 与火山方舟 `/api/v3` 这类版本化基础地址会自动补全各自对应的 capability 路径。Rerank / 重排序接口当前尚未接入独立模型配置。
 
 3. 准备素材  
 创建标题库、图片库、知识库和提示词模板。

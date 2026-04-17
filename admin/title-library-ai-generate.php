@@ -213,7 +213,7 @@ try {
             $ch = curl_init();
             apply_curl_network_defaults($ch);
             curl_setopt_array($ch, [
-                CURLOPT_URL => $ai_model['api_url'] . '/v1/chat/completions',
+                CURLOPT_URL => ai_chat_endpoint_from_url($ai_model['api_url']),
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => json_encode($api_data),
@@ -238,7 +238,7 @@ try {
             curl_close($ch);
 
             // 记录调试信息
-            error_log("AI API调用 - URL: " . $ai_model['api_url'] . '/v1/chat/completions');
+            error_log("AI API调用 - URL: " . ai_chat_endpoint_from_url($ai_model['api_url']));
             error_log("AI API调用 - HTTP状态码: " . $http_code);
             error_log("AI API调用 - 响应时间: " . $curl_info['total_time'] . "秒");
 

@@ -389,7 +389,7 @@ Supported Providers (any OpenAI-compatible chat completions endpoint):
 
 Authentication: Bearer Token
 Request Format: OpenAI-compatible
-Note: GEOFlow accepts either a provider base URL or a full chat endpoint URL. It defaults to `/v1/chat/completions` for OpenAI-style bases and auto-detects Zhipu `/api/paas/v4` and Volcengine Ark `/api/v3` style bases.
+Note: GEOFlow accepts either a provider base URL or a full endpoint URL. Chat models default to `/v1/chat/completions`, embedding models default to `/v1/embeddings`, and versioned bases such as Zhipu `/api/paas/v4` or Volcengine Ark `/api/v3` are expanded to the correct capability-specific path automatically. Dedicated rerank model wiring is still pending.
 ```
 
 ### 3. Prompt Variable System

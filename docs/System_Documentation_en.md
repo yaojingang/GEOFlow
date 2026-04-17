@@ -273,7 +273,7 @@ MAX_FILE_SIZE: 2MB
 
 ### AI API Integration
 - **Supported Providers**: Any service exposing an OpenAI-compatible chat completions endpoint
-- **API URL Rule**: GEOFlow accepts either a provider base URL or a full chat endpoint URL. It appends `/v1/chat/completions` for OpenAI-style bases and auto-detects Zhipu `/api/paas/v4` and Volcengine Ark `/api/v3` style bases
+- **API URL Rule**: GEOFlow accepts either a provider base URL or a full endpoint URL. Chat models default to `/v1/chat/completions`, embedding models default to `/v1/embeddings`, and versioned bases such as Zhipu `/api/paas/v4` or Volcengine Ark `/api/v3` are expanded to the correct capability-specific path automatically. Dedicated rerank model wiring is not available yet
 - **Common Examples**:
   - MiniMax: `https://api.minimax.io`
   - OpenAI: `https://api.openai.com`

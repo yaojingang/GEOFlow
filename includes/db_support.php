@@ -60,34 +60,70 @@ if (!function_exists('db_timezone')) {
     }
 }
 
-if (!function_exists('ai_chat_endpoint_from_url')) {
-    function ai_chat_endpoint_from_url(string $apiUrl): string {
+if (!function_exists('ai_provider_endpoint_from_url')) {
+    function ai_provider_endpoint_from_url(string $apiUrl, string $capability): string {
         $apiUrl = trim($apiUrl);
         if ($apiUrl === '') {
             return '';
         }
 
+        $capability = trim(strtolower($capability));
         $normalized = rtrim($apiUrl, '/');
         $path = strtolower((string) parse_url($normalized, PHP_URL_PATH));
+        $defaultSuffixMap = [
+            'chat' => '/v1/chat/completions',
+            'embedding' => '/v1/embeddings',
+            'rerank' => '/v1/rerank',
+        ];
+        $versionedSuffixMap = [
+            'chat' => '/chat/completions',
+            'embedding' => '/embeddings',
+            'rerank' => '/rerank',
+        ];
+
+        $defaultSuffix = $defaultSuffixMap[$capability] ?? '/v1/chat/completions';
+        $versionedSuffix = $versionedSuffixMap[$capability] ?? '/chat/completions';
 
         if ($path === '') {
-            return $normalized . '/v1/chat/completions';
+            return $normalized . $defaultSuffix;
         }
 
-        if (preg_match('#/(?:v\d+/)?chat/completions$#', $path) === 1 || preg_match('#/bots/chat/completions$#', $path) === 1) {
-            return $normalized;
+        if ($capability === 'chat') {
+            if (preg_match('#/(?:v\d+/)?chat/completions$#', $path) === 1 || preg_match('#/bots/chat/completions$#', $path) === 1) {
+                return $normalized;
+            }
+        } elseif ($capability === 'embedding') {
+            if (preg_match('#/(?:v\d+/)?embeddings$#', $path) === 1) {
+                return $normalized;
+            }
+        } elseif ($capability === 'rerank') {
+            if (preg_match('#/(?:v\d+/)?rerank(?:ing)?$#', $path) === 1) {
+                return $normalized;
+            }
         }
 
         if (
             preg_match('#/api/.+/v\d+$#', $path) === 1 ||
             preg_match('#/api/v\d+$#', $path) === 1 ||
             preg_match('#/v\d+$#', $path) === 1 ||
-            preg_match('#/bots$#', $path) === 1
+            ($capability === 'chat' && preg_match('#/bots$#', $path) === 1)
         ) {
-            return $normalized . '/chat/completions';
+            return $normalized . $versionedSuffix;
         }
 
-        return $normalized . '/v1/chat/completions';
+        return $normalized . $defaultSuffix;
+    }
+}
+
+if (!function_exists('ai_chat_endpoint_from_url')) {
+    function ai_chat_endpoint_from_url(string $apiUrl): string {
+        return ai_provider_endpoint_from_url($apiUrl, 'chat');
+    }
+}
+
+if (!function_exists('ai_embedding_endpoint_from_url')) {
+    function ai_embedding_endpoint_from_url(string $apiUrl): string {
+        return ai_provider_endpoint_from_url($apiUrl, 'embedding');
     }
 }
 
