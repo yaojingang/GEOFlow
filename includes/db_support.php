@@ -60,6 +60,37 @@ if (!function_exists('db_timezone')) {
     }
 }
 
+if (!function_exists('ai_chat_endpoint_from_url')) {
+    function ai_chat_endpoint_from_url(string $apiUrl): string {
+        $apiUrl = trim($apiUrl);
+        if ($apiUrl === '') {
+            return '';
+        }
+
+        $normalized = rtrim($apiUrl, '/');
+        $path = strtolower((string) parse_url($normalized, PHP_URL_PATH));
+
+        if ($path === '') {
+            return $normalized . '/v1/chat/completions';
+        }
+
+        if (preg_match('#/(?:v\d+/)?chat/completions$#', $path) === 1 || preg_match('#/bots/chat/completions$#', $path) === 1) {
+            return $normalized;
+        }
+
+        if (
+            preg_match('#/api/.+/v\d+$#', $path) === 1 ||
+            preg_match('#/api/v\d+$#', $path) === 1 ||
+            preg_match('#/v\d+$#', $path) === 1 ||
+            preg_match('#/bots$#', $path) === 1
+        ) {
+            return $normalized . '/chat/completions';
+        }
+
+        return $normalized . '/v1/chat/completions';
+    }
+}
+
 if (!function_exists('db_create_pgsql_pdo')) {
     function db_create_pgsql_pdo(): PDO {
         $options = [

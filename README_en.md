@@ -180,8 +180,10 @@ Go to "AI Configuration Center → AI Model Management" to add models — fill i
    | **MiniMax** | `https://api.minimax.io` | `MiniMax-M2.7` / `MiniMax-M2.7-highspeed` |
    | OpenAI | `https://api.openai.com` | `gpt-4o` |
    | DeepSeek | `https://api.deepseek.com` | `deepseek-chat` |
+   | Zhipu GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4.6` / `glm-5` |
+   | Volcengine Ark | `https://ark.cn-beijing.volces.com/api/v3` | inference endpoint ID such as `ep-xxxx` |
 
-   Any provider that exposes an OpenAI-compatible `/v1/chat/completions` endpoint can be added the same way.
+   You can enter either a provider base URL or a full chat endpoint URL. OpenAI / DeepSeek / MiniMax default to `/v1/chat/completions`; GEOFlow also auto-detects Zhipu `/api/paas/v4` and Volcengine Ark `/api/v3` style bases and expands them to the correct chat endpoint.
 
 3. Prepare Materials  
 Create title libraries, image libraries, knowledge bases, and prompt templates.

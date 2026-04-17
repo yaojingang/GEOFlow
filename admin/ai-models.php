@@ -497,8 +497,16 @@ require_once __DIR__ . '/includes/header.php';
                                         class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
                                     DeepSeek
                                 </button>
+                                <button type="button" onclick="fillPreset('zhipu')"
+                                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    智谱 GLM
+                                </button>
+                                <button type="button" onclick="fillPreset('volcengine_ark')"
+                                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    火山方舟
+                                </button>
                             </div>
-                            <p class="mt-1 text-xs text-gray-500">点击自动填充服务商配置，填写 API 密钥后即可保存</p>
+                            <p class="mt-1 text-xs text-gray-500">点击自动填充常见服务商配置。火山方舟通常使用推理接入点 ID（如 <code>ep-xxxx</code>）作为模型 ID。</p>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -543,11 +551,12 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
 
                         <div>
-                            <label for="api_url" class="block text-sm font-medium text-gray-700">API地址</label>
+                            <label for="api_url" class="block text-sm font-medium text-gray-700">API地址（基础地址或完整聊天接口）</label>
                             <input type="url" name="api_url" id="api_url"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                                    value="https://api.tu-zi.com"
-                                   placeholder="https://api.tu-zi.com">
+                                   placeholder="例如：https://api.openai.com 或 https://open.bigmodel.cn/api/paas/v4 或完整 .../chat/completions">
+                            <p class="mt-1 text-xs text-gray-500">支持填写基础地址或完整聊天接口。OpenAI / DeepSeek / MiniMax 默认补全 <code>/v1/chat/completions</code>；智谱 <code>/api/paas/v4</code> 和火山方舟 <code>/api/v3</code> 会自动识别为对应聊天接口。</p>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -652,6 +661,20 @@ require_once __DIR__ . '/includes/header.php';
                 version: '',
                 model_id: 'deepseek-chat',
                 api_url: 'https://api.deepseek.com',
+                model_type: 'chat',
+            },
+            'zhipu': {
+                name: '智谱 GLM-4.6',
+                version: 'v4',
+                model_id: 'glm-4.6',
+                api_url: 'https://open.bigmodel.cn/api/paas/v4',
+                model_type: 'chat',
+            },
+            'volcengine_ark': {
+                name: '火山方舟 Chat',
+                version: 'v3',
+                model_id: '',
+                api_url: 'https://ark.cn-beijing.volces.com/api/v3',
                 model_type: 'chat',
             },
         };

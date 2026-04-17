@@ -183,15 +183,17 @@ TZ=Asia/Shanghai
 访问 `/geo_admin/`，使用管理员账号进入后台。默认管理员用户名和密码：`admin / admin888`，登录后可自行修改。
 
 2. 配置 AI 模型  
-在”AI 配置中心 → AI 模型管理”里添加模型，填写 API 地址、模型 ID 和密钥。可使用**服务商快速填充**按钮一键预填常用服务商配置：
+在“AI 配置中心 → AI 模型管理”里添加模型，填写 API 地址、模型 ID 和密钥。可使用**服务商快速填充**按钮一键预填常用服务商配置：
 
    | 服务商 | API 地址 | 模型 ID |
    |--------|---------|--------|
    | **MiniMax** | `https://api.minimax.io` | `MiniMax-M2.7` / `MiniMax-M2.7-highspeed` |
    | OpenAI | `https://api.openai.com` | `gpt-4o` |
    | DeepSeek | `https://api.deepseek.com` | `deepseek-chat` |
+   | 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4.6` / `glm-5` |
+   | 火山方舟 | `https://ark.cn-beijing.volces.com/api/v3` | 推理接入点 ID（如 `ep-xxxx`） |
 
-   只要服务商提供 OpenAI 兼容的 `/v1/chat/completions` 接口，均可按同样方式接入。
+   支持填写服务商基础地址或完整聊天接口 URL。OpenAI / DeepSeek / MiniMax 默认补全 `/v1/chat/completions`；智谱 `/api/paas/v4` 与火山方舟 `/api/v3` 会自动识别并补全各自的聊天接口。
 
 3. 准备素材  
 创建标题库、图片库、知识库和提示词模板。

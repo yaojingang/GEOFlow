@@ -272,12 +272,14 @@ MAX_FILE_SIZE: 2MB
 ## 🔌 API Integration
 
 ### AI API Integration
-- **Supported Providers**: Any service exposing an OpenAI-compatible `/v1/chat/completions` endpoint
-- **API URL Rule**: Enter only the provider base URL in the admin panel; GEOFlow appends `/v1/chat/completions` automatically
+- **Supported Providers**: Any service exposing an OpenAI-compatible chat completions endpoint
+- **API URL Rule**: GEOFlow accepts either a provider base URL or a full chat endpoint URL. It appends `/v1/chat/completions` for OpenAI-style bases and auto-detects Zhipu `/api/paas/v4` and Volcengine Ark `/api/v3` style bases
 - **Common Examples**:
   - MiniMax: `https://api.minimax.io`
   - OpenAI: `https://api.openai.com`
   - DeepSeek: `https://api.deepseek.com`
+  - Zhipu GLM: `https://open.bigmodel.cn/api/paas/v4`
+  - Volcengine Ark: `https://ark.cn-beijing.volces.com/api/v3`
   - Tu-zi API: `https://api.tu-zi.com`
 - **Authentication**: Bearer Token (API key)
 - **Parameter Configuration**:

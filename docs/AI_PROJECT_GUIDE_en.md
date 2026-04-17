@@ -380,14 +380,17 @@ define('SECRET_KEY', 'your-secret-key-change-this-in-production');
 
 ### 2. AI API Configuration
 ```
-Supported Providers (any OpenAI-compatible /v1/chat/completions endpoint):
+Supported Providers (any OpenAI-compatible chat completions endpoint):
 - MiniMax:  https://api.minimax.io   (models: MiniMax-M2.7, MiniMax-M2.7-highspeed)
 - OpenAI:   https://api.openai.com   (models: gpt-4o, etc.)
 - DeepSeek: https://api.deepseek.com (models: deepseek-chat, etc.)
+- Zhipu GLM: https://open.bigmodel.cn/api/paas/v4 (models: glm-4.6, glm-5, etc.)
+- Volcengine Ark: https://ark.cn-beijing.volces.com/api/v3 (usually uses inference endpoint IDs such as ep-xxxx)
 - Tu-zi:    https://api.tu-zi.com    (aggregator, supports many models)
 
 Authentication: Bearer Token
 Request Format: OpenAI-compatible
+Note: GEOFlow accepts either a provider base URL or a full chat endpoint URL. It defaults to `/v1/chat/completions` for OpenAI-style bases and auto-detects Zhipu `/api/paas/v4` and Volcengine Ark `/api/v3` style bases.
 ```
 
 ### 3. Prompt Variable System

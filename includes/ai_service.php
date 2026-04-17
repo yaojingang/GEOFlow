@@ -67,7 +67,7 @@ class AIService {
      * 调用兔子API
      */
     private function callAPI($model, $prompt) {
-        $url = $model['api_url'] . '/v1/chat/completions';
+        $url = ai_chat_endpoint_from_url((string) ($model['api_url'] ?? ''));
         
         $data = [
             'model' => $model['model_id'],

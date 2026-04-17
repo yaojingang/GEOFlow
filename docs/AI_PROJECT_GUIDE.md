@@ -352,14 +352,17 @@ define('SECRET_KEY', 'your-secret-key-change-this-in-production');
 
 ### 2. AI API配置
 ```
-支持服务商（任何提供 OpenAI 兼容 /v1/chat/completions 接口的平台均可接入）：
+支持服务商（任何提供 OpenAI 兼容 chat completions 接口的平台均可接入）：
 - MiniMax:  https://api.minimax.io   （模型：MiniMax-M2.7、MiniMax-M2.7-highspeed）
 - OpenAI:   https://api.openai.com   （模型：gpt-4o 等）
 - DeepSeek: https://api.deepseek.com （模型：deepseek-chat 等）
+- 智谱 GLM: https://open.bigmodel.cn/api/paas/v4 （模型：glm-4.6、glm-5 等）
+- 火山方舟: https://ark.cn-beijing.volces.com/api/v3 （模型通常填写推理接入点 ID，如 ep-xxxx）
 - 兔子API:   https://api.tu-zi.com    （聚合代理，支持多种模型）
 
 认证方式: Bearer Token
 请求格式: OpenAI兼容
+说明: 后台支持填写服务商基础地址或完整聊天接口 URL。系统默认补全 OpenAI 风格的 `/v1/chat/completions`，并会自动识别智谱 `/api/paas/v4` 与火山方舟 `/api/v3` 这类版本化基础路径。
 ```
 
 ### 3. 提示词变量系统

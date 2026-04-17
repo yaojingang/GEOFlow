@@ -323,7 +323,7 @@ class AIEngine {
      * 调用AI生成内容
      */
     public function callAI($task, $prompt) {
-        $api_url = rtrim($task['api_url'], '/') . '/v1/chat/completions';
+        $api_url = ai_chat_endpoint_from_url((string) ($task['api_url'] ?? ''));
         
         $data = [
             'model' => $task['model_id'],
