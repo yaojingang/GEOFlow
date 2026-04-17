@@ -17,7 +17,7 @@ Backend: PHP 7.4+ (no framework, native development)
 Database: PostgreSQL (runtime database, configured via environment variables)
 Frontend: TailwindCSS + vanilla JavaScript + Lucide Icons
 Server: PHP built-in development server (localhost:8080)
-AI Integration: Tu-zi API (Tuzi API) - OpenAI-compatible interface
+AI Integration: DeepSeek API - OpenAI-compatible interface
 ```
 
 ### Project Features
@@ -386,7 +386,7 @@ Supported Providers (any OpenAI-compatible chat completions endpoint):
 - DeepSeek: https://api.deepseek.com (models: deepseek-chat, etc.)
 - Zhipu GLM: https://open.bigmodel.cn/api/paas/v4 (models: glm-4.6, glm-5, etc.)
 - Volcengine Ark: https://ark.cn-beijing.volces.com/api/v3 (usually uses inference endpoint IDs such as ep-xxxx)
-- Tu-zi:    https://api.tu-zi.com    (aggregator, supports many models)
+- DeepSeek: https://api.deepseek.com (model: deepseek-chat, etc.)
 
 Authentication: Bearer Token
 Request Format: OpenAI-compatible

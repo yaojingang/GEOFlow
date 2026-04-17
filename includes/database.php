@@ -282,7 +282,7 @@ class Database {
             version VARCHAR(100) DEFAULT '',
             api_key VARCHAR(500) NOT NULL,
             model_id VARCHAR(200) NOT NULL,
-            api_url VARCHAR(500) DEFAULT 'https://api.tu-zi.com',
+            api_url VARCHAR(500) DEFAULT 'https://api.deepseek.com',
             daily_limit INTEGER DEFAULT 0, -- 每日调用限制，0为不限制
             used_today INTEGER DEFAULT 0, -- 今日已使用次数
             total_used INTEGER DEFAULT 0, -- 总使用次数

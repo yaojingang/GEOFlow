@@ -64,7 +64,7 @@ class AIService {
     }
     
     /**
-     * 调用兔子API
+     * 调用 OpenAI 兼容聊天接口
      */
     private function callAPI($model, $prompt) {
         $url = ai_chat_endpoint_from_url((string) ($model['api_url'] ?? ''));

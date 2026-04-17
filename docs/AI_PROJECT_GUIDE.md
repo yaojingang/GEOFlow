@@ -17,7 +17,7 @@
 数据库: SQLite (文件数据库 /data/db/blog.db)
 前端: TailwindCSS + 原生JavaScript + Lucide Icons
 服务器: PHP内置开发服务器 (localhost:8080)
-AI集成: 兔子API (Tu-zi API) - OpenAI兼容接口
+AI集成: DeepSeek API - OpenAI兼容接口
 ```
 
 ### 项目特点
@@ -358,7 +358,7 @@ define('SECRET_KEY', 'your-secret-key-change-this-in-production');
 - DeepSeek: https://api.deepseek.com （模型：deepseek-chat 等）
 - 智谱 GLM: https://open.bigmodel.cn/api/paas/v4 （模型：glm-4.6、glm-5 等）
 - 火山方舟: https://ark.cn-beijing.volces.com/api/v3 （模型通常填写推理接入点 ID，如 ep-xxxx）
-- 兔子API:   https://api.tu-zi.com    （聚合代理，支持多种模型）
+- DeepSeek: https://api.deepseek.com （模型：deepseek-chat 等）
 
 认证方式: Bearer Token
 请求格式: OpenAI兼容

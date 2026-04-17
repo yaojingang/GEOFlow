@@ -81,7 +81,7 @@ class DatabaseAdmin {
             api_key VARCHAR(500) NOT NULL,
             model_id VARCHAR(100) NOT NULL,
             model_type VARCHAR(20) DEFAULT 'chat',
-            api_url VARCHAR(500) DEFAULT 'https://api.tu-zi.com',
+            api_url VARCHAR(500) DEFAULT 'https://api.deepseek.com',
             daily_limit INTEGER DEFAULT 0, -- 每日调用限制，0为不限制
             used_today INTEGER DEFAULT 0,
             total_used INTEGER DEFAULT 0,

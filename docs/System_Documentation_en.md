@@ -140,7 +140,7 @@ GEOFlow/
 ## 🎯 Core Features
 
 ### 1. AI Content Generation
-- **Multi-AI Model Support**: Supports different AI providers (兔子API (Tuzi API), etc.)
+- **Multi-AI Model Support**: Supports different AI providers (DeepSeek, OpenAI, MiniMax, Zhipu, Volcengine Ark, etc.)
 - **Prompt Management**: Customizable prompts for different content types
 - **Batch Processing**: Background worker processes for continuous content generation
 - **Task Scheduling**: Cron-based task execution with configurable intervals
@@ -280,7 +280,7 @@ MAX_FILE_SIZE: 2MB
   - DeepSeek: `https://api.deepseek.com`
   - Zhipu GLM: `https://open.bigmodel.cn/api/paas/v4`
   - Volcengine Ark: `https://ark.cn-beijing.volces.com/api/v3`
-  - Tu-zi API: `https://api.tu-zi.com`
+  - DeepSeek: `https://api.deepseek.com`
 - **Authentication**: Bearer Token (API key)
 - **Parameter Configuration**:
   - Model ID: Configurable

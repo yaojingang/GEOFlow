@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $version = trim($_POST['version'] ?? '');
                 $api_key = trim($_POST['api_key'] ?? '');
                 $model_id = trim($_POST['model_id'] ?? '');
-                $api_url = trim($_POST['api_url'] ?? 'https://api.tu-zi.com');
+                $api_url = trim($_POST['api_url'] ?? 'https://api.deepseek.com');
                 $daily_limit = intval($_POST['daily_limit'] ?? 0);
                 $model_type = normalize_ai_model_type($_POST['model_type'] ?? 'chat');
                 
@@ -554,7 +554,7 @@ require_once __DIR__ . '/includes/header.php';
                             <label for="api_url" class="block text-sm font-medium text-gray-700">API地址（基础地址或完整聊天接口）</label>
                             <input type="url" name="api_url" id="api_url"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                   value="https://api.tu-zi.com"
+                                   value="https://api.deepseek.com"
                                    placeholder="例如：https://api.openai.com 或 https://open.bigmodel.cn/api/paas/v4 或完整 .../chat/completions">
                             <p class="mt-1 text-xs text-gray-500">支持填写基础地址或完整聊天接口。OpenAI / DeepSeek / MiniMax 默认补全 <code>/v1/chat/completions</code>；智谱 <code>/api/paas/v4</code> 和火山方舟 <code>/api/v3</code> 会自动识别为对应聊天接口。</p>
                         </div>
@@ -604,7 +604,7 @@ require_once __DIR__ . '/includes/header.php';
             document.getElementById('api_key').required = true;
             document.getElementById('api_key').placeholder = '输入API密钥';
             document.getElementById('apiKeyHelp').textContent = '创建模型时必填。';
-            document.getElementById('api_url').value = 'https://api.tu-zi.com';
+            document.getElementById('api_url').value = 'https://api.deepseek.com';
             document.getElementById('modelModal').classList.remove('hidden');
         }
 
