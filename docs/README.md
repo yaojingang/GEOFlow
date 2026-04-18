@@ -36,6 +36,7 @@
 - [API v1 参考草案](project/API_V1_REFERENCE_DRAFT.md)
 - [GEOFlow CLI 使用说明](project/GEOFLOW_CLI.md)
 - [前台模板预览与启用](project/THEME_PREVIEW.md)
+- [后台首次登录欢迎页](project/ADMIN_WELCOME.md)
 
 ### 常见问题
 - [FAQ](FAQ.md)

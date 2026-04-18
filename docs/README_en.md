@@ -36,6 +36,7 @@ The public repository only retains documentation that is truly useful for extern
 - [API v1 Reference Draft](project/API_V1_REFERENCE_DRAFT_en.md)
 - [GEOFlow CLI User Guide](project/GEOFLOW_CLI_en.md)
 - [Frontend Theme Preview and Activation](project/THEME_PREVIEW_en.md)
+- [Admin First-Login Welcome Panel](project/ADMIN_WELCOME_en.md)
 
 ### FAQ
 - [FAQ](FAQ_en.md)

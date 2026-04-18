@@ -25,6 +25,11 @@
   - 后台网站设置支持模板预览与启用
   - 样板主题 `qiaomu-editorial-20260418` 已进入公开仓库
   - 首页、分类页、归档页卡片摘要会自动清洗 Markdown 符号
+- 新增后台首次登录欢迎页：
+  - 首次登录后自动弹出欢迎页
+  - 欢迎页改为单篇“见面信”结构，默认中文，可切英文
+  - footer 新增 `项目说明` 入口，可重新打开欢迎页
+  - 新增实现说明文档 `project/ADMIN_WELCOME.md`
 - 新增 `geoflow-template` 配套 skill 入口：
   - 用于把参考网址映射为 GEOFlow 兼容主题包
   - 支持输出 `tokens.json`、`mapping.json` 和 preview-first 模板规划

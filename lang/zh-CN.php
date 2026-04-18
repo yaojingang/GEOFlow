@@ -60,6 +60,7 @@ return [
     'footer.author_x_profile' => '作者X主页',
     'footer.project_github_link' => '项目GitHub地址',
     'footer.changelog_link' => '更新日志',
+    'footer.project_intro_link' => '项目说明',
     'login.title' => '管理员登录',
     'login.subtitle' => '{site_name} 后台管理系统',
     'login.username' => '用户名',

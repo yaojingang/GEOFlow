@@ -60,6 +60,7 @@ class DatabaseAdmin {
             status VARCHAR(20) DEFAULT 'active',
             created_by INTEGER DEFAULT NULL,
             last_login TIMESTAMP DEFAULT NULL,
+            welcome_dismissed_at TIMESTAMP DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -655,6 +656,7 @@ class DatabaseAdmin {
                 'role' => "ALTER TABLE admins ADD COLUMN role VARCHAR(20) DEFAULT 'admin'",
                 'status' => "ALTER TABLE admins ADD COLUMN status VARCHAR(20) DEFAULT 'active'",
                 'created_by' => "ALTER TABLE admins ADD COLUMN created_by INTEGER DEFAULT NULL",
+                'welcome_dismissed_at' => "ALTER TABLE admins ADD COLUMN welcome_dismissed_at TIMESTAMP DEFAULT NULL",
                 'updated_at' => "ALTER TABLE admins ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             ],
             'image_libraries' => [

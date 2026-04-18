@@ -60,6 +60,7 @@ return [
     'footer.author_x_profile' => 'Author X Profile',
     'footer.project_github_link' => 'Project GitHub',
     'footer.changelog_link' => 'Changelog',
+    'footer.project_intro_link' => 'Project Intro',
     'login.title' => 'Admin Login',
     'login.subtitle' => '{site_name} Admin Console',
     'login.username' => 'Username',

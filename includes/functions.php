@@ -74,7 +74,7 @@ function get_current_admin(bool $forceRefresh = false): ?array {
     }
 
     $stmt = $db->prepare("
-        SELECT id, username, email, display_name, role, status, last_login, created_at
+        SELECT id, username, email, display_name, role, status, last_login, welcome_dismissed_at, created_at
         FROM admins
         WHERE id = ?
         LIMIT 1

@@ -25,6 +25,12 @@ This document tracks user-facing updates in the public repository. For future Gi
   - admin-side theme preview and activation in Site Settings
   - sample theme `qiaomu-editorial-20260418` is now included in the public repository
   - homepage, category, and archive card summaries now strip Markdown artifacts before rendering
+- Added an admin first-login welcome panel:
+  - shown automatically after the first admin login
+  - redesigned as a single welcome letter instead of a multi-card module layout
+  - defaults to Chinese with an in-panel English switch
+  - footer now includes a `Project Intro` entry that reopens the panel
+  - implementation notes are documented in `project/ADMIN_WELCOME_en.md`
 - Added the companion `geoflow-template` skill entry:
   - maps reference URLs into GEOFlow-compatible theme packages
   - outputs `tokens.json`, `mapping.json`, and preview-first theme plans

@@ -12,6 +12,8 @@ if (!defined('FEISHU_TREASURE')) {
     die('Direct access not allowed');
 }
 
+require_once dirname(__DIR__, 2) . '/includes/admin_welcome.php';
+
 ?>
 
     </div> <!-- 结束主要内容区域 -->
@@ -42,10 +44,15 @@ if (!defined('FEISHU_TREASURE')) {
                     <a href="<?php echo htmlspecialchars($changelogUrl); ?>" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline">
                         <?php echo htmlspecialchars(__('footer.changelog_link')); ?>
                     </a>
+                    <button type="button" data-open-admin-welcome class="text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline">
+                        <?php echo htmlspecialchars(__('footer.project_intro_link')); ?>
+                    </button>
                 </span>
             </div>
         </div>
     </footer>
+
+    <?php render_admin_welcome_modal($current_admin ?? (function_exists('get_current_admin') ? get_current_admin() : null)); ?>
 
     <!-- 全局JavaScript -->
     <script>
