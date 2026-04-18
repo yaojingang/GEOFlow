@@ -54,7 +54,7 @@ return [
     'common.hours' => 'h',
     'common.days' => 'd',
     'common.articles_unit' => '',
-    'footer.copyright' => '© 2026 GEOFlow. All rights reserved.',
+    'footer.copyright' => '© 2026 GEOFlow',
     'footer.version' => 'Version {version}',
     'footer.author' => 'Author: Yao Jingang',
     'footer.author_x_profile' => 'Author X Profile',

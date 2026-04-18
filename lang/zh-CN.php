@@ -54,7 +54,7 @@ return [
     'common.hours' => '小时',
     'common.days' => '天',
     'common.articles_unit' => '篇',
-    'footer.copyright' => '© 2026 GEOFlow。保留所有权利。',
+    'footer.copyright' => '© 2026 GEOFlow',
     'footer.version' => '版本 {version}',
     'footer.author' => '作者：姚金刚',
     'footer.author_x_profile' => '作者X主页',
