@@ -23,6 +23,8 @@ This document tracks user-facing updates in the public repository. For future Gi
   - dynamic `preview/<theme-id>` routes for safe preview-first inspection
   - theme package support under `themes/<theme-id>`
   - admin-side theme preview and activation in Site Settings
+  - sample theme `qiaomu-editorial-20260418` is now included in the public repository
+  - homepage, category, and archive card summaries now strip Markdown artifacts before rendering
 - Added the companion `geoflow-template` skill entry:
   - maps reference URLs into GEOFlow-compatible theme packages
   - outputs `tokens.json`, `mapping.json`, and preview-first theme plans
