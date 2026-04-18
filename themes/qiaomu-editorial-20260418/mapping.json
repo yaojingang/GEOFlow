@@ -1,0 +1,33 @@
+{
+  "id": "qiaomu-editorial-20260418",
+  "reference": {
+    "url": "https://blog.qiaomu.ai/2026-04-17-qp2x50",
+    "style_archetype": "editorial-blog"
+  },
+  "page_mapping": {
+    "header": {
+      "target_file": "includes/header.php",
+      "safe_changes": [
+        "sticky translucent shell",
+        "compact nav density"
+      ],
+      "must_preserve": [
+        "current categories",
+        "current frontend navigation text",
+        "current footer and copyright rules"
+      ]
+    },
+    "home": {
+      "target_file": "index.php"
+    },
+    "article": {
+      "target_file": "article.php"
+    },
+    "category": {
+      "target_file": "category.php"
+    },
+    "archive": {
+      "target_file": "archive.php"
+    }
+  }
+}

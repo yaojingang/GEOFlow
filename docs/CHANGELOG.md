@@ -19,6 +19,13 @@
 - 优化任务执行体验：
   - `task-execute.php` 改为入队执行，不再同步阻塞页面
   - 直接发布任务的 `published_count` 统计已修正
+- 新增前台模板预览与启用能力：
+  - 支持独立 `preview/<theme-id>` 动态预览路由
+  - 支持主题包 `themes/<theme-id>` 结构
+  - 后台网站设置支持模板预览与启用
+- 新增 `geoflow-template` 配套 skill 入口：
+  - 用于把参考网址映射为 GEOFlow 兼容主题包
+  - 支持输出 `tokens.json`、`mapping.json` 和 preview-first 模板规划
 - 升级默认 GEO 提示词：
   - 正文、榜单、关键词、描述提示词更新为长版模板
   - 对齐 GeoFlow 变量规则

@@ -19,6 +19,13 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Improved task execution behavior:
   - `task-execute.php` now queues execution instead of blocking the page synchronously
   - `published_count` is now updated correctly for tasks that publish directly
+- Added frontend theme preview and activation:
+  - dynamic `preview/<theme-id>` routes for safe preview-first inspection
+  - theme package support under `themes/<theme-id>`
+  - admin-side theme preview and activation in Site Settings
+- Added the companion `geoflow-template` skill entry:
+  - maps reference URLs into GEOFlow-compatible theme packages
+  - outputs `tokens.json`, `mapping.json`, and preview-first theme plans
 - Upgraded default GEO prompt templates:
   - Long-form templates now cover article generation, ranking articles, keywords, and descriptions
   - Templates are aligned with GeoFlow's variable rules

@@ -6,6 +6,7 @@ require_once 'includes/config.php';
 require_once 'includes/database.php';
 require_once 'includes/functions.php';
 require_once 'includes/seo_functions.php';
+require_once 'includes/theme_preview.php';
 
 $database = Database::getInstance();
 $db = $database->getPDO();
@@ -58,6 +59,31 @@ $structured_data_blocks = [
         ['name' => $category['name'], 'url' => $canonical_url]
     ])
 ];
+
+$active_theme_id = geoflow_active_theme_id();
+if ($active_theme_id !== '' && geoflow_theme_has_template($active_theme_id, 'category')) {
+    geoflow_theme_render_document(
+        $active_theme_id,
+        'category',
+        compact('category', 'articles', 'total_count', 'total_pages', 'page'),
+        [
+            'site_title' => $site_title,
+            'site_description' => $site_description,
+            'categories' => $categories,
+            'page_title' => $page_title,
+            'page_description' => $page_description,
+            'page_keywords' => $page_keywords,
+            'canonical_url' => $canonical_url,
+            'structured_data_blocks' => $structured_data_blocks,
+            'og_type' => 'website',
+        ],
+        [
+            'route_mode' => 'live',
+            'page_key' => 'category',
+        ]
+    );
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo htmlspecialchars(app_html_lang(), ENT_QUOTES); ?>">

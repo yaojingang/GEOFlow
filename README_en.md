@@ -22,6 +22,7 @@ Released under the Apache License 2.0.
 | 🗂 Unified Material Management | Centralized management of title libraries, keyword libraries, image libraries, knowledge bases, and prompt templates |
 | 📋 Review & Publishing Workflow | Three-stage workflow: Draft → Review → Publish, with optional auto-publishing |
 | 🔍 Search-Oriented Display Optimization | Article SEO metadata, Open Graph, and structured data |
+| 🎨 Frontend Theme Preview | Preview-first theme packages, theme preview routes, and admin activation |
 | 🐳 Ready to Deploy | Supports Docker Compose — works on both local machines and servers |
 | 🗄 PostgreSQL Runtime | Built on PostgreSQL by default, suitable for stable operation and concurrent writes |
 
@@ -130,10 +131,11 @@ open http://localhost:8080/geo_admin/
 
 ## 🤝 Companion Skill
 
-This project comes with a public skill for operating GEOFlow via the local `geoflow` CLI:
+This project comes with two public companion skills:
 
 - Skill repository: [yaojingang/yao-geo-skills](https://github.com/yaojingang/yao-geo-skills)
-- Skill path: `skills/geoflow-cli-ops`
+- CLI operations: `skills/geoflow-cli-ops`
+- Frontend template cloning: `skills/geoflow-template`
 
 Use cases:
 
@@ -141,6 +143,12 @@ Use cases:
 - Upload article drafts
 - Review and publish articles
 - Check task and job status
+- Generate GEOFlow-compatible theme packages from reference URLs
+- Output `tokens.json / mapping.json` for preview-first frontend iterations
+
+Related docs:
+
+- [Frontend Theme Preview and Activation](docs/project/THEME_PREVIEW_en.md)
 
 ---
 

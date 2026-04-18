@@ -29,6 +29,50 @@ if (preg_match('#^/uploads/.*\.(php|phtml|phar)$#i', $path)) {
     return true;
 }
 
+// 主题预览：/preview/theme-id/article/slug
+if (preg_match('/^\/preview\/([a-zA-Z0-9\-_]+)\/article\/([a-zA-Z0-9\-_]+)\/?$/', $path, $matches)) {
+    $_GET['theme'] = $matches[1];
+    $_GET['preview_page'] = 'article';
+    $_GET['slug'] = $matches[2];
+    require_once __DIR__ . '/theme-preview.php';
+    return true;
+}
+
+// 主题预览：/preview/theme-id/category/slug
+if (preg_match('/^\/preview\/([a-zA-Z0-9\-_]+)\/category\/([a-zA-Z0-9\-_]+)\/?$/', $path, $matches)) {
+    $_GET['theme'] = $matches[1];
+    $_GET['preview_page'] = 'category';
+    $_GET['slug'] = $matches[2];
+    require_once __DIR__ . '/theme-preview.php';
+    return true;
+}
+
+// 主题预览：/preview/theme-id/archive/YYYY/MM
+if (preg_match('/^\/preview\/([a-zA-Z0-9\-_]+)\/archive\/(\d{4})\/(\d{2})\/?$/', $path, $matches)) {
+    $_GET['theme'] = $matches[1];
+    $_GET['preview_page'] = 'archive';
+    $_GET['year'] = $matches[2];
+    $_GET['month'] = $matches[3];
+    require_once __DIR__ . '/theme-preview.php';
+    return true;
+}
+
+// 主题预览：/preview/theme-id/archive
+if (preg_match('/^\/preview\/([a-zA-Z0-9\-_]+)\/archive\/?$/', $path, $matches)) {
+    $_GET['theme'] = $matches[1];
+    $_GET['preview_page'] = 'archive';
+    require_once __DIR__ . '/theme-preview.php';
+    return true;
+}
+
+// 主题预览：首页 /preview/theme-id
+if (preg_match('/^\/preview\/([a-zA-Z0-9\-_]+)\/?$/', $path, $matches)) {
+    $_GET['theme'] = $matches[1];
+    $_GET['preview_page'] = 'home';
+    require_once __DIR__ . '/theme-preview.php';
+    return true;
+}
+
 // 文章详情页：/article/slug -> article.php?slug=slug
 if (preg_match('/^\/article\/([a-zA-Z0-9\-_]+)\/?$/', $path, $matches)) {
     $_GET['slug'] = $matches[1];

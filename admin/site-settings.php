@@ -9,6 +9,7 @@ session_start();
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/database_admin.php';
+require_once __DIR__ . '/../includes/theme_preview.php';
 
 // 检查管理员登录
 require_admin_login();
@@ -21,6 +22,7 @@ $page_title = __('site_settings.page_title');
 
 $message = '';
 $error = '';
+$available_themes = geoflow_discover_themes();
 
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -140,6 +142,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $message = __('site_settings.ads.saved');
                 }
                 break;
+
+            case 'update_theme_settings':
+                $selected_theme = trim((string) ($_POST['active_theme'] ?? ''));
+                $allowed_theme_ids = array_column($available_themes, 'id');
+
+                if ($selected_theme !== '' && !in_array($selected_theme, $allowed_theme_ids, true)) {
+                    $error = __('site_settings.theme.invalid_selection');
+                    break;
+                }
+
+                if (set_setting('active_theme', $selected_theme)) {
+                    $message = $selected_theme === ''
+                        ? __('site_settings.theme.message.default_enabled')
+                        : __('site_settings.theme.message.activated', ['name' => $selected_theme]);
+                } else {
+                    $error = __('site_settings.theme.message.save_failed');
+                }
+                break;
         }
     }
 }
@@ -169,7 +189,8 @@ $defaults = [
     'seo_description_template' => '{description}',
     'featured_limit' => '6',
     'per_page' => '12',
-    'article_detail_ads' => '[]'
+    'article_detail_ads' => '[]',
+    'active_theme' => ''
 ];
 
 foreach ($defaults as $key => $default_value) {
@@ -342,6 +363,80 @@ require_once __DIR__ . '/includes/header.php';
                             <button type="submit" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                                 <i data-lucide="save" class="w-5 h-5 mr-2"></i>
                                 <?php echo __('site_settings.save_settings'); ?>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="bg-white shadow rounded-lg mt-8">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('site_settings.theme.section_title'); ?></h3>
+                    <p class="mt-1 text-sm text-gray-600"><?php echo __('site_settings.theme.section_desc'); ?></p>
+                </div>
+                <div class="px-6 py-6">
+                    <form method="POST" class="space-y-5">
+                        <input type="hidden" name="action" value="update_theme_settings">
+                        <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
+
+                        <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 flex flex-col gap-1">
+                            <div class="text-sm font-medium text-gray-900"><?php echo __('site_settings.theme.current_label'); ?></div>
+                            <div class="text-base font-semibold text-gray-900">
+                                <?php
+                                $currentThemeLabel = __('site_settings.theme.default_name');
+                                foreach ($available_themes as $themeOption) {
+                                    if ($themeOption['id'] === $current_settings['active_theme']) {
+                                        $currentThemeLabel = $themeOption['name'];
+                                        break;
+                                    }
+                                }
+                                echo htmlspecialchars($currentThemeLabel);
+                                ?>
+                            </div>
+                            <div class="text-xs text-gray-500"><?php echo __('site_settings.theme.current_help'); ?></div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <label class="flex items-start gap-4 rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
+                                <input type="radio" name="active_theme" value="" class="mt-1 text-blue-600 focus:ring-blue-500" <?php echo $current_settings['active_theme'] === '' ? 'checked' : ''; ?>>
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-sm font-semibold text-gray-900"><?php echo __('site_settings.theme.default_name'); ?></div>
+                                    <div class="mt-1 text-sm text-gray-600"><?php echo __('site_settings.theme.default_desc'); ?></div>
+                                </div>
+                            </label>
+
+                            <?php foreach ($available_themes as $themeOption): ?>
+                                <?php $sampleRoutes = $themeOption['manifest']['sample_routes'] ?? []; ?>
+                                <label class="flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4">
+                                    <input type="radio" name="active_theme" value="<?php echo htmlspecialchars($themeOption['id']); ?>" class="mt-1 text-blue-600 focus:ring-blue-500" <?php echo $current_settings['active_theme'] === $themeOption['id'] ? 'checked' : ''; ?>>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <div class="text-sm font-semibold text-gray-900"><?php echo htmlspecialchars($themeOption['name']); ?></div>
+                                            <?php if ($themeOption['version'] !== ''): ?>
+                                                <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"><?php echo __('site_settings.theme.version_badge', ['version' => $themeOption['version']]); ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($current_settings['active_theme'] === $themeOption['id']): ?>
+                                                <span class="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700"><?php echo __('site_settings.theme.active_badge'); ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div class="mt-1 text-sm text-gray-600">
+                                            <?php echo htmlspecialchars($themeOption['description'] !== '' ? $themeOption['description'] : __('site_settings.theme.no_description')); ?>
+                                        </div>
+                                        <div class="mt-3 flex flex-wrap gap-2">
+                                            <a href="<?php echo htmlspecialchars($sampleRoutes['home'] ?? geoflow_theme_preview_url($themeOption['id'], 'home')); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"><?php echo __('site_settings.theme.preview_home'); ?></a>
+                                            <a href="<?php echo htmlspecialchars($sampleRoutes['category'] ?? geoflow_theme_preview_url($themeOption['id'], 'category', ['slug' => geoflow_preview_first_category_slug($db) ?? ''])); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"><?php echo __('site_settings.theme.preview_category'); ?></a>
+                                            <a href="<?php echo htmlspecialchars($sampleRoutes['article'] ?? geoflow_theme_preview_url($themeOption['id'], 'article', ['slug' => geoflow_preview_latest_article_slug($db) ?? ''])); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"><?php echo __('site_settings.theme.preview_article'); ?></a>
+                                            <a href="<?php echo htmlspecialchars($sampleRoutes['archive'] ?? geoflow_theme_preview_url($themeOption['id'], 'archive')); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"><?php echo __('site_settings.theme.preview_archive'); ?></a>
+                                        </div>
+                                    </div>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <div class="flex justify-end pt-2 border-t border-gray-200">
+                            <button type="submit" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                                <i data-lucide="layout-template" class="w-5 h-5 mr-2"></i>
+                                <?php echo __('site_settings.theme.save'); ?>
                             </button>
                         </div>
                     </form>

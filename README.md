@@ -22,6 +22,7 @@ Released under the Apache License 2.0.
 | 🗂 素材统一管理 | 标题库、关键词库、图片库、知识库、提示词集中管理 |
 | 📋 审核与发布工作流 | 草稿、审核、发布三段式流程，可切换自动发布 |
 | 🔍 面向搜索展示优化 | 文章 SEO 元信息、Open Graph、结构化数据 |
+| 🎨 前台模板预览 | 支持 preview-first 主题包、模板预览与后台启用 |
 | 🐳 可直接部署 | 支持 Docker Compose，本地和服务器都能跑 |
 | 🗄 PostgreSQL 运行时 | 默认基于 PostgreSQL，适合稳定运行和并发写入 |
 
@@ -130,10 +131,11 @@ open http://localhost:8080/geo_admin/
 
 ## 🤝 配套 Skill
 
-这个项目配套提供了一个公开 skill，用于通过本地 `geoflow` CLI 操作 GEOFlow 系统：
+这个项目配套提供了两个公开 skill：
 
 - Skill 仓库：[yaojingang/yao-geo-skills](https://github.com/yaojingang/yao-geo-skills)
-- Skill 路径：`skills/geoflow-cli-ops`
+- CLI 运维：`skills/geoflow-cli-ops`
+- 前台模板复刻：`skills/geoflow-template`
 
 适用场景：
 
@@ -141,6 +143,12 @@ open http://localhost:8080/geo_admin/
 - 上传文章草稿
 - 审核和发布文章
 - 检查任务与 job 状态
+- 基于参考网址生成 GEOFlow 兼容的前台主题包
+- 输出 `tokens.json / mapping.json` 并走预览优先的模板迭代
+
+相关文档：
+
+- [前台模板预览与启用](docs/project/THEME_PREVIEW.md)
 
 ---
 

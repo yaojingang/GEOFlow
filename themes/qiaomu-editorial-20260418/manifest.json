@@ -1,0 +1,33 @@
+{
+  "id": "qiaomu-editorial-20260418",
+  "name": "Qiaomu Editorial",
+  "source_reference_url": "https://blog.qiaomu.ai/2026-04-17-qp2x50",
+  "created_at": "2026-04-18T17:00:00+08:00",
+  "compatible_pages": [
+    "home",
+    "category",
+    "article",
+    "archive"
+  ],
+  "compatible_modules": [
+    "header",
+    "footer",
+    "home.article_card",
+    "article.hero",
+    "article.prose_shell",
+    "article.related_articles",
+    "article.sticky_ad",
+    "archive.overview_row"
+  ],
+  "preview_routes": [
+    "/preview/qiaomu-editorial-20260418/",
+    "/preview/qiaomu-editorial-20260418/category/tech-news",
+    "/preview/qiaomu-editorial-20260418/article/yw9uttip",
+    "/preview/qiaomu-editorial-20260418/archive"
+  ],
+  "notes": [
+    "Preview-first package only.",
+    "Uses real GEOFlow data and existing SEO/schema generation.",
+    "No production activation is implied."
+  ]
+}
