@@ -233,12 +233,35 @@ require_once __DIR__ . '/includes/header.php';
                 </div>
             <?php endif; ?>
 
+            <style>
+                .settings-accordion > summary {
+                    list-style: none;
+                }
+
+                .settings-accordion > summary::-webkit-details-marker {
+                    display: none;
+                }
+
+                .settings-accordion .accordion-chevron {
+                    transition: transform 0.2s ease;
+                }
+
+                .settings-accordion[open] .accordion-chevron {
+                    transform: rotate(180deg);
+                }
+            </style>
+
+            <div class="space-y-6">
             <!-- 网站设置表单 -->
-            <div class="bg-white shadow rounded-lg">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('site_settings.section_basic'); ?></h3>
-                </div>
-                <div class="px-6 py-6">
+            <details class="settings-accordion bg-white shadow rounded-lg">
+                <summary class="px-6 py-4 cursor-pointer flex items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('site_settings.section_basic'); ?></h3>
+                        <p class="mt-1 text-sm text-gray-600"><?php echo __('site_settings.page_subtitle'); ?></p>
+                    </div>
+                    <i data-lucide="chevron-down" class="accordion-chevron w-5 h-5 text-gray-400"></i>
+                </summary>
+                <div class="px-6 py-6 border-t border-gray-200">
                     <form method="POST" class="space-y-6">
                         <input type="hidden" name="action" value="update_site_settings">
                         <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
@@ -367,14 +390,17 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                     </form>
                 </div>
-            </div>
+            </details>
 
-            <div class="bg-white shadow rounded-lg mt-8">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('site_settings.theme.section_title'); ?></h3>
-                    <p class="mt-1 text-sm text-gray-600"><?php echo __('site_settings.theme.section_desc'); ?></p>
-                </div>
-                <div class="px-6 py-6">
+            <details class="settings-accordion bg-white shadow rounded-lg">
+                <summary class="px-6 py-4 cursor-pointer flex items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('site_settings.theme.section_title'); ?></h3>
+                        <p class="mt-1 text-sm text-gray-600"><?php echo __('site_settings.theme.section_desc'); ?></p>
+                    </div>
+                    <i data-lucide="chevron-down" class="accordion-chevron w-5 h-5 text-gray-400"></i>
+                </summary>
+                <div class="px-6 py-6 border-t border-gray-200">
                     <form method="POST" class="space-y-5">
                         <input type="hidden" name="action" value="update_theme_settings">
                         <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
@@ -441,22 +467,23 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                     </form>
                 </div>
-            </div>
+            </details>
 
-            <div class="bg-white shadow rounded-lg mt-8">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('site_settings.ads.section_title'); ?></h3>
-                            <p class="mt-1 text-sm text-gray-600"><?php echo __('site_settings.ads.section_desc'); ?></p>
-                        </div>
+            <details class="settings-accordion bg-white shadow rounded-lg">
+                <summary class="px-6 py-4 cursor-pointer flex items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('site_settings.ads.section_title'); ?></h3>
+                        <p class="mt-1 text-sm text-gray-600"><?php echo __('site_settings.ads.section_desc'); ?></p>
+                    </div>
+                    <i data-lucide="chevron-down" class="accordion-chevron w-5 h-5 text-gray-400"></i>
+                </summary>
+                <div class="px-6 py-6 border-t border-gray-200">
+                    <div class="flex items-center justify-end mb-6">
                         <button type="button" id="add-article-ad" class="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
                             <?php echo __('site_settings.ads.add'); ?>
                         </button>
                     </div>
-                </div>
-                <div class="px-6 py-6">
                     <form method="POST" id="article-ad-form" class="space-y-6">
                         <input type="hidden" name="action" value="update_article_detail_ads">
                         <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
@@ -548,6 +575,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                     </form>
                 </div>
+            </details>
             </div>
 
 <?php
