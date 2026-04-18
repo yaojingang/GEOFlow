@@ -420,6 +420,18 @@ function generate_article_summary_text($article) {
 }
 
 /**
+ * 生成列表卡片使用的纯文本摘要，避免把 Markdown 标记直接露到首页/列表页
+ */
+function generate_article_card_summary_text($article, $max_length = 160) {
+    $excerpt = clean_markdown_for_summary(trim((string) ($article['excerpt'] ?? '')), $max_length);
+    if ($excerpt !== '') {
+        return $excerpt;
+    }
+
+    return clean_markdown_for_summary((string) ($article['content'] ?? ''), $max_length);
+}
+
+/**
  * 构造文章机器可读摘要
  */
 function build_article_geo_summary($article, $tags = []) {

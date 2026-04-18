@@ -158,7 +158,7 @@ if ($active_theme_id !== '' && geoflow_theme_has_template($active_theme_id, 'cat
                             </h2>
 
                             <p class="entry-summary mb-5 leading-relaxed">
-                                <?php echo htmlspecialchars(!empty($article['excerpt']) ? $article['excerpt'] : mb_substr(strip_tags($article['content']), 0, 120, 'UTF-8') . '...'); ?>
+                                <?php echo htmlspecialchars(generate_article_card_summary_text($article, 120)); ?>
                             </p>
 
                             <?php $article_tags = get_article_tags($article['id']); ?>
