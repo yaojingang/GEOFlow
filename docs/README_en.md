@@ -39,6 +39,9 @@ The public repository only retains documentation that is truly useful for extern
 ### FAQ
 - [FAQ](FAQ_en.md)
 
+### Release Notes
+- [Changelog](CHANGELOG_en.md)
+
 ## Notes
 
 - The repository does not include production databases, uploaded files, or real API keys.

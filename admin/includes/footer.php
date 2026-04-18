@@ -17,6 +17,13 @@ if (!defined('FEISHU_TREASURE')) {
     </div> <!-- 结束主要内容区域 -->
 
     <!-- 底部信息 -->
+    <?php
+    $projectGithubUrl = 'https://github.com/yaojingang/GEOFlow';
+    $xProfileUrl = 'https://x.com/yaojingang';
+    $changelogUrl = app_locale() === 'en'
+        ? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md'
+        : 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md';
+    ?>
     <footer class="bg-white border-t border-gray-200 mt-12">
         <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
             <div class="flex flex-col md:flex-row md:flex-wrap justify-center items-center gap-3 md:gap-4 text-sm text-gray-500 text-center">
@@ -24,16 +31,19 @@ if (!defined('FEISHU_TREASURE')) {
                 <span>|</span>
                 <span><?php echo htmlspecialchars(__('footer.version', ['version' => '1.2'])); ?></span>
                 <span>|</span>
-                <span>
+                <span class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
                     <?php echo htmlspecialchars(__('footer.author')); ?>
-                    <a href="https://x.com/yaojingang" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 ml-1">
-                        <?php echo htmlspecialchars(__('footer.x_profile')); ?>
+                    <a href="<?php echo htmlspecialchars($xProfileUrl); ?>" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline">
+                        <?php echo htmlspecialchars(__('footer.author_x_profile')); ?>
                     </a>
-                    <a href="https://github.com/yaojingang/GEOFlow" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 ml-2">
-                        <?php echo htmlspecialchars(__('footer.project_github')); ?>
+                    <a href="<?php echo htmlspecialchars($projectGithubUrl); ?>" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline">
+                        <?php echo htmlspecialchars(__('footer.project_github_link')); ?>
+                    </a>
+                    <a href="<?php echo htmlspecialchars($changelogUrl); ?>" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline">
+                        <?php echo htmlspecialchars(__('footer.changelog_link')); ?>
                     </a>
                 </span>
-                </div>
+            </div>
         </div>
     </footer>
 
