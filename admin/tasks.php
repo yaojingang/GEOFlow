@@ -32,7 +32,7 @@ if (isset($_GET['message'])) {
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -65,9 +65,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } else {
                         $queueService->initializeTaskSchedule($task_id);
                     }
-                    $message = $new_status === 'paused' ? '任务已暂停，正在运行的批量执行已停止' : '任务已激活';
+                    $message = $new_status === 'paused'
+                        ? __('tasks.message.paused_stopped')
+                        : __('tasks.message.activated');
                 } else {
-                    $error = '状态更新失败';
+                    $error = __('tasks.message.status_update_failed');
                 }
                 break;
                 
@@ -96,10 +98,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $db->prepare("DELETE FROM tasks WHERE id = ?")->execute([$task_id]);
 
                     $db->commit();
-                    $message = '任务删除成功';
+                    $message = __('tasks.message.delete_success');
                 } catch (Exception $e) {
                     $db->rollBack();
-                    $error = '删除失败: ' . $e->getMessage();
+                    $error = __('tasks.message.delete_failed', ['message' => $e->getMessage()]);
                 }
                 break;
         }
@@ -112,9 +114,28 @@ function formatTaskErrorSnippet(?string $message, int $maxLength = 72): string {
         return '';
     }
 
+    if (
+        mb_strpos($message, '任务已暂停', 0, 'UTF-8') !== false ||
+        mb_strpos($message, '管理员手动停止', 0, 'UTF-8') !== false
+    ) {
+        return __('tasks.failure.paused_detail');
+    }
+
+    if (mb_strpos($message, 'AI返回空正文', 0, 'UTF-8') !== false) {
+        return __('tasks.failure.empty_content_detail');
+    }
+
+    if (mb_strpos($message, '正文过短', 0, 'UTF-8') !== false) {
+        return __('tasks.failure.content_too_short_detail');
+    }
+
+    if (mb_strpos($message, '没有可用的标题', 0, 'UTF-8') !== false) {
+        return __('tasks.failure.title_exhausted_detail');
+    }
+
     if (preg_match('/CURL错误:\s*Operation timed out after\s+(\d+)\s+milliseconds/i', $message, $matches)) {
         $seconds = max(1, (int) round(((int) $matches[1]) / 1000));
-        return '模型接口超时，等待 ' . $seconds . ' 秒仍未返回结果。';
+        return __('tasks.failure.model_timeout_detail', ['seconds' => $seconds]);
     }
 
     if (mb_strlen($message, 'UTF-8') <= $maxLength) {
@@ -128,7 +149,7 @@ function describeTaskFailure(?string $message): array {
     $message = trim((string) $message);
     if ($message === '') {
         return [
-            'label' => '执行失败',
+            'label' => __('tasks.failure.execution_failed'),
             'detail' => '',
             'tone' => 'red',
         ];
@@ -136,32 +157,35 @@ function describeTaskFailure(?string $message): array {
 
     if (mb_strpos($message, 'AI返回空正文', 0, 'UTF-8') !== false) {
         return [
-            'label' => '空正文已拦截',
-            'detail' => '模型返回空正文，系统已判失败，未保存文章。',
+            'label' => __('tasks.failure.empty_content'),
+            'detail' => __('tasks.failure.empty_content_detail'),
             'tone' => 'red',
         ];
     }
 
     if (mb_strpos($message, '正文过短', 0, 'UTF-8') !== false) {
         return [
-            'label' => '正文过短',
-            'detail' => '生成内容未达到最小正文长度，系统已拦截入库。',
+            'label' => __('tasks.failure.content_too_short'),
+            'detail' => __('tasks.failure.content_too_short_detail'),
             'tone' => 'amber',
         ];
     }
 
     if (mb_strpos($message, '没有可用的标题', 0, 'UTF-8') !== false) {
         return [
-            'label' => '标题库已耗尽',
-            'detail' => '当前标题库没有可分配标题，需要补充标题或更换标题库。',
+            'label' => __('tasks.failure.title_exhausted'),
+            'detail' => __('tasks.failure.title_exhausted_detail'),
             'tone' => 'amber',
         ];
     }
 
-    if (mb_strpos($message, '任务已暂停', 0, 'UTF-8') !== false) {
+    if (
+        mb_strpos($message, '任务已暂停', 0, 'UTF-8') !== false ||
+        mb_strpos($message, '管理员手动停止', 0, 'UTF-8') !== false
+    ) {
         return [
-            'label' => '任务已暂停',
-            'detail' => '待执行 job 已取消，当前不是模型生成错误。',
+            'label' => __('tasks.failure.paused'),
+            'detail' => __('tasks.failure.paused_detail'),
             'tone' => 'slate',
         ];
     }
@@ -169,14 +193,14 @@ function describeTaskFailure(?string $message): array {
     if (preg_match('/CURL错误:\s*Operation timed out after\s+(\d+)\s+milliseconds/i', $message, $matches)) {
         $seconds = max(1, (int) round(((int) $matches[1]) / 1000));
         return [
-            'label' => '模型接口超时',
-            'detail' => '模型接口在 ' . $seconds . ' 秒内未返回结果，任务会按重试策略继续处理。',
+            'label' => __('tasks.failure.model_timeout'),
+            'detail' => __('tasks.failure.model_timeout_detail', ['seconds' => $seconds]),
             'tone' => 'amber',
         ];
     }
 
     return [
-        'label' => '执行失败',
+        'label' => __('tasks.failure.execution_failed'),
         'detail' => formatTaskErrorSnippet($message, 110),
         'tone' => 'red',
     ];
@@ -307,7 +331,7 @@ try {
     unset($task);
 } catch (Exception $e) {
     $tasks = [];
-    $error = '数据库查询失败: ' . $e->getMessage();
+    $error = __('tasks.message.query_failed', ['message' => $e->getMessage()]);
 }
 
 try {
@@ -342,21 +366,21 @@ try {
 }
 
 // 设置页面信息
-$page_title = '任务管理';
+$page_title = __('tasks.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div>
-        <h1 class="text-2xl font-bold text-gray-900">任务管理</h1>
-        <p class="mt-1 text-sm text-gray-600">管理AI内容生成任务</p>
+        <h1 class="text-2xl font-bold text-gray-900">' . htmlspecialchars(__('tasks.page_title'), ENT_QUOTES) . '</h1>
+        <p class="mt-1 text-sm text-gray-600">' . htmlspecialchars(__('tasks.page_subtitle'), ENT_QUOTES) . '</p>
     </div>
     <div class="flex space-x-3">
         <a href="task-create.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-            创建任务
+            ' . htmlspecialchars(__('button.create_task'), ENT_QUOTES) . '
         </a>
         <button onclick="executeAllActiveTasks()" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
             <i data-lucide="play" class="w-4 h-4 mr-2"></i>
-            立即执行所有任务
+            ' . htmlspecialchars(__('button.run_all_tasks'), ENT_QUOTES) . '
         </button>
     </div>
 </div>
@@ -369,17 +393,17 @@ require_once __DIR__ . '/includes/header.php';
         <!-- 任务列表 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">任务列表</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars(__('tasks.list_title')); ?></h3>
             </div>
             
             <?php if (empty($tasks)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="inbox" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无任务</h3>
-                    <p class="text-gray-500 mb-4">开始创建您的第一个AI内容生成任务</p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo htmlspecialchars(__('tasks.empty_title')); ?></h3>
+                    <p class="text-gray-500 mb-4"><?php echo htmlspecialchars(__('tasks.empty_desc')); ?></p>
                     <a href="task-create.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                        新建任务
+                        <?php echo htmlspecialchars(__('button.new_task')); ?>
                     </a>
                 </div>
             <?php else: ?>
@@ -396,13 +420,13 @@ require_once __DIR__ . '/includes/header.php';
                         </colgroup>
                         <thead class="bg-gray-50">
                             <tr>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务名称</th>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">创建时间</th>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AI模型</th>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章统计</th>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">循环次数</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
-                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('tasks.column.name')); ?></th>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('tasks.column.created_at')); ?></th>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('tasks.column.model')); ?></th>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('tasks.column.article_stats')); ?></th>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('tasks.column.loop_count')); ?></th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('tasks.column.status')); ?></th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('tasks.column.actions')); ?></th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -418,7 +442,7 @@ require_once __DIR__ . '/includes/header.php';
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-5 py-4 align-top">
                                         <div class="text-sm font-medium leading-6 text-gray-900 break-words"><?php echo htmlspecialchars($task['name']); ?></div>
-                                        <div class="mt-1 text-sm text-gray-500 break-words">标题库: <?php echo htmlspecialchars($task['title_library_name']); ?></div>
+                                        <div class="mt-1 text-sm text-gray-500 break-words"><?php echo htmlspecialchars(__('tasks.label.title_library')); ?>: <?php echo htmlspecialchars($task['title_library_name']); ?></div>
                                         <?php if ($hasVisibleFailure): ?>
                                             <div class="mt-2 rounded-md border px-3 py-2 text-xs <?php echo $failureClasses['card']; ?>">
                                                 <div class="flex items-center gap-2">
@@ -434,9 +458,14 @@ require_once __DIR__ . '/includes/header.php';
                                                         <?php echo htmlspecialchars($failureInfo['detail']); ?>
                                                     </div>
                                                 <?php endif; ?>
-                                                <div class="mt-1 break-words opacity-90">
-                                                    <?php echo htmlspecialchars(formatTaskErrorSnippet($task['batch_error_message'], 100)); ?>
-                                                </div>
+                                                <?php
+                                                $failureSnippet = formatTaskErrorSnippet($task['batch_error_message'], 100);
+                                                if ($failureSnippet !== '' && $failureSnippet !== ($failureInfo['detail'] ?? '')):
+                                                ?>
+                                                    <div class="mt-1 break-words opacity-90">
+                                                        <?php echo htmlspecialchars($failureSnippet); ?>
+                                                    </div>
+                                                <?php endif; ?>
                                             </div>
                                         <?php endif; ?>
                                     </td>
@@ -445,15 +474,20 @@ require_once __DIR__ . '/includes/header.php';
                                     </td>
                                     <td class="px-5 py-4 align-top text-sm text-gray-500">
                                         <div class="break-words leading-6"><?php echo htmlspecialchars($task['ai_model_name']); ?></div>
+                                        <div class="mt-1">
+                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium <?php echo (($task['model_selection_mode'] ?? 'fixed') === 'smart_failover') ? 'bg-violet-100 text-violet-800' : 'bg-slate-100 text-slate-700'; ?>">
+                                                <?php echo htmlspecialchars(($task['model_selection_mode'] ?? 'fixed') === 'smart_failover' ? __('tasks.mode.smart_failover') : __('tasks.mode.fixed')); ?>
+                                            </span>
+                                        </div>
                                     </td>
                                     <td class="px-5 py-4 align-top whitespace-nowrap text-sm text-gray-500">
-                                        <div>已创建: <?php echo $task['total_articles']; ?> 篇</div>
-                                        <div>已发布: <?php echo $task['published_articles']; ?> 篇</div>
+                                        <div><?php echo htmlspecialchars(__('tasks.label.created_articles', ['count' => $task['total_articles']])); ?></div>
+                                        <div><?php echo htmlspecialchars(__('tasks.label.published_articles', ['count' => $task['published_articles']])); ?></div>
                                     </td>
                                     <td class="px-5 py-4 align-top whitespace-nowrap text-sm text-gray-500">
-                                        <?php echo $task['loop_count']; ?> 次
+                                        <?php echo htmlspecialchars(__('tasks.label.loop_times', ['count' => $task['loop_count']])); ?>
                                         <?php if ($task['is_loop']): ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 ml-1">循环</span>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 ml-1"><?php echo htmlspecialchars(__('tasks.label.loop')); ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="px-4 py-4 align-top">
@@ -468,7 +502,7 @@ require_once __DIR__ . '/includes/header.php';
                                                        onchange="handleStatusToggle(<?php echo $task['id']; ?>, this)"
                                                        class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                                                 <span class="ml-2 text-sm <?php echo $task['status'] === 'active' ? 'text-green-600' : 'text-gray-500'; ?>">
-                                                    <?php echo $task['status'] === 'active' ? '运行中' : '已暂停'; ?>
+                                                    <?php echo htmlspecialchars($task['status'] === 'active' ? __('tasks.status.running') : __('tasks.status.paused')); ?>
                                                 </span>
 
                                                 <!-- 动态文章数量显示 -->
@@ -476,7 +510,7 @@ require_once __DIR__ . '/includes/header.php';
                                                     <span class="ml-2 inline-flex items-center text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-200"
                                                           id="article-count-<?php echo $task['id']; ?>">
                                                         <i data-lucide="file-text" class="w-3 h-3 mr-1"></i>
-                                                        <span class="article-count-number"><?php echo $task['created_count']; ?></span>篇
+                                                        <span class="article-count-number"><?php echo $task['created_count']; ?></span><?php echo htmlspecialchars(__('common.articles_unit')); ?>
                                                     </span>
                                                 <?php endif; ?>
                                             </label>
@@ -491,7 +525,7 @@ require_once __DIR__ . '/includes/header.php';
                                                     <!-- 正在运行 - 显示停止按钮 -->
                                                     <button onclick="stopBatchExecution(<?php echo $task['id']; ?>, '<?php echo htmlspecialchars($task['name'], ENT_QUOTES); ?>')"
                                                             class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200"
-                                                            title="停止批量执行"
+                                                            title="<?php echo htmlspecialchars(__('tasks.action.stop_batch')); ?>"
                                                             id="batch-btn-<?php echo $task['id']; ?>">
                                                         <i data-lucide="square" class="w-4 h-4"></i>
                                                     </button>
@@ -499,14 +533,14 @@ require_once __DIR__ . '/includes/header.php';
                                                     <!-- 空闲状态 - 显示开始按钮 -->
                                                     <button onclick="startBatchExecution(<?php echo $task['id']; ?>, '<?php echo htmlspecialchars($task['name'], ENT_QUOTES); ?>')"
                                                             class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200"
-                                                            title="开始批量执行"
+                                                            title="<?php echo htmlspecialchars(__('tasks.action.start_batch')); ?>"
                                                             id="batch-btn-<?php echo $task['id']; ?>">
                                                         <i data-lucide="play" class="w-4 h-4"></i>
                                                     </button>
                                                 <?php endif; ?>
                                             <?php else: ?>
                                                 <!-- 任务暂停状态 -->
-                                                <span class="inline-flex items-center justify-center w-8 h-8 text-gray-400 bg-gray-50 rounded-md border border-gray-200" title="任务已暂停">
+                                                <span class="inline-flex items-center justify-center w-8 h-8 text-gray-400 bg-gray-50 rounded-md border border-gray-200" title="<?php echo htmlspecialchars(__('tasks.action.paused')); ?>">
                                                     <i data-lucide="pause" class="w-4 h-4"></i>
                                                 </span>
                                             <?php endif; ?>
@@ -514,14 +548,14 @@ require_once __DIR__ . '/includes/header.php';
                                             <!-- 2. 设置任务 -->
                                             <a href="task-edit.php?id=<?php echo $task['id']; ?>"
                                                class="inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors border border-blue-200"
-                                               title="设置任务">
+                                               title="<?php echo htmlspecialchars(__('tasks.action.settings')); ?>">
                                                 <i data-lucide="settings" class="w-4 h-4"></i>
                                             </a>
 
                                             <!-- 3. 文章管理 -->
                                             <a href="articles.php?task_id=<?php echo $task['id']; ?>"
                                                class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200 relative"
-                                               title="文章管理">
+                                               title="<?php echo htmlspecialchars(__('tasks.action.articles')); ?>">
                                                 <i data-lucide="file-text" class="w-4 h-4"></i>
                                                 <?php if ($task['total_articles'] > 0): ?>
                                                     <span class="absolute -top-1 -right-1 bg-green-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center" style="font-size: 10px;">
@@ -531,13 +565,13 @@ require_once __DIR__ . '/includes/header.php';
                                             </a>
 
                                             <!-- 4. 删除任务 -->
-                                            <form method="POST" class="inline" onsubmit="return confirm('确定要删除这个任务吗？相关文章将被移至垃圾箱。')">
+                                            <form method="POST" class="inline" onsubmit="return confirm(<?php echo json_encode(__('tasks.confirm.delete'), JSON_UNESCAPED_UNICODE); ?>)">
                                                 <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                                                 <input type="hidden" name="action" value="delete_task">
                                                 <input type="hidden" name="task_id" value="<?php echo $task['id']; ?>">
                                                 <button type="submit"
                                                         class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200"
-                                                        title="删除任务">
+                                                        title="<?php echo htmlspecialchars(__('tasks.action.delete')); ?>">
                                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                                 </button>
                                             </form>
@@ -547,8 +581,7 @@ require_once __DIR__ . '/includes/header.php';
                                         <?php if ($task['batch_success_count'] > 0 || $task['batch_error_count'] > 0): ?>
                                             <div class="mt-2 php-stats-status">
                                                 <span class="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded-full border border-gray-200">
-                                                    成功: <?php echo $task['batch_success_count']; ?>
-                                                    失败: <?php echo $task['batch_error_count']; ?>
+                                                    <?php echo htmlspecialchars(__('tasks.label.success_fail', ['success' => $task['batch_success_count'], 'fail' => $task['batch_error_count']])); ?>
                                                 </span>
                                             </div>
                                         <?php endif; ?>
@@ -557,14 +590,20 @@ require_once __DIR__ . '/includes/header.php';
                                                 <div class="flex flex-col gap-1 text-xs">
                                                     <span class="inline-flex items-center rounded-full border px-2 py-1 <?php echo $isRetrying ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200'; ?>">
                                                         <?php if ($isRetrying): ?>
-                                                            重试中 <?php echo (int) $task['latest_attempt_count']; ?>/<?php echo (int) $task['latest_max_attempts']; ?>
+                                                            <?php echo htmlspecialchars(__('tasks.label.retrying_with_attempts', ['current' => (int) $task['latest_attempt_count'], 'max' => (int) $task['latest_max_attempts']])); ?>
                                                         <?php else: ?>
-                                                            排队中<?php if (!empty($task['pending_jobs'])): ?> · <?php echo (int) $task['pending_jobs']; ?><?php endif; ?>
+                                                            <?php
+                                                            echo htmlspecialchars(
+                                                                !empty($task['pending_jobs'])
+                                                                    ? __('tasks.label.pending_queue', ['count' => (int) $task['pending_jobs']])
+                                                                    : __('tasks.status.pending')
+                                                            );
+                                                            ?>
                                                         <?php endif; ?>
                                                     </span>
                                                     <?php if ($isRetrying && !empty($task['batch_error_message'])): ?>
                                                         <div class="break-words leading-5 text-amber-700">
-                                                            最近原因：<?php echo htmlspecialchars(formatTaskErrorSnippet($task['batch_error_message'], 56)); ?>
+                                                            <?php echo htmlspecialchars(__('tasks.label.latest_reason', ['message' => formatTaskErrorSnippet($task['batch_error_message'], 56)])); ?>
                                                         </div>
                                                     <?php endif; ?>
                                                 </div>
@@ -573,15 +612,18 @@ require_once __DIR__ . '/includes/header.php';
                                                     <span class="inline-flex items-center rounded-full border px-2 py-1 <?php echo $failureClasses['chip']; ?>">
                                                         <?php echo htmlspecialchars($failureInfo['label']); ?>
                                                     </span>
-                                                    <?php if (!empty($task['batch_error_message'])): ?>
+                                                    <?php
+                                                    $failureStatusSnippet = formatTaskErrorSnippet($task['batch_error_message'], 60);
+                                                    if (!empty($task['batch_error_message']) && $failureStatusSnippet !== ($failureInfo['detail'] ?? '')):
+                                                    ?>
                                                         <div class="break-words leading-5 <?php echo $failureClasses['detail']; ?>">
-                                                            <?php echo htmlspecialchars(formatTaskErrorSnippet($task['batch_error_message'], 60)); ?>
+                                                            <?php echo htmlspecialchars($failureStatusSnippet); ?>
                                                         </div>
                                                     <?php endif; ?>
                                                 </div>
                                             <?php elseif ($task['batch_status'] === 'completed'): ?>
                                                 <span class="text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">
-                                                    最近执行完成
+                                                    <?php echo htmlspecialchars(__('tasks.status.completed')); ?>
                                                 </span>
                                             <?php endif; ?>
                                         </div>
@@ -604,7 +646,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">总任务数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('tasks.stats.total_tasks')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo count($tasks); ?></dd>
                             </dl>
                         </div>
@@ -620,7 +662,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">运行中</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('tasks.stats.running')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900">
                                     <?php echo count(array_filter($tasks, function($t) { return $t['status'] === 'active'; })); ?>
                                 </dd>
@@ -638,7 +680,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">总文章数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('tasks.stats.total_articles')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900">
                                     <?php echo array_sum(array_column($tasks, 'total_articles')); ?>
                                 </dd>
@@ -656,7 +698,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">已发布</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('tasks.stats.total_published')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900">
                                     <?php echo array_sum(array_column($tasks, 'published_articles')); ?>
                                 </dd>
@@ -670,11 +712,11 @@ require_once __DIR__ . '/includes/header.php';
         <div class="mt-8 grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="px-5 py-4 border-b border-gray-200">
-                    <h3 class="text-base font-medium text-gray-900">Worker 状态</h3>
+                    <h3 class="text-base font-medium text-gray-900"><?php echo htmlspecialchars(__('tasks.worker.title')); ?></h3>
                 </div>
                 <div class="p-5">
                     <?php if (empty($workers)): ?>
-                        <p class="text-sm text-gray-500">暂无 worker 心跳</p>
+                        <p class="text-sm text-gray-500"><?php echo htmlspecialchars(__('tasks.worker.none')); ?></p>
                     <?php else: ?>
                         <div class="space-y-3">
                             <?php foreach ($workers as $worker): ?>
@@ -686,8 +728,8 @@ require_once __DIR__ . '/includes/header.php';
                                         </span>
                                     </div>
                                     <div class="mt-2 text-xs text-gray-500">
-                                        <div>当前 Job: <?php echo $worker['current_job_id'] ? '#' . (int) $worker['current_job_id'] : '空闲'; ?></div>
-                                        <div>最后心跳: <?php echo htmlspecialchars($worker['last_seen_at']); ?></div>
+                                        <div><?php echo htmlspecialchars(__('tasks.worker.current_job')); ?>: <?php echo $worker['current_job_id'] ? '#' . (int) $worker['current_job_id'] : htmlspecialchars(__('tasks.worker.idle')); ?></div>
+                                        <div><?php echo htmlspecialchars(__('tasks.worker.last_seen')); ?>: <?php echo htmlspecialchars($worker['last_seen_at']); ?></div>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
@@ -698,24 +740,24 @@ require_once __DIR__ . '/includes/header.php';
 
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="px-5 py-4 border-b border-gray-200">
-                    <h3 class="text-base font-medium text-gray-900">队列概览</h3>
+                    <h3 class="text-base font-medium text-gray-900"><?php echo htmlspecialchars(__('tasks.queue.title')); ?></h3>
                 </div>
                 <div class="p-5">
                     <div class="grid grid-cols-2 gap-3">
                         <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-                            <div class="text-xs text-blue-700">待执行</div>
+                            <div class="text-xs text-blue-700"><?php echo htmlspecialchars(__('tasks.queue.pending')); ?></div>
                             <div class="mt-1 text-2xl font-semibold text-blue-900"><?php echo (int) ($queueStats['pending'] ?? 0); ?></div>
                         </div>
                         <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-                            <div class="text-xs text-emerald-700">执行中</div>
+                            <div class="text-xs text-emerald-700"><?php echo htmlspecialchars(__('tasks.queue.running')); ?></div>
                             <div class="mt-1 text-2xl font-semibold text-emerald-900"><?php echo (int) ($queueStats['running'] ?? 0); ?></div>
                         </div>
                         <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-                            <div class="text-xs text-red-700">失败</div>
+                            <div class="text-xs text-red-700"><?php echo htmlspecialchars(__('tasks.queue.failed')); ?></div>
                             <div class="mt-1 text-2xl font-semibold text-red-900"><?php echo (int) ($queueStats['failed'] ?? 0); ?></div>
                         </div>
                         <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                            <div class="text-xs text-gray-700">完成</div>
+                            <div class="text-xs text-gray-700"><?php echo htmlspecialchars(__('tasks.queue.completed')); ?></div>
                             <div class="mt-1 text-2xl font-semibold text-gray-900"><?php echo (int) ($queueStats['completed'] ?? 0); ?></div>
                         </div>
                     </div>
@@ -724,19 +766,19 @@ require_once __DIR__ . '/includes/header.php';
 
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="px-5 py-4 border-b border-gray-200">
-                    <h3 class="text-base font-medium text-gray-900">最近 Job</h3>
+                    <h3 class="text-base font-medium text-gray-900"><?php echo htmlspecialchars(__('tasks.jobs.recent')); ?></h3>
                 </div>
                 <div class="p-5">
                     <?php if (empty($recentJobs)): ?>
-                        <p class="text-sm text-gray-500">暂无 job 记录</p>
+                        <p class="text-sm text-gray-500"><?php echo htmlspecialchars(__('tasks.jobs.none')); ?></p>
                     <?php else: ?>
                         <div class="space-y-3">
                             <?php foreach ($recentJobs as $job): ?>
                                 <div class="rounded-lg border border-gray-200 px-3 py-3">
                                     <div class="flex items-center justify-between gap-3">
                                         <div class="min-w-0">
-                                            <div class="text-sm font-medium text-gray-900 truncate"><?php echo htmlspecialchars($job['task_name'] ?: '未知任务'); ?></div>
-                                            <div class="text-xs text-gray-500">Job #<?php echo (int) $job['id']; ?> · 任务 #<?php echo (int) $job['task_id']; ?></div>
+                                            <div class="text-sm font-medium text-gray-900 truncate"><?php echo htmlspecialchars($job['task_name'] ?: __('tasks.jobs.unknown_task')); ?></div>
+                                            <div class="text-xs text-gray-500">Job #<?php echo (int) $job['id']; ?> · <?php echo htmlspecialchars(__('tasks.jobs.task_prefix')); ?> #<?php echo (int) $job['task_id']; ?></div>
                                         </div>
                                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border <?php
                                             echo match ($job['status']) {
@@ -751,7 +793,7 @@ require_once __DIR__ . '/includes/header.php';
                                         </span>
                                     </div>
                                     <div class="mt-2 text-xs text-gray-500">
-                                        <div>更新时间: <?php echo htmlspecialchars($job['updated_at']); ?></div>
+                                        <div><?php echo htmlspecialchars(__('tasks.jobs.updated_at')); ?>: <?php echo htmlspecialchars($job['updated_at']); ?></div>
                                         <?php if (!empty($job['error_message'])): ?>
                                             <?php
                                             $jobFailureInfo = describeTaskFailure($job['error_message']);
@@ -762,7 +804,12 @@ require_once __DIR__ . '/includes/header.php';
                                                 <?php if (!empty($jobFailureInfo['detail'])): ?>
                                                     <div class="mt-1 <?php echo $jobFailureClasses['detail']; ?>"><?php echo htmlspecialchars($jobFailureInfo['detail']); ?></div>
                                                 <?php endif; ?>
-                                                <div class="mt-1 break-words opacity-90"><?php echo htmlspecialchars(formatTaskErrorSnippet($job['error_message'], 100)); ?></div>
+                                                <?php
+                                                $jobFailureSnippet = formatTaskErrorSnippet($job['error_message'], 100);
+                                                if ($jobFailureSnippet !== '' && $jobFailureSnippet !== ($jobFailureInfo['detail'] ?? '')):
+                                                ?>
+                                                    <div class="mt-1 break-words opacity-90"><?php echo htmlspecialchars($jobFailureSnippet); ?></div>
+                                                <?php endif; ?>
                                             </div>
                                         <?php endif; ?>
                                     </div>
@@ -778,6 +825,50 @@ require_once __DIR__ . '/includes/header.php';
 <script>
 const TASK_STATUS_POLL_MS = 10000;
 let taskStatusInterval;
+const TASK_I18N = <?php echo json_encode([
+    'stopBatch' => __('tasks.action.stop_batch'),
+    'startBatch' => __('tasks.action.start_batch'),
+    'secondsSuffix' => __('common.seconds'),
+    'minutesSuffix' => __('common.minutes'),
+    'hoursSuffix' => __('common.hours'),
+    'daysSuffix' => __('common.days'),
+    'completed' => __('tasks.status.completed'),
+    'queued' => __('tasks.status.pending'),
+    'running' => __('tasks.status.running'),
+    'retryingWithAttempts' => __('tasks.label.retrying_with_attempts', ['current' => '__CURRENT__', 'max' => '__MAX__']),
+    'pendingRunning' => __('tasks.label.pending_running', ['pending' => '__PENDING__', 'running' => '__RUNNING__']),
+    'estimated' => __('tasks.label.estimated', ['time' => '__TIME__']),
+    'latestReason' => __('tasks.label.latest_reason', ['message' => '__MESSAGE__']),
+    'emptyContent' => __('tasks.failure.empty_content'),
+    'emptyContentDetail' => __('tasks.failure.empty_content_detail'),
+    'contentTooShort' => __('tasks.failure.content_too_short'),
+    'contentTooShortDetail' => __('tasks.failure.content_too_short_detail'),
+    'titleExhausted' => __('tasks.failure.title_exhausted'),
+    'titleExhaustedDetail' => __('tasks.failure.title_exhausted_detail'),
+    'taskPaused' => __('tasks.failure.paused'),
+    'taskPausedDetail' => __('tasks.failure.paused_detail'),
+    'modelTimeout' => __('tasks.failure.model_timeout'),
+    'modelTimeoutDetail' => __('tasks.failure.model_timeout_detail', ['seconds' => '__SECONDS__']),
+    'recentFailed' => __('tasks.failure.recent_failed'),
+    'syncFailed' => __('tasks.message.status_update_failed'),
+    'confirmStart' => __('tasks.confirm.start', ['name' => '__NAME__']),
+    'confirmStop' => __('tasks.confirm.stop', ['name' => '__NAME__']),
+    'starting' => __('tasks.action.starting'),
+    'stopping' => __('tasks.action.stopping'),
+    'startFailed' => __('tasks.message.start_failed', ['message' => '__MESSAGE__']),
+    'stopFailed' => __('tasks.message.stop_failed', ['message' => '__MESSAGE__']),
+    'requestFailed' => __('tasks.message.request_failed', ['message' => '__MESSAGE__']),
+    'taskQueued' => __('tasks.message.task_queued', ['name' => '__NAME__']),
+    'taskStopped' => __('tasks.message.task_stopped', ['name' => '__NAME__']),
+    'noRunnable' => __('tasks.message.no_runnable'),
+    'confirmRunAll' => __('tasks.confirm.run_all'),
+    'bulkSubmitted' => __('tasks.message.bulk_submitted', ['success' => '__SUCCESS__', 'total' => '__TOTAL__']),
+    'bulkSubmittedPartial' => __('tasks.message.bulk_submitted_partial', ['success' => '__SUCCESS__', 'total' => '__TOTAL__']),
+    'activating' => __('tasks.action.activating'),
+    'pausing' => __('tasks.action.pausing'),
+    'confirmActivate' => __('tasks.confirm.activate'),
+    'confirmPause' => __('tasks.confirm.pause'),
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
 function renderIcons() {
     if (typeof lucide !== 'undefined') {
@@ -833,7 +924,7 @@ function updateBatchButton(btn, taskId, taskName, isRunning) {
     btn.innerHTML = isRunning
         ? '<i data-lucide="square" class="w-4 h-4"></i>'
         : '<i data-lucide="play" class="w-4 h-4"></i>';
-    btn.title = isRunning ? '停止批量执行' : '开始批量执行';
+    btn.title = isRunning ? TASK_I18N.stopBatch : TASK_I18N.startBatch;
     btn.onclick = isRunning
         ? () => stopBatchExecution(taskId, taskName)
         : () => startBatchExecution(taskId, taskName);
@@ -841,10 +932,10 @@ function updateBatchButton(btn, taskId, taskName, isRunning) {
 }
 
 function formatEstimatedTime(seconds) {
-    if (seconds < 60) return `${seconds}秒`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}分钟`;
-    if (seconds < 86400) return `${Math.round(seconds / 3600)}小时`;
-    return `${Math.round(seconds / 86400)}天`;
+    if (seconds < 60) return `${seconds}${TASK_I18N.secondsSuffix}`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}${TASK_I18N.minutesSuffix}`;
+    if (seconds < 86400) return `${Math.round(seconds / 3600)}${TASK_I18N.hoursSuffix}`;
+    return `${Math.round(seconds / 86400)}${TASK_I18N.daysSuffix}`;
 }
 
 function updateBatchStatus(task) {
@@ -877,14 +968,14 @@ function updateBatchStatus(task) {
                 </div>
             `;
         } else if (task.batch_status === 'completed') {
-            statusDiv.innerHTML = '<span class="text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">最近执行完成</span>';
+            statusDiv.innerHTML = `<span class="text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">${escapeHtml(TASK_I18N.completed)}</span>`;
         } else {
             statusDiv.innerHTML = '';
         }
         return;
     }
 
-    const stateLabel = task.batch_status === 'pending' ? '排队中' : '运行中';
+    const stateLabel = task.batch_status === 'pending' ? TASK_I18N.queued : TASK_I18N.running;
     const stateClasses = task.batch_status === 'pending'
         ? 'bg-blue-50 text-blue-700 border-blue-200'
         : 'bg-emerald-50 text-emerald-700 border-emerald-200';
@@ -896,22 +987,22 @@ function updateBatchStatus(task) {
             <div class="flex items-center gap-2">
                 ${task.batch_status === 'pending' ? `
                     <span class="inline-flex items-center rounded-full border px-2 py-0.5 ${isRetrying ? 'bg-amber-50 text-amber-700 border-amber-200' : stateClasses}">
-                        <i data-lucide="activity" class="h-3 w-3 mr-1"></i>${isRetrying ? `重试中 ${latestAttemptCount}/${latestMaxAttempts}` : stateLabel}
+                        <i data-lucide="activity" class="h-3 w-3 mr-1"></i>${isRetrying ? TASK_I18N.retryingWithAttempts.replace('__CURRENT__', latestAttemptCount).replace('__MAX__', latestMaxAttempts) : stateLabel}
                     </span>
                 ` : `
                     <span class="inline-flex items-center rounded-full border px-2 py-0.5 ${stateClasses}">
                         <i data-lucide="activity" class="h-3 w-3 mr-1"></i>${stateLabel}
                     </span>
                 `}
-                <span class="text-gray-600">${createdCount}/${draftLimit} 篇</span>
+                <span class="text-gray-600">${createdCount}/${draftLimit}</span>
             </div>
             <div class="text-gray-500">
-                待执行 ${pendingJobs} · 执行中 ${runningJobs}
-                ${remainingArticles > 0 ? ` · 预计 ${estimatedTime}` : ''}
+                ${TASK_I18N.pendingRunning.replace('__PENDING__', pendingJobs).replace('__RUNNING__', runningJobs)}
+                ${remainingArticles > 0 ? ` · ${TASK_I18N.estimated.replace('__TIME__', estimatedTime)}` : ''}
             </div>
             ${isRetrying && errorMessage ? `
                 <div class="max-w-[220px] break-words leading-5 text-amber-700">
-                    最近原因：${escapeHtml(truncateText(errorMessage, 56))}
+                    ${escapeHtml(TASK_I18N.latestReason.replace('__MESSAGE__', truncateText(errorMessage, 56)))}
                 </div>
             ` : ''}
             ${(successCount > 0 || errorCount > 0) ? `
@@ -947,55 +1038,88 @@ function normalizeRuntimeError(message) {
         return '';
     }
 
+    if (value.includes('任务已暂停') || value.includes('管理员手动停止')) {
+        return TASK_I18N.taskPausedDetail;
+    }
+
+    if (value.includes('AI返回空正文')) {
+        return TASK_I18N.emptyContentDetail;
+    }
+
+    if (value.includes('正文过短')) {
+        return TASK_I18N.contentTooShortDetail;
+    }
+
+    if (value.includes('没有可用的标题')) {
+        return TASK_I18N.titleExhaustedDetail;
+    }
+
     const timeoutMatch = value.match(/CURL错误:\s*Operation timed out after\s+(\d+)\s+milliseconds/i);
     if (timeoutMatch) {
         const seconds = Math.max(1, Math.round(Number(timeoutMatch[1]) / 1000));
-        return `模型接口超时，等待 ${seconds} 秒仍未返回结果。`;
+        return TASK_I18N.modelTimeoutDetail.replace('__SECONDS__', String(seconds));
     }
 
     return value;
 }
 
 function getFailureMeta(message) {
+    const rawMessage = String(message || '').trim();
     const normalizedMessage = normalizeRuntimeError(message);
 
-    if (normalizedMessage.includes('AI返回空正文')) {
+    if (
+        rawMessage.includes('AI返回空正文') ||
+        normalizedMessage === TASK_I18N.emptyContentDetail
+    ) {
         return {
-            label: '空正文已拦截',
+            label: TASK_I18N.emptyContent,
             chipClasses: 'bg-red-50 text-red-700 border-red-200',
             detailClasses: 'text-red-700',
         };
     }
-    if (normalizedMessage.includes('正文过短')) {
+    if (
+        rawMessage.includes('正文过短') ||
+        normalizedMessage === TASK_I18N.contentTooShortDetail
+    ) {
         return {
-            label: '正文过短',
+            label: TASK_I18N.contentTooShort,
             chipClasses: 'bg-amber-50 text-amber-700 border-amber-200',
             detailClasses: 'text-amber-700',
         };
     }
-    if (normalizedMessage.includes('没有可用的标题')) {
+    if (
+        rawMessage.includes('没有可用的标题') ||
+        normalizedMessage === TASK_I18N.titleExhaustedDetail
+    ) {
         return {
-            label: '标题库已耗尽',
+            label: TASK_I18N.titleExhausted,
             chipClasses: 'bg-amber-50 text-amber-700 border-amber-200',
             detailClasses: 'text-amber-700',
         };
     }
-    if (normalizedMessage.includes('任务已暂停')) {
+    if (
+        rawMessage.includes('任务已暂停') ||
+        rawMessage.includes('管理员手动停止') ||
+        normalizedMessage === TASK_I18N.taskPausedDetail
+    ) {
         return {
-            label: '任务已暂停',
+            label: TASK_I18N.taskPaused,
             chipClasses: 'bg-slate-50 text-slate-700 border-slate-200',
             detailClasses: 'text-slate-600',
         };
     }
-    if (normalizedMessage.includes('模型接口超时')) {
+    if (
+        rawMessage.includes('模型接口超时') ||
+        /CURL错误:\s*Operation timed out after\s+\d+\s+milliseconds/i.test(rawMessage)
+    ) {
         return {
-            label: '模型接口超时',
+            label: TASK_I18N.modelTimeout,
             chipClasses: 'bg-amber-50 text-amber-700 border-amber-200',
             detailClasses: 'text-amber-700',
         };
     }
     return {
-        label: '最近执行失败',
+        label: TASK_I18N.recentFailed,
         chipClasses: 'bg-red-50 text-red-700 border-red-200',
         detailClasses: 'text-red-700',
     };
@@ -1016,17 +1140,17 @@ function refreshTaskStatuses() {
             data.tasks.forEach(updateTaskUI);
         })
         .catch(error => {
-            console.error('状态同步失败:', error);
+            console.error(TASK_I18N.syncFailed, error);
         });
 }
 
 function startBatchExecution(taskId, taskName) {
-    if (!confirm(`确定开始任务“${taskName}”吗？\n\n系统会立即将它加入执行队列。`)) {
+    if (!confirm(TASK_I18N.confirmStart.replace('__NAME__', taskName))) {
         return;
     }
 
     const btn = document.getElementById(`batch-btn-${taskId}`);
-    setButtonLoading(btn, '启动中', 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-blue-200 bg-blue-50 text-blue-600 cursor-wait');
+    setButtonLoading(btn, TASK_I18N.starting, 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-blue-200 bg-blue-50 text-blue-600 cursor-wait');
 
     fetch(window.adminUrl('start_task_batch.php'), {
         method: 'POST',
@@ -1036,27 +1160,27 @@ function startBatchExecution(taskId, taskName) {
         .then(response => response.json())
         .then(data => {
             if (!data.success) {
-                showNotification('error', `启动失败：${data.message}`);
+                showNotification('error', TASK_I18N.startFailed.replace('__MESSAGE__', data.message));
                 updateBatchButton(btn, taskId, taskName, false);
                 return;
             }
-            showNotification('success', `任务“${taskName}”已加入执行队列`);
+            showNotification('success', TASK_I18N.taskQueued.replace('__NAME__', taskName));
             updateBatchButton(btn, taskId, taskName, true);
             refreshTaskStatuses();
         })
         .catch(error => {
-            showNotification('error', `请求失败：${error.message}`);
+            showNotification('error', TASK_I18N.requestFailed.replace('__MESSAGE__', error.message));
             updateBatchButton(btn, taskId, taskName, false);
         });
 }
 
 function stopBatchExecution(taskId, taskName) {
-    if (!confirm(`确定停止任务“${taskName}”吗？\n\n待执行 job 会被取消，正在执行的 job 会在当前轮结束后退出。`)) {
+    if (!confirm(TASK_I18N.confirmStop.replace('__NAME__', taskName))) {
         return;
     }
 
     const btn = document.getElementById(`batch-btn-${taskId}`);
-    setButtonLoading(btn, '停止中', 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-orange-200 bg-orange-50 text-orange-600 cursor-wait');
+    setButtonLoading(btn, TASK_I18N.stopping, 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-orange-200 bg-orange-50 text-orange-600 cursor-wait');
 
     fetch(window.adminUrl('start_task_batch.php'), {
         method: 'POST',
@@ -1066,16 +1190,16 @@ function stopBatchExecution(taskId, taskName) {
         .then(response => response.json())
         .then(data => {
             if (!data.success) {
-                showNotification('error', `停止失败：${data.message}`);
+                showNotification('error', TASK_I18N.stopFailed.replace('__MESSAGE__', data.message));
                 updateBatchButton(btn, taskId, taskName, true);
                 return;
             }
-            showNotification('success', `任务“${taskName}”已停止自动调度`);
+            showNotification('success', TASK_I18N.taskStopped.replace('__NAME__', taskName));
             updateBatchButton(btn, taskId, taskName, false);
             refreshTaskStatuses();
         })
         .catch(error => {
-            showNotification('error', `请求失败：${error.message}`);
+            showNotification('error', TASK_I18N.requestFailed.replace('__MESSAGE__', error.message));
             updateBatchButton(btn, taskId, taskName, true);
         });
 }
@@ -1086,11 +1210,11 @@ function executeAllActiveTasks() {
     });
 
     if (buttons.length === 0) {
-        showNotification('info', '没有可立即加入队列的活跃任务');
+        showNotification('info', TASK_I18N.noRunnable);
         return;
     }
 
-    if (!confirm(`确定将 ${buttons.length} 个任务全部加入执行队列吗？`)) {
+    if (!confirm(TASK_I18N.confirmRunAll)) {
         return;
     }
 
@@ -1111,14 +1235,14 @@ function executeAllActiveTasks() {
                     completed += 1;
                     if (data.success) success += 1;
                     if (completed === buttons.length) {
-                        showNotification('success', `已提交 ${success}/${buttons.length} 个任务到队列`);
+                        showNotification('success', TASK_I18N.bulkSubmitted.replace('__SUCCESS__', success).replace('__TOTAL__', buttons.length));
                         refreshTaskStatuses();
                     }
                 })
                 .catch(() => {
                     completed += 1;
                     if (completed === buttons.length) {
-                        showNotification('warning', `批量提交完成，成功 ${success}/${buttons.length}`);
+                        showNotification('warning', TASK_I18N.bulkSubmittedPartial.replace('__SUCCESS__', success).replace('__TOTAL__', buttons.length));
                         refreshTaskStatuses();
                     }
                 });
@@ -1129,10 +1253,10 @@ function executeAllActiveTasks() {
 function handleStatusToggle(taskId, checkbox) {
     const form = checkbox.closest('form');
     const currentStatus = form.querySelector('input[name="status"]').value;
-    const nextLabel = checkbox.checked ? '激活中...' : '暂停中...';
+    const nextLabel = checkbox.checked ? TASK_I18N.activating : TASK_I18N.pausing;
     const statusSpan = form.querySelector('label span');
 
-    if (!confirm(checkbox.checked ? '确定激活这个任务吗？' : '确定暂停这个任务吗？')) {
+    if (!confirm(checkbox.checked ? TASK_I18N.confirmActivate : TASK_I18N.confirmPause)) {
         checkbox.checked = currentStatus === 'active';
         return;
     }

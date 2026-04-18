@@ -68,7 +68,7 @@ $stats = [
     'active_admins' => (int) $db->query("SELECT COUNT(DISTINCT admin_id) FROM admin_activity_logs WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'")->fetchColumn(),
 ];
 
-$page_title = '管理员操作日志';
+$page_title = __('activity_logs.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -76,8 +76,8 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">管理员操作日志</h1>
-            <p class="mt-1 text-sm text-gray-600">查看每位管理员在后台发起的操作请求记录</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . __('activity_logs.heading') . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . __('activity_logs.subtitle') . '</p>
         </div>
     </div>
 </div>
@@ -94,7 +94,7 @@ require_once __DIR__ . '/includes/header.php';
                             <i data-lucide="clipboard-list" class="h-6 w-6 text-indigo-600"></i>
                         </div>
                         <div class="ml-5 w-0 flex-1">
-                            <dt class="text-sm font-medium text-gray-500 truncate">日志总数</dt>
+                            <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('activity_logs.total_logs'); ?></dt>
                             <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_logs']; ?></dd>
                         </div>
                     </div>
@@ -108,7 +108,7 @@ require_once __DIR__ . '/includes/header.php';
                             <i data-lucide="calendar-clock" class="h-6 w-6 text-green-600"></i>
                         </div>
                         <div class="ml-5 w-0 flex-1">
-                            <dt class="text-sm font-medium text-gray-500 truncate">今日操作</dt>
+                            <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('activity_logs.today_logs'); ?></dt>
                             <dd class="text-lg font-medium text-gray-900"><?php echo $stats['today_logs']; ?></dd>
                         </div>
                     </div>
@@ -122,7 +122,7 @@ require_once __DIR__ . '/includes/header.php';
                             <i data-lucide="users" class="h-6 w-6 text-amber-600"></i>
                         </div>
                         <div class="ml-5 w-0 flex-1">
-                            <dt class="text-sm font-medium text-gray-500 truncate">近7天活跃管理员</dt>
+                            <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('activity_logs.active_admins'); ?></dt>
                             <dd class="text-lg font-medium text-gray-900"><?php echo $stats['active_admins']; ?></dd>
                         </div>
                     </div>
@@ -134,13 +134,13 @@ require_once __DIR__ . '/includes/header.php';
             <div class="px-6 py-4">
                 <form method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">搜索</label>
-                        <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="搜索管理员、动作、页面或详情">
+                        <label class="block text-sm font-medium text-gray-700 mb-1"><?php echo __('activity_logs.search'); ?></label>
+                        <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="<?php echo htmlspecialchars(__('activity_logs.search_placeholder')); ?>">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">管理员</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-1"><?php echo __('activity_logs.admin'); ?></label>
                         <select name="admin_id" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                            <option value="0">全部管理员</option>
+                            <option value="0"><?php echo __('activity_logs.all_admins'); ?></option>
                             <?php foreach ($admins as $admin): ?>
                                 <option value="<?php echo (int) $admin['id']; ?>" <?php echo $adminId === (int) $admin['id'] ? 'selected' : ''; ?>>
                                     <?php echo htmlspecialchars(($admin['display_name'] ?: $admin['username']) . ' / ' . $admin['username']); ?>
@@ -151,10 +151,10 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="flex items-end gap-3">
                         <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
                             <i data-lucide="search" class="w-4 h-4 mr-2"></i>
-                            筛选
+                            <?php echo __('activity_logs.filter'); ?>
                         </button>
                         <a href="admin-activity-logs.php" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                            重置
+                            <?php echo __('activity_logs.reset'); ?>
                         </a>
                     </div>
                 </form>
@@ -163,25 +163,25 @@ require_once __DIR__ . '/includes/header.php';
 
         <div class="bg-white shadow rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">日志列表</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('activity_logs.list_title'); ?></h3>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">时间</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">管理员</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">动作</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">页面</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">目标</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">详情</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('activity_logs.time'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('activity_logs.admin'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('activity_logs.action'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('activity_logs.page'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('activity_logs.target'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('activity_logs.details'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('activity_logs.ip'); ?></th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
                         <?php if (empty($logs)): ?>
                             <tr>
-                                <td colspan="7" class="px-6 py-10 text-center text-sm text-gray-500">暂无符合条件的日志记录</td>
+                                <td colspan="7" class="px-6 py-10 text-center text-sm text-gray-500"><?php echo __('activity_logs.empty'); ?></td>
                             </tr>
                         <?php endif; ?>
 
@@ -201,7 +201,7 @@ require_once __DIR__ . '/includes/header.php';
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($log['display_name'] ?: $log['admin_username']); ?></div>
                                     <div class="text-sm text-gray-500"><?php echo htmlspecialchars($log['admin_username']); ?></div>
-                                    <div class="text-xs text-gray-400"><?php echo htmlspecialchars(($log['admin_role'] ?? 'admin') === 'super_admin' ? '超级管理员' : '普通管理员'); ?></div>
+                                    <div class="text-xs text-gray-400"><?php echo htmlspecialchars(($log['admin_role'] ?? 'admin') === 'super_admin' ? __('activity_logs.role_super_admin') : __('activity_logs.role_admin')); ?></div>
                                 </td>
                                 <td class="px-6 py-4 text-sm text-gray-900 whitespace-nowrap"><?php echo htmlspecialchars($log['action']); ?></td>
                                 <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
@@ -231,13 +231,13 @@ require_once __DIR__ . '/includes/header.php';
 
         <?php if ($totalPages > 1): ?>
             <div class="mt-6 flex items-center justify-between">
-                <div class="text-sm text-gray-500">共 <?php echo $totalLogs; ?> 条日志，第 <?php echo $page; ?> / <?php echo $totalPages; ?> 页</div>
+                <div class="text-sm text-gray-500"><?php echo __('activity_logs.page_summary', ['total' => $totalLogs, 'page' => $page, 'total_pages' => $totalPages]); ?></div>
                 <div class="flex items-center gap-2">
                     <?php if ($page > 1): ?>
-                        <a href="?<?php echo htmlspecialchars(http_build_query(['search' => $search, 'admin_id' => $adminId, 'page' => $page - 1])); ?>" class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50">上一页</a>
+                        <a href="?<?php echo htmlspecialchars(http_build_query(['search' => $search, 'admin_id' => $adminId, 'page' => $page - 1])); ?>" class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"><?php echo __('activity_logs.prev'); ?></a>
                     <?php endif; ?>
                     <?php if ($page < $totalPages): ?>
-                        <a href="?<?php echo htmlspecialchars(http_build_query(['search' => $search, 'admin_id' => $adminId, 'page' => $page + 1])); ?>" class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50">下一页</a>
+                        <a href="?<?php echo htmlspecialchars(http_build_query(['search' => $search, 'admin_id' => $adminId, 'page' => $page + 1])); ?>" class="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50"><?php echo __('activity_logs.next'); ?></a>
                     <?php endif; ?>
                 </div>
             </div>

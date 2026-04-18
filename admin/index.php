@@ -25,7 +25,7 @@ $error = '';
 $success = '';
 
 if (isset($_GET['password_updated']) && $_GET['password_updated'] === '1') {
-    $success = '密码已修改，请使用新密码重新登录';
+    $success = __('login.success.password_updated');
 }
 
 // 处理登录请求
@@ -36,9 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // 验证CSRF令牌
     if (!verify_csrf_token($csrf_token)) {
-        $error = 'Invalid request';
+        $error = __('login.error.invalid_request');
     } elseif (empty($username) || empty($password)) {
-        $error = '请输入用户名和密码';
+        $error = __('login.error.empty_credentials');
     } else {
         // 使用当前数据库进行登录验证
         $stmt = $db->prepare("SELECT * FROM admins WHERE username = ?");
@@ -71,17 +71,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             admin_redirect('dashboard.php');
             exit;
         } else {
-            $error = '用户名或密码错误，或账号已被停用';
+            $error = __('login.error.invalid_credentials');
         }
     }
 }
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang()); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理员登录 - <?php echo htmlspecialchars($admin_site_name); ?></title>
+    <title><?php echo htmlspecialchars(__('login.title')); ?> - <?php echo htmlspecialchars($admin_site_name); ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css">
     <style>
@@ -135,6 +135,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body>
+    <div class="fixed right-4 top-4 z-50">
+        <select onchange="window.location.href=this.value" class="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            <?php foreach (app_supported_locales() as $localeCode => $localeLabel): ?>
+                <option value="<?php echo htmlspecialchars(app_locale_switch_url($localeCode)); ?>" <?php echo app_locale() === $localeCode ? 'selected' : ''; ?>>
+                    <?php echo htmlspecialchars($localeLabel); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
     <div class="login-container">
         <!-- 登录卡片 -->
         <div class="rounded-2xl p-8 login-form">
@@ -143,8 +152,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="login-badge w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                     <i data-lucide="shield-check" class="w-8 h-8 text-white"></i>
                 </div>
-                <h1 class="text-2xl font-bold text-gray-900 mb-2">管理员登录</h1>
-                <p class="text-gray-600"><?php echo htmlspecialchars($admin_site_name); ?> 后台管理系统</p>
+                <h1 class="text-2xl font-bold text-gray-900 mb-2"><?php echo __('login.title'); ?></h1>
+                <p class="text-gray-600"><?php echo htmlspecialchars(__('login.subtitle', ['site_name' => $admin_site_name])); ?></p>
             </div>
 
             <!-- 错误提示 -->
@@ -173,7 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 <div>
                     <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
-                        用户名
+                        <?php echo __('login.username'); ?>
                     </label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -185,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             name="username" 
                             required
                             class="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                            placeholder="请输入用户名"
+                            placeholder="<?php echo htmlspecialchars(__('login.username_placeholder')); ?>"
                             value="<?php echo htmlspecialchars($_POST['username'] ?? ''); ?>"
                         >
                     </div>
@@ -193,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div>
                     <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
-                        密码
+                        <?php echo __('login.password'); ?>
                     </label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -205,7 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             name="password" 
                             required
                             class="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                            placeholder="请输入密码"
+                            placeholder="<?php echo htmlspecialchars(__('login.password_placeholder')); ?>"
                         >
                     </div>
                 </div>
@@ -214,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     type="submit"
                     class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                 >
-                    登录
+                    <?php echo __('login.submit'); ?>
                 </button>
             </form>
 
@@ -224,7 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="text-center mt-6">
             <a href="../" class="back-link">
                 <i data-lucide="arrow-left" class="w-4 h-4 inline mr-1"></i>
-                返回首页
+                <?php echo __('login.back_home'); ?>
             </a>
         </div>
     </div>
@@ -251,7 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 form.addEventListener('submit', function(e) {
                     const button = this.querySelector('button[type="submit"]');
                     if (button) {
-                        button.innerHTML = '登录中...';
+                        button.innerHTML = '<?php echo addslashes(__('login.submitting')); ?>';
                         button.disabled = true;
                     }
                 });

@@ -37,12 +37,12 @@ try {
         exit;
     }
 } catch (Exception $e) {
-    $error = '获取知识库详情失败: ' . $e->getMessage();
+    $error = __('knowledge_bases.message.update_error', ['message' => $e->getMessage()]);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         switch ($_POST['action']) {
             case 'update_knowledge':
@@ -51,9 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $content = trim($_POST['content'] ?? '');
                 
                 if (empty($name)) {
-                    $error = '知识库名称不能为空';
+                    $error = __('knowledge_bases.error.name_required');
                 } elseif (empty($content)) {
-                    $error = '知识库内容不能为空';
+                    $error = __('knowledge_bases.error.content_required');
                 } else {
                     try {
                         $word_count = mb_strlen(strip_tags($content));
@@ -68,20 +68,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         if ($stmt->execute([$name, $description, $content, $word_count, $knowledge_id])) {
                             $chunk_count = knowledge_retrieval_sync_chunks($db, $knowledge_id, $content);
                             $db->commit();
-                            $message = '知识库更新成功，已刷新 ' . $chunk_count . ' 个知识片段';
+                            $message = __('knowledge_bases.message.update_success', ['count' => $chunk_count]);
                             // 重新获取更新后的数据
                             $stmt = $db->prepare("SELECT * FROM knowledge_bases WHERE id = ?");
                             $stmt->execute([$knowledge_id]);
                             $knowledge = $stmt->fetch();
                         } else {
                             $db->rollBack();
-                            $error = '知识库更新失败';
+                            $error = __('knowledge_bases.message.update_failed');
                         }
                     } catch (Exception $e) {
                         if ($db->inTransaction()) {
                             $db->rollBack();
                         }
-                        $error = '更新失败: ' . $e->getMessage();
+                        $error = __('knowledge_bases.message.update_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -109,7 +109,7 @@ try {
     // 如果knowledge_base_id字段不存在，忽略错误
 }
 
-$page_title = '知识库详情';
+$page_title = __('knowledge_detail.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -117,13 +117,13 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">知识库详情</h1>
-            <p class="mt-1 text-sm text-gray-600">查看和编辑知识库内容</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . __('knowledge_detail.heading') . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . __('knowledge_detail.subtitle') . '</p>
         </div>
     </div>
     <a href="knowledge-bases.php" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
         <i data-lucide="list" class="w-4 h-4 mr-2"></i>
-        返回列表
+        ' . __('knowledge_detail.back_to_list') . '
     </a>
 </div>
 ';
@@ -157,7 +157,7 @@ require_once __DIR__ . '/includes/header.php';
 
         <div class="bg-white shadow rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">知识库内容</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('knowledge_detail.content_title'); ?></h3>
             </div>
 
             <form method="POST" class="p-6">
@@ -166,7 +166,7 @@ require_once __DIR__ . '/includes/header.php';
 
                 <div class="space-y-6">
                     <div>
-                        <label for="name" class="block text-sm font-medium text-gray-700">知识库名称</label>
+                        <label for="name" class="block text-sm font-medium text-gray-700"><?php echo __('knowledge_detail.field_name'); ?></label>
                         <input
                             type="text"
                             name="name"
@@ -178,18 +178,18 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
 
                     <div>
-                        <label for="description" class="block text-sm font-medium text-gray-700">描述</label>
+                        <label for="description" class="block text-sm font-medium text-gray-700"><?php echo __('knowledge_detail.field_description'); ?></label>
                         <textarea
                             name="description"
                             id="description"
                             rows="3"
                             class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500"
-                            placeholder="可选：添加知识库的描述信息"
+                            placeholder="<?php echo htmlspecialchars(__('knowledge_detail.placeholder_description')); ?>"
                         ><?php echo htmlspecialchars($knowledge['description'] ?? ''); ?></textarea>
                     </div>
 
                     <div>
-                        <label for="content" class="block text-sm font-medium text-gray-700">内容</label>
+                        <label for="content" class="block text-sm font-medium text-gray-700"><?php echo __('knowledge_detail.field_content'); ?></label>
                         <textarea
                             name="content"
                             id="content"
@@ -197,13 +197,13 @@ require_once __DIR__ . '/includes/header.php';
                             class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 font-mono text-sm"
                             required
                         ><?php echo htmlspecialchars($knowledge['content']); ?></textarea>
-                        <p class="mt-2 text-sm text-gray-500">当前字数：<span id="word-count"><?php echo (int) ($knowledge['word_count'] ?? 0); ?></span> 字</p>
+                        <p class="mt-2 text-sm text-gray-500"><?php echo __('common.current_word_count', ['count' => '<span id="word-count">' . (int) ($knowledge['word_count'] ?? 0) . '</span>']); ?></p>
                     </div>
 
                     <div class="flex justify-end">
                         <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500">
                             <i data-lucide="save" class="w-4 h-4 mr-2"></i>
-                            保存更改
+                            <?php echo __('knowledge_detail.save_changes'); ?>
                         </button>
                     </div>
                 </div>
@@ -214,12 +214,12 @@ require_once __DIR__ . '/includes/header.php';
     <div class="space-y-6">
         <div class="bg-white shadow rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">基本信息</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('common.basic_info'); ?></h3>
             </div>
             <div class="p-6">
                 <dl class="space-y-4">
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">文件类型</dt>
+                        <dt class="text-sm font-medium text-gray-500"><?php echo __('common.file_type'); ?></dt>
                         <dd class="mt-1">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium <?php
                                 echo $knowledge['file_type'] === 'markdown' ? 'bg-green-100 text-green-800' :
@@ -228,16 +228,16 @@ require_once __DIR__ . '/includes/header.php';
                                 <?php
                                 switch ($knowledge['file_type']) {
                                     case 'markdown':
-                                        echo 'Markdown';
+                                        echo __('status.markdown');
                                         break;
                                     case 'word':
-                                        echo 'Word文档';
+                                        echo __('status.word_document');
                                         break;
                                     case 'text':
-                                        echo '纯文本';
+                                        echo __('status.text');
                                         break;
                                     default:
-                                        echo '未知';
+                                        echo __('status.unknown');
                                         break;
                                 }
                                 ?>
@@ -246,28 +246,28 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
 
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">字数统计</dt>
-                        <dd class="mt-1 text-sm text-gray-900"><?php echo number_format((int) ($knowledge['word_count'] ?? 0)); ?> 字</dd>
+                        <dt class="text-sm font-medium text-gray-500"><?php echo __('common.word_count'); ?></dt>
+                        <dd class="mt-1 text-sm text-gray-900"><?php echo __('knowledge_bases.text_unit', ['count' => number_format((int) ($knowledge['word_count'] ?? 0))]); ?></dd>
                     </div>
 
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">知识片段</dt>
-                        <dd class="mt-1 text-sm text-gray-900"><?php echo number_format($knowledge_chunk_count); ?> 个</dd>
+                        <dt class="text-sm font-medium text-gray-500"><?php echo __('knowledge_detail.chunk_count'); ?></dt>
+                        <dd class="mt-1 text-sm text-gray-900"><?php echo __('common.total_records', ['count' => number_format($knowledge_chunk_count)]); ?></dd>
                     </div>
 
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">创建时间</dt>
+                        <dt class="text-sm font-medium text-gray-500"><?php echo __('knowledge_detail.created_at'); ?></dt>
                         <dd class="mt-1 text-sm text-gray-900"><?php echo date('Y-m-d H:i:s', strtotime($knowledge['created_at'])); ?></dd>
                     </div>
 
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">更新时间</dt>
+                        <dt class="text-sm font-medium text-gray-500"><?php echo __('knowledge_detail.updated_at'); ?></dt>
                         <dd class="mt-1 text-sm text-gray-900"><?php echo date('Y-m-d H:i:s', strtotime($knowledge['updated_at'])); ?></dd>
                     </div>
 
                     <?php if (!empty($knowledge['file_path'])): ?>
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">文件路径</dt>
+                            <dt class="text-sm font-medium text-gray-500"><?php echo __('common.file_path'); ?></dt>
                             <dd class="mt-1 text-sm text-gray-900 break-all"><?php echo htmlspecialchars($knowledge['file_path']); ?></dd>
                         </div>
                     <?php endif; ?>
@@ -278,7 +278,7 @@ require_once __DIR__ . '/includes/header.php';
         <?php if (!empty($related_tasks)): ?>
             <div class="bg-white shadow rounded-lg overflow-hidden">
                 <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">相关任务</h3>
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('common.related_tasks'); ?></h3>
                 </div>
                 <div class="p-6">
                     <div class="space-y-3">
@@ -293,7 +293,7 @@ require_once __DIR__ . '/includes/header.php';
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium <?php
                                     echo $task['status'] === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800';
                                 ?>">
-                                    <?php echo $task['status'] === 'active' ? '运行中' : '已暂停'; ?>
+                                    <?php echo $task['status'] === 'active' ? __('status.running') : __('status.paused'); ?>
                                 </span>
                             </div>
                         <?php endforeach; ?>

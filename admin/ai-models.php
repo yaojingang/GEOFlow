@@ -47,7 +47,7 @@ $pgvector_enabled = embedding_service_pgvector_available($db);
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -58,31 +58,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $api_key = trim($_POST['api_key'] ?? '');
                 $model_id = trim($_POST['model_id'] ?? '');
                 $api_url = trim($_POST['api_url'] ?? 'https://api.deepseek.com');
+                $failover_priority = max(1, intval($_POST['failover_priority'] ?? 100));
                 $daily_limit = intval($_POST['daily_limit'] ?? 0);
                 $model_type = normalize_ai_model_type($_POST['model_type'] ?? 'chat');
                 
                 if (empty($name) || empty($api_key) || empty($model_id)) {
-                    $error = '模型名称、API密钥和模型ID不能为空';
+                    $error = __('ai_models.error.required_fields');
                 } else {
                     try {
                         $encrypted_api_key = encrypt_ai_api_key($api_key);
                         $stmt = $db->prepare("
-                            INSERT INTO ai_models (name, version, api_key, model_id, model_type, api_url, daily_limit, status, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            INSERT INTO ai_models (name, version, api_key, model_id, model_type, api_url, failover_priority, daily_limit, status, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                         ");
                         
-                        if ($stmt->execute([$name, $version, $encrypted_api_key, $model_id, $model_type, $api_url, $daily_limit])) {
+                        if ($stmt->execute([$name, $version, $encrypted_api_key, $model_id, $model_type, $api_url, $failover_priority, $daily_limit])) {
                             $newModelId = db_last_insert_id($db, 'ai_models');
                             if ($model_type === 'embedding' && $default_embedding_model_id <= 0) {
                                 set_setting('default_embedding_model_id', (string) $newModelId);
                                 $default_embedding_model_id = $newModelId;
                             }
-                            $message = 'AI模型创建成功';
+                            $message = __('ai_models.message.create_success');
                         } else {
-                            $error = 'AI模型创建失败';
+                            $error = __('ai_models.message.create_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '创建失败: ' . $e->getMessage();
+                        $error = __('message.create_failed') . ': ' . $e->getMessage();
                     }
                 }
                 break;
@@ -94,29 +95,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $api_key = trim($_POST['api_key'] ?? '');
                 $model_id = trim($_POST['model_id'] ?? '');
                 $api_url = trim($_POST['api_url'] ?? '');
+                $failover_priority = max(1, intval($_POST['failover_priority'] ?? 100));
                 $daily_limit = intval($_POST['daily_limit'] ?? 0);
                 $status = $_POST['status'] ?? 'active';
                 $model_type = normalize_ai_model_type($_POST['model_type'] ?? 'chat');
                 
                 if ($id <= 0 || empty($name) || empty($model_id)) {
-                    $error = '参数错误或必填字段为空';
+                    $error = __('ai_models.error.invalid_required_fields');
                 } else {
                     try {
                         if ($api_key === '') {
                             $stmt = $db->prepare("
                                 UPDATE ai_models 
-                                SET name = ?, version = ?, model_id = ?, model_type = ?, api_url = ?, daily_limit = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                                SET name = ?, version = ?, model_id = ?, model_type = ?, api_url = ?, failover_priority = ?, daily_limit = ?, status = ?, updated_at = CURRENT_TIMESTAMP
                                 WHERE id = ?
                             ");
-                            $result = $stmt->execute([$name, $version, $model_id, $model_type, $api_url, $daily_limit, $status, $id]);
+                            $result = $stmt->execute([$name, $version, $model_id, $model_type, $api_url, $failover_priority, $daily_limit, $status, $id]);
                         } else {
                             $encrypted_api_key = encrypt_ai_api_key($api_key);
                             $stmt = $db->prepare("
                                 UPDATE ai_models 
-                                SET name = ?, version = ?, api_key = ?, model_id = ?, model_type = ?, api_url = ?, daily_limit = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                                SET name = ?, version = ?, api_key = ?, model_id = ?, model_type = ?, api_url = ?, failover_priority = ?, daily_limit = ?, status = ?, updated_at = CURRENT_TIMESTAMP
                                 WHERE id = ?
                             ");
-                            $result = $stmt->execute([$name, $version, $encrypted_api_key, $model_id, $model_type, $api_url, $daily_limit, $status, $id]);
+                            $result = $stmt->execute([$name, $version, $encrypted_api_key, $model_id, $model_type, $api_url, $failover_priority, $daily_limit, $status, $id]);
                         }
                         
                         if ($result) {
@@ -124,12 +126,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 set_setting('default_embedding_model_id', '0');
                                 $default_embedding_model_id = 0;
                             }
-                            $message = 'AI模型更新成功';
+                            $message = __('ai_models.message.update_success');
                         } else {
-                            $error = 'AI模型更新失败';
+                            $error = __('ai_models.message.update_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '更新失败: ' . $e->getMessage();
+                        $error = __('message.update_failed') . ': ' . $e->getMessage();
                     }
                 }
                 break;
@@ -138,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id = intval($_POST['id'] ?? 0);
                 
                 if ($id <= 0) {
-                    $error = '无效的模型ID';
+                    $error = __('ai_models.error.invalid_id');
                 } else {
                     try {
                         $stmt = $db->prepare("SELECT id, name FROM ai_models WHERE id = ?");
@@ -146,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $model = $stmt->fetch(PDO::FETCH_ASSOC);
 
                         if (!$model) {
-                            $error = 'AI模型不存在';
+                            $error = __('ai_models.error.not_found');
                             break;
                         }
 
@@ -156,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $usage_count = $stmt->fetchColumn();
                         
                         if ($usage_count > 0) {
-                            $error = "无法删除：有 {$usage_count} 个任务正在使用此模型";
+                            $error = __('ai_models.error.in_use', ['count' => $usage_count]);
                         } else {
                             $stmt = $db->prepare("DELETE FROM ai_models WHERE id = ?");
                             if ($stmt->execute([$id])) {
@@ -164,13 +166,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     set_setting('default_embedding_model_id', '0');
                                     $default_embedding_model_id = 0;
                                 }
-                                $message = 'AI模型删除成功';
+                                $message = __('ai_models.message.delete_success');
                             } else {
-                                $error = 'AI模型删除失败';
+                                $error = __('ai_models.message.delete_failed');
                             }
                         }
                     } catch (Exception $e) {
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('message.delete_failed') . ': ' . $e->getMessage();
                     }
                 }
                 break;
@@ -188,16 +190,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ");
                     $stmt->execute([$embedding_model_id]);
                     if ((int) $stmt->fetchColumn() === 0) {
-                        $error = '所选默认 embedding 模型不可用';
+                        $error = __('ai_models.error.embedding_unavailable');
                         break;
                     }
                 }
 
                 if (set_setting('default_embedding_model_id', (string) $embedding_model_id)) {
                     $default_embedding_model_id = $embedding_model_id;
-                    $message = '默认 embedding 模型已更新';
+                    $message = __('ai_models.message.embedding_default_updated');
                 } else {
-                    $error = '默认 embedding 模型更新失败';
+                    $error = __('ai_models.message.embedding_default_update_failed');
                 }
                 break;
         }
@@ -220,6 +222,7 @@ try {
                m.model_id,
                COALESCE(NULLIF(m.model_type, ''), 'chat') as model_type,
                m.api_url,
+               COALESCE(m.failover_priority, 100) AS failover_priority,
                m.daily_limit,
                m.used_today,
                m.total_used,
@@ -264,7 +267,7 @@ try {
 }
 
 // 设置页面信息
-$page_title = 'AI模型配置';
+$page_title = __('ai_models.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -272,18 +275,29 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">AI模型配置</h1>
-            <p class="mt-1 text-sm text-gray-600">统一管理聊天模型与 embedding 检索模型</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . htmlspecialchars(__('ai_models.page_title'), ENT_QUOTES) . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . htmlspecialchars(__('ai_models.page_subtitle'), ENT_QUOTES) . '</p>
         </div>
     </div>
     <button onclick="showCreateModelModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-        新增模型
+        ' . htmlspecialchars(__('ai_models.create'), ENT_QUOTES) . '
     </button>
 </div>';
 
 require_once __DIR__ . '/includes/header.php';
 ?>
+<script>
+const AI_MODELS_I18N = <?php echo json_encode([
+    'modalCreate' => __('ai_models.modal_create'),
+    'modalEdit' => __('ai_models.modal_edit'),
+    'apiKeyPlaceholder' => __('ai_models.placeholder_api_key'),
+    'apiKeyPlaceholderKeep' => __('ai_models.placeholder_api_key_keep'),
+    'apiKeyHelpCreate' => __('ai_models.api_key_help_create'),
+    'apiKeyHelpEdit' => __('ai_models.api_key_help_edit'),
+    'confirmDelete' => __('ai_models.confirm_delete', ['name' => '__NAME__']),
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+</script>
 
         <!-- 消息显示 -->
         <?php if (!empty($message)): ?>
@@ -315,14 +329,14 @@ require_once __DIR__ . '/includes/header.php';
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">向量检索状态</h3>
-                    <p class="mt-1 text-sm text-gray-600">知识库检索使用独立 embedding 模型与 pgvector</p>
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars(__('ai_models.vector_title')); ?></h3>
+                    <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars(__('ai_models.vector_desc')); ?></p>
                 </div>
                 <div class="px-6 py-5 space-y-4">
                     <div class="flex items-center justify-between">
-                        <span class="text-sm text-gray-600">pgvector 扩展</span>
+                        <span class="text-sm text-gray-600"><?php echo htmlspecialchars(__('ai_models.pgvector')); ?></span>
                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full <?php echo $pgvector_enabled ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'; ?>">
-                            <?php echo $pgvector_enabled ? '已启用' : '未启用，当前会回退'; ?>
+                            <?php echo htmlspecialchars($pgvector_enabled ? __('ai_models.pgvector_enabled') : __('ai_models.pgvector_fallback')); ?>
                         </span>
                     </div>
 
@@ -330,22 +344,22 @@ require_once __DIR__ . '/includes/header.php';
                         <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                         <input type="hidden" name="action" value="update_embedding_default">
                         <div>
-                            <label for="default_embedding_model_id" class="block text-sm font-medium text-gray-700">默认 embedding 模型</label>
+                            <label for="default_embedding_model_id" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.default_embedding')); ?></label>
                             <select name="default_embedding_model_id" id="default_embedding_model_id"
                                     class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="0">自动选择最新可用 embedding 模型</option>
+                                <option value="0"><?php echo htmlspecialchars(__('ai_models.embedding_auto')); ?></option>
                                 <?php foreach ($embedding_models as $model): ?>
                                     <option value="<?php echo (int) $model['id']; ?>" <?php echo $default_embedding_model_id === (int) $model['id'] ? 'selected' : ''; ?>>
                                         <?php echo htmlspecialchars($model['name'] . ' (' . $model['model_id'] . ')'); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
-                            <p class="mt-1 text-xs text-gray-500">正文生成仍然使用聊天模型；这里仅用于知识库切块向量化和检索查询。</p>
+                            <p class="mt-1 text-xs text-gray-500"><?php echo htmlspecialchars(__('ai_models.embedding_help')); ?></p>
                         </div>
                         <div class="flex justify-end">
                             <button type="submit"
                                     class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-800 hover:bg-slate-900">
-                                保存默认模型
+                                <?php echo htmlspecialchars(__('ai_models.save_default')); ?>
                             </button>
                         </div>
                     </form>
@@ -354,14 +368,14 @@ require_once __DIR__ . '/includes/header.php';
 
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">模型类型说明</h3>
-                    <p class="mt-1 text-sm text-gray-600">避免把 embedding 模型误配到任务中心</p>
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars(__('ai_models.type_title')); ?></h3>
+                    <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars(__('ai_models.type_desc')); ?></p>
                 </div>
                 <div class="px-6 py-5 space-y-3 text-sm text-gray-700">
-                    <p><span class="font-medium text-gray-900">聊天模型：</span>用于任务中心正文生成、关键词生成、描述生成和标题 AI 生成。</p>
-                    <p><span class="font-medium text-gray-900">Embedding 模型：</span>用于知识库切块向量化和检索召回，支持填写基础地址或完整 embedding 接口，不会出现在任务中心的 AI 模型下拉框里。</p>
-                    <p><span class="font-medium text-gray-900">Rerank / 重排序：</span>当前后台尚未接入独立 rerank 模型配置和调用链路，后续会沿用同样的 provider URL 规则补齐。</p>
-                    <p><span class="font-medium text-gray-900">回退策略：</span>如果当前数据库没启用 pgvector 或 embedding 模型不可用，系统会自动回退到轻量检索，不会阻断文章生成。</p>
+                    <p><?php echo htmlspecialchars(__('ai_models.type_chat')); ?></p>
+                    <p><?php echo htmlspecialchars(__('ai_models.type_embedding')); ?></p>
+                    <p><?php echo htmlspecialchars(__('ai_models.type_rerank')); ?></p>
+                    <p><?php echo htmlspecialchars(__('ai_models.type_fallback')); ?></p>
                 </div>
             </div>
         </div>
@@ -369,20 +383,20 @@ require_once __DIR__ . '/includes/header.php';
         <!-- AI模型列表 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">AI模型列表</h3>
-                <p class="mt-1 text-sm text-gray-600">统一查看聊天模型和 embedding 模型</p>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars(__('ai_models.list_title')); ?></h3>
+                <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars(__('ai_models.list_desc')); ?></p>
             </div>
             
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">模型信息</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">版本</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调用统计</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">限制</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('ai_models.column.info')); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('ai_models.column.version')); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('ai_models.column.usage')); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('ai_models.column.limit')); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('ai_models.column.status')); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('ai_models.column.actions')); ?></th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
@@ -390,8 +404,8 @@ require_once __DIR__ . '/includes/header.php';
                             <tr>
                                 <td colspan="6" class="px-6 py-4 text-center text-gray-500">
                                     <i data-lucide="cpu" class="w-8 h-8 mx-auto mb-2 text-gray-400"></i>
-                                    <p>暂无AI模型配置</p>
-                                    <button onclick="showCreateModelModal()" class="mt-2 text-blue-600 hover:text-blue-800">添加第一个模型</button>
+                                    <p><?php echo htmlspecialchars(__('ai_models.empty')); ?></p>
+                                    <button onclick="showCreateModelModal()" class="mt-2 text-blue-600 hover:text-blue-800"><?php echo htmlspecialchars(__('ai_models.add_first')); ?></button>
                                 </td>
                             </tr>
                         <?php else: ?>
@@ -402,14 +416,15 @@ require_once __DIR__ . '/includes/header.php';
                                             <div class="flex items-center gap-2">
                                                 <div class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($model['name']); ?></div>
                                                 <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full <?php echo $model['model_type'] === 'embedding' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'; ?>">
-                                                    <?php echo $model['model_type'] === 'embedding' ? 'Embedding' : '聊天模型'; ?>
+                                                    <?php echo htmlspecialchars($model['model_type'] === 'embedding' ? __('ai_models.type_embedding_option') : __('ai_models.chat')); ?>
                                                 </span>
                                                 <?php if ($model['model_type'] === 'embedding' && $default_embedding_model_id === (int) $model['id']): ?>
-                                                    <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">默认检索模型</span>
+                                                    <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800"><?php echo htmlspecialchars(__('ai_models.embedding_default')); ?></span>
                                                 <?php endif; ?>
                                             </div>
                                             <div class="text-sm text-gray-500"><?php echo htmlspecialchars($model['model_id']); ?></div>
-                                            <div class="text-xs text-gray-400">密钥: <?php echo htmlspecialchars(mask_api_key($model['api_key'])); ?></div>
+                                            <div class="text-xs text-gray-400"><?php echo htmlspecialchars(__('ai_models.api_key_mask')); ?>: <?php echo htmlspecialchars(mask_api_key($model['api_key'])); ?></div>
+                                            <div class="text-xs text-gray-400"><?php echo htmlspecialchars(__('ai_models.failover_priority_label', ['priority' => (int) ($model['failover_priority'] ?? 100)])); ?></div>
                                         </div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -417,27 +432,27 @@ require_once __DIR__ . '/includes/header.php';
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm text-gray-900">
-                                            <div>任务: <?php echo $model['task_count']; ?></div>
-                                            <div>文章: <?php echo $model['article_count']; ?></div>
-                                            <div>总计: <?php echo number_format($model['total_used']); ?></div>
+                                            <div><?php echo htmlspecialchars(__('ai_models.usage_tasks', ['count' => (string) $model['task_count']])); ?></div>
+                                            <div><?php echo htmlspecialchars(__('ai_models.usage_articles', ['count' => (string) $model['article_count']])); ?></div>
+                                            <div><?php echo htmlspecialchars(__('ai_models.usage_total', ['count' => (string) number_format($model['total_used'])])); ?></div>
                                         </div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                         <?php if ($model['daily_limit'] > 0): ?>
                                             <div><?php echo $model['used_today']; ?> / <?php echo $model['daily_limit']; ?></div>
-                                            <div class="text-xs text-gray-500">今日/限制</div>
+                                            <div class="text-xs text-gray-500"><?php echo htmlspecialchars(__('ai_models.limit_today')); ?></div>
                                         <?php else: ?>
-                                            <span class="text-green-600">无限制</span>
+                                            <span class="text-green-600"><?php echo htmlspecialchars(__('ai_models.limit_unlimited')); ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <?php if (isset($model['status']) && !empty($model['status'])): ?>
                                             <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full <?php echo $model['status'] === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'; ?>">
-                                                <?php echo $model['status'] === 'active' ? '活跃' : '禁用'; ?>
+                                                <?php echo htmlspecialchars($model['status'] === 'active' ? __('ai_models.status_active') : __('ai_models.status_inactive')); ?>
                                             </span>
                                         <?php else: ?>
                                             <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                                                未知
+                                                <?php echo htmlspecialchars(__('ai_models.status_unknown')); ?>
                                             </span>
                                         <?php endif; ?>
                                     </td>
@@ -449,10 +464,11 @@ require_once __DIR__ . '/includes/header.php';
                                             "model_id" => $model["model_id"],
                                             "model_type" => $model["model_type"],
                                             "api_url" => $model["api_url"],
+                                            "failover_priority" => (int) ($model["failover_priority"] ?? 100),
                                             "daily_limit" => (int) $model["daily_limit"],
                                             "status" => $model["status"]
-                                        ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)' class="text-blue-600 hover:text-blue-900">编辑</button>
-                                        <button onclick="deleteModel(<?php echo $model['id']; ?>, '<?php echo htmlspecialchars($model['name']); ?>')" class="text-red-600 hover:text-red-900">删除</button>
+                                        ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)' class="text-blue-600 hover:text-blue-900"><?php echo htmlspecialchars(__('ai_models.edit')); ?></button>
+                                        <button onclick="deleteModel(<?php echo $model['id']; ?>, '<?php echo htmlspecialchars($model['name']); ?>')" class="text-red-600 hover:text-red-900"><?php echo htmlspecialchars(__('ai_models.delete')); ?></button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -467,7 +483,7 @@ require_once __DIR__ . '/includes/header.php';
             <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
                 <div class="mt-3">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-medium text-gray-900" id="modalTitle">新增AI模型</h3>
+                        <h3 class="text-lg font-medium text-gray-900" id="modalTitle"><?php echo htmlspecialchars(__('ai_models.modal_create')); ?></h3>
                         <button onclick="closeModelModal()" class="text-gray-400 hover:text-gray-600">
                             <i data-lucide="x" class="w-6 h-6"></i>
                         </button>
@@ -478,9 +494,8 @@ require_once __DIR__ . '/includes/header.php';
                         <input type="hidden" name="action" id="formAction" value="create_model">
                         <input type="hidden" name="id" id="modelId" value="">
 
-                        <!-- 服务商快速填充 -->
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">服务商快速填充（聊天模型）</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo htmlspecialchars(__('ai_models.quick_chat')); ?></label>
                             <div class="flex flex-wrap gap-2">
                                 <button type="button" onclick="fillPreset('minimax')"
                                         class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -500,14 +515,14 @@ require_once __DIR__ . '/includes/header.php';
                                 </button>
                                 <button type="button" onclick="fillPreset('zhipu')"
                                         class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                    智谱 GLM
+                                    Zhipu GLM
                                 </button>
                                 <button type="button" onclick="fillPreset('volcengine_ark')"
                                         class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                    火山方舟
+                                    Volcengine Ark
                                 </button>
                             </div>
-                            <label class="block text-sm font-medium text-gray-700 mt-4 mb-2">服务商快速填充（Embedding 模型）</label>
+                            <label class="block text-sm font-medium text-gray-700 mt-4 mb-2"><?php echo htmlspecialchars(__('ai_models.quick_embedding')); ?></label>
                             <div class="flex flex-wrap gap-2">
                                 <button type="button" onclick="fillPreset('openai_embedding')"
                                         class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -515,77 +530,85 @@ require_once __DIR__ . '/includes/header.php';
                                 </button>
                                 <button type="button" onclick="fillPreset('zhipu_embedding')"
                                         class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                    智谱 Embedding
+                                    Zhipu Embedding
                                 </button>
                             </div>
-                            <p class="mt-1 text-xs text-gray-500">点击自动填充常见服务商配置。聊天模型会按 provider 规则补全聊天接口；embedding 模型会按同样规则补全 <code>/v1/embeddings</code> 或版本化 provider 的 <code>/embeddings</code>。火山方舟聊天通常使用推理接入点 ID（如 <code>ep-xxxx</code>）作为模型 ID。</p>
+                            <p class="mt-1 text-xs text-gray-500"><?php echo htmlspecialchars(__('ai_models.quick_help')); ?></p>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label for="name" class="block text-sm font-medium text-gray-700">模型名称 *</label>
+                                <label for="name" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.field_name')); ?></label>
                                 <input type="text" name="name" id="name" required
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                       placeholder="例如：Claude Sonnet 4">
+                                       placeholder="<?php echo htmlspecialchars(__('ai_models.placeholder_name')); ?>">
                             </div>
 
                             <div>
-                                <label for="version" class="block text-sm font-medium text-gray-700">模型版本</label>
+                                <label for="version" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.field_version')); ?></label>
                                 <input type="text" name="version" id="version"
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                       placeholder="例如：20250514">
+                                       placeholder="<?php echo htmlspecialchars(__('ai_models.placeholder_version')); ?>">
                             </div>
                         </div>
 
                         <div>
-                            <label for="model_type" class="block text-sm font-medium text-gray-700">模型类型 *</label>
+                            <label for="model_type" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.field_type')); ?></label>
                             <select name="model_type" id="model_type"
                                     class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="chat">聊天模型</option>
-                                <option value="embedding">Embedding 检索模型</option>
+                                <option value="chat"><?php echo htmlspecialchars(__('ai_models.type_chat_option')); ?></option>
+                                <option value="embedding"><?php echo htmlspecialchars(__('ai_models.type_embedding_option')); ?></option>
                             </select>
-                            <p class="mt-1 text-xs text-gray-500">聊天模型用于任务中心生成内容；embedding 模型用于知识库向量化与召回；Rerank / 重排序接口当前暂未接入。</p>
+                            <p class="mt-1 text-xs text-gray-500"><?php echo htmlspecialchars(__('ai_models.type_help')); ?></p>
                         </div>
 
                         <div>
-                            <label for="model_id" class="block text-sm font-medium text-gray-700">模型ID *</label>
+                            <label for="model_id" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.field_model_id')); ?></label>
                             <input type="text" name="model_id" id="model_id" required
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                   placeholder="例如：claude-sonnet-4-20250514">
+                                   placeholder="<?php echo htmlspecialchars(__('ai_models.placeholder_model_id')); ?>">
                         </div>
 
                         <div>
-                            <label for="api_key" class="block text-sm font-medium text-gray-700">API密钥 *</label>
+                            <label for="api_key" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.field_api_key')); ?></label>
                             <input type="password" name="api_key" id="api_key" required
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                   placeholder="输入API密钥">
-                            <p id="apiKeyHelp" class="mt-1 text-xs text-gray-500">创建模型时必填。</p>
+                                   placeholder="<?php echo htmlspecialchars(__('ai_models.placeholder_api_key')); ?>">
+                            <p id="apiKeyHelp" class="mt-1 text-xs text-gray-500"><?php echo htmlspecialchars(__('ai_models.api_key_help_create')); ?></p>
                         </div>
 
                         <div>
-                            <label for="api_url" class="block text-sm font-medium text-gray-700">API地址（基础地址或完整接口）</label>
+                            <label for="api_url" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.field_api_url')); ?></label>
                             <input type="url" name="api_url" id="api_url"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                                    value="https://api.deepseek.com"
-                                   placeholder="例如：https://api.openai.com 或 https://open.bigmodel.cn/api/paas/v4 或完整 .../chat/completions / .../embeddings">
-                            <p class="mt-1 text-xs text-gray-500">支持填写基础地址或完整接口 URL。聊天模型默认补全 <code>/v1/chat/completions</code>，embedding 模型默认补全 <code>/v1/embeddings</code>；智谱 <code>/api/paas/v4</code>、火山方舟 <code>/api/v3</code> 这类版本化基础地址会自动补全各自对应的 capability 路径。</p>
+                                   placeholder="<?php echo htmlspecialchars(__('ai_models.placeholder_api_url')); ?>">
+                            <p class="mt-1 text-xs text-gray-500"><?php echo htmlspecialchars(__('ai_models.api_url_help')); ?></p>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label for="daily_limit" class="block text-sm font-medium text-gray-700">每日调用限制</label>
+                                <label for="failover_priority" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.field_failover_priority')); ?></label>
+                                <input type="number" name="failover_priority" id="failover_priority" min="1"
+                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                       value="100">
+                                <p class="mt-1 text-xs text-gray-500"><?php echo htmlspecialchars(__('ai_models.failover_priority_help')); ?></p>
+                            </div>
+
+                            <div>
+                                <label for="daily_limit" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.field_daily_limit')); ?></label>
                                 <input type="number" name="daily_limit" id="daily_limit" min="0"
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                       placeholder="0表示无限制">
-                                <p class="mt-1 text-xs text-gray-500">0表示无限制，大于0表示每日最大调用次数</p>
+                                       placeholder="0">
+                                <p class="mt-1 text-xs text-gray-500"><?php echo htmlspecialchars(__('ai_models.limit_help')); ?></p>
                             </div>
 
                             <div id="statusField" class="hidden">
-                                <label for="status" class="block text-sm font-medium text-gray-700">状态</label>
+                                <label for="status" class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('ai_models.field_status')); ?></label>
                                 <select name="status" id="status"
                                         class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                    <option value="active">活跃</option>
-                                    <option value="inactive">禁用</option>
+                                    <option value="active"><?php echo htmlspecialchars(__('ai_models.status_active')); ?></option>
+                                    <option value="inactive"><?php echo htmlspecialchars(__('ai_models.status_inactive')); ?></option>
                                 </select>
                             </div>
                         </div>
@@ -593,11 +616,11 @@ require_once __DIR__ . '/includes/header.php';
                         <div class="flex justify-end space-x-3 pt-4">
                             <button type="button" onclick="closeModelModal()"
                                     class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                取消
+                                <?php echo htmlspecialchars(__('button.cancel')); ?>
                             </button>
                             <button type="submit"
                                     class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                                保存
+                                <?php echo htmlspecialchars(__('button.save')); ?>
                             </button>
                         </div>
                     </form>
@@ -607,22 +630,23 @@ require_once __DIR__ . '/includes/header.php';
     <script>
         // 显示创建模型模态框
         function showCreateModelModal() {
-            document.getElementById('modalTitle').textContent = '新增AI模型';
+            document.getElementById('modalTitle').textContent = AI_MODELS_I18N.modalCreate;
             document.getElementById('formAction').value = 'create_model';
             document.getElementById('modelId').value = '';
             document.getElementById('statusField').classList.add('hidden');
             document.getElementById('modelForm').reset();
             document.getElementById('model_type').value = 'chat';
             document.getElementById('api_key').required = true;
-            document.getElementById('api_key').placeholder = '输入API密钥';
-            document.getElementById('apiKeyHelp').textContent = '创建模型时必填。';
+            document.getElementById('api_key').placeholder = AI_MODELS_I18N.apiKeyPlaceholder;
+            document.getElementById('apiKeyHelp').textContent = AI_MODELS_I18N.apiKeyHelpCreate;
             document.getElementById('api_url').value = 'https://api.deepseek.com';
+            document.getElementById('failover_priority').value = 100;
             document.getElementById('modelModal').classList.remove('hidden');
         }
 
         // 编辑模型
         function editModel(model) {
-            document.getElementById('modalTitle').textContent = '编辑AI模型';
+            document.getElementById('modalTitle').textContent = AI_MODELS_I18N.modalEdit;
             document.getElementById('formAction').value = 'update_model';
             document.getElementById('modelId').value = model.id;
             document.getElementById('name').value = model.name;
@@ -631,9 +655,10 @@ require_once __DIR__ . '/includes/header.php';
             document.getElementById('model_type').value = model.model_type || 'chat';
             document.getElementById('api_key').value = '';
             document.getElementById('api_key').required = false;
-            document.getElementById('api_key').placeholder = '留空则保留当前API密钥';
-            document.getElementById('apiKeyHelp').textContent = '编辑时留空即可保留现有密钥；仅在需要轮换密钥时填写新值。';
+            document.getElementById('api_key').placeholder = AI_MODELS_I18N.apiKeyPlaceholderKeep;
+            document.getElementById('apiKeyHelp').textContent = AI_MODELS_I18N.apiKeyHelpEdit;
             document.getElementById('api_url').value = model.api_url;
+            document.getElementById('failover_priority').value = model.failover_priority || 100;
             document.getElementById('daily_limit').value = model.daily_limit;
             document.getElementById('status').value = model.status;
             document.getElementById('statusField').classList.remove('hidden');
@@ -645,7 +670,27 @@ require_once __DIR__ . '/includes/header.php';
             document.getElementById('modelModal').classList.add('hidden');
         }
 
-        // 服务商预设配置
+        // 删除模型
+        function deleteModel(id, name) {
+            if (confirm(AI_MODELS_I18N.confirmDelete.replace('__NAME__', name))) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.innerHTML = `
+                    <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
+                    <input type="hidden" name="action" value="delete_model">
+                    <input type="hidden" name="id" value="${id}">
+                `;
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        });
         const PROVIDER_PRESETS = {
             'minimax': {
                 name: 'MiniMax M2.7',
@@ -714,28 +759,6 @@ require_once __DIR__ . '/includes/header.php';
             document.getElementById('api_url').value = preset.api_url;
             document.getElementById('model_type').value = preset.model_type;
         }
-
-        // 删除模型
-        function deleteModel(id, name) {
-            if (confirm(`确定要删除模型"${name}"吗？此操作不可恢复。`)) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.innerHTML = `
-                    <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
-                    <input type="hidden" name="action" value="delete_model">
-                    <input type="hidden" name="id" value="${id}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
-            }
-        }
-
-        // 初始化
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
-        });
     </script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

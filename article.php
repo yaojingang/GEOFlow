@@ -74,7 +74,7 @@ $structured_data_blocks = [
 ];
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang(), ENT_QUOTES); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -98,8 +98,8 @@ $structured_data_blocks = [
     <?php include 'includes/header.php'; ?>
 
     <main class="site-container article-page px-4 sm:px-6 lg:px-8 py-8 lg:py-10">
-        <nav class="article-rail article-breadcrumb flex items-center flex-wrap gap-2 text-sm text-gray-500 mb-8" aria-label="面包屑导航">
-            <a href="/" class="hover:text-gray-700">首页</a>
+        <nav class="article-rail article-breadcrumb flex items-center flex-wrap gap-2 text-sm text-gray-500 mb-8" aria-label="<?php echo htmlspecialchars(__('front.article.breadcrumb'), ENT_QUOTES); ?>">
+            <a href="/" class="hover:text-gray-700"><?php echo __('front.nav.home'); ?></a>
             <span class="article-breadcrumb-separator" aria-hidden="true">/</span>
             <?php if (!empty($article['category_name'])): ?>
                 <a href="/category/<?php echo htmlspecialchars($article['category_slug'] ?: $article['category_id']); ?>" class="hover:text-gray-700"><?php echo htmlspecialchars($article['category_name']); ?></a>
@@ -127,7 +127,7 @@ $structured_data_blocks = [
                     <div class="entry-meta article-meta-row flex flex-wrap items-center gap-3 mb-6">
                         <span class="article-meta-chip flex items-center">
                             <i data-lucide="calendar" class="w-4 h-4 mr-1"></i>
-                            发布：<?php echo date('Y-m-d', strtotime($article['published_at'] ?: $article['created_at'])); ?>
+                            <?php echo __('front.article.published_on', ['date' => date('Y-m-d', strtotime($article['published_at'] ?: $article['created_at']))]); ?>
                         </span>
                     </div>
 
@@ -166,7 +166,7 @@ $structured_data_blocks = [
                     <span class="related-articles-header__icon" aria-hidden="true">
                         <i data-lucide="bookmark" class="w-4 h-4 text-gray-500 flex-shrink-0"></i>
                     </span>
-                    <h3 class="text-base font-medium text-gray-700 leading-none">相关文章推荐</h3>
+                    <h3 class="text-base font-medium text-gray-700 leading-none"><?php echo __('front.article.related_articles'); ?></h3>
                 </div>
                 <ul class="related-articles-list space-y-4">
                     <?php foreach ($related_articles as $index => $related): ?>
@@ -189,7 +189,7 @@ $structured_data_blocks = [
         <?php if (!empty($article_detail_ad)): ?>
             <aside id="articleStickyAd" class="article-sticky-ad" data-ad-id="<?php echo htmlspecialchars($article_detail_ad['id']); ?>">
                 <div class="article-sticky-ad__inner">
-                    <button type="button" class="article-sticky-ad__close" id="articleStickyAdClose" aria-label="关闭广告">
+                    <button type="button" class="article-sticky-ad__close" id="articleStickyAdClose" aria-label="<?php echo htmlspecialchars(__('front.article.ad_close'), ENT_QUOTES); ?>">
                         <i data-lucide="x" class="w-4 h-4"></i>
                     </button>
                     <div class="article-sticky-ad__content">

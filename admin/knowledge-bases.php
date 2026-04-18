@@ -28,7 +28,7 @@ $error = '';
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -40,9 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $file_type = $_POST['file_type'] ?? 'markdown';
                 
                 if (empty($name)) {
-                    $error = '知识库名称不能为空';
+                    $error = __('knowledge_bases.error.name_required');
                 } elseif (empty($content)) {
-                    $error = '知识库内容不能为空';
+                    $error = __('knowledge_bases.error.content_required');
                 } else {
                     try {
                         $word_count = mb_strlen(strip_tags($content));
@@ -57,16 +57,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $knowledge_id = db_last_insert_id($db, 'knowledge_bases');
                             $chunk_count = knowledge_retrieval_sync_chunks($db, $knowledge_id, $content);
                             $db->commit();
-                            $message = '知识库创建成功，已生成 ' . $chunk_count . ' 个知识片段';
+                            $message = __('knowledge_bases.message.create_success', ['count' => $chunk_count]);
                         } else {
                             $db->rollBack();
-                            $error = '知识库创建失败';
+                            $error = __('knowledge_bases.message.create_failed');
                         }
                     } catch (Exception $e) {
                         if ($db->inTransaction()) {
                             $db->rollBack();
                         }
-                        $error = '创建失败: ' . $e->getMessage();
+                        $error = __('knowledge_bases.message.create_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -82,9 +82,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 static fn(array $task): string => '#' . (int) $task['id'] . ' ' . (string) $task['name'],
                                 $references['tasks']
                             );
-                            $error = '该知识库正在被 ' . $references['count'] . ' 个任务引用，请先解除引用后再删除';
+                            $error = __('knowledge_bases.error.in_use', ['count' => $references['count']]);
                             if (!empty($taskLabels)) {
-                                $error .= '：' . implode('、', $taskLabels);
+                                $error .= __('knowledge_bases.task_references', ['tasks' => implode('、', $taskLabels)]);
                             }
                             break;
                         }
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $lookupStmt->execute([$knowledge_id]);
                         $knowledge = $lookupStmt->fetch();
                         if (!$knowledge) {
-                            throw new Exception('知识库不存在');
+                            throw new Exception(__('knowledge_bases.error.not_found'));
                         }
 
                         $db->beginTransaction();
@@ -102,23 +102,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($stmt->execute([$knowledge_id])) {
                             $db->commit();
                             cleanup_knowledge_file($knowledge['file_path'] ?? '');
-                            $message = '知识库删除成功';
+                            $message = __('knowledge_bases.message.delete_success');
                         } else {
                             $db->rollBack();
-                            $error = '删除失败';
+                            $error = __('knowledge_bases.message.delete_failed');
                         }
                     } catch (Throwable $e) {
                         if ($db->inTransaction()) {
                             $db->rollBack();
                         }
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('knowledge_bases.message.delete_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
                 
             case 'upload_file':
                 if (!isset($_FILES['knowledge_file']) || $_FILES['knowledge_file']['error'] !== UPLOAD_ERR_OK) {
-                    $error = '请选择要上传的文件';
+                    $error = __('knowledge_bases.error.file_required');
                 } else {
                     $file = $_FILES['knowledge_file'];
                     $name = trim($_POST['name'] ?? '');
@@ -138,13 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // 检查文件大小（限制为10MB）
                         $max_size = 10 * 1024 * 1024; // 10MB
                         if ($file['size'] > $max_size) {
-                            $error = '文件大小超过限制，请上传小于10MB的文件';
+                            $error = __('knowledge_bases.error.file_too_large');
                         } else {
                             $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
                             $allowed_extensions = ['txt', 'md', 'docx'];
 
                             if (!in_array($extension, $allowed_extensions)) {
-                                $error = '不支持的文件格式，请上传 TXT、MD 或 DOCX 文件';
+                                $error = __('knowledge_bases.error.file_type_invalid');
                             } else {
                             $filename = uniqid() . '.' . $extension;
                             $filepath = $upload_dir . $filename;
@@ -167,14 +167,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $knowledge_id = db_last_insert_id($db, 'knowledge_bases');
                                     $chunk_count = knowledge_retrieval_sync_chunks($db, $knowledge_id, $content);
                                     $db->commit();
-                                    $message = '知识库文件上传成功，已生成 ' . $chunk_count . ' 个知识片段';
+                                    $message = __('knowledge_bases.message.upload_success', ['count' => $chunk_count]);
                                 } else {
                                     $db->rollBack();
-                                    $error = '保存到数据库失败';
+                                    $error = __('knowledge_bases.message.save_failed');
                                     cleanup_knowledge_file($relative_path);
                                 }
                             } else {
-                                $error = '文件上传失败';
+                                $error = __('knowledge_bases.message.upload_failed');
                             }
                         }
                     }
@@ -185,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($filepath !== '' && is_file($filepath)) {
                             @unlink($filepath);
                         }
-                        $error = '上传失败: ' . $e->getMessage();
+                        $error = __('knowledge_bases.message.upload_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -208,7 +208,7 @@ $stats = [
 ];
 
 // 设置页面信息
-$page_title = 'AI知识库管理';
+$page_title = __('knowledge_bases.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -216,13 +216,13 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">AI知识库管理</h1>
-            <p class="mt-1 text-sm text-gray-600">管理AI训练和参考的知识库文档</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . __('knowledge_bases.heading') . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . __('knowledge_bases.subtitle') . '</p>
         </div>
     </div>
     <button onclick="showUploadModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700">
         <i data-lucide="upload" class="w-4 h-4 mr-2"></i>
-        上传知识库
+        ' . __('knowledge_bases.upload') . '
     </button>
 </div>
 ';
@@ -254,7 +254,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">知识库总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('knowledge_bases.total'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_knowledge']; ?></dd>
                             </dl>
                         </div>
@@ -270,7 +270,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">总字数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('knowledge_bases.total_words'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo number_format($stats['total_words']); ?></dd>
                             </dl>
                         </div>
@@ -286,7 +286,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">Markdown</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('knowledge_bases.markdown_count'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['markdown_count']; ?></dd>
                             </dl>
                         </div>
@@ -302,7 +302,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">Word文档</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('knowledge_bases.word_count'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['word_count']; ?></dd>
                             </dl>
                         </div>
@@ -314,22 +314,22 @@ require_once __DIR__ . '/includes/header.php';
         <!-- 知识库列表 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">知识库列表</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('knowledge_bases.list_title'); ?></h3>
             </div>
 
             <?php if (empty($knowledge_bases)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="brain" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无知识库</h3>
-                    <p class="text-gray-500 mb-4">创建您的第一个知识库来为AI提供专业知识</p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo __('knowledge_bases.empty'); ?></h3>
+                    <p class="text-gray-500 mb-4"><?php echo __('knowledge_bases.empty_desc'); ?></p>
                     <div class="flex justify-center space-x-2">
                         <button onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700">
                             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                            新建知识库
+                            <?php echo __('knowledge_bases.create_first'); ?>
                         </button>
                         <button onclick="showUploadModal()" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="upload" class="w-4 h-4 mr-2"></i>
-                            上传文档
+                            <?php echo __('knowledge_bases.upload_doc'); ?>
                         </button>
                     </div>
                 </div>
@@ -351,21 +351,21 @@ require_once __DIR__ . '/includes/header.php';
                                         ?>">
                                             <?php 
                                             echo $knowledge['file_type'] === 'markdown' ? 'Markdown' : 
-                                                ($knowledge['file_type'] === 'word' ? 'Word文档' : '文本'); 
+                                                ($knowledge['file_type'] === 'word' ? __('status.word_document') : __('status.text')); 
                                             ?>
                                         </span>
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                                            <?php echo number_format($knowledge['word_count']); ?> 字
+                                            <?php echo __('knowledge_bases.text_unit', ['count' => number_format($knowledge['word_count'])]); ?>
                                         </span>
                                     </div>
                                     <?php if ($knowledge['description']): ?>
                                         <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($knowledge['description']); ?></p>
                                     <?php endif; ?>
                                     <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
-                                        <span>创建时间: <?php echo date('Y-m-d H:i', strtotime($knowledge['created_at'])); ?></span>
-                                        <span>更新时间: <?php echo date('Y-m-d H:i', strtotime($knowledge['updated_at'])); ?></span>
+                                        <span><?php echo __('knowledge_bases.created_at', ['value' => date('Y-m-d H:i', strtotime($knowledge['created_at']))]); ?></span>
+                                        <span><?php echo __('knowledge_bases.updated_at', ['value' => date('Y-m-d H:i', strtotime($knowledge['updated_at']))]); ?></span>
                                         <?php if ($knowledge['usage_count'] > 0): ?>
-                                            <span>使用次数: <?php echo $knowledge['usage_count']; ?></span>
+                                            <span><?php echo __('knowledge_bases.usage_count', ['count' => $knowledge['usage_count']]); ?></span>
                                         <?php endif; ?>
                                     </div>
                                 </div>
@@ -373,11 +373,11 @@ require_once __DIR__ . '/includes/header.php';
                                 <div class="flex items-center space-x-2">
                                     <a href="knowledge-base-detail.php?id=<?php echo $knowledge['id']; ?>" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                         <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                                        查看
+                                        <?php echo __('button.view'); ?>
                                     </a>
                                     <button onclick="deleteKnowledge(<?php echo $knowledge['id']; ?>, '<?php echo htmlspecialchars($knowledge['name']); ?>')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                         <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                        删除
+                                        <?php echo __('button.delete'); ?>
                                     </button>
                                 </div>
                             </div>
@@ -392,7 +392,7 @@ require_once __DIR__ . '/includes/header.php';
     <div id="create-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-10 mx-auto p-5 border w-2/3 max-w-4xl shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">新建知识库</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('knowledge_bases.modal_create'); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="create_knowledge">
@@ -400,42 +400,42 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">知识库名称 *</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('knowledge_bases.field_name'); ?></label>
                                 <input type="text" name="name" required 
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                                       placeholder="请输入知识库名称">
+                                       placeholder="<?php echo htmlspecialchars(__('knowledge_bases.placeholder_name')); ?>">
                             </div>
                             
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">文档类型</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('knowledge_bases.field_doc_type'); ?></label>
                                 <select name="file_type" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm">
                                     <option value="markdown">Markdown</option>
-                                    <option value="text">纯文本</option>
+                                    <option value="text"><?php echo __('status.text'); ?></option>
                                 </select>
                             </div>
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">描述</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('knowledge_bases.field_description'); ?></label>
                             <textarea name="description" rows="2"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                                      placeholder="知识库的用途描述（可选）"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('knowledge_bases.placeholder_description')); ?>"></textarea>
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">知识内容 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('knowledge_bases.field_content'); ?></label>
                             <textarea name="content" rows="15" required
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm font-mono"
-                                      placeholder="请输入知识库内容，支持Markdown格式..."></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('knowledge_bases.placeholder_content')); ?>"></textarea>
                         </div>
                     </div>
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideCreateModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700">
-                            创建知识库
+                            <?php echo __('knowledge_bases.create_first'); ?>
                         </button>
                     </div>
                 </form>
@@ -447,50 +447,66 @@ require_once __DIR__ . '/includes/header.php';
     <div id="upload-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">上传知识文档</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('knowledge_bases.modal_upload'); ?></h3>
                 <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="upload_file">
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">知识库名称</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('common.name'); ?></label>
                             <input type="text" name="name" 
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                                   placeholder="留空将使用文件名">
+                                   placeholder="<?php echo htmlspecialchars(__('knowledge_bases.placeholder_name_optional')); ?>">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">描述</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('knowledge_bases.field_description'); ?></label>
                             <textarea name="description" rows="2"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                                      placeholder="知识库描述（可选）"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('knowledge_bases.placeholder_upload_description')); ?>"></textarea>
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">选择文件 *</label>
-                            <input type="file" name="knowledge_file" required accept=".txt,.md,.docx"
-                                   class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100">
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('knowledge_bases.field_file'); ?></label>
+                            <div class="mt-1">
+                                <input
+                                    type="file"
+                                    id="knowledge-file-input"
+                                    name="knowledge_file"
+                                    required
+                                    accept=".txt,.md,.docx"
+                                    class="sr-only"
+                                >
+                                <label for="knowledge-file-input" class="flex items-center gap-3 rounded-md border border-gray-300 px-4 py-3 text-sm text-gray-600 cursor-pointer hover:border-orange-300 hover:bg-orange-50/40">
+                                    <span class="inline-flex items-center rounded-full bg-orange-50 px-4 py-2 font-semibold text-orange-700">
+                                        <?php echo __('knowledge_bases.file_choose'); ?>
+                                    </span>
+                                    <span id="knowledge-file-name" class="min-w-0 truncate text-gray-500">
+                                        <?php echo __('knowledge_bases.file_none_selected'); ?>
+                                    </span>
+                                </label>
+                            </div>
                         </div>
                         
                         <div class="text-sm text-gray-500">
-                            <p class="mb-2">支持的文件格式：</p>
+                            <p class="mb-2"><?php echo __('knowledge_bases.format_help'); ?></p>
                             <ul class="list-disc list-inside space-y-1">
-                                <li>TXT - 纯文本文件</li>
-                                <li>MD - Markdown文件</li>
-                                <li>DOCX - Word文档，支持自动提取正文</li>
-                                <li>DOC - 旧版 Word 文档，请先另存为 DOCX 后上传</li>
+                                <li><?php echo __('knowledge_bases.format_txt'); ?></li>
+                                <li><?php echo __('knowledge_bases.format_md'); ?></li>
+                                <li><?php echo __('knowledge_bases.format_docx'); ?></li>
+                                <li><?php echo __('knowledge_bases.format_doc'); ?></li>
                             </ul>
                         </div>
                     </div>
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideUploadModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700">
                             <i data-lucide="upload" class="w-4 h-4 mr-2 inline"></i>
-                            上传文档
+                            <?php echo __('knowledge_bases.upload_doc'); ?>
                         </button>
                     </div>
                 </form>
@@ -503,6 +519,16 @@ require_once __DIR__ . '/includes/header.php';
         document.addEventListener('DOMContentLoaded', function() {
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
+            }
+
+            const fileInput = document.getElementById('knowledge-file-input');
+            const fileName = document.getElementById('knowledge-file-name');
+            if (fileInput && fileName) {
+                fileInput.addEventListener('change', function () {
+                    fileName.textContent = this.files && this.files.length > 0
+                        ? this.files[0].name
+                        : <?php echo json_encode(__('knowledge_bases.file_none_selected'), JSON_UNESCAPED_UNICODE); ?>;
+                });
             }
         });
 
@@ -528,7 +554,7 @@ require_once __DIR__ . '/includes/header.php';
 
         // 删除知识库
         function deleteKnowledge(knowledgeId, knowledgeName) {
-            if (confirm(`确定要删除知识库"${knowledgeName}"吗？此操作不可恢复！`)) {
+            if (confirm(`<?php echo __('knowledge_bases.confirm_delete', ['name' => '{name}']); ?>`.replace('{name}', knowledgeName))) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `

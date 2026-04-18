@@ -25,7 +25,7 @@ if (!empty($category_slug)) {
 
 if (!$category) {
     header('HTTP/1.0 404 Not Found');
-    exit('分类不存在');
+    exit(__('front.category.error.not_found'));
 }
 
 $site_title = site_setting_value('site_name', SITE_NAME);
@@ -36,7 +36,7 @@ $articles = get_articles_by_category($category['id'], $page, $per_page);
 $total_count = get_category_article_count($category['id']);
 $total_pages = max(1, (int) ceil($total_count / $per_page));
 $page_title = generate_page_title($category['name'], $category['name'], $site_title);
-$page_description = generate_page_description((!empty($category['description']) ? $category['description'] : $category['name'] . '分类内容') . ' - ' . $site_description);
+$page_description = generate_page_description((!empty($category['description']) ? $category['description'] : __('front.category.meta_fallback', ['name' => $category['name']])) . ' - ' . $site_description);
 $page_keywords = generate_page_keywords($site_keywords, $category['name']);
 $canonical_url = geo_absolute_url('category/' . ($category['slug'] ?: $category['id']));
 $category_summary = build_collection_geo_summary(
@@ -44,9 +44,9 @@ $category_summary = build_collection_geo_summary(
     $page_description,
     $articles,
     [
-        '分类名称' => $category['name'],
-        '文章总数' => (string) $total_count,
-        '当前页码' => (string) $page
+        __('front.category.summary.name_label') => $category['name'],
+        __('front.category.summary.count_label') => (string) $total_count,
+        __('front.category.summary.page_label') => (string) $page
     ]
 );
 
@@ -54,13 +54,13 @@ $structured_data_blocks = [
     generate_website_structured_data(),
     generate_category_structured_data($category, $articles, $total_count),
     generate_breadcrumb_structured_data([
-        ['name' => '首页', 'url' => geo_absolute_url('/')],
+        ['name' => __('front.nav.home'), 'url' => geo_absolute_url('/')],
         ['name' => $category['name'], 'url' => $canonical_url]
     ])
 ];
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang(), ENT_QUOTES); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -84,7 +84,7 @@ $structured_data_blocks = [
 
     <main class="site-container channel-page px-4 sm:px-6 lg:px-8 py-8 lg:py-10">
         <nav class="flex items-center space-x-2 text-sm text-gray-500 mb-8">
-            <a href="/" class="hover:text-gray-700">首页</a>
+            <a href="/" class="hover:text-gray-700"><?php echo __('front.nav.home'); ?></a>
             <i data-lucide="chevron-right" class="w-4 h-4"></i>
             <span class="text-gray-900"><?php echo htmlspecialchars($category['name']); ?></span>
         </nav>
@@ -94,11 +94,11 @@ $structured_data_blocks = [
                 <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <i data-lucide="file-text" class="w-8 h-8 text-gray-400"></i>
                 </div>
-                <h3 class="text-xl font-semibold text-gray-900 mb-2">暂无文章</h3>
-                <p class="text-gray-600 mb-6">该分类下还没有发布内容</p>
+                <h3 class="text-xl font-semibold text-gray-900 mb-2"><?php echo __('front.articles.empty_title'); ?></h3>
+                <p class="text-gray-600 mb-6"><?php echo __('front.category.empty_description'); ?></p>
                 <a href="/" class="inline-flex items-center px-4 py-2 bg-gray-900 text-white rounded-lg">
                     <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
-                    返回首页
+                    <?php echo __('front.back_home'); ?>
                 </a>
             </div>
         <?php else: ?>
@@ -111,7 +111,7 @@ $structured_data_blocks = [
                                     <?php if (!empty($article['is_featured'])): ?>
                                         <span class="pill-tag">
                                             <i data-lucide="star" class="w-3 h-3 mr-1"></i>
-                                            推荐
+                                            <?php echo __('front.home.featured_badge'); ?>
                                         </span>
                                     <?php endif; ?>
                                     <span class="pill-tag">
@@ -119,7 +119,9 @@ $structured_data_blocks = [
                                     </span>
                                 </div>
                                 <time class="text-sm text-gray-500 sm:pl-4 sm:border-l sm:border-gray-200" datetime="<?php echo htmlspecialchars($article['published_at'] ?: $article['created_at']); ?>">
-                                    <?php echo date('Y年m月d日', strtotime($article['published_at'] ?: $article['created_at'])); ?>
+                                    <?php echo app_locale() === 'en'
+                                        ? date('M j, Y', strtotime($article['published_at'] ?: $article['created_at']))
+                                        : date('Y年m月d日', strtotime($article['published_at'] ?: $article['created_at'])); ?>
                                 </time>
                             </div>
 
@@ -147,7 +149,7 @@ $structured_data_blocks = [
 
                             <div class="entry-card-footer flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
                                 <a href="/article/<?php echo htmlspecialchars($article['slug']); ?>" class="read-more-btn entry-read-more self-start sm:self-center">
-                                    阅读全文
+                                    <?php echo __('front.home.read_more'); ?>
                                     <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
                                 </a>
                             </div>

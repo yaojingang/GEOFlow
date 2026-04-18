@@ -26,7 +26,7 @@ $error = '';
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $content = trim($_POST['content'] ?? '');
                 
                 if (empty($name) || empty($content)) {
-                    $error = '提示词名称和内容不能为空';
+                    $error = __('ai_prompts.error.required');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -46,12 +46,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ");
                         
                         if ($stmt->execute([$name, $type, $content])) {
-                            $message = '提示词创建成功';
+                            $message = __('ai_prompts.message.create_success');
                         } else {
-                            $error = '提示词创建失败';
+                            $error = __('ai_prompts.message.create_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '创建失败: ' . $e->getMessage();
+                        $error = __('ai_prompts.message.create_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $content = trim($_POST['content'] ?? '');
                 
                 if ($id <= 0 || empty($name) || empty($content)) {
-                    $error = '参数错误或必填字段为空';
+                    $error = __('ai_prompts.error.invalid_fields');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -73,12 +73,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ");
                         
                         if ($stmt->execute([$name, $type, $content, $id])) {
-                            $message = '提示词更新成功';
+                            $message = __('ai_prompts.message.update_success');
                         } else {
-                            $error = '提示词更新失败';
+                            $error = __('ai_prompts.message.update_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '更新失败: ' . $e->getMessage();
+                        $error = __('ai_prompts.message.update_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id = intval($_POST['id'] ?? 0);
                 
                 if ($id <= 0) {
-                    $error = '无效的提示词ID';
+                    $error = __('ai_prompts.error.invalid_id');
                 } else {
                     try {
                         // 检查是否有任务在使用此提示词
@@ -96,17 +96,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $usage_count = $stmt->fetchColumn();
                         
                         if ($usage_count > 0) {
-                            $error = "无法删除：有 {$usage_count} 个任务正在使用此提示词";
+                            $error = __('ai_prompts.error.in_use', ['count' => $usage_count]);
                         } else {
                             $stmt = $db->prepare("DELETE FROM prompts WHERE id = ? AND type = 'content'");
                             if ($stmt->execute([$id])) {
-                                $message = '提示词删除成功';
+                                $message = __('ai_prompts.message.delete_success');
                             } else {
-                                $error = '提示词删除失败';
+                                $error = __('ai_prompts.message.delete_failed');
                             }
                         }
                     } catch (Exception $e) {
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('ai_prompts.message.delete_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -131,11 +131,11 @@ try {
     ")->fetchAll();
 } catch (Exception $e) {
     $prompts = [];
-    $error = '获取提示词列表失败: ' . $e->getMessage();
+    $error = __('ai_prompts.error.fetch_failed', ['message' => $e->getMessage()]);
 }
 
 // 设置页面信息
-$page_title = '正文提示词配置';
+$page_title = __('ai_prompts.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -143,13 +143,13 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">正文提示词配置</h1>
-            <p class="mt-1 text-sm text-gray-600">管理任务中心实际使用的正文生成提示词模板</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . __('ai_prompts.heading') . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . __('ai_prompts.subtitle') . '</p>
         </div>
     </div>
     <button onclick="showCreatePromptModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-        添加正文提示词
+        ' . __('ai_prompts.add') . '
     </button>
 </div>';
 
@@ -184,26 +184,25 @@ require_once __DIR__ . '/includes/header.php';
         <?php endif; ?>
 
         <div class="mb-6 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-            此页面只管理任务正文使用的 <code>content</code> 类型提示词。
-            关键词和描述提示词请到 <a href="ai-special-prompts.php" class="font-medium underline">特殊提示词配置</a> 页面维护。
+            <?php echo __('ai_prompts.help_banner'); ?>
         </div>
 
         <!-- 提示词列表 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">正文提示词列表</h3>
-                <p class="mt-1 text-sm text-gray-600">这些提示词会被任务中心的“内容提示词”字段直接引用</p>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('ai_prompts.list_title'); ?></h3>
+                <p class="mt-1 text-sm text-gray-600"><?php echo __('ai_prompts.list_subtitle'); ?></p>
             </div>
             
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">提示词信息</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">类型</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">使用统计</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">创建时间</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('ai_prompts.column_info'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('ai_prompts.column_type'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('ai_prompts.column_usage'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('ai_prompts.column_created_at'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('common.actions'); ?></th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
@@ -211,8 +210,8 @@ require_once __DIR__ . '/includes/header.php';
                             <tr>
                                 <td colspan="5" class="px-6 py-4 text-center text-gray-500">
                                     <i data-lucide="message-square" class="w-8 h-8 mx-auto mb-2 text-gray-400"></i>
-                                    <p>暂无正文提示词配置</p>
-                                    <button onclick="showCreatePromptModal()" class="mt-2 text-green-600 hover:text-green-800">添加第一个正文提示词</button>
+                                    <p><?php echo __('ai_prompts.empty'); ?></p>
+                                    <button onclick="showCreatePromptModal()" class="mt-2 text-green-600 hover:text-green-800"><?php echo __('ai_prompts.add_first'); ?></button>
                                 </td>
                             </tr>
                         <?php else: ?>
@@ -226,18 +225,18 @@ require_once __DIR__ . '/includes/header.php';
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                            正文提示词
+                                            <?php echo __('ai_prompts.type_content'); ?>
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        <div>任务: <?php echo $prompt['task_count']; ?></div>
+                                        <div><?php echo __('ai_prompts.task_usage', ['count' => $prompt['task_count']]); ?></div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         <?php echo date('Y-m-d H:i', strtotime($prompt['created_at'])); ?>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                        <button onclick="editPrompt(<?php echo htmlspecialchars(json_encode($prompt)); ?>)" class="text-green-600 hover:text-green-900">编辑</button>
-                                        <button onclick="deletePrompt(<?php echo $prompt['id']; ?>, '<?php echo htmlspecialchars($prompt['name']); ?>')" class="text-red-600 hover:text-red-900">删除</button>
+                                        <button onclick="editPrompt(<?php echo htmlspecialchars(json_encode($prompt)); ?>)" class="text-green-600 hover:text-green-900"><?php echo __('button.edit'); ?></button>
+                                        <button onclick="deletePrompt(<?php echo $prompt['id']; ?>, '<?php echo htmlspecialchars($prompt['name']); ?>')" class="text-red-600 hover:text-red-900"><?php echo __('button.delete'); ?></button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -252,7 +251,7 @@ require_once __DIR__ . '/includes/header.php';
             <div class="relative top-10 mx-auto p-5 border w-11/12 md:w-4/5 lg:w-3/4 shadow-lg rounded-md bg-white">
                 <div class="mt-3">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-medium text-gray-900" id="promptModalTitle">添加正文提示词</h3>
+                        <h3 class="text-lg font-medium text-gray-900" id="promptModalTitle"><?php echo __('ai_prompts.modal_create'); ?></h3>
                         <button onclick="closePromptModal()" class="text-gray-400 hover:text-gray-600">
                             <i data-lucide="x" class="w-6 h-6"></i>
                         </button>
@@ -265,38 +264,38 @@ require_once __DIR__ . '/includes/header.php';
                         <input type="hidden" name="type" value="content">
 
                         <div>
-                            <label for="prompt_name" class="block text-sm font-medium text-gray-700">提示词名称 *</label>
+                            <label for="prompt_name" class="block text-sm font-medium text-gray-700"><?php echo __('ai_prompts.field_name'); ?></label>
                             <input type="text" name="name" id="prompt_name" required
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                   placeholder="例如：科技文章正文生成">
+                                   placeholder="<?php echo htmlspecialchars(__('ai_prompts.placeholder_name')); ?>">
                         </div>
 
                         <div>
-                            <label for="prompt_content" class="block text-sm font-medium text-gray-700">提示词详情 *</label>
+                            <label for="prompt_content" class="block text-sm font-medium text-gray-700"><?php echo __('ai_prompts.field_content'); ?></label>
                             <textarea name="content" id="prompt_content" required rows="12"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                      placeholder="请输入提示词内容，可以使用变量..."></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('ai_prompts.placeholder_content')); ?>"></textarea>
 
                             <!-- 变量说明 -->
                             <div class="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                                <h4 class="text-sm font-medium text-blue-800 mb-2">正文提示词可用变量：</h4>
+                                <h4 class="text-sm font-medium text-blue-800 mb-2"><?php echo __('ai_prompts.variable_title'); ?></h4>
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-blue-700">
-                                    <div><code>{{title}}</code> - 当前文章标题</div>
-                                    <div><code>{{keyword}}</code> - 标题绑定关键词</div>
-                                    <div><code>{{Knowledge}}</code> - 任务检索出的知识片段</div>
+                                    <div><?php echo __('ai_prompts.variable_title_label'); ?></div>
+                                    <div><?php echo __('ai_prompts.variable_keyword_label'); ?></div>
+                                    <div><?php echo __('ai_prompts.variable_knowledge_label'); ?></div>
                                 </div>
-                                <p class="mt-2 text-xs text-blue-600">支持条件块：<code>{{#if Knowledge}}...{{/if}}</code>。系统会按标题和关键词先召回相关知识片段，再渲染 <code>{{Knowledge}}</code>；正文生成阶段没有 <code>{{content}}</code> 可供替换。</p>
+                                <p class="mt-2 text-xs text-blue-600"><?php echo __('ai_prompts.variable_help'); ?></p>
                             </div>
                         </div>
 
                         <div class="flex justify-end space-x-3 pt-4">
                             <button type="button" onclick="closePromptModal()"
                                     class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                取消
+                                <?php echo __('button.cancel'); ?>
                             </button>
                             <button type="submit"
                                     class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                                保存
+                                <?php echo __('button.save'); ?>
                             </button>
                         </div>
                     </form>
@@ -306,7 +305,7 @@ require_once __DIR__ . '/includes/header.php';
     <script>
         // 显示创建提示词模态框
         function showCreatePromptModal() {
-            document.getElementById('promptModalTitle').textContent = '添加正文提示词';
+            document.getElementById('promptModalTitle').textContent = <?php echo json_encode(__('ai_prompts.modal_create')); ?>;
             document.getElementById('promptFormAction').value = 'create_prompt';
             document.getElementById('promptId').value = '';
             document.getElementById('promptForm').reset();
@@ -315,7 +314,7 @@ require_once __DIR__ . '/includes/header.php';
 
         // 编辑提示词
         function editPrompt(prompt) {
-            document.getElementById('promptModalTitle').textContent = '编辑正文提示词';
+            document.getElementById('promptModalTitle').textContent = <?php echo json_encode(__('ai_prompts.modal_edit')); ?>;
             document.getElementById('promptFormAction').value = 'update_prompt';
             document.getElementById('promptId').value = prompt.id;
             document.getElementById('prompt_name').value = prompt.name;
@@ -330,7 +329,8 @@ require_once __DIR__ . '/includes/header.php';
 
         // 删除提示词
         function deletePrompt(id, name) {
-            if (confirm(`确定要删除提示词"${name}"吗？此操作不可恢复。`)) {
+            const template = <?php echo json_encode(__('ai_prompts.confirm_delete', ['name' => '__NAME__'])); ?>;
+            if (confirm(template.replace('__NAME__', name))) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `

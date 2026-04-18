@@ -132,7 +132,10 @@ while (true) {
                 (int) $job['task_id'],
                 isset($result['article_id']) ? (int) $result['article_id'] : null,
                 $durationMs,
-                ['title' => $result['title'] ?? '', 'message' => $result['message'] ?? '']
+                array_merge(
+                    ['title' => $result['title'] ?? '', 'message' => $result['message'] ?? ''],
+                    is_array($result['meta'] ?? null) ? $result['meta'] : []
+                )
             );
             heartbeat($db, $workerId, 'idle', null, ['last_job_id' => (int) $job['id'], 'pid' => getmypid()]);
             echo '[' . date('Y-m-d H:i:s') . "] job #{$job['id']} 执行成功\n";

@@ -120,7 +120,7 @@ $structured_data_blocks = [
 ];
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang(), ENT_QUOTES); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -158,7 +158,7 @@ $structured_data_blocks = [
             <div class="flex items-center mb-6">
                 <div class="section-label mr-4">
                     <i data-lucide="star" class="w-4 h-4 text-amber-400"></i>
-                    <span>推荐文章</span>
+                    <span><?php echo __('front.home.featured_articles'); ?></span>
                 </div>
             </div>
 
@@ -171,7 +171,7 @@ $structured_data_blocks = [
                                     <div class="flex items-center space-x-2">
                                         <span class="pill-tag">
                                             <i data-lucide="star" class="w-3 h-3 mr-1"></i>
-                                            推荐
+                                            <?php echo __('front.home.featured_badge'); ?>
                                         </span>
                                         <?php if (!empty($article['category_name'])): ?>
                                             <a href="/category/<?php echo htmlspecialchars($article['category_id']); ?>" class="pill-tag">
@@ -208,7 +208,7 @@ $structured_data_blocks = [
 
                                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
                                     <a href="/article/<?php echo htmlspecialchars($article['slug']); ?>" class="read-more-btn self-start sm:self-center">
-                                        阅读全文
+                                        <?php echo __('front.home.read_more'); ?>
                                         <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
                                     </a>
                                 </div>
@@ -223,16 +223,16 @@ $structured_data_blocks = [
             <div class="flex items-center mt-10 mb-4">
                 <div class="section-label mr-4">
                     <i data-lucide="list" class="w-4 h-4 text-gray-400"></i>
-                    <span>最新文章</span>
+                    <span><?php echo __('front.home.latest_articles'); ?></span>
                 </div>
             </div>
         <?php endif; ?>
 
         <?php if (!empty($search)): ?>
             <nav class="flex items-center space-x-2 text-sm text-gray-500 mb-8">
-                <a href="/" class="hover:text-gray-700">首页</a>
+                <a href="/" class="hover:text-gray-700"><?php echo __('front.nav.home'); ?></a>
                 <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                <span class="text-gray-900">搜索：<?php echo htmlspecialchars($search); ?></span>
+                <span class="text-gray-900"><?php echo __('front.search.breadcrumb', ['term' => htmlspecialchars($search)]); ?></span>
             </nav>
         <?php elseif (!empty($category)): ?>
             <div class="mb-8">
@@ -249,11 +249,11 @@ $structured_data_blocks = [
                     <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <i data-lucide="file-text" class="w-8 h-8 text-gray-400"></i>
                     </div>
-                    <h3 class="text-xl font-semibold text-gray-900 mb-2"><?php echo !empty($search) ? '没有找到相关内容' : '暂无文章'; ?></h3>
-                    <p class="text-gray-600 mb-6"><?php echo !empty($search) ? '尝试使用其他关键词搜索' : '还没有发布任何文章'; ?></p>
+                    <h3 class="text-xl font-semibold text-gray-900 mb-2"><?php echo !empty($search) ? __('front.search.empty_title') : __('front.articles.empty_title'); ?></h3>
+                    <p class="text-gray-600 mb-6"><?php echo !empty($search) ? __('front.search.empty_description') : __('front.articles.empty_description'); ?></p>
                     <a href="/" class="inline-flex items-center px-4 py-2 bg-gray-900 text-white rounded-lg">
                         <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
-                        返回首页
+                        <?php echo __('front.back_home'); ?>
                     </a>
                 </div>
             <?php else: ?>
@@ -266,7 +266,7 @@ $structured_data_blocks = [
                                         <?php if (!empty($article['is_featured'])): ?>
                                             <span class="pill-tag">
                                                 <i data-lucide="star" class="w-3 h-3 mr-1"></i>
-                                                推荐
+                                                <?php echo __('front.home.featured_badge'); ?>
                                             </span>
                                         <?php endif; ?>
                                         <?php if (!empty($article['category_name'])): ?>
@@ -304,7 +304,7 @@ $structured_data_blocks = [
 
                                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
                                     <a href="/article/<?php echo htmlspecialchars($article['slug']); ?>" class="read-more-btn self-start sm:self-center">
-                                        阅读全文
+                                        <?php echo __('front.home.read_more'); ?>
                                         <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
                                     </a>
                                 </div>

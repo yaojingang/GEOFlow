@@ -21,12 +21,12 @@ require_admin_login();
 session_write_close();
 
 // 设置页面信息
-$page_title = 'AI配置器';
+$page_title = __('ai_configurator.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div>
-        <h1 class="text-2xl font-bold text-gray-900">AI配置器</h1>
-        <p class="mt-1 text-sm text-gray-600">管理AI模型和提示词配置</p>
+        <h1 class="text-2xl font-bold text-gray-900">' . __('ai_configurator.heading') . '</h1>
+        <p class="mt-1 text-sm text-gray-600">' . __('ai_configurator.subtitle') . '</p>
     </div>
 </div>';
 
@@ -46,8 +46,8 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">AI模型配置</dt>
-                                <dd class="text-lg font-medium text-gray-900">管理AI模型</dd>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('ai_configurator.models_title'); ?></dt>
+                                <dd class="text-lg font-medium text-gray-900"><?php echo __('ai_configurator.models_desc'); ?></dd>
                             </dl>
                         </div>
                     </div>
@@ -55,7 +55,7 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="bg-gray-50 px-6 py-3">
                     <div class="text-sm">
                         <a href="ai-models.php" class="font-medium text-blue-600 hover:text-blue-500">
-                            配置AI模型 <span aria-hidden="true">&rarr;</span>
+                            <?php echo __('ai_configurator.models_action'); ?> <span aria-hidden="true">&rarr;</span>
                         </a>
                     </div>
                 </div>
@@ -72,8 +72,8 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">提示词配置</dt>
-                                <dd class="text-lg font-medium text-gray-900">管理正文提示词</dd>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('ai_configurator.prompts_title'); ?></dt>
+                                <dd class="text-lg font-medium text-gray-900"><?php echo __('ai_configurator.prompts_desc'); ?></dd>
                             </dl>
                         </div>
                     </div>
@@ -81,7 +81,7 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="bg-gray-50 px-6 py-3">
                     <div class="text-sm">
                         <a href="ai-prompts.php" class="font-medium text-green-600 hover:text-green-500">
-                            配置正文提示词 <span aria-hidden="true">&rarr;</span>
+                            <?php echo __('ai_configurator.prompts_action'); ?> <span aria-hidden="true">&rarr;</span>
                         </a>
                     </div>
                 </div>
@@ -98,8 +98,8 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">其他提示词</dt>
-                                <dd class="text-lg font-medium text-gray-900">特殊提示词设置</dd>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('ai_configurator.special_title'); ?></dt>
+                                <dd class="text-lg font-medium text-gray-900"><?php echo __('ai_configurator.special_desc'); ?></dd>
                             </dl>
                         </div>
                     </div>
@@ -107,7 +107,7 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="bg-gray-50 px-6 py-3">
                     <div class="text-sm">
                         <a href="ai-special-prompts.php" class="font-medium text-purple-600 hover:text-purple-500">
-                            配置特殊提示词 <span aria-hidden="true">&rarr;</span>
+                            <?php echo __('ai_configurator.special_action'); ?> <span aria-hidden="true">&rarr;</span>
                         </a>
                     </div>
                 </div>
@@ -117,7 +117,7 @@ require_once __DIR__ . '/includes/header.php';
         <!-- 快速统计 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">配置概览</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('ai_configurator.overview'); ?></h3>
             </div>
             <div class="px-6 py-6">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -139,22 +139,22 @@ require_once __DIR__ . '/includes/header.php';
                     
                     <div class="text-center">
                         <div class="text-2xl font-bold text-blue-600"><?php echo $model_count; ?></div>
-                        <div class="text-sm text-gray-500">活跃AI模型</div>
+                        <div class="text-sm text-gray-500"><?php echo __('ai_configurator.active_models'); ?></div>
                     </div>
                     
                     <div class="text-center">
                         <div class="text-2xl font-bold text-green-600"><?php echo $prompt_count; ?></div>
-                        <div class="text-sm text-gray-500">提示词模板</div>
+                        <div class="text-sm text-gray-500"><?php echo __('ai_configurator.prompt_templates'); ?></div>
                     </div>
                     
                     <div class="text-center">
                         <div class="text-2xl font-bold text-purple-600"><?php echo number_format($total_usage); ?></div>
-                        <div class="text-sm text-gray-500">总调用次数</div>
+                        <div class="text-sm text-gray-500"><?php echo __('ai_configurator.total_calls'); ?></div>
                     </div>
                     
                     <div class="text-center">
                         <div class="text-2xl font-bold text-orange-600"><?php echo number_format($today_usage); ?></div>
-                        <div class="text-sm text-gray-500">今日调用</div>
+                        <div class="text-sm text-gray-500"><?php echo __('ai_configurator.today_calls'); ?></div>
                     </div>
                 </div>
             </div>
@@ -167,13 +167,13 @@ require_once __DIR__ . '/includes/header.php';
                     <i data-lucide="info" class="h-5 w-5 text-blue-400"></i>
                 </div>
                 <div class="ml-3">
-                    <h3 class="text-sm font-medium text-blue-800">使用说明</h3>
+                    <h3 class="text-sm font-medium text-blue-800"><?php echo __('ai_configurator.help_title'); ?></h3>
                     <div class="mt-2 text-sm text-blue-700">
                         <ul class="list-disc list-inside space-y-1">
-                            <li><strong>AI模型配置</strong>：管理可用的AI模型，设置API密钥、调用限制等</li>
-                            <li><strong>正文提示词</strong>：供任务中心正文生成直接引用，支持 {{title}}、{{keyword}}、{{Knowledge}} 和 {{#if Knowledge}}...{{/if}}；其中 {{Knowledge}} 会自动填充检索出的相关知识片段</li>
-                            <li><strong>特殊提示词</strong>：用于关键词和描述生成，支持 {{content}}、{{title}}、{{keyword}}</li>
-                            <li><strong>执行链路</strong>：主任务中心、手动测试页和 worker 现已统一使用同一套 AIEngine 渲染逻辑</li>
+                            <li><?php echo __('ai_configurator.help_models'); ?></li>
+                            <li><?php echo __('ai_configurator.help_content_prompts'); ?></li>
+                            <li><?php echo __('ai_configurator.help_special_prompts'); ?></li>
+                            <li><?php echo __('ai_configurator.help_pipeline'); ?></li>
                         </ul>
                     </div>
                 </div>

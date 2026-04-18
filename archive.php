@@ -22,7 +22,7 @@ $categories = get_categories();
 if (!empty($year) && !empty($month)) {
     if (!preg_match('/^\d{4}$/', $year) || !preg_match('/^\d{2}$/', $month)) {
         header('HTTP/1.0 404 Not Found');
-        exit('无效的日期格式');
+        exit(__('front.archive.error.invalid_date'));
     }
 
     $count_stmt = $db->prepare("
@@ -53,9 +53,11 @@ if (!empty($year) && !empty($month)) {
     $stmt->execute([(int) $year, (int) $month, $per_page, $offset]);
     $articles = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $archive_title = "{$year}年{$month}月";
-    $page_title = generate_page_title("{$archive_title}归档", '归档', $site_title);
-    $page_description = generate_page_description("查看 {$archive_title} 发布的所有文章 - {$site_description}");
+    $archive_title = app_locale() === 'en'
+        ? date('F Y', strtotime("{$year}-{$month}-01"))
+        : "{$year}年{$month}月";
+    $page_title = generate_page_title(__('front.archive.page_title_month', ['period' => $archive_title]), __('front.archive.title'), $site_title);
+    $page_description = generate_page_description(__('front.archive.page_description_month', ['period' => $archive_title, 'site' => $site_description]));
 } else {
     $stmt = $db->query("
         SELECT
@@ -69,9 +71,9 @@ if (!empty($year) && !empty($month)) {
         ORDER BY year DESC, month DESC
     ");
     $archives = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $archive_title = '文章归档';
-    $page_title = generate_page_title($archive_title, '归档', $site_title);
-    $page_description = generate_page_description("按时间查看所有文章归档 - {$site_description}");
+    $archive_title = __('front.archive.page_title');
+    $page_title = generate_page_title($archive_title, __('front.archive.title'), $site_title);
+    $page_description = generate_page_description(__('front.archive.page_description', ['site' => $site_description]));
 }
 
 $canonical_url = !empty($year) && !empty($month)
@@ -84,8 +86,10 @@ $archive_summary = build_collection_geo_summary(
     $page_description,
     $summary_source,
     [
-        '归档类型' => !empty($year) && !empty($month) ? '月份归档页' : '归档总览页',
-        '当前页码' => (string) $page
+        __('front.archive.summary.type_label') => !empty($year) && !empty($month)
+            ? __('front.archive.summary.month_type')
+            : __('front.archive.summary.overview_type'),
+        __('front.archive.summary.page_label') => (string) $page
     ]
 );
 
@@ -104,20 +108,20 @@ $structured_data_blocks = [
     generate_website_structured_data(),
     generate_collection_structured_data($archive_title, $page_description, $canonical_url, $collection_items, 'CollectionPage'),
     generate_breadcrumb_structured_data(array_values(array_filter([
-        ['name' => '首页', 'url' => geo_absolute_url('/')],
-        ['name' => '归档', 'url' => geo_absolute_url('archive')],
+        ['name' => __('front.nav.home'), 'url' => geo_absolute_url('/')],
+        ['name' => __('front.archive.title'), 'url' => geo_absolute_url('archive')],
         (!empty($year) && !empty($month)) ? ['name' => $archive_title, 'url' => $canonical_url] : null
     ])))
 ];
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang(), ENT_QUOTES); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($page_title); ?></title>
     <meta name="description" content="<?php echo htmlspecialchars($page_description); ?>">
-    <meta name="keywords" content="文章归档,内容归档,AI内容,GEO内容系统">
+    <meta name="keywords" content="<?php echo htmlspecialchars(__('front.archive.meta_keywords')); ?>">
     <link rel="canonical" href="<?php echo htmlspecialchars($canonical_url); ?>">
     <meta property="og:title" content="<?php echo htmlspecialchars($page_title); ?>">
     <meta property="og:description" content="<?php echo htmlspecialchars($page_description); ?>">
@@ -135,14 +139,14 @@ $structured_data_blocks = [
 
     <main class="site-container px-4 sm:px-6 lg:px-8 py-8">
         <nav class="flex items-center space-x-2 text-sm text-gray-500 mb-8">
-            <a href="/" class="hover:text-gray-700">首页</a>
+            <a href="/" class="hover:text-gray-700"><?php echo __('front.nav.home'); ?></a>
             <i data-lucide="chevron-right" class="w-4 h-4"></i>
             <?php if (!empty($year) && !empty($month)): ?>
-                <a href="/archive" class="hover:text-gray-700">归档</a>
+                <a href="/archive" class="hover:text-gray-700"><?php echo __('front.archive.title'); ?></a>
                 <i data-lucide="chevron-right" class="w-4 h-4"></i>
                 <span class="text-gray-900"><?php echo htmlspecialchars($archive_title); ?></span>
             <?php else: ?>
-                <span class="text-gray-900">归档</span>
+                <span class="text-gray-900"><?php echo __('front.archive.title'); ?></span>
             <?php endif; ?>
         </nav>
 
@@ -152,9 +156,9 @@ $structured_data_blocks = [
             </div>
             <h1 class="page-intro-title font-bold text-gray-900 mb-2"><?php echo htmlspecialchars($archive_title); ?></h1>
             <?php if (!empty($year) && !empty($month)): ?>
-                <p class="text-gray-600">该月共发布 <?php echo $total_count; ?> 篇文章</p>
+                <p class="text-gray-600"><?php echo __('front.archive.month_description', ['count' => $total_count]); ?></p>
             <?php else: ?>
-                <p class="text-gray-600">按时间浏览所有文章</p>
+                <p class="text-gray-600"><?php echo __('front.archive.overview_description'); ?></p>
             <?php endif; ?>
         </div>
 
@@ -164,11 +168,11 @@ $structured_data_blocks = [
                     <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <i data-lucide="file-text" class="w-8 h-8 text-gray-400"></i>
                     </div>
-                    <h3 class="text-xl font-semibold text-gray-900 mb-2">暂无文章</h3>
-                    <p class="text-gray-500 mb-6">该月份还没有发布任何文章</p>
+                    <h3 class="text-xl font-semibold text-gray-900 mb-2"><?php echo __('front.articles.empty_title'); ?></h3>
+                    <p class="text-gray-500 mb-6"><?php echo __('front.archive.month_empty_description'); ?></p>
                     <a href="/archive" class="inline-flex items-center px-4 py-2 bg-gray-900 text-white rounded-lg">
                         <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
-                        返回归档
+                        <?php echo __('front.back_archive'); ?>
                     </a>
                 </div>
             <?php else: ?>
@@ -186,12 +190,14 @@ $structured_data_blocks = [
                                         <?php if (!empty($article['is_featured'])): ?>
                                             <span class="pill-tag">
                                                 <i data-lucide="star" class="w-3 h-3 mr-1"></i>
-                                                推荐
+                                                <?php echo __('front.home.featured_badge'); ?>
                                             </span>
                                         <?php endif; ?>
                                     </div>
                                     <time class="text-sm text-gray-500" datetime="<?php echo htmlspecialchars($article['published_at'] ?: $article['created_at']); ?>">
-                                        <?php echo date('m月d日', strtotime($article['published_at'] ?: $article['created_at'])); ?>
+                                        <?php echo app_locale() === 'en'
+                                            ? date('M j', strtotime($article['published_at'] ?: $article['created_at']))
+                                            : date('m月d日', strtotime($article['published_at'] ?: $article['created_at'])); ?>
                                     </time>
                                 </div>
 
@@ -207,7 +213,7 @@ $structured_data_blocks = [
 
                                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
                                     <a href="/article/<?php echo htmlspecialchars($article['slug']); ?>" class="read-more-btn self-start sm:self-center">
-                                        阅读全文
+                                        <?php echo __('front.home.read_more'); ?>
                                         <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
                                     </a>
                                 </div>
@@ -228,11 +234,11 @@ $structured_data_blocks = [
                     <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <i data-lucide="file-text" class="w-8 h-8 text-gray-400"></i>
                     </div>
-                    <h3 class="text-xl font-semibold text-gray-900 mb-2">暂无归档</h3>
-                    <p class="text-gray-500 mb-6">还没有发布任何文章</p>
+                    <h3 class="text-xl font-semibold text-gray-900 mb-2"><?php echo __('front.archive.empty_title'); ?></h3>
+                    <p class="text-gray-500 mb-6"><?php echo __('front.archive.empty_description'); ?></p>
                     <a href="/" class="inline-flex items-center px-4 py-2 bg-gray-900 text-white rounded-lg">
                         <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
-                        返回首页
+                        <?php echo __('front.back_home'); ?>
                     </a>
                 </div>
             <?php else: ?>
@@ -246,7 +252,7 @@ $structured_data_blocks = [
                                 </div>
                                 <?php endif; ?>
                                 <div class="p-6">
-                                    <h2 class="text-2xl font-bold text-gray-900 mb-4"><?php echo htmlspecialchars($archive['year']); ?>年</h2>
+                                    <h2 class="text-2xl font-bold text-gray-900 mb-4"><?php echo htmlspecialchars($archive['year']); ?><?php echo app_locale() === 'en' ? '' : '年'; ?></h2>
                                     <div class="space-y-3">
                                 <?php $current_year = $archive['year']; ?>
                             <?php endif; ?>
@@ -257,8 +263,10 @@ $structured_data_blocks = [
                                         <i data-lucide="calendar" class="w-5 h-5 text-gray-600"></i>
                                     </div>
                                     <div>
-                                        <h3 class="font-medium text-gray-900"><?php echo intval($archive['month']); ?>月</h3>
-                                        <p class="text-sm text-gray-500"><?php echo intval($archive['count']); ?> 篇文章</p>
+                                        <h3 class="font-medium text-gray-900"><?php echo app_locale() === 'en'
+                                            ? date('F', strtotime('2000-' . $archive['month'] . '-01'))
+                                            : intval($archive['month']) . '月'; ?></h3>
+                                        <p class="text-sm text-gray-500"><?php echo __('front.archive.article_count', ['count' => intval($archive['count'])]); ?></p>
                                     </div>
                                 </div>
                                 <i data-lucide="chevron-right" class="w-5 h-5 text-gray-400 group-hover:text-gray-600 transition-colors"></i>

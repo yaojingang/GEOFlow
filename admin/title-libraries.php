@@ -27,7 +27,7 @@ $error = '';
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $description = trim($_POST['description'] ?? '');
                 
                 if (empty($name)) {
-                    $error = '标题库名称不能为空';
+                    $error = __('title_libraries.error.name_required');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -46,12 +46,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ");
                         
                         if ($stmt->execute([$name, $description])) {
-                            $message = '标题库创建成功';
+                            $message = __('title_libraries.message.create_success');
                         } else {
-                            $error = '标题库创建失败';
+                            $error = __('title_libraries.message.create_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '创建失败: ' . $e->getMessage();
+                        $error = __('title_libraries.message.create_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -80,9 +80,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             );
                             $taskPreview = implode('、', $taskNames);
                             $remainingHint = $referencedTaskCount > count($taskNames)
-                                ? sprintf(' 等 %d 个任务', $referencedTaskCount)
+                                ? __('title_libraries.error.delete_more_tasks', ['count' => $referencedTaskCount])
                                 : '';
-                            $error = '该标题库正在被任务引用，无法删除。请先修改或删除相关任务：' . $taskPreview . $remainingHint;
+                            $error = __('title_libraries.error.delete_blocked', ['tasks' => $taskPreview . $remainingHint]);
                             break;
                         }
 
@@ -97,10 +97,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmt->execute([$library_id]);
                         
                         $db->commit();
-                        $message = '标题库删除成功';
+                        $message = __('title_libraries.message.delete_success');
                     } catch (Exception $e) {
                         $db->rollBack();
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('title_libraries.message.delete_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -110,9 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $titles_text = trim($_POST['titles_text'] ?? '');
                 
                 if ($library_id <= 0) {
-                    $error = '请选择标题库';
+                    $error = __('title_libraries.error.library_required');
                 } elseif (empty($titles_text)) {
-                    $error = '请输入标题';
+                    $error = __('title_libraries.error.titles_required');
                 } else {
                     try {
                         $db->beginTransaction();
@@ -145,10 +145,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         refresh_title_library_count($db, $library_id);
                         
                         $db->commit();
-                        $message = "成功导入 {$imported_count} 个标题";
+                        $message = __('title_libraries.message.import_success', ['count' => $imported_count]);
                     } catch (Exception $e) {
                         $db->rollBack();
-                        $error = '导入失败: ' . $e->getMessage();
+                        $error = __('title_libraries.message.import_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -159,9 +159,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $count = intval($_POST['count'] ?? 10);
                 
                 if ($library_id <= 0) {
-                    $error = '请选择标题库';
+                    $error = __('title_libraries.error.library_required');
                 } elseif (empty($keyword)) {
-                    $error = '请输入关键词';
+                    $error = __('title_libraries.error.keyword_required');
                 } else {
                     try {
                         require_once __DIR__ . '/../includes/ai_engine.php';
@@ -187,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $ai_model = $stmt->fetch();
                         
                         if (!$ai_model) {
-                            $error = '没有可用的AI模型配置';
+                            $error = __('title_libraries.error.no_ai_model');
                         } else {
                             $result = $ai_engine->callAI($ai_model, $prompt);
                             
@@ -213,16 +213,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 refresh_title_library_count($db, $library_id);
                                 
                                 $db->commit();
-                                $message = "AI成功生成 {$generated_count} 个标题";
+                                $message = __('title_libraries.message.ai_success', ['count' => $generated_count]);
                             } else {
-                                $error = 'AI生成标题失败';
+                                $error = __('title_libraries.error.ai_failed');
                             }
                         }
                     } catch (Exception $e) {
                         if ($db->inTransaction()) {
                             $db->rollBack();
                         }
-                        $error = 'AI生成失败: ' . $e->getMessage();
+                        $error = __('title_libraries.message.ai_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -248,7 +248,7 @@ $stats = [
 ];
 
 // 设置页面信息
-$page_title = '标题库管理';
+$page_title = __('title_libraries.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -256,13 +256,13 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">标题库管理</h1>
-            <p class="mt-1 text-sm text-gray-600">管理手动创建和AI生成的文章标题</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . __('title_libraries.heading') . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . __('title_libraries.subtitle') . '</p>
         </div>
     </div>
     <button onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-        新建标题库
+        ' . __('title_libraries.create') . '
     </button>
 </div>
 ';
@@ -281,7 +281,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">标题库总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('title_libraries.total'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_libraries']; ?></dd>
                             </dl>
                         </div>
@@ -297,7 +297,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">标题总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('title_libraries.total_titles'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_titles']; ?></dd>
                             </dl>
                         </div>
@@ -313,7 +313,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">AI生成</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('title_libraries.ai_generated'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['ai_titles']; ?></dd>
                             </dl>
                         </div>
@@ -329,7 +329,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">平均每库</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('common.avg_per_library'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['avg_titles']; ?></dd>
                             </dl>
                         </div>
@@ -341,17 +341,17 @@ require_once __DIR__ . '/includes/header.php';
         <!-- 标题库列表 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">标题库列表</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('title_libraries.list_title'); ?></h3>
             </div>
 
             <?php if (empty($libraries)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="folder-plus" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无标题库</h3>
-                    <p class="text-gray-500 mb-4">创建您的第一个标题库来开始管理标题</p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo __('title_libraries.empty'); ?></h3>
+                    <p class="text-gray-500 mb-4"><?php echo __('title_libraries.empty_desc'); ?></p>
                     <button onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
                         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                        创建标题库
+                        <?php echo __('title_libraries.create_first'); ?>
                     </button>
                 </div>
             <?php else: ?>
@@ -367,11 +367,11 @@ require_once __DIR__ . '/includes/header.php';
                                             </a>
                                         </h4>
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                            <?php echo $library['actual_count']; ?> 个标题
+                                            <?php echo __('title_libraries.title_count', ['count' => $library['actual_count']]); ?>
                                         </span>
                                         <?php if ($library['ai_count'] > 0): ?>
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                                AI生成: <?php echo $library['ai_count']; ?>
+                                                <?php echo __('title_libraries.ai_count', ['count' => $library['ai_count']]); ?>
                                             </span>
                                         <?php endif; ?>
                                     </div>
@@ -379,27 +379,27 @@ require_once __DIR__ . '/includes/header.php';
                                         <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($library['description']); ?></p>
                                     <?php endif; ?>
                                     <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
-                                        <span>创建时间: <?php echo date('Y-m-d H:i', strtotime($library['created_at'])); ?></span>
-                                        <span>更新时间: <?php echo date('Y-m-d H:i', strtotime($library['updated_at'])); ?></span>
+                                        <span><?php echo __('title_libraries.created_at', ['value' => date('Y-m-d H:i', strtotime($library['created_at']))]); ?></span>
+                                        <span><?php echo __('title_libraries.updated_at', ['value' => date('Y-m-d H:i', strtotime($library['updated_at']))]); ?></span>
                                     </div>
                                 </div>
                                 
                                 <div class="flex items-center space-x-2">
                                     <a href="title-library-ai-generate.php?id=<?php echo $library['id']; ?>" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-purple-600 hover:bg-purple-700">
                                         <i data-lucide="zap" class="w-4 h-4 mr-1"></i>
-                                        AI生成
+                                        <?php echo __('title_detail.ai_generate'); ?>
                                     </a>
                                     <button onclick="showImportModal(<?php echo $library['id']; ?>, '<?php echo htmlspecialchars($library['name']); ?>')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                         <i data-lucide="upload" class="w-4 h-4 mr-1"></i>
-                                        导入
+                                        <?php echo __('button.import'); ?>
                                     </button>
                                     <a href="title-library-detail.php?id=<?php echo $library['id']; ?>" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                         <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                                        查看
+                                        <?php echo __('button.view'); ?>
                                     </a>
                                     <button onclick="deleteLibrary(<?php echo $library['id']; ?>, '<?php echo htmlspecialchars($library['name']); ?>')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                         <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                        删除
+                                        <?php echo __('button.delete'); ?>
                                     </button>
                                 </div>
                             </div>
@@ -412,33 +412,33 @@ require_once __DIR__ . '/includes/header.php';
     <div id="create-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">创建标题库</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('title_libraries.modal_create'); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="create_library">
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">库名称 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('title_libraries.field_name'); ?></label>
                             <input type="text" name="name" required 
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                   placeholder="请输入标题库名称">
+                                   placeholder="<?php echo htmlspecialchars(__('title_libraries.placeholder_name')); ?>">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">描述</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('title_libraries.field_description'); ?></label>
                             <textarea name="description" rows="3"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                      placeholder="标题库的用途描述（可选）"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('title_libraries.placeholder_description')); ?>"></textarea>
                         </div>
                     </div>
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideCreateModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            创建
+                            <?php echo __('button.create'); ?>
                         </button>
                     </div>
                 </form>
@@ -450,7 +450,7 @@ require_once __DIR__ . '/includes/header.php';
     <div id="import-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-10 mx-auto p-5 border w-2/3 max-w-2xl shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">导入标题到 <span id="import-library-name" class="text-green-600"></span></h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('title_libraries.modal_import'); ?> <span id="import-library-name" class="text-green-600"></span></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="import_titles">
@@ -458,28 +458,28 @@ require_once __DIR__ . '/includes/header.php';
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">标题内容</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('title_libraries.field_titles'); ?></label>
                             <textarea name="titles_text" rows="10" required
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                      placeholder="请输入标题，每行一个标题&#10;&#10;示例：&#10;人工智能改变世界的10种方式&#10;机器学习入门指南：从零开始&#10;深度学习在医疗领域的应用"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('title_libraries.placeholder_titles')); ?>"></textarea>
                         </div>
                         
                         <div class="text-sm text-gray-500">
-                            <p class="mb-2">导入说明：</p>
+                            <p class="mb-2"><?php echo __('title_libraries.import_help'); ?></p>
                             <ul class="list-disc list-inside space-y-1">
-                                <li>每行一个标题</li>
-                                <li>自动去重处理</li>
-                                <li>建议标题长度15-30字</li>
+                                <li><?php echo __('title_libraries.import_line'); ?></li>
+                                <li><?php echo __('title_libraries.import_dedupe'); ?></li>
+                                <li><?php echo __('title_libraries.import_length'); ?></li>
                             </ul>
                         </div>
                     </div>
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideImportModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            导入标题
+                            <?php echo __('title_libraries.import_button'); ?>
                         </button>
                     </div>
                 </form>
@@ -524,7 +524,7 @@ require_once __DIR__ . '/includes/header.php';
 
         // 删除标题库
         function deleteLibrary(libraryId, libraryName) {
-            if (confirm(`确定要删除标题库"${libraryName}"吗？这将同时删除库中的所有标题，此操作不可恢复！`)) {
+            if (confirm(`<?php echo __('title_libraries.confirm_delete', ['name' => '{name}']); ?>`.replace('{name}', libraryName))) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `

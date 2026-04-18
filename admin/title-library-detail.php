@@ -47,7 +47,7 @@ try {
     // 处理表单提交
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-            throw new Exception('CSRF token验证失败');
+            throw new Exception(__('title_detail.error.csrf'));
         }
         
         $action = $_POST['action'] ?? '';
@@ -58,14 +58,14 @@ try {
             $keyword = trim($_POST['keyword'] ?? '');
             
             if (empty($title)) {
-                throw new Exception('标题不能为空');
+                throw new Exception(__('title_detail.error.title_required'));
             }
             
             // 检查标题是否已存在
             $stmt = $db->prepare("SELECT COUNT(*) FROM titles WHERE library_id = ? AND title = ?");
             $stmt->execute([$library_id, $title]);
             if ($stmt->fetchColumn() > 0) {
-                throw new Exception('该标题已存在');
+                throw new Exception(__('title_detail.error.title_exists'));
             }
             
             // 添加标题
@@ -73,7 +73,7 @@ try {
             $stmt->execute([$library_id, $title, $keyword]);
             refresh_title_library_count($db, $library_id);
             
-            $success_message = '标题添加成功';
+            $success_message = __('title_detail.message.add_success');
             
         } elseif ($action === 'delete_title') {
             $title_id = (int)($_POST['title_id'] ?? 0);
@@ -82,13 +82,13 @@ try {
             $stmt->execute([$title_id, $library_id]);
             refresh_title_library_count($db, $library_id);
             
-            $success_message = '标题删除成功';
+            $success_message = __('title_detail.message.delete_success');
             
         } elseif ($action === 'import_titles') {
             $titles_text = trim($_POST['titles_text'] ?? '');
             
             if (empty($titles_text)) {
-                throw new Exception('标题内容不能为空');
+                throw new Exception(__('title_detail.error.content_required'));
             }
             
             // 解析标题
@@ -123,7 +123,7 @@ try {
 
             refresh_title_library_count($db, $library_id);
 
-            $success_message = "成功导入 {$imported_count} 个标题" . ($duplicate_count > 0 ? "，跳过 {$duplicate_count} 个重复标题" : '');
+            $success_message = __('title_detail.message.import_success', ['count' => $imported_count]) . ($duplicate_count > 0 ? __('title_detail.message.import_skip', ['count' => $duplicate_count]) : '');
         }
 
         if ($db->inTransaction()) {
@@ -154,7 +154,7 @@ $titles = $stmt->fetchAll();
 $total_pages = ceil($total_titles / $per_page);
 
 // 设置页面信息
-$page_title = $library['name'] . ' - 标题库详情';
+$page_title = $library['name'] . __('title_detail.page_title_suffix');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -163,21 +163,21 @@ $page_header = '
         </a>
         <div>
             <h1 class="text-2xl font-bold text-gray-900">' . htmlspecialchars($library['name']) . '</h1>
-            <p class="mt-1 text-sm text-gray-600">标题库详情管理</p>
+            <p class="mt-1 text-sm text-gray-600">' . __('title_detail.subtitle') . '</p>
         </div>
     </div>
     <div class="flex space-x-2">
         <button onclick="showImportModal()" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
             <i data-lucide="upload" class="w-4 h-4 mr-2"></i>
-            批量导入
+            ' . __('title_detail.import_batch') . '
         </button>
         <button onclick="showAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-            添加标题
+            ' . __('title_detail.add_title') . '
         </button>
         <a href="title-library-ai-generate.php?id=' . $library_id . '" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
             <i data-lucide="zap" class="w-4 h-4 mr-2"></i>
-            AI生成标题
+            ' . __('title_detail.ai_generate') . '
         </a>
     </div>
 </div>';
@@ -207,7 +207,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">标题总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('title_detail.total_titles'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $total_titles; ?></dd>
                             </dl>
                         </div>
@@ -223,7 +223,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">创建时间</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('title_detail.created_date'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo date('Y-m-d', strtotime($library['created_at'])); ?></dd>
                             </dl>
                         </div>
@@ -239,7 +239,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">使用次数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('title_detail.usage_total'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo array_sum(array_column($titles, 'used_count')); ?></dd>
                             </dl>
                         </div>
@@ -251,22 +251,22 @@ require_once __DIR__ . '/includes/header.php';
         <!-- 标题列表 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">标题列表</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('title_detail.list_title'); ?></h3>
             </div>
 
             <?php if (empty($titles)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="list" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无标题</h3>
-                    <p class="text-gray-500 mb-4">添加您的第一个标题</p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo __('title_detail.empty'); ?></h3>
+                    <p class="text-gray-500 mb-4"><?php echo __('title_detail.empty_desc'); ?></p>
                     <div class="flex justify-center space-x-2">
                         <button onclick="showAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
                             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                            添加标题
+                            <?php echo __('title_detail.add_title'); ?>
                         </button>
                         <button onclick="showImportModal()" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="upload" class="w-4 h-4 mr-2"></i>
-                            批量导入
+                            <?php echo __('title_detail.import_batch'); ?>
                         </button>
                     </div>
                 </div>
@@ -283,7 +283,7 @@ require_once __DIR__ . '/includes/header.php';
                                         <?php if ($title['is_ai_generated']): ?>
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                                 <i data-lucide="zap" class="w-3 h-3 mr-1"></i>
-                                                AI生成
+                                                <?php echo __('title_detail.ai_badge'); ?>
                                             </span>
                                         <?php endif; ?>
                                         <?php if (!empty($title['keyword'])): ?>
@@ -293,15 +293,15 @@ require_once __DIR__ . '/includes/header.php';
                                         <?php endif; ?>
                                     </div>
                                     <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
-                                        <span>使用次数: <?php echo $title['used_count']; ?></span>
-                                        <span>创建时间: <?php echo date('Y-m-d H:i', strtotime($title['created_at'])); ?></span>
+                                        <span><?php echo __('title_detail.usage_count', ['count' => $title['used_count']]); ?></span>
+                                        <span><?php echo __('title_detail.created_at', ['value' => date('Y-m-d H:i', strtotime($title['created_at']))]); ?></span>
                                     </div>
                                 </div>
                                 
                                 <div class="flex items-center space-x-2">
                                     <button onclick="deleteTitle(<?php echo $title['id']; ?>, '<?php echo htmlspecialchars($title['title']); ?>')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                         <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                        删除
+                                        <?php echo __('button.delete'); ?>
                                     </button>
                                 </div>
                             </div>
@@ -314,12 +314,12 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="px-6 py-4 border-t border-gray-200">
                         <div class="flex items-center justify-between">
                             <div class="text-sm text-gray-700">
-                                显示第 <?php echo ($offset + 1); ?> - <?php echo min($offset + $per_page, $total_titles); ?> 条，共 <?php echo $total_titles; ?> 条
+                                <?php echo __('title_detail.pagination', ['start' => ($offset + 1), 'end' => min($offset + $per_page, $total_titles), 'total' => $total_titles]); ?>
                             </div>
                             <div class="flex space-x-2">
                                 <?php if ($page > 1): ?>
                                     <a href="?id=<?php echo $library_id; ?>&page=<?php echo $page - 1; ?>" class="px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                                        上一页
+                                        <?php echo __('button.previous'); ?>
                                     </a>
                                 <?php endif; ?>
                                 
@@ -331,7 +331,7 @@ require_once __DIR__ . '/includes/header.php';
                                 
                                 <?php if ($page < $total_pages): ?>
                                     <a href="?id=<?php echo $library_id; ?>&page=<?php echo $page + 1; ?>" class="px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                                        下一页
+                                        <?php echo __('button.next'); ?>
                                     </a>
                                 <?php endif; ?>
                             </div>
@@ -346,33 +346,33 @@ require_once __DIR__ . '/includes/header.php';
     <div id="add-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">添加标题</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('title_detail.modal_add'); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                     <input type="hidden" name="action" value="add_title">
 
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">标题内容 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('title_detail.field_title'); ?></label>
                             <input type="text" name="title" required
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                   placeholder="请输入标题内容">
+                                   placeholder="<?php echo htmlspecialchars(__('title_detail.placeholder_title')); ?>">
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">关联关键词</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('title_detail.field_keyword'); ?></label>
                             <input type="text" name="keyword"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                   placeholder="关联的关键词（可选）">
+                                   placeholder="<?php echo htmlspecialchars(__('title_detail.placeholder_keyword')); ?>">
                         </div>
                     </div>
 
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideAddModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            添加
+                            <?php echo __('button.add'); ?>
                         </button>
                     </div>
                 </form>
@@ -384,35 +384,35 @@ require_once __DIR__ . '/includes/header.php';
     <div id="import-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-10 mx-auto p-5 border w-2/3 max-w-2xl shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">批量导入标题</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('title_detail.modal_import'); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                     <input type="hidden" name="action" value="import_titles">
 
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">标题内容</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('title_detail.field_titles'); ?></label>
                             <textarea name="titles_text" rows="10" required
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                      placeholder="请输入标题，支持以下格式：&#10;1. 每行一个标题&#10;2. 标题|关键词（用竖线分隔）&#10;&#10;示例：&#10;如何提高网站SEO排名&#10;网站优化技巧大全|SEO优化&#10;搜索引擎优化指南"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('title_detail.placeholder_titles')); ?>"></textarea>
                         </div>
 
                         <div class="text-sm text-gray-500">
-                            <p class="mb-2">支持的格式：</p>
+                            <p class="mb-2"><?php echo __('title_detail.import_format_title'); ?></p>
                             <ul class="list-disc list-inside space-y-1">
-                                <li>每行一个标题</li>
-                                <li>标题|关键词（用竖线分隔标题和关键词）</li>
-                                <li>自动去重处理</li>
+                                <li><?php echo __('title_detail.import_format_line'); ?></li>
+                                <li><?php echo __('title_detail.import_format_pipe'); ?></li>
+                                <li><?php echo __('title_detail.import_format_dedupe'); ?></li>
                             </ul>
                         </div>
                     </div>
 
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideImportModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            导入标题
+                            <?php echo __('title_detail.import_button'); ?>
                         </button>
                     </div>
                 </form>
@@ -450,7 +450,7 @@ require_once __DIR__ . '/includes/header.php';
 
         // 删除标题
         function deleteTitle(titleId, titleName) {
-            if (confirm(`确定要删除标题"${titleName}"吗？此操作不可恢复！`)) {
+            if (confirm(`<?php echo __('title_detail.confirm_delete', ['name' => '{name}']); ?>`.replace('{name}', titleName))) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `

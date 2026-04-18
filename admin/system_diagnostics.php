@@ -76,13 +76,13 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_invalid');
     } else {
         $action = $_POST['action'] ?? '';
         if ($action === 'cleanup_orphans') {
             $queueService = new JobQueueService($db);
             $cleaned = $queueService->recoverStaleJobs();
-            $message = "已恢复 $cleaned 个卡住的队列任务";
+            $message = __('system_diagnostics.message.cleaned', ['count' => $cleaned]);
         }
     }
 }
@@ -92,25 +92,25 @@ $tasks = getTaskStatus($db);
 $workers = getWorkerStatus($db);
 
 // 设置页面信息
-$page_title = '系统诊断';
+$page_title = __('system_diagnostics.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div>
-        <h1 class="text-2xl font-bold text-gray-900">系统诊断</h1>
-        <p class="mt-1 text-sm text-gray-600">检查系统状态和潜在问题</p>
+        <h1 class="text-2xl font-bold text-gray-900">' . __('system_diagnostics.page_heading') . '</h1>
+        <p class="mt-1 text-sm text-gray-600">' . __('system_diagnostics.page_subtitle') . '</p>
     </div>
     <div class="flex space-x-3">
-        <form method="POST" onsubmit="return confirm(\'确定要恢复卡住的队列任务吗？\')" class="inline">
+        <form method="POST" onsubmit="return confirm(\'' . addslashes(__('system_diagnostics.confirm.recover_stale')) . '\')" class="inline">
             <input type="hidden" name="csrf_token" value="' . htmlspecialchars(generate_csrf_token(), ENT_QUOTES, 'UTF-8') . '">
             <input type="hidden" name="action" value="cleanup_orphans">
             <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
             <i data-lucide="trash-2" class="w-4 h-4 mr-2"></i>
-            恢复卡住任务
+            ' . __('system_diagnostics.button.recover_stale') . '
             </button>
         </form>
         <a href="?" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
             <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
-            刷新
+            ' . __('button.refresh') . '
         </a>
     </div>
 </div>
@@ -136,11 +136,11 @@ require_once __DIR__ . '/includes/header.php';
 <!-- PHP进程状态 -->
 <div class="bg-white shadow rounded-lg mb-6">
     <div class="px-6 py-4 border-b border-gray-200">
-        <h3 class="text-lg font-medium text-gray-900">PHP进程状态</h3>
+        <h3 class="text-lg font-medium text-gray-900"><?php echo __('system_diagnostics.section.php_processes'); ?></h3>
     </div>
     <div class="px-6 py-4">
         <?php if (empty($system_info['php_processes'])): ?>
-            <p class="text-gray-500">没有找到PHP进程</p>
+            <p class="text-gray-500"><?php echo __('system_diagnostics.empty.no_php_processes'); ?></p>
         <?php else: ?>
             <div class="space-y-2">
                 <?php foreach ($system_info['php_processes'] as $process): ?>
@@ -149,10 +149,10 @@ require_once __DIR__ . '/includes/header.php';
                         echo htmlspecialchars($process);
                         // 高亮服务器进程
                         if (strpos($process, 'localhost:8080') !== false) {
-                            echo ' <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">服务器进程</span>';
+                            echo ' <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">' . __('system_diagnostics.badge.server_process') . '</span>';
                         }
                         if (strpos($process, 'bin/worker.php') !== false) {
-                            echo ' <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">队列Worker</span>';
+                            echo ' <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">' . __('system_diagnostics.badge.queue_worker') . '</span>';
                         }
                         ?>
                     </div>
@@ -165,11 +165,11 @@ require_once __DIR__ . '/includes/header.php';
 <!-- 端口占用情况 -->
 <div class="bg-white shadow rounded-lg mb-6">
     <div class="px-6 py-4 border-b border-gray-200">
-        <h3 class="text-lg font-medium text-gray-900">端口8080占用情况</h3>
+        <h3 class="text-lg font-medium text-gray-900"><?php echo __('system_diagnostics.section.port_8080'); ?></h3>
     </div>
     <div class="px-6 py-4">
         <?php if (empty($system_info['port_8080'])): ?>
-            <p class="text-red-600">端口8080未被占用 - 服务器可能未运行</p>
+            <p class="text-red-600"><?php echo __('system_diagnostics.empty.port_8080_free'); ?></p>
         <?php else: ?>
             <div class="space-y-2">
                 <?php foreach ($system_info['port_8080'] as $port_info): ?>
@@ -185,20 +185,20 @@ require_once __DIR__ . '/includes/header.php';
 <!-- Worker状态 -->
 <div class="bg-white shadow rounded-lg mb-6">
     <div class="px-6 py-4 border-b border-gray-200">
-        <h3 class="text-lg font-medium text-gray-900">Worker状态</h3>
+        <h3 class="text-lg font-medium text-gray-900"><?php echo __('system_diagnostics.section.worker_status'); ?></h3>
     </div>
     <div class="px-6 py-4">
         <?php if (empty($workers)): ?>
-            <p class="text-gray-500">没有发现活跃 worker 心跳</p>
+            <p class="text-gray-500"><?php echo __('system_diagnostics.empty.no_worker_heartbeats'); ?></p>
         <?php else: ?>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Worker ID</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">当前 Job</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">最后心跳</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php echo __('status.label'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php echo __('system_diagnostics.column.current_job'); ?></th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php echo __('system_diagnostics.column.last_heartbeat'); ?></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
@@ -220,7 +220,7 @@ require_once __DIR__ . '/includes/header.php';
 <!-- 任务状态 -->
 <div class="bg-white shadow rounded-lg mb-6">
     <div class="px-6 py-4 border-b border-gray-200">
-        <h3 class="text-lg font-medium text-gray-900">任务状态</h3>
+        <h3 class="text-lg font-medium text-gray-900"><?php echo __('system_diagnostics.section.task_status'); ?></h3>
     </div>
     <div class="px-6 py-4">
         <div class="overflow-x-auto">
@@ -228,9 +228,9 @@ require_once __DIR__ . '/includes/header.php';
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">名称</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">批量状态</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php echo __('system_diagnostics.column.name'); ?></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php echo __('status.label'); ?></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?php echo __('system_diagnostics.column.batch_status'); ?></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
@@ -239,7 +239,7 @@ require_once __DIR__ . '/includes/header.php';
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-mono"><?php echo $task['id']; ?></td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm"><?php echo htmlspecialchars($task['name']); ?></td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm"><?php echo htmlspecialchars($task['status']); ?></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm"><?php echo htmlspecialchars($task['batch_status'] ?? '空闲'); ?></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm"><?php echo htmlspecialchars($task['batch_status'] ?? __('system_diagnostics.value.idle')); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

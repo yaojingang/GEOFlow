@@ -12,10 +12,6 @@ if (!defined('FEISHU_TREASURE')) {
     die('Direct access not allowed');
 }
 
-$admin_site_name = function_exists('get_setting') ? get_setting('site_title', SITE_NAME) : SITE_NAME;
-$admin_copyright = function_exists('get_setting')
-    ? get_setting('copyright_text', '© 2026 ' . $admin_site_name)
-    : ('© 2026 ' . $admin_site_name);
 ?>
 
     </div> <!-- 结束主要内容区域 -->
@@ -23,22 +19,21 @@ $admin_copyright = function_exists('get_setting')
     <!-- 底部信息 -->
     <footer class="bg-white border-t border-gray-200 mt-12">
         <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <div class="flex items-center space-x-4 text-sm text-gray-500">
-                    <span><?php echo htmlspecialchars($admin_copyright); ?></span>
-                    <span>|</span>
-                    <span>版本 1.1</span>
-                    <span>|</span>
-                    <span>作者：姚金刚</span>
+            <div class="flex flex-col md:flex-row md:flex-wrap justify-center items-center gap-3 md:gap-4 text-sm text-gray-500 text-center">
+                <span><?php echo htmlspecialchars(__('footer.copyright')); ?></span>
+                <span>|</span>
+                <span><?php echo htmlspecialchars(__('footer.version', ['version' => '1.2'])); ?></span>
+                <span>|</span>
+                <span>
+                    <?php echo htmlspecialchars(__('footer.author')); ?>
+                    <a href="https://x.com/yaojingang" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 ml-1">
+                        <?php echo htmlspecialchars(__('footer.x_profile')); ?>
+                    </a>
+                    <a href="https://github.com/yaojingang/GEOFlow" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700 ml-2">
+                        <?php echo htmlspecialchars(__('footer.project_github')); ?>
+                    </a>
+                </span>
                 </div>
-
-                <div class="flex items-center space-x-4 mt-4 md:mt-0">
-                    <div class="flex items-center space-x-2 text-sm text-gray-500">
-                        <i data-lucide="clock" class="w-4 h-4"></i>
-                        <span>服务器时间：<?php echo date('Y-m-d H:i:s'); ?></span>
-                    </div>
-                </div>
-            </div>
         </div>
     </footer>
 
@@ -77,7 +72,7 @@ $admin_copyright = function_exists('get_setting')
                     element.disabled = true;
                     const originalText = element.textContent;
                     element.setAttribute('data-original-text', originalText);
-                    element.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin inline"></i>处理中...';
+                    element.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin inline"></i><?php echo addslashes(__('message.processing')); ?>';
                     lucide.createIcons();
                 }
             },
@@ -98,7 +93,7 @@ $admin_copyright = function_exists('get_setting')
             copyToClipboard: function(text) {
                 if (navigator.clipboard) {
                     navigator.clipboard.writeText(text).then(function() {
-                        AdminUtils.showToast('已复制到剪贴板', 'success');
+                        AdminUtils.showToast('<?php echo addslashes(__('message.copied')); ?>', 'success');
                     });
                 } else {
                     // 降级方案
@@ -108,7 +103,7 @@ $admin_copyright = function_exists('get_setting')
                     textArea.select();
                     document.execCommand('copy');
                     document.body.removeChild(textArea);
-                    AdminUtils.showToast('已复制到剪贴板', 'success');
+                    AdminUtils.showToast('<?php echo addslashes(__('message.copied')); ?>', 'success');
                 }
             },
 

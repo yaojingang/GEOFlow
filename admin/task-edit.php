@@ -42,10 +42,11 @@ if (!$task) {
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         try {
             $ai_model_id = (int) ($_POST['ai_model_id'] ?? 0);
+            $model_selection_mode = trim((string) ($_POST['model_selection_mode'] ?? 'fixed'));
             $modelCheckStmt = $db->prepare("
                 SELECT COUNT(*)
                 FROM ai_models
@@ -56,7 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $modelCheckStmt->execute([$ai_model_id]);
 
             if ((int) $modelCheckStmt->fetchColumn() === 0) {
-                throw new Exception('请选择有效的聊天模型');
+                throw new Exception(__('task_edit.error.invalid_chat_model'));
+            }
+
+            if (!in_array($model_selection_mode, ['fixed', 'smart_failover'], true)) {
+                throw new Exception(__('task_edit.error.invalid_model_selection_mode'));
             }
 
             $stmt = $db->prepare("
@@ -64,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     name = ?, title_library_id = ?, image_library_id = ?, image_count = ?,
                     prompt_id = ?, ai_model_id = ?, need_review = ?, publish_interval = ?,
                     knowledge_base_id = ?, author_id = ?, auto_keywords = ?, auto_description = ?,
-                    draft_limit = ?, is_loop = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                    draft_limit = ?, is_loop = ?, model_selection_mode = ?, status = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ");
 
@@ -93,22 +98,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 isset($_POST['auto_description']) ? 1 : 0,
                 intval($_POST['draft_limit']),
                 isset($_POST['is_loop']) ? 1 : 0,
+                $model_selection_mode,
                 $_POST['status'],
                 $task_id
             ]);
             
             if ($result) {
-                $message = '任务更新成功！';
+                $message = __('task_edit.message.update_success');
                 
                 // 重新获取任务信息
                 $stmt = $db->prepare("SELECT * FROM tasks WHERE id = ?");
                 $stmt->execute([$task_id]);
                 $task = $stmt->fetch();
             } else {
-                $error = '任务更新失败';
+                $error = __('task_edit.error.update_failed');
             }
         } catch (Exception $e) {
-            $error = '更新失败: ' . $e->getMessage();
+            $error = __('task_edit.error.update_exception', ['message' => $e->getMessage()]);
         }
     }
 }
@@ -130,7 +136,7 @@ $ai_models = $db->query("
     FROM ai_models
     WHERE status = 'active'
       AND COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'
-    ORDER BY name
+    ORDER BY COALESCE(failover_priority, 100) ASC, name
 ")->fetchAll();
 $authors = $db->query("SELECT * FROM authors ORDER BY name")->fetchAll();
 $knowledge_bases = $db->query("SELECT * FROM knowledge_bases ORDER BY name")->fetchAll();
@@ -159,11 +165,11 @@ $stmt->execute([$task_id]);
 $stats['pending_review'] = (int)$stmt->fetchColumn();
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang()); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>编辑任务 - 智能GEO内容系统</title>
+    <title><?php echo htmlspecialchars(__('task_edit.page_title')); ?> - <?php echo htmlspecialchars(__('site_settings.system_name')); ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -174,23 +180,23 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center space-x-8">
-                    <a href="dashboard.php" class="text-xl font-semibold text-gray-900">智能GEO内容系统</a>
+                    <a href="dashboard.php" class="text-xl font-semibold text-gray-900"><?php echo __('site_settings.system_name'); ?></a>
                     <nav class="flex space-x-8">
-                        <a href="dashboard.php" class="text-gray-500 hover:text-gray-700">首页</a>
-                        <a href="tasks.php" class="text-blue-600 font-medium">任务管理</a>
-                        <a href="articles.php" class="text-gray-500 hover:text-gray-700">文章管理</a>
-                        <a href="materials.php" class="text-gray-500 hover:text-gray-700">素材管理</a>
-                        <a href="ai-configurator.php" class="text-gray-500 hover:text-gray-700">AI配置</a>
-                        <a href="site-settings.php" class="text-gray-500 hover:text-gray-700">网站设置</a>
-                        <a href="security-settings.php" class="text-gray-500 hover:text-gray-700">安全管理</a>
+                        <a href="dashboard.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.dashboard'); ?></a>
+                        <a href="tasks.php" class="text-blue-600 font-medium"><?php echo __('nav.tasks'); ?></a>
+                        <a href="articles.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.articles'); ?></a>
+                        <a href="materials.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.materials'); ?></a>
+                        <a href="ai-configurator.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.ai_config'); ?></a>
+                        <a href="site-settings.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.site_settings'); ?></a>
+                        <a href="security-settings.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.security'); ?></a>
                     </nav>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-600">欢迎，<?php echo $_SESSION['admin_username']; ?></span>
+                    <span class="text-sm text-gray-600"><?php echo __('header.welcome'); ?>，<?php echo $_SESSION['admin_username']; ?></span>
                     <a href="admin-settings.php" class="text-sm text-gray-600 hover:text-gray-800">
                         <i data-lucide="settings" class="w-4 h-4"></i>
                     </a>
-                    <a href="logout.php" class="text-sm text-red-600 hover:text-red-800">退出登录</a>
+                    <a href="logout.php" class="text-sm text-red-600 hover:text-red-800"><?php echo __('button.logout'); ?></a>
                 </div>
             </div>
         </div>
@@ -217,7 +223,7 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
                 <div>
-                    <h1 class="text-2xl font-bold text-gray-900">编辑任务</h1>
+                    <h1 class="text-2xl font-bold text-gray-900"><?php echo __('task_edit.page_heading'); ?></h1>
                     <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($task['name']); ?></p>
                 </div>
             </div>
@@ -233,37 +239,37 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                     <!-- 基本信息 -->
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <h3 class="text-lg font-medium text-gray-900">基本信息</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('task_edit.section.basic_title'); ?></h3>
                         </div>
                         <div class="px-6 py-4 space-y-6">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">任务名称 *</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.task_name'); ?> *</label>
                                 <input type="text" name="name" required value="<?php echo htmlspecialchars($task['name']); ?>"
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">标题库选择 *</label>
+                                    <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.title_library'); ?> *</label>
                                     <select name="title_library_id" required 
                                             class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                        <option value="">选择标题库</option>
+                                        <option value=""><?php echo __('task_edit.option.select_title_library'); ?></option>
                                         <?php foreach ($title_libraries as $lib): ?>
                                             <option value="<?php echo $lib['id']; ?>" <?php echo $task['title_library_id'] == $lib['id'] ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($lib['name']); ?> (<?php echo $lib['title_count']; ?>个标题)
+                                                <?php echo htmlspecialchars(__('task_edit.option.library_count', ['name' => $lib['name'], 'count' => $lib['title_count']])); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
 
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">图库选择</label>
+                                    <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.image_library'); ?></label>
                                     <select name="image_library_id" 
                                             class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                        <option value="">不使用图片</option>
+                                        <option value=""><?php echo __('task_edit.option.no_images'); ?></option>
                                         <?php foreach ($image_libraries as $lib): ?>
                                             <option value="<?php echo $lib['id']; ?>" <?php echo $task['image_library_id'] == $lib['id'] ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($lib['name']); ?> (<?php echo $lib['image_count']; ?>张图片)
+                                                <?php echo htmlspecialchars(__('task_edit.option.image_library_count', ['name' => $lib['name'], 'count' => $lib['image_count']])); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
@@ -271,12 +277,12 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                             </div>
 
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">配图数量</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.image_count'); ?></label>
                                 <select name="image_count" 
                                         class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                                     <?php for ($i = 0; $i <= 5; $i++): ?>
                                         <option value="<?php echo $i; ?>" <?php echo $task['image_count'] == $i ? 'selected' : ''; ?>>
-                                            <?php echo $i == 0 ? '不配图' : $i . '张'; ?>
+                                            <?php echo $i == 0 ? __('task_edit.option.no_image_count') : __('task_edit.option.image_count', ['count' => $i]); ?>
                                         </option>
                                     <?php endfor; ?>
                                 </select>
@@ -287,15 +293,15 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                     <!-- AI配置 -->
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <h3 class="text-lg font-medium text-gray-900">AI配置</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('task_edit.section.ai_title'); ?></h3>
                         </div>
                         <div class="px-6 py-4 space-y-6">
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">文章内容提示词 *</label>
+                                    <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.content_prompt'); ?> *</label>
                                     <select name="prompt_id" required
                                             class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                        <option value="">选择提示词</option>
+                                        <option value=""><?php echo __('task_edit.option.select_prompt'); ?></option>
                                         <?php foreach ($content_prompts as $prompt): ?>
                                             <option value="<?php echo $prompt['id']; ?>" <?php echo $task['prompt_id'] == $prompt['id'] ? 'selected' : ''; ?>>
                                                 <?php echo htmlspecialchars($prompt['name']); ?>
@@ -305,34 +311,44 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                                 </div>
 
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">AI模型选择 *</label>
+                                    <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.ai_model'); ?> *</label>
                                     <select name="ai_model_id" required 
                                             class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                        <option value="">选择AI模型</option>
+                                        <option value=""><?php echo __('task_edit.option.select_ai_model'); ?></option>
                                         <?php foreach ($ai_models as $model): ?>
                                             <option value="<?php echo $model['id']; ?>" <?php echo $task['ai_model_id'] == $model['id'] ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($model['name']); ?>
+                                                <?php echo htmlspecialchars(__('task_edit.option.ai_model_priority', ['name' => $model['name'], 'priority' => (int) ($model['failover_priority'] ?? 100)])); ?>
                                                 <?php if ($model['daily_limit'] > 0): ?>
-                                                    (今日剩余: <?php echo max(0, $model['daily_limit'] - $model['used_today']); ?>)
+                                                    (<?php echo __('task_edit.option.daily_remaining', ['count' => max(0, $model['daily_limit'] - $model['used_today'])]); ?>)
                                                 <?php endif; ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.model_selection_mode'); ?></label>
+                                    <select name="model_selection_mode"
+                                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                        <option value="fixed" <?php echo ($task['model_selection_mode'] ?? 'fixed') === 'fixed' ? 'selected' : ''; ?>><?php echo __('task_edit.option.model_selection_fixed'); ?></option>
+                                        <option value="smart_failover" <?php echo ($task['model_selection_mode'] ?? 'fixed') === 'smart_failover' ? 'selected' : ''; ?>><?php echo __('task_edit.option.model_selection_smart_failover'); ?></option>
+                                    </select>
+                                    <p class="mt-1 text-sm text-gray-500"><?php echo __('task_edit.help.model_selection_mode'); ?></p>
+                                </div>
                             </div>
 
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">知识库选择</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.knowledge_base'); ?></label>
                                 <select name="knowledge_base_id"
                                         class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                    <option value="">不使用知识库</option>
+                                    <option value=""><?php echo __('task_edit.option.no_knowledge_base'); ?></option>
                                     <?php foreach ($knowledge_bases as $kb): ?>
                                         <option value="<?php echo $kb['id']; ?>" <?php echo (int) ($task['knowledge_base_id'] ?? 0) === (int) $kb['id'] ? 'selected' : ''; ?>>
                                             <?php echo htmlspecialchars($kb['name']); ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
-                                <p class="mt-1 text-sm text-gray-500">选择后，系统会从该知识库中检索与标题/关键词最相关的片段，并填充到正文提示词的 <code>{{Knowledge}}</code> 和条件块中。</p>
+                                <p class="mt-1 text-sm text-gray-500"><?php echo __('task_edit.help.knowledge_base'); ?></p>
                             </div>
                         </div>
                     </div>
@@ -340,25 +356,25 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                     <!-- 发布设置 -->
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <h3 class="text-lg font-medium text-gray-900">发布设置</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('task_edit.section.publish_title'); ?></h3>
                         </div>
                         <div class="px-6 py-4 space-y-6">
                             <div class="flex items-center">
                                 <input type="checkbox" name="need_review" id="need_review" <?php echo $task['need_review'] ? 'checked' : ''; ?>
                                        class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                <label for="need_review" class="ml-2 text-sm text-gray-700">需要人工审核后才能发布</label>
+                                <label for="need_review" class="ml-2 text-sm text-gray-700"><?php echo __('task_edit.field.need_review'); ?></label>
                             </div>
 
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">发布频率（自动审核通过时）</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.publish_interval'); ?></label>
                                 <select name="publish_interval" 
                                         class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                    <option value="1800" <?php echo $task['publish_interval'] == 1800 ? 'selected' : ''; ?>>30分钟</option>
-                                    <option value="3600" <?php echo $task['publish_interval'] == 3600 ? 'selected' : ''; ?>>1小时</option>
-                                    <option value="7200" <?php echo $task['publish_interval'] == 7200 ? 'selected' : ''; ?>>2小时</option>
-                                    <option value="14400" <?php echo $task['publish_interval'] == 14400 ? 'selected' : ''; ?>>4小时</option>
-                                    <option value="28800" <?php echo $task['publish_interval'] == 28800 ? 'selected' : ''; ?>>8小时</option>
-                                    <option value="86400" <?php echo $task['publish_interval'] == 86400 ? 'selected' : ''; ?>>24小时</option>
+                                    <option value="1800" <?php echo $task['publish_interval'] == 1800 ? 'selected' : ''; ?>><?php echo __('task_edit.option.interval_30m'); ?></option>
+                                    <option value="3600" <?php echo $task['publish_interval'] == 3600 ? 'selected' : ''; ?>><?php echo __('task_edit.option.interval_1h'); ?></option>
+                                    <option value="7200" <?php echo $task['publish_interval'] == 7200 ? 'selected' : ''; ?>><?php echo __('task_edit.option.interval_2h'); ?></option>
+                                    <option value="14400" <?php echo $task['publish_interval'] == 14400 ? 'selected' : ''; ?>><?php echo __('task_edit.option.interval_4h'); ?></option>
+                                    <option value="28800" <?php echo $task['publish_interval'] == 28800 ? 'selected' : ''; ?>><?php echo __('task_edit.option.interval_8h'); ?></option>
+                                    <option value="86400" <?php echo $task['publish_interval'] == 86400 ? 'selected' : ''; ?>><?php echo __('task_edit.option.interval_24h'); ?></option>
                                 </select>
                             </div>
                         </div>
@@ -367,30 +383,30 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                     <!-- 作者设置 -->
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <h3 class="text-lg font-medium text-gray-900">作者设置</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('task_edit.section.author_title'); ?></h3>
                         </div>
                         <div class="px-6 py-4 space-y-6">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">作者设置</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.author_mode'); ?></label>
                                 <div class="mt-2 space-y-2">
                                     <label class="flex items-center">
                                         <input type="radio" name="author_type" value="random" <?php echo empty($task['author_id']) ? 'checked' : ''; ?>
                                                class="border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                        <span class="ml-2 text-sm text-gray-700">系统自动从作者库里随机选择</span>
+                                        <span class="ml-2 text-sm text-gray-700"><?php echo __('task_edit.option.author_random'); ?></span>
                                     </label>
                                     <label class="flex items-center">
                                         <input type="radio" name="author_type" value="custom" <?php echo !empty($task['author_id']) ? 'checked' : ''; ?>
                                                class="border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                        <span class="ml-2 text-sm text-gray-700">指定作者</span>
+                                        <span class="ml-2 text-sm text-gray-700"><?php echo __('task_edit.option.author_custom'); ?></span>
                                     </label>
                                 </div>
                             </div>
 
                             <div id="custom_author_section" class="<?php echo empty($task['author_id']) ? 'hidden' : ''; ?>">
-                                <label class="block text-sm font-medium text-gray-700">选择作者</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.custom_author'); ?></label>
                                 <select name="custom_author_id"
                                         class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                    <option value="">选择作者</option>
+                                    <option value=""><?php echo __('task_edit.option.select_author'); ?></option>
                                     <?php foreach ($authors as $author): ?>
                                         <option value="<?php echo $author['id']; ?>" <?php echo $task['author_id'] == $author['id'] ? 'selected' : ''; ?>>
                                             <?php echo htmlspecialchars($author['name']); ?>
@@ -404,24 +420,20 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                     <!-- 内容优化设置 -->
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <h3 class="text-lg font-medium text-gray-900">内容优化设置</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('task_edit.section.optimize_title'); ?></h3>
                         </div>
                         <div class="px-6 py-4 space-y-6">
                             <div class="space-y-4">
                                 <div class="flex items-center">
                                     <input type="checkbox" name="auto_keywords" id="auto_keywords" <?php echo $task['auto_keywords'] ? 'checked' : ''; ?>
                                            class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                    <label for="auto_keywords" class="ml-2 text-sm text-gray-700">
-                                        自动生成关键词
-                                    </label>
+                                    <label for="auto_keywords" class="ml-2 text-sm text-gray-700"><?php echo __('task_edit.field.auto_keywords'); ?></label>
                                 </div>
 
                                 <div class="flex items-center">
                                     <input type="checkbox" name="auto_description" id="auto_description" <?php echo $task['auto_description'] ? 'checked' : ''; ?>
                                            class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                    <label for="auto_description" class="ml-2 text-sm text-gray-700">
-                                        自动生成描述
-                                    </label>
+                                    <label for="auto_description" class="ml-2 text-sm text-gray-700"><?php echo __('task_edit.field.auto_description'); ?></label>
                                 </div>
                             </div>
                         </div>
@@ -430,11 +442,11 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                     <!-- 任务控制设置 -->
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <h3 class="text-lg font-medium text-gray-900">任务控制设置</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('task_edit.section.control_title'); ?></h3>
                         </div>
                         <div class="px-6 py-4 space-y-6">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">草稿数量限制</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.draft_limit'); ?></label>
                                 <input type="number" name="draft_limit" value="<?php echo $task['draft_limit']; ?>" min="1" max="100"
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                             </div>
@@ -442,21 +454,21 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                             <div class="flex items-center">
                                 <input type="checkbox" name="is_loop" id="is_loop" <?php echo $task['is_loop'] ? 'checked' : ''; ?>
                                        class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                <label for="is_loop" class="ml-2 text-sm text-gray-700">循环生成</label>
+                                <label for="is_loop" class="ml-2 text-sm text-gray-700"><?php echo __('task_edit.field.loop_mode'); ?></label>
                             </div>
 
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">任务状态</label>
+                                <label class="block text-sm font-medium text-gray-700"><?php echo __('task_edit.field.task_status'); ?></label>
                                 <div class="mt-2 space-y-2">
                                     <label class="flex items-center">
                                         <input type="radio" name="status" value="active" <?php echo $task['status'] === 'active' ? 'checked' : ''; ?>
                                                class="border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                        <span class="ml-2 text-sm text-gray-700">开启</span>
+                                        <span class="ml-2 text-sm text-gray-700"><?php echo __('task_edit.option.status_active'); ?></span>
                                     </label>
                                     <label class="flex items-center">
                                         <input type="radio" name="status" value="paused" <?php echo $task['status'] === 'paused' ? 'checked' : ''; ?>
                                                class="border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                        <span class="ml-2 text-sm text-gray-700">暂停</span>
+                                        <span class="ml-2 text-sm text-gray-700"><?php echo __('task_edit.option.status_paused'); ?></span>
                                     </label>
                                 </div>
                             </div>
@@ -466,11 +478,11 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                     <!-- 提交按钮 -->
                     <div class="flex justify-end space-x-3">
                         <a href="tasks.php" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </a>
                         <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                             <i data-lucide="save" class="w-4 h-4 mr-2"></i>
-                            保存更改
+                            <?php echo __('task_edit.button.save_changes'); ?>
                         </button>
                     </div>
                 </form>
@@ -481,27 +493,27 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                 <!-- 任务统计 -->
                 <div class="bg-white shadow rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">任务统计</h3>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('task_edit.sidebar.stats_title'); ?></h3>
                     </div>
                     <div class="px-6 py-4 space-y-4">
                         <div class="flex justify-between">
-                            <span class="text-sm text-gray-600">总文章数</span>
+                            <span class="text-sm text-gray-600"><?php echo __('task_edit.sidebar.total_articles'); ?></span>
                             <span class="text-sm font-medium text-gray-900"><?php echo $stats['total_articles']; ?></span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-sm text-gray-600">已发布</span>
+                            <span class="text-sm text-gray-600"><?php echo __('task_edit.sidebar.published_articles'); ?></span>
                             <span class="text-sm font-medium text-green-600"><?php echo $stats['published_articles']; ?></span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-sm text-gray-600">草稿</span>
+                            <span class="text-sm text-gray-600"><?php echo __('task_edit.sidebar.draft_articles'); ?></span>
                             <span class="text-sm font-medium text-yellow-600"><?php echo $stats['draft_articles']; ?></span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-sm text-gray-600">待审核</span>
+                            <span class="text-sm text-gray-600"><?php echo __('task_edit.sidebar.pending_review'); ?></span>
                             <span class="text-sm font-medium text-blue-600"><?php echo $stats['pending_review']; ?></span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-sm text-gray-600">循环次数</span>
+                            <span class="text-sm text-gray-600"><?php echo __('task_edit.sidebar.loop_count'); ?></span>
                             <span class="text-sm font-medium text-purple-600"><?php echo $task['loop_count']; ?></span>
                         </div>
                     </div>
@@ -510,17 +522,17 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                 <!-- 快速操作 -->
                 <div class="bg-white shadow rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">快速操作</h3>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('task_edit.sidebar.quick_actions_title'); ?></h3>
                     </div>
                     <div class="px-6 py-4 space-y-3">
                         <a href="articles.php?task_id=<?php echo $task_id; ?>" class="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="file-text" class="w-4 h-4 mr-2"></i>
-                            管理文章
+                            <?php echo __('task_edit.button.manage_articles'); ?>
                         </a>
                         
                         <a href="task-execute.php?id=<?php echo $task_id; ?>" class="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
                             <i data-lucide="play" class="w-4 h-4 mr-2"></i>
-                            测试执行
+                            <?php echo __('task_edit.button.test_execute'); ?>
                         </a>
                     </div>
                 </div>
@@ -528,27 +540,27 @@ $stats['pending_review'] = (int)$stmt->fetchColumn();
                 <!-- 任务信息 -->
                 <div class="bg-white shadow rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">任务信息</h3>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('task_edit.sidebar.info_title'); ?></h3>
                     </div>
                     <div class="px-6 py-4 space-y-3">
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">创建时间</dt>
+                            <dt class="text-sm font-medium text-gray-500"><?php echo __('common.created_at'); ?></dt>
                             <dd class="mt-1 text-sm text-gray-900"><?php echo date('Y-m-d H:i', strtotime($task['created_at'])); ?></dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">最后更新</dt>
+                            <dt class="text-sm font-medium text-gray-500"><?php echo __('task_edit.sidebar.last_updated'); ?></dt>
                             <dd class="mt-1 text-sm text-gray-900"><?php echo date('Y-m-d H:i', strtotime($task['updated_at'])); ?></dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">当前状态</dt>
+                            <dt class="text-sm font-medium text-gray-500"><?php echo __('task_edit.sidebar.current_status'); ?></dt>
                             <dd class="mt-1">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <?php 
                                     echo $task['status'] === 'active' ? 'bg-green-100 text-green-800' : 
                                         ($task['status'] === 'paused' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'); 
                                 ?>">
                                     <?php 
-                                    echo $task['status'] === 'active' ? '运行中' : 
-                                        ($task['status'] === 'paused' ? '已暂停' : '已完成'); 
+                                    echo $task['status'] === 'active' ? __('status.running') : 
+                                        ($task['status'] === 'paused' ? __('status.paused') : __('task_edit.status.completed')); 
                                     ?>
                                 </span>
                             </dd>

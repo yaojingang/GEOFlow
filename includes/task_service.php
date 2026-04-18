@@ -385,7 +385,7 @@ class TaskService {
             
             if ($save_result['success']) {
                 // 更新任务统计
-                $this->updateTaskStats($task_id);
+                $this->updateTaskStats($task_id, empty($task['need_review']));
                 
                 // 标记标题已使用
                 $this->markTitleUsed($title_data['id']);
@@ -580,14 +580,15 @@ class TaskService {
     /**
      * 更新任务统计
      */
-    private function updateTaskStats($task_id) {
+    private function updateTaskStats($task_id, bool $isPublished = false) {
         $stmt = $this->db->prepare("
             UPDATE tasks SET 
                 created_count = created_count + 1,
+                published_count = published_count + ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         ");
-        $stmt->execute([$task_id]);
+        $stmt->execute([$isPublished ? 1 : 0, $task_id]);
     }
     
     /**

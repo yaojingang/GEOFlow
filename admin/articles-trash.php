@@ -27,7 +27,7 @@ $admin_site_name = get_setting('site_title', SITE_NAME);
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -40,9 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("UPDATE articles SET deleted_at = NULL WHERE id IN ($placeholders)");
                     
                     if ($stmt->execute($article_ids)) {
-                        $message = '成功恢复 ' . count($article_ids) . ' 篇文章';
+                        $message = __('articles.trash.message.restore_success', ['count' => count($article_ids)]);
                     } else {
-                        $error = '恢复失败';
+                        $error = __('articles.trash.message.restore_failed');
                     }
                 }
                 break;
@@ -64,10 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmt->execute($article_ids);
                         
                         $db->commit();
-                        $message = '成功永久删除 ' . count($article_ids) . ' 篇文章';
+                        $message = __('articles.trash.message.delete_success', ['count' => count($article_ids)]);
                     } catch (Exception $e) {
                         $db->rollBack();
-                        $error = '永久删除失败: ' . $e->getMessage();
+                        $error = __('articles.trash.message.delete_failed', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -91,13 +91,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $deleted_count = $stmt->rowCount();
                         
                         $db->commit();
-                        $message = "成功清空垃圾箱，永久删除了 {$deleted_count} 篇文章";
+                        $message = __('articles.trash.message.empty_success', ['count' => $deleted_count]);
                     } else {
-                        $message = '垃圾箱已经是空的';
+                        $message = __('articles.trash.message.empty_already');
                     }
                 } catch (Exception $e) {
                     $db->rollBack();
-                    $error = '清空垃圾箱失败: ' . $e->getMessage();
+                    $error = __('articles.trash.message.empty_failed', ['message' => $e->getMessage()]);
                 }
                 break;
         }
@@ -186,14 +186,26 @@ if ($author_id > 0) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang(), ENT_QUOTES); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>文章垃圾箱 - <?php echo htmlspecialchars($admin_site_name); ?></title>
+    <title><?php echo htmlspecialchars(__('articles.trash.title') . ' - ' . $admin_site_name); ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script>
+        const TRASH_I18N = <?php echo json_encode([
+            'selectPrefix' => __('articles.trash.selected_prefix'),
+            'selectSuffix' => __('articles.trash.selected_suffix'),
+            'alertSelect' => __('articles.trash.alert_select'),
+            'confirmBatchRestore' => __('articles.trash.confirm_batch_restore', ['count' => '__COUNT__']),
+            'confirmBatchDelete' => __('articles.trash.confirm_batch_delete', ['count' => '__COUNT__']),
+            'confirmRestore' => __('articles.trash.confirm_restore'),
+            'confirmDelete' => __('articles.trash.confirm_delete'),
+            'confirmEmpty' => __('articles.trash.confirm_empty'),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    </script>
 </head>
 <body class="bg-gray-50">
     <!-- 导航栏 -->
@@ -203,18 +215,25 @@ if ($author_id > 0) {
                 <div class="flex items-center space-x-8">
                     <a href="dashboard.php" class="text-xl font-semibold text-gray-900"><?php echo htmlspecialchars($admin_site_name); ?></a>
                     <nav class="flex space-x-8">
-                        <a href="dashboard.php" class="text-gray-500 hover:text-gray-700">首页</a>
-                        <a href="tasks.php" class="text-gray-500 hover:text-gray-700">任务管理</a>
-                        <a href="articles.php" class="text-blue-600 font-medium">文章管理</a>
-                        <a href="materials.php" class="text-gray-500 hover:text-gray-700">素材管理</a>
-                        <a href="ai-configurator.php" class="text-gray-500 hover:text-gray-700">AI配置</a>
-                        <a href="site-settings.php" class="text-gray-500 hover:text-gray-700">网站设置</a>
-                        <a href="security-settings.php" class="text-gray-500 hover:text-gray-700">安全管理</a>
+                        <a href="dashboard.php" class="text-gray-500 hover:text-gray-700"><?php echo htmlspecialchars(__('nav.dashboard')); ?></a>
+                        <a href="tasks.php" class="text-gray-500 hover:text-gray-700"><?php echo htmlspecialchars(__('nav.tasks')); ?></a>
+                        <a href="articles.php" class="text-blue-600 font-medium"><?php echo htmlspecialchars(__('nav.articles')); ?></a>
+                        <a href="materials.php" class="text-gray-500 hover:text-gray-700"><?php echo htmlspecialchars(__('nav.materials')); ?></a>
+                        <a href="ai-configurator.php" class="text-gray-500 hover:text-gray-700"><?php echo htmlspecialchars(__('nav.ai_config')); ?></a>
+                        <a href="site-settings.php" class="text-gray-500 hover:text-gray-700"><?php echo htmlspecialchars(__('nav.site_settings')); ?></a>
+                        <a href="security-settings.php" class="text-gray-500 hover:text-gray-700"><?php echo htmlspecialchars(__('nav.security')); ?></a>
                     </nav>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-600">欢迎，<?php echo $_SESSION['admin_username']; ?></span>
-                    <a href="logout.php" class="text-sm text-red-600 hover:text-red-800">退出登录</a>
+                    <select onchange="window.location.href=this.value" class="border-gray-300 rounded-md text-sm">
+                        <?php foreach (app_supported_locales() as $localeCode => $localeLabel): ?>
+                            <option value="<?php echo htmlspecialchars(app_locale_switch_url($localeCode), ENT_QUOTES); ?>" <?php echo app_locale() === $localeCode ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($localeLabel); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <span class="text-sm text-gray-600"><?php echo htmlspecialchars(__('header.welcome', ['name' => (string) ($_SESSION['admin_username'] ?? '')])); ?></span>
+                    <a href="logout.php" class="text-sm text-red-600 hover:text-red-800"><?php echo htmlspecialchars(__('button.logout')); ?></a>
                 </div>
             </div>
         </div>
@@ -242,19 +261,19 @@ if ($author_id > 0) {
                         <i data-lucide="arrow-left" class="w-5 h-5"></i>
                     </a>
                     <div>
-                        <h1 class="text-2xl font-bold text-gray-900">文章垃圾箱</h1>
-                        <p class="mt-1 text-sm text-gray-600">管理已删除的文章，支持恢复或永久删除</p>
+                        <h1 class="text-2xl font-bold text-gray-900"><?php echo htmlspecialchars(__('articles.trash.title')); ?></h1>
+                        <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars(__('articles.trash.subtitle')); ?></p>
                     </div>
                 </div>
                 <div class="flex space-x-2">
                     <a href="articles.php" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                         <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i>
-                        返回文章列表
+                        <?php echo htmlspecialchars(__('articles.trash.back')); ?>
                     </a>
                     <?php if ($total_articles > 0): ?>
                         <button onclick="emptyTrash()" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded text-white bg-red-600 hover:bg-red-700">
                             <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                            清空垃圾箱
+                            <?php echo htmlspecialchars(__('articles.trash.empty')); ?>
                         </button>
                     <?php endif; ?>
                 </div>
@@ -271,7 +290,7 @@ if ($author_id > 0) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">垃圾箱总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.trash.stats_total')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_trash']; ?></dd>
                             </dl>
                         </div>
@@ -287,7 +306,7 @@ if ($author_id > 0) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">敏感词删除</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.trash.stats_sensitive')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['sensitive_words']; ?></dd>
                             </dl>
                         </div>
@@ -303,7 +322,7 @@ if ($author_id > 0) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">手动删除</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.trash.stats_manual')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['manual_delete']; ?></dd>
                             </dl>
                         </div>
@@ -318,7 +337,7 @@ if ($author_id > 0) {
                 <form method="GET" class="flex items-center space-x-4">
                     <div class="w-56">
                         <select name="author_id" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <option value="">所有作者</option>
+                            <option value=""><?php echo htmlspecialchars(__('articles.trash.all_authors')); ?></option>
                             <?php foreach ($authors as $author): ?>
                                 <option value="<?php echo intval($author['id']); ?>" <?php echo $author_id === intval($author['id']) ? 'selected' : ''; ?>>
                                     <?php echo htmlspecialchars($author['name']); ?>
@@ -328,21 +347,21 @@ if ($author_id > 0) {
                     </div>
                     <div class="flex-1">
                         <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>"
-                               placeholder="搜索已删除的文章..."
+                               placeholder="<?php echo htmlspecialchars(__('articles.trash.search_placeholder')); ?>"
                                class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                     </div>
                     <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                         <i data-lucide="search" class="w-4 h-4 mr-2"></i>
-                        搜索
+                        <?php echo htmlspecialchars(__('button.search')); ?>
                     </button>
                     <a href="articles-trash.php" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         <i data-lucide="x" class="w-4 h-4 mr-2"></i>
-                        清空
+                        <?php echo htmlspecialchars(__('button.clear')); ?>
                     </a>
                 </form>
                 <?php if ($author_id > 0 && $current_author_name): ?>
                     <div class="mt-3 text-sm text-gray-600">
-                        当前仅显示作者“<?php echo htmlspecialchars($current_author_name); ?>”的回收站文章。
+                        <?php echo htmlspecialchars(__('articles.trash.current_author', ['name' => (string) $current_author_name])); ?>
                     </div>
                 <?php endif; ?>
             </div>
@@ -353,19 +372,19 @@ if ($author_id > 0) {
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">
-                        已删除文章 
-                        <span class="text-sm text-gray-500">(共 <?php echo $total_articles; ?> 篇)</span>
+                        <?php echo htmlspecialchars(__('articles.trash.list_title')); ?> 
+                        <span class="text-sm text-gray-500"><?php echo htmlspecialchars(__('articles.list_total', ['count' => (string) $total_articles])); ?></span>
                     </h3>
                     <div class="flex space-x-2">
                         <?php if ($total_articles > 0): ?>
                             <button onclick="emptyTrash()" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                 <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                一键清空
+                                <?php echo htmlspecialchars(__('articles.trash.empty')); ?>
                             </button>
                         <?php endif; ?>
                         <button onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="check-square" class="w-4 h-4 mr-1"></i>
-                            批量操作
+                            <?php echo htmlspecialchars(__('articles.trash.bulk')); ?>
                         </button>
                     </div>
                 </div>
@@ -374,8 +393,8 @@ if ($author_id > 0) {
             <?php if (empty($articles)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="trash-2" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">垃圾箱为空</h3>
-                    <p class="text-gray-500">没有找到已删除的文章</p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo htmlspecialchars(__('articles.trash.empty_title')); ?></h3>
+                    <p class="text-gray-500"><?php echo htmlspecialchars(__('articles.trash.empty_desc')); ?></p>
                 </div>
             <?php else: ?>
                 <!-- 批量操作栏 -->
@@ -383,20 +402,24 @@ if ($author_id > 0) {
                     <form method="POST" id="batch-form">
                         <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                         <div class="flex items-center space-x-4">
-                            <span class="text-sm text-gray-600">已选择 <span id="selected-count">0</span> 篇文章</span>
+                            <span class="text-sm text-gray-600">
+                                <?php if (__('articles.trash.selected_prefix') !== ''): ?><span><?php echo htmlspecialchars(__('articles.trash.selected_prefix')); ?></span><?php endif; ?>
+                                <span id="selected-count">0</span>
+                                <span><?php echo htmlspecialchars(__('articles.trash.selected_suffix')); ?></span>
+                            </span>
                             
                             <button type="button" onclick="batchAction('restore_articles')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700">
                                 <i data-lucide="rotate-ccw" class="w-4 h-4 mr-1"></i>
-                                恢复
+                                <?php echo htmlspecialchars(__('button.restore')); ?>
                             </button>
                             
                             <button type="button" onclick="batchAction('permanent_delete')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                 <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                永久删除
+                                <?php echo htmlspecialchars(__('button.delete')); ?>
                             </button>
                             
                             <button type="button" onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
-                                取消
+                                <?php echo htmlspecialchars(__('button.cancel')); ?>
                             </button>
                         </div>
                     </form>
@@ -409,10 +432,10 @@ if ($author_id > 0) {
                                 <th class="batch-checkbox hidden px-6 py-3 text-left">
                                     <input type="checkbox" id="select-all" class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                                 </th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章信息</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务/作者</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">删除时间</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.trash.column.info')); ?></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.trash.column.task_author')); ?></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.trash.column.deleted_at')); ?></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.trash.column.actions')); ?></th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -434,10 +457,10 @@ if ($author_id > 0) {
                                                 <?php endif; ?>
                                                 <div class="mt-1 flex items-center space-x-2">
                                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                                                        已删除
+                                                        <?php echo htmlspecialchars(__('articles.trash.deleted')); ?>
                                                     </span>
                                                     <?php if ($article['is_ai_generated']): ?>
-                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">AI生成</span>
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800"><?php echo htmlspecialchars(__('articles.ai_generated')); ?></span>
                                                     <?php endif; ?>
                                                 </div>
                                             </div>
@@ -452,15 +475,15 @@ if ($author_id > 0) {
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         <div><?php echo date('Y-m-d H:i', strtotime($article['deleted_at'])); ?></div>
                                         <div class="text-xs text-gray-400">
-                                            创建: <?php echo date('m-d H:i', strtotime($article['created_at'])); ?>
+                                            <?php echo htmlspecialchars(__('articles.trash.created_prefix')); ?>: <?php echo date('m-d H:i', strtotime($article['created_at'])); ?>
                                         </div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                         <div class="flex items-center space-x-2">
-                                            <button onclick="restoreArticle(<?php echo $article['id']; ?>)" class="text-green-600 hover:text-green-800" title="恢复">
+                                            <button onclick="restoreArticle(<?php echo $article['id']; ?>)" class="text-green-600 hover:text-green-800" title="<?php echo htmlspecialchars(__('button.restore')); ?>">
                                                 <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
                                             </button>
-                                            <button onclick="permanentDelete(<?php echo $article['id']; ?>)" class="text-red-600 hover:text-red-800" title="永久删除">
+                                            <button onclick="permanentDelete(<?php echo $article['id']; ?>)" class="text-red-600 hover:text-red-800" title="<?php echo htmlspecialchars(__('button.delete')); ?>">
                                                 <i data-lucide="trash-2" class="w-4 h-4"></i>
                                             </button>
                                         </div>
@@ -476,12 +499,12 @@ if ($author_id > 0) {
                     <div class="px-6 py-4 border-t border-gray-200">
                         <div class="flex items-center justify-between">
                             <div class="text-sm text-gray-700">
-                                显示第 <?php echo ($page - 1) * $per_page + 1; ?> - <?php echo min($page * $per_page, $total_articles); ?> 条，共 <?php echo $total_articles; ?> 条
+                                <?php echo htmlspecialchars(__('articles.pagination.summary', ['from' => (string) (($page - 1) * $per_page + 1), 'to' => (string) min($page * $per_page, $total_articles), 'total' => (string) $total_articles])); ?>
                             </div>
                             <div class="flex space-x-1">
                                 <?php if ($page > 1): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        上一页
+                                        <?php echo htmlspecialchars(__('articles.pagination.prev')); ?>
                                     </a>
                                 <?php endif; ?>
                                 
@@ -494,7 +517,7 @@ if ($author_id > 0) {
                                 
                                 <?php if ($page < $total_pages): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        下一页
+                                        <?php echo htmlspecialchars(__('articles.pagination.next')); ?>
                                     </a>
                                 <?php endif; ?>
                             </div>
@@ -554,15 +577,15 @@ if ($author_id > 0) {
         function batchAction(action) {
             const selected = document.querySelectorAll('.article-checkbox:checked');
             if (selected.length === 0) {
-                alert('请选择要操作的文章');
+                alert(TRASH_I18N.alertSelect);
                 return;
             }
             
             let confirmMessage = '';
             if (action === 'restore_articles') {
-                confirmMessage = `确定要恢复选中的 ${selected.length} 篇文章吗？`;
+                confirmMessage = TRASH_I18N.confirmBatchRestore.replace('__COUNT__', selected.length);
             } else if (action === 'permanent_delete') {
-                confirmMessage = `确定要永久删除选中的 ${selected.length} 篇文章吗？此操作不可恢复！`;
+                confirmMessage = TRASH_I18N.confirmBatchDelete.replace('__COUNT__', selected.length);
             }
             
             if (confirm(confirmMessage)) {
@@ -588,7 +611,7 @@ if ($author_id > 0) {
 
         // 恢复文章
         function restoreArticle(articleId) {
-            if (confirm('确定要恢复这篇文章吗？')) {
+            if (confirm(TRASH_I18N.confirmRestore)) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `
@@ -603,7 +626,7 @@ if ($author_id > 0) {
 
         // 永久删除文章
         function permanentDelete(articleId) {
-            if (confirm('确定要永久删除这篇文章吗？此操作不可恢复！')) {
+            if (confirm(TRASH_I18N.confirmDelete)) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `
@@ -618,7 +641,7 @@ if ($author_id > 0) {
 
         // 清空垃圾箱
         function emptyTrash() {
-            if (confirm('确定要清空垃圾箱吗？这将永久删除所有已删除的文章，此操作不可恢复！')) {
+            if (confirm(TRASH_I18N.confirmEmpty)) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `

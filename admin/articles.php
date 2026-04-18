@@ -38,7 +38,7 @@ function build_articles_redirect_url($status, $message) {
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        header('Location: ' . build_articles_redirect_url('error', 'CSRF验证失败'));
+        header('Location: ' . build_articles_redirect_url('error', __('message.csrf_failed')));
         exit;
     } else {
         $action = $_POST['action'] ?? '';
@@ -70,12 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     if ($updatedCount > 0) {
-                        $message = '批量更新成功，共更新 ' . count($article_ids) . ' 篇文章';
+                        $message = __('articles.message.batch_status_updated', ['count' => count($article_ids)]);
                     } else {
-                        $error = '批量更新失败';
+                        $error = __('articles.message.batch_status_failed');
                     }
                 } else {
-                    $error = '请先选择文章和目标状态';
+                    $error = __('articles.message.batch_status_required');
                 }
                 break;
 
@@ -115,12 +115,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     if ($updatedCount > 0) {
-                        $message = '批量审核结果已更新，共处理 ' . count($article_ids) . ' 篇文章';
+                        $message = __('articles.message.batch_review_updated', ['count' => count($article_ids)]);
                     } else {
-                        $error = '批量审核失败';
+                        $error = __('articles.message.batch_review_failed');
                     }
                 } else {
-                    $error = '请先选择文章和审核结果';
+                    $error = __('articles.message.batch_review_required');
                 }
                 break;
 
@@ -132,12 +132,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("UPDATE articles SET deleted_at = CURRENT_TIMESTAMP WHERE id IN ($placeholders)");
 
                     if ($stmt->execute($article_ids)) {
-                        $message = '成功删除 ' . count($article_ids) . ' 篇文章';
+                        $message = __('articles.message.batch_delete_success', ['count' => count($article_ids)]);
                     } else {
-                        $error = '删除失败';
+                        $error = __('articles.message.batch_delete_failed');
                     }
                 } else {
-                    $error = '请先选择要删除的文章';
+                    $error = __('articles.message.batch_delete_required');
                 }
                 break;
         }
@@ -258,45 +258,45 @@ $stats = [
 
 function article_status_meta(string $status): array {
     return match ($status) {
-        'published' => ['label' => '已发布', 'class' => 'bg-green-100 text-green-800 border border-green-200'],
-        'draft' => ['label' => '草稿', 'class' => 'bg-amber-100 text-amber-800 border border-amber-200'],
-        default => ['label' => '私有', 'class' => 'bg-gray-100 text-gray-700 border border-gray-200'],
+        'published' => ['label' => __('articles.status.published'), 'class' => 'bg-green-100 text-green-800 border border-green-200'],
+        'draft' => ['label' => __('articles.status.draft'), 'class' => 'bg-amber-100 text-amber-800 border border-amber-200'],
+        default => ['label' => __('articles.status.private'), 'class' => 'bg-gray-100 text-gray-700 border border-gray-200'],
     };
 }
 
 function article_review_meta(string $reviewStatus): array {
     return match ($reviewStatus) {
-        'approved' => ['label' => '人工通过', 'class' => 'bg-emerald-100 text-emerald-800 border border-emerald-200'],
-        'auto_approved' => ['label' => '自动通过', 'class' => 'bg-sky-100 text-sky-800 border border-sky-200'],
-        'rejected' => ['label' => '已拒绝', 'class' => 'bg-red-100 text-red-800 border border-red-200'],
-        default => ['label' => '待人工审核', 'class' => 'bg-yellow-100 text-yellow-800 border border-yellow-200'],
+        'approved' => ['label' => __('articles.review.approved'), 'class' => 'bg-emerald-100 text-emerald-800 border border-emerald-200'],
+        'auto_approved' => ['label' => __('articles.review.auto_approved'), 'class' => 'bg-sky-100 text-sky-800 border border-sky-200'],
+        'rejected' => ['label' => __('articles.review.rejected'), 'class' => 'bg-red-100 text-red-800 border border-red-200'],
+        default => ['label' => __('articles.review.pending'), 'class' => 'bg-yellow-100 text-yellow-800 border border-yellow-200'],
     };
 }
 
 // 设置页面信息
-$page_title = '文章管理';
+$page_title = __('articles.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div>
-        <h1 class="text-2xl font-bold text-gray-900">文章管理</h1>
-        <p class="mt-1 text-sm text-gray-600">统一查看发布状态与审核结果，避免把文章流程拆成两套独立状态。</p>
+        <h1 class="text-2xl font-bold text-gray-900">' . htmlspecialchars(__('articles.page_title'), ENT_QUOTES) . '</h1>
+        <p class="mt-1 text-sm text-gray-600">' . htmlspecialchars(__('articles.page_subtitle'), ENT_QUOTES) . '</p>
     </div>
     <div class="flex space-x-3">
         <a href="article-create.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-            创建文章
+            ' . htmlspecialchars(__('button.create_article'), ENT_QUOTES) . '
         </a>
         <a href="categories.php" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
             <i data-lucide="folder" class="w-4 h-4 mr-2"></i>
-            分类管理
+            ' . htmlspecialchars(__('button.category_manage'), ENT_QUOTES) . '
         </a>
         <a href="articles-review.php" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
             <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-            审核中心
+            ' . htmlspecialchars(__('button.review_center'), ENT_QUOTES) . '
         </a>
         <a href="articles-trash.php" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
             <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-            垃圾箱
+            ' . htmlspecialchars(__('button.trash'), ENT_QUOTES) . '
         </a>
     </div>
 </div>
@@ -319,6 +319,25 @@ $per_page = $pagination_per_page;
 ?>
 
 <script>
+const ARTICLES_I18N = <?php echo json_encode([
+    'confirmDeleteTitle' => __('articles.confirm.delete_title'),
+    'cancel' => __('button.cancel'),
+    'confirmDelete' => __('button.delete'),
+    'confirmDeleteMessage' => __('articles.confirm.delete'),
+    'deleteFailedRefresh' => __('articles.message.delete_failed_refresh'),
+    'selectedPrefix' => __('articles.bulk.selected_prefix'),
+    'selectedSuffix' => __('articles.bulk.selected_suffix'),
+    'selectArticles' => __('articles.message.select_articles'),
+    'selectAction' => __('articles.message.select_action'),
+    'selectStatus' => __('articles.message.select_status'),
+    'selectReview' => __('articles.message.select_review'),
+    'confirmDeleteSelected' => __('articles.confirm.delete_selected', ['count' => '__COUNT__']),
+    'reviewApproved' => __('articles.review.approved'),
+    'reviewRejected' => __('articles.review.rejected'),
+    'confirmQuickReview' => __('articles.confirm.quick_review', ['action' => '__ACTION__']),
+    'reviewFailedRefresh' => __('articles.message.review_failed_refresh'),
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+
 // 显示确认对话框
 function showConfirmDialog(message, onConfirm) {
     // 创建遮罩层
@@ -340,17 +359,17 @@ function showConfirmDialog(message, onConfirm) {
                     </div>
                 </div>
                 <div class="flex-1">
-                    <h3 class="text-lg font-semibold text-gray-900 mb-2">确认删除</h3>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">${ARTICLES_I18N.confirmDeleteTitle}</h3>
                     <p class="text-gray-600">${message}</p>
                 </div>
             </div>
         </div>
         <div class="bg-gray-50 px-6 py-4 rounded-b-lg flex justify-end gap-3">
             <button class="cancel-btn px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                取消
+                ${ARTICLES_I18N.cancel}
             </button>
             <button class="confirm-btn px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                确定删除
+                ${ARTICLES_I18N.confirmDelete}
             </button>
         </div>
     `;
@@ -404,7 +423,7 @@ function showConfirmDialog(message, onConfirm) {
 function deleteArticle(articleId, event) {
     console.log(`deleteArticle 函数被调用，文章ID: ${articleId}`);
 
-    showConfirmDialog('确定要删除这篇文章吗？删除后文章将移至垃圾箱。', () => {
+    showConfirmDialog(ARTICLES_I18N.confirmDeleteMessage, () => {
         console.log('用户确认删除，开始处理...');
 
     // 显示加载状态
@@ -432,7 +451,7 @@ function deleteArticle(articleId, event) {
         form.submit();
     } catch (error) {
         console.error('删除失败:', error);
-        showNotification('error', '删除失败，请刷新页面后重试');
+        showNotification('error', ARTICLES_I18N.deleteFailedRefresh);
 
         if (deleteBtn) {
             deleteBtn.disabled = false;
@@ -458,7 +477,7 @@ function deleteArticle(articleId, event) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">总文章</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.stats.total')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total']; ?></dd>
                             </dl>
                         </div>
@@ -474,7 +493,7 @@ function deleteArticle(articleId, event) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">已发布</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.stats.published')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['published']; ?></dd>
                             </dl>
                         </div>
@@ -490,7 +509,7 @@ function deleteArticle(articleId, event) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">草稿</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.stats.draft')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['draft']; ?></dd>
                             </dl>
                         </div>
@@ -506,7 +525,7 @@ function deleteArticle(articleId, event) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">待人工审核</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.stats.pending_review')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['pending_review']; ?></dd>
                             </dl>
                         </div>
@@ -522,7 +541,7 @@ function deleteArticle(articleId, event) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">今日新增</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.stats.today')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['today']; ?></dd>
                             </dl>
                         </div>
@@ -534,15 +553,15 @@ function deleteArticle(articleId, event) {
         <!-- 筛选和搜索 -->
         <div class="bg-white shadow rounded-lg mb-6">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">筛选和搜索</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars(__('articles.filters.title')); ?></h3>
             </div>
             <div class="px-6 py-4">
                 <form method="GET" class="space-y-4">
                     <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">任务</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.filters.task')); ?></label>
                             <select name="task_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="">所有任务</option>
+                                <option value=""><?php echo htmlspecialchars(__('articles.filters.all_tasks')); ?></option>
                                 <?php foreach ($tasks as $task): ?>
                                     <option value="<?php echo $task['id']; ?>" <?php echo $task_id == $task['id'] ? 'selected' : ''; ?>>
                                         <?php echo htmlspecialchars($task['name']); ?>
@@ -552,30 +571,30 @@ function deleteArticle(articleId, event) {
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">发布状态</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.filters.status')); ?></label>
                             <select name="status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="">所有发布状态</option>
-                                <option value="draft" <?php echo $status === 'draft' ? 'selected' : ''; ?>>草稿</option>
-                                <option value="published" <?php echo $status === 'published' ? 'selected' : ''; ?>>已发布</option>
-                                <option value="private" <?php echo $status === 'private' ? 'selected' : ''; ?>>私有</option>
+                                <option value=""><?php echo htmlspecialchars(__('articles.filters.all_status')); ?></option>
+                                <option value="draft" <?php echo $status === 'draft' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.status.draft')); ?></option>
+                                <option value="published" <?php echo $status === 'published' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.status.published')); ?></option>
+                                <option value="private" <?php echo $status === 'private' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.status.private')); ?></option>
                             </select>
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">审核结果</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.filters.review_status')); ?></label>
                             <select name="review_status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="">所有审核结果</option>
-                                <option value="pending" <?php echo $review_status === 'pending' ? 'selected' : ''; ?>>待人工审核</option>
-                                <option value="approved" <?php echo $review_status === 'approved' ? 'selected' : ''; ?>>人工通过</option>
-                                <option value="rejected" <?php echo $review_status === 'rejected' ? 'selected' : ''; ?>>已拒绝</option>
-                                <option value="auto_approved" <?php echo $review_status === 'auto_approved' ? 'selected' : ''; ?>>自动通过</option>
+                                <option value=""><?php echo htmlspecialchars(__('articles.filters.all_review')); ?></option>
+                                <option value="pending" <?php echo $review_status === 'pending' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.review.pending')); ?></option>
+                                <option value="approved" <?php echo $review_status === 'approved' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.review.approved')); ?></option>
+                                <option value="rejected" <?php echo $review_status === 'rejected' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.review.rejected')); ?></option>
+                                <option value="auto_approved" <?php echo $review_status === 'auto_approved' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.review.auto_approved')); ?></option>
                             </select>
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">作者</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.filters.author')); ?></label>
                             <select name="author_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="">所有作者</option>
+                                <option value=""><?php echo htmlspecialchars(__('articles.filters.all_authors')); ?></option>
                                 <?php foreach ($authors as $author): ?>
                                     <option value="<?php echo $author['id']; ?>" <?php echo $author_id == $author['id'] ? 'selected' : ''; ?>>
                                         <?php echo htmlspecialchars($author['name']); ?>
@@ -585,13 +604,13 @@ function deleteArticle(articleId, event) {
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">开始日期</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.filters.date_from')); ?></label>
                             <input type="date" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">结束日期</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.filters.date_to')); ?></label>
                             <input type="date" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
@@ -599,19 +618,19 @@ function deleteArticle(articleId, event) {
 
                     <div class="flex items-end space-x-4">
                         <div class="flex-1">
-                            <label class="block text-sm font-medium text-gray-700">搜索</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.filters.search')); ?></label>
                             <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>"
-                                   placeholder="搜索标题或内容..."
+                                   placeholder="<?php echo htmlspecialchars(__('articles.filters.search_placeholder')); ?>"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
                         <div class="flex space-x-2">
                             <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                                 <i data-lucide="search" class="w-4 h-4 mr-2"></i>
-                                搜索
+                                <?php echo htmlspecialchars(__('button.search')); ?>
                             </button>
                             <a href="articles.php" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                                 <i data-lucide="x" class="w-4 h-4 mr-2"></i>
-                                清空
+                                <?php echo htmlspecialchars(__('button.clear')); ?>
                             </a>
                         </div>
                     </div>
@@ -624,25 +643,25 @@ function deleteArticle(articleId, event) {
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">
-                        文章列表
-                        <span class="text-sm text-gray-500">(共 <?php echo $total_articles; ?> 篇)</span>
+                        <?php echo htmlspecialchars(__('articles.list_title')); ?>
+                        <span class="text-sm text-gray-500"><?php echo htmlspecialchars(__('articles.list_total', ['count' => $total_articles])); ?></span>
                     </h3>
                     <div class="flex space-x-2">
                         <a href="article-create.php" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
                             <i data-lucide="plus" class="w-4 h-4 mr-1"></i>
-                            创建文章
+                            <?php echo htmlspecialchars(__('button.create_article')); ?>
                         </a>
                         <a href="articles-review.php" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                            审核中心
+                            <?php echo htmlspecialchars(__('button.review_center')); ?>
                         </a>
                         <a href="articles-trash.php" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                            垃圾箱
+                            <?php echo htmlspecialchars(__('button.trash')); ?>
                         </a>
                         <button onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="check-square" class="w-4 h-4 mr-1"></i>
-                            批量操作
+                            <?php echo htmlspecialchars(__('button.bulk_actions')); ?>
                         </button>
                     </div>
                 </div>
@@ -651,11 +670,11 @@ function deleteArticle(articleId, event) {
             <?php if (empty($articles)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="inbox" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无文章</h3>
-                    <p class="text-gray-500 mb-4">没有找到符合条件的文章</p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo htmlspecialchars(__('articles.empty_title')); ?></h3>
+                    <p class="text-gray-500 mb-4"><?php echo htmlspecialchars(__('articles.empty_desc')); ?></p>
                     <a href="tasks.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                        创建任务生成文章
+                        <?php echo htmlspecialchars(__('button.generate_articles')); ?>
                     </a>
                 </div>
             <?php else: ?>
@@ -666,34 +685,40 @@ function deleteArticle(articleId, event) {
                         <input type="hidden" name="return_query" value="<?php echo htmlspecialchars($_SERVER['QUERY_STRING'] ?? '', ENT_QUOTES); ?>">
                         <div id="batch-selected-ids"></div>
                         <div class="flex items-center space-x-4">
-                            <span class="text-sm text-gray-600">已选择 <span id="selected-count">0</span> 篇文章</span>
+                            <span class="text-sm text-gray-600">
+                                <?php if (__('articles.bulk.selected_prefix') !== ''): ?>
+                                    <span><?php echo htmlspecialchars(__('articles.bulk.selected_prefix')); ?></span>
+                                <?php endif; ?>
+                                <span id="selected-count">0</span>
+                                <span><?php echo htmlspecialchars(__('articles.bulk.selected_suffix')); ?></span>
+                            </span>
 
                             <select name="action" id="batch-action" class="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
-                                <option value="">选择操作</option>
-                                <option value="batch_update_status">更改发布状态</option>
-                                <option value="batch_update_review">更改审核结果</option>
-                                <option value="delete_articles">删除文章</option>
+                                <option value=""><?php echo htmlspecialchars(__('articles.bulk.select_action')); ?></option>
+                                <option value="batch_update_status"><?php echo htmlspecialchars(__('articles.bulk.status_to')); ?></option>
+                                <option value="batch_update_review"><?php echo htmlspecialchars(__('articles.bulk.review_to')); ?></option>
+                                <option value="delete_articles"><?php echo htmlspecialchars(__('articles.bulk.delete')); ?></option>
                             </select>
 
                             <select name="new_status" id="status-select" class="hidden border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
-                                <option value="draft">草稿</option>
-                                <option value="published">已发布</option>
-                                <option value="private">私有</option>
+                                <option value="draft"><?php echo htmlspecialchars(__('articles.status.draft')); ?></option>
+                                <option value="published"><?php echo htmlspecialchars(__('articles.status.published')); ?></option>
+                                <option value="private"><?php echo htmlspecialchars(__('articles.status.private')); ?></option>
                             </select>
 
                             <select name="review_status" id="review-select" class="hidden border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
-                                <option value="pending">待人工审核</option>
-                                <option value="approved">人工通过</option>
-                                <option value="rejected">已拒绝</option>
-                                <option value="auto_approved">自动通过</option>
+                                <option value="pending"><?php echo htmlspecialchars(__('articles.review.pending')); ?></option>
+                                <option value="approved"><?php echo htmlspecialchars(__('articles.review.approved')); ?></option>
+                                <option value="rejected"><?php echo htmlspecialchars(__('articles.review.rejected')); ?></option>
+                                <option value="auto_approved"><?php echo htmlspecialchars(__('articles.review.auto_approved')); ?></option>
                             </select>
 
                             <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
-                                执行
+                                <?php echo htmlspecialchars(__('button.execute')); ?>
                             </button>
 
                             <button type="button" onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
-                                取消
+                                <?php echo htmlspecialchars(__('button.cancel')); ?>
                             </button>
                         </div>
                     </form>
@@ -706,12 +731,12 @@ function deleteArticle(articleId, event) {
                                 <th class="batch-checkbox hidden px-6 py-3 text-left">
                                     <input type="checkbox" id="select-all" class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                                 </th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文章信息</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">任务/作者</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">流程状态</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">创建时间</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.column.id')); ?></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.column.info')); ?></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.column.task_author')); ?></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.column.workflow')); ?></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.column.created_at')); ?></th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo htmlspecialchars(__('articles.column.actions')); ?></th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -738,7 +763,7 @@ function deleteArticle(articleId, event) {
                                                 <?php endif; ?>
                                                 <?php if ($article['keywords']): ?>
                                                     <div class="mt-1">
-                                                        <span class="text-xs text-blue-600">关键词: <?php echo htmlspecialchars($article['keywords']); ?></span>
+                                                        <span class="text-xs text-blue-600"><?php echo htmlspecialchars(__('articles.keywords')); ?>: <?php echo htmlspecialchars($article['keywords']); ?></span>
                                                     </div>
                                                 <?php endif; ?>
                                             </div>
@@ -750,7 +775,7 @@ function deleteArticle(articleId, event) {
                                         <?php endif; ?>
                                         <div><?php echo htmlspecialchars($article['author_name']); ?></div>
                                         <?php if ($article['is_ai_generated']): ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">AI生成</span>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800"><?php echo htmlspecialchars(__('articles.ai_generated')); ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
@@ -758,36 +783,36 @@ function deleteArticle(articleId, event) {
                                         <?php $reviewMeta = article_review_meta((string) ($article['review_status'] ?? 'pending')); ?>
                                         <div style="display: flex; flex-direction: column; gap: 4px;">
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium <?php echo $statusMeta['class']; ?>">
-                                                发布: <?php echo $statusMeta['label']; ?>
+                                                <?php echo htmlspecialchars(__('articles.publish_prefix')); ?>: <?php echo $statusMeta['label']; ?>
                                             </span>
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium <?php echo $reviewMeta['class']; ?>">
-                                                审核: <?php echo $reviewMeta['label']; ?>
+                                                <?php echo htmlspecialchars(__('articles.review_prefix')); ?>: <?php echo $reviewMeta['label']; ?>
                                             </span>
                                         </div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         <div><?php echo date('m-d H:i', strtotime($article['created_at'])); ?></div>
                                         <?php if ($article['published_at']): ?>
-                                            <div class="text-xs text-green-600">发布: <?php echo date('m-d H:i', strtotime($article['published_at'])); ?></div>
+                                            <div class="text-xs text-green-600"><?php echo htmlspecialchars(__('articles.published_at', ['time' => date('m-d H:i', strtotime($article['published_at']))])); ?></div>
                                         <?php endif; ?>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                         <div class="flex items-center space-x-2">
-                                            <a href="article-view.php?id=<?php echo $article['id']; ?>" class="text-blue-600 hover:text-blue-800" title="查看">
+                                            <a href="article-view.php?id=<?php echo $article['id']; ?>" class="text-blue-600 hover:text-blue-800" title="<?php echo htmlspecialchars(__('button.view')); ?>">
                                                 <i data-lucide="eye" class="w-4 h-4"></i>
                                             </a>
-                                            <a href="article-edit.php?id=<?php echo $article['id']; ?>" class="text-green-600 hover:text-green-800" title="编辑">
+                                            <a href="article-edit.php?id=<?php echo $article['id']; ?>" class="text-green-600 hover:text-green-800" title="<?php echo htmlspecialchars(__('button.edit')); ?>">
                                                 <i data-lucide="edit" class="w-4 h-4"></i>
                                             </a>
                                             <?php if ($article['review_status'] === 'pending'): ?>
-                                                <button onclick="quickReview(<?php echo $article['id']; ?>, 'approved')" class="text-green-600 hover:text-green-800" title="人工通过">
+                                                <button onclick="quickReview(<?php echo $article['id']; ?>, 'approved')" class="text-green-600 hover:text-green-800" title="<?php echo htmlspecialchars(__('articles.action.approve')); ?>">
                                                     <i data-lucide="check" class="w-4 h-4"></i>
                                                 </button>
-                                                <button onclick="quickReview(<?php echo $article['id']; ?>, 'rejected')" class="text-red-600 hover:text-red-800" title="拒绝">
+                                                <button onclick="quickReview(<?php echo $article['id']; ?>, 'rejected')" class="text-red-600 hover:text-red-800" title="<?php echo htmlspecialchars(__('articles.action.reject')); ?>">
                                                     <i data-lucide="x" class="w-4 h-4"></i>
                                                 </button>
                                             <?php endif; ?>
-                                            <button onclick="deleteArticle(<?php echo $article['id']; ?>, event)" class="text-red-600 hover:text-red-800" title="删除">
+                                            <button onclick="deleteArticle(<?php echo $article['id']; ?>, event)" class="text-red-600 hover:text-red-800" title="<?php echo htmlspecialchars(__('button.delete')); ?>">
                                                 <i data-lucide="trash-2" class="w-4 h-4"></i>
                                             </button>
                                         </div>
@@ -802,9 +827,9 @@ function deleteArticle(articleId, event) {
                 <div class="px-6 py-4 border-t border-gray-200">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div class="text-sm text-gray-700">
-                            显示第 <?php echo ($page - 1) * $per_page + 1; ?> - <?php echo min($page * $per_page, $total_articles); ?> 条，共 <?php echo $total_articles; ?> 条
+                            <?php echo htmlspecialchars(__('articles.pagination.summary', ['from' => ($page - 1) * $per_page + 1, 'to' => min($page * $per_page, $total_articles), 'total' => $total_articles])); ?>
                             <?php if ($total_pages > 1): ?>
-                                <span class="ml-2 text-gray-500">（第 <?php echo $page; ?> 页，共 <?php echo $total_pages; ?> 页）</span>
+                                <span class="ml-2 text-gray-500"><?php echo htmlspecialchars(__('articles.pagination.pages', ['page' => $page, 'total_pages' => $total_pages])); ?></span>
                             <?php endif; ?>
                         </div>
 
@@ -818,7 +843,7 @@ function deleteArticle(articleId, event) {
                                 <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to, ENT_QUOTES); ?>">
                                 <input type="hidden" name="search" value="<?php echo htmlspecialchars($search, ENT_QUOTES); ?>">
                                 <input type="hidden" name="page" value="1">
-                                <label for="per-page-input" class="text-sm text-gray-600 whitespace-nowrap">每页显示</label>
+                                <label for="per-page-input" class="text-sm text-gray-600 whitespace-nowrap"><?php echo htmlspecialchars(__('articles.pagination.per_page')); ?></label>
                                 <input
                                     id="per-page-input"
                                     type="number"
@@ -830,7 +855,7 @@ function deleteArticle(articleId, event) {
                                     class="w-20 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                 >
                                 <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                                    应用
+                                    <?php echo htmlspecialchars(__('button.apply')); ?>
                                 </button>
                             </form>
 
@@ -845,7 +870,7 @@ function deleteArticle(articleId, event) {
                                     <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to, ENT_QUOTES); ?>">
                                     <input type="hidden" name="search" value="<?php echo htmlspecialchars($search, ENT_QUOTES); ?>">
                                     <input type="hidden" name="per_page" value="<?php echo $per_page; ?>">
-                                    <label for="jump-page-input" class="text-sm text-gray-600 whitespace-nowrap">跳转到</label>
+                                    <label for="jump-page-input" class="text-sm text-gray-600 whitespace-nowrap"><?php echo htmlspecialchars(__('articles.pagination.go_to')); ?></label>
                                     <input
                                         id="jump-page-input"
                                         type="number"
@@ -857,7 +882,7 @@ function deleteArticle(articleId, event) {
                                         class="w-20 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     >
                                     <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                                        跳转
+                                        <?php echo htmlspecialchars(__('button.jump')); ?>
                                     </button>
                                 </form>
 
@@ -866,7 +891,7 @@ function deleteArticle(articleId, event) {
                                 <?php if ($page > 1): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>"
                                        class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                                       title="首页">
+                                       title="<?php echo htmlspecialchars(__('articles.pagination.first')); ?>">
                                         <i data-lucide="chevrons-left" class="w-4 h-4"></i>
                                     </a>
                                 <?php endif; ?>
@@ -875,7 +900,7 @@ function deleteArticle(articleId, event) {
                                 <?php if ($page > 1): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>"
                                        class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        上一页
+                                        <?php echo htmlspecialchars(__('articles.pagination.prev')); ?>
                                     </a>
                                 <?php endif; ?>
 
@@ -905,7 +930,7 @@ function deleteArticle(articleId, event) {
                                 <?php if ($page < $total_pages): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>"
                                        class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        下一页
+                                        <?php echo htmlspecialchars(__('articles.pagination.next')); ?>
                                     </a>
                                 <?php endif; ?>
 
@@ -913,7 +938,7 @@ function deleteArticle(articleId, event) {
                                 <?php if ($page < $total_pages): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>"
                                        class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                                       title="末页">
+                                       title="<?php echo htmlspecialchars(__('articles.pagination.last')); ?>">
                                         <i data-lucide="chevrons-right" class="w-4 h-4"></i>
                                     </a>
                                 <?php endif; ?>
@@ -1146,31 +1171,31 @@ function deleteArticle(articleId, event) {
             const selected = document.querySelectorAll('.article-checkbox:checked').length;
             if (selected === 0) {
                 e.preventDefault();
-                alert('请选择要操作的文章');
+                alert(ARTICLES_I18N.selectArticles);
                 return;
             }
 
             const action = document.getElementById('batch-action').value;
             if (!action) {
                 e.preventDefault();
-                alert('请选择操作类型');
+                alert(ARTICLES_I18N.selectAction);
                 return;
             }
 
             if (action === 'batch_update_status' && !document.getElementById('status-select').value) {
                 e.preventDefault();
-                alert('请选择要更新的文章状态');
+                alert(ARTICLES_I18N.selectStatus);
                 return;
             }
 
             if (action === 'batch_update_review' && !document.getElementById('review-select').value) {
                 e.preventDefault();
-                alert('请选择要更新的审核结果');
+                alert(ARTICLES_I18N.selectReview);
                 return;
             }
 
             if (action === 'delete_articles') {
-                if (!confirm(`确定要删除选中的 ${selected} 篇文章吗？`)) {
+                if (!confirm(ARTICLES_I18N.confirmDeleteSelected.replace('__COUNT__', selected))) {
                     e.preventDefault();
                     return;
                 }
@@ -1190,8 +1215,8 @@ function deleteArticle(articleId, event) {
 
         // 快速审核
         function quickReview(articleId, status) {
-            const actionText = status === 'approved' ? '人工通过' : '拒绝';
-            if (confirm(`确定要${actionText}这篇文章吗？`)) {
+            const actionText = status === 'approved' ? ARTICLES_I18N.reviewApproved : ARTICLES_I18N.reviewRejected;
+            if (confirm(ARTICLES_I18N.confirmQuickReview.replace('__ACTION__', actionText))) {
                 // 显示加载状态
                 const reviewBtns = document.querySelectorAll(`button[onclick*="quickReview(${articleId}"]`);
                 reviewBtns.forEach(btn => {
@@ -1211,7 +1236,7 @@ function deleteArticle(articleId, event) {
                     form.submit();
                 } catch (error) {
                     console.error('审核失败:', error);
-                    showNotification('error', '审核失败，请刷新页面后重试');
+                    showNotification('error', ARTICLES_I18N.reviewFailedRefresh);
                     // 恢复按钮状态
                     reviewBtns.forEach((btn, index) => {
                         btn.disabled = false;

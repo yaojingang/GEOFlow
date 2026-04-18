@@ -173,6 +173,7 @@ class Database {
             auto_description INTEGER DEFAULT 1, -- 自动生成描述
             draft_limit INTEGER DEFAULT 10, -- 草稿数量限制
             is_loop INTEGER DEFAULT 0, -- 是否循环生成
+            model_selection_mode VARCHAR(20) DEFAULT 'fixed', -- fixed, smart_failover
             status VARCHAR(20) DEFAULT 'active', -- active, paused, completed
             created_count INTEGER DEFAULT 0, -- 已创建文章数
             published_count INTEGER DEFAULT 0, -- 已发布文章数
@@ -283,6 +284,7 @@ class Database {
             api_key VARCHAR(500) NOT NULL,
             model_id VARCHAR(200) NOT NULL,
             api_url VARCHAR(500) DEFAULT 'https://api.deepseek.com',
+            failover_priority INTEGER DEFAULT 100,
             daily_limit INTEGER DEFAULT 0, -- 每日调用限制，0为不限制
             used_today INTEGER DEFAULT 0, -- 今日已使用次数
             total_used INTEGER DEFAULT 0, -- 总使用次数
@@ -442,11 +444,11 @@ class Database {
         // 插入示例AI模型配置（开源安全占位，不包含真实密钥）
         $stmt = $this->pdo->prepare("INSERT INTO ai_models (name, version, api_key, model_id, api_url, daily_limit, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
-            'MiniMax M2.7 (示例)',
-            'M2.7',
+            'Sample AI Model',
+            'example',
             '',
-            'MiniMax-M2.7',
-            'https://api.minimax.io',
+            'replace-with-your-model-id',
+            'https://api.openai.com',
             0,
             'inactive'
         ]);
@@ -817,6 +819,7 @@ class Database {
                 'author_type' => "ALTER TABLE tasks ADD COLUMN author_type VARCHAR(20) DEFAULT 'random'",
                 'custom_author_id' => "ALTER TABLE tasks ADD COLUMN custom_author_id INTEGER DEFAULT NULL",
                 'content_prompt_id' => "ALTER TABLE tasks ADD COLUMN content_prompt_id INTEGER DEFAULT NULL",
+                'model_selection_mode' => "ALTER TABLE tasks ADD COLUMN model_selection_mode VARCHAR(20) DEFAULT 'fixed'",
             ],
             'keyword_libraries' => [
                 'description' => "ALTER TABLE keyword_libraries ADD COLUMN description TEXT DEFAULT ''",
@@ -865,6 +868,9 @@ class Database {
                 'website' => "ALTER TABLE authors ADD COLUMN website VARCHAR(200) DEFAULT ''",
                 'social_links' => "ALTER TABLE authors ADD COLUMN social_links TEXT DEFAULT ''",
             ],
+            'ai_models' => [
+                'failover_priority' => "ALTER TABLE ai_models ADD COLUMN failover_priority INTEGER DEFAULT 100",
+            ],
         ];
 
         foreach ($columnsToAdd as $table => $definitions) {
@@ -876,6 +882,8 @@ class Database {
         }
 
         db_normalize_content_asset_paths($this->pdo);
+        $this->pdo->exec("UPDATE ai_models SET failover_priority = COALESCE(failover_priority, 100)");
+        $this->pdo->exec("UPDATE tasks SET model_selection_mode = COALESCE(NULLIF(model_selection_mode, ''), 'fixed')");
     }
 
     private function ensureIndexes() {

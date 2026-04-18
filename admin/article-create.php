@@ -22,7 +22,7 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         try {
             $title = trim($_POST['title'] ?? '');
@@ -41,13 +41,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $published_at = $workflowState['published_at'];
 
             if ($title === '') {
-                $error = '文章标题不能为空';
+                $error = __('article_create.error.title_required');
             } elseif ($content === '') {
-                $error = '文章内容不能为空';
+                $error = __('article_create.error.content_required');
             } elseif ($category_id <= 0) {
-                $error = '请选择文章分类';
+                $error = __('article_create.error.category_required');
             } elseif ($author_id <= 0) {
-                $error = '请选择文章作者';
+                $error = __('article_create.error.author_required');
             } else {
                 $slug = generate_unique_article_slug($db, $title);
 
@@ -83,10 +83,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit;
                 }
 
-                $error = '文章创建失败';
+                $error = __('article_create.error.create_failed');
             }
         } catch (Exception $e) {
-            $error = '创建失败: ' . $e->getMessage();
+            $error = __('article_create.error.create_exception', ['message' => $e->getMessage()]);
         }
     }
 }
@@ -94,15 +94,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $categories = $db->query("SELECT * FROM categories ORDER BY name")->fetchAll();
 $authors = $db->query("SELECT * FROM authors ORDER BY name")->fetchAll();
 
-$page_title = '创建文章';
+$page_title = __('article_create.page_title');
 $page_header = '
 <div class="flex items-center space-x-4">
     <a href="articles.php" class="text-gray-400 hover:text-gray-600">
         <i data-lucide="arrow-left" class="w-5 h-5"></i>
     </a>
     <div>
-        <h1 class="text-2xl font-bold text-gray-900">创建文章</h1>
-        <p class="mt-1 text-sm text-gray-600">手动创建新文章，页面已接入统一审核与发布状态规则。</p>
+        <h1 class="text-2xl font-bold text-gray-900">' . htmlspecialchars(__('article_create.page_heading'), ENT_QUOTES, 'UTF-8') . '</h1>
+        <p class="mt-1 text-sm text-gray-600">' . htmlspecialchars(__('article_create.page_subtitle'), ENT_QUOTES, 'UTF-8') . '</p>
     </div>
 </div>';
 $additional_css = '
@@ -170,16 +170,16 @@ require_once __DIR__ . '/includes/header.php';
         <div class="lg:col-span-3 space-y-6">
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">基本信息</h3>
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('article_create.section.basic_title'); ?></h3>
                 </div>
                 <div class="px-6 py-4 space-y-6">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">文章标题 *</label>
-                        <input type="text" name="title" required value="<?php echo htmlspecialchars($_POST['title'] ?? ''); ?>" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="请输入文章标题">
+                        <label class="block text-sm font-medium text-gray-700"><?php echo __('article_create.field.title'); ?> *</label>
+                        <input type="text" name="title" required value="<?php echo htmlspecialchars($_POST['title'] ?? ''); ?>" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="<?php echo htmlspecialchars(__('article_create.placeholder.title'), ENT_QUOTES, 'UTF-8'); ?>">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">文章摘要</label>
-                        <textarea name="excerpt" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="文章摘要，留空将自动生成"><?php echo htmlspecialchars($_POST['excerpt'] ?? ''); ?></textarea>
+                        <label class="block text-sm font-medium text-gray-700"><?php echo __('article_create.field.excerpt'); ?></label>
+                        <textarea name="excerpt" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="<?php echo htmlspecialchars(__('article_create.placeholder.excerpt'), ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($_POST['excerpt'] ?? ''); ?></textarea>
                     </div>
                 </div>
             </div>
@@ -187,27 +187,27 @@ require_once __DIR__ . '/includes/header.php';
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
                     <div class="flex items-center justify-between">
-                        <h3 class="text-lg font-medium text-gray-900">文章内容</h3>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('article_create.section.content_title'); ?></h3>
                         <div class="flex items-center space-x-2">
-                            <span class="text-sm text-gray-500">支持Markdown格式</span>
+                            <span class="text-sm text-gray-500"><?php echo __('article_create.help.markdown_supported'); ?></span>
                             <button type="button" onclick="togglePreview()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                 <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                                <span id="preview-toggle-text">显示预览</span>
+                                <span id="preview-toggle-text"><?php echo __('article_create.button.show_preview'); ?></span>
                             </button>
                         </div>
                     </div>
                 </div>
                 <div class="px-6 py-4">
                     <div id="editor-single" class="block">
-                        <textarea name="content" id="content-textarea" required class="block w-full h-96 border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm editor-textarea" placeholder="请输入文章内容..."><?php echo htmlspecialchars($_POST['content'] ?? ''); ?></textarea>
+                        <textarea name="content" id="content-textarea" required class="block w-full h-96 border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm editor-textarea" placeholder="<?php echo htmlspecialchars(__('article_create.placeholder.content'), ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($_POST['content'] ?? ''); ?></textarea>
                     </div>
                     <div id="editor-split" class="hidden editor-container">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">编辑</label>
-                            <textarea id="content-textarea-split" class="block w-full h-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm editor-textarea" placeholder="请输入文章内容..."><?php echo htmlspecialchars($_POST['content'] ?? ''); ?></textarea>
+                            <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('button.edit'); ?></label>
+                            <textarea id="content-textarea-split" class="block w-full h-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm editor-textarea" placeholder="<?php echo htmlspecialchars(__('article_create.placeholder.content'), ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($_POST['content'] ?? ''); ?></textarea>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">预览</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('button.view'); ?></label>
                             <div id="content-preview" class="preview-content h-full"></div>
                         </div>
                     </div>
@@ -216,16 +216,16 @@ require_once __DIR__ . '/includes/header.php';
 
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">SEO设置</h3>
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('article_create.section.seo_title'); ?></h3>
                 </div>
                 <div class="px-6 py-4 space-y-6">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">关键词</label>
-                        <input type="text" name="keywords" value="<?php echo htmlspecialchars($_POST['keywords'] ?? ''); ?>" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="多个关键词用逗号分隔">
+                        <label class="block text-sm font-medium text-gray-700"><?php echo __('article_create.field.keywords'); ?></label>
+                        <input type="text" name="keywords" value="<?php echo htmlspecialchars($_POST['keywords'] ?? ''); ?>" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="<?php echo htmlspecialchars(__('article_create.placeholder.keywords'), ENT_QUOTES, 'UTF-8'); ?>">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Meta描述</label>
-                        <textarea name="meta_description" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="页面描述，用于搜索引擎显示"><?php echo htmlspecialchars($_POST['meta_description'] ?? ''); ?></textarea>
+                        <label class="block text-sm font-medium text-gray-700"><?php echo __('article_create.field.meta_description'); ?></label>
+                        <textarea name="meta_description" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="<?php echo htmlspecialchars(__('article_create.placeholder.meta_description'), ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($_POST['meta_description'] ?? ''); ?></textarea>
                     </div>
                 </div>
             </div>
@@ -234,39 +234,39 @@ require_once __DIR__ . '/includes/header.php';
         <div class="space-y-6">
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">发布设置</h3>
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('article_create.section.publish_title'); ?></h3>
                 </div>
                 <div class="px-6 py-4 space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">发布状态</label>
+                        <label class="block text-sm font-medium text-gray-700"><?php echo __('article_create.field.publish_status'); ?></label>
                         <select name="status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <option value="draft" <?php echo ($_POST['status'] ?? 'draft') === 'draft' ? 'selected' : ''; ?>>草稿</option>
-                            <option value="published" <?php echo ($_POST['status'] ?? '') === 'published' ? 'selected' : ''; ?>>已发布</option>
-                            <option value="private" <?php echo ($_POST['status'] ?? '') === 'private' ? 'selected' : ''; ?>>私有</option>
+                            <option value="draft" <?php echo ($_POST['status'] ?? 'draft') === 'draft' ? 'selected' : ''; ?>><?php echo __('articles.status.draft'); ?></option>
+                            <option value="published" <?php echo ($_POST['status'] ?? '') === 'published' ? 'selected' : ''; ?>><?php echo __('articles.status.published'); ?></option>
+                            <option value="private" <?php echo ($_POST['status'] ?? '') === 'private' ? 'selected' : ''; ?>><?php echo __('articles.status.private'); ?></option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">审核状态</label>
+                        <label class="block text-sm font-medium text-gray-700"><?php echo __('article_create.field.review_status'); ?></label>
                         <select name="review_status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <option value="pending" <?php echo ($_POST['review_status'] ?? 'pending') === 'pending' ? 'selected' : ''; ?>>待审核</option>
-                            <option value="approved" <?php echo ($_POST['review_status'] ?? '') === 'approved' ? 'selected' : ''; ?>>已通过</option>
-                            <option value="rejected" <?php echo ($_POST['review_status'] ?? '') === 'rejected' ? 'selected' : ''; ?>>已拒绝</option>
-                            <option value="auto_approved" <?php echo ($_POST['review_status'] ?? '') === 'auto_approved' ? 'selected' : ''; ?>>自动通过</option>
+                            <option value="pending" <?php echo ($_POST['review_status'] ?? 'pending') === 'pending' ? 'selected' : ''; ?>><?php echo __('articles.review.pending'); ?></option>
+                            <option value="approved" <?php echo ($_POST['review_status'] ?? '') === 'approved' ? 'selected' : ''; ?>><?php echo __('articles.review.approved'); ?></option>
+                            <option value="rejected" <?php echo ($_POST['review_status'] ?? '') === 'rejected' ? 'selected' : ''; ?>><?php echo __('articles.review.rejected'); ?></option>
+                            <option value="auto_approved" <?php echo ($_POST['review_status'] ?? '') === 'auto_approved' ? 'selected' : ''; ?>><?php echo __('articles.review.auto_approved'); ?></option>
                         </select>
-                        <p class="mt-2 text-xs text-gray-500">待审核或已拒绝会自动落为草稿；发布状态会同步补齐审核与发布时间。</p>
+                        <p class="mt-2 text-xs text-gray-500"><?php echo __('article_create.help.review_status'); ?></p>
                     </div>
                 </div>
             </div>
 
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">分类和作者</h3>
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('article_create.section.category_author_title'); ?></h3>
                 </div>
                 <div class="px-6 py-4 space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">分类 *</label>
+                        <label class="block text-sm font-medium text-gray-700"><?php echo __('article_create.field.category'); ?> *</label>
                         <select name="category_id" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <option value="" disabled <?php echo empty($_POST['category_id']) ? 'selected' : ''; ?>>请选择分类</option>
+                            <option value="" disabled <?php echo empty($_POST['category_id']) ? 'selected' : ''; ?>><?php echo __('article_create.option.select_category'); ?></option>
                             <?php foreach ($categories as $category): ?>
                                 <option value="<?php echo (int) $category['id']; ?>" <?php echo ($_POST['category_id'] ?? '') == $category['id'] ? 'selected' : ''; ?>>
                                     <?php echo htmlspecialchars($category['name']); ?>
@@ -275,9 +275,9 @@ require_once __DIR__ . '/includes/header.php';
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">作者 *</label>
+                        <label class="block text-sm font-medium text-gray-700"><?php echo __('article_create.field.author'); ?> *</label>
                         <select name="author_id" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <option value="" disabled <?php echo empty($_POST['author_id']) ? 'selected' : ''; ?>>请选择作者</option>
+                            <option value="" disabled <?php echo empty($_POST['author_id']) ? 'selected' : ''; ?>><?php echo __('article_create.option.select_author'); ?></option>
                             <?php foreach ($authors as $author): ?>
                                 <option value="<?php echo (int) $author['id']; ?>" <?php echo ($_POST['author_id'] ?? '') == $author['id'] ? 'selected' : ''; ?>>
                                     <?php echo htmlspecialchars($author['name']); ?>
@@ -292,29 +292,29 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="px-6 py-4 space-y-3">
                     <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                         <i data-lucide="save" class="w-4 h-4 mr-2"></i>
-                        创建文章
+                        <?php echo __('button.create_article'); ?>
                     </button>
                     <a href="articles.php" class="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         <i data-lucide="x" class="w-4 h-4 mr-2"></i>
-                        取消
+                        <?php echo __('button.cancel'); ?>
                     </a>
                 </div>
             </div>
 
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">Markdown帮助</h3>
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('article_create.section.markdown_help_title'); ?></h3>
                 </div>
                 <div class="px-6 py-4">
                     <div class="text-xs text-gray-600 space-y-1">
-                        <div><code># 标题1</code></div>
-                        <div><code>## 标题2</code></div>
-                        <div><code>**粗体**</code></div>
-                        <div><code>*斜体*</code></div>
-                        <div><code>[链接](URL)</code></div>
-                        <div><code>![图片](URL)</code></div>
-                        <div><code>- 列表项</code></div>
-                        <div><code>> 引用</code></div>
+                        <div><code># Heading 1</code></div>
+                        <div><code>## Heading 2</code></div>
+                        <div><code>**Bold**</code></div>
+                        <div><code>*Italic*</code></div>
+                        <div><code>[Link](URL)</code></div>
+                        <div><code>![Image](URL)</code></div>
+                        <div><code>- List item</code></div>
+                        <div><code>> Quote</code></div>
                     </div>
                 </div>
             </div>
@@ -338,7 +338,7 @@ require_once __DIR__ . '/includes/header.php';
             contentTextareaSplit.value = contentTextarea.value;
             editorSingle.classList.add('hidden');
             editorSplit.classList.remove('hidden');
-            toggleText.textContent = '隐藏预览';
+            toggleText.textContent = '<?php echo addslashes(__('article_create.button.hide_preview')); ?>';
             updatePreview();
             contentTextareaSplit.addEventListener('input', function () {
                 contentTextarea.value = this.value;
@@ -348,7 +348,7 @@ require_once __DIR__ . '/includes/header.php';
             contentTextarea.value = contentTextareaSplit.value;
             editorSplit.classList.add('hidden');
             editorSingle.classList.remove('hidden');
-            toggleText.textContent = '显示预览';
+            toggleText.textContent = '<?php echo addslashes(__('article_create.button.show_preview')); ?>';
         }
     }
 

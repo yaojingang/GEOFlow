@@ -28,7 +28,7 @@ $error_action_label = '';
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $social_links = trim($_POST['social_links'] ?? '');
                 
                 if (empty($name)) {
-                    $error = '作者姓名不能为空';
+                    $error = __('authors.error.name_required');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -50,12 +50,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ");
                         
                         if ($stmt->execute([$name, $email, $bio, $website, $social_links])) {
-                            $message = '作者创建成功';
+                            $message = __('authors.message.create_success');
                         } else {
-                            $error = '作者创建失败';
+                            $error = __('authors.message.create_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '创建失败: ' . $e->getMessage();
+                        $error = __('message.create_failed') . ': ' . $e->getMessage();
                     }
                 }
                 break;
@@ -69,9 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $social_links = trim($_POST['social_links'] ?? '');
 
                 if ($author_id <= 0) {
-                    $error = '作者不存在';
+                    $error = __('authors.error.not_found');
                 } elseif (empty($name)) {
-                    $error = '作者姓名不能为空';
+                    $error = __('authors.error.name_required');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -81,12 +81,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ");
 
                         if ($stmt->execute([$name, $email, $bio, $website, $social_links, $author_id])) {
-                            $message = '作者更新成功';
+                            $message = __('authors.message.update_success');
                         } else {
-                            $error = '作者更新失败';
+                            $error = __('authors.message.update_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '更新失败: ' . $e->getMessage();
+                        $error = __('message.update_failed') . ': ' . $e->getMessage();
                     }
                 }
                 break;
@@ -110,24 +110,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $trashed_count = intval($article_usage['trashed_count'] ?? 0);
                         
                         if ($visible_count > 0) {
-                            $error = "无法删除作者，还有 {$visible_count} 篇未删除文章使用此作者，请先迁移或删除这些文章";
+                            $error = __('authors.error.delete_visible', ['count' => $visible_count]);
                             $error_action_url = 'articles.php?author_id=' . $author_id;
-                            $error_action_label = '查看该作者文章';
+                            $error_action_label = __('authors.action.view_articles');
                         } elseif ($trashed_count > 0) {
-                            $error = "无法删除作者，回收站中还有 {$trashed_count} 篇文章引用该作者，请先彻底删除或迁移";
+                            $error = __('authors.error.delete_trashed', ['count' => $trashed_count]);
                             $error_action_url = 'articles-trash.php?author_id=' . $author_id;
-                            $error_action_label = '查看回收站文章';
+                            $error_action_label = __('authors.action.view_trashed_articles');
                         } else {
                             $stmt = $db->prepare("DELETE FROM authors WHERE id = ?");
                             
                             if ($stmt->execute([$author_id])) {
-                                $message = '作者删除成功';
+                                $message = __('authors.message.delete_success');
                             } else {
-                                $error = '删除失败';
+                                $error = __('authors.message.delete_failed');
                             }
                         }
                     } catch (Exception $e) {
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('message.delete_failed') . ': ' . $e->getMessage();
                     }
                 }
                 break;
@@ -185,7 +185,7 @@ $stats = [
 ];
 
 // 设置页面信息
-$page_title = '作者管理';
+$page_title = __('authors.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -193,13 +193,13 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">作者管理</h1>
-            <p class="mt-1 text-sm text-gray-600">管理文章作者信息</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . htmlspecialchars(__('authors.page_title'), ENT_QUOTES) . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . htmlspecialchars(__('authors.page_subtitle'), ENT_QUOTES) . '</p>
         </div>
     </div>
     <button onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-        添加作者
+        ' . htmlspecialchars(__('authors.create'), ENT_QUOTES) . '
     </button>
 </div>
 ';
@@ -207,6 +207,13 @@ $page_header = '
 // 包含头部模块
 require_once __DIR__ . '/includes/header.php';
 ?>
+
+<script>
+const AUTHORS_I18N = <?php echo json_encode([
+    'confirmDelete' => __('authors.confirm_delete', ['name' => '__NAME__']),
+    'confirmDeleteTrashed' => __('authors.confirm_delete_trashed', ['name' => '__NAME__', 'count' => '__COUNT__']),
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+</script>
 
         <!-- 统计卡片 -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -218,7 +225,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">作者总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('authors.stats_total')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_authors']; ?></dd>
                             </dl>
                         </div>
@@ -234,7 +241,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">活跃作者</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('authors.stats_active')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['active_authors']; ?></dd>
                             </dl>
                         </div>
@@ -250,7 +257,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">平均文章数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('authors.stats_average')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['avg_articles']; ?></dd>
                             </dl>
                         </div>
@@ -265,16 +272,16 @@ require_once __DIR__ . '/includes/header.php';
                 <form method="GET" class="flex items-center space-x-4">
                     <div class="flex-1">
                         <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>"
-                               placeholder="搜索作者姓名、邮箱或简介..."
+                               placeholder="<?php echo htmlspecialchars(__('authors.search_placeholder')); ?>"
                                class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                     </div>
                     <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
                         <i data-lucide="search" class="w-4 h-4 mr-2"></i>
-                        搜索
+                        <?php echo htmlspecialchars(__('button.search')); ?>
                     </button>
                     <a href="authors.php" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         <i data-lucide="x" class="w-4 h-4 mr-2"></i>
-                        清空
+                        <?php echo htmlspecialchars(__('button.clear')); ?>
                     </a>
                 </form>
             </div>
@@ -284,22 +291,22 @@ require_once __DIR__ . '/includes/header.php';
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">
-                    作者列表 
-                    <span class="text-sm text-gray-500">(共 <?php echo $total_authors; ?> 位)</span>
+                    <?php echo htmlspecialchars(__('authors.list_title')); ?> 
+                    <span class="text-sm text-gray-500">(<?php echo $total_authors; ?>)</span>
                 </h3>
             </div>
 
             <?php if (empty($authors)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="user-plus" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无作者</h3>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo htmlspecialchars(__('authors.empty_title')); ?></h3>
                     <p class="text-gray-500 mb-4">
-                        <?php echo !empty($search) ? '没有找到匹配的作者' : '开始添加作者信息'; ?>
+                        <?php echo htmlspecialchars(!empty($search) ? __('authors.empty_search') : __('authors.empty_desc')); ?>
                     </p>
                     <?php if (empty($search)): ?>
                         <button onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
                             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                            添加作者
+                            <?php echo htmlspecialchars(__('authors.create')); ?>
                         </button>
                     <?php endif; ?>
                 </div>
@@ -323,12 +330,12 @@ require_once __DIR__ . '/includes/header.php';
                                             <p class="text-sm text-gray-500 mt-1"><?php echo htmlspecialchars(mb_substr($author['bio'], 0, 100)); ?><?php echo mb_strlen($author['bio']) > 100 ? '...' : ''; ?></p>
                                         <?php endif; ?>
                                         <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
-                                            <span>文章: <?php echo $author['article_count']; ?> 篇</span>
-                                            <span>已发布: <?php echo $author['published_count']; ?> 篇</span>
+                                            <span><?php echo htmlspecialchars(__('authors.article_count', ['count' => (string) $author['article_count']])); ?></span>
+                                            <span><?php echo htmlspecialchars(__('authors.published_count', ['count' => (string) $author['published_count']])); ?></span>
                                             <?php if (intval($author['trashed_count']) > 0): ?>
-                                                <span>回收站: <?php echo intval($author['trashed_count']); ?> 篇</span>
+                                                <span><?php echo htmlspecialchars(__('authors.trashed_count', ['count' => (string) intval($author['trashed_count'])])); ?></span>
                                             <?php endif; ?>
-                                            <span>创建: <?php echo date('Y-m-d', strtotime($author['created_at'])); ?></span>
+                                            <span><?php echo htmlspecialchars(__('authors.created_prefix', ['date' => date('Y-m-d', strtotime($author['created_at']))])); ?></span>
                                         </div>
                                     </div>
                                 </div>
@@ -346,7 +353,7 @@ require_once __DIR__ . '/includes/header.php';
                                         class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
                                     >
                                         <i data-lucide="pencil" class="w-4 h-4 mr-1"></i>
-                                        编辑
+                                        <?php echo htmlspecialchars(__('authors.edit')); ?>
                                     </button>
                                     <button
                                         type="button"
@@ -357,7 +364,7 @@ require_once __DIR__ . '/includes/header.php';
                                         class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700"
                                     >
                                         <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                        删除
+                                        <?php echo htmlspecialchars(__('authors.delete')); ?>
                                     </button>
                                 </div>
                             </div>
@@ -370,12 +377,12 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="px-6 py-4 border-t border-gray-200">
                         <div class="flex items-center justify-between">
                             <div class="text-sm text-gray-700">
-                                显示第 <?php echo ($page - 1) * $per_page + 1; ?> - <?php echo min($page * $per_page, $total_authors); ?> 位，共 <?php echo $total_authors; ?> 位
+                                <?php echo htmlspecialchars(__('articles.pagination.summary', ['from' => (string) (($page - 1) * $per_page + 1), 'to' => (string) min($page * $per_page, $total_authors), 'total' => (string) $total_authors])); ?>
                             </div>
                             <div class="flex space-x-1">
                                 <?php if ($page > 1): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        上一页
+                                        <?php echo htmlspecialchars(__('articles.pagination.prev')); ?>
                                     </a>
                                 <?php endif; ?>
                                 
@@ -388,7 +395,7 @@ require_once __DIR__ . '/includes/header.php';
                                 
                                 <?php if ($page < $total_pages): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        下一页
+                                        <?php echo htmlspecialchars(__('articles.pagination.next')); ?>
                                     </a>
                                 <?php endif; ?>
                             </div>
@@ -403,54 +410,54 @@ require_once __DIR__ . '/includes/header.php';
     <div id="create-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">添加作者</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo htmlspecialchars(__('authors.modal_create')); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="create_author">
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">姓名 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_name')); ?></label>
                             <input type="text" name="name" required 
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                   placeholder="请输入作者姓名">
+                                   placeholder="<?php echo htmlspecialchars(__('authors.placeholder_name')); ?>">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">邮箱</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_email')); ?></label>
                             <input type="email" name="email" 
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                   placeholder="请输入邮箱地址">
+                                   placeholder="<?php echo htmlspecialchars(__('authors.placeholder_email')); ?>">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">个人简介</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_bio')); ?></label>
                             <textarea name="bio" rows="3"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                      placeholder="作者的个人简介"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('authors.placeholder_bio')); ?>"></textarea>
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">个人网站</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_website')); ?></label>
                             <input type="url" name="website" 
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                    placeholder="https://example.com">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">社交链接</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_social')); ?></label>
                             <textarea name="social_links" rows="2"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                      placeholder="微博、微信等社交媒体链接"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('authors.placeholder_social')); ?>"></textarea>
                         </div>
                     </div>
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideCreateModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo htmlspecialchars(__('button.cancel')); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
-                            添加作者
+                            <?php echo htmlspecialchars(__('authors.save_create')); ?>
                         </button>
                     </div>
                 </form>
@@ -461,7 +468,7 @@ require_once __DIR__ . '/includes/header.php';
     <div id="edit-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">编辑作者</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo htmlspecialchars(__('authors.modal_edit')); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="update_author">
@@ -469,47 +476,47 @@ require_once __DIR__ . '/includes/header.php';
 
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">姓名 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_name')); ?></label>
                             <input type="text" name="name" id="edit-author-name" required
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                   placeholder="请输入作者姓名">
+                                   placeholder="<?php echo htmlspecialchars(__('authors.placeholder_name')); ?>">
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">邮箱</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_email')); ?></label>
                             <input type="email" name="email" id="edit-author-email"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                   placeholder="请输入邮箱地址">
+                                   placeholder="<?php echo htmlspecialchars(__('authors.placeholder_email')); ?>">
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">个人简介</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_bio')); ?></label>
                             <textarea name="bio" id="edit-author-bio" rows="3"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                      placeholder="作者的个人简介"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('authors.placeholder_bio')); ?>"></textarea>
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">个人网站</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_website')); ?></label>
                             <input type="url" name="website" id="edit-author-website"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                    placeholder="https://example.com">
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">社交链接</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('authors.field_social')); ?></label>
                             <textarea name="social_links" id="edit-author-social-links" rows="2"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                      placeholder="微博、微信等社交媒体链接"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('authors.placeholder_social')); ?>"></textarea>
                         </div>
                     </div>
 
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideEditModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo htmlspecialchars(__('button.cancel')); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
-                            保存修改
+                            <?php echo htmlspecialchars(__('authors.save_edit')); ?>
                         </button>
                     </div>
                 </form>
@@ -535,6 +542,7 @@ require_once __DIR__ . '/includes/header.php';
             document.getElementById('create-modal').classList.add('hidden');
         }
 
+        // 显示编辑模态框
         function showEditModal(button) {
             document.getElementById('edit-author-id').value = button.dataset.authorId || '';
             document.getElementById('edit-author-name').value = button.dataset.authorName || '';
@@ -545,17 +553,19 @@ require_once __DIR__ . '/includes/header.php';
             document.getElementById('edit-modal').classList.remove('hidden');
         }
 
+        // 隐藏编辑模态框
         function hideEditModal() {
             document.getElementById('edit-modal').classList.add('hidden');
         }
 
+        // 删除作者
         function deleteAuthor(button) {
             const authorId = button.dataset.authorId || '';
             const authorName = button.dataset.authorName || '';
             const trashedCount = Number(button.dataset.trashedCount || 0);
             const warning = trashedCount > 0
-                ? `确定要删除作者"${authorName}"吗？回收站中还有 ${trashedCount} 篇文章引用该作者，请先彻底删除或迁移。`
-                : `确定要删除作者"${authorName}"吗？如果该作者有文章，将无法删除。`;
+                ? AUTHORS_I18N.confirmDeleteTrashed.replace('__NAME__', authorName).replace('__COUNT__', trashedCount)
+                : AUTHORS_I18N.confirmDelete.replace('__NAME__', authorName);
 
             if (confirm(warning)) {
                 const form = document.createElement('form');

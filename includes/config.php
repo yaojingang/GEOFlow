@@ -21,6 +21,7 @@ function env_value($key, $default = null) {
 }
 
 require_once __DIR__ . '/db_support.php';
+require_once __DIR__ . '/i18n.php';
 
 // 网站基本配置
 define('SITE_NAME', env_value('SITE_NAME', '智能GEO内容系统'));

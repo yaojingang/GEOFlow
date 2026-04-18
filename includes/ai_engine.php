@@ -19,6 +19,7 @@ class AIEngine {
     private const AI_REQUEST_TIMEOUT_SECONDS = 180;
     private $db;
     private $heartbeatCallback = null;
+    private array $executionMeta = [];
     
     public function __construct($database) {
         $this->db = $database;
@@ -38,6 +39,12 @@ class AIEngine {
      * 执行任务 - 生成一篇文章
      */
     public function executeTask($task_id) {
+        $this->executionMeta = [
+            'model_attempts' => [],
+            'model_selection_mode' => 'fixed',
+            'primary_model_id' => 0,
+        ];
+
         try {
             $this->touchHeartbeat('loading_task', ['task_id' => (int) $task_id]);
 
@@ -56,11 +63,8 @@ class AIEngine {
             if ($this->checkDraftLimit($task_id, $task['draft_limit'])) {
                 throw new Exception('草稿数量已达上限，暂停生成');
             }
-            
-            // 检查AI模型可用性
-            if (!$this->checkAIModelAvailable($task['ai_model_id'])) {
-                throw new Exception('AI模型不可用或已达每日限制');
-            }
+            $this->executionMeta['model_selection_mode'] = (string) ($task['model_selection_mode'] ?? 'fixed');
+            $this->executionMeta['primary_model_id'] = (int) ($task['ai_model_id'] ?? 0);
             
             $this->touchHeartbeat('selecting_title', ['task_id' => (int) $task_id]);
             // 获取下一个标题
@@ -82,39 +86,44 @@ class AIEngine {
                 'task_id' => (int) $task_id,
                 'title_id' => (int) $title_info['id']
             ]);
-            // 生成文章内容
-            $article_data = $this->generateArticleContent($task, $title_info);
+            // 生成文章内容（支持智能模型切换）
+            $generationResult = $this->generateArticleContentWithModelSelection($task, $title_info);
+            $article_data = $generationResult['article_data'];
+            $runtimeTask = $generationResult['task'];
+            $usedModel = $generationResult['model'];
             
             $this->touchHeartbeat('saving_article', ['task_id' => (int) $task_id]);
             // 保存文章
-            $article_id = $this->saveArticle($task, $title_info, $article_data);
+            $article_id = $this->saveArticle($runtimeTask, $title_info, $article_data);
             
             $this->touchHeartbeat('updating_stats', [
                 'task_id' => (int) $task_id,
                 'article_id' => (int) $article_id
             ]);
             // 更新统计
-            $this->updateTaskStats($task_id);
+            $this->updateTaskStats($task_id, ($runtimeTask['need_review'] ?? 1) ? false : true);
             $this->updateTitleUsage($title_info['id']);
-            $this->updateAIModelUsage($task['ai_model_id']);
+            $this->updateAIModelUsage((int) $usedModel['id']);
             
             // 记录日志
-            $this->logTaskExecution($task_id, $article_id, 'success', '文章生成成功');
+            $this->logTaskExecution($task_id, $article_id, 'success', '文章生成成功', $this->executionMeta);
             
             return [
                 'success' => true,
                 'article_id' => $article_id,
                 'title' => $title_info['title'],
-                'message' => '文章生成成功'
+                'message' => '文章生成成功',
+                'meta' => $this->executionMeta
             ];
             
         } catch (Exception $e) {
             // 记录错误日志
-            $this->logTaskExecution($task_id, null, 'error', $e->getMessage());
+            $this->logTaskExecution($task_id, null, 'error', $e->getMessage(), $this->executionMeta);
             
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'meta' => $this->executionMeta
             ];
         }
     }
@@ -182,6 +191,181 @@ class AIEngine {
         }
         
         return true;
+    }
+
+    private function generateArticleContentWithModelSelection(array $task, array $titleInfo): array {
+        $candidates = $this->resolveTaskModelCandidates($task);
+        $mode = (string) ($task['model_selection_mode'] ?? 'fixed');
+        $attempts = [];
+        $lastFailoverException = null;
+
+        if (empty($candidates)) {
+            throw new Exception('AI模型不可用或已达每日限制');
+        }
+
+        foreach ($candidates as $candidate) {
+            $unavailableReason = $this->getAIModelUnavailableReason($candidate);
+            if ($unavailableReason !== null) {
+                $attempts[] = $this->buildModelAttempt($candidate, 'skipped', $unavailableReason);
+                $this->executionMeta['model_attempts'] = $attempts;
+                if ($mode !== 'smart_failover') {
+                    throw new Exception($unavailableReason);
+                }
+                $lastFailoverException = new Exception($unavailableReason);
+                continue;
+            }
+
+            $runtimeTask = $this->applyModelToTask($task, $candidate);
+
+            try {
+                $articleData = $this->generateArticleContent($runtimeTask, $titleInfo);
+                $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
+                $this->executionMeta['model_attempts'] = $attempts;
+                $this->executionMeta['used_model_id'] = (int) $candidate['id'];
+                $this->executionMeta['used_model_name'] = (string) $candidate['name'];
+
+                return [
+                    'article_data' => $articleData,
+                    'task' => $runtimeTask,
+                    'model' => $candidate,
+                ];
+            } catch (Exception $e) {
+                $attempts[] = $this->buildModelAttempt($candidate, 'failed', $e->getMessage());
+                $this->executionMeta['model_attempts'] = $attempts;
+
+                if ($mode !== 'smart_failover' || !$this->shouldFailoverForException($e->getMessage())) {
+                    throw $e;
+                }
+
+                $lastFailoverException = $e;
+            }
+        }
+
+        if ($lastFailoverException !== null) {
+            throw new Exception($this->buildFailoverErrorMessage($attempts, $lastFailoverException->getMessage()));
+        }
+
+        throw new Exception('AI模型不可用或已达每日限制');
+    }
+
+    private function resolveTaskModelCandidates(array $task): array {
+        $primaryModelId = (int) ($task['ai_model_id'] ?? 0);
+        if ($primaryModelId <= 0) {
+            return [];
+        }
+
+        $primaryModel = $this->getAIModelById($primaryModelId);
+        if ($primaryModel === null) {
+            return [];
+        }
+
+        if (($task['model_selection_mode'] ?? 'fixed') !== 'smart_failover') {
+            return [$primaryModel];
+        }
+
+        $stmt = $this->db->prepare("
+            SELECT id, name, api_key, model_id, api_url, daily_limit, used_today, status,
+                   COALESCE(NULLIF(model_type, ''), 'chat') AS model_type,
+                   COALESCE(failover_priority, 100) AS failover_priority
+            FROM ai_models
+            WHERE id <> ?
+              AND COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'
+            ORDER BY COALESCE(failover_priority, 100) ASC, id ASC
+        ");
+        $stmt->execute([$primaryModelId]);
+        $fallbackModels = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        foreach ($fallbackModels as &$model) {
+            $model['api_key'] = decrypt_ai_api_key((string) ($model['api_key'] ?? ''));
+        }
+        unset($model);
+
+        return array_merge([$primaryModel], $fallbackModels);
+    }
+
+    private function getAIModelById(int $modelId): ?array {
+        $stmt = $this->db->prepare("
+            SELECT id, name, api_key, model_id, api_url, daily_limit, used_today, status,
+                   COALESCE(NULLIF(model_type, ''), 'chat') AS model_type,
+                   COALESCE(failover_priority, 100) AS failover_priority
+            FROM ai_models
+            WHERE id = ?
+              AND COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'
+            LIMIT 1
+        ");
+        $stmt->execute([$modelId]);
+        $model = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$model) {
+            return null;
+        }
+
+        $model['api_key'] = decrypt_ai_api_key((string) ($model['api_key'] ?? ''));
+        return $model;
+    }
+
+    private function getAIModelUnavailableReason(array $model): ?string {
+        if (($model['status'] ?? 'inactive') !== 'active') {
+            return 'AI模型不可用或已达每日限制';
+        }
+
+        $dailyLimit = (int) ($model['daily_limit'] ?? 0);
+        $usedToday = (int) ($model['used_today'] ?? 0);
+        if ($dailyLimit > 0 && $usedToday >= $dailyLimit) {
+            return 'AI模型不可用或已达每日限制';
+        }
+
+        return null;
+    }
+
+    private function applyModelToTask(array $task, array $model): array {
+        $runtimeTask = $task;
+        $runtimeTask['ai_model_id'] = (int) $model['id'];
+        $runtimeTask['ai_model_name'] = (string) $model['name'];
+        $runtimeTask['api_key'] = (string) $model['api_key'];
+        $runtimeTask['model_id'] = (string) $model['model_id'];
+        $runtimeTask['api_url'] = (string) $model['api_url'];
+        $runtimeTask['daily_limit'] = (int) ($model['daily_limit'] ?? 0);
+        $runtimeTask['used_today'] = (int) ($model['used_today'] ?? 0);
+
+        return $runtimeTask;
+    }
+
+    private function buildModelAttempt(array $model, string $status, ?string $reason): array {
+        return [
+            'model_id' => (int) ($model['id'] ?? 0),
+            'model_name' => (string) ($model['name'] ?? ''),
+            'status' => $status,
+            'reason' => $reason,
+        ];
+    }
+
+    private function shouldFailoverForException(string $message): bool {
+        $normalized = trim($message);
+
+        if (
+            str_starts_with($normalized, 'CURL错误:') ||
+            str_starts_with($normalized, 'API调用失败，HTTP状态码:') ||
+            str_starts_with($normalized, 'API响应格式错误：') ||
+            str_starts_with($normalized, 'AI模型不可用或已达每日限制')
+        ) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function buildFailoverErrorMessage(array $attempts, string $lastMessage): string {
+        $summaries = [];
+        foreach ($attempts as $attempt) {
+            $reason = trim((string) ($attempt['reason'] ?? ''));
+            $summaries[] = $attempt['model_name'] . ($reason !== '' ? '（' . $reason . '）' : '');
+        }
+
+        if (!empty($summaries)) {
+            return '智能模型切换已尝试：' . implode('；', $summaries) . '。最终失败：' . $lastMessage;
+        }
+
+        return $lastMessage;
     }
     
     /**
@@ -465,20 +649,20 @@ class AIEngine {
     }
 
     private function normalizeImageAssetPath(string $path): string {
-        $trimmed = trim($path);
-        if ($trimmed === '') {
-            return $trimmed;
+        $path = trim($path);
+        if ($path === '') {
+            return '';
         }
 
-        if (preg_match('#^(https?:)?//#i', $trimmed) || str_starts_with($trimmed, 'data:') || str_starts_with($trimmed, '/')) {
-            return $trimmed;
+        if (preg_match('#^(?:https?:)?//#i', $path) || str_starts_with($path, 'data:') || str_starts_with($path, '/')) {
+            return $path;
         }
 
-        if (preg_match('#^(uploads|assets)/#i', $trimmed)) {
-            return '/' . ltrim($trimmed, '/');
+        if (preg_match('#^(uploads|assets)/#i', $path)) {
+            return '/' . ltrim($path, '/');
         }
 
-        return $trimmed;
+        return $path;
     }
     
     /**
@@ -751,14 +935,15 @@ class AIEngine {
     /**
      * 更新任务统计
      */
-    private function updateTaskStats($task_id) {
+    private function updateTaskStats($task_id, bool $isPublished = false) {
         $stmt = $this->db->prepare("
             UPDATE tasks SET 
                 created_count = created_count + 1,
+                published_count = published_count + ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         ");
-        $stmt->execute([$task_id]);
+        $stmt->execute([$isPublished ? 1 : 0, $task_id]);
     }
     
     /**
@@ -806,11 +991,12 @@ class AIEngine {
     /**
      * 记录任务执行日志
      */
-    private function logTaskExecution($task_id, $article_id, $type, $message) {
+    private function logTaskExecution($task_id, $article_id, $type, $message, array $meta = []) {
         $data = json_encode([
             'task_id' => $task_id,
-            'article_id' => $article_id
-        ]);
+            'article_id' => $article_id,
+            'meta' => $meta
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         
         $stmt = $this->db->prepare("
             INSERT INTO system_logs (type, message, data) 

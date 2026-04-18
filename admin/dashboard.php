@@ -17,7 +17,7 @@ require_admin_login();
 session_write_close();
 
 // 设置页面标题
-$page_title = '管理后台首页';
+$page_title = __('dashboard.page_title');
 
 // 获取全面的统计数据
 try {
@@ -203,14 +203,14 @@ require_once __DIR__ . '/includes/header.php';
             <div class="mb-8">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h1 class="text-3xl font-bold text-gray-900">仪表盘</h1>
-                        <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($admin_site_name); ?> 数据概览</p>
+                        <h1 class="text-3xl font-bold text-gray-900"><?php echo __('dashboard.heading'); ?></h1>
+                        <p class="mt-1 text-sm text-gray-600"><?php echo __('dashboard.subtitle', ['site' => htmlspecialchars($admin_site_name)]); ?></p>
                     </div>
                     <div class="flex items-center space-x-3">
-                        <span class="text-sm text-gray-500">最后更新: <?php echo date('Y-m-d H:i:s'); ?></span>
+                        <span class="text-sm text-gray-500"><?php echo __('dashboard.last_updated', ['time' => date('Y-m-d H:i:s')]); ?></span>
                         <button onclick="location.reload()" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="refresh-cw" class="w-4 h-4 mr-1"></i>
-                            刷新
+                            <?php echo __('dashboard.refresh'); ?>
                         </button>
                     </div>
                 </div>
@@ -227,9 +227,9 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">总文章数</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('dashboard.total_articles'); ?></dt>
                                     <dd class="text-2xl font-bold text-gray-900"><?php echo number_format($stats['total_articles']); ?></dd>
-                                    <dd class="text-xs text-gray-500">今日新增: <?php echo $today_stats['today_articles']; ?></dd>
+                                    <dd class="text-xs text-gray-500"><?php echo __('dashboard.today_added', ['count' => $today_stats['today_articles']]); ?></dd>
                                 </dl>
                             </div>
                         </div>
@@ -245,9 +245,9 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">已发布</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('dashboard.published'); ?></dt>
                                     <dd class="text-2xl font-bold text-gray-900"><?php echo number_format($stats['published_articles']); ?></dd>
-                                    <dd class="text-xs text-gray-500">发布率: <?php echo $stats['total_articles'] > 0 ? round(($stats['published_articles'] / $stats['total_articles']) * 100, 1) : 0; ?>%</dd>
+                                    <dd class="text-xs text-gray-500"><?php echo __('dashboard.publish_rate', ['rate' => $stats['total_articles'] > 0 ? round(($stats['published_articles'] / $stats['total_articles']) * 100, 1) : 0]); ?></dd>
                                 </dl>
                             </div>
                         </div>
@@ -263,9 +263,9 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">AI生成</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('dashboard.ai_generated'); ?></dt>
                                     <dd class="text-2xl font-bold text-gray-900"><?php echo number_format($stats['ai_generated_articles']); ?></dd>
-                                    <dd class="text-xs text-gray-500">占比: <?php echo $stats['total_articles'] > 0 ? round(($stats['ai_generated_articles'] / $stats['total_articles']) * 100, 1) : 0; ?>%</dd>
+                                    <dd class="text-xs text-gray-500"><?php echo __('dashboard.ai_generated_ratio', ['rate' => $stats['total_articles'] > 0 ? round(($stats['ai_generated_articles'] / $stats['total_articles']) * 100, 1) : 0]); ?></dd>
                                 </dl>
                             </div>
                         </div>
@@ -281,9 +281,9 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">总浏览量</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('dashboard.total_views'); ?></dt>
                                     <dd class="text-2xl font-bold text-gray-900"><?php echo number_format($stats['total_views']); ?></dd>
-                                    <dd class="text-xs text-gray-500">今日: <?php echo number_format($today_stats['today_views']); ?></dd>
+                                    <dd class="text-xs text-gray-500"><?php echo __('dashboard.today_views', ['count' => number_format($today_stats['today_views'])]); ?></dd>
                                 </dl>
                             </div>
                         </div>
@@ -302,9 +302,9 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">活跃任务</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('dashboard.active_tasks'); ?></dt>
                                     <dd class="text-lg font-medium text-gray-900"><?php echo $stats['running_jobs'] + $stats['pending_jobs']; ?> / <?php echo $stats['total_tasks']; ?></dd>
-                                    <dd class="text-xs text-gray-500">运行中 <?php echo $stats['running_jobs']; ?> · 排队 <?php echo $stats['pending_jobs']; ?></dd>
+                                    <dd class="text-xs text-gray-500"><?php echo __('dashboard.active_tasks_detail', ['running' => $stats['running_jobs'], 'pending' => $stats['pending_jobs']]); ?></dd>
                                 </dl>
                             </div>
                         </div>
@@ -320,7 +320,7 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">AI模型</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('dashboard.ai_models'); ?></dt>
                                     <dd class="text-lg font-medium text-gray-900"><?php echo $stats['active_ai_models']; ?></dd>
                                 </dl>
                             </div>
@@ -337,7 +337,7 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">素材总数</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('dashboard.material_total'); ?></dt>
                                     <dd class="text-lg font-medium text-gray-900"><?php echo number_format($stats['total_keywords'] + $stats['total_titles'] + $stats['total_images']); ?></dd>
                                 </dl>
                             </div>
@@ -354,7 +354,7 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">待审核</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('dashboard.pending_review'); ?></dt>
                                     <dd class="text-lg font-medium text-gray-900"><?php echo $stats['pending_review']; ?></dd>
                                 </dl>
                             </div>
@@ -369,16 +369,16 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="bg-white shadow rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <div class="flex items-center justify-between">
-                            <h3 class="text-lg font-medium text-gray-900">分类文章分布</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('dashboard.category_distribution'); ?></h3>
                             <a href="categories.php" class="text-sm text-blue-600 hover:text-blue-800">
                                 <i data-lucide="settings" class="w-4 h-4 inline mr-1"></i>
-                                管理分类
+                                <?php echo __('dashboard.manage_categories'); ?>
                             </a>
                         </div>
                     </div>
                     <div class="p-6">
                         <?php if (empty($category_distribution)): ?>
-                            <p class="text-gray-500 text-center py-4">暂无数据</p>
+                            <p class="text-gray-500 text-center py-4"><?php echo __('dashboard.no_data'); ?></p>
                         <?php else: ?>
                             <div class="space-y-3">
                                 <?php foreach ($category_distribution as $category): ?>
@@ -402,14 +402,14 @@ require_once __DIR__ . '/includes/header.php';
                 <!-- 系统性能指标 -->
                 <div class="bg-white shadow rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">系统性能</h3>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('dashboard.system_performance'); ?></h3>
                     </div>
                     <div class="p-6">
                         <div class="space-y-4">
                             <!-- 任务成功率 -->
                             <div>
                                 <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-medium text-gray-700">任务成功率</span>
+                                    <span class="text-sm font-medium text-gray-700"><?php echo __('dashboard.task_success_rate'); ?></span>
                                     <span class="text-sm text-gray-900"><?php echo number_format($performance_stats['success_rate'], 1); ?>%</span>
                                 </div>
                                 <div class="w-full bg-gray-200 rounded-full h-2">
@@ -420,7 +420,7 @@ require_once __DIR__ . '/includes/header.php';
                             <!-- 平均生成时间 -->
                             <div>
                                 <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-medium text-gray-700">平均生成时间</span>
+                                    <span class="text-sm font-medium text-gray-700"><?php echo __('dashboard.avg_generation_time'); ?></span>
                                     <span class="text-sm text-gray-900"><?php echo number_format($performance_stats['avg_generation_time'], 1); ?>s</span>
                                 </div>
                                 <div class="w-full bg-gray-200 rounded-full h-2">
@@ -431,7 +431,7 @@ require_once __DIR__ . '/includes/header.php';
                             <!-- 今日AI配额使用 -->
                             <div>
                                 <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-medium text-gray-700">今日AI配额</span>
+                                    <span class="text-sm font-medium text-gray-700"><?php echo __('dashboard.daily_ai_quota'); ?></span>
                                     <span class="text-sm text-gray-900"><?php echo $performance_stats['daily_quota_used']; ?> / 100</span>
                                 </div>
                                 <div class="w-full bg-gray-200 rounded-full h-2">
@@ -446,13 +446,13 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="bg-white shadow rounded-lg">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <div class="flex items-center justify-between">
-                            <h3 class="text-lg font-medium text-gray-900">最新文章</h3>
-                            <a href="articles.php" class="text-sm text-blue-600 hover:text-blue-800">查看全部</a>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('dashboard.latest_articles'); ?></h3>
+                            <a href="articles.php" class="text-sm text-blue-600 hover:text-blue-800"><?php echo __('dashboard.view_all'); ?></a>
                         </div>
                     </div>
                     <div class="p-6">
                         <?php if (empty($latest_articles)): ?>
-                            <p class="text-gray-500 text-center py-4">暂无文章</p>
+                            <p class="text-gray-500 text-center py-4"><?php echo __('dashboard.no_articles'); ?></p>
                         <?php else: ?>
                             <div class="space-y-3">
                                 <?php foreach ($latest_articles as $article): ?>
@@ -469,14 +469,14 @@ require_once __DIR__ . '/includes/header.php';
                                                 <?php echo htmlspecialchars($article['title']); ?>
                                             </p>
                                             <p class="text-xs text-gray-500">
-                                                <?php echo htmlspecialchars($article['category_name'] ?? '未分类'); ?> •
+                                                <?php echo htmlspecialchars($article['category_name'] ?? __('dashboard.uncategorized')); ?> •
                                                 <?php echo date('m-d H:i', strtotime($article['created_at'])); ?>
                                             </p>
                                         </div>
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium <?php
                                             echo $article['status'] === 'published' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
                                         ?>">
-                                            <?php echo $article['status'] === 'published' ? '已发布' : '草稿'; ?>
+                                            <?php echo $article['status'] === 'published' ? __('status.published') : __('status.draft'); ?>
                                         </span>
                                     </div>
                                 <?php endforeach; ?>
@@ -491,29 +491,29 @@ require_once __DIR__ . '/includes/header.php';
             <!-- 数据趋势图表 -->
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">本周数据趋势</h3>
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo __('dashboard.trend_title'); ?></h3>
                 </div>
                 <div class="p-6">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <!-- 本周统计 -->
                         <div class="text-center">
                             <div class="text-2xl font-bold text-blue-600"><?php echo $week_stats['week_articles']; ?></div>
-                            <div class="text-sm text-gray-500">本周新增文章</div>
+                            <div class="text-sm text-gray-500"><?php echo __('dashboard.week_articles'); ?></div>
                         </div>
                         <div class="text-center">
                             <div class="text-2xl font-bold text-green-600"><?php echo $week_stats['week_tasks']; ?></div>
-                            <div class="text-sm text-gray-500">本周新增任务</div>
+                            <div class="text-sm text-gray-500"><?php echo __('dashboard.week_tasks'); ?></div>
                         </div>
                         <div class="text-center">
                             <div class="text-2xl font-bold text-purple-600"><?php echo $stats['approved_articles']; ?></div>
-                            <div class="text-sm text-gray-500">已审核通过</div>
+                            <div class="text-sm text-gray-500"><?php echo __('dashboard.approved_articles'); ?></div>
                         </div>
                     </div>
 
                     <!-- 折线图 -->
                     <?php if (!empty($article_trend)): ?>
                     <div class="mt-6">
-                        <h4 class="text-sm font-medium text-gray-700 mb-4">最近7天文章发布趋势</h4>
+                        <h4 class="text-sm font-medium text-gray-700 mb-4"><?php echo __('dashboard.article_trend'); ?></h4>
 
                         <!-- 图表容器 -->
                         <div class="relative rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 via-white to-white px-4 pt-5 pb-10 overflow-hidden" style="height: 236px;">
@@ -662,15 +662,15 @@ require_once __DIR__ . '/includes/header.php';
                             $total_articles = array_sum(array_column($article_trend, 'count'));
                             $avg_articles = round($total_articles / count($article_trend), 1);
                             ?>
-                            <span>总计: <strong class="text-gray-900"><?php echo $total_articles; ?></strong> 篇</span>
-                            <span>日均: <strong class="text-gray-900"><?php echo $avg_articles; ?></strong> 篇</span>
-                            <span>峰值: <strong class="text-gray-900"><?php echo $max_count; ?></strong> 篇</span>
+                            <span><?php echo __('dashboard.total_stat', ['count' => '<strong class="text-gray-900">' . $total_articles . '</strong>']); ?></span>
+                            <span><?php echo __('dashboard.avg_stat', ['count' => '<strong class="text-gray-900">' . $avg_articles . '</strong>']); ?></span>
+                            <span><?php echo __('dashboard.peak_stat', ['count' => '<strong class="text-gray-900">' . $max_count . '</strong>']); ?></span>
                         </div>
                     </div>
 
                     <?php else: ?>
                     <div class="mt-6 text-center text-gray-500 py-8">
-                        <p class="text-sm">暂无数据</p>
+                        <p class="text-sm"><?php echo __('dashboard.no_data'); ?></p>
                     </div>
                     <?php endif; ?>
                 </div>

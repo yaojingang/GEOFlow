@@ -17,7 +17,7 @@ require_admin_login();
 session_write_close();
 
 // 设置页面标题
-$page_title = '安全管理';
+$page_title = __('security.page_title');
 
 $message = '';
 $error = '';
@@ -26,7 +26,7 @@ $force_relogin = false;
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
 
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $words = trim($_POST['words'] ?? '');
 
                 if (empty($words)) {
-                    $error = '敏感词不能为空';
+                    $error = __('security.error.words_required');
                 } else {
                     try {
                         // 按行分割敏感词
@@ -60,9 +60,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
 
-                        $message = "成功添加 {$added_count} 个敏感词";
+                        $message = __('security.message.words_added', ['count' => $added_count]);
                     } catch (Exception $e) {
-                        $error = '添加失败: ' . $e->getMessage();
+                        $error = __('security.message.words_add_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -74,15 +74,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     try {
                         $stmt = $db->prepare("DELETE FROM sensitive_words WHERE id = ?");
                         if ($stmt->execute([$word_id])) {
-                            $message = '敏感词删除成功';
+                            $message = __('security.message.word_deleted');
                         } else {
-                            $error = '删除失败';
+                            $error = __('security.message.word_delete_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('security.message.word_delete_error', ['message' => $e->getMessage()]);
                     }
                 } else {
-                    $error = '无效的敏感词ID';
+                    $error = __('security.error.invalid_word_id');
                 }
                 break;
 
@@ -92,11 +92,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $confirm_password = $_POST['confirm_password'] ?? '';
 
                 if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
-                    $error = '所有密码字段都不能为空';
+                    $error = __('security.error.password_fields_required');
                 } elseif ($new_password !== $confirm_password) {
-                    $error = '新密码和确认密码不匹配';
+                    $error = __('security.error.password_mismatch');
                 } elseif (strlen($new_password) < 6) {
-                    $error = '新密码长度至少6位';
+                    $error = __('security.error.password_too_short');
                 } else {
                     try {
                         // 验证当前密码
@@ -114,13 +114,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 write_log("管理员密码已修改: {$_SESSION['admin_username']}", 'INFO');
                                 $force_relogin = true;
                             } else {
-                                $error = '密码修改失败';
+                                $error = __('security.message.password_update_failed');
                             }
                         } else {
-                            $error = '当前密码错误';
+                            $error = __('security.error.current_password_wrong');
                         }
                     } catch (Exception $e) {
-                        $error = '密码修改失败: ' . $e->getMessage();
+                        $error = __('security.message.password_update_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -165,8 +165,8 @@ require_once __DIR__ . '/includes/header.php';
 
             <!-- 页面标题 -->
             <div class="mb-8">
-                <h1 class="text-2xl font-bold text-gray-900">安全管理</h1>
-                <p class="mt-1 text-sm text-gray-600">管理敏感词库和系统安全设置</p>
+                <h1 class="text-2xl font-bold text-gray-900"><?php echo __('security.page_title'); ?></h1>
+                <p class="mt-1 text-sm text-gray-600"><?php echo __('security.page_subtitle'); ?></p>
             </div>
 
             <!-- 消息提示 -->
@@ -198,7 +198,7 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">敏感词总数</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('security.total_sensitive_words'); ?></dt>
                                     <dd class="text-2xl font-bold text-gray-900"><?php echo count($sensitive_words); ?></dd>
                                 </dl>
                             </div>
@@ -214,7 +214,7 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">当前管理员</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('security.current_admin'); ?></dt>
                                     <dd class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars($admin_info['username']); ?></dd>
                                 </dl>
                             </div>
@@ -230,9 +230,9 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">账户创建</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('security.account_created'); ?></dt>
                                     <dd class="text-sm font-medium text-gray-900">
-                                        <?php echo $admin_info['created_at'] ? date('Y-m-d', strtotime($admin_info['created_at'])) : '未知'; ?>
+                                        <?php echo $admin_info['created_at'] ? date('Y-m-d', strtotime($admin_info['created_at'])) : __('status.unknown'); ?>
                                     </dd>
                                 </dl>
                             </div>
@@ -248,8 +248,8 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">当前角色</dt>
-                                    <dd class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars(($admin_info['role'] ?? 'admin') === 'super_admin' ? '超级管理员' : '管理员'); ?></dd>
+                                    <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('security.current_role'); ?></dt>
+                                    <dd class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars(($admin_info['role'] ?? 'admin') === 'super_admin' ? __('admin_users.role_super_admin') : __('admin_users.role_admin')); ?></dd>
                                 </dl>
                             </div>
                         </div>
@@ -260,16 +260,16 @@ require_once __DIR__ . '/includes/header.php';
             <?php if (is_super_admin()): ?>
                 <div class="bg-white shadow rounded-lg mb-8">
                     <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">超级管理员入口</h3>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('security.super_admin_entry'); ?></h3>
                     </div>
                     <div class="px-6 py-4 flex flex-wrap gap-3">
                         <a href="<?php echo htmlspecialchars(admin_url('admin-users.php')); ?>" class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
                             <i data-lucide="users" class="w-4 h-4 mr-2"></i>
-                            管理员管理
+                            <?php echo __('nav.admin_users'); ?>
                         </a>
                         <a href="<?php echo htmlspecialchars(admin_url('admin-activity-logs.php')); ?>" class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50">
                             <i data-lucide="clipboard-list" class="w-4 h-4 mr-2"></i>
-                            查看管理员操作日志
+                            <?php echo __('admin_users.view_logs'); ?>
                         </a>
                     </div>
                 </div>
@@ -282,7 +282,7 @@ require_once __DIR__ . '/includes/header.php';
                     <!-- 添加敏感词 -->
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <h3 class="text-lg font-medium text-gray-900">添加敏感词</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('security.add_sensitive_words'); ?></h3>
                         </div>
                         <div class="px-6 py-6">
                             <form method="POST" class="space-y-4">
@@ -290,17 +290,17 @@ require_once __DIR__ . '/includes/header.php';
                                 <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
 
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">敏感词列表</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('security.words_label'); ?></label>
                                     <textarea name="words" rows="8" required
                                               class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                              placeholder="每行一个敏感词，支持批量添加&#10;例如：&#10;违禁词1&#10;违禁词2&#10;违禁词3"></textarea>
-                                    <p class="mt-1 text-xs text-gray-500">每行输入一个敏感词，系统会自动去重</p>
+                                              placeholder="<?php echo htmlspecialchars(__('security.words_placeholder')); ?>"></textarea>
+                                    <p class="mt-1 text-xs text-gray-500"><?php echo __('security.words_help'); ?></p>
                                 </div>
 
                                 <div class="flex justify-end">
                                     <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
                                         <i data-lucide="shield-plus" class="w-4 h-4 mr-2"></i>
-                                        添加敏感词
+                                        <?php echo __('security.add_sensitive_words'); ?>
                                     </button>
                                 </div>
                             </form>
@@ -313,7 +313,7 @@ require_once __DIR__ . '/includes/header.php';
                     <?php if (!empty($sensitive_words)): ?>
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <h3 class="text-lg font-medium text-gray-900">敏感词列表</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('security.words_list'); ?></h3>
                         </div>
                         <div class="px-6 py-6">
                             <div class="max-h-96 overflow-y-auto">
@@ -323,14 +323,14 @@ require_once __DIR__ . '/includes/header.php';
                                             <div class="flex items-center space-x-3">
                                                 <span class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($word['word']); ?></span>
                                                 <span class="text-xs text-gray-500">
-                                                    添加于 <?php echo date('Y-m-d', strtotime($word['created_at'])); ?>
+                                                    <?php echo __('security.word_added_at', ['value' => date('Y-m-d', strtotime($word['created_at']))]); ?>
                                                 </span>
                                             </div>
                                             <form method="POST" class="inline">
                                                 <input type="hidden" name="action" value="delete_sensitive_word">
                                                 <input type="hidden" name="word_id" value="<?php echo $word['id']; ?>">
                                                 <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
-                                                <button type="submit" onclick="return confirm('确定要删除这个敏感词吗？')"
+                                                <button type="submit" onclick="return confirm('<?php echo addslashes(__('security.confirm_delete_word')); ?>')"
                                                         class="text-red-600 hover:text-red-800 transition-colors">
                                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                                 </button>
@@ -349,7 +349,7 @@ require_once __DIR__ . '/includes/header.php';
                     <!-- 修改密码 -->
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <h3 class="text-lg font-medium text-gray-900">修改管理员密码</h3>
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo __('security.change_password'); ?></h3>
                         </div>
                         <div class="px-6 py-6">
                             <form method="POST" class="space-y-4">
@@ -357,30 +357,30 @@ require_once __DIR__ . '/includes/header.php';
                                 <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
 
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">当前密码</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('security.current_password'); ?></label>
                                     <input type="password" name="current_password" required
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                           placeholder="输入当前密码">
+                                           placeholder="<?php echo htmlspecialchars(__('security.current_password_placeholder')); ?>">
                                 </div>
 
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">新密码</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('security.new_password'); ?></label>
                                     <input type="password" name="new_password" required minlength="6"
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                           placeholder="输入新密码（至少6位）">
+                                           placeholder="<?php echo htmlspecialchars(__('security.new_password_placeholder')); ?>">
                                 </div>
 
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">确认新密码</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('security.confirm_new_password'); ?></label>
                                     <input type="password" name="confirm_password" required minlength="6"
                                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                           placeholder="再次输入新密码">
+                                           placeholder="<?php echo htmlspecialchars(__('security.confirm_new_password_placeholder')); ?>">
                                 </div>
 
                                 <div class="flex justify-end">
                                     <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                                         <i data-lucide="key" class="w-4 h-4 mr-2"></i>
-                                        修改密码
+                                        <?php echo __('security.change_password'); ?>
                                     </button>
                                 </div>
                             </form>
@@ -394,13 +394,13 @@ require_once __DIR__ . '/includes/header.php';
                                 <i data-lucide="alert-triangle" class="h-5 w-5 text-yellow-400"></i>
                             </div>
                             <div class="ml-3">
-                                <h3 class="text-sm font-medium text-yellow-800">安全提示</h3>
+                                <h3 class="text-sm font-medium text-yellow-800"><?php echo __('security.tips_title'); ?></h3>
                                 <div class="mt-2 text-sm text-yellow-700">
                                     <ul class="list-disc list-inside space-y-1">
-                                        <li>敏感词检测会在文章发布前自动执行</li>
-                                        <li>包含敏感词的文章会被自动删除并移入垃圾箱</li>
-                                        <li>建议定期更新敏感词库以提高过滤效果</li>
-                                        <li>管理员密码建议使用强密码并定期更换</li>
+                                        <li><?php echo __('security.tip_publish_check'); ?></li>
+                                        <li><?php echo __('security.tip_auto_trash'); ?></li>
+                                        <li><?php echo __('security.tip_update_words'); ?></li>
+                                        <li><?php echo __('security.tip_strong_password'); ?></li>
                                     </ul>
                                 </div>
                             </div>

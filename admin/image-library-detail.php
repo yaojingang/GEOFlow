@@ -44,14 +44,14 @@ if (!$library) {
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
         switch ($action) {
             case 'upload_images':
                 if (!isset($_FILES['images']) || empty($_FILES['images']['name'][0])) {
-                    $error = '请选择要上传的图片';
+                    $error = __('image_detail.error.select_images');
                 } else {
                     try {
                         $db->beginTransaction();
@@ -103,21 +103,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $db->commit();
 
                         if ($uploaded_count > 0) {
-                            $message = "成功上传 {$uploaded_count} 张图片";
-                            if (!empty($skipped_files)) {
-                                $message .= '，跳过 ' . count($skipped_files) . ' 个无效文件';
-                            }
+                                $message = __('image_detail.message.upload_success', ['count' => $uploaded_count]);
+                                if (!empty($skipped_files)) {
+                                $message .= __('image_detail.message.upload_skipped', ['count' => count($skipped_files)]);
+                                }
                         } else {
                             $error = !empty($skipped_files)
-                                ? '没有成功上传任何图片。' . implode('；', array_slice($skipped_files, 0, 3))
-                                : '没有成功上传任何图片';
+                                ? __('image_detail.error.upload_none') . implode('；', array_slice($skipped_files, 0, 3))
+                                : __('image_detail.error.upload_none');
                         }
                     } catch (Throwable $e) {
                         if ($db->inTransaction()) {
                             $db->rollBack();
                         }
                         delete_material_files($stored_paths ?? []);
-                        $error = '上传失败: ' . $e->getMessage();
+                        $error = __('image_detail.message.upload_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $images = $stmt->fetchAll();
 
                         if (empty($images)) {
-                            throw new RuntimeException('没有找到可删除的图片记录');
+                            throw new RuntimeException(__('image_detail.error.no_records'));
                         }
 
                         // 先清理文章图片关联，避免外键约束阻止删除
@@ -152,15 +152,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $failedFiles = delete_material_files(array_column($images, 'file_path'));
                         $deletedCount = count($images);
-                        $message = '成功删除 ' . $deletedCount . ' 张图片';
+                        $message = __('image_detail.message.delete_success', ['count' => $deletedCount]);
                         if (!empty($failedFiles)) {
-                            $message .= '，但有 ' . count($failedFiles) . ' 个文件未能从磁盘清理';
+                            $message .= __('image_detail.message.delete_cleanup_partial', ['count' => count($failedFiles)]);
                         }
                     } catch (Throwable $e) {
                         if ($db->inTransaction()) {
                             $db->rollBack();
                         }
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('image_detail.message.delete_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -170,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $description = trim($_POST['description'] ?? '');
                 
                 if (empty($name)) {
-                    $error = '图片库名称不能为空';
+                    $error = __('image_libraries.error.name_required');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -182,12 +182,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($stmt->execute([$name, $description, $library_id])) {
                             $library['name'] = $name;
                             $library['description'] = $description;
-                            $message = '图片库信息更新成功';
+                            $message = __('image_detail.message.update_success');
                         } else {
-                            $error = '更新失败';
+                            $error = __('image_detail.message.update_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '更新失败: ' . $e->getMessage();
+                        $error = __('image_detail.message.update_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -255,11 +255,11 @@ function formatFileSize($bytes) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang()); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars($library['name']); ?> - 图片库详情 - <?php echo htmlspecialchars($admin_site_name); ?></title>
+    <title><?php echo htmlspecialchars($library['name']); ?> - <?php echo __('image_detail.page_title'); ?> - <?php echo htmlspecialchars($admin_site_name); ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -329,18 +329,18 @@ function formatFileSize($bytes) {
                 <div class="flex items-center space-x-8">
                     <a href="dashboard.php" class="text-xl font-semibold text-gray-900"><?php echo htmlspecialchars($admin_site_name); ?></a>
                     <nav class="flex space-x-8">
-                        <a href="dashboard.php" class="text-gray-500 hover:text-gray-700">首页</a>
-                        <a href="tasks.php" class="text-gray-500 hover:text-gray-700">任务管理</a>
-                        <a href="articles.php" class="text-gray-500 hover:text-gray-700">文章管理</a>
-                        <a href="materials.php" class="text-blue-600 font-medium">素材管理</a>
-                        <a href="ai-configurator.php" class="text-gray-500 hover:text-gray-700">AI配置</a>
-                        <a href="site-settings.php" class="text-gray-500 hover:text-gray-700">网站设置</a>
-                        <a href="security-settings.php" class="text-gray-500 hover:text-gray-700">安全管理</a>
+                        <a href="dashboard.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.dashboard'); ?></a>
+                        <a href="tasks.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.tasks'); ?></a>
+                        <a href="articles.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.articles'); ?></a>
+                        <a href="materials.php" class="text-blue-600 font-medium"><?php echo __('nav.materials'); ?></a>
+                        <a href="ai-configurator.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.ai_config'); ?></a>
+                        <a href="site-settings.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.site_settings'); ?></a>
+                        <a href="security-settings.php" class="text-gray-500 hover:text-gray-700"><?php echo __('nav.security'); ?></a>
                     </nav>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-600">欢迎，<?php echo $_SESSION['admin_username']; ?></span>
-                    <a href="logout.php" class="text-sm text-red-600 hover:text-red-800">退出登录</a>
+                    <span class="text-sm text-gray-600"><?php echo __('header.welcome'); ?>，<?php echo $_SESSION['admin_username']; ?></span>
+                    <a href="logout.php" class="text-sm text-red-600 hover:text-red-800"><?php echo __('button.logout'); ?></a>
                 </div>
             </div>
         </div>
@@ -369,17 +369,17 @@ function formatFileSize($bytes) {
                     </a>
                     <div>
                         <h1 class="text-2xl font-bold text-gray-900"><?php echo htmlspecialchars($library['name']); ?></h1>
-                        <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($library['description'] ?: '暂无描述'); ?></p>
+                        <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($library['description'] ?: __('common.none_desc')); ?></p>
                     </div>
                 </div>
                 <div class="flex space-x-2">
                     <button onclick="showEditModal()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                         <i data-lucide="edit" class="w-4 h-4 mr-1"></i>
-                        编辑信息
+                        <?php echo __('button.edit'); ?>
                     </button>
                     <button onclick="showUploadModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700">
                         <i data-lucide="upload" class="w-4 h-4 mr-2"></i>
-                        上传图片
+                        <?php echo __('button.upload'); ?>
                     </button>
                 </div>
             </div>
@@ -395,7 +395,7 @@ function formatFileSize($bytes) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">图片总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('image_detail.total_images'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $total_images; ?></dd>
                             </dl>
                         </div>
@@ -411,7 +411,7 @@ function formatFileSize($bytes) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">使用次数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('common.usage'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $usage_count; ?></dd>
                             </dl>
                         </div>
@@ -427,7 +427,7 @@ function formatFileSize($bytes) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">创建时间</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('common.created_at'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo date('m-d', strtotime($library['created_at'])); ?></dd>
                             </dl>
                         </div>
@@ -443,7 +443,7 @@ function formatFileSize($bytes) {
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">最后更新</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('common.updated_at'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo date('m-d', strtotime($library['updated_at'])); ?></dd>
                             </dl>
                         </div>
@@ -460,23 +460,23 @@ function formatFileSize($bytes) {
                         <input type="hidden" name="id" value="<?php echo $library_id; ?>">
                         <div class="flex-1">
                             <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>"
-                                   placeholder="搜索图片名称..."
+                                   placeholder="<?php echo htmlspecialchars(__('image_detail.search_placeholder')); ?>"
                                    class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
                         </div>
                         <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700">
                             <i data-lucide="search" class="w-4 h-4 mr-2"></i>
-                            搜索
+                            <?php echo __('button.search'); ?>
                         </button>
                         <a href="image-library-detail.php?id=<?php echo $library_id; ?>" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="x" class="w-4 h-4 mr-2"></i>
-                            清空
+                            <?php echo __('button.clear'); ?>
                         </a>
                     </form>
                     
                     <div class="flex space-x-2">
                         <button onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="check-square" class="w-4 h-4 mr-1"></i>
-                            批量操作
+                            <?php echo __('button.bulk_actions'); ?>
                         </button>
                     </div>
                 </div>
@@ -488,8 +488,8 @@ function formatFileSize($bytes) {
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">
-                        图片列表 
-                        <span class="text-sm text-gray-500">(共 <?php echo $total_images; ?> 张)</span>
+                        <?php echo __('image_detail.list_title'); ?>
+                        <span class="text-sm text-gray-500">(<?php echo __('image_detail.total_images_count', ['count' => $total_images]); ?>)</span>
                     </h3>
                 </div>
             </div>
@@ -497,14 +497,14 @@ function formatFileSize($bytes) {
             <?php if (empty($images)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="image" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无图片</h3>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo __('image_detail.empty'); ?></h3>
                     <p class="text-gray-500 mb-4">
-                        <?php echo !empty($search) ? '没有找到匹配的图片' : '开始上传图片到这个库'; ?>
+                        <?php echo !empty($search) ? __('image_detail.empty_search') : __('image_detail.empty_desc'); ?>
                     </p>
                     <?php if (empty($search)): ?>
                         <button onclick="showUploadModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700">
                             <i data-lucide="upload" class="w-4 h-4 mr-2"></i>
-                            上传图片
+                            <?php echo __('button.upload'); ?>
                         </button>
                     <?php endif; ?>
                 </div>
@@ -516,15 +516,15 @@ function formatFileSize($bytes) {
                         <input type="hidden" name="action" value="delete_images">
                         <div id="selected-image-ids"></div>
                         <div class="flex items-center space-x-4">
-                            <span class="text-sm text-gray-600">已选择 <span id="selected-count">0</span> 张图片</span>
+                            <span class="text-sm text-gray-600"><?php echo __('image_detail.selected_count', ['count' => '<span id="selected-count">0</span>']); ?></span>
                             
                             <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                 <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                删除选中
+                                <?php echo __('image_detail.delete_selected'); ?>
                             </button>
                             
                             <button type="button" onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
-                                取消
+                                <?php echo __('button.cancel'); ?>
                             </button>
                         </div>
                     </form>
@@ -553,12 +553,12 @@ function formatFileSize($bytes) {
                     <div class="px-6 py-4 border-t border-gray-200">
                         <div class="flex items-center justify-between">
                             <div class="text-sm text-gray-700">
-                                显示第 <?php echo ($page - 1) * $per_page + 1; ?> - <?php echo min($page * $per_page, $total_images); ?> 张，共 <?php echo $total_images; ?> 张
+                                <?php echo __('image_detail.pagination_summary', ['from' => ($page - 1) * $per_page + 1, 'to' => min($page * $per_page, $total_images), 'total' => $total_images]); ?>
                             </div>
                             <div class="flex space-x-1">
                                 <?php if ($page > 1): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        上一页
+                                        <?php echo __('button.previous'); ?>
                                     </a>
                                 <?php endif; ?>
                                 
@@ -571,7 +571,7 @@ function formatFileSize($bytes) {
                                 
                                 <?php if ($page < $total_pages): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        下一页
+                                        <?php echo __('button.next'); ?>
                                     </a>
                                 <?php endif; ?>
                             </div>
@@ -586,38 +586,38 @@ function formatFileSize($bytes) {
     <div id="upload-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-10 mx-auto p-5 border w-2/3 max-w-2xl shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">上传图片到 <span class="text-purple-600"><?php echo htmlspecialchars($library['name']); ?></span></h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('image_detail.modal_upload', ['name' => htmlspecialchars($library['name'])]); ?></h3>
                 <form method="POST" enctype="multipart/form-data" id="upload-form">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="upload_images">
                     
                     <div class="space-y-4">
-                        <div class="upload-area cursor-pointer" id="upload-area" role="button" tabindex="0" aria-controls="images" aria-label="选择或拖拽图片上传">
+                        <div class="upload-area cursor-pointer" id="upload-area" role="button" tabindex="0" aria-controls="images" aria-label="<?php echo htmlspecialchars(__('image_detail.upload_hint')); ?>">
                             <input type="file" name="images[]" id="images" multiple accept="image/*" class="hidden">
                             <div class="upload-content">
                                 <i data-lucide="upload-cloud" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                                <p class="text-lg font-medium text-gray-900 mb-2">拖拽图片到这里或点击选择</p>
-                                <p class="text-sm text-gray-500 mb-4">支持 JPEG、PNG、GIF、WebP 格式</p>
+                                <p class="text-lg font-medium text-gray-900 mb-2"><?php echo __('image_detail.upload_hint'); ?></p>
+                                <p class="text-sm text-gray-500 mb-4"><?php echo __('image_detail.upload_formats'); ?></p>
                                 <button type="button" id="trigger-image-picker" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700">
                                     <i data-lucide="folder-open" class="w-4 h-4 mr-2"></i>
-                                    选择图片
+                                    <?php echo __('image_detail.select_images'); ?>
                                 </button>
                             </div>
                         </div>
                         
                         <div id="file-list" class="hidden">
-                            <h4 class="text-sm font-medium text-gray-900 mb-2">选中的文件：</h4>
+                            <h4 class="text-sm font-medium text-gray-900 mb-2"><?php echo __('image_detail.selected_files'); ?></h4>
                             <div id="file-items" class="space-y-2"></div>
                         </div>
                     </div>
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideUploadModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" id="upload-btn" disabled class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
                             <i data-lucide="upload" class="w-4 h-4 mr-2 inline"></i>
-                            上传图片
+                            <?php echo __('button.upload'); ?>
                         </button>
                     </div>
                 </form>
@@ -629,21 +629,21 @@ function formatFileSize($bytes) {
     <div id="edit-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">编辑图片库信息</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('image_detail.modal_edit'); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="update_library">
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">库名称 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('image_libraries.field_name'); ?></label>
                             <input type="text" name="name" required 
                                    value="<?php echo htmlspecialchars($library['name']); ?>"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">描述</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('common.description'); ?></label>
                             <textarea name="description" rows="3"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm"><?php echo htmlspecialchars($library['description']); ?></textarea>
                         </div>
@@ -651,10 +651,10 @@ function formatFileSize($bytes) {
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideEditModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700">
-                            保存
+                            <?php echo __('button.save'); ?>
                         </button>
                     </div>
                 </form>
@@ -716,7 +716,7 @@ function formatFileSize($bytes) {
             document.getElementById('image-title').textContent = name;
             document.getElementById('image-preview').src = '../' + path;
             document.getElementById('image-preview').alt = name;
-            document.getElementById('image-info').textContent = `尺寸: ${dimensions} | 大小: ${size}`;
+            document.getElementById('image-info').textContent = `<?php echo addslashes(__('image_detail.dimensions_label')); ?>: ${dimensions} | <?php echo addslashes(__('image_detail.size_label')); ?>: ${size}`;
             document.getElementById('image-modal').classList.remove('hidden');
         }
 
@@ -774,7 +774,7 @@ function formatFileSize($bytes) {
                 const selected = document.querySelectorAll('.image-checkbox:checked').length;
                 if (selected === 0) {
                     e.preventDefault();
-                    alert('请选择要删除的图片');
+                    alert('<?php echo addslashes(__('image_detail.error.select_delete')); ?>');
                     return;
                 }
 
@@ -789,7 +789,7 @@ function formatFileSize($bytes) {
                     selectedIdsContainer.appendChild(input);
                 });
                 
-                if (!confirm(`确定要删除选中的 ${selected} 张图片吗？此操作不可恢复！`)) {
+                if (!confirm(`<?php echo addslashes(__('image_detail.confirm_delete_selected_prefix')); ?> ${selected} <?php echo addslashes(__('image_detail.confirm_delete_selected_suffix')); ?>`)) {
                     e.preventDefault();
                     return;
                 }
@@ -883,12 +883,12 @@ function formatFileSize($bytes) {
             const selectedFiles = fileInput.files ? fileInput.files.length : 0;
             if (selectedFiles === 0) {
                 e.preventDefault();
-                alert('请选择要上传的图片');
+                alert('<?php echo addslashes(__('image_detail.error.select_images')); ?>');
                 return;
             }
 
             uploadBtn.disabled = true;
-            uploadBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 inline animate-spin"></i>上传中...';
+            uploadBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 inline animate-spin"></i><?php echo addslashes(__('image_detail.uploading')); ?>';
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }

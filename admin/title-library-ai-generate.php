@@ -116,7 +116,7 @@ try {
         ini_set('memory_limit', '256M');
 
         if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-            throw new Exception('CSRF token验证失败');
+            throw new Exception(__('message.csrf_invalid'));
         }
         
         $action = $_POST['action'] ?? '';
@@ -129,15 +129,15 @@ try {
             $title_style = $_POST['title_style'] ?? 'professional';
             
             if ($keyword_library_id <= 0) {
-                throw new Exception('请选择关键词库');
+                throw new Exception(__('title_ai_generate.error.keyword_library_required'));
             }
             
             if ($ai_model_id <= 0) {
-                throw new Exception('请选择AI模型');
+                throw new Exception(__('title_ai_generate.error.ai_model_required'));
             }
             
             if ($title_count < 1 || $title_count > 50) {
-                throw new Exception('生成数量必须在1-50之间');
+                throw new Exception(__('title_ai_generate.error.invalid_count'));
             }
             
             // 获取关键词库信息
@@ -146,7 +146,7 @@ try {
             $keyword_library = $stmt->fetch();
             
             if (!$keyword_library) {
-                throw new Exception('关键词库不存在');
+                throw new Exception(__('title_ai_generate.error.keyword_library_missing'));
             }
             
             // 获取关键词
@@ -155,7 +155,7 @@ try {
             $keywords = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
             if (empty($keywords)) {
-                throw new Exception('关键词库中没有关键词');
+                throw new Exception(__('title_ai_generate.error.no_keywords'));
             }
             
             // 获取AI模型信息
@@ -169,7 +169,7 @@ try {
             $ai_model = $stmt->fetch();
             
             if (!$ai_model) {
-                throw new Exception('AI模型不存在');
+                throw new Exception(__('title_ai_generate.error.ai_model_missing'));
             }
 
             $ai_model['api_key'] = decrypt_ai_api_key($ai_model['api_key'] ?? '');
@@ -250,7 +250,7 @@ try {
                     error_log("API超时，使用模拟数据生成标题");
                     $generated_content = generateMockTitles($keywords, $title_count, $style_desc);
                 } else {
-                    throw new Exception('网络连接错误：' . $curl_error);
+                    throw new Exception(__('title_ai_generate.error.network', ['message' => $curl_error]));
                 }
             } elseif ($http_code !== 200) {
                 $error_detail = $response ? ' 响应内容：' . substr($response, 0, 500) : '';
@@ -261,7 +261,7 @@ try {
                     error_log("API服务器错误，使用模拟数据生成标题");
                     $generated_content = generateMockTitles($keywords, $title_count, $style_desc);
                 } else {
-                    throw new Exception('AI服务调用失败，HTTP状态码：' . $http_code . $error_detail);
+                    throw new Exception(__('title_ai_generate.error.api_http', ['code' => $http_code, 'detail' => $error_detail]));
                 }
             } else {
                 // 正常处理API响应
@@ -277,7 +277,7 @@ try {
             $generated_titles = array_filter(array_map('trim', explode("\n", $generated_content)));
 
             if (empty($generated_titles)) {
-                throw new Exception('AI生成的标题为空');
+                throw new Exception(__('title_ai_generate.error.empty_result'));
             }
             
             // 保存生成的标题（使用事务）
@@ -318,10 +318,13 @@ try {
 
             } catch (Exception $e) {
                 $db->rollback();
-                throw new Exception('保存标题时出错：' . $e->getMessage());
+                throw new Exception(__('title_ai_generate.error.save_failed', ['message' => $e->getMessage()]));
             }
             
-            $success_message = "AI生成完成！成功保存 {$saved_count} 个标题" . ($duplicate_count > 0 ? "，跳过 {$duplicate_count} 个重复标题" : '');
+            $success_message = __('title_ai_generate.message.completed', ['count' => $saved_count]);
+            if ($duplicate_count > 0) {
+                $success_message .= __('title_ai_generate.message.duplicates', ['count' => $duplicate_count]);
+            }
         }
     }
     
@@ -330,7 +333,7 @@ try {
 }
 
 // 设置页面信息
-$page_title = 'AI生成标题 - ' . $library['name'];
+$page_title = __('title_ai_generate.page_title') . ' - ' . $library['name'];
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -338,8 +341,8 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">AI生成标题</h1>
-            <p class="mt-1 text-sm text-gray-600">为 "' . htmlspecialchars($library['name']) . '" 生成标题</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . __('title_ai_generate.page_heading') . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . __('title_ai_generate.page_subtitle', ['name' => htmlspecialchars($library['name'])]) . '</p>
         </div>
     </div>
 </div>';
@@ -355,7 +358,7 @@ require_once __DIR__ . '/includes/header.php';
                         <i data-lucide="alert-circle" class="h-5 w-5 text-red-400"></i>
                     </div>
                     <div class="ml-3">
-                        <h3 class="text-sm font-medium text-red-800">错误</h3>
+                        <h3 class="text-sm font-medium text-red-800"><?php echo __('message.error'); ?></h3>
                         <div class="mt-2 text-sm text-red-700">
                             <?php echo htmlspecialchars($error_message); ?>
                         </div>
@@ -371,7 +374,7 @@ require_once __DIR__ . '/includes/header.php';
                         <i data-lucide="check-circle" class="h-5 w-5 text-green-400"></i>
                     </div>
                     <div class="ml-3">
-                        <h3 class="text-sm font-medium text-green-800">成功</h3>
+                        <h3 class="text-sm font-medium text-green-800"><?php echo __('message.success'); ?></h3>
                         <div class="mt-2 text-sm text-green-700">
                             <?php echo htmlspecialchars($success_message); ?>
                         </div>
@@ -383,8 +386,8 @@ require_once __DIR__ . '/includes/header.php';
         <!-- AI生成配置表单 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">AI生成配置</h3>
-                <p class="mt-1 text-sm text-gray-600">配置AI生成标题的参数</p>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('title_ai_generate.section.config'); ?></h3>
+                <p class="mt-1 text-sm text-gray-600"><?php echo __('title_ai_generate.section.config_desc'); ?></p>
             </div>
 
             <form method="POST" class="p-6">
@@ -394,9 +397,9 @@ require_once __DIR__ . '/includes/header.php';
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- 关键词库选择 -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">选择关键词库 *</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('title_ai_generate.field.keyword_library'); ?></label>
                         <select name="keyword_library_id" required class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <option value="">请选择关键词库</option>
+                            <option value=""><?php echo __('title_ai_generate.option.select_keyword_library'); ?></option>
                             <?php foreach ($keyword_libraries as $kw_lib): ?>
                                 <option value="<?php echo $kw_lib['id']; ?>">
                                     <?php echo htmlspecialchars($kw_lib['name']); ?>
@@ -404,18 +407,18 @@ require_once __DIR__ . '/includes/header.php';
                                         $stmt = $db->prepare("SELECT COUNT(*) FROM keywords WHERE library_id = ?");
                                         $stmt->execute([$kw_lib['id']]);
                                         echo $stmt->fetchColumn();
-                                    ?> 个关键词)
+                                    ?> <?php echo __('title_ai_generate.option.keyword_count_suffix'); ?>)
                                 </option>
                             <?php endforeach; ?>
                         </select>
-                        <p class="mt-1 text-xs text-gray-500">选择用于生成标题的关键词库</p>
+                        <p class="mt-1 text-xs text-gray-500"><?php echo __('title_ai_generate.help.keyword_library'); ?></p>
                     </div>
 
                     <!-- AI模型选择 -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">选择AI模型 *</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('title_ai_generate.field.ai_model'); ?></label>
                         <select name="ai_model_id" required class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <option value="">请选择AI模型</option>
+                            <option value=""><?php echo __('title_ai_generate.option.select_ai_model'); ?></option>
                             <?php foreach ($ai_models as $model): ?>
                                 <option value="<?php echo $model['id']; ?>">
                                     <?php echo htmlspecialchars($model['name']); ?>
@@ -423,49 +426,49 @@ require_once __DIR__ . '/includes/header.php';
                                 </option>
                             <?php endforeach; ?>
                         </select>
-                        <p class="mt-1 text-xs text-gray-500">选择用于生成标题的AI模型</p>
+                        <p class="mt-1 text-xs text-gray-500"><?php echo __('title_ai_generate.help.ai_model'); ?></p>
                     </div>
 
                     <!-- 生成数量 -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">生成数量</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('title_ai_generate.field.count'); ?></label>
                         <input type="number" name="title_count" value="10" min="1" max="50" 
                                class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        <p class="mt-1 text-xs text-gray-500">一次生成的标题数量（1-50）</p>
+                        <p class="mt-1 text-xs text-gray-500"><?php echo __('title_ai_generate.help.count'); ?></p>
                     </div>
 
                     <!-- 标题风格 -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">标题风格</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('title_ai_generate.field.style'); ?></label>
                         <select name="title_style" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <option value="professional">专业严谨</option>
-                            <option value="attractive">吸引眼球</option>
-                            <option value="seo">SEO优化</option>
-                            <option value="creative">创意新颖</option>
-                            <option value="question">疑问式</option>
+                            <option value="professional"><?php echo __('title_ai_generate.style.professional'); ?></option>
+                            <option value="attractive"><?php echo __('title_ai_generate.style.attractive'); ?></option>
+                            <option value="seo"><?php echo __('title_ai_generate.style.seo'); ?></option>
+                            <option value="creative"><?php echo __('title_ai_generate.style.creative'); ?></option>
+                            <option value="question"><?php echo __('title_ai_generate.style.question'); ?></option>
                         </select>
-                        <p class="mt-1 text-xs text-gray-500">选择生成标题的风格类型</p>
+                        <p class="mt-1 text-xs text-gray-500"><?php echo __('title_ai_generate.help.style'); ?></p>
                     </div>
                 </div>
 
                 <!-- 自定义提示词 -->
                 <div class="mt-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">自定义提示词</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2"><?php echo __('title_ai_generate.field.custom_prompt'); ?></label>
                     <textarea name="custom_prompt" rows="4" 
                               class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                              placeholder="可以添加额外的要求，比如：标题长度控制在20字以内、包含特定词汇、针对特定行业等..."></textarea>
-                    <p class="mt-1 text-xs text-gray-500">可选：添加额外的生成要求</p>
+                              placeholder="<?php echo __('title_ai_generate.placeholder.custom_prompt'); ?>"></textarea>
+                    <p class="mt-1 text-xs text-gray-500"><?php echo __('title_ai_generate.help.custom_prompt'); ?></p>
                 </div>
 
                 <!-- 提交按钮 -->
                 <div class="mt-8 flex justify-end space-x-4">
                     <button type="button" id="async-generate-btn" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                         <i data-lucide="zap" class="w-5 h-5 mr-2"></i>
-                        异步生成标题
+                        <?php echo __('title_ai_generate.button.async'); ?>
                     </button>
                     <button type="submit" id="generate-btn" class="inline-flex items-center px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                         <i data-lucide="cpu" class="w-5 h-5 mr-2"></i>
-                        同步生成标题
+                        <?php echo __('title_ai_generate.button.sync'); ?>
                     </button>
                 </div>
             </form>
@@ -474,15 +477,15 @@ require_once __DIR__ . '/includes/header.php';
         <!-- 异步生成进度显示 -->
         <div id="async-progress" class="hidden bg-white shadow rounded-lg mt-6">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">生成进度</h3>
-                <p class="mt-1 text-sm text-gray-600">AI正在后台生成标题，您可以关闭此页面</p>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('title_ai_generate.section.progress'); ?></h3>
+                <p class="mt-1 text-sm text-gray-600"><?php echo __('title_ai_generate.section.progress_desc'); ?></p>
             </div>
 
             <div class="p-6">
                 <!-- 进度条 -->
                 <div class="mb-4">
                     <div class="flex justify-between text-sm text-gray-600 mb-2">
-                        <span>生成进度</span>
+                        <span><?php echo __('title_ai_generate.progress.label'); ?></span>
                         <span id="progress-text">0%</span>
                     </div>
                     <div class="w-full bg-gray-200 rounded-full h-2">
@@ -493,15 +496,15 @@ require_once __DIR__ . '/includes/header.php';
                 <!-- 状态信息 -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div class="bg-gray-50 p-4 rounded-lg">
-                        <div class="text-sm text-gray-600">已生成</div>
+                        <div class="text-sm text-gray-600"><?php echo __('title_ai_generate.progress.generated'); ?></div>
                         <div id="generated-count" class="text-2xl font-bold text-blue-600">0</div>
                     </div>
                     <div class="bg-gray-50 p-4 rounded-lg">
-                        <div class="text-sm text-gray-600">目标数量</div>
+                        <div class="text-sm text-gray-600"><?php echo __('title_ai_generate.progress.total'); ?></div>
                         <div id="total-count" class="text-2xl font-bold text-gray-900">0</div>
                     </div>
                     <div class="bg-gray-50 p-4 rounded-lg">
-                        <div class="text-sm text-gray-600">运行时间</div>
+                        <div class="text-sm text-gray-600"><?php echo __('title_ai_generate.progress.elapsed'); ?></div>
                         <div id="elapsed-time" class="text-2xl font-bold text-green-600">0s</div>
                     </div>
                 </div>
@@ -509,18 +512,18 @@ require_once __DIR__ . '/includes/header.php';
                 <!-- 当前状态 -->
                 <div class="flex items-center p-4 bg-blue-50 border border-blue-200 rounded-md">
                     <i data-lucide="info" class="w-5 h-5 text-blue-500 mr-3"></i>
-                    <span id="status-message" class="text-blue-700">准备中...</span>
+                    <span id="status-message" class="text-blue-700"><?php echo __('title_ai_generate.progress.preparing'); ?></span>
                 </div>
 
                 <!-- 操作按钮 -->
                 <div class="mt-4 flex justify-end space-x-3">
                     <button id="refresh-progress" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
-                        刷新状态
+                        <?php echo __('title_ai_generate.button.refresh_status'); ?>
                     </button>
                     <button id="close-progress" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gray-600 hover:bg-gray-700">
                         <i data-lucide="x" class="w-4 h-4 mr-2"></i>
-                        关闭面板
+                        <?php echo __('button.close_panel'); ?>
                     </button>
                 </div>
             </div>
@@ -533,15 +536,15 @@ require_once __DIR__ . '/includes/header.php';
                     <i data-lucide="info" class="h-5 w-5 text-blue-400"></i>
                 </div>
                 <div class="ml-3">
-                    <h3 class="text-sm font-medium text-blue-800">使用说明</h3>
+                    <h3 class="text-sm font-medium text-blue-800"><?php echo __('title_ai_generate.section.instructions'); ?></h3>
                     <div class="mt-2 text-sm text-blue-700">
                         <ul class="list-disc list-inside space-y-1">
-                            <li>选择关键词库：AI将基于库中的关键词生成相关标题</li>
-                            <li>选择AI模型：不同模型有不同的生成风格和质量</li>
-                            <li>设置生成数量：建议一次生成10-20个标题</li>
-                            <li>选择标题风格：根据内容类型选择合适的风格</li>
-                            <li>自定义提示词：可以添加特殊要求来优化生成效果</li>
-                            <li>生成的标题会自动标记为"AI生成"并关联随机关键词</li>
+                            <li><?php echo __('title_ai_generate.instructions.keyword_library'); ?></li>
+                            <li><?php echo __('title_ai_generate.instructions.ai_model'); ?></li>
+                            <li><?php echo __('title_ai_generate.instructions.count'); ?></li>
+                            <li><?php echo __('title_ai_generate.instructions.style'); ?></li>
+                            <li><?php echo __('title_ai_generate.instructions.custom_prompt'); ?></li>
+                            <li><?php echo __('title_ai_generate.instructions.saved_titles'); ?></li>
                         </ul>
                     </div>
                 </div>
@@ -583,7 +586,7 @@ require_once __DIR__ . '/includes/header.php';
 
                     // 显示加载状态
                     generateBtn.disabled = true;
-                    generateBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 mr-2 animate-spin"></i>正在生成标题，请稍候...';
+                    generateBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 mr-2 animate-spin"></i><?php echo addslashes(__('title_ai_generate.progress.sync_loading')); ?>';
 
                     // 添加进度提示
                     const progressDiv = document.createElement('div');
@@ -592,7 +595,7 @@ require_once __DIR__ . '/includes/header.php';
                     progressDiv.innerHTML = `
                         <div class="flex items-center">
                             <i data-lucide="info" class="w-5 h-5 text-blue-500 mr-2"></i>
-                            <span class="text-blue-700">正在调用AI服务生成标题，这可能需要1-2分钟，请耐心等待...</span>
+                            <span class="text-blue-700"><?php echo addslashes(__('title_ai_generate.progress.sync_notice')); ?></span>
                         </div>
                     `;
 
@@ -615,7 +618,7 @@ require_once __DIR__ . '/includes/header.php';
 
                 // 禁用按钮
                 asyncGenerateBtn.disabled = true;
-                asyncGenerateBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 mr-2 animate-spin"></i>启动中...';
+                asyncGenerateBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 mr-2 animate-spin"></i><?php echo addslashes(__('title_ai_generate.progress.starting')); ?>';
 
                 fetch(window.adminUrl('title_generate_async.php'), {
                     method: 'POST',
@@ -635,13 +638,13 @@ require_once __DIR__ . '/includes/header.php';
 
                         // 重置按钮
                         asyncGenerateBtn.disabled = false;
-                        asyncGenerateBtn.innerHTML = '<i data-lucide="zap" class="w-5 h-5 mr-2"></i>异步生成标题';
+                        asyncGenerateBtn.innerHTML = '<i data-lucide="zap" class="w-5 h-5 mr-2"></i><?php echo addslashes(__('title_ai_generate.button.async')); ?>';
 
                         startTime = Date.now();
                     } else {
-                        alert('启动失败：' + data.message);
+                        alert('<?php echo addslashes(__('title_ai_generate.error.start_failed_prefix')); ?>' + data.message);
                         asyncGenerateBtn.disabled = false;
-                        asyncGenerateBtn.innerHTML = '<i data-lucide="zap" class="w-5 h-5 mr-2"></i>异步生成标题';
+                        asyncGenerateBtn.innerHTML = '<i data-lucide="zap" class="w-5 h-5 mr-2"></i><?php echo addslashes(__('title_ai_generate.button.async')); ?>';
                     }
 
                     if (typeof lucide !== 'undefined') {
@@ -650,9 +653,9 @@ require_once __DIR__ . '/includes/header.php';
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('启动失败：网络错误');
+                    alert('<?php echo addslashes(__('title_ai_generate.error.start_network')); ?>');
                     asyncGenerateBtn.disabled = false;
-                    asyncGenerateBtn.innerHTML = '<i data-lucide="zap" class="w-5 h-5 mr-2"></i>异步生成标题';
+                    asyncGenerateBtn.innerHTML = '<i data-lucide="zap" class="w-5 h-5 mr-2"></i><?php echo addslashes(__('title_ai_generate.button.async')); ?>';
 
                     if (typeof lucide !== 'undefined') {
                         lucide.createIcons();

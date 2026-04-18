@@ -44,7 +44,7 @@ if (!$library) {
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $keyword = trim($_POST['keyword'] ?? '');
                 
                 if (empty($keyword)) {
-                    $error = '关键词不能为空';
+                    $error = __('keyword_detail.error.keyword_required');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -66,12 +66,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         
                         if ($stmt->execute([$library_id, $keyword, $library_id, $keyword]) && $stmt->rowCount() > 0) {
                             refresh_keyword_library_count($db, $library_id);
-                            $message = '关键词添加成功';
+                            $message = __('keyword_detail.message.add_success');
                         } else {
-                            $error = '关键词已存在';
+                            $error = __('keyword_detail.error.keyword_exists');
                         }
                     } catch (Exception $e) {
-                        $error = '添加失败: ' . $e->getMessage();
+                        $error = __('keyword_libraries.message.create_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -87,12 +87,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         
                         if ($stmt->execute($params)) {
                             refresh_keyword_library_count($db, $library_id);
-                            $message = '成功删除 ' . count($keyword_ids) . ' 个关键词';
+                            $message = __('keyword_detail.message.delete_success', ['count' => count($keyword_ids)]);
                         } else {
-                            $error = '删除失败';
+                            $error = __('keyword_libraries.message.delete_error', ['message' => '']);
                         }
                     } catch (Exception $e) {
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('keyword_libraries.message.delete_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -102,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $description = trim($_POST['description'] ?? '');
                 
                 if (empty($name)) {
-                    $error = '关键词库名称不能为空';
+                    $error = __('keyword_detail.error.library_name_required');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -114,12 +114,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($stmt->execute([$name, $description, $library_id])) {
                             $library['name'] = $name;
                             $library['description'] = $description;
-                            $message = '关键词库信息更新成功';
+                            $message = __('keyword_detail.message.update_success');
                         } else {
-                            $error = '更新失败';
+                            $error = __('keyword_libraries.message.create_error', ['message' => '']);
                         }
                     } catch (Exception $e) {
-                        $error = '更新失败: ' . $e->getMessage();
+                        $error = __('keyword_libraries.message.create_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -173,11 +173,11 @@ $usage_stats->execute([$library_id]);
 $usage_count = $usage_stats->fetch()['usage_count'];
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang()); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars($library['name']); ?> - 关键词库详情 - <?php echo htmlspecialchars($admin_site_name); ?></title>
+    <title><?php echo htmlspecialchars($library['name']); ?><?php echo htmlspecialchars(__('keyword_detail.page_title_suffix')); ?> - <?php echo htmlspecialchars($admin_site_name); ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -190,18 +190,18 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                 <div class="flex items-center space-x-8">
                     <a href="dashboard.php" class="text-xl font-semibold text-gray-900"><?php echo htmlspecialchars($admin_site_name); ?></a>
                     <nav class="flex space-x-8">
-                        <a href="dashboard.php" class="text-gray-500 hover:text-gray-700">首页</a>
-                        <a href="tasks.php" class="text-gray-500 hover:text-gray-700">任务管理</a>
-                        <a href="articles.php" class="text-gray-500 hover:text-gray-700">文章管理</a>
-                        <a href="materials.php" class="text-blue-600 font-medium">素材管理</a>
-                        <a href="ai-configurator.php" class="text-gray-500 hover:text-gray-700">AI配置</a>
-                        <a href="site-settings.php" class="text-gray-500 hover:text-gray-700">网站设置</a>
-                        <a href="security-settings.php" class="text-gray-500 hover:text-gray-700">安全管理</a>
+                        <a href="dashboard.php" class="text-gray-500 hover:text-gray-700"><?php echo __('keyword_detail.home'); ?></a>
+                        <a href="tasks.php" class="text-gray-500 hover:text-gray-700"><?php echo __('keyword_detail.tasks'); ?></a>
+                        <a href="articles.php" class="text-gray-500 hover:text-gray-700"><?php echo __('keyword_detail.articles'); ?></a>
+                        <a href="materials.php" class="text-blue-600 font-medium"><?php echo __('keyword_detail.materials'); ?></a>
+                        <a href="ai-configurator.php" class="text-gray-500 hover:text-gray-700"><?php echo __('keyword_detail.ai_config'); ?></a>
+                        <a href="site-settings.php" class="text-gray-500 hover:text-gray-700"><?php echo __('keyword_detail.site_settings'); ?></a>
+                        <a href="security-settings.php" class="text-gray-500 hover:text-gray-700"><?php echo __('keyword_detail.security'); ?></a>
                     </nav>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-600">欢迎，<?php echo $_SESSION['admin_username']; ?></span>
-                    <a href="logout.php" class="text-sm text-red-600 hover:text-red-800">退出登录</a>
+                    <span class="text-sm text-gray-600"><?php echo __('keyword_detail.welcome', ['name' => $_SESSION['admin_username']]); ?></span>
+                    <a href="logout.php" class="text-sm text-red-600 hover:text-red-800"><?php echo __('keyword_detail.logout'); ?></a>
                 </div>
             </div>
         </div>
@@ -230,17 +230,17 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                     </a>
                     <div>
                         <h1 class="text-2xl font-bold text-gray-900"><?php echo htmlspecialchars($library['name']); ?></h1>
-                        <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($library['description'] ?: '暂无描述'); ?></p>
+                        <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($library['description'] ?: __('keyword_detail.no_description')); ?></p>
                     </div>
                 </div>
                 <div class="flex space-x-2">
                     <button onclick="showEditModal()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                         <i data-lucide="edit" class="w-4 h-4 mr-1"></i>
-                        编辑信息
+                        <?php echo __('keyword_detail.edit_info'); ?>
                     </button>
                     <button onclick="showAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                        添加关键词
+                        <?php echo __('keyword_detail.add_keyword'); ?>
                     </button>
                 </div>
             </div>
@@ -256,7 +256,7 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">关键词总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('keyword_detail.total_keywords'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $total_keywords; ?></dd>
                             </dl>
                         </div>
@@ -272,7 +272,7 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">使用次数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('keyword_detail.usage_total'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $usage_count; ?></dd>
                             </dl>
                         </div>
@@ -288,7 +288,7 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">创建时间</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('keyword_detail.created_date'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo date('m-d', strtotime($library['created_at'])); ?></dd>
                             </dl>
                         </div>
@@ -304,7 +304,7 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">最后更新</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('keyword_detail.updated_date'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo date('m-d', strtotime($library['updated_at'])); ?></dd>
                             </dl>
                         </div>
@@ -321,23 +321,23 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                         <input type="hidden" name="id" value="<?php echo $library_id; ?>">
                         <div class="flex-1">
                             <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>"
-                                   placeholder="搜索关键词..."
+                                   placeholder="<?php echo htmlspecialchars(__('keyword_detail.search_placeholder')); ?>"
                                    class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
                         <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                             <i data-lucide="search" class="w-4 h-4 mr-2"></i>
-                            搜索
+                            <?php echo __('button.search'); ?>
                         </button>
                         <a href="keyword-library-detail.php?id=<?php echo $library_id; ?>" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="x" class="w-4 h-4 mr-2"></i>
-                            清空
+                            <?php echo __('button.clear'); ?>
                         </a>
                     </form>
                     
                     <div class="flex space-x-2">
                         <button onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="check-square" class="w-4 h-4 mr-1"></i>
-                            批量操作
+                            <?php echo __('keyword_detail.batch_actions'); ?>
                         </button>
                     </div>
                 </div>
@@ -349,8 +349,8 @@ $usage_count = $usage_stats->fetch()['usage_count'];
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">
-                        关键词列表 
-                        <span class="text-sm text-gray-500">(共 <?php echo $total_keywords; ?> 个)</span>
+                        <?php echo __('keyword_detail.list_title'); ?> 
+                        <span class="text-sm text-gray-500"><?php echo __('keyword_detail.list_total', ['count' => $total_keywords]); ?></span>
                     </h3>
                 </div>
             </div>
@@ -358,14 +358,14 @@ $usage_count = $usage_stats->fetch()['usage_count'];
             <?php if (empty($keywords)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="search" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无关键词</h3>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo __('keyword_detail.empty'); ?></h3>
                     <p class="text-gray-500 mb-4">
-                        <?php echo !empty($search) ? '没有找到匹配的关键词' : '开始添加关键词到这个库'; ?>
+                        <?php echo !empty($search) ? __('keyword_detail.empty_search') : __('keyword_detail.empty_desc'); ?>
                     </p>
                     <?php if (empty($search)): ?>
                         <button onclick="showAddModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                            添加关键词
+                            <?php echo __('keyword_detail.add_keyword'); ?>
                         </button>
                     <?php endif; ?>
                 </div>
@@ -376,15 +376,15 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                         <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                         <input type="hidden" name="action" value="delete_keywords">
                         <div class="flex items-center space-x-4">
-                            <span class="text-sm text-gray-600">已选择 <span id="selected-count">0</span> 个关键词</span>
+                            <span class="text-sm text-gray-600"><?php echo __('keyword_detail.selected_count', ['count' => '<span id="selected-count">0</span>']); ?></span>
                             
                             <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                 <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                删除选中
+                                <?php echo __('keyword_detail.delete_selected'); ?>
                             </button>
                             
                             <button type="button" onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
-                                取消
+                                <?php echo __('button.cancel'); ?>
                             </button>
                         </div>
                     </form>
@@ -411,12 +411,12 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                     <div class="px-6 py-4 border-t border-gray-200">
                         <div class="flex items-center justify-between">
                             <div class="text-sm text-gray-700">
-                                显示第 <?php echo ($page - 1) * $per_page + 1; ?> - <?php echo min($page * $per_page, $total_keywords); ?> 个，共 <?php echo $total_keywords; ?> 个
+                                <?php echo __('keyword_detail.pagination', ['start' => (($page - 1) * $per_page + 1), 'end' => min($page * $per_page, $total_keywords), 'total' => $total_keywords]); ?>
                             </div>
                             <div class="flex space-x-1">
                                 <?php if ($page > 1): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        上一页
+                                        <?php echo __('button.previous'); ?>
                                     </a>
                                 <?php endif; ?>
                                 
@@ -429,7 +429,7 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                                 
                                 <?php if ($page < $total_pages): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        下一页
+                                        <?php echo __('button.next'); ?>
                                     </a>
                                 <?php endif; ?>
                             </div>
@@ -444,26 +444,26 @@ $usage_count = $usage_stats->fetch()['usage_count'];
     <div id="add-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">添加关键词</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('keyword_detail.modal_add'); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="add_keyword">
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">关键词 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('keyword_detail.field_keyword'); ?></label>
                             <input type="text" name="keyword" required 
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                   placeholder="请输入关键词">
+                                   placeholder="<?php echo htmlspecialchars(__('keyword_detail.placeholder_keyword')); ?>">
                         </div>
                     </div>
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideAddModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                            添加
+                            <?php echo __('button.add'); ?>
                         </button>
                     </div>
                 </form>
@@ -475,21 +475,21 @@ $usage_count = $usage_stats->fetch()['usage_count'];
     <div id="edit-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">编辑关键词库信息</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('keyword_detail.modal_edit'); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="update_library">
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">库名称 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('keyword_detail.field_name'); ?></label>
                             <input type="text" name="name" required 
                                    value="<?php echo htmlspecialchars($library['name']); ?>"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">描述</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('keyword_detail.field_description'); ?></label>
                             <textarea name="description" rows="3"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"><?php echo htmlspecialchars($library['description']); ?></textarea>
                         </div>
@@ -497,10 +497,10 @@ $usage_count = $usage_stats->fetch()['usage_count'];
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideEditModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                            保存
+                            <?php echo __('button.save'); ?>
                         </button>
                     </div>
                 </form>
@@ -570,11 +570,11 @@ $usage_count = $usage_stats->fetch()['usage_count'];
             const selected = document.querySelectorAll('.keyword-checkbox:checked').length;
             if (selected === 0) {
                 e.preventDefault();
-                alert('请选择要删除的关键词');
+                alert('<?php echo __('keyword_detail.error.select_required'); ?>');
                 return;
             }
             
-            if (!confirm(`确定要删除选中的 ${selected} 个关键词吗？`)) {
+            if (!confirm(`<?php echo __('keyword_detail.confirm_delete_selected', ['count' => '{count}']); ?>`.replace('{count}', selected))) {
                 e.preventDefault();
                 return;
             }
@@ -582,7 +582,7 @@ $usage_count = $usage_stats->fetch()['usage_count'];
 
         // 删除单个关键词
         function deleteKeyword(keywordId, keyword) {
-            if (confirm(`确定要删除关键词"${keyword}"吗？`)) {
+            if (confirm(`<?php echo __('keyword_detail.confirm_delete_keyword', ['name' => '{name}']); ?>`.replace('{name}', keyword))) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `

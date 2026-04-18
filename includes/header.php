@@ -39,20 +39,20 @@ $is_archive = strpos($request_path, '/archive') === 0;
             <nav class="hidden md:flex items-center space-x-6">
                 <a href="/" class="flex items-center text-sm font-medium <?php echo $is_home ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'; ?>">
                     <i data-lucide="home" class="w-4 h-4 mr-1"></i>
-                    首页
+                    <?php echo __('front.nav.home'); ?>
                 </a>
 
                 <div class="relative" id="categoryDropdown">
                     <button type="button" class="flex items-center text-gray-600 hover:text-gray-900 font-medium text-sm" onclick="toggleCategoryDropdown()">
                         <i data-lucide="folder" class="w-4 h-4 mr-1"></i>
-                        分类
+                        <?php echo __('front.nav.categories'); ?>
                         <i data-lucide="chevron-down" class="w-4 h-4 ml-1"></i>
                     </button>
 
                     <div id="categoryDropdownMenu" class="absolute left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-100 py-2 hidden">
                         <a href="/" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-50 text-sm">
                             <i data-lucide="home" class="w-4 h-4 mr-3"></i>
-                            全部文章
+                            <?php echo __('front.nav.all_articles'); ?>
                         </a>
                         <?php foreach ($categories as $category_item): ?>
                             <a href="/category/<?php echo htmlspecialchars($category_item['slug'] ?: $category_item['id']); ?>" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-50 text-sm">
@@ -75,12 +75,12 @@ $is_archive = strpos($request_path, '/archive') === 0;
             <nav class="flex flex-col space-y-4">
                 <a href="/" class="mobile-nav-link flex items-center text-sm font-medium <?php echo $is_home ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'; ?>">
                     <i data-lucide="home" class="w-4 h-4 mr-3"></i>
-                    首页
+                    <?php echo __('front.nav.home'); ?>
                 </a>
                 <button type="button" class="mobile-nav-link flex items-center justify-between text-gray-600 hover:text-gray-900 font-medium py-2 text-sm w-full" onclick="toggleMobileCategoryMenu()">
                     <span class="flex items-center">
                         <i data-lucide="folder" class="w-4 h-4 mr-3"></i>
-                        分类
+                        <?php echo __('front.nav.categories'); ?>
                     </span>
                     <i data-lucide="chevron-down" class="w-4 h-4" id="mobileCategoryChevron"></i>
                 </button>
@@ -94,7 +94,7 @@ $is_archive = strpos($request_path, '/archive') === 0;
                 </div>
                 <a href="<?php echo htmlspecialchars(admin_url()); ?>" class="mobile-nav-link flex items-center text-sm font-medium text-gray-600 hover:text-gray-900">
                     <i data-lucide="shield" class="w-4 h-4 mr-3"></i>
-                    管理后台
+                    <?php echo __('front.nav.admin'); ?>
                 </a>
             </nav>
         </div>
@@ -133,5 +133,6 @@ document.addEventListener('click', function(event) {
     if (dropdown && menu && !dropdown.contains(event.target)) {
         menu.classList.add('hidden');
     }
+
 });
 </script>

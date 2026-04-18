@@ -27,7 +27,7 @@ $error = '';
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $description = trim($_POST['description'] ?? '');
                 
                 if (empty($name)) {
-                    $error = '关键词库名称不能为空';
+                    $error = __('keyword_libraries.error.name_required');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -46,12 +46,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ");
                         
                         if ($stmt->execute([$name, $description])) {
-                            $message = '关键词库创建成功';
+                            $message = __('keyword_libraries.message.create_success');
                         } else {
-                            $error = '关键词库创建失败';
+                            $error = __('keyword_libraries.message.create_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '创建失败: ' . $e->getMessage();
+                        $error = __('keyword_libraries.message.create_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -72,10 +72,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmt->execute([$library_id]);
                         
                         $db->commit();
-                        $message = '关键词库删除成功';
+                        $message = __('keyword_libraries.message.delete_success');
                     } catch (Exception $e) {
                         $db->rollBack();
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('keyword_libraries.message.delete_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -86,9 +86,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $import_type = $_POST['import_type'] ?? 'text';
                 
                 if ($library_id <= 0) {
-                    $error = '请选择关键词库';
+                    $error = __('keyword_libraries.error.library_required');
                 } elseif (empty($keywords_text) && $import_type === 'text') {
-                    $error = '请输入关键词';
+                    $error = __('keyword_libraries.error.keywords_required');
                 } else {
                     try {
                         $db->beginTransaction();
@@ -137,13 +137,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         refresh_keyword_library_count($db, $library_id);
                         
                         $db->commit();
-                        $message = "成功导入 {$imported_count} 个关键词";
+                        $message = __('keyword_libraries.message.import_success', ['count' => $imported_count]);
                         if ($duplicate_count > 0) {
-                            $message .= "，跳过 {$duplicate_count} 个重复关键词";
+                            $message .= __('keyword_libraries.message.import_skip', ['count' => $duplicate_count]);
                         }
                     } catch (Exception $e) {
                         $db->rollBack();
-                        $error = '导入失败: ' . $e->getMessage();
+                        $error = __('keyword_libraries.message.import_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -167,7 +167,7 @@ $stats = [
 ];
 
 // 设置页面信息
-$page_title = '关键词库管理';
+$page_title = __('keyword_libraries.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -175,13 +175,13 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">关键词库管理</h1>
-            <p class="mt-1 text-sm text-gray-600">管理关键词库和关键词数据</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . __('keyword_libraries.heading') . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . __('keyword_libraries.subtitle') . '</p>
         </div>
     </div>
     <button onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-        创建关键词库
+        ' . __('keyword_libraries.create') . '
     </button>
 </div>
 ';
@@ -213,7 +213,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">关键词库总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('keyword_libraries.total'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_libraries']; ?></dd>
                             </dl>
                         </div>
@@ -229,7 +229,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">关键词总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('keyword_libraries.total_keywords'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_keywords']; ?></dd>
                             </dl>
                         </div>
@@ -245,7 +245,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">平均每库</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('common.avg_per_library'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['avg_keywords']; ?></dd>
                             </dl>
                         </div>
@@ -257,17 +257,17 @@ require_once __DIR__ . '/includes/header.php';
         <!-- 关键词库列表 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">关键词库列表</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('keyword_libraries.list_title'); ?></h3>
             </div>
 
             <?php if (empty($libraries)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="folder-plus" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无关键词库</h3>
-                    <p class="text-gray-500 mb-4">创建您的第一个关键词库来开始管理关键词</p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo __('keyword_libraries.empty'); ?></h3>
+                    <p class="text-gray-500 mb-4"><?php echo __('keyword_libraries.empty_desc'); ?></p>
                     <button onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                        创建关键词库
+                        <?php echo __('keyword_libraries.create'); ?>
                     </button>
                 </div>
             <?php else: ?>
@@ -283,30 +283,30 @@ require_once __DIR__ . '/includes/header.php';
                                             </a>
                                         </h4>
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                            <?php echo $library['actual_count']; ?> 个关键词
+                                            <?php echo __('keyword_libraries.keyword_count', ['count' => $library['actual_count']]); ?>
                                         </span>
                                     </div>
                                     <?php if ($library['description']): ?>
                                         <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($library['description']); ?></p>
                                     <?php endif; ?>
                                     <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
-                                        <span>创建时间: <?php echo date('Y-m-d H:i', strtotime($library['created_at'])); ?></span>
-                                        <span>更新时间: <?php echo date('Y-m-d H:i', strtotime($library['updated_at'])); ?></span>
+                                        <span><?php echo __('keyword_libraries.created_at', ['value' => date('Y-m-d H:i', strtotime($library['created_at']))]); ?></span>
+                                        <span><?php echo __('keyword_libraries.updated_at', ['value' => date('Y-m-d H:i', strtotime($library['updated_at']))]); ?></span>
                                     </div>
                                 </div>
                                 
                                 <div class="flex items-center space-x-2">
                                     <button onclick="showImportModal(<?php echo $library['id']; ?>, '<?php echo htmlspecialchars($library['name']); ?>')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                         <i data-lucide="upload" class="w-4 h-4 mr-1"></i>
-                                        导入
+                                        <?php echo __('button.import'); ?>
                                     </button>
                                     <a href="keyword-library-detail.php?id=<?php echo $library['id']; ?>" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                         <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                                        查看
+                                        <?php echo __('button.view'); ?>
                                     </a>
                                     <button onclick="deleteLibrary(<?php echo $library['id']; ?>, '<?php echo htmlspecialchars($library['name']); ?>')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                         <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                        删除
+                                        <?php echo __('button.delete'); ?>
                                     </button>
                                 </div>
                             </div>
@@ -321,33 +321,33 @@ require_once __DIR__ . '/includes/header.php';
     <div id="create-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">创建关键词库</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('keyword_libraries.modal_create'); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="create_library">
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">库名称 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('keyword_libraries.field_name'); ?></label>
                             <input type="text" name="name" required 
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                   placeholder="请输入关键词库名称">
+                                   placeholder="<?php echo htmlspecialchars(__('keyword_libraries.placeholder_name')); ?>">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">描述</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('keyword_libraries.field_description'); ?></label>
                             <textarea name="description" rows="3"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                      placeholder="关键词库的用途描述（可选）"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('keyword_libraries.placeholder_description')); ?>"></textarea>
                         </div>
                     </div>
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideCreateModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                            创建
+                            <?php echo __('button.create'); ?>
                         </button>
                     </div>
                 </form>
@@ -359,7 +359,7 @@ require_once __DIR__ . '/includes/header.php';
     <div id="import-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-10 mx-auto p-5 border w-2/3 max-w-2xl shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">导入关键词到 <span id="import-library-name" class="text-blue-600"></span></h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('keyword_libraries.modal_import'); ?> <span id="import-library-name" class="text-blue-600"></span></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="import_keywords">
@@ -368,28 +368,28 @@ require_once __DIR__ . '/includes/header.php';
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">关键词内容</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('keyword_libraries.field_keywords'); ?></label>
                             <textarea name="keywords_text" rows="10" required
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                      placeholder="请输入关键词，支持以下格式：&#10;1. 每行一个关键词&#10;2. 用逗号分隔多个关键词&#10;3. 混合使用上述格式&#10;&#10;示例：&#10;人工智能&#10;机器学习,深度学习&#10;自然语言处理"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('keyword_libraries.placeholder_keywords')); ?>"></textarea>
                         </div>
                         
                         <div class="text-sm text-gray-500">
-                            <p class="mb-2">支持的格式：</p>
+                            <p class="mb-2"><?php echo __('keyword_libraries.format_title'); ?></p>
                             <ul class="list-disc list-inside space-y-1">
-                                <li>每行一个关键词</li>
-                                <li>用逗号分隔多个关键词</li>
-                                <li>自动去重处理</li>
+                                <li><?php echo __('keyword_libraries.format_line'); ?></li>
+                                <li><?php echo __('keyword_libraries.format_comma'); ?></li>
+                                <li><?php echo __('keyword_libraries.format_dedupe'); ?></li>
                             </ul>
                         </div>
                     </div>
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideImportModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                            导入关键词
+                            <?php echo __('keyword_libraries.import_button'); ?>
                         </button>
                     </div>
                 </form>
@@ -429,7 +429,7 @@ require_once __DIR__ . '/includes/header.php';
 
         // 删除关键词库
         function deleteLibrary(libraryId, libraryName) {
-            if (confirm(`确定要删除关键词库"${libraryName}"吗？这将同时删除库中的所有关键词，此操作不可恢复！`)) {
+            if (confirm(`<?php echo __('keyword_libraries.confirm_delete', ['name' => '{name}']); ?>`.replace('{name}', libraryName))) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `

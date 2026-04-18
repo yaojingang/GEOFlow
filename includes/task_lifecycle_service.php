@@ -89,9 +89,9 @@ class TaskLifecycleService {
                     name, title_library_id, image_library_id, image_count,
                     prompt_id, ai_model_id, need_review, publish_interval,
                     author_id, auto_keywords, auto_description, draft_limit,
-                    is_loop, status, knowledge_base_id, category_mode, fixed_category_id,
+                    is_loop, model_selection_mode, status, knowledge_base_id, category_mode, fixed_category_id,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ");
             $stmt->execute([
                 $normalized['name'],
@@ -107,6 +107,7 @@ class TaskLifecycleService {
                 $normalized['auto_description'],
                 $normalized['draft_limit'],
                 $normalized['is_loop'],
+                $normalized['model_selection_mode'],
                 $normalized['status'],
                 $normalized['knowledge_base_id'],
                 $normalized['category_mode'],
@@ -205,6 +206,7 @@ class TaskLifecycleService {
             'auto_description' => (int) ($task['auto_description'] ?? 1),
             'draft_limit' => (int) ($task['draft_limit'] ?? 10),
             'is_loop' => (int) ($task['is_loop'] ?? 0),
+            'model_selection_mode' => $task['model_selection_mode'] ?? 'fixed',
             'category_mode' => $task['category_mode'] ?? 'smart',
             'fixed_category_id' => $this->nullableInt($task['fixed_category_id'] ?? null),
             'created_count' => (int) ($task['created_count'] ?? 0),
@@ -521,6 +523,17 @@ class TaskLifecycleService {
             }
         } elseif (!$isUpdate) {
             $output['category_mode'] = 'smart';
+        }
+
+        if (array_key_exists('model_selection_mode', $data)) {
+            $modelSelectionMode = trim((string) $data['model_selection_mode']);
+            if (!in_array($modelSelectionMode, ['fixed', 'smart_failover'], true)) {
+                $fieldErrors['model_selection_mode'] = '模型选择模式无效';
+            } else {
+                $output['model_selection_mode'] = $modelSelectionMode;
+            }
+        } elseif (!$isUpdate) {
+            $output['model_selection_mode'] = 'fixed';
         }
 
         if (array_key_exists('status', $data)) {

@@ -27,7 +27,7 @@ $error = '';
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'CSRF验证失败';
+        $error = __('message.csrf_failed');
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $description = trim($_POST['description'] ?? '');
                 
                 if (empty($name)) {
-                    $error = '图片库名称不能为空';
+                    $error = __('image_libraries.error.name_required');
                 } else {
                     try {
                         $stmt = $db->prepare("
@@ -46,12 +46,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ");
                         
                         if ($stmt->execute([$name, $description])) {
-                            $message = '图片库创建成功';
+                            $message = __('image_libraries.message.create_success');
                         } else {
-                            $error = '图片库创建失败';
+                            $error = __('image_libraries.message.create_failed');
                         }
                     } catch (Exception $e) {
-                        $error = '创建失败: ' . $e->getMessage();
+                        $error = __('image_libraries.message.create_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -79,15 +79,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $db->commit();
 
                         $failedFiles = delete_material_files(array_column($images, 'file_path'));
-                        $message = '图片库删除成功';
+                        $message = __('image_libraries.message.delete_success');
                         if (!empty($failedFiles)) {
-                            $message .= '，但有 ' . count($failedFiles) . ' 个文件未能从磁盘清理';
+                            $message .= __('image_libraries.message.delete_cleanup_partial', ['count' => count($failedFiles)]);
                         }
                     } catch (Throwable $e) {
                         if ($db->inTransaction()) {
                             $db->rollBack();
                         }
-                        $error = '删除失败: ' . $e->getMessage();
+                        $error = __('image_libraries.message.delete_error', ['message' => $e->getMessage()]);
                     }
                 }
                 break;
@@ -126,7 +126,7 @@ function formatFileSize($bytes) {
 }
 
 // 设置页面信息
-$page_title = '图片库管理';
+$page_title = __('image_libraries.page_title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -134,13 +134,13 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">图片库管理</h1>
-            <p class="mt-1 text-sm text-gray-600">管理图片资源和图片库</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . __('image_libraries.heading') . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . __('image_libraries.subtitle') . '</p>
         </div>
     </div>
     <button onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700">
         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-        创建图片库
+        ' . __('image_libraries.create') . '
     </button>
 </div>
 ';
@@ -175,7 +175,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">图片库总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('image_libraries.total'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_libraries']; ?></dd>
                             </dl>
                         </div>
@@ -191,7 +191,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">图片总数</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('image_libraries.total_images'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['total_images']; ?></dd>
                             </dl>
                         </div>
@@ -207,7 +207,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">存储空间</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('image_libraries.storage'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo formatFileSize($stats['total_size']); ?></dd>
                             </dl>
                         </div>
@@ -223,7 +223,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">平均每库</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo __('common.avg_per_library'); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['avg_images']; ?></dd>
                             </dl>
                         </div>
@@ -235,17 +235,17 @@ require_once __DIR__ . '/includes/header.php';
         <!-- 图片库列表 -->
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">图片库列表</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo __('image_libraries.list_title'); ?></h3>
             </div>
 
             <?php if (empty($libraries)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="folder-plus" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无图片库</h3>
-                    <p class="text-gray-500 mb-4">创建您的第一个图片库来开始管理图片</p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo __('image_libraries.empty'); ?></h3>
+                    <p class="text-gray-500 mb-4"><?php echo __('image_libraries.empty_desc'); ?></p>
                     <button onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700">
                         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                        创建图片库
+                        <?php echo __('image_libraries.create'); ?>
                     </button>
                 </div>
             <?php else: ?>
@@ -261,7 +261,7 @@ require_once __DIR__ . '/includes/header.php';
                                             </a>
                                         </h4>
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                            <?php echo $library['actual_count']; ?> 张图片
+                                            <?php echo __('image_libraries.image_count', ['count' => $library['actual_count']]); ?>
                                         </span>
                                         <?php if ($library['total_size'] > 0): ?>
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
@@ -273,23 +273,23 @@ require_once __DIR__ . '/includes/header.php';
                                         <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars($library['description']); ?></p>
                                     <?php endif; ?>
                                     <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
-                                        <span>创建时间: <?php echo date('Y-m-d H:i', strtotime($library['created_at'])); ?></span>
-                                        <span>更新时间: <?php echo date('Y-m-d H:i', strtotime($library['updated_at'])); ?></span>
+                                        <span><?php echo __('image_libraries.created_at', ['value' => date('Y-m-d H:i', strtotime($library['created_at']))]); ?></span>
+                                        <span><?php echo __('image_libraries.updated_at', ['value' => date('Y-m-d H:i', strtotime($library['updated_at']))]); ?></span>
                                     </div>
                                 </div>
                                 
                                 <div class="flex items-center space-x-2">
                                     <a href="image-library-detail.php?id=<?php echo $library['id']; ?>" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
                                         <i data-lucide="upload" class="w-4 h-4 mr-1"></i>
-                                        上传图片
+                                        <?php echo __('image_libraries.upload_images'); ?>
                                     </a>
                                     <a href="image-library-detail.php?id=<?php echo $library['id']; ?>" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                         <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                                        查看
+                                        <?php echo __('button.view'); ?>
                                     </a>
                                     <button onclick="deleteLibrary(<?php echo $library['id']; ?>, '<?php echo htmlspecialchars($library['name']); ?>')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                         <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                        删除
+                                        <?php echo __('button.delete'); ?>
                                     </button>
                                 </div>
                             </div>
@@ -304,28 +304,28 @@ require_once __DIR__ . '/includes/header.php';
     <div id="create-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">创建图片库</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4"><?php echo __('image_libraries.modal_create'); ?></h3>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
                     <input type="hidden" name="action" value="create_library">
                     
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">库名称 *</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('image_libraries.field_name'); ?></label>
                             <input type="text" name="name" required 
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
-                                   placeholder="请输入图片库名称">
+                                   placeholder="<?php echo htmlspecialchars(__('image_libraries.placeholder_name')); ?>">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">描述</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo __('image_libraries.field_description'); ?></label>
                             <textarea name="description" rows="3"
                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
-                                      placeholder="图片库的用途描述（可选）"></textarea>
+                                      placeholder="<?php echo htmlspecialchars(__('image_libraries.placeholder_description')); ?>"></textarea>
                         </div>
                         
                         <div class="text-sm text-gray-500">
-                            <p class="mb-2">支持的图片格式：</p>
+                            <p class="mb-2"><?php echo __('image_libraries.supported_formats'); ?></p>
                             <ul class="list-disc list-inside space-y-1">
                                 <li>JPEG/JPG</li>
                                 <li>PNG</li>
@@ -337,10 +337,10 @@ require_once __DIR__ . '/includes/header.php';
                     
                     <div class="mt-6 flex justify-end space-x-3">
                         <button type="button" onclick="hideCreateModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            取消
+                            <?php echo __('button.cancel'); ?>
                         </button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700">
-                            创建
+                            <?php echo __('button.create'); ?>
                         </button>
                     </div>
                 </form>
@@ -368,7 +368,7 @@ require_once __DIR__ . '/includes/header.php';
 
         // 删除图片库
         function deleteLibrary(libraryId, libraryName) {
-            if (confirm(`确定要删除图片库"${libraryName}"吗？这将同时删除库中的所有图片文件，此操作不可恢复！`)) {
+            if (confirm(`<?php echo __('image_libraries.confirm_delete', ['name' => '{name}']); ?>`.replace('{name}', libraryName))) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `

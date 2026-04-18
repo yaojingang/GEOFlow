@@ -82,6 +82,7 @@ class DatabaseAdmin {
             model_id VARCHAR(100) NOT NULL,
             model_type VARCHAR(20) DEFAULT 'chat',
             api_url VARCHAR(500) DEFAULT 'https://api.deepseek.com',
+            failover_priority INTEGER DEFAULT 100,
             daily_limit INTEGER DEFAULT 0, -- 每日调用限制，0为不限制
             used_today INTEGER DEFAULT 0,
             total_used INTEGER DEFAULT 0,
@@ -214,6 +215,7 @@ class DatabaseAdmin {
             auto_description INTEGER DEFAULT 1, -- 自动生成描述
             draft_limit INTEGER DEFAULT 10, -- 草稿数量限制
             is_loop INTEGER DEFAULT 0, -- 是否循环生成
+            model_selection_mode VARCHAR(20) DEFAULT 'fixed', -- fixed, smart_failover
             status VARCHAR(20) DEFAULT 'active', -- active, paused, completed
             created_count INTEGER DEFAULT 0, -- 已创建文章数
             published_count INTEGER DEFAULT 0, -- 已发布文章数
@@ -646,6 +648,7 @@ class DatabaseAdmin {
                 'knowledge_base_id' => "ALTER TABLE tasks ADD COLUMN knowledge_base_id INTEGER DEFAULT NULL",
                 'category_mode' => "ALTER TABLE tasks ADD COLUMN category_mode VARCHAR(20) DEFAULT 'smart'",
                 'fixed_category_id' => "ALTER TABLE tasks ADD COLUMN fixed_category_id INTEGER DEFAULT NULL",
+                'model_selection_mode' => "ALTER TABLE tasks ADD COLUMN model_selection_mode VARCHAR(20) DEFAULT 'fixed'",
             ],
             'admins' => [
                 'display_name' => "ALTER TABLE admins ADD COLUMN display_name VARCHAR(100) DEFAULT ''",
@@ -688,6 +691,7 @@ class DatabaseAdmin {
             ],
             'ai_models' => [
                 'model_type' => "ALTER TABLE ai_models ADD COLUMN model_type VARCHAR(20) DEFAULT 'chat'",
+                'failover_priority' => "ALTER TABLE ai_models ADD COLUMN failover_priority INTEGER DEFAULT 100",
             ],
             'authors' => [
                 'email' => "ALTER TABLE authors ADD COLUMN email VARCHAR(100) DEFAULT ''",
@@ -711,6 +715,8 @@ class DatabaseAdmin {
             }
         }
 
+        db_normalize_content_asset_paths($this->pdo);
+
         $this->pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_site_settings_key ON site_settings(setting_key)");
         $this->pdo->exec("
             CREATE TABLE IF NOT EXISTS knowledge_chunks (
@@ -732,6 +738,8 @@ class DatabaseAdmin {
         ");
         $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_base ON knowledge_chunks(knowledge_base_id, chunk_index)");
         $this->pdo->exec("UPDATE ai_models SET model_type = COALESCE(NULLIF(model_type, ''), 'chat')");
+        $this->pdo->exec("UPDATE ai_models SET failover_priority = COALESCE(failover_priority, 100)");
+        $this->pdo->exec("UPDATE tasks SET model_selection_mode = COALESCE(NULLIF(model_selection_mode, ''), 'fixed')");
         $this->pdo->exec("CREATE TABLE IF NOT EXISTS admin_activity_logs (
             id BIGSERIAL PRIMARY KEY,
             admin_id INTEGER DEFAULT NULL,
@@ -759,8 +767,6 @@ class DatabaseAdmin {
                 $stmt->execute([$firstAdminId]);
             }
         }
-
-        db_normalize_content_asset_paths($this->pdo);
     }
 
     private function ensurePgvectorSchema(): void {

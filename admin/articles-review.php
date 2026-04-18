@@ -263,14 +263,14 @@ $stats = [
 ];
 function review_status_meta(string $reviewStatus): array {
     return match ($reviewStatus) {
-        'approved' => ['label' => '人工通过', 'class' => 'bg-green-100 text-green-800'],
-        'rejected' => ['label' => '已拒绝', 'class' => 'bg-red-100 text-red-800'],
-        'auto_approved' => ['label' => '自动通过', 'class' => 'bg-blue-100 text-blue-800'],
-        default => ['label' => '待人工审核', 'class' => 'bg-yellow-100 text-yellow-800'],
+        'approved' => ['label' => __('articles.review.approved'), 'class' => 'bg-green-100 text-green-800'],
+        'rejected' => ['label' => __('articles.review.rejected'), 'class' => 'bg-red-100 text-red-800'],
+        'auto_approved' => ['label' => __('articles.review.auto_approved'), 'class' => 'bg-blue-100 text-blue-800'],
+        default => ['label' => __('articles.review.pending'), 'class' => 'bg-yellow-100 text-yellow-800'],
     };
 }
 
-$page_title = '文章审核';
+$page_title = __('articles.review.title');
 $page_header = '
 <div class="flex items-center justify-between">
     <div class="flex items-center space-x-4">
@@ -278,19 +278,29 @@ $page_header = '
             <i data-lucide="arrow-left" class="w-5 h-5"></i>
         </a>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">文章审核</h1>
-            <p class="mt-1 text-sm text-gray-600">统一处理待人工审核、人工通过、自动通过与拒绝结果。</p>
+            <h1 class="text-2xl font-bold text-gray-900">' . htmlspecialchars(__('articles.review.title'), ENT_QUOTES) . '</h1>
+            <p class="mt-1 text-sm text-gray-600">' . htmlspecialchars(__('articles.review.subtitle'), ENT_QUOTES) . '</p>
         </div>
     </div>
     <a href="articles.php" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
         <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i>
-        返回文章列表
+        ' . htmlspecialchars(__('articles.review.back'), ENT_QUOTES) . '
     </a>
 </div>
 ';
 
 require_once __DIR__ . '/includes/header.php';
 ?>
+<script>
+const REVIEW_I18N = <?php echo json_encode([
+    'selectArticles' => __('articles.review.alert_select_articles'),
+    'selectResult' => __('articles.review.alert_select_result'),
+    'approved' => __('articles.review.approved'),
+    'rejected' => __('articles.review.rejected'),
+    'confirmBatch' => __('articles.review.confirm_batch', ['action' => '__ACTION__', 'count' => '__COUNT__']),
+    'promptNote' => __('articles.review.prompt_note'),
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+</script>
 
         <!-- 页面标题 -->
         <div class="mb-8">
@@ -300,13 +310,13 @@ require_once __DIR__ . '/includes/header.php';
                         <i data-lucide="arrow-left" class="w-5 h-5"></i>
                     </a>
                     <div>
-                        <h1 class="text-2xl font-bold text-gray-900">文章审核</h1>
-                        <p class="mt-1 text-sm text-gray-600">审核结果会自动收敛到对应的发布状态，不再需要单独维护两套流程。</p>
+                        <h1 class="text-2xl font-bold text-gray-900"><?php echo htmlspecialchars(__('articles.review.title')); ?></h1>
+                        <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars(__('articles.review.subtitle_flow')); ?></p>
                     </div>
                 </div>
                 <a href="articles.php" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                     <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i>
-                    返回文章列表
+                    <?php echo htmlspecialchars(__('articles.review.back')); ?>
                 </a>
             </div>
         </div>
@@ -321,7 +331,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">待人工审核</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.review.stats_pending')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['pending']; ?></dd>
                             </dl>
                         </div>
@@ -337,7 +347,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">人工通过</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.review.stats_approved')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['approved']; ?></dd>
                             </dl>
                         </div>
@@ -353,7 +363,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">已拒绝</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.review.stats_rejected')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['rejected']; ?></dd>
                             </dl>
                         </div>
@@ -369,7 +379,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <dl>
-                                <dt class="text-sm font-medium text-gray-500 truncate">自动通过</dt>
+                                <dt class="text-sm font-medium text-gray-500 truncate"><?php echo htmlspecialchars(__('articles.review.stats_auto')); ?></dt>
                                 <dd class="text-lg font-medium text-gray-900"><?php echo $stats['auto_approved']; ?></dd>
                             </dl>
                         </div>
@@ -381,25 +391,25 @@ require_once __DIR__ . '/includes/header.php';
         <!-- 筛选和搜索 -->
         <div class="bg-white shadow rounded-lg mb-6">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">筛选条件</h3>
+                <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars(__('articles.review.filter_title')); ?></h3>
             </div>
             <div class="px-6 py-4">
                 <form method="GET" class="space-y-4">
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">审核结果</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.review.filter_status')); ?></label>
                             <select name="review_status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="pending" <?php echo $review_status === 'pending' ? 'selected' : ''; ?>>待人工审核</option>
-                                <option value="approved" <?php echo $review_status === 'approved' ? 'selected' : ''; ?>>人工通过</option>
-                                <option value="rejected" <?php echo $review_status === 'rejected' ? 'selected' : ''; ?>>已拒绝</option>
-                                <option value="auto_approved" <?php echo $review_status === 'auto_approved' ? 'selected' : ''; ?>>自动通过</option>
+                                <option value="pending" <?php echo $review_status === 'pending' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.review.pending')); ?></option>
+                                <option value="approved" <?php echo $review_status === 'approved' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.review.approved')); ?></option>
+                                <option value="rejected" <?php echo $review_status === 'rejected' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.review.rejected')); ?></option>
+                                <option value="auto_approved" <?php echo $review_status === 'auto_approved' ? 'selected' : ''; ?>><?php echo htmlspecialchars(__('articles.review.auto_approved')); ?></option>
                             </select>
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">任务</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.review.filter_task')); ?></label>
                             <select name="task_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="">所有任务</option>
+                                <option value=""><?php echo htmlspecialchars(__('articles.filters.all_tasks')); ?></option>
                                 <?php foreach ($tasks as $task): ?>
                                     <option value="<?php echo $task['id']; ?>" <?php echo $task_id == $task['id'] ? 'selected' : ''; ?>>
                                         <?php echo htmlspecialchars($task['name']); ?>
@@ -409,16 +419,16 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">搜索</label>
+                            <label class="block text-sm font-medium text-gray-700"><?php echo htmlspecialchars(__('articles.review.filter_search')); ?></label>
                             <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>"
-                                   placeholder="搜索标题或内容..."
+                                   placeholder="<?php echo htmlspecialchars(__('articles.filters.search_placeholder')); ?>"
                                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
 
                         <div class="flex items-end">
                             <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                                 <i data-lucide="search" class="w-4 h-4 mr-2"></i>
-                                搜索
+                                <?php echo htmlspecialchars(__('button.search')); ?>
                             </button>
                         </div>
                     </div>
@@ -431,13 +441,13 @@ require_once __DIR__ . '/includes/header.php';
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">
-                        文章列表 
-                        <span class="text-sm text-gray-500">(共 <?php echo $total_articles; ?> 篇)</span>
+                        <?php echo htmlspecialchars(__('articles.review.list_title')); ?> 
+                        <span class="text-sm text-gray-500"><?php echo htmlspecialchars(__('articles.list_total', ['count' => (string) $total_articles])); ?></span>
                     </h3>
                     <?php if ($review_status === 'pending' && !empty($articles)): ?>
                         <button onclick="toggleBatchReview()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                             <i data-lucide="check-square" class="w-4 h-4 mr-1"></i>
-                            批量处理
+                            <?php echo htmlspecialchars(__('articles.review.bulk')); ?>
                         </button>
                     <?php endif; ?>
                 </div>
@@ -446,8 +456,8 @@ require_once __DIR__ . '/includes/header.php';
             <?php if (empty($articles)): ?>
                 <div class="px-6 py-8 text-center">
                     <i data-lucide="inbox" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">暂无文章</h3>
-                    <p class="text-gray-500">没有找到符合条件的文章</p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2"><?php echo htmlspecialchars(__('articles.review.empty_title')); ?></h3>
+                    <p class="text-gray-500"><?php echo htmlspecialchars(__('articles.review.empty_desc')); ?></p>
                 </div>
             <?php else: ?>
                 <!-- 批量审核栏 -->
@@ -458,24 +468,28 @@ require_once __DIR__ . '/includes/header.php';
                             <input type="hidden" name="action" value="batch_review">
                             <div class="space-y-3">
                                 <div class="flex items-center space-x-4">
-                                    <span class="text-sm text-gray-600">已选择 <span id="selected-count">0</span> 篇文章</span>
+                                    <span class="text-sm text-gray-600">
+                                        <?php if (__('articles.review.selected_prefix') !== ''): ?><span><?php echo htmlspecialchars(__('articles.review.selected_prefix')); ?></span><?php endif; ?>
+                                        <span id="selected-count">0</span>
+                                        <span><?php echo htmlspecialchars(__('articles.review.selected_suffix')); ?></span>
+                                    </span>
                                     
                                     <select name="review_status" required class="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
-                                        <option value="">选择审核结果</option>
-                                        <option value="approved">人工通过</option>
-                                        <option value="rejected">拒绝</option>
+                                        <option value=""><?php echo htmlspecialchars(__('articles.review.select_result')); ?></option>
+                                        <option value="approved"><?php echo htmlspecialchars(__('articles.review.approved')); ?></option>
+                                        <option value="rejected"><?php echo htmlspecialchars(__('articles.review.rejected')); ?></option>
                                     </select>
                                     
                                     <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
-                                        应用审核结果
+                                        <?php echo htmlspecialchars(__('articles.review.apply')); ?>
                                     </button>
                                     
                                     <button type="button" onclick="toggleBatchReview()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
-                                        取消
+                                        <?php echo htmlspecialchars(__('button.cancel')); ?>
                                     </button>
                                 </div>
                                 <div>
-                                    <textarea name="review_note" rows="2" placeholder="审核意见（可选）"
+                                    <textarea name="review_note" rows="2" placeholder="<?php echo htmlspecialchars(__('articles.review.note_placeholder')); ?>"
                                               class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
                                 </div>
                             </div>
@@ -502,9 +516,9 @@ require_once __DIR__ . '/includes/header.php';
                                                 </a>
                                             </h4>
                                             <div class="mt-1 flex items-center space-x-4 text-sm text-gray-500">
-                                                <span>任务: <?php echo htmlspecialchars($article['task_name']); ?></span>
-                                                <span>作者: <?php echo htmlspecialchars($article['author_name']); ?></span>
-                                                <span>创建: <?php echo date('Y-m-d H:i', strtotime($article['created_at'])); ?></span>
+                                                <span><?php echo htmlspecialchars(__('articles.review.task_prefix')); ?>: <?php echo htmlspecialchars($article['task_name']); ?></span>
+                                                <span><?php echo htmlspecialchars(__('articles.review.author_prefix')); ?>: <?php echo htmlspecialchars($article['author_name']); ?></span>
+                                                <span><?php echo htmlspecialchars(__('articles.review.created_prefix')); ?>: <?php echo date('Y-m-d H:i', strtotime($article['created_at'])); ?></span>
                                             </div>
                                             <?php if ($article['excerpt']): ?>
                                                 <p class="mt-2 text-sm text-gray-600 line-clamp-2">
@@ -514,7 +528,7 @@ require_once __DIR__ . '/includes/header.php';
                                             <?php if ($article['last_review_note']): ?>
                                                 <div class="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
                                                     <p class="text-xs text-yellow-800">
-                                                        <strong>最近审核意见:</strong> <?php echo htmlspecialchars($article['last_review_note']); ?>
+                                                        <strong><?php echo htmlspecialchars(__('articles.review.last_note')); ?>:</strong> <?php echo htmlspecialchars($article['last_review_note']); ?>
                                                     </p>
                                                 </div>
                                             <?php endif; ?>
@@ -532,15 +546,15 @@ require_once __DIR__ . '/includes/header.php';
                                         <div class="mt-4 flex items-center space-x-2">
                                             <button onclick="quickReview(<?php echo $article['id']; ?>, 'approved')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700">
                                                 <i data-lucide="check" class="w-4 h-4 mr-1"></i>
-                                                人工通过
+                                                <?php echo htmlspecialchars(__('articles.review.approved')); ?>
                                             </button>
                                             <button onclick="quickReview(<?php echo $article['id']; ?>, 'rejected')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
                                                 <i data-lucide="x" class="w-4 h-4 mr-1"></i>
-                                                拒绝
+                                                <?php echo htmlspecialchars(__('articles.review.rejected')); ?>
                                             </button>
                                             <a href="article-view.php?id=<?php echo $article['id']; ?>" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                                 <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                                                查看详情
+                                                <?php echo htmlspecialchars(__('articles.review.view_detail')); ?>
                                             </a>
                                         </div>
                                     <?php endif; ?>
@@ -555,12 +569,12 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="px-6 py-4 border-t border-gray-200">
                         <div class="flex items-center justify-between">
                             <div class="text-sm text-gray-700">
-                                显示第 <?php echo ($page - 1) * $per_page + 1; ?> - <?php echo min($page * $per_page, $total_articles); ?> 条，共 <?php echo $total_articles; ?> 条
+                                <?php echo htmlspecialchars(__('articles.pagination.summary', ['from' => (string) (($page - 1) * $per_page + 1), 'to' => (string) min($page * $per_page, $total_articles), 'total' => (string) $total_articles])); ?>
                             </div>
                             <div class="flex space-x-1">
                                 <?php if ($page > 1): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        上一页
+                                        <?php echo htmlspecialchars(__('articles.pagination.prev')); ?>
                                     </a>
                                 <?php endif; ?>
                                 
@@ -573,7 +587,7 @@ require_once __DIR__ . '/includes/header.php';
                                 
                                 <?php if ($page < $total_pages): ?>
                                     <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
-                                        下一页
+                                        <?php echo htmlspecialchars(__('articles.pagination.next')); ?>
                                     </a>
                                 <?php endif; ?>
                             </div>
@@ -626,18 +640,19 @@ require_once __DIR__ . '/includes/header.php';
             const selected = document.querySelectorAll('.article-checkbox:checked').length;
             if (selected === 0) {
                 e.preventDefault();
-                alert('请选择要审核的文章');
+                alert(REVIEW_I18N.selectArticles);
                 return;
             }
             
             const reviewStatus = this.querySelector('select[name="review_status"]').value;
             if (!reviewStatus) {
                 e.preventDefault();
-                alert('请选择审核结果');
+                alert(REVIEW_I18N.selectResult);
                 return;
             }
             
-            if (!confirm(`确定要${reviewStatus === 'approved' ? '人工通过' : '拒绝'}选中的 ${selected} 篇文章吗？`)) {
+            const actionText = reviewStatus === 'approved' ? REVIEW_I18N.approved : REVIEW_I18N.rejected;
+            if (!confirm(REVIEW_I18N.confirmBatch.replace('__ACTION__', actionText).replace('__COUNT__', selected))) {
                 e.preventDefault();
                 return;
             }
@@ -655,7 +670,7 @@ require_once __DIR__ . '/includes/header.php';
 
         // 快速审核
         function quickReview(articleId, status) {
-            const note = prompt(`请输入审核意见（可选）：`);
+            const note = prompt(REVIEW_I18N.promptNote);
             if (note !== null) { // 用户没有取消
                 const form = document.createElement('form');
                 form.method = 'POST';

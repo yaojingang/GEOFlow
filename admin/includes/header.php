@@ -15,24 +15,24 @@ if (!defined('FEISHU_TREASURE')) {
 $admin_site_name = function_exists('get_setting') ? get_setting('site_title', SITE_NAME) : SITE_NAME;
 $current_admin = function_exists('get_current_admin') ? get_current_admin() : null;
 $is_super_admin = function_exists('is_super_admin') ? is_super_admin() : false;
-$admin_role_label = $is_super_admin ? '超级管理员' : '管理员';
+$admin_role_label = $is_super_admin ? __('header.super_admin') : __('header.admin');
 
 // 获取当前页面名称，用于高亮菜单
 $current_page = basename($_SERVER['PHP_SELF']);
 
 // 定义菜单项和子页面映射
 $menu_items = [
-    'dashboard.php' => ['name' => '首页', 'icon' => 'home'],
-    'tasks.php' => ['name' => '任务管理', 'icon' => 'zap'],
-    'articles.php' => ['name' => '文章管理', 'icon' => 'file-text'],
-    'materials.php' => ['name' => '素材管理', 'icon' => 'folder'],
-    'ai-configurator.php' => ['name' => 'AI配置器', 'icon' => 'cpu'],
-    'site-settings.php' => ['name' => '网站设置', 'icon' => 'settings'],
-    'security-settings.php' => ['name' => '安全管理', 'icon' => 'shield']
+    'dashboard.php' => ['name' => __('nav.dashboard'), 'icon' => 'home'],
+    'tasks.php' => ['name' => __('nav.tasks'), 'icon' => 'zap'],
+    'articles.php' => ['name' => __('nav.articles'), 'icon' => 'file-text'],
+    'materials.php' => ['name' => __('nav.materials'), 'icon' => 'folder'],
+    'ai-configurator.php' => ['name' => __('nav.ai_config'), 'icon' => 'cpu'],
+    'site-settings.php' => ['name' => __('nav.site_settings'), 'icon' => 'settings'],
+    'security-settings.php' => ['name' => __('nav.security'), 'icon' => 'shield']
 ];
 
 if ($is_super_admin) {
-    $menu_items['admin-users.php'] = ['name' => '管理员', 'icon' => 'users'];
+    $menu_items['admin-users.php'] = ['name' => __('nav.admin_users'), 'icon' => 'users'];
 }
 
 // 定义子页面与主菜单的映射关系
@@ -112,11 +112,11 @@ function isActiveMenu($page, $current_page, $sub_page_mapping) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="<?php echo htmlspecialchars(app_html_lang()); ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo isset($page_title) ? $page_title : '管理后台'; ?> - <?php echo htmlspecialchars($admin_site_name); ?></title>
+    <title><?php echo isset($page_title) ? $page_title : __('header.admin'); ?> - <?php echo htmlspecialchars($admin_site_name); ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -128,16 +128,16 @@ function isActiveMenu($page, $current_page, $sub_page_mapping) {
     <!-- 导航栏 -->
     <nav class="bg-white shadow-sm border-b">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center space-x-8">
+            <div class="flex h-16 items-center justify-between gap-6">
+                <div class="flex min-w-0 items-center gap-8">
                     <!-- Logo -->
-                    <a href="<?php echo htmlspecialchars(admin_url('dashboard.php')); ?>" class="text-xl font-semibold text-gray-900"><?php echo htmlspecialchars($admin_site_name); ?></a>
+                    <a href="<?php echo htmlspecialchars(admin_url('dashboard.php')); ?>" class="shrink-0 text-xl font-semibold text-gray-900"><?php echo htmlspecialchars($admin_site_name); ?></a>
                     
                     <!-- 主导航菜单 -->
-                    <nav class="hidden md:flex space-x-8">
+                    <nav class="hidden md:flex items-center gap-6 lg:gap-8">
                         <?php foreach ($menu_items as $page => $item): ?>
                             <a href="<?php echo htmlspecialchars(admin_url($page)); ?>"
-                               class="<?php echo isActiveMenu($page, $current_page, $sub_page_mapping) ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'; ?> transition-colors duration-200">
+                               class="<?php echo isActiveMenu($page, $current_page, $sub_page_mapping) ? 'text-blue-600 font-medium' : 'text-gray-500 hover:text-gray-700'; ?> whitespace-nowrap text-sm transition-colors duration-200">
                                 <?php echo $item['name']; ?>
                             </a>
                         <?php endforeach; ?>
@@ -145,17 +145,31 @@ function isActiveMenu($page, $current_page, $sub_page_mapping) {
                 </div>
                 
                 <!-- 右侧用户信息 -->
-                <div class="flex items-center space-x-4">
+                <div class="flex shrink-0 items-center gap-3">
                     <!-- 通知图标 -->
                     <button class="text-gray-400 hover:text-gray-600 transition-colors duration-200">
                         <i data-lucide="bell" class="w-5 h-5"></i>
                     </button>
                     
                     <!-- 用户信息 -->
-                    <div class="flex items-center space-x-3">
-                        <div class="text-right">
-                            <div class="text-sm text-gray-600">欢迎，<?php echo htmlspecialchars($current_admin['username'] ?? ($_SESSION['admin_username'] ?? 'Admin')); ?></div>
-                            <div class="text-xs text-gray-400"><?php echo htmlspecialchars($admin_role_label); ?></div>
+                    <div class="flex items-center gap-3">
+                        <div class="hidden xl:block text-right leading-tight">
+                            <div class="text-sm text-gray-600"><?php echo htmlspecialchars(__('header.welcome', ['name' => ($current_admin['username'] ?? ($_SESSION['admin_username'] ?? 'Admin'))])); ?></div>
+                            <div class="whitespace-nowrap text-xs text-gray-400"><?php echo htmlspecialchars($admin_role_label); ?></div>
+                        </div>
+                        <div class="hidden md:flex items-center rounded-full border border-gray-200 bg-white p-1 shadow-sm">
+                                <?php foreach (app_supported_locales() as $localeCode => $localeLabel): ?>
+                                    <?php $isActiveLocale = app_locale() === $localeCode; ?>
+                                    <?php $localeShortLabel = $localeCode === 'zh-CN' ? '中文' : 'English'; ?>
+                                    <a
+                                        href="<?php echo htmlspecialchars(app_locale_switch_url($localeCode)); ?>"
+                                        class="<?php echo $isActiveLocale ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'; ?> rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors duration-150"
+                                        title="<?php echo htmlspecialchars(__('header.language_switch_to', ['language' => $localeLabel])); ?>"
+                                        aria-label="<?php echo htmlspecialchars(__('header.language_switch_to', ['language' => $localeLabel])); ?>"
+                                    >
+                                        <?php echo htmlspecialchars($localeShortLabel); ?>
+                                    </a>
+                                <?php endforeach; ?>
                         </div>
                         <div class="relative">
                             <button onclick="toggleUserMenu()" class="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors duration-200">
@@ -169,30 +183,30 @@ function isActiveMenu($page, $current_page, $sub_page_mapping) {
                             <div id="user-menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
                                 <a href="<?php echo htmlspecialchars(admin_url('dashboard.php')); ?>" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                     <i data-lucide="home" class="w-4 h-4 inline mr-2"></i>
-                                    返回首页
+                                    <?php echo __('nav.back_home'); ?>
                                 </a>
                                 <a href="<?php echo htmlspecialchars(admin_url('site-settings.php')); ?>" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                     <i data-lucide="settings" class="w-4 h-4 inline mr-2"></i>
-                                    系统设置
+                                    <?php echo __('nav.system_settings'); ?>
                                 </a>
                                 <?php if ($is_super_admin): ?>
                                     <a href="<?php echo htmlspecialchars(admin_url('admin-users.php')); ?>" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                         <i data-lucide="users" class="w-4 h-4 inline mr-2"></i>
-                                        管理员管理
+                                        <?php echo __('nav.admin_management'); ?>
                                     </a>
                                     <a href="<?php echo htmlspecialchars(admin_url('admin-activity-logs.php')); ?>" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                         <i data-lucide="clipboard-list" class="w-4 h-4 inline mr-2"></i>
-                                        操作日志
+                                        <?php echo __('nav.activity_logs'); ?>
                                     </a>
                                     <a href="<?php echo htmlspecialchars(admin_url('api-tokens.php')); ?>" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                         <i data-lucide="key-round" class="w-4 h-4 inline mr-2"></i>
-                                        API Tokens
+                                        <?php echo __('nav.api_tokens'); ?>
                                     </a>
                                 <?php endif; ?>
                                 <div class="border-t border-gray-100"></div>
                                 <a href="<?php echo htmlspecialchars(admin_url('logout.php')); ?>" class="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100">
                                     <i data-lucide="log-out" class="w-4 h-4 inline mr-2"></i>
-                                    退出登录
+                                    <?php echo __('button.logout'); ?>
                                 </a>
                             </div>
                         </div>
@@ -257,7 +271,7 @@ function isActiveMenu($page, $current_page, $sub_page_mapping) {
                 <div class="flex items-start gap-3">
                     <i data-lucide="triangle-alert" class="w-5 h-5 mt-0.5 text-amber-600"></i>
                     <div>
-                        <div class="font-semibold">当前页面属于历史/兼容页面</div>
+                        <div class="font-semibold"><?php echo __('legacy.title'); ?></div>
                         <div class="text-sm mt-1"><?php echo htmlspecialchars($legacy_pages[$current_page]); ?></div>
                     </div>
                 </div>
