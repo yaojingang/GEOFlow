@@ -14,11 +14,11 @@ Released under the Apache License 2.0.
 ## Предпросмотр интерфейса
 
 <p>
-  <img src="docs/images/screenshots/home.png" alt="Предпросмотр главной страницы GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/home.png" alt="Предпросмотр панели управления GEOFlow" width="48%" />
   <img src="docs/images/screenshots/task-management.png" alt="Предпросмотр управления задачами GEOFlow" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/article-management.png" alt="Предпросмотр управления статьями GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/article-management.png" alt="Предпросмотр управления материалами GEOFlow" width="48%" />
   <img src="docs/images/screenshots/ai-config.png" alt="Предпросмотр конфигуратора ИИ GEOFlow" width="48%" />
 </p>
 

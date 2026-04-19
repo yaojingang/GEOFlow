@@ -14,11 +14,11 @@ Released under the Apache License 2.0.
 ## Vista previa de la interfaz
 
 <p>
-  <img src="docs/images/screenshots/home.png" alt="Vista previa de la página principal de GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/home.png" alt="Vista previa del panel de GEOFlow" width="48%" />
   <img src="docs/images/screenshots/task-management.png" alt="Vista previa de la gestión de tareas de GEOFlow" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/article-management.png" alt="Vista previa de la gestión de artículos de GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/article-management.png" alt="Vista previa de la gestión de materiales de GEOFlow" width="48%" />
   <img src="docs/images/screenshots/ai-config.png" alt="Vista previa del configurador de IA de GEOFlow" width="48%" />
 </p>
 

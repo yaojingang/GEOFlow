@@ -14,11 +14,11 @@ Released under the Apache License 2.0.
 ## 画面プレビュー
 
 <p>
-  <img src="docs/images/screenshots/home.png" alt="GEOFlow ホーム画面プレビュー" width="48%" />
+  <img src="docs/images/screenshots/home.png" alt="GEOFlow ダッシュボード画面プレビュー" width="48%" />
   <img src="docs/images/screenshots/task-management.png" alt="GEOFlow タスク管理プレビュー" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/article-management.png" alt="GEOFlow 記事管理プレビュー" width="48%" />
+  <img src="docs/images/screenshots/article-management.png" alt="GEOFlow 素材管理プレビュー" width="48%" />
   <img src="docs/images/screenshots/ai-config.png" alt="GEOFlow AI 設定プレビュー" width="48%" />
 </p>
 

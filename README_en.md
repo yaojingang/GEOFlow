@@ -31,11 +31,11 @@ Released under the Apache License 2.0.
 ## 🖼 UI Preview
 
 <p>
-  <img src="docs/images/screenshots/home.png" alt="GEOFlow Home Preview" width="48%" />
+  <img src="docs/images/screenshots/home.png" alt="GEOFlow Dashboard Preview" width="48%" />
   <img src="docs/images/screenshots/task-management.png" alt="GEOFlow Task Management Preview" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/article-management.png" alt="GEOFlow Article Management Preview" width="48%" />
+  <img src="docs/images/screenshots/article-management.png" alt="GEOFlow Materials Preview" width="48%" />
   <img src="docs/images/screenshots/ai-config.png" alt="GEOFlow AI Configurator Preview" width="48%" />
 </p>
 
