@@ -47,6 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($admin && ($admin['status'] ?? 'active') === 'active' && password_verify($password, $admin['password'])) {
             sync_admin_session($admin);
+            reset_admin_welcome_auto_open_state();
 
             $updateStmt = $db->prepare("
                 UPDATE admins
