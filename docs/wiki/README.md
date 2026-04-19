@@ -17,6 +17,10 @@
 - [GEOFlow Methodology](en/GEOFlow-Methodology.md)
 - [使用边界与内容底线](zh/Principles-and-Content-Boundaries.md)
 - [Principles and Content Boundaries](en/Principles-and-Content-Boundaries.md)
+- [快速上手](zh/Getting-Started.md)
+- [Getting Started](en/Getting-Started.md)
+- [常见问题](zh/FAQ.md)
+- [FAQ](en/FAQ.md)
 
 使用建议：
 

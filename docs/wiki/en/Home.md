@@ -25,6 +25,8 @@ Recommended reading order:
 8. [Skill / CLI / API Ecosystem](Skill-CLI-API-Ecosystem.md)
 9. [Roadmap](Roadmap.md)
 10. [Author and Project](Author-and-Project.md)
+11. [Getting Started](Getting-Started.md)
+12. [FAQ](FAQ.md)
 
 If there is one line that best describes GEOFlow:
 
