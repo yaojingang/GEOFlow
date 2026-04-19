@@ -917,6 +917,7 @@ return [
     'knowledge_detail.vector_notice_pgvector_disabled' => 'pgvector is not enabled in the current database, so the knowledge base falls back to lightweight retrieval and no vectors are stored.',
     'knowledge_detail.vector_notice_no_model' => 'No usable embedding model is configured yet, so the knowledge base can only create chunks and fall back to lightweight retrieval.',
     'knowledge_detail.vector_notice_configure_link' => 'Configure an embedding model',
+    'knowledge_detail.vector_config_modal_title' => 'Configure an Embedding Model',
     'knowledge_detail.vector_notice_fallback' => 'This knowledge base was chunked, but vector storage fell back to lightweight retrieval because the embedding model “{model}” did not produce usable vectors.',
     'knowledge_detail.vector_config_prompt' => "No usable embedding model is configured yet.\n\nTo vectorize this knowledge base and enable the RAG retrieval path, first configure an embedding-capable model and set it as the default embedding model on the AI Models page.\n\nA stable dedicated embedding model is recommended before you return and re-save or re-upload the knowledge base.",
     'title_libraries.page_title' => 'Title Library Management',

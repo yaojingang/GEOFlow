@@ -527,6 +527,28 @@ require_once __DIR__ . '/includes/header.php';
         </div>
     </div>
 
+    <div id="embedding-config-modal" class="hidden fixed inset-0 z-50">
+        <div class="absolute inset-0 bg-slate-900/45"></div>
+        <div class="relative flex min-h-screen items-center justify-center p-4">
+            <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200">
+                <div class="border-b border-slate-100 px-6 py-5">
+                    <h3 class="text-lg font-semibold text-slate-900"><?php echo __('knowledge_detail.vector_config_modal_title'); ?></h3>
+                </div>
+                <div class="px-6 py-5">
+                    <div class="text-sm leading-7 text-slate-600 whitespace-pre-line"><?php echo htmlspecialchars(__('knowledge_detail.vector_config_prompt')); ?></div>
+                </div>
+                <div class="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+                    <button type="button" onclick="hideEmbeddingConfigModal()" class="inline-flex items-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        <?php echo __('button.cancel'); ?>
+                    </button>
+                    <button type="button" onclick="goToEmbeddingConfig()" class="inline-flex items-center rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600">
+                        <?php echo __('knowledge_detail.vector_notice_configure_link'); ?>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // 初始化Lucide图标
         document.addEventListener('DOMContentLoaded', function() {
@@ -581,7 +603,26 @@ require_once __DIR__ . '/includes/header.php';
         }
 
         function redirectToEmbeddingConfig() {
-            alert(<?php echo json_encode(__('knowledge_detail.vector_config_prompt'), JSON_UNESCAPED_UNICODE); ?>);
+            showEmbeddingConfigModal();
+        }
+
+        function showEmbeddingConfigModal() {
+            const modal = document.getElementById('embedding-config-modal');
+            if (!modal) {
+                window.location.href = 'ai-models.php';
+                return;
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function hideEmbeddingConfigModal() {
+            const modal = document.getElementById('embedding-config-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function goToEmbeddingConfig() {
             window.location.href = 'ai-models.php';
         }
 
@@ -589,12 +630,16 @@ require_once __DIR__ . '/includes/header.php';
         window.onclick = function(event) {
             const createModal = document.getElementById('create-modal');
             const uploadModal = document.getElementById('upload-modal');
+            const embeddingConfigModal = document.getElementById('embedding-config-modal');
             
             if (event.target === createModal) {
                 hideCreateModal();
             }
             if (event.target === uploadModal) {
                 hideUploadModal();
+            }
+            if (event.target === embeddingConfigModal || (embeddingConfigModal && event.target === embeddingConfigModal.firstElementChild)) {
+                hideEmbeddingConfigModal();
             }
         }
     </script>

@@ -917,6 +917,7 @@ return [
     'knowledge_detail.vector_notice_pgvector_disabled' => '当前数据库未启用 pgvector，知识库已回退为轻量检索模式，因此不会写入向量。',
     'knowledge_detail.vector_notice_no_model' => '当前还没有配置可用的 embedding 模型，知识库只能切片并回退到轻量检索。',
     'knowledge_detail.vector_notice_configure_link' => '去配置 embedding 模型',
+    'knowledge_detail.vector_config_modal_title' => '配置 embedding 模型',
     'knowledge_detail.vector_notice_fallback' => '当前知识库已切片，但调用 embedding 模型“{model}”时未成功写入向量，因此暂时回退为轻量检索。',
     'knowledge_detail.vector_config_prompt' => "当前还没有配置可用的 embedding 模型。\n\n要让知识库完成向量化并进入 RAG 检索链路，需要先配置一个支持 embedding 的模型，并在 AI 模型管理页把它设为默认 embedding 模型。\n\n建议优先选择稳定的 embedding 专用模型，再返回知识库重新保存或重新上传内容。",
     'title_libraries.page_title' => '标题库管理',
