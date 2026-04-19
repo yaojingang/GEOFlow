@@ -30,6 +30,7 @@ The public repository only retains documentation that is truly useful for extern
 - [System Documentation](System_Documentation_en.md)
 - [AI Development Guide](AI_PROJECT_GUIDE_en.md)
 - [Project Structure](project/STRUCTURE_en.md)
+- [Wiki source (Chinese + English)](wiki/README.md)
 
 ### API / CLI / Skill
 - [API / CLI Phase 1 Implementation Plan](project/API_CLI_PHASE1_PLAN_en.md)

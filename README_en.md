@@ -406,6 +406,7 @@ Detailed documentation is available in the [`docs/`](docs/) directory:
 - [AI Development Guide](docs/AI_PROJECT_GUIDE_en.md) - Core classes and architecture
 - [Local Environment Setup](docs/Local_Environment_Setup_Guide_en.md) - Development environment setup
 - [Deployment Docs](docs/deployment/DEPLOYMENT_en.md) - Server deployment steps
+- [Wiki Source (Chinese + English)](docs/wiki/README.md) - Bilingual wiki drafts ready for GitHub Wiki sync
 - [Companion Skill Repository](https://github.com/yaojingang/yao-geo-skills) - `geoflow-cli-ops`
 
 ---

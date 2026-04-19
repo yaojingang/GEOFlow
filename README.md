@@ -210,6 +210,7 @@ open http://localhost:8080/geo_admin/
 - [Español README](README_es.md)
 - [Русский README](README_ru.md)
 - [文档中心](docs/README.md)
+- [Wiki 源稿（中英双语）](docs/wiki/README.md)
 
 ---
 

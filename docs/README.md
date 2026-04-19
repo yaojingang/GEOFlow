@@ -30,6 +30,7 @@
 - [系统说明文档](系统说明文档.md)
 - [AI 开发指南](AI_PROJECT_GUIDE.md)
 - [项目结构说明](project/STRUCTURE.md)
+- [Wiki 源稿（中英双语）](wiki/README.md)
 
 ### API / CLI / Skill
 - [API / CLI 第一阶段实施方案](project/API_CLI_PHASE1_PLAN.md)
