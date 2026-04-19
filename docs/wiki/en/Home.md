@@ -27,6 +27,9 @@ Recommended reading order:
 10. [Author and Project](Author-and-Project.md)
 11. [Getting Started](Getting-Started.md)
 12. [FAQ](FAQ.md)
+13. [Deployment Checklist](Deployment-Checklist.md)
+14. [Theme and Template Workflow](Theme-and-Template-Workflow.md)
+15. [Model Setup Guide](Model-Setup-Guide.md)
 
 If there is one line that best describes GEOFlow:
 

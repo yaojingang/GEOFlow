@@ -21,6 +21,12 @@
 - [Getting Started](en/Getting-Started.md)
 - [常见问题](zh/FAQ.md)
 - [FAQ](en/FAQ.md)
+- [部署检查清单](zh/Deployment-Checklist.md)
+- [Deployment Checklist](en/Deployment-Checklist.md)
+- [模板与主题工作流](zh/Theme-and-Template-Workflow.md)
+- [Theme and Template Workflow](en/Theme-and-Template-Workflow.md)
+- [模型接入指南](zh/Model-Setup-Guide.md)
+- [Model Setup Guide](en/Model-Setup-Guide.md)
 
 使用建议：
 
