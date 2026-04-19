@@ -302,25 +302,6 @@ const REVIEW_I18N = <?php echo json_encode([
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 </script>
 
-        <!-- 页面标题 -->
-        <div class="mb-8">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-4">
-                    <a href="articles.php" class="text-gray-400 hover:text-gray-600">
-                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                    </a>
-                    <div>
-                        <h1 class="text-2xl font-bold text-gray-900"><?php echo htmlspecialchars(__('articles.review.title')); ?></h1>
-                        <p class="mt-1 text-sm text-gray-600"><?php echo htmlspecialchars(__('articles.review.subtitle_flow')); ?></p>
-                    </div>
-                </div>
-                <a href="articles.php" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
-                    <i data-lucide="arrow-left" class="w-4 h-4 mr-1"></i>
-                    <?php echo htmlspecialchars(__('articles.review.back')); ?>
-                </a>
-            </div>
-        </div>
-
         <!-- 统计卡片 -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow rounded-lg">
