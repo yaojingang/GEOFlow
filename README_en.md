@@ -31,12 +31,12 @@ Released under the Apache License 2.0.
 ## 🖼 UI Preview
 
 <p>
-  <img src="docs/images/screenshots/home.png" alt="GEOFlow Dashboard Preview" width="48%" />
-  <img src="docs/images/screenshots/task-management.png" alt="GEOFlow Task Management Preview" width="48%" />
+  <img src="docs/images/screenshots/dashboard-en.png" alt="GEOFlow Dashboard Preview" width="48%" />
+  <img src="docs/images/screenshots/tasks-en.png" alt="GEOFlow Task Management Preview" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/article-management.png" alt="GEOFlow Materials Preview" width="48%" />
-  <img src="docs/images/screenshots/ai-config.png" alt="GEOFlow AI Configurator Preview" width="48%" />
+  <img src="docs/images/screenshots/materials-en.png" alt="GEOFlow Materials Preview" width="48%" />
+  <img src="docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI Configurator Preview" width="48%" />
 </p>
 
 These four pages cover the main workflows: site homepage, task scheduling, article pipeline, and model configuration. Additional admin pages are documented in `docs/`.

@@ -14,12 +14,12 @@ Released under the Apache License 2.0.
 ## 画面プレビュー
 
 <p>
-  <img src="docs/images/screenshots/home.png" alt="GEOFlow ダッシュボード画面プレビュー" width="48%" />
-  <img src="docs/images/screenshots/task-management.png" alt="GEOFlow タスク管理プレビュー" width="48%" />
+  <img src="docs/images/screenshots/dashboard-en.png" alt="GEOFlow ダッシュボード画面プレビュー" width="48%" />
+  <img src="docs/images/screenshots/tasks-en.png" alt="GEOFlow タスク管理プレビュー" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/article-management.png" alt="GEOFlow 素材管理プレビュー" width="48%" />
-  <img src="docs/images/screenshots/ai-config.png" alt="GEOFlow AI 設定プレビュー" width="48%" />
+  <img src="docs/images/screenshots/materials-en.png" alt="GEOFlow 素材管理プレビュー" width="48%" />
+  <img src="docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI 設定プレビュー" width="48%" />
 </p>
 
 これら 4 画面で、ホーム、タスク実行、記事ワークフロー、モデル設定の主要導線を確認できます。その他の管理画面は `docs/` にまとめています。

@@ -14,12 +14,12 @@ Released under the Apache License 2.0.
 ## Предпросмотр интерфейса
 
 <p>
-  <img src="docs/images/screenshots/home.png" alt="Предпросмотр панели управления GEOFlow" width="48%" />
-  <img src="docs/images/screenshots/task-management.png" alt="Предпросмотр управления задачами GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/dashboard-en.png" alt="Предпросмотр панели управления GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/tasks-en.png" alt="Предпросмотр управления задачами GEOFlow" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/article-management.png" alt="Предпросмотр управления материалами GEOFlow" width="48%" />
-  <img src="docs/images/screenshots/ai-config.png" alt="Предпросмотр конфигуратора ИИ GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/materials-en.png" alt="Предпросмотр управления материалами GEOFlow" width="48%" />
+  <img src="docs/images/screenshots/ai-config-en.png" alt="Предпросмотр конфигуратора ИИ GEOFlow" width="48%" />
 </p>
 
 Эти четыре экрана показывают главную страницу, управление задачами, workflow статей и настройку моделей. Остальные страницы админки вынесены в `docs/`.
