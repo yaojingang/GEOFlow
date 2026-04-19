@@ -13,6 +13,7 @@ session_start();
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/database_admin.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/embedding-service.php';
 require_once __DIR__ . '/includes/knowledge-base-helpers.php';
 require_once __DIR__ . '/includes/material-library-helpers.php';
 
@@ -24,6 +25,7 @@ session_write_close();
 
 $message = '';
 $error = '';
+$default_embedding_model = null;
 
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -206,6 +208,7 @@ $stats = [
     'markdown_count' => $db->query("SELECT COUNT(*) as count FROM knowledge_bases WHERE file_type = 'markdown'")->fetch()['count'],
     'word_count' => $db->query("SELECT COUNT(*) as count FROM knowledge_bases WHERE file_type = 'word'")->fetch()['count']
 ];
+$default_embedding_model = embedding_service_get_default_model($db);
 
 // 设置页面信息
 $page_title = __('knowledge_bases.page_title');
@@ -371,6 +374,12 @@ require_once __DIR__ . '/includes/header.php';
                                 </div>
                                 
                                 <div class="flex items-center space-x-2">
+                                    <?php if (!$default_embedding_model): ?>
+                                        <button type="button" onclick="redirectToEmbeddingConfig()" class="inline-flex items-center px-3 py-1.5 border border-amber-200 text-xs font-medium rounded text-amber-800 bg-amber-50 hover:bg-amber-100">
+                                            <i data-lucide="cpu" class="w-4 h-4 mr-1"></i>
+                                            <?php echo __('knowledge_detail.vector_notice_configure_link'); ?>
+                                        </button>
+                                    <?php endif; ?>
                                     <a href="knowledge-base-detail.php?id=<?php echo $knowledge['id']; ?>#chunk-preview" class="inline-flex items-center px-3 py-1.5 border border-blue-200 text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100">
                                         <i data-lucide="rows-3" class="w-4 h-4 mr-1"></i>
                                         <?php echo __('button.chunks'); ?>
@@ -569,6 +578,11 @@ require_once __DIR__ . '/includes/header.php';
                 document.body.appendChild(form);
                 form.submit();
             }
+        }
+
+        function redirectToEmbeddingConfig() {
+            alert(<?php echo json_encode(__('knowledge_detail.vector_config_prompt'), JSON_UNESCAPED_UNICODE); ?>);
+            window.location.href = 'ai-models.php';
         }
 
         // 点击模态框外部关闭

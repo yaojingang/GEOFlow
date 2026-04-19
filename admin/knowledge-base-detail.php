@@ -94,6 +94,8 @@ $related_tasks = [];
 $knowledge_chunk_count = 0;
 $vectorized_chunk_count = 0;
 $chunk_preview_rows = [];
+$default_embedding_model = null;
+$pgvector_enabled = false;
 try {
     $stmt = $db->prepare("
         SELECT id, name, status, created_at 
@@ -134,6 +136,9 @@ try {
     ");
     $chunkPreviewStmt->execute([$knowledge_id]);
     $chunk_preview_rows = $chunkPreviewStmt->fetchAll();
+
+    $default_embedding_model = embedding_service_get_default_model($db);
+    $pgvector_enabled = knowledge_retrieval_pgvector_storage_available($db);
 } catch (Exception $e) {
     // 如果knowledge_base_id字段不存在，忽略错误
 }
@@ -345,6 +350,27 @@ require_once __DIR__ . '/includes/header.php';
         </div>
     </div>
 
+    <?php if ($knowledge_chunk_count > 0 && $vectorized_chunk_count === 0): ?>
+        <div class="px-6 py-4 border-b border-gray-200">
+            <?php if (!$pgvector_enabled): ?>
+                <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    <?php echo __('knowledge_detail.vector_notice_pgvector_disabled'); ?>
+                </div>
+            <?php elseif (!$default_embedding_model): ?>
+                <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    <?php echo __('knowledge_detail.vector_notice_no_model'); ?>
+                    <button type="button" onclick="redirectToEmbeddingConfig()" class="ml-2 font-medium text-amber-900 underline hover:text-amber-950">
+                        <?php echo __('knowledge_detail.vector_notice_configure_link'); ?>
+                    </button>
+                </div>
+            <?php else: ?>
+                <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    <?php echo __('knowledge_detail.vector_notice_fallback', ['model' => (string) ($default_embedding_model['name'] ?? __('status.unknown'))]); ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
     <?php if (empty($chunk_preview_rows)): ?>
         <div class="px-6 py-8 text-center text-sm text-gray-500">
             <?php echo __('knowledge_detail.chunk_preview_empty'); ?>
@@ -399,6 +425,11 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <script>
+function redirectToEmbeddingConfig() {
+    alert(<?php echo json_encode(__('knowledge_detail.vector_config_prompt'), JSON_UNESCAPED_UNICODE); ?>);
+    window.location.href = 'ai-models.php';
+}
+
 // 实时字数统计
 document.getElementById('content').addEventListener('input', function() {
     const content = this.value;
