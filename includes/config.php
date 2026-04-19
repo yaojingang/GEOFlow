@@ -208,6 +208,25 @@ function apply_curl_network_defaults($ch) {
     curl_setopt($ch, CURLOPT_NOPROXY, '*');
 }
 
+function apply_ai_curl_request_defaults($ch, int $timeoutSeconds = 180, int $connectTimeoutSeconds = 10): void {
+    if (!is_resource($ch) && !($ch instanceof CurlHandle)) {
+        return;
+    }
+
+    apply_curl_network_defaults($ch);
+
+    curl_setopt($ch, CURLOPT_TIMEOUT, max(30, $timeoutSeconds));
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, max(5, min($connectTimeoutSeconds, $timeoutSeconds)));
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'GEO-Content-System/1.0');
+    curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
+
+    // Disable "low speed" aborts so reasoning models can stay silent while thinking.
+    curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, 0);
+    curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 0);
+}
+
 function migrate_ai_model_api_keys($database) {
     if (!$database instanceof PDO) {
         return 0;

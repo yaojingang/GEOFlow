@@ -210,7 +210,7 @@ try {
             ];
             
             $ch = curl_init();
-            apply_curl_network_defaults($ch);
+            apply_ai_curl_request_defaults($ch, 180, 10);
             curl_setopt_array($ch, [
                 CURLOPT_URL => ai_chat_endpoint_from_url($ai_model['api_url']),
                 CURLOPT_RETURNTRANSFER => true,
@@ -219,12 +219,7 @@ try {
                 CURLOPT_HTTPHEADER => [
                     'Content-Type: application/json',
                     'Authorization: Bearer ' . $ai_model['api_key']
-                ],
-                CURLOPT_TIMEOUT => 30,
-                CURLOPT_CONNECTTIMEOUT => 10,
-                CURLOPT_FOLLOWLOCATION => false,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_USERAGENT => 'GEO-Content-System/1.0'
+                ]
             ]);
             
             $response = curl_exec($ch);
