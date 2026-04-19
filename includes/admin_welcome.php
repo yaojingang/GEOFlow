@@ -212,7 +212,7 @@ function render_admin_welcome_modal(?array $admin): void {
     $payload = [
         'copy' => $copy,
         'state' => [
-            'shouldAutoOpen' => empty($admin['welcome_dismissed_at']),
+            'shouldAutoOpen' => current_admin_welcome_auto_open(),
             'dismissUrl' => admin_url('welcome-dismiss.php'),
             'csrfToken' => generate_csrf_token(),
             'links' => [

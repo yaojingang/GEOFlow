@@ -44,6 +44,38 @@ function is_admin_logged_in() {
     return !empty($_SESSION['admin_logged_in']) && !empty($_SESSION['admin_id']);
 }
 
+function admin_welcome_auto_shown_session_key(): string {
+    return 'admin_welcome_auto_shown';
+}
+
+function admin_welcome_auto_open_request_key(): string {
+    return '__admin_welcome_should_auto_open';
+}
+
+function reset_admin_welcome_auto_open_state(): void {
+    unset($_SESSION[admin_welcome_auto_shown_session_key()]);
+    unset($GLOBALS[admin_welcome_auto_open_request_key()]);
+}
+
+function prepare_admin_welcome_auto_open(?array $admin): void {
+    if (!$admin || !empty($admin['welcome_dismissed_at'])) {
+        $GLOBALS[admin_welcome_auto_open_request_key()] = false;
+        return;
+    }
+
+    $sessionKey = admin_welcome_auto_shown_session_key();
+    $shouldAutoOpen = empty($_SESSION[$sessionKey]);
+    if ($shouldAutoOpen) {
+        $_SESSION[$sessionKey] = 1;
+    }
+
+    $GLOBALS[admin_welcome_auto_open_request_key()] = $shouldAutoOpen;
+}
+
+function current_admin_welcome_auto_open(): bool {
+    return !empty($GLOBALS[admin_welcome_auto_open_request_key()]);
+}
+
 function get_current_admin(bool $forceRefresh = false): ?array {
     static $cachedAdmin = null;
     static $cachedAdminId = null;
@@ -262,6 +294,7 @@ function require_admin_login() {
         admin_redirect();
     }
 
+    prepare_admin_welcome_auto_open($admin);
     log_admin_request_if_needed();
 }
 
@@ -893,7 +926,7 @@ function render_markdown_inline($text) {
                 return '';
             }
 
-            return '<figure class="my-6"><img src="' . $src . '" alt="' . $alt . '" class="w-full h-auto rounded-xl border border-gray-200" loading="lazy"><figcaption class="mt-2 text-sm text-gray-500 text-center">' . $alt . '</figcaption></figure>';
+            return '<figure class="my-6"><img src="' . $src . '" alt="' . $alt . '" class="w-full h-auto rounded-xl border border-gray-200" loading="lazy"></figure>';
         },
         $text
     );
