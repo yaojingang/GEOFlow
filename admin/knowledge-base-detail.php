@@ -92,6 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 // 获取使用此知识库的任务
 $related_tasks = [];
 $knowledge_chunk_count = 0;
+$vectorized_chunk_count = 0;
+$chunk_preview_rows = [];
 try {
     $stmt = $db->prepare("
         SELECT id, name, status, created_at 
@@ -105,6 +107,33 @@ try {
     $chunkStmt = $db->prepare("SELECT COUNT(*) FROM knowledge_chunks WHERE knowledge_base_id = ?");
     $chunkStmt->execute([$knowledge_id]);
     $knowledge_chunk_count = (int) $chunkStmt->fetchColumn();
+
+    $vectorizedStmt = $db->prepare("
+        SELECT COUNT(*)
+        FROM knowledge_chunks
+        WHERE knowledge_base_id = ?
+          AND embedding_model_id IS NOT NULL
+          AND embedding_dimensions > 0
+    ");
+    $vectorizedStmt->execute([$knowledge_id]);
+    $vectorized_chunk_count = (int) $vectorizedStmt->fetchColumn();
+
+    $chunkPreviewStmt = $db->prepare("
+        SELECT
+            chunk_index,
+            token_count,
+            CHAR_LENGTH(content) AS content_length,
+            embedding_model_id,
+            embedding_dimensions,
+            embedding_provider,
+            LEFT(REPLACE(REPLACE(content, CHR(10), ' '), CHR(13), ' '), 180) AS content_preview
+        FROM knowledge_chunks
+        WHERE knowledge_base_id = ?
+        ORDER BY chunk_index ASC
+        LIMIT 20
+    ");
+    $chunkPreviewStmt->execute([$knowledge_id]);
+    $chunk_preview_rows = $chunkPreviewStmt->fetchAll();
 } catch (Exception $e) {
     // 如果knowledge_base_id字段不存在，忽略错误
 }
@@ -302,6 +331,71 @@ require_once __DIR__ . '/includes/header.php';
             </div>
         <?php endif; ?>
     </div>
+</div>
+
+<div id="chunk-preview" class="mt-6 bg-white shadow rounded-lg overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-4">
+        <div>
+            <h3 class="text-lg font-medium text-gray-900"><?php echo __('knowledge_detail.chunk_preview_title'); ?></h3>
+            <p class="mt-1 text-sm text-gray-500"><?php echo __('knowledge_detail.chunk_preview_desc'); ?></p>
+        </div>
+        <div class="text-right text-sm text-gray-500 whitespace-nowrap">
+            <div><?php echo __('knowledge_detail.chunk_count'); ?>: <span class="font-medium text-gray-900"><?php echo number_format($knowledge_chunk_count); ?></span></div>
+            <div><?php echo __('knowledge_detail.vectorized_count'); ?>: <span class="font-medium text-gray-900"><?php echo number_format($vectorized_chunk_count); ?></span></div>
+        </div>
+    </div>
+
+    <?php if (empty($chunk_preview_rows)): ?>
+        <div class="px-6 py-8 text-center text-sm text-gray-500">
+            <?php echo __('knowledge_detail.chunk_preview_empty'); ?>
+        </div>
+    <?php else: ?>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('knowledge_detail.chunk_index'); ?></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('knowledge_detail.chunk_status'); ?></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('knowledge_detail.chunk_length'); ?></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('knowledge_detail.chunk_tokens'); ?></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('knowledge_detail.chunk_embedding'); ?></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"><?php echo __('knowledge_detail.chunk_preview_column'); ?></th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <?php foreach ($chunk_preview_rows as $chunk_row): ?>
+                        <?php $isVectorized = !empty($chunk_row['embedding_model_id']) && (int) $chunk_row['embedding_dimensions'] > 0; ?>
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#<?php echo (int) $chunk_row['chunk_index']; ?></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium <?php echo $isVectorized ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'; ?>">
+                                    <?php echo $isVectorized ? __('knowledge_detail.chunk_status_vectorized') : __('knowledge_detail.chunk_status_fallback'); ?>
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?php echo __('knowledge_bases.text_unit', ['count' => number_format((int) $chunk_row['content_length'])]); ?></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?php echo number_format((int) $chunk_row['token_count']); ?></td>
+                            <td class="px-6 py-4 text-sm text-gray-700">
+                                <?php if ($isVectorized): ?>
+                                    <div><?php echo htmlspecialchars((string) ($chunk_row['embedding_provider'] ?: __('status.unknown'))); ?></div>
+                                    <div class="text-xs text-gray-500">
+                                        <?php echo __('knowledge_detail.chunk_embedding_meta', [
+                                            'model_id' => (int) $chunk_row['embedding_model_id'],
+                                            'dimensions' => (int) $chunk_row['embedding_dimensions']
+                                        ]); ?>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="text-xs text-gray-500"><?php echo __('knowledge_detail.chunk_embedding_none'); ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-700 max-w-2xl">
+                                <div class="leading-6 whitespace-normal break-words"><?php echo htmlspecialchars(trim((string) $chunk_row['content_preview'])); ?></div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
 </div>
 
 <script>

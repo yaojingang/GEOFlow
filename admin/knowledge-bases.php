@@ -371,6 +371,10 @@ require_once __DIR__ . '/includes/header.php';
                                 </div>
                                 
                                 <div class="flex items-center space-x-2">
+                                    <a href="knowledge-base-detail.php?id=<?php echo $knowledge['id']; ?>#chunk-preview" class="inline-flex items-center px-3 py-1.5 border border-blue-200 text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100">
+                                        <i data-lucide="rows-3" class="w-4 h-4 mr-1"></i>
+                                        <?php echo __('button.chunks'); ?>
+                                    </a>
                                     <a href="knowledge-base-detail.php?id=<?php echo $knowledge['id']; ?>" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                         <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
                                         <?php echo __('button.view'); ?>
