@@ -211,7 +211,7 @@ try {
             error_log("开始AI API调用 - 模型: {$ai_model['model_id']}, 标题数量: {$title_count}");
             
             $ch = curl_init();
-            apply_curl_network_defaults($ch);
+            apply_ai_curl_request_defaults($ch, 180, 10);
             curl_setopt_array($ch, [
                 CURLOPT_URL => ai_chat_endpoint_from_url($ai_model['api_url']),
                 CURLOPT_RETURNTRANSFER => true,
@@ -220,15 +220,7 @@ try {
                 CURLOPT_HTTPHEADER => [
                     'Content-Type: application/json',
                     'Authorization: Bearer ' . $ai_model['api_key']
-                ],
-                CURLOPT_TIMEOUT => 60,            // 减少到1分钟
-                CURLOPT_CONNECTTIMEOUT => 10,     // 连接超时10秒
-                CURLOPT_FOLLOWLOCATION => false,  // 不跟随重定向
-                CURLOPT_SSL_VERIFYPEER => false,  // 跳过SSL验证（开发环境）
-                CURLOPT_USERAGENT => 'GEO-Content-System/1.0',
-                CURLOPT_NOSIGNAL => 1,            // 避免信号中断
-                CURLOPT_LOW_SPEED_LIMIT => 1,     // 最低速度1字节/秒
-                CURLOPT_LOW_SPEED_TIME => 30      // 30秒内速度低于限制则超时
+                ]
             ]);
             
             $response = curl_exec($ch);

@@ -522,7 +522,7 @@ class AIEngine {
         ];
         
         $ch = curl_init();
-        apply_curl_network_defaults($ch);
+        apply_ai_curl_request_defaults($ch, self::AI_REQUEST_TIMEOUT_SECONDS, 10);
         curl_setopt_array($ch, [
             CURLOPT_URL => $api_url,
             CURLOPT_RETURNTRANSFER => true,
@@ -532,8 +532,6 @@ class AIEngine {
                 'Content-Type: application/json',
                 'Authorization: Bearer ' . $task['api_key']
             ],
-            CURLOPT_TIMEOUT => self::AI_REQUEST_TIMEOUT_SECONDS,
-            CURLOPT_SSL_VERIFYPEER => false
         ]);
         
         $response = curl_exec($ch);
