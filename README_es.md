@@ -32,6 +32,46 @@ Estas cuatro pantallas cubren la página principal, la programación de tareas, 
 - Expone API y CLI para automatización
 - Publica páginas de artículos con metadatos SEO
 
+## 🎯 Escenarios de uso y beneficios esperados
+
+GEOFlow encaja bien en estos escenarios reales:
+
+- **Sitio GEO independiente**  
+  Para operar un sitio centrado en FAQs, contenido de producto, casos y conocimiento de marca. El objetivo es mejorar la visibilidad en búsqueda por IA y la eficiencia operativa, no producir páginas de bajo valor.
+- **Subcanal GEO dentro de un sitio oficial**  
+  Para añadir un canal de noticias, conocimiento o soluciones dentro de un sitio ya existente. El objetivo es estructurar mejor el contenido y facilitar su mantenimiento.
+- **Sitio independiente de fuente GEO**  
+  Para acumular guías, rankings, análisis y artículos alrededor de un tema o sector concreto. El objetivo es construir activos de contenido confiables, no contaminar internet con ruido.
+- **Sistema interno de gestión de contenido GEO**  
+  Para usar GEOFlow como backend interno de modelos, materiales, prompts, conocimiento, revisión y publicación. El objetivo es aumentar la eficiencia del equipo.
+- **Despliegue GEO multi-sitio o multi-canal**  
+  Para gestionar varios sitios, canales o temas con un mismo patrón operativo. El objetivo es estandarizar la producción y distribución de contenido.
+
+El valor del sistema debe basarse en una **base de conocimiento real, de calidad y bien mantenida**.  
+GEOFlow no está pensado para fabricar información falsa ni para saturar la web. Su propósito es mejorar la eficiencia del marketing con IA y de la operación GEO mediante contenido confiable.
+
+## 🧭 Formas recomendadas de despliegue y uso
+
+- **Como sitio GEO independiente**  
+  Despliega frontend y panel admin completos y úsalo como propiedad editorial independiente.
+- **Como subcanal GEO de un sitio existente**  
+  Úsalo bajo un subdominio, directorio o canal especializado sin reconstruir todo el sitio principal.
+- **Como sitio fuente GEO**  
+  Prioriza primero la construcción de la base de conocimiento y después automatiza las actualizaciones mediante tareas.
+- **Como backend interno de contenido GEO**  
+  Aprovecha el panel, los modelos, los materiales, la cola, la API, el CLI y los Skills como infraestructura de producción interna.
+- **Como sistema multi-sitio o multi-canal**  
+  Reutiliza flujos, plantillas y procesos para varios canales, marcas o experimentos.
+
+Orden recomendado:
+
+1. Definir primero el objetivo real y el público real  
+2. Construir primero la base de conocimiento  
+3. Garantizar que el contenido sea verificable y mantenible  
+4. Solo después usar la automatización para ganar eficiencia  
+
+Si la base de conocimiento es débil, la automatización solo amplificará el ruido. En GEOFlow, **la calidad de la base de conocimiento debe ir primero**.
+
 ## Inicio rápido
 
 ### Docker

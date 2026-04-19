@@ -80,6 +80,56 @@ Core Pipeline:
 
 ---
 
+## 🎯 Use Cases and Expected Outcomes
+
+GEOFlow fits these practical scenarios:
+
+- **Independent GEO website**  
+  Run a standalone site for product explainers, FAQs, cases, and brand knowledge. The goal is to improve AI-search visibility, citation coverage, and operating efficiency, not to mass-produce low-value pages.
+- **GEO sub-channel inside an official website**  
+  Add a dedicated editorial or knowledge channel under an existing corporate site. The goal is to make brand content more structured, more searchable, and easier for teams to maintain.
+- **Independent GEO source site**  
+  Build a site around a specific industry, topic, or question set, and keep publishing high-quality explainers, lists, guides, and analysis. The goal is to build credible content assets, not to pollute the web.
+- **Internal GEO content management system**  
+  Use GEOFlow mainly as an internal backend for models, assets, knowledge bases, prompts, review, and publishing workflows. The goal is higher team efficiency and less fragmented tooling.
+- **Multi-site / multi-channel GEO deployment**  
+  Operate multiple sites, sections, or themes from one system pattern. The goal is standardized content operations, theme switching, and distribution management.
+- **Automated source management and content distribution**  
+  Treat GEOFlow as an operating layer for knowledge assets, editorial updates, and controlled distribution. The goal is to help useful information stay structured, trustworthy, and reusable.
+
+The benefits of this system should come from a **real, well-maintained, high-quality knowledge base**.  
+It is not meant for fabricating content, flooding the internet, or gaming search systems with false information. GEOFlow is designed to improve AI marketing efficiency and GEO operating efficiency by making trusted content easier to manage and distribute.
+
+---
+
+## 🧭 Suggested Deployment and Usage Patterns
+
+Recommended ways to use GEOFlow by scenario:
+
+- **As a standalone GEO website**  
+  Deploy the full frontend and admin stack and run it as an independent content property for product, FAQ, solution, and case content.
+- **As a GEO sub-channel of an existing website**  
+  Launch GEOFlow as a dedicated subdirectory, subdomain, or side channel without rebuilding the main site.
+- **As a GEO source site**  
+  Focus on one topic or vertical, prioritize knowledge-base construction, and use tasks for controlled updates over time.
+- **As an internal GEO content backend**  
+  Use the admin, models, assets, prompts, queue, API, CLI, and Skill integration primarily as an internal content operations system.
+- **As a multi-site or multi-channel system**  
+  Operate multiple brands, themes, sections, or experiments with shared workflows and repeatable deployment patterns.
+- **As an automated source-management system**  
+  Treat title libraries, image libraries, prompt libraries, and knowledge bases as long-term infrastructure rather than disposable generation inputs.
+
+Suggested order of work:
+
+1. Start from a real business goal and real audience
+2. Build the knowledge base before building automation
+3. Make sure content is accurate, reviewable, and maintainable
+4. Then use models, tasks, and themes to improve efficiency
+
+If the knowledge base is weak, automation will only scale noise. In GEOFlow, **knowledge-base quality should come first**.
+
+---
+
 ## 🚀 Quick Start
 
 ### Option 1: Docker (Recommended)
