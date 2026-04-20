@@ -11,6 +11,10 @@
 
 Released under the Apache License 2.0.
 
+## ⭐ Tendencia de estrellas
+
+[![Star History Chart](https://api.star-history.com/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.com/#yaojingang/GEOFlow&Date)
+
 ## Vista previa de la interfaz
 
 <p>
