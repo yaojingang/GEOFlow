@@ -34,10 +34,11 @@ if ($adminId <= 0) {
 $stmt = $db->prepare("
     UPDATE admins
     SET welcome_dismissed_at = CURRENT_TIMESTAMP,
+        welcome_seen_version = ?,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
 ");
-$stmt->execute([$adminId]);
+$stmt->execute([admin_welcome_version(), $adminId]);
 
 log_admin_activity('welcome:dismiss', [
     'request_method' => 'POST',

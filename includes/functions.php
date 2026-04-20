@@ -44,29 +44,42 @@ function is_admin_logged_in() {
     return !empty($_SESSION['admin_logged_in']) && !empty($_SESSION['admin_id']);
 }
 
-function admin_welcome_auto_shown_session_key(): string {
-    return 'admin_welcome_auto_shown';
-}
-
 function admin_welcome_auto_open_request_key(): string {
     return '__admin_welcome_should_auto_open';
 }
 
+function admin_welcome_version(): string {
+    return '2026-04-20';
+}
+
 function reset_admin_welcome_auto_open_state(): void {
-    unset($_SESSION[admin_welcome_auto_shown_session_key()]);
     unset($GLOBALS[admin_welcome_auto_open_request_key()]);
 }
 
 function prepare_admin_welcome_auto_open(?array $admin): void {
-    if (!$admin || !empty($admin['welcome_dismissed_at'])) {
+    if (!$admin) {
         $GLOBALS[admin_welcome_auto_open_request_key()] = false;
         return;
     }
 
-    $sessionKey = admin_welcome_auto_shown_session_key();
-    $shouldAutoOpen = empty($_SESSION[$sessionKey]);
+    $currentVersion = admin_welcome_version();
+    $seenVersion = (string) ($admin['welcome_seen_version'] ?? '');
+    $shouldAutoOpen = $seenVersion !== $currentVersion;
+
     if ($shouldAutoOpen) {
-        $_SESSION[$sessionKey] = 1;
+        global $db;
+        if ($db instanceof PDO) {
+            try {
+                $stmt = $db->prepare("
+                    UPDATE admins
+                    SET welcome_seen_version = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ");
+                $stmt->execute([$currentVersion, (int) $admin['id']]);
+            } catch (Throwable $e) {
+                error_log('更新管理员欢迎页版本失败: ' . $e->getMessage());
+            }
+        }
     }
 
     $GLOBALS[admin_welcome_auto_open_request_key()] = $shouldAutoOpen;
@@ -106,7 +119,7 @@ function get_current_admin(bool $forceRefresh = false): ?array {
     }
 
     $stmt = $db->prepare("
-        SELECT id, username, email, display_name, role, status, last_login, welcome_dismissed_at, created_at
+        SELECT id, username, email, display_name, role, status, last_login, welcome_dismissed_at, welcome_seen_version, created_at
         FROM admins
         WHERE id = ?
         LIMIT 1
