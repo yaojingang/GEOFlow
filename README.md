@@ -13,6 +13,12 @@ Released under the Apache License 2.0.
 
 ---
 
+## ⭐ Star 趋势
+
+[![Star History Chart](https://api.star-history.com/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.com/#yaojingang/GEOFlow&Date)
+
+---
+
 ## ✨ 你可以用它做什么
 
 | 特性 | 说明 |
