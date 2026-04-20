@@ -8,6 +8,8 @@ if (!defined('FEISHU_TREASURE')) {
     die('Access denied');
 }
 
+require_once __DIR__ . '/update_check.php';
+
 function sync_admin_session(array $admin): void {
     $_SESSION['admin_logged_in'] = true;
     $_SESSION['admin_id'] = (int) ($admin['id'] ?? 0);
@@ -48,8 +50,39 @@ function admin_welcome_auto_open_request_key(): string {
     return '__admin_welcome_should_auto_open';
 }
 
+function admin_welcome_state(): array {
+    $updateState = function_exists('geoflow_get_update_state')
+        ? geoflow_get_update_state(false)
+        : [
+            'current_version' => APP_VERSION,
+            'latest_version' => '',
+            'payload' => [],
+            'last_checked_at' => null,
+            'ignored_version' => '',
+            'is_update_available' => false,
+            'is_ignored' => false,
+        ];
+
+    if (!empty($updateState['is_update_available']) && empty($updateState['is_ignored'])) {
+        return [
+            'mode' => 'update',
+            'version' => 'update:' . (string) ($updateState['latest_version'] ?? ''),
+            'update' => $updateState,
+            'copy' => function_exists('geoflow_get_update_copy') ? geoflow_get_update_copy($updateState) : [],
+        ];
+    }
+
+    return [
+        'mode' => 'intro',
+        'version' => 'intro:' . APP_VERSION,
+        'update' => $updateState,
+        'copy' => function_exists('geoflow_get_update_copy') ? geoflow_get_update_copy($updateState) : [],
+    ];
+}
+
 function admin_welcome_version(): string {
-    return '2026-04-20';
+    $state = admin_welcome_state();
+    return (string) ($state['version'] ?? ('intro:' . APP_VERSION));
 }
 
 function reset_admin_welcome_auto_open_state(): void {
