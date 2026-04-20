@@ -9,15 +9,22 @@ session_start();
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/database_admin.php';
+require_once __DIR__ . '/../includes/update_check.php';
 
 // 检查管理员登录
 require_admin_login();
+
+$flash_message = $_SESSION['admin_message_success'] ?? '';
+$flash_error = $_SESSION['admin_message_error'] ?? '';
+unset($_SESSION['admin_message_success'], $_SESSION['admin_message_error']);
 
 // 立即释放session锁，允许其他页面并发访问
 session_write_close();
 
 // 设置页面标题
 $page_title = __('dashboard.page_title');
+$update_state = geoflow_get_update_state(false);
+$update_copy = geoflow_get_update_copy($update_state);
 
 // 获取全面的统计数据
 try {
@@ -200,6 +207,47 @@ try {
 require_once __DIR__ . '/includes/header.php';
 ?>
             <!-- 页面标题 -->
+            <?php if ($update_state['is_update_available'] && !$update_state['is_ignored']): ?>
+                <div class="mb-6 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div class="min-w-0">
+                            <div class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                                <?php echo __('update.new_version_available_badge'); ?>
+                            </div>
+                            <div class="mt-3 text-lg font-semibold text-gray-900">
+                                <?php echo __('update.version_pair', ['current' => APP_VERSION, 'latest' => $update_state['latest_version']]); ?>
+                            </div>
+                            <p class="mt-1 text-sm text-gray-700">
+                                <?php echo htmlspecialchars($update_copy['title'] !== '' ? $update_copy['title'] : __('update.new_version_available')); ?>
+                            </p>
+                            <p class="mt-2 text-sm text-gray-600">
+                                <?php echo htmlspecialchars($update_copy['summary'] !== '' ? $update_copy['summary'] : __('update.summary_empty')); ?>
+                            </p>
+                            <?php if ($update_copy['upgrade_tip'] !== ''): ?>
+                                <p class="mt-3 text-xs text-blue-800"><?php echo htmlspecialchars($update_copy['upgrade_tip']); ?></p>
+                            <?php endif; ?>
+                        </div>
+                        <div class="flex shrink-0 flex-wrap items-center gap-3">
+                            <?php if ($update_copy['changelog_url'] !== ''): ?>
+                                <a href="<?php echo htmlspecialchars($update_copy['changelog_url']); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">
+                                    <i data-lucide="book-open" class="mr-2 h-4 w-4"></i>
+                                    <?php echo __('update.view_changelog'); ?>
+                                </a>
+                            <?php endif; ?>
+                            <form method="POST" action="<?php echo htmlspecialchars(admin_url('update-ignore.php')); ?>">
+                                <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
+                                <input type="hidden" name="redirect_target" value="dashboard">
+                                <input type="hidden" name="version" value="<?php echo htmlspecialchars($update_state['latest_version']); ?>">
+                                <button type="submit" class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">
+                                    <i data-lucide="bell-off" class="mr-2 h-4 w-4"></i>
+                                    <?php echo __('update.ignore_version'); ?>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <div class="mb-8">
                 <div class="flex items-center justify-between">
                     <div>
@@ -215,6 +263,24 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
                 </div>
             </div>
+
+            <?php if (!empty($flash_message)): ?>
+                <div class="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
+                    <div class="flex items-center text-sm text-green-700">
+                        <i data-lucide="check-circle" class="mr-2 h-5 w-5 text-green-500"></i>
+                        <span><?php echo htmlspecialchars($flash_message); ?></span>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($flash_error)): ?>
+                <div class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
+                    <div class="flex items-center text-sm text-red-700">
+                        <i data-lucide="alert-circle" class="mr-2 h-5 w-5 text-red-500"></i>
+                        <span><?php echo htmlspecialchars($flash_error); ?></span>
+                    </div>
+                </div>
+            <?php endif; ?>
 
             <!-- 核心指标卡片 -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

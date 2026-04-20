@@ -10,9 +10,14 @@ require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/database_admin.php';
 require_once __DIR__ . '/../includes/theme_preview.php';
+require_once __DIR__ . '/../includes/update_check.php';
 
 // 检查管理员登录
 require_admin_login();
+
+$flash_message = $_SESSION['admin_message_success'] ?? '';
+$flash_error = $_SESSION['admin_message_error'] ?? '';
+unset($_SESSION['admin_message_success'], $_SESSION['admin_message_error']);
 
 // 立即释放session锁，允许其他页面并发访问
 session_write_close();
@@ -23,6 +28,8 @@ $page_title = __('site_settings.page_title');
 $message = '';
 $error = '';
 $available_themes = geoflow_discover_themes();
+$update_state = geoflow_get_update_state(false);
+$update_copy = geoflow_get_update_copy($update_state);
 
 // 处理POST请求
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -215,6 +222,24 @@ require_once __DIR__ . '/includes/header.php';
             </div>
 
             <!-- 消息提示 -->
+<?php if (!empty($flash_message)): ?>
+                <div class="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div class="flex items-center">
+                        <i data-lucide="check-circle" class="w-5 h-5 text-green-500 mr-2"></i>
+                        <span class="text-green-700"><?php echo htmlspecialchars($flash_message); ?></span>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($flash_error)): ?>
+                <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="flex items-center">
+                        <i data-lucide="alert-circle" class="w-5 h-5 text-red-500 mr-2"></i>
+                        <span class="text-red-700"><?php echo htmlspecialchars($flash_error); ?></span>
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <?php if (!empty($message)): ?>
                 <div class="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                     <div class="flex items-center">
@@ -389,6 +414,91 @@ require_once __DIR__ . '/includes/header.php';
                             </button>
                         </div>
                     </form>
+                </div>
+            </details>
+
+            <details id="system-update" class="settings-accordion bg-white shadow rounded-lg">
+                <summary class="px-6 py-4 cursor-pointer flex items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900"><?php echo __('update.section_title'); ?></h3>
+                        <p class="mt-1 text-sm text-gray-600"><?php echo __('update.section_desc'); ?></p>
+                    </div>
+                    <i data-lucide="chevron-down" class="accordion-chevron w-5 h-5 text-gray-400"></i>
+                </summary>
+                <div class="px-6 py-6 border-t border-gray-200 space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                        <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                            <div class="text-xs uppercase tracking-wide text-gray-500"><?php echo __('update.current_version'); ?></div>
+                            <div class="mt-2 text-2xl font-semibold text-gray-900"><?php echo htmlspecialchars(APP_VERSION); ?></div>
+                            <div class="mt-1 text-xs text-gray-500"><?php echo htmlspecialchars(APP_VERSION_DATE); ?></div>
+                        </div>
+                        <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                            <div class="text-xs uppercase tracking-wide text-gray-500"><?php echo __('update.latest_version'); ?></div>
+                            <div class="mt-2 text-2xl font-semibold text-gray-900"><?php echo htmlspecialchars($update_state['latest_version'] !== '' ? $update_state['latest_version'] : '—'); ?></div>
+                            <div class="mt-1 text-xs text-gray-500"><?php echo htmlspecialchars($update_copy['release_date'] !== '' ? __('update.release_date_value', ['date' => $update_copy['release_date']]) : __('update.unchecked')); ?></div>
+                        </div>
+                        <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                            <div class="text-xs uppercase tracking-wide text-gray-500"><?php echo __('update.status_label'); ?></div>
+                            <div class="mt-2">
+                                <?php if ($update_state['is_update_available'] && !$update_state['is_ignored']): ?>
+                                    <span class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700"><?php echo __('update.new_version_available'); ?></span>
+                                <?php elseif ($update_state['is_ignored']): ?>
+                                    <span class="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-700"><?php echo __('update.ignored'); ?></span>
+                                <?php else: ?>
+                                    <span class="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700"><?php echo __('update.up_to_date'); ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="mt-2 text-xs text-gray-500">
+                                <?php echo htmlspecialchars(__('update.last_checked_at', ['time' => $update_state['last_checked_at'] ? date('Y-m-d H:i:s', (int) $update_state['last_checked_at']) : __('update.unchecked')])); ?>
+                            </div>
+                        </div>
+                        <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                            <div class="text-xs uppercase tracking-wide text-gray-500"><?php echo __('update.release_type_label'); ?></div>
+                            <div class="mt-2 text-lg font-semibold text-gray-900">
+                                <?php echo __('update.release_type_' . $update_copy['release_type']); ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-5">
+                        <div class="text-base font-semibold text-gray-900">
+                            <?php echo htmlspecialchars($update_copy['title'] !== '' ? $update_copy['title'] : __('update.summary_title')); ?>
+                        </div>
+                        <p class="mt-2 text-sm text-gray-700">
+                            <?php echo htmlspecialchars($update_copy['summary'] !== '' ? $update_copy['summary'] : __('update.summary_empty')); ?>
+                        </p>
+                        <?php if ($update_copy['upgrade_tip'] !== ''): ?>
+                            <p class="mt-3 text-xs text-blue-800"><?php echo htmlspecialchars($update_copy['upgrade_tip']); ?></p>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3">
+                        <form method="POST" action="<?php echo htmlspecialchars(admin_url('update-check.php')); ?>">
+                            <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
+                            <input type="hidden" name="redirect_target" value="site-settings">
+                            <button type="submit" class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                                <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
+                                <?php echo __('update.check_now'); ?>
+                            </button>
+                        </form>
+                        <?php if ($update_copy['changelog_url'] !== ''): ?>
+                            <a href="<?php echo htmlspecialchars($update_copy['changelog_url']); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">
+                                <i data-lucide="book-open" class="mr-2 h-4 w-4"></i>
+                                <?php echo __('update.view_changelog'); ?>
+                            </a>
+                        <?php endif; ?>
+                        <?php if ($update_state['is_update_available'] && !$update_state['is_ignored']): ?>
+                            <form method="POST" action="<?php echo htmlspecialchars(admin_url('update-ignore.php')); ?>">
+                                <input type="hidden" name="csrf_token" value="<?php echo generate_csrf_token(); ?>">
+                                <input type="hidden" name="redirect_target" value="site-settings">
+                                <input type="hidden" name="version" value="<?php echo htmlspecialchars($update_state['latest_version']); ?>">
+                                <button type="submit" class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">
+                                    <i data-lucide="bell-off" class="mr-2 h-4 w-4"></i>
+                                    <?php echo __('update.ignore_version'); ?>
+                                </button>
+                            </form>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </details>
 

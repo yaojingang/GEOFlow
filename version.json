@@ -1,0 +1,15 @@
+{
+  "latest_version": "1.2.0",
+  "release_date": "2026-04-20",
+  "release_type": "feature",
+  "title_zh": "版本检查与后台更新提醒",
+  "title_en": "Version checks and admin update notices",
+  "summary_zh": "新增版本元数据拉取、后台更新提醒、系统更新卡片和版本忽略机制。",
+  "summary_en": "Adds version metadata checks, admin update notices, a system update panel, and ignore-version behavior.",
+  "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md",
+  "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md",
+  "min_upgrade_from": "1.1.0",
+  "upgrade_tip_zh": "建议升级前备份数据库与 uploads 目录。",
+  "upgrade_tip_en": "Back up the database and uploads directory before upgrading.",
+  "published": true
+}

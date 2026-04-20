@@ -30,6 +30,9 @@ define('SITE_URL', env_value('SITE_URL', 'http://localhost'));
 define('SITE_DESCRIPTION', env_value('SITE_DESCRIPTION', 'AI驱动的智能内容生成与发布平台，支持自动化文章创作、SEO优化和内容管理'));
 define('SITE_KEYWORDS', env_value('SITE_KEYWORDS', 'AI内容生成,自动化写作,SEO优化,内容管理,人工智能,机器学习'));
 define('ADMIN_BASE_PATH', '/' . trim(env_value('ADMIN_BASE_PATH', 'geo_admin'), '/'));
+define('APP_VERSION', env_value('APP_VERSION', '1.2.0'));
+define('APP_VERSION_DATE', env_value('APP_VERSION_DATE', '2026-04-20'));
+define('APP_UPDATE_METADATA_URL', env_value('APP_UPDATE_METADATA_URL', 'https://raw.githubusercontent.com/yaojingang/GEOFlow/main/version.json'));
 
 // SQLite 源库路径，仅用于迁移和兼容维护脚本
 define('DB_PATH', db_get_sqlite_path());
