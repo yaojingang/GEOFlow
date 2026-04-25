@@ -12,7 +12,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (DB::getDriverName() === 'pgsql' || Schema::hasTable('article_images')) {
+        if (
+            DB::getDriverName() === 'pgsql'
+            || Schema::hasTable('article_images')
+            || ! Schema::hasTable('articles')
+            || ! Schema::hasTable('images')
+        ) {
             return;
         }
 

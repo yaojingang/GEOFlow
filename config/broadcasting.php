@@ -32,9 +32,9 @@ return [
 
         'reverb' => [
             'driver' => 'reverb',
-            'key' => env('REVERB_APP_KEY', 'geoflow-reverb-key'),
-            'secret' => env('REVERB_APP_SECRET', 'geoflow-reverb-secret'),
-            'app_id' => env('REVERB_APP_ID', 'geoflow-reverb-app'),
+            'key' => env('REVERB_APP_KEY'),
+            'secret' => env('REVERB_APP_SECRET'),
+            'app_id' => env('REVERB_APP_ID'),
             'options' => [
                 'host' => env('REVERB_BROADCAST_HOST', env('REVERB_HOST', '127.0.0.1')),
                 'port' => env('REVERB_BROADCAST_PORT', env('REVERB_PORT', 8080)),

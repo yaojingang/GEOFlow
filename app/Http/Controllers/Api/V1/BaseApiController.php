@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\ApiException;
 use App\Http\ApiAuthContext;
 use App\Http\Controllers\Controller;
 use App\Services\Api\IdempotencyService;
@@ -32,7 +33,9 @@ abstract class BaseApiController extends Controller
     protected function auth(Request $request): ApiAuthContext
     {
         $context = $request->attributes->get('api_auth');
-        assert($context instanceof ApiAuthContext);
+        if (! $context instanceof ApiAuthContext) {
+            throw new ApiException('unauthorized', '未认证', 401);
+        }
 
         return $context;
     }
