@@ -16,13 +16,18 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
         git \
+        libfreetype6-dev \
+        libjpeg62-turbo-dev \
         libonig-dev \
+        libpng-dev \
         libpq-dev \
         libsqlite3-dev \
         libzip-dev \
         postgresql-client \
         unzip \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
+        gd \
         mbstring \
         pdo_pgsql \
         pdo_sqlite \

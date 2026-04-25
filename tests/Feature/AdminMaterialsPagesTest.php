@@ -7,6 +7,7 @@ use App\Models\ImageLibrary;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\TitleLibrary;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
@@ -20,6 +21,13 @@ use Tests\TestCase;
 class AdminMaterialsPagesTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+    }
 
     public function test_guest_is_redirected_from_material_pages(): void
     {
