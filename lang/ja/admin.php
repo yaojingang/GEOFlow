@@ -139,6 +139,7 @@ return array_replace_recursive($base, [
             'titles' => 'タイトル',
             'keywords' => 'キーワード',
             'images' => '画像',
+            'authors' => '作者',
             'task_title' => 'タスクを作成',
             'task_desc' => 'タイトルライブラリ、素材、モデルを選び、生成数と公開頻度を設定します。',
             'task_button' => 'タスクを作成',

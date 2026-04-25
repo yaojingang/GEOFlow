@@ -33,6 +33,7 @@ class AdminDashboardQuickStartTest extends TestCase
             ->assertSee(route('admin.title-libraries.index'), false)
             ->assertSee(route('admin.keyword-libraries.index'), false)
             ->assertSee(route('admin.image-libraries.index'), false)
+            ->assertSee(route('admin.authors.index'), false)
             ->assertSee(route('admin.tasks.create'), false);
     }
 }

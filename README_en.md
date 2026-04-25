@@ -21,13 +21,15 @@ The framework skeleton is released under the [MIT License](https://opensource.or
 
 | Feature | Description |
 |---------|-------------|
-| 🤖 Multi-model content generation | OpenAI-style APIs; plug in different AI providers |
-| 📦 Batch task execution | Create tasks, schedule, queue, retry; optional **Laravel Horizon** monitoring |
-| 🗂 Unified asset management | Title libraries, keywords, images, knowledge bases, prompts |
-| 📋 Review & publishing workflow | Draft → review → publish, with optional auto-publish |
-| 🔍 Search-oriented display | SEO metadata, Open Graph, structured data |
-| 🎨 Front-end & themes | Article site plus admin site/template settings |
-| ⚡ Real-time & broadcasting | **Laravel Reverb** and related stack (enable via `.env`) |
+| 🤖 Multi-model generation | OpenAI-style APIs, chat / embedding model types, provider URL adaptation, smart failover, and retry handling |
+| 📦 Batch task execution | Task creation, generation limits, publishing cadence, queue execution, failure records, and task-scoped article filtering |
+| 🗂 Unified asset management | Title libraries, keyword libraries, image libraries, author library, knowledge bases, and prompts |
+| 🧠 Knowledge-base RAG | Upload documents, generate chunks, write vectors when an embedding model is configured, and retrieve relevant context during generation |
+| 📋 Review & publishing workflow | Draft, review, and publish states, optional auto-publish, plus article filters by status, author, and task |
+| 🔍 Search-oriented output | SEO metadata, Open Graph, structured data, and GFM Markdown rendering for headings, tables, lists, and images |
+| 🎨 Front-end & themes | Default theme, theme packages, preview routes, admin theme switching, and a fixed GEOFlow admin brand |
+| 🌍 Admin i18n | Admin UI supports Chinese, English, Japanese, Spanish, and Russian |
+| 🔔 Version updates | Admin can check GitHub `version.json` and notify admins when a newer version is available |
 | 🐳 Ready to deploy | **Docker Compose**: PostgreSQL (pgvector), Redis, app, queue, scheduler, Reverb |
 | 🗄 PostgreSQL runtime | PostgreSQL by default; suitable for steady load and concurrent writes |
 
@@ -45,6 +47,20 @@ The framework skeleton is released under the [MIT License](https://opensource.or
 </p>
 
 These screens cover the home page, task scheduling, article workflow, and model configuration. More admin documentation lives under `docs/` (add or replace screenshots locally if paths are missing).
+
+---
+
+## 🆕 Current Laravel Rewrite Highlights
+
+The public repository now uses the Laravel 12 rewrite. Current highlights include:
+
+- **Admin experience**: fixed GEOFlow admin brand, multi-language switching, admin account editing/deletion, first-login welcome letter, GitHub version update reminders, and a dashboard quick-start block.
+- **Task pipeline**: fixed model and smart failover modes; generation and publishing are separated; task article links open task-scoped article lists.
+- **Asset system**: knowledge bases, title libraries, keyword libraries, image libraries, and authors are all first-class admin entries.
+- **RAG readiness**: knowledge bases are chunked after upload; embedding models enable vector writes and retrieval; missing embedding setup has explicit guidance.
+- **Model setup**: clearer provider URL rules for OpenAI-style APIs, Zhipu, Volcengine Ark, and other non-`/v1` providers.
+- **Frontend output**: article Markdown uses GFM rendering, including headings, tables, lists, and images; legacy `/uploads` image paths are normalized to `/storage/uploads`.
+- **Deployment and security**: custom admin path via `ADMIN_BASE_PATH`; production should use Nginx + PHP-FPM; change the seeded admin password before going live.
 
 ---
 
@@ -76,11 +92,22 @@ Front-end articles & SEO output
 
 Core pipeline:
 
-1. Configure models, prompts, and libraries in admin  
-2. Create tasks and hand off to scheduler/queue  
-3. Workers call models to generate body text and metadata  
-4. Articles move through draft, review, and publish  
-5. Front-end renders articles and SEO pages  
+1. Configure models, prompts, and libraries in admin
+2. Prepare knowledge, title, keyword, image, and author assets
+3. Create tasks and hand off to scheduler/queue
+4. Workers call models to generate body text and metadata
+5. Articles move through draft, review, and publish
+6. Front-end renders articles and SEO pages
+
+---
+
+## ⚡ Admin Quick Start
+
+After signing in, use the dashboard quick-start path for the first validation cycle:
+
+1. **Configure API**: add at least one working chat model; add an embedding model if you need knowledge-base RAG retrieval.
+2. **Configure materials**: prepare knowledge bases, title libraries, keyword libraries, image libraries, and authors. Start from real, verifiable business information.
+3. **Create a task**: choose libraries, materials, model, generation count, and publishing cadence. Start with draft or review flow before enabling full auto-publish.
 
 ---
 
@@ -88,45 +115,45 @@ Core pipeline:
 
 GEOFlow fits these practical scenarios:
 
-- **Independent GEO website**  
+- **Independent GEO website**
   Organize product content, FAQs, cases, and brand knowledge into a maintainable system—aim for AI-search visibility and operational efficiency, not thin pages at scale.
-- **GEO sub-channel inside an official site**  
+- **GEO sub-channel inside an official site**
   Add a dedicated news, knowledge, or solutions channel under an existing site—structure content for search and citations, with easier team updates.
-- **Independent GEO source site**  
+- **Independent GEO source site**
   Publish high-quality explainers, lists, guides, and references for an industry or topic—build credible assets, not web noise.
-- **Internal GEO content management**  
+- **Internal GEO content management**
   Use as a production backend for models, assets, knowledge, review, and publishing—raise team efficiency and reduce tool sprawl.
-- **Multi-site / multi-section GEO**  
+- **Multi-site / multi-section GEO**
   Operate multiple outlets or templates with one operational pattern—standardize production and maintenance.
-- **Automated source management and distribution**  
+- **Automated source management and distribution**
   Engineer knowledge bases, topical updates, and distribution—help valuable information stay structured and retrievable.
 
-Value should rest on a **real, high-quality, maintained knowledge base**.  
+Value should rest on a **real, high-quality, maintained knowledge base**.
 GEOFlow is not for fabricating noise, mass pollution, or false claims—it helps teams produce and distribute **trustworthy** content and improve GEO operating efficiency.
 
 ---
 
 ## 🧭 Suggested Deployment and Usage Patterns
 
-- **As a standalone GEO website**  
+- **As a standalone GEO website**
   Deploy full front-end and admin; run product, FAQ, case, and topic content as a first-class property.
-- **As a GEO sub-channel**  
+- **As a GEO sub-channel**
   Deploy as a subdirectory, subdomain, or side channel without rebuilding the main site.
-- **As a GEO source site**  
+- **As a GEO source site**
   Prioritize the knowledge base, then use tasks for steady, controlled updates.
-- **As an internal GEO backend**  
+- **As an internal GEO backend**
   De-emphasize the public site; focus on admin, models, assets, scheduling, review, and APIs.
-- **As a multi-site or multi-channel system**  
+- **As a multi-site or multi-channel system**
   Reuse workflows across brands, themes, or experiments.
-- **As an automated source-management layer**  
+- **As an automated source-management layer**
   Invest in title/image/prompt libraries and knowledge as long-term infrastructure.
 
 Suggested order of work:
 
-1. Clarify real goals and audience  
-2. Build the knowledge base before heavy automation  
-3. Keep content accurate, verifiable, and maintainable  
-4. Then scale with models, tasks, and templates  
+1. Clarify real goals and audience
+2. Build the knowledge base before heavy automation
+3. Keep content accurate, verifiable, and maintainable
+4. Then scale with models, tasks, and templates
 
 Weak knowledge bases plus strong automation only scale noise. In GEOFlow, **knowledge-base quality comes first**.
 
@@ -146,8 +173,8 @@ docker compose build
 docker compose up -d
 ```
 
-- Site (default): `http://localhost:18080` (host port from **`APP_PORT`**, default `18080`)  
-- Admin login: `http://localhost:18080/geo_admin/login` (path prefix from **`ADMIN_BASE_PATH`**, default `geo_admin`)  
+- Site (default): `http://localhost:18080` (host port from **`APP_PORT`**, default `18080`)
+- Admin login: `http://localhost:18080/geo_admin/login` (path prefix from **`ADMIN_BASE_PATH`**, default `geo_admin`)
 
 Under **`docker-compose.yml`**, the **`init`** service runs first-time migration and seeding after the database is ready (default admin—see below).
 
@@ -165,10 +192,10 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d init
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue scheduler reverb
 ```
 
-- Frontend and admin both enter through `web` (Nginx)  
-- PHP is executed by `app` (php-fpm)  
-- **Default admin:** production does **not** auto-run `db:seed`; run it once after migrations (command and credentials in `docs/deployment/DEPLOYMENT.md`, section *Default admin (first-time seeding)*).  
-- See `docs/deployment/DEPLOYMENT.md` for details  
+- Frontend and admin both enter through `web` (Nginx)
+- PHP is executed by `app` (php-fpm)
+- **Default admin:** production does **not** auto-run `db:seed`; run it once after migrations (command and credentials in `docs/deployment/DEPLOYMENT.md`, section *Default admin (first-time seeding)*).
+- See `docs/deployment/DEPLOYMENT.md` for details
 
 ### Option 2: Local PHP stack
 
@@ -198,8 +225,8 @@ php artisan schedule:work
 php artisan reverb:start
 ```
 
-- Admin: `http://127.0.0.1:8080/geo_admin/login` (adjust if `ADMIN_BASE_PATH` changes)  
-- In production you may use `php artisan horizon` instead of `queue:work`, supervised by systemd or Supervisor  
+- Admin: `http://127.0.0.1:8080/geo_admin/login` (adjust if `ADMIN_BASE_PATH` changes)
+- In production you may use `php artisan horizon` instead of `queue:work`, supervised by systemd or Supervisor
 
 ---
 

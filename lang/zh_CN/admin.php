@@ -740,6 +740,7 @@ return [
             'titles' => '标题库',
             'keywords' => '关键词库',
             'images' => '图片库',
+            'authors' => '作者',
             'task_title' => '新建任务',
             'task_desc' => '选择标题库、素材和模型，设置生成数量与发布频率，系统会自动生成并发布内容。',
             'task_button' => '新建任务',
