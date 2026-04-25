@@ -1,16 +1,20 @@
+@php
+    $adminBrandName = \App\Support\AdminWeb::siteName();
+@endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@isset($pageTitle){{ $pageTitle }} — @endisset{{ $adminSiteName ?? \App\Support\AdminWeb::siteName() }}</title>
+    <title>@isset($pageTitle){{ $pageTitle }} — @endisset{{ $adminBrandName }}</title>
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     <script src="{{ asset('js/lucide.min.js') }}"></script>
     @stack('styles')
 </head>
 <body class="bg-gray-50">
 @include('admin.partials.header', [
-    'adminSiteName' => $adminSiteName ?? \App\Support\AdminWeb::siteName(),
+    'adminBrandName' => $adminBrandName,
+    'adminSiteName' => $adminSiteName ?? $adminBrandName,
     'pageTitle' => $pageTitle ?? '',
     'activeMenu' => $activeMenu ?? '',
 ])

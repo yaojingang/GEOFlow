@@ -161,6 +161,29 @@ return new class extends Migration
             $table->foreignId('knowledge_base_id')->nullable()->constrained('knowledge_bases');
             $table->foreignId('prompt_id')->nullable()->constrained('prompts');
             $table->foreignId('ai_model_id')->nullable()->constrained('ai_models');
+            $table->integer('image_count')->default(0);
+            $table->unsignedBigInteger('author_id')->nullable();
+            $table->integer('need_review')->default(1);
+            $table->integer('publish_interval')->default(3600);
+            $table->integer('auto_keywords')->default(1);
+            $table->integer('auto_description')->default(1);
+            $table->integer('draft_limit')->default(10);
+            $table->integer('article_limit')->default(10);
+            $table->integer('is_loop')->default(0);
+            $table->string('model_selection_mode', 20)->default('fixed');
+            $table->integer('created_count')->default(0);
+            $table->integer('published_count')->default(0);
+            $table->integer('loop_count')->default(0);
+            $table->string('category_mode', 20)->default('smart');
+            $table->unsignedBigInteger('fixed_category_id')->nullable();
+            $table->timestamp('last_run_at')->nullable();
+            $table->timestamp('next_run_at')->nullable();
+            $table->timestamp('next_publish_at')->nullable();
+            $table->timestamp('last_success_at')->nullable();
+            $table->timestamp('last_error_at')->nullable();
+            $table->text('last_error_message')->nullable();
+            $table->integer('schedule_enabled')->default(1);
+            $table->integer('max_retry_count')->default(3);
             $table->string('status', 20)->default('active');
             $table->timestamps();
         });
@@ -205,6 +228,19 @@ return new class extends Migration
             $table->timestamp('published_at')->nullable();
             $table->softDeletes();
         });
+
+        Schema::create('task_runs', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('task_id')->constrained('tasks')->cascadeOnDelete();
+            $table->string('status', 20);
+            $table->foreignId('article_id')->nullable()->constrained('articles')->nullOnDelete();
+            $table->text('error_message')->nullable();
+            $table->integer('duration_ms')->default(0);
+            $table->text('meta')->nullable();
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
+            $table->timestamp('created_at')->nullable();
+        });
     }
 
     public function down(): void
@@ -213,6 +249,7 @@ return new class extends Migration
             return;
         }
 
+        Schema::dropIfExists('task_runs');
         Schema::dropIfExists('articles');
         Schema::dropIfExists('tasks');
         Schema::dropIfExists('images');

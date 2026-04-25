@@ -2,9 +2,6 @@
 
 namespace App\Support;
 
-use App\Models\SiteSetting;
-use Throwable;
-
 final class AdminWeb
 {
     /**
@@ -26,21 +23,16 @@ final class AdminWeb
 
     public static function siteName(): string
     {
-        try {
-            $title = SiteSetting::query()->where('setting_key', 'site_title')->value('setting_value');
-            if (is_string($title) && trim($title) !== '') {
-                return trim($title);
-            }
-        } catch (Throwable) {
-            // 迁移未跑或表不存在
-        }
-
-        return (string) config('geoflow.site_name', config('app.name'));
+        return 'GEOFlow';
     }
 
     public static function basePath(): string
     {
-        return trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/');
+        try {
+            return AdminBasePathManager::normalize((string) config('geoflow.admin_base_path', AdminBasePathManager::DEFAULT_PATH));
+        } catch (\Throwable) {
+            return AdminBasePathManager::DEFAULT_PATH;
+        }
     }
 
     public static function url(string $path = ''): string

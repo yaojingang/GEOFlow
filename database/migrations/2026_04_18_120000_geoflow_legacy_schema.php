@@ -251,7 +251,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     custom_author_id BIGINT DEFAULT NULL,
     auto_keywords INTEGER DEFAULT 1,
     auto_description INTEGER DEFAULT 1,
-    draft_limit INTEGER DEFAULT 10,
+    draft_limit INTEGER DEFAULT 10, -- 草稿池上限
+    article_limit INTEGER DEFAULT 10, -- 任务总生成文章数上限
     is_loop INTEGER DEFAULT 0, -- 是否循环任务
     model_selection_mode VARCHAR(20) DEFAULT 'fixed', -- fixed / smart_failover
     status VARCHAR(20) DEFAULT 'active', -- active / paused
@@ -263,6 +264,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     fixed_category_id BIGINT DEFAULT NULL,
     last_run_at TIMESTAMP DEFAULT NULL,
     next_run_at TIMESTAMP DEFAULT NULL,
+    next_publish_at TIMESTAMP DEFAULT NULL,
     last_success_at TIMESTAMP DEFAULT NULL,
     last_error_at TIMESTAMP DEFAULT NULL,
     last_error_message TEXT DEFAULT '',
@@ -311,7 +313,7 @@ CREATE TABLE IF NOT EXISTS articles (
     deleted_at TIMESTAMP DEFAULT NULL,
     FOREIGN KEY (category_id) REFERENCES categories(id),
     FOREIGN KEY (author_id) REFERENCES authors(id),
-    FOREIGN KEY (task_id) REFERENCES tasks(id)
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
 );
 
 -- 表 article_images：文章与图片多对多及排序

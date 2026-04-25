@@ -5,7 +5,6 @@ namespace App\Services\GeoFlow;
 use App\Jobs\ProcessGeoFlowTaskJob;
 use App\Models\Task;
 use App\Models\TaskRun;
-use App\Support\GeoFlow\PostgresCompat;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -34,13 +33,37 @@ class JobQueueService
      */
     public function initializeTaskSchedule(int $taskId, int $delaySeconds = 60): void
     {
-        $interval = PostgresCompat::nowPlusSecondsSql($delaySeconds);
-        DB::table('tasks')->where('id', $taskId)->update([
-            'next_run_at' => DB::raw('COALESCE(next_run_at, '.$interval.')'),
-            'schedule_enabled' => DB::raw('COALESCE(schedule_enabled, 1)'),
-            'max_retry_count' => DB::raw('COALESCE(max_retry_count, 3)'),
-            'updated_at' => now(),
-        ]);
+        DB::transaction(function () use ($taskId, $delaySeconds): void {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->first(['id', 'next_run_at', 'next_publish_at', 'schedule_enabled', 'max_retry_count', 'publish_interval']);
+
+            if (! $task) {
+                return;
+            }
+
+            $now = now();
+            $updates = ['updated_at' => $now];
+
+            if ($task->next_run_at === null) {
+                $updates['next_run_at'] = $now->copy()->addSeconds(max(1, $delaySeconds));
+            }
+
+            if ($task->next_publish_at === null) {
+                $updates['next_publish_at'] = $now->copy()->addSeconds(max(60, (int) ($task->publish_interval ?? 3600)));
+            }
+
+            if ($task->schedule_enabled === null) {
+                $updates['schedule_enabled'] = 1;
+            }
+
+            if ($task->max_retry_count === null) {
+                $updates['max_retry_count'] = 3;
+            }
+
+            Task::query()->whereKey($taskId)->update($updates);
+        });
     }
 
     /**
@@ -137,6 +160,15 @@ class JobQueueService
             $task = $run->task;
             // 任务未激活或调度被关闭时，不允许执行。
             if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
+                TaskRun::query()
+                    ->whereKey((int) $run->id)
+                    ->where('status', 'pending')
+                    ->update([
+                        'status' => 'cancelled',
+                        'finished_at' => now(),
+                        'error_message' => '任务未启用，已取消待执行记录',
+                    ]);
+
                 return null;
             }
 
@@ -210,11 +242,13 @@ class JobQueueService
         Task::query()->whereKey($taskId)->update([
             'last_run_at' => now(),
             'last_success_at' => now(),
+            'last_error_at' => null,
             'last_error_message' => '',
             'updated_at' => now(),
         ]);
 
         $this->broadcastOverviewUpdate();
+        $this->enqueueFollowUpGenerationIfNeeded($taskId, $meta);
     }
 
     /**
@@ -309,6 +343,31 @@ class JobQueueService
 
         $recovered = 0;
         foreach ($candidateIds as $jobId) {
+            /** @var TaskRun|null $run */
+            $run = TaskRun::query()
+                ->with('task:id,status,schedule_enabled')
+                ->whereKey($jobId)
+                ->where('status', 'running')
+                ->first();
+
+            if (! $run) {
+                continue;
+            }
+
+            $task = $run->task;
+            if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
+                TaskRun::query()
+                    ->whereKey($jobId)
+                    ->where('status', 'running')
+                    ->update([
+                        'status' => 'cancelled',
+                        'finished_at' => now(),
+                        'error_message' => '任务未启用，已取消超时执行记录',
+                    ]);
+
+                continue;
+            }
+
             $affected = TaskRun::query()
                 ->whereKey($jobId)
                 ->where('status', 'running')
@@ -347,6 +406,50 @@ class JobQueueService
                 // ignore invalid datetime
             }
         }
+    }
+
+    /**
+     * 草稿生成成功后立即串行补投下一轮生成，使“生成草稿”和“按间隔发布”解耦。
+     *
+     * 发布动作不在这里补投：发布节奏由 next_publish_at + geoflow:schedule-tasks 控制。
+     *
+     * @param  array<string,mixed>  $meta
+     */
+    private function enqueueFollowUpGenerationIfNeeded(int $taskId, array $meta): void
+    {
+        if (($meta['action'] ?? '') !== 'generate_draft') {
+            return;
+        }
+
+        if ((string) config('queue.default') === 'sync') {
+            return;
+        }
+
+        $task = Task::query()
+            ->whereKey($taskId)
+            ->first(['id', 'status', 'schedule_enabled', 'created_count', 'article_limit', 'draft_limit']);
+        if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
+            return;
+        }
+
+        $articleLimit = max(1, (int) ($task->article_limit ?? $task->draft_limit ?? 10));
+        if ((int) ($task->created_count ?? 0) >= $articleLimit) {
+            return;
+        }
+
+        $draftLimit = max(1, (int) ($task->draft_limit ?? 10));
+        $draftCount = DB::table('articles')
+            ->where('task_id', $taskId)
+            ->where('status', 'draft')
+            ->whereNull('deleted_at')
+            ->count();
+        if ($draftCount >= $draftLimit) {
+            return;
+        }
+
+        $this->enqueueTaskJob($taskId, 'generate_article', [
+            'source' => 'follow_up_generation',
+        ]);
     }
 
     /**

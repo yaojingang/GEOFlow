@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
+use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
 use App\Support\Site\SiteSettingsBag;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
@@ -55,9 +57,30 @@ class SiteSettingsController extends Controller
             'seo_description_template' => ['nullable', 'string', 'max:255'],
             'featured_limit' => ['nullable', 'integer', 'min:1', 'max:100'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'admin_base_path' => [
+                'required',
+                'string',
+                'min:3',
+                'max:48',
+                'regex:/^[a-z0-9][a-z0-9_-]*[a-z0-9]$/',
+                Rule::notIn(AdminBasePathManager::reservedSegments()),
+            ],
         ], [
             'site_name.required' => __('admin.site_settings.error.site_name_required'),
+            'admin_base_path.required' => __('admin.site_settings.error.admin_base_path_required'),
+            'admin_base_path.min' => __('admin.site_settings.error.admin_base_path_invalid'),
+            'admin_base_path.max' => __('admin.site_settings.error.admin_base_path_invalid'),
+            'admin_base_path.regex' => __('admin.site_settings.error.admin_base_path_invalid'),
+            'admin_base_path.not_in' => __('admin.site_settings.error.admin_base_path_reserved'),
         ]);
+
+        try {
+            $newAdminBasePath = AdminBasePathManager::normalize((string) $payload['admin_base_path']);
+        } catch (\Throwable) {
+            return back()->withErrors(['admin_base_path' => __('admin.site_settings.error.admin_base_path_invalid')])->withInput();
+        }
+
+        $currentAdminBasePath = AdminWeb::basePath();
 
         $settings = [
             'site_name' => trim((string) $payload['site_name']),
@@ -73,6 +96,7 @@ class SiteSettingsController extends Controller
             'seo_description_template' => trim((string) ($payload['seo_description_template'] ?? '')),
             'featured_limit' => (string) ((int) ($payload['featured_limit'] ?? 6)),
             'per_page' => (string) ((int) ($payload['per_page'] ?? 12)),
+            'admin_base_path' => $newAdminBasePath,
         ];
 
         foreach ($settings as $settingKey => $settingValue) {
@@ -83,6 +107,20 @@ class SiteSettingsController extends Controller
         }
 
         SiteSettingsBag::forget();
+
+        if ($newAdminBasePath !== $currentAdminBasePath) {
+            try {
+                AdminBasePathManager::persist($newAdminBasePath);
+            } catch (\Throwable $e) {
+                return back()->withErrors([
+                    'admin_base_path' => __('admin.site_settings.error.admin_base_path_save_failed', ['message' => $e->getMessage()]),
+                ])->withInput();
+            }
+
+            $newAdminUrl = url('/'.$newAdminBasePath.'/site-settings');
+
+            return redirect()->to($newAdminUrl)->with('message', __('admin.site_settings.message.saved_admin_base_path', ['url' => $newAdminUrl]));
+        }
 
         return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.message.saved'));
     }
@@ -185,6 +223,7 @@ class SiteSettingsController extends Controller
      *   seo_description_template:string,
      *   featured_limit:string,
      *   per_page:string,
+     *   admin_base_path:string,
      *   active_theme:string,
      *   article_detail_ads:string
      * }
@@ -192,11 +231,11 @@ class SiteSettingsController extends Controller
     private function loadSettings(): array
     {
         $defaults = [
-            'site_name' => '智能GEO内容系统',
+            'site_name' => 'GEOFlow',
             'site_subtitle' => '',
             'site_description' => '基于AI的智能内容生成与发布平台',
             'site_keywords' => 'AI内容生成,GEO优化,智能发布,内容管理',
-            'copyright_info' => '© 2024 智能GEO内容系统. All rights reserved.',
+            'copyright_info' => '© 2026 GEOFlow. All rights reserved.',
             'site_logo' => '',
             'site_favicon' => '',
             'analytics_code' => '',
@@ -204,6 +243,7 @@ class SiteSettingsController extends Controller
             'seo_description_template' => '{description}',
             'featured_limit' => '6',
             'per_page' => '12',
+            'admin_base_path' => AdminWeb::basePath(),
             'active_theme' => '',
             'article_detail_ads' => '[]',
         ];
@@ -234,6 +274,7 @@ class SiteSettingsController extends Controller
             'seo_description_template' => (string) $stored['seo_description_template'],
             'featured_limit' => (string) $stored['featured_limit'],
             'per_page' => (string) $stored['per_page'],
+            'admin_base_path' => AdminWeb::basePath(),
             'active_theme' => (string) $stored['active_theme'],
             'article_detail_ads' => (string) $stored['article_detail_ads'],
         ];

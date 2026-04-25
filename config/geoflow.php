@@ -5,12 +5,15 @@
  *
  * 环境变量键名与默认值见各条目旁注释；修改后建议 `php artisan config:clear`。
  */
+$adminBasePath = trim((string) env('ADMIN_BASE_PATH', 'geo_admin'), '/');
+$adminBasePath = $adminBasePath !== '' ? $adminBasePath : 'geo_admin';
+
 return [
 
     // 站点展示名称（页眉、标题等）
-    'site_name' => env('SITE_NAME', '智能GEO内容系统'),
+    'site_name' => env('SITE_NAME', 'GEOFlow'),
     // 站点完整/副标题文案
-    'site_full_name' => env('SITE_FULL_NAME', 'GEO+AI内容生成系统'),
+    'site_full_name' => env('SITE_FULL_NAME', 'GEOFlow'),
     // 站点根 URL，用于生成绝对链接（末尾无斜杠）
     'site_url' => rtrim((string) env('SITE_URL', 'http://localhost'), '/'),
     // SEO 描述
@@ -19,7 +22,7 @@ return [
     'site_keywords' => env('SITE_KEYWORDS', ''),
 
     // 后台入口路径前缀，如 /geo_admin（勿与前台路由冲突）
-    'admin_base_path' => '/'.trim((string) env('ADMIN_BASE_PATH', 'geo_admin'), '/'),
+    'admin_base_path' => '/'.$adminBasePath,
 
     // 前台 Blade 使用的 Laravel 翻译 locale（与 APP_LOCALE、后台会话语言独立；对齐旧站中文导航）
     'public_locale' => env('GEOFLOW_PUBLIC_LOCALE', 'zh_CN'),
