@@ -2,18 +2,18 @@
 
 > Languages: [简体中文](README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
 
-> An open-source content production system for GEO / SEO operations. **This repository is the Laravel 12 edition**: model and asset management, task scheduling, queues and monitoring, draft review, and front-end publishing form one pipeline—ideal for automated content sites or internal operations backends.
+> GEOFlow is an open-source intelligent content engineering system designed specifically for GEO (Generative Engine Optimization). It aims to become one of the earliest systematic content infrastructures built around GEO workflows, connecting data assets, knowledge bases, material management, AI generation, review and publishing, front-end presentation, and future multi-channel distribution into one evolving pipeline.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20)](https://laravel.com/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-The framework skeleton is released under the [MIT License](https://opensource.org/licenses/MIT) (see `composer.json`). Business code follows the license notice at the repository root.
+GEOFlow is released under the [Apache License 2.0](LICENSE). You may use, copy, modify, and distribute it, including for commercial purposes, provided that you retain copyright and license notices and comply with the patent, trademark, and warranty-disclaimer terms of Apache-2.0.
 
 ---
 
@@ -322,6 +322,12 @@ composer test
 - [日本語](README_ja.md)
 - [Español](README_es.md)
 - [Русский](README_ru.md)
+
+---
+
+## 📄 License
+
+GEOFlow is licensed under the [Apache License 2.0](LICENSE). It allows personal and commercial use, modification, redistribution, and private deployment, as long as the license, copyright notices, modification notices, patent terms, and warranty disclaimers are respected.
 
 ---
 

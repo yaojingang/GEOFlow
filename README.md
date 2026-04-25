@@ -2,18 +2,18 @@
 
 > Languages: [简体中文](README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
 
-> 面向 GEO / SEO 内容运营场景的开源内容生产系统。**本仓库为 Laravel 12 实现**：模型与素材管理、任务调度、队列与监控、草稿审核与前台发布串联为一条链路，适合自动化内容站点或内部运营后台。
+> GEOFlow 是一套专门面向 GEO（生成式引擎优化）的开源智能内容工程系统，尝试成为全球较早围绕 GEO 场景系统化设计的内容基础设施。它把数据沉淀、知识库、素材管理、AI 生成、审核发布、前台展示与后续多端分发串联为一条可持续迭代的工作链路，目标是逐步演进为一套强大的“从数据到内容、从内容到多端发布”的 GEO 优化系统。
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20)](https://laravel.com/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-框架与骨架代码以 [MIT License](https://opensource.org/licenses/MIT) 发布（见 `composer.json`）；业务代码以仓库根目录约定为准。
+GEOFlow 以 [Apache License 2.0](LICENSE) 开源发布。你可以自由使用、复制、修改和分发本项目，包括商业使用；请保留版权声明和许可证文本，并遵守 Apache-2.0 的专利授权、商标与免责声明条款。
 
 ---
 
@@ -337,6 +337,12 @@ composer test
 - [日本語 README](README_ja.md)
 - [Español README](README_es.md)
 - [Русский README](README_ru.md)
+
+---
+
+## 📄 开源协议
+
+本项目采用 [Apache License 2.0](LICENSE)。该协议允许个人和企业在遵守许可证声明、版权保留、修改说明、专利授权和免责声明等条款的前提下使用、修改、分发和商用 GEOFlow。
 
 ---
 
