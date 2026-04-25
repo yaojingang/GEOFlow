@@ -107,12 +107,16 @@ class TitleAiGenerationService
         }
         $userPrompt .= "要求：\n1. 每个标题独占一行\n2. 标题要有吸引力和可读性\n3. 适合搜索引擎优化\n4. 不要添加序号或其他标记\n5. 直接输出标题内容";
 
-        $response = agent($systemPrompt)->prompt(
-            $userPrompt,
-            [],
-            $providerName,
-            (string) ($aiModel->model_id ?? '')
-        );
+        try {
+            $response = agent($systemPrompt)->prompt(
+                $userPrompt,
+                [],
+                $providerName,
+                (string) ($aiModel->model_id ?? '')
+            );
+        } catch (Throwable $exception) {
+            throw new \RuntimeException(OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
+        }
 
         $content = trim((string) ($response->text ?? ''));
 

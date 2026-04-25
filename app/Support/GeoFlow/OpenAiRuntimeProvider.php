@@ -3,6 +3,7 @@
 namespace App\Support\GeoFlow;
 
 use Illuminate\Support\Facades\Config;
+use Throwable;
 
 /**
  * OpenAI 兼容 Chat/Embedding 客户端所需的 base URL 规范化与运行时 provider 注册。
@@ -76,5 +77,43 @@ final class OpenAiRuntimeProvider
         ]);
 
         return $providerName;
+    }
+
+    /**
+     * 将底层 AI SDK 的非 JSON/HTML 响应异常转换为面向配置排查的提示。
+     */
+    public static function normalizeApiException(Throwable $exception, string $providerUrl = ''): string
+    {
+        $message = trim($exception->getMessage());
+        $lowerMessage = mb_strtolower($message, 'UTF-8');
+
+        if (self::looksLikeNonJsonResponse($lowerMessage)) {
+            $hint = 'AI 接口返回了非 JSON 响应（可能是 HTML 页面）。请检查 AI 模型的 API Base URL 是否填写为接口 Base URL，而不是官网、控制台、代理页或网页地址。';
+            $endpoint = self::chatCompletionsEndpointHint($providerUrl);
+
+            return $endpoint !== '' ? $hint.' 当前请求地址约为：'.$endpoint : $hint;
+        }
+
+        return $message !== '' ? $message : $exception::class;
+    }
+
+    private static function looksLikeNonJsonResponse(string $lowerMessage): bool
+    {
+        return str_contains($lowerMessage, '<!doctype')
+            || str_contains($lowerMessage, '<html')
+            || str_contains($lowerMessage, 'api响应格式错误')
+            || str_contains($lowerMessage, 'non-json')
+            || str_contains($lowerMessage, 'unexpected token <')
+            || (str_contains($lowerMessage, 'must be of type array') && str_contains($lowerMessage, 'null given'));
+    }
+
+    private static function chatCompletionsEndpointHint(string $providerUrl): string
+    {
+        $providerUrl = trim($providerUrl);
+        if ($providerUrl === '') {
+            return '';
+        }
+
+        return rtrim($providerUrl, '/').'/chat/completions';
     }
 }

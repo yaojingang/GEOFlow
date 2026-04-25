@@ -149,7 +149,7 @@ class KnowledgeChunkSyncService
                     'embedding_model_id' => (int) ($embeddingMetadata['model_id'] ?? 0),
                     'model_identifier' => (string) ($embeddingMetadata['model_name'] ?? ''),
                     'query_length' => mb_strlen($query, 'UTF-8'),
-                    'message' => $exception->getMessage(),
+                    'message' => OpenAiRuntimeProvider::normalizeApiException($exception, (string) ($embeddingMetadata['api_url'] ?? '')),
                 ]);
             }
 
