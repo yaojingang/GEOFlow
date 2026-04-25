@@ -5,7 +5,6 @@
 > GEOFlow — открытая интеллектуальная система контент-инжиниринга, специально спроектированная для GEO (Generative Engine Optimization). Это одна из самых ранних в мире инфраструктур данных, контента и дистрибуции, системно спроектированных вокруг GEO-сценариев, объединяющая данные, базы знаний, материалы, AI-генерацию, ревью, публикацию, фронтенд-представление и будущую многоканальную дистрибуцию в единый развивающийся конвейер.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
-[![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20)](https://laravel.com/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
@@ -50,9 +49,9 @@ GEOFlow распространяется по лицензии [Apache License 2
 
 ---
 
-## 🆕 Что важно в текущей Laravel-версии
+## 🆕 Что важно в новой версии
 
-Текущая публичная версия — переработанная редакция на Laravel 12.
+Ключевые изменения новой версии:
 
 - Админка фиксирует бренд GEOFlow, поддерживает несколько языков, управление администраторами, приветственное окно и уведомления о версиях GitHub.
 - Задачи поддерживают фиксированную модель и smart failover; генерация и публикация разделены.

@@ -5,7 +5,6 @@
 > GEOFlow is an open-source intelligent content engineering system designed specifically for GEO (Generative Engine Optimization). It is one of the world's earliest data, content, and distribution infrastructures systematically designed around GEO workflows, connecting data assets, knowledge bases, material management, AI generation, review and publishing, front-end presentation, and future multi-channel distribution into one evolving pipeline.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
-[![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20)](https://laravel.com/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
@@ -50,9 +49,9 @@ These screens cover the home page, task scheduling, article workflow, and model 
 
 ---
 
-## 🆕 Current Laravel Rewrite Highlights
+## 🆕 New Version Highlights
 
-The public repository now uses the Laravel 12 rewrite. Current highlights include:
+New version highlights include:
 
 - **Admin experience**: fixed GEOFlow admin brand, multi-language switching, admin account editing/deletion, first-login welcome letter, GitHub version update reminders, and a dashboard quick-start block.
 - **Task pipeline**: fixed model and smart failover modes; generation and publishing are separated; task article links open task-scoped article lists.
