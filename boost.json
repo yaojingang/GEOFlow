@@ -1,0 +1,12 @@
+{
+    "guidelines": true,
+    "mcp": true,
+    "nightwatch_mcp": false,
+    "sail": false,
+    "skills": [
+        "ai-sdk-development",
+        "laravel-best-practices",
+        "configuring-horizon",
+        "tailwindcss-development"
+    ]
+}
