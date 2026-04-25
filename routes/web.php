@@ -216,7 +216,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::prefix('admin-users')->name('admin-users.')->group(function () {
                 Route::get('/', [AdminUserController::class, 'index'])->name('index');
                 Route::post('create', [AdminUserController::class, 'store'])->name('store');
+                Route::post('{adminId}/update', [AdminUserController::class, 'update'])->name('update');
                 Route::post('{adminId}/toggle-status', [AdminUserController::class, 'toggleStatus'])->name('toggle-status');
+                Route::post('{adminId}/delete', [AdminUserController::class, 'destroy'])->name('delete');
             });
             Route::get('admin-activity-logs', [AdminActivityLogController::class, 'index'])->name('admin-activity-logs');
             Route::prefix('api-tokens')->name('api-tokens.')->group(function () {

@@ -3,14 +3,16 @@
 namespace App\Services\Admin;
 
 use App\Models\Admin;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 
 /**
  * 后台「欢迎使用 GEOFlow」弹窗：负责版本态判断、自动打开一次、以及关闭落库所需的数据。
  */
 class AdminWelcomeModalService
 {
+    public function __construct(
+        private readonly AdminUpdateMetadataService $updateMetadataService
+    ) {}
+
     /**
      * 为 Blade 输出构造 JSON 载荷（多语言文案 + 运行态：是否自动打开、关闭地址、CSRF、外链）。
      *
@@ -59,7 +61,7 @@ class AdminWelcomeModalService
     private function resolveWelcomeState(): array
     {
         $introVersion = (string) config('geoflow.welcome_intro_version', '1.2.0');
-        $updateState = $this->fetchUpdateState($introVersion);
+        $updateState = $this->updateMetadataService->fetchState($introVersion);
 
         if (! empty($updateState['is_update_available']) && empty($updateState['is_ignored'])) {
             return [
@@ -73,68 +75,6 @@ class AdminWelcomeModalService
             'mode' => 'intro',
             'version' => 'intro:'.$introVersion,
             'update' => $updateState,
-        ];
-    }
-
-    /**
-     * 轻量拉取上游 version.json（可配置）；失败或非新版本则视为无更新。
-     *
-     * @return array{
-     *   current_version: string,
-     *   latest_version: string,
-     *   payload: array<string, mixed>,
-     *   is_update_available: bool,
-     *   is_ignored: bool
-     * }
-     */
-    private function fetchUpdateState(string $currentVersion): array
-    {
-        $defaults = [
-            'current_version' => $currentVersion,
-            'latest_version' => '',
-            'payload' => [],
-            'is_update_available' => false,
-            'is_ignored' => true,
-        ];
-        $url = trim((string) config('geoflow.update_metadata_url', ''));
-        if ($url === '') {
-            return $defaults;
-        }
-
-        try {
-            $json = Cache::remember('geoflow:update_metadata', 600, function () use ($url) {
-                $response = Http::timeout(4)->acceptJson()->get($url);
-
-                return $response->successful() ? ($response->json() ?: []) : [];
-            });
-        } catch (\Throwable) {
-            return $defaults;
-        }
-
-        if (! is_array($json) || $json === []) {
-            return $defaults;
-        }
-
-        $latest = trim((string) ($json['version'] ?? ''));
-        if ($latest === '') {
-            return $defaults;
-        }
-        try {
-            if (version_compare($latest, $currentVersion, '<=')) {
-                return $defaults;
-            }
-        } catch (\Throwable) {
-            return $defaults;
-        }
-
-        $payload = is_array($json['payload'] ?? null) ? $json['payload'] : [];
-
-        return [
-            'current_version' => $currentVersion,
-            'latest_version' => $latest,
-            'payload' => $payload,
-            'is_update_available' => true,
-            'is_ignored' => false,
         ];
     }
 

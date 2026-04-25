@@ -1,0 +1,16 @@
+{
+  "version": "1.2.0",
+  "release_date": "2026-04-25",
+  "release_type": "feature",
+  "payload": {
+    "title_zh": "GEOFlow v1.2.0",
+    "title_en": "GEOFlow v1.2.0",
+    "summary_zh": "当前公开版本包含 Laravel 重构后的后台、多语言基础支持、任务管理优化、主题预览和知识库向量化预览等能力。",
+    "summary_en": "The current public release includes the Laravel-based admin console, baseline multilingual support, task management improvements, theme preview workflow, and knowledge-base vector preview.",
+    "upgrade_tip_zh": "升级前请备份数据库、.env、uploads 和 storage 数据，再按更新日志执行部署。",
+    "upgrade_tip_en": "Before upgrading, back up your database, .env, uploads, and storage data, then follow the changelog.",
+    "release_url": "https://github.com/yaojingang/GEOFlow",
+    "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md",
+    "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md"
+  }
+}

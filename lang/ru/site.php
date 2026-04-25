@@ -1,0 +1,27 @@
+<?php
+
+return [
+    'home_hero_fallback' => 'Генерация и публикация контента с помощью AI.',
+    'home_featured' => 'Избранное',
+    'home_featured_badge' => 'Избранное',
+    'home_latest' => 'Последнее',
+    'home_read_more' => 'Читать далее',
+    'home_empty_title' => 'Статей пока нет',
+    'home_empty_desc' => 'Зайдите позже или опубликуйте материал из админ-панели.',
+    'search_breadcrumb' => 'Поиск: :term',
+    'search_empty_title' => 'Ничего не найдено',
+    'search_empty_desc' => 'Попробуйте другие ключевые слова.',
+    'back_home' => 'На главную',
+    'category_not_found' => 'Категория не найдена',
+    'article_not_found' => 'Статья не найдена',
+    'article_published_on' => 'Опубликовано: :date',
+    'article_related' => 'Похожие статьи',
+    'article_ad_close' => 'Закрыть промо',
+    'archive_title' => 'Архив',
+    'archive_month_title' => 'Статьи за :period',
+    'archive_empty' => 'За этот период статей нет.',
+    'pagination_prev' => 'Назад',
+    'pagination_next' => 'Далее',
+    'search_placeholder' => 'Искать заголовок или выдержку…',
+    'search_button' => 'Поиск',
+];

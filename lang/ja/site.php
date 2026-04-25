@@ -1,0 +1,27 @@
+<?php
+
+return [
+    'home_hero_fallback' => 'AI支援のコンテンツ生成と公開。',
+    'home_featured' => '注目',
+    'home_featured_badge' => '注目',
+    'home_latest' => '最新',
+    'home_read_more' => '続きを読む',
+    'home_empty_title' => '記事はまだありません',
+    'home_empty_desc' => '後でもう一度確認するか、管理画面から公開してください。',
+    'search_breadcrumb' => '検索：:term',
+    'search_empty_title' => '結果がありません',
+    'search_empty_desc' => '別のキーワードを試してください。',
+    'back_home' => 'ホームへ戻る',
+    'category_not_found' => 'カテゴリが見つかりません',
+    'article_not_found' => '記事が見つかりません',
+    'article_published_on' => '公開日：:date',
+    'article_related' => '関連記事',
+    'article_ad_close' => 'プロモーションを閉じる',
+    'archive_title' => 'アーカイブ',
+    'archive_month_title' => ':period の記事',
+    'archive_empty' => 'この期間の記事はありません。',
+    'pagination_prev' => '前へ',
+    'pagination_next' => '次へ',
+    'search_placeholder' => 'タイトルまたは概要を検索…',
+    'search_button' => '検索',
+];

@@ -1,6 +1,7 @@
 @php
     $projectGithubUrl = 'https://github.com/yaojingang/GEOFlow';
     $xProfileUrl = 'https://x.com/yaojingang';
+    $appVersion = (string) config('geoflow.app_version', '1.2.0');
     $changelogUrl = app()->getLocale() === 'en'
         ? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md'
         : 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md';
@@ -10,7 +11,7 @@
         <div class="flex flex-col md:flex-row md:flex-wrap justify-center items-center gap-3 md:gap-4 text-sm text-gray-500 text-center">
             <span>{{ __('admin.footer.copyright') }}</span>
             <span>|</span>
-            <span>{{ __('admin.footer.version', ['version' => '1.2']) }}</span>
+            <span>{{ __('admin.footer.version', ['version' => $appVersion]) }}</span>
             <span>|</span>
             <span class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
                 {{ __('admin.footer.author') }}

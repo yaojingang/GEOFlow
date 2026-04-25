@@ -48,6 +48,14 @@ final class AdminWeb
         return [
             'zh_CN' => '简体中文',
             'en' => 'English',
+            'ja' => '日本語',
+            'es' => 'Español',
+            'ru' => 'Русский',
         ];
+    }
+
+    public static function isSupportedLocale(string $locale): bool
+    {
+        return array_key_exists($locale, self::supportedLocales());
     }
 }

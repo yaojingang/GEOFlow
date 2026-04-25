@@ -16,6 +16,7 @@ use App\Models\Task;
 use App\Models\Title;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\ArticleWorkflow;
+use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -595,8 +596,8 @@ class WorkerExecutionService
             if ($path === '') {
                 continue;
             }
-            $path = $this->normalizeImageMarkdownPath($path);
-            $alt = trim((string) ($image->original_name ?? ''));
+            $path = ImageUrlNormalizer::toPublicUrl($path);
+            $alt = ImageUrlNormalizer::readableAlt((string) ($image->original_name ?? ''));
             $markdownBlocks[] = '!['.($alt !== '' ? $alt : 'image').']('.$path.')';
         }
 
@@ -650,29 +651,6 @@ class WorkerExecutionService
         }
 
         return implode("\n\n", array_values(array_filter($parts, static fn (string $part): bool => trim($part) !== '')));
-    }
-
-    /**
-     * 将图片路径规范为 Markdown 可稳定访问的 URL。
-     */
-    private function normalizeImageMarkdownPath(string $path): string
-    {
-        $normalized = str_replace('\\', '/', trim($path));
-        if ($normalized === '') {
-            return $normalized;
-        }
-
-        if (
-            str_starts_with($normalized, 'http://')
-            || str_starts_with($normalized, 'https://')
-            || str_starts_with($normalized, '//')
-            || str_starts_with($normalized, 'data:')
-            || str_starts_with($normalized, '/')
-        ) {
-            return $normalized;
-        }
-
-        return '/'.ltrim($normalized, '/');
     }
 
     /**

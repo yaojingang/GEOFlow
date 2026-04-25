@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Admin;
+use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Services\GeoFlow\HorizonMetricsAdapter;
@@ -39,6 +40,10 @@ class AppServiceProvider extends ServiceProvider
             $view->with(
                 'adminWelcomeModalPayload',
                 $admin instanceof Admin ? app(AdminWelcomeModalService::class)->buildModalPayload($admin) : null
+            );
+            $view->with(
+                'adminUpdateNotificationPayload',
+                $admin instanceof Admin ? app(AdminUpdateMetadataService::class)->buildNotificationPayload() : null
             );
         });
     }

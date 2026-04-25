@@ -3,7 +3,8 @@
 namespace App\Support\Site;
 
 use App\Models\Article;
-use League\CommonMark\CommonMarkConverter;
+use App\Support\GeoFlow\ImageUrlNormalizer;
+use League\CommonMark\GithubFlavoredMarkdownConverter;
 
 /**
  * 文章正文 Markdown 渲染与摘要生成（对齐旧版前台展示习惯）。
@@ -15,17 +16,17 @@ final class ArticleHtmlPresenter
      */
     public static function markdownToHtml(string $markdown): string
     {
-        $markdown = trim($markdown);
+        $markdown = self::normalizeMarkdownImages(trim($markdown));
         if ($markdown === '') {
             return '';
         }
 
-        $converter = new CommonMarkConverter([
+        $converter = new GithubFlavoredMarkdownConverter([
             'html_input' => 'strip',
             'allow_unsafe_links' => false,
         ]);
 
-        return $converter->convert($markdown)->getContent();
+        return self::decorateRenderedHtml($converter->convert($markdown)->getContent());
     }
 
     /**
@@ -71,5 +72,31 @@ final class ArticleHtmlPresenter
         $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
 
         return trim($text);
+    }
+
+    private static function normalizeMarkdownImages(string $markdown): string
+    {
+        return preg_replace_callback(
+            '/!\[([^\]]*)\]\(([^)\s]+)(?:\s+(".*?"|\'.*?\'))?\)/u',
+            static function (array $matches): string {
+                $alt = ImageUrlNormalizer::readableAlt((string) ($matches[1] ?? ''));
+                $url = ImageUrlNormalizer::toPublicUrl((string) ($matches[2] ?? ''));
+                $title = trim((string) ($matches[3] ?? ''));
+
+                return '!['.$alt.']('.$url.($title !== '' ? ' '.$title : '').')';
+            },
+            $markdown
+        ) ?? $markdown;
+    }
+
+    private static function decorateRenderedHtml(string $html): string
+    {
+        $html = preg_replace('/<table>/u', '<div class="article-table-wrap"><table class="article-table">', $html) ?? $html;
+        $html = preg_replace('/<\/table>/u', '</table></div>', $html) ?? $html;
+        $html = preg_replace('/<p>\s*(<img\b[^>]*>)\s*<\/p>/u', '$1', $html) ?? $html;
+        $html = preg_replace('/<img\b(?![^>]*\bloading=)/u', '<img loading="lazy"', $html) ?? $html;
+        $html = preg_replace('/<img\b(?![^>]*\bdecoding=)/u', '<img decoding="async"', $html) ?? $html;
+
+        return $html;
     }
 }

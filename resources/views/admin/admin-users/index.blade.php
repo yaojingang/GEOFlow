@@ -131,14 +131,37 @@
                                     {{ __('admin.admin_users.activity_count', ['count' => $admin['activity_count']]) }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    @if (! $admin['is_super_admin'] && $admin['id'] !== $currentAdminId)
-                                        <form method="POST" action="{{ route('admin.admin-users.toggle-status', ['adminId' => $admin['id']]) }}" class="inline">
-                                            @csrf
-                                            <input type="hidden" name="next_status" value="{{ $admin['status'] === 'active' ? 'inactive' : 'active' }}">
-                                            <button type="submit" class="{{ $admin['status'] === 'active' ? 'text-amber-600 hover:text-amber-800' : 'text-green-600 hover:text-green-800' }}">
-                                                {{ $admin['status'] === 'active' ? __('admin.admin_users.action_disable') : __('admin.admin_users.action_enable') }}
+                                    @if ($admin['id'] === $currentAdminId)
+                                        <button
+                                            type="button"
+                                            onclick="showEditAdminModal({{ \Illuminate\Support\Js::from($admin) }})"
+                                            class="text-blue-600 hover:text-blue-800"
+                                        >
+                                            {{ __('admin.button.edit') }}
+                                        </button>
+                                    @elseif (! $admin['is_super_admin'])
+                                        <div class="inline-flex items-center justify-end gap-3">
+                                            <button
+                                                type="button"
+                                                onclick="showEditAdminModal({{ \Illuminate\Support\Js::from($admin) }})"
+                                                class="text-blue-600 hover:text-blue-800"
+                                            >
+                                                {{ __('admin.button.edit') }}
                                             </button>
-                                        </form>
+                                            <form method="POST" action="{{ route('admin.admin-users.toggle-status', ['adminId' => $admin['id']]) }}" class="inline">
+                                                @csrf
+                                                <input type="hidden" name="next_status" value="{{ $admin['status'] === 'active' ? 'inactive' : 'active' }}">
+                                                <button type="submit" class="{{ $admin['status'] === 'active' ? 'text-amber-600 hover:text-amber-800' : 'text-green-600 hover:text-green-800' }}">
+                                                    {{ $admin['status'] === 'active' ? __('admin.admin_users.action_disable') : __('admin.admin_users.action_enable') }}
+                                                </button>
+                                            </form>
+                                            <form method="POST" action="{{ route('admin.admin-users.delete', ['adminId' => $admin['id']]) }}" class="inline" onsubmit="return confirm({{ \Illuminate\Support\Js::from(__('admin.admin_users.confirm_delete', ['username' => $admin['username']])) }})">
+                                                @csrf
+                                                <button type="submit" class="text-red-600 hover:text-red-800">
+                                                    {{ __('admin.button.delete') }}
+                                                </button>
+                                            </form>
+                                        </div>
                                     @else
                                         <span class="text-gray-300">-</span>
                                     @endif
@@ -200,16 +223,100 @@
             </div>
         </div>
     </div>
+
+    <div id="edit-admin-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-lg w-full">
+                <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 class="text-lg font-medium text-gray-900">{{ __('admin.admin_users.modal_edit') }}</h3>
+                    <button type="button" onclick="hideEditAdminModal()" class="text-gray-400 hover:text-gray-600">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <form id="edit-admin-form" method="POST" action="#" class="px-6 py-5 space-y-4">
+                    @csrf
+                    <div>
+                        <label for="edit_username" class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.admin_users.field_username') }}</label>
+                        <input type="text" name="username" id="edit_username" required class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+
+                    <div>
+                        <label for="edit_display_name" class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.admin_users.field_display_name') }}</label>
+                        <input type="text" name="display_name" id="edit_display_name" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+
+                    <div>
+                        <label for="edit_email" class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.admin_users.field_email') }}</label>
+                        <input type="email" name="email" id="edit_email" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+
+                    <div>
+                        <label for="edit_status" class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.admin_users.column_status') }}</label>
+                        <input type="hidden" name="status" id="edit_status_hidden" disabled>
+                        <select name="status" id="edit_status" required class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="active">{{ __('admin.admin_users.status_active') }}</option>
+                            <option value="inactive">{{ __('admin.admin_users.status_inactive') }}</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="edit_password" class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.admin_users.field_new_password') }}</label>
+                            <input type="password" name="password" id="edit_password" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label for="edit_confirm_password" class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.admin_users.field_confirm_new_password') }}</label>
+                            <input type="password" name="confirm_password" id="edit_confirm_password" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-600">
+                        {{ __('admin.admin_users.edit_help') }}
+                    </div>
+
+                    <div class="flex justify-end gap-3 pt-2">
+                        <button type="button" onclick="hideEditAdminModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50">{{ __('admin.button.cancel') }}</button>
+                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md text-white bg-indigo-600 hover:bg-indigo-700">{{ __('admin.admin_users.update_admin_submit') }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
     <script>
+        const updateAdminRouteTemplate = @json(route('admin.admin-users.update', ['adminId' => '__ADMIN_ID__']));
+        const currentAdminId = @json($currentAdminId);
+
         function showCreateAdminModal() {
             document.getElementById('create-admin-modal').classList.remove('hidden');
         }
 
         function hideCreateAdminModal() {
             document.getElementById('create-admin-modal').classList.add('hidden');
+        }
+
+        function showEditAdminModal(admin) {
+            const form = document.getElementById('edit-admin-form');
+            const statusSelect = document.getElementById('edit_status');
+            const statusHidden = document.getElementById('edit_status_hidden');
+            const isSelf = Number(admin.id) === Number(currentAdminId);
+            form.action = updateAdminRouteTemplate.replace('__ADMIN_ID__', admin.id);
+            document.getElementById('edit_username').value = admin.username || '';
+            document.getElementById('edit_display_name').value = admin.display_name || '';
+            document.getElementById('edit_email').value = admin.email || '';
+            statusSelect.value = admin.status || 'active';
+            statusSelect.disabled = isSelf;
+            statusHidden.disabled = !isSelf;
+            statusHidden.value = admin.status || 'active';
+            document.getElementById('edit_password').value = '';
+            document.getElementById('edit_confirm_password').value = '';
+            document.getElementById('edit-admin-modal').classList.remove('hidden');
+        }
+
+        function hideEditAdminModal() {
+            document.getElementById('edit-admin-modal').classList.add('hidden');
         }
     </script>
 @endpush

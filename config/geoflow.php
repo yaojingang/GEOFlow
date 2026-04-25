@@ -7,6 +7,9 @@
  */
 $adminBasePath = trim((string) env('ADMIN_BASE_PATH', 'geo_admin'), '/');
 $adminBasePath = $adminBasePath !== '' ? $adminBasePath : 'geo_admin';
+$defaultUpdateMetadataUrl = 'https://raw.githubusercontent.com/yaojingang/GEOFlow/main/version.json';
+$updateMetadataUrl = trim((string) env('GEOFLOW_UPDATE_METADATA_URL', $defaultUpdateMetadataUrl));
+$updateMetadataUrl = $updateMetadataUrl !== '' ? $updateMetadataUrl : $defaultUpdateMetadataUrl;
 
 return [
 
@@ -27,10 +30,14 @@ return [
     // 前台 Blade 使用的 Laravel 翻译 locale（与 APP_LOCALE、后台会话语言独立；对齐旧站中文导航）
     'public_locale' => env('GEOFLOW_PUBLIC_LOCALE', 'zh_CN'),
 
+    // 当前系统版本（底部展示、GitHub 更新检查对比）
+    'app_version' => env('GEOFLOW_APP_VERSION', '1.2.0'),
     // 欢迎弹窗「介绍」文案版本：变更后所有管理员会再次看到介绍弹窗
     'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '1.2.0'),
-    // 上游 version.json 地址；留空则不请求网络、仅显示介绍弹窗（生产可在 .env 配置）
-    'update_metadata_url' => env('GEOFLOW_UPDATE_METADATA_URL', ''),
+    // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
+    'update_check_enabled' => filter_var(env('GEOFLOW_UPDATE_CHECK_ENABLED', env('APP_ENV') !== 'testing'), FILTER_VALIDATE_BOOLEAN),
+    'update_metadata_url' => $updateMetadataUrl,
+    'update_metadata_cache_ttl_seconds' => (int) env('GEOFLOW_UPDATE_METADATA_CACHE_TTL', 86400),
 
     // 前台列表每页条数
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),

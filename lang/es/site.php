@@ -1,0 +1,27 @@
+<?php
+
+return [
+    'home_hero_fallback' => 'Generación y publicación de contenido asistida por IA.',
+    'home_featured' => 'Destacado',
+    'home_featured_badge' => 'Destacado',
+    'home_latest' => 'Últimos',
+    'home_read_more' => 'Leer más',
+    'home_empty_title' => 'Aún no hay artículos',
+    'home_empty_desc' => 'Vuelve más tarde o publica desde el panel de administración.',
+    'search_breadcrumb' => 'Buscar: :term',
+    'search_empty_title' => 'Sin resultados',
+    'search_empty_desc' => 'Prueba con otras palabras clave.',
+    'back_home' => 'Volver al inicio',
+    'category_not_found' => 'Categoría no encontrada',
+    'article_not_found' => 'Artículo no encontrado',
+    'article_published_on' => 'Publicado el :date',
+    'article_related' => 'Artículos relacionados',
+    'article_ad_close' => 'Cerrar promoción',
+    'archive_title' => 'Archivo',
+    'archive_month_title' => 'Artículos de :period',
+    'archive_empty' => 'No hay artículos en este periodo.',
+    'pagination_prev' => 'Anterior',
+    'pagination_next' => 'Siguiente',
+    'search_placeholder' => 'Buscar título o extracto…',
+    'search_button' => 'Buscar',
+];
