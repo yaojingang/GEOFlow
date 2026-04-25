@@ -1,0 +1,27 @@
+<?php
+
+return [
+    'home_hero_fallback' => 'AI-assisted content generation and publishing.',
+    'home_featured' => 'Featured',
+    'home_featured_badge' => 'Featured',
+    'home_latest' => 'Latest',
+    'home_read_more' => 'Read more',
+    'home_empty_title' => 'No articles yet',
+    'home_empty_desc' => 'Please check back later or publish from the admin panel.',
+    'search_breadcrumb' => 'Search: :term',
+    'search_empty_title' => 'No results',
+    'search_empty_desc' => 'Try different keywords.',
+    'back_home' => 'Back to home',
+    'category_not_found' => 'Category not found',
+    'article_not_found' => 'Article not found',
+    'article_published_on' => 'Published on :date',
+    'article_related' => 'Related articles',
+    'article_ad_close' => 'Close promotion',
+    'archive_title' => 'Archive',
+    'archive_month_title' => 'Articles in :period',
+    'archive_empty' => 'No articles in this period.',
+    'pagination_prev' => 'Previous',
+    'pagination_next' => 'Next',
+    'search_placeholder' => 'Search title or excerpt…',
+    'search_button' => 'Search',
+];

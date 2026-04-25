@@ -1,0 +1,68 @@
+FROM composer:2 AS vendor
+
+WORKDIR /app
+
+# composer:2 基础镜像未默认启用 pcntl；Horizon 在 install 时会校验 ext-pcntl（运行阶段已安装，此处对齐锁文件平台检查）
+RUN docker-php-ext-install pcntl
+
+COPY composer.json composer.lock ./
+RUN composer install \
+    --no-dev \
+    --no-interaction \
+    --prefer-dist \
+    --classmap-authoritative \
+    --no-scripts
+
+COPY . .
+
+RUN composer dump-autoload \
+    --no-dev \
+    --no-interaction \
+    --classmap-authoritative \
+    --no-scripts \
+ && php artisan package:discover --ansi
+
+FROM php:8.4-fpm-bookworm
+
+WORKDIR /var/www/html
+
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources; \
+        sed -i 's|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources; \
+    elif [ -f /etc/apt/sources.list ]; then \
+        sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list; \
+        sed -i 's|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list; \
+    fi
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl \
+        libonig-dev \
+        libpq-dev \
+        libsqlite3-dev \
+        libzip-dev \
+        postgresql-client \
+        unzip \
+    && docker-php-ext-install \
+        mbstring \
+        opcache \
+        pcntl \
+        pdo_pgsql \
+        pdo_sqlite \
+        zip \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/99-opcache.ini
+COPY docker/php/php-docker-overrides.ini /usr/local/etc/php/conf.d/99-overrides.ini
+COPY docker/php-fpm/www.conf /usr/local/etc/php-fpm.d/zz-geoflow.conf
+COPY docker/entrypoint.prod.sh /usr/local/bin/geoflow-entrypoint-prod
+
+RUN chmod +x /usr/local/bin/geoflow-entrypoint-prod
+
+COPY --from=vendor /app /var/www/html
+
+ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint-prod"]
+CMD ["php-fpm", "-F"]

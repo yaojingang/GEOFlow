@@ -1,0 +1,169 @@
+# postgres 凭据由 DB_* 插值映射为官方镜像的 POSTGRES_*；redis 使用 REDIS_PASSWORD。推荐 docker compose --env-file .env.prod …
+name: geoflow-laravel-prod
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: geoflow-postgres-prod
+    environment:
+      POSTGRES_DB: "${DB_DATABASE:-geo_flow}"
+      POSTGRES_USER: "${DB_USERNAME:-geo_user}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-change-this-password}"
+    volumes:
+      - ${POSTGRES_DATA_DIR:-./docker-data/prod/postgres}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: geoflow-redis-prod
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        if [ -n "$${REDIS_PASSWORD:-}" ]; then
+          exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+        fi
+        exec redis-server --appendonly yes
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "if [ -n \"$${REDIS_PASSWORD:-}\" ]; then redis-cli -a \"$${REDIS_PASSWORD}\" ping; else redis-cli ping; fi",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  init:
+    image: geoflow-app-prod:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+    container_name: geoflow-init-prod
+    working_dir: /var/www/html
+    env_file:
+      - ./.env.prod
+    command: ["php", "artisan", "about"]
+    environment:
+      AUTO_MIGRATE: "true"
+      AUTO_OPTIMIZE: "false"
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: geoflow-app-prod:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+    container_name: geoflow-app-prod
+    working_dir: /var/www/html
+    env_file:
+      - ./.env.prod
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  web:
+    image: geoflow-web-prod:latest
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile.prod
+    container_name: geoflow-web-prod
+    ports:
+      - "${WEB_PORT:-18080}:80"
+    volumes:
+      - ./storage:/var/www/html/storage:ro
+    depends_on:
+      app:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  queue:
+    image: geoflow-app-prod:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+    container_name: geoflow-queue-prod
+    working_dir: /var/www/html
+    env_file:
+      - ./.env.prod
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,default", "--sleep=1", "--tries=1", "--timeout=300"]
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  scheduler:
+    image: geoflow-app-prod:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+    container_name: geoflow-scheduler-prod
+    working_dir: /var/www/html
+    env_file:
+      - ./.env.prod
+    command: ["php", "artisan", "schedule:work"]
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  reverb:
+    image: geoflow-app-prod:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+    container_name: geoflow-reverb-prod
+    working_dir: /var/www/html
+    env_file:
+      - ./.env.prod
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    ports:
+      - "${REVERB_EXPOSE_PORT:-18081}:8080"
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+

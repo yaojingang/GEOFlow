@@ -1,0 +1,123 @@
+name: geoflow-laravel
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: geoflow-postgres
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-geo_flow}
+      POSTGRES_USER: ${DB_USERNAME:-geo_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-geo_password}
+    ports:
+      - "127.0.0.1:${DB_EXPOSE_PORT:-15432}:5432"
+    volumes:
+      - ${POSTGRES_DATA_DIR:-./docker-data/dev/postgres}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-geo_user} -d ${DB_DATABASE:-geo_flow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: geoflow-redis
+    ports:
+      - "127.0.0.1:${REDIS_EXPOSE_PORT:-16379}:6379"
+    restart: unless-stopped
+
+  init:
+    image: geoflow-app:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: geoflow-init
+    working_dir: /var/www/html
+    env_file:
+      - ./.env
+    # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / seed）
+    command: ["php", "artisan", "about"]
+    environment:
+      AUTO_GENERATE_APP_KEY: "true"
+      AUTO_INIT_ONCE: "true"
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: "no"
+
+  app:
+    image: geoflow-app:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: geoflow-app
+    working_dir: /var/www/html
+    env_file:
+      - ./.env
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
+    ports:
+      - "${APP_PORT:-18080}:8080"
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  queue:
+    image: geoflow-app:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: geoflow-queue
+    working_dir: /var/www/html
+    env_file:
+      - ./.env
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,default", "--sleep=1", "--tries=1", "--timeout=300"]
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  scheduler:
+    image: geoflow-app:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: geoflow-scheduler
+    working_dir: /var/www/html
+    env_file:
+      - ./.env
+    command: ["php", "artisan", "schedule:work"]
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  reverb:
+    image: geoflow-app:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: geoflow-reverb
+    working_dir: /var/www/html
+    env_file:
+      - ./.env
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    ports:
+      - "${REVERB_EXPOSE_PORT:-18081}:8080"
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+

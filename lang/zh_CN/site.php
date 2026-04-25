@@ -1,0 +1,27 @@
+<?php
+
+return [
+    'home_hero_fallback' => '基于 AI 的智能内容生成与发布。',
+    'home_featured' => '精选文章',
+    'home_featured_badge' => '精选',
+    'home_latest' => '最新文章',
+    'home_read_more' => '阅读全文',
+    'home_empty_title' => '暂无文章',
+    'home_empty_desc' => '请稍后再来，或从管理后台发布内容。',
+    'search_breadcrumb' => '搜索：:term',
+    'search_empty_title' => '未找到相关内容',
+    'search_empty_desc' => '尝试更换关键词。',
+    'back_home' => '返回首页',
+    'category_not_found' => '分类不存在',
+    'article_not_found' => '文章不存在',
+    'article_published_on' => '发布于 :date',
+    'article_related' => '相关阅读',
+    'article_ad_close' => '关闭广告',
+    'archive_title' => '文章归档',
+    'archive_month_title' => ':period 的文章',
+    'archive_empty' => '该时段暂无文章。',
+    'pagination_prev' => '上一页',
+    'pagination_next' => '下一页',
+    'search_placeholder' => '搜索文章标题或摘要…',
+    'search_button' => '搜索',
+];

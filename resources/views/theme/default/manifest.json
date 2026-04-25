@@ -1,0 +1,6 @@
+{
+  "id": "default",
+  "name": "默认主题（占位）",
+  "version": "1.0.0",
+  "description": "在 theme/default/ 下按需添加 home、article、category、archive-index、archive-month 等 Blade 即可覆盖 site.*；未提供的页面自动使用内置 site 模板。"
+}

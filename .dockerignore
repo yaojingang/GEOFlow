@@ -1,0 +1,17 @@
+.git
+.github
+.idea
+.vscode
+vendor
+node_modules
+.env
+.env.*
+!.env.example
+.phpunit.result.cache
+*.log
+bak
+docker-compose*.yml
+
+# 本机 bootstrap 缓存可能含 dev 包发现结果；打进镜像会与 --no-dev 冲突
+bootstrap/cache/*
+!bootstrap/cache/.gitignore
