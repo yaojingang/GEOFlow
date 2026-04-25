@@ -390,6 +390,8 @@ class TaskController extends Controller
             'requestFailed' => __('admin.tasks.message.request_failed', ['message' => '__MESSAGE__']),
             'taskQueued' => __('admin.tasks.message.task_queued', ['name' => '__NAME__']),
             'taskStopped' => __('admin.tasks.message.task_stopped', ['name' => '__NAME__']),
+            'enabledStatus' => __('admin.tasks.status.enabled'),
+            'disabledStatus' => __('admin.tasks.status.disabled'),
             'noRunnable' => __('admin.tasks.message.no_runnable'),
             'confirmRunAll' => __('admin.tasks.confirm.run_all'),
             'bulkSubmitted' => __('admin.tasks.message.bulk_submitted', ['success' => '__SUCCESS__', 'total' => '__TOTAL__']),

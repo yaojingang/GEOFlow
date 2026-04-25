@@ -172,19 +172,13 @@
                                 <td class="px-3 py-4 align-top">
                                     <div class="flex w-fit items-center gap-1.5">
                                         @if (($task['status'] ?? '') === 'active')
-                                            @if (in_array($task['batch_status'] ?? '', ['running', 'pending'], true))
-                                                <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="stop" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
-                                                    <i data-lucide="square" class="w-4 h-4"></i>
-                                                </button>
-                                            @else
-                                                <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="start" class="inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors border border-blue-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
-                                                    <i data-lucide="play" class="w-4 h-4"></i>
-                                                </button>
-                                            @endif
+                                            <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="stop" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                                <i data-lucide="square" class="w-4 h-4"></i>
+                                            </button>
                                         @else
-                                            <span class="inline-flex items-center justify-center w-8 h-8 text-gray-400 bg-gray-50 rounded-md border border-gray-200" title="{{ __('admin.tasks.action.paused') }}">
-                                                <i data-lucide="pause" class="w-4 h-4"></i>
-                                            </span>
+                                            <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="start" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                                <i data-lucide="play" class="w-4 h-4"></i>
+                                            </button>
                                         @endif
 
                                         <a href="{{ route('admin.tasks.edit', ['taskId' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors border border-blue-200" title="{{ __('admin.tasks.action.settings') }}">
@@ -396,15 +390,15 @@ function showNotification(type, message) { if (window.AdminUtils && typeof windo
 
 function setButtonLoading(btn, text, classes) { btn.disabled = true; btn.className = classes; btn.innerHTML = `<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i><span class="sr-only">${text}</span>`; renderIcons(); }
 
-function updateBatchButton(btn, taskId, taskName, isRunning) {
+function updateBatchButton(btn, taskId, taskName, isActive) {
     if (!btn) return;
     btn.disabled = false;
-    btn.dataset.batchAction = isRunning ? 'stop' : 'start';
-    btn.className = isRunning ? 'inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200' : 'inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors border border-blue-200';
-    btn.innerHTML = isRunning ? '<i data-lucide="square" class="w-4 h-4"></i>' : '<i data-lucide="play" class="w-4 h-4"></i>';
-    btn.title = isRunning ? TASK_I18N.stopBatch : TASK_I18N.startBatch;
+    btn.dataset.batchAction = isActive ? 'stop' : 'start';
+    btn.className = isActive ? 'inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200' : 'inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200';
+    btn.innerHTML = isActive ? '<i data-lucide="square" class="w-4 h-4"></i>' : '<i data-lucide="play" class="w-4 h-4"></i>';
+    btn.title = isActive ? TASK_I18N.stopBatch : TASK_I18N.startBatch;
     btn.setAttribute('aria-label', btn.title);
-    btn.onclick = isRunning ? () => stopBatchExecution(taskId, taskName) : () => startBatchExecution(taskId, taskName);
+    btn.onclick = isActive ? () => stopBatchExecution(taskId, taskName) : () => startBatchExecution(taskId, taskName);
     renderIcons();
 }
 
@@ -457,7 +451,27 @@ function updateBatchStatus(task) {
     renderIcons();
 }
 
-function updateTaskUI(task) { const btn = document.getElementById(`batch-btn-${task.id}`); const shouldBeRunning = task.batch_status === 'running' || task.batch_status === 'pending'; updateBatchButton(btn, task.id, task.name, shouldBeRunning); updateBatchStatus(task); }
+function updateTaskUI(task) {
+    const btn = document.getElementById(`batch-btn-${task.id}`);
+    const isActive = task.status === 'active';
+    updateBatchButton(btn, task.id, task.name, isActive);
+    updateTaskStatusToggle(task.id, isActive);
+    updateBatchStatus(task);
+}
+
+function updateTaskStatusToggle(taskId, isActive) {
+    const form = document.getElementById(`status-form-${taskId}`);
+    if (!form) return;
+    const hidden = form.querySelector('input[name="status"]');
+    const checkbox = form.querySelector('input[type="checkbox"]');
+    const label = form.querySelector('span');
+    if (hidden) hidden.value = isActive ? 'active' : 'paused';
+    if (checkbox) checkbox.checked = isActive;
+    if (label) {
+        label.textContent = isActive ? TASK_I18N.enabledStatus : TASK_I18N.disabledStatus;
+        label.className = `ml-2 text-sm ${isActive ? 'text-green-600' : 'text-gray-500'}`;
+    }
+}
 
 function updateTaskCounters(task) {
     const createdEl = document.getElementById(`task-created-${task.id}`);
@@ -616,7 +630,7 @@ function initTaskRealtime() {
 function startBatchExecution(taskId, taskName) {
     if (!confirm(TASK_I18N.confirmStart.replace('__NAME__', taskName))) return;
     const btn = document.getElementById(`batch-btn-${taskId}`);
-    setButtonLoading(btn, TASK_I18N.starting, 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-blue-200 bg-blue-50 text-blue-600 cursor-wait');
+    setButtonLoading(btn, TASK_I18N.starting, 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-green-200 bg-green-50 text-green-600 cursor-wait');
     fetch(TASK_BATCH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) }, body: JSON.stringify({ task_id: taskId, action: 'start' }) }).then(response => response.json()).then(data => { if (!data.success) { showNotification('error', TASK_I18N.startFailed.replace('__MESSAGE__', data.message)); updateBatchButton(btn, taskId, taskName, false); return; } showNotification('success', TASK_I18N.taskQueued.replace('__NAME__', taskName)); updateBatchButton(btn, taskId, taskName, true); requestTaskSnapshot(); }).catch(error => { showNotification('error', TASK_I18N.requestFailed.replace('__MESSAGE__', error.message)); updateBatchButton(btn, taskId, taskName, false); });
 }
 

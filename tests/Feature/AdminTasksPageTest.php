@@ -83,4 +83,43 @@ class AdminTasksPageTest extends TestCase
             ->assertOk()
             ->assertSee('/'.AdminWeb::basePath().'/articles?task_id='.(int) $task->id, false);
     }
+
+    public function test_task_lifecycle_button_matches_task_status(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_lifecycle_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-lifecycle-admin@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $activeTask = Task::query()->create([
+            'name' => 'Active Task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+        $pausedTask = Task::query()->create([
+            'name' => 'Paused Task',
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk();
+
+        $response->assertSee('id="batch-btn-'.(int) $activeTask->id.'"', false)
+            ->assertSee('data-batch-action="stop"', false)
+            ->assertSee('id="batch-btn-'.(int) $pausedTask->id.'"', false)
+            ->assertSee('data-batch-action="start"', false)
+            ->assertSee('text-green-600 hover:text-green-800 hover:bg-green-50', false);
+    }
 }
