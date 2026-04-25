@@ -675,7 +675,7 @@ class WorkerExecutionService
         try {
             $response = $agent->prompt($contentPrompt, [], $providerName, (string) ($aiModel->model_id ?? ''));
         } catch (Throwable $exception) {
-            throw new RuntimeException('AI 生成失败: '.$exception->getMessage(), 0, $exception);
+            throw new RuntimeException('AI 生成失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
         }
 
         $content = trim((string) ($response->text ?? ''));
