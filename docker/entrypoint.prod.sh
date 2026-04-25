@@ -8,6 +8,12 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+# Compose 会把 .env.prod 中的 APP_KEY= 注入为「空环境变量」；
+# 若不清掉，它会覆盖后续写入的 .env 文件，导致首次启动后的应用容器仍然 500。
+if [ -z "${APP_KEY:-}" ] || ! printf '%s' "${APP_KEY}" | grep -q '^base64:'; then
+  unset APP_KEY
+fi
+
 # .env.prod 为可写挂载时，无密钥则自动生成（宿主机可无 PHP）。
 if ! grep -q '^APP_KEY=base64:' .env 2>/dev/null; then
   echo "[entrypoint-prod] php artisan key:generate --force"

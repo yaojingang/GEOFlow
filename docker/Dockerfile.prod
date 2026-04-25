@@ -20,7 +20,7 @@ RUN composer dump-autoload \
     --no-interaction \
     --classmap-authoritative \
     --no-scripts \
- && php artisan package:discover --ansi
+ && BROADCAST_CONNECTION=null php artisan package:discover --ansi
 
 FROM php:8.4-fpm-bookworm
 

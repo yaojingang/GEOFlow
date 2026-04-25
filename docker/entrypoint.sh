@@ -7,6 +7,12 @@ if [ ! -f .env ] && [ -f .env.example ]; then
   cp .env.example .env
 fi
 
+# Compose 会把 .env 中的 APP_KEY= 注入为「空环境变量」；
+# 若不清掉，它会覆盖 init 写回的 .env 文件，导致后续服务仍读到空密钥。
+if [ -z "${APP_KEY:-}" ] || ! printf '%s' "${APP_KEY}" | grep -q '^base64:'; then
+  unset APP_KEY
+fi
+
 COMPOSER_NEED_POST_INSTALL=false
 COMPOSER_ON_START="${COMPOSER_ON_START:-true}"
 RUN_COMPOSER=false
@@ -37,9 +43,6 @@ fi
 
 # 自动初始化 APP_KEY（仅在 .env 里缺失时生成，避免每次重置密钥）
 if [ "${AUTO_GENERATE_APP_KEY:-false}" = "true" ]; then
-  if [ -z "${APP_KEY:-}" ] || ! printf '%s' "${APP_KEY}" | grep -q '^base64:'; then
-    unset APP_KEY
-  fi
   if ! grep -Eq '^APP_KEY=base64:' .env 2>/dev/null; then
     php artisan key:generate --force --no-interaction
   fi
