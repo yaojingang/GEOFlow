@@ -128,7 +128,13 @@ class TaskMonitoringQueryService
 
         // 文章统计（业务真相）：总文章数 + 已发布数。
         $articleStats = DB::table('articles')
-            ->selectRaw('task_id, COUNT(*) AS total_articles, SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS published_articles', ['published'])
+            ->selectRaw("
+                task_id,
+                COUNT(*) AS total_articles,
+                SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS published_articles,
+                SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_articles,
+                SUM(CASE WHEN status = 'draft' AND review_status IN ('approved','auto_approved') THEN 1 ELSE 0 END) AS publishable_drafts
+            ")
             ->whereIn('task_id', $taskIds)
             ->whereNull('deleted_at')
             ->groupBy('task_id')
@@ -137,6 +143,8 @@ class TaskMonitoringQueryService
                 (int) $row->task_id => [
                     'total_articles' => (int) ($row->total_articles ?? 0),
                     'published_articles' => (int) ($row->published_articles ?? 0),
+                    'draft_articles' => (int) ($row->draft_articles ?? 0),
+                    'publishable_drafts' => (int) ($row->publishable_drafts ?? 0),
                 ],
             ]);
 
@@ -181,14 +189,14 @@ class TaskMonitoringQueryService
 
         return $tasks->map(function (Task $task) use ($articleStats, $runStats, $latestRuns, $titleNames, $modelNames): array {
             $taskId = (int) $task->id;
-            $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0]);
+            $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0, 'draft_articles' => 0, 'publishable_drafts' => 0]);
             $runs = $runStats->get($taskId, ['pending_jobs' => 0, 'running_jobs' => 0, 'completed_jobs' => 0, 'failed_jobs' => 0]);
             /** @var TaskRun|null $latestRun */
             $latestRun = $latestRuns->get($taskId);
 
             // batch_status 是任务页按钮与状态徽标的关键字段：
-            // running > pending > paused(idle) > latestRun.status。
-            $batchStatus = $this->resolveBatchStatus($task, $runs, $latestRun);
+            // running > pending > paused(idle) > failed/cancelled > waiting。
+            $batchStatus = $this->resolveBatchStatus($task, $runs, $latestRun, $articles);
             // 错误信息优先取最近 run 的 error_message，其次退回 tasks.last_error_message。
             $batchErrorMessage = (string) ($latestRun?->error_message ?: ($task->last_error_message ?? ''));
 
@@ -217,6 +225,7 @@ class TaskMonitoringQueryService
                 'loop_count' => (int) ($task->loop_count ?? 0),
                 'created_count' => (int) ($task->created_count ?? 0),
                 'published_count' => (int) ($task->published_count ?? 0),
+                'article_limit' => (int) ($task->article_limit ?? $task->draft_limit ?? 10),
                 'draft_limit' => (int) ($task->draft_limit ?? 10),
                 'publish_interval' => (int) ($task->publish_interval ?? 3600),
                 'batch_status' => $batchStatus,
@@ -224,9 +233,12 @@ class TaskMonitoringQueryService
                 'batch_last_run' => $task->last_run_at?->toDateTimeString(),
                 'last_error_at' => $task->last_error_at?->toDateTimeString(),
                 'next_run_at' => $task->next_run_at?->toDateTimeString(),
+                'next_publish_at' => $task->next_publish_at?->toDateTimeString(),
                 'schedule_enabled' => (int) ($task->schedule_enabled ?? 1),
                 'total_articles' => (int) $articles['total_articles'],
                 'published_articles' => (int) $articles['published_articles'],
+                'draft_articles' => (int) $articles['draft_articles'],
+                'publishable_drafts' => (int) $articles['publishable_drafts'],
                 'pending_jobs' => (int) $runs['pending_jobs'],
                 'running_jobs' => (int) $runs['running_jobs'],
                 'batch_success_count' => (int) $runs['completed_jobs'],
@@ -238,6 +250,8 @@ class TaskMonitoringQueryService
                 'task_progress' => [
                     'created_articles' => (int) $articles['total_articles'],
                     'published_articles' => (int) $articles['published_articles'],
+                    'draft_articles' => (int) $articles['draft_articles'],
+                    'article_limit' => (int) ($task->article_limit ?? $task->draft_limit ?? 10),
                     'draft_limit' => (int) ($task->draft_limit ?? 10),
                     'last_run_at' => $task->last_run_at?->toDateTimeString(),
                     'last_error_message' => trim((string) ($task->last_error_message ?? '')),
@@ -257,7 +271,7 @@ class TaskMonitoringQueryService
     /**
      * @param  array<string,mixed>  $runStats
      */
-    private function resolveBatchStatus(Task $task, array $runStats, ?TaskRun $latestRun): string
+    private function resolveBatchStatus(Task $task, array $runStats, ?TaskRun $latestRun, array $articleStats): string
     {
         if ((int) ($runStats['running_jobs'] ?? 0) > 0) {
             return 'running';
@@ -271,7 +285,35 @@ class TaskMonitoringQueryService
             return 'idle';
         }
 
-        return (string) ($latestRun?->status ?? 'idle');
+        $articleLimit = (int) ($task->article_limit ?? $task->draft_limit ?? 10);
+        $createdCount = (int) ($task->created_count ?? 0);
+        $draftLimit = (int) ($task->draft_limit ?? 10);
+        $draftCount = (int) ($articleStats['draft_articles'] ?? 0);
+        $publishableDrafts = (int) ($articleStats['publishable_drafts'] ?? 0);
+
+        if ($createdCount >= $articleLimit && $draftCount <= 0) {
+            return 'limit_reached';
+        }
+
+        if ($publishableDrafts > 0) {
+            return 'waiting_publish';
+        }
+
+        if ($createdCount < $articleLimit && $draftCount >= $draftLimit) {
+            return 'draft_pool_full';
+        }
+
+        if ($createdCount >= $articleLimit) {
+            return 'limit_reached';
+        }
+
+        $latestStatus = (string) ($latestRun?->status ?? '');
+        $latestError = trim((string) ($latestRun?->error_message ?: ($task->last_error_message ?? '')));
+        if (in_array($latestStatus, ['failed', 'cancelled'], true) && $latestError !== '') {
+            return $latestStatus;
+        }
+
+        return 'waiting';
     }
 
     /**
@@ -279,18 +321,22 @@ class TaskMonitoringQueryService
      */
     private function workerOverview(): array
     {
-        return WorkerHeartbeat::query()
-            ->select(['worker_id', 'status', 'last_seen_at'])
-            ->orderByDesc('last_seen_at')
-            ->limit(5)
-            ->get()
-            ->map(static fn (WorkerHeartbeat $row): array => [
-                'worker_id' => (string) $row->worker_id,
-                'status' => (string) $row->status,
-                'current_job_id' => null,
-                'last_seen_at' => $row->last_seen_at?->toDateTimeString(),
-            ])
-            ->all();
+        try {
+            return WorkerHeartbeat::query()
+                ->select(['worker_id', 'status', 'last_seen_at'])
+                ->orderByDesc('last_seen_at')
+                ->limit(5)
+                ->get()
+                ->map(static fn (WorkerHeartbeat $row): array => [
+                    'worker_id' => (string) $row->worker_id,
+                    'status' => (string) $row->status,
+                    'current_job_id' => null,
+                    'last_seen_at' => $row->last_seen_at?->toDateTimeString(),
+                ])
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

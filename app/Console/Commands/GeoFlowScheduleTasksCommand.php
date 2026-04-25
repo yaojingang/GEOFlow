@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Article;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\GeoFlow\JobQueueService;
@@ -41,23 +40,13 @@ class GeoFlowScheduleTasksCommand extends Command
         $skippedCount = 0;
 
         $tasks = Task::query()
-            ->select(['id', 'name', 'publish_interval', 'draft_limit', 'next_run_at', 'schedule_enabled'])
+            ->select(['id', 'name', 'publish_interval', 'draft_limit', 'article_limit', 'created_count', 'next_run_at', 'next_publish_at', 'schedule_enabled'])
             ->where('status', 'active')
             ->orderBy('updated_at')
             ->orderBy('id')
             ->get();
 
         $taskIds = $tasks->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all();
-        // 批量聚合草稿数，避免在循环内逐任务 count 触发 N+1 查询。
-        $draftCountMap = empty($taskIds)
-            ? collect()
-            : Article::query()
-                ->selectRaw('task_id, COUNT(*) AS draft_count')
-                ->whereIn('task_id', $taskIds)
-                ->where('status', 'draft')
-                ->whereNull('deleted_at')
-                ->groupBy('task_id')
-                ->pluck('draft_count', 'task_id');
         // 批量获取“已有 pending/running 执行记录”的任务集合，减少循环内 exists 查询。
         $busyTaskLookup = empty($taskIds)
             ? []
@@ -72,6 +61,25 @@ class GeoFlowScheduleTasksCommand extends Command
                 true
             );
 
+        $articleStats = empty($taskIds)
+            ? collect()
+            : \Illuminate\Support\Facades\DB::table('articles')
+                ->selectRaw("
+                    task_id,
+                    SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_articles,
+                    SUM(CASE WHEN status = 'draft' AND review_status IN ('approved','auto_approved') THEN 1 ELSE 0 END) AS publishable_drafts
+                ")
+                ->whereIn('task_id', $taskIds)
+                ->whereNull('deleted_at')
+                ->groupBy('task_id')
+                ->get()
+                ->mapWithKeys(static fn (object $row): array => [
+                    (int) $row->task_id => [
+                        'draft_articles' => (int) ($row->draft_articles ?? 0),
+                        'publishable_drafts' => (int) ($row->publishable_drafts ?? 0),
+                    ],
+                ]);
+
         foreach ($tasks as $task) {
             $taskId = (int) $task->id;
             if ((int) ($task->schedule_enabled ?? 1) !== 1) {
@@ -80,8 +88,23 @@ class GeoFlowScheduleTasksCommand extends Command
                 continue;
             }
 
-            $draftCount = (int) ($draftCountMap->get($taskId) ?? 0);
-            if ($draftCount >= (int) ($task->draft_limit ?? 10)) {
+            $articleLimit = max(1, (int) ($task->article_limit ?? $task->draft_limit ?? 10));
+            $draftLimit = max(1, (int) ($task->draft_limit ?? 10));
+            $createdCount = (int) ($task->created_count ?? 0);
+            $stats = $articleStats->get($taskId, ['draft_articles' => 0, 'publishable_drafts' => 0]);
+            $draftCount = (int) ($stats['draft_articles'] ?? 0);
+            $publishableDrafts = (int) ($stats['publishable_drafts'] ?? 0);
+            $nextPublishAt = $task->next_publish_at instanceof Carbon ? $task->next_publish_at : null;
+            $canGenerate = $createdCount < $articleLimit && $draftCount < $draftLimit;
+            $canPublishNow = $publishableDrafts > 0 && ($nextPublishAt === null || ! $nextPublishAt->greaterThan($now));
+
+            if (! $canGenerate && ! $canPublishNow) {
+                if ($publishableDrafts > 0 && $nextPublishAt instanceof Carbon) {
+                    Task::query()->whereKey($taskId)->update([
+                        'next_run_at' => $nextPublishAt,
+                        'updated_at' => now(),
+                    ]);
+                }
                 $skippedCount++;
 
                 continue;
@@ -95,7 +118,7 @@ class GeoFlowScheduleTasksCommand extends Command
                 continue;
             }
 
-            if ($task->next_run_at->greaterThan($now)) {
+            if ($task->next_run_at->greaterThan($now) && ! $canPublishNow) {
                 $skippedCount++;
 
                 continue;
@@ -114,7 +137,8 @@ class GeoFlowScheduleTasksCommand extends Command
                 continue;
             }
 
-            $nextRunAt = $now->copy()->addSeconds(max(60, (int) ($task->publish_interval ?? 3600)));
+            // 生成与发布解耦：调度器保持分钟级扫描，Worker 内部按 next_publish_at 控制发布。
+            $nextRunAt = $now->copy()->addSeconds(60);
             Task::query()->whereKey($taskId)->update([
                 'next_run_at' => $nextRunAt,
                 'updated_at' => now(),

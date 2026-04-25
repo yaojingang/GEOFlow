@@ -35,7 +35,7 @@ class WorkerExecutionService
     ) {}
 
     /**
-     * @return array{article_id:int, title:string, message:string, meta:array<string,mixed>}
+     * @return array{article_id:int|null, title:string, message:string, meta:array<string,mixed>}
      */
     public function executeTask(int $taskId): array
     {
@@ -49,27 +49,59 @@ class WorkerExecutionService
             throw new RuntimeException('任务未激活');
         }
 
+        $publishResult = $this->publishDueDraftArticle($task);
+        if ($publishResult !== null) {
+            return $publishResult;
+        }
+
+        $generationBlockReason = $this->getGenerationBlockReason($task);
+        if ($generationBlockReason !== null) {
+            return [
+                'article_id' => null,
+                'title' => '',
+                'message' => $generationBlockReason,
+                'meta' => [
+                    'task_id' => (int) $task->id,
+                    'action' => 'noop',
+                    'reason' => $generationBlockReason,
+                ],
+            ];
+        }
+
         $titleRow = $this->pickTitle($task);
         $author = $this->pickAuthor($task);
         $category = $this->pickCategory($task);
         $prompt = $task->prompt_id ? Prompt::query()->find((int) $task->prompt_id) : null;
-        $aiModel = $this->resolveAiModel($task);
 
         $keyword = (string) ($titleRow->keyword ?? '');
         $knowledgeContext = $this->resolveKnowledgeContext($task, (string) $titleRow->title, $keyword);
         $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
-        $generatedContent = $this->generateContent($aiModel, $contentPrompt);
+        $generation = $this->generateContentWithModelSelection($task, $contentPrompt);
+        $aiModel = $generation['model'];
+        $generatedContent = $generation['content'];
         $imageResult = $this->insertTaskImagesIntoContent($task, $generatedContent);
         $content = $imageResult['content'];
         $selectedImages = $imageResult['images'];
         $excerpt = $this->buildExcerpt($content);
-        $reviewStatus = (int) ($task->need_review ?? 1) === 1 ? 'pending' : 'auto_approved';
-        $workflow = ArticleWorkflow::normalizeState(
-            status: $reviewStatus === 'auto_approved' ? 'published' : 'draft',
-            reviewStatus: $reviewStatus
-        );
+        $workflow = [
+            'status' => 'draft',
+            'review_status' => (int) ($task->need_review ?? 1) === 1 ? 'pending' : 'approved',
+            'published_at' => null,
+        ];
 
         $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $workflow, $selectedImages): int {
+            $freshTask = Task::query()
+                ->whereKey((int) $task->id)
+                ->lockForUpdate()
+                ->first(['id', 'status', 'schedule_enabled', 'created_count', 'draft_limit', 'article_limit', 'publish_interval', 'next_publish_at']);
+            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
+                throw new RuntimeException('任务未激活');
+            }
+            $generationBlockReason = $this->getGenerationBlockReason($freshTask, true);
+            if ($generationBlockReason !== null) {
+                throw new RuntimeException($generationBlockReason);
+            }
+
             $article = Article::query()->create([
                 'title' => (string) $titleRow->title,
                 'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
@@ -105,12 +137,15 @@ class WorkerExecutionService
             Title::query()->whereKey($titleRow->id)->increment('used_count');
             Title::query()->whereKey($titleRow->id)->increment('usage_count');
 
-            Task::query()->whereKey($task->id)->update([
+            $taskUpdate = [
                 'created_count' => DB::raw('COALESCE(created_count,0)+1'),
-                'published_count' => DB::raw('COALESCE(published_count,0)+'.($workflow['status'] === 'published' ? '1' : '0')),
                 'loop_count' => DB::raw('COALESCE(loop_count,0)+1'),
                 'updated_at' => now(),
-            ]);
+            ];
+            if ($freshTask->next_publish_at === null || ! $freshTask->next_publish_at->greaterThan(now())) {
+                $taskUpdate['next_publish_at'] = now()->addSeconds($this->normalizePublishInterval($freshTask));
+            }
+            Task::query()->whereKey($task->id)->update($taskUpdate);
 
             return (int) $article->id;
         });
@@ -118,16 +153,116 @@ class WorkerExecutionService
         return [
             'article_id' => $articleId,
             'title' => (string) $titleRow->title,
-            'message' => '生成成功',
+            'message' => '草稿生成成功',
             'meta' => [
                 'task_id' => (int) $task->id,
+                'action' => 'generate_draft',
                 'title_id' => (int) $titleRow->id,
                 'author_id' => $author?->id,
                 'category_id' => $category?->id,
                 'knowledge_length' => mb_strlen($knowledgeContext, 'UTF-8'),
                 'image_count' => count($selectedImages),
+                'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
+                'used_model_id' => (int) $aiModel->id,
+                'used_model_name' => (string) $aiModel->name,
+                'model_attempts' => $generation['attempts'],
             ],
         ];
+    }
+
+    /**
+     * 发布一个已审核草稿。生成与发布解耦后，Worker 每次执行优先释放到期草稿。
+     *
+     * @return array{article_id:int, title:string, message:string, meta:array<string,mixed>}|null
+     */
+    private function publishDueDraftArticle(Task $task): ?array
+    {
+        if ($task->next_publish_at !== null && $task->next_publish_at->greaterThan(now())) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($task): ?array {
+            $freshTask = Task::query()
+                ->whereKey((int) $task->id)
+                ->lockForUpdate()
+                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at']);
+            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
+                throw new RuntimeException('任务未激活');
+            }
+
+            if ($freshTask->next_publish_at !== null && $freshTask->next_publish_at->greaterThan(now())) {
+                return null;
+            }
+
+            /** @var Article|null $article */
+            $article = Article::query()
+                ->where('task_id', (int) $freshTask->id)
+                ->where('status', 'draft')
+                ->whereIn('review_status', ['approved', 'auto_approved'])
+                ->whereNull('deleted_at')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first(['id', 'title', 'review_status']);
+            if (! $article) {
+                return null;
+            }
+
+            $workflow = ArticleWorkflow::normalizeState('published', (string) ($article->review_status ?: 'approved'));
+            Article::query()->whereKey((int) $article->id)->update([
+                'status' => $workflow['status'],
+                'review_status' => $workflow['review_status'],
+                'published_at' => $workflow['published_at'],
+                'updated_at' => now(),
+            ]);
+
+            $publishInterval = $this->normalizePublishInterval($freshTask);
+            Task::query()->whereKey((int) $freshTask->id)->update([
+                'published_count' => DB::raw('COALESCE(published_count,0)+1'),
+                'next_publish_at' => now()->addSeconds($publishInterval),
+                'updated_at' => now(),
+            ]);
+
+            return [
+                'article_id' => (int) $article->id,
+                'title' => (string) $article->title,
+                'message' => '草稿发布成功',
+                'meta' => [
+                    'task_id' => (int) $freshTask->id,
+                    'action' => 'publish_draft',
+                    'publish_interval' => $publishInterval,
+                ],
+            ];
+        });
+    }
+
+    /**
+     * 判断是否允许继续生成草稿。
+     */
+    private function getGenerationBlockReason(Task $task, bool $lock = false): ?string
+    {
+        $articleLimit = max(1, (int) ($task->article_limit ?? $task->draft_limit ?? 10));
+        if ((int) ($task->created_count ?? 0) >= $articleLimit) {
+            return '已达到文章总数上限';
+        }
+
+        $draftLimit = max(1, (int) ($task->draft_limit ?? 10));
+        $draftQuery = Article::query()
+            ->where('task_id', (int) $task->id)
+            ->where('status', 'draft')
+            ->whereNull('deleted_at');
+        // PostgreSQL 不允许在 count(*) 聚合查询上追加 FOR UPDATE。
+        // 这里的并发保护由任务行锁和 task_runs 的单任务串行队列保证，草稿计数不需要再单独加锁。
+
+        if ($draftQuery->count() >= $draftLimit) {
+            return '草稿池已满，等待审核或按间隔发布';
+        }
+
+        return null;
+    }
+
+    private function normalizePublishInterval(Task $task): int
+    {
+        return max(60, (int) ($task->publish_interval ?? 3600));
     }
 
     /**
@@ -157,6 +292,122 @@ class WorkerExecutionService
         return $aiModel;
     }
 
+    /**
+     * 固定模型只尝试主模型；智能切换按 failover_priority 依次尝试其它 active chat 模型。
+     *
+     * @return array{content:string,model:AiModel,attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}
+     */
+    private function generateContentWithModelSelection(Task $task, string $contentPrompt): array
+    {
+        $mode = (string) ($task->model_selection_mode ?? 'fixed');
+        $attempts = [];
+        $lastMessage = '';
+
+        foreach ($this->resolveAiModelCandidates($task) as $candidate) {
+            $unavailableReason = $this->getAiModelUnavailableReason($candidate);
+            if ($unavailableReason !== null) {
+                $attempts[] = $this->buildModelAttempt($candidate, 'skipped', $unavailableReason);
+                $lastMessage = $unavailableReason;
+                if ($mode !== 'smart_failover') {
+                    throw new RuntimeException($unavailableReason);
+                }
+
+                continue;
+            }
+
+            try {
+                $content = $this->generateContent($candidate, $contentPrompt);
+                $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
+
+                return [
+                    'content' => $content,
+                    'model' => $candidate,
+                    'attempts' => $attempts,
+                ];
+            } catch (Throwable $exception) {
+                $lastMessage = trim($exception->getMessage());
+                $attempts[] = $this->buildModelAttempt($candidate, 'failed', $lastMessage);
+
+                if ($mode !== 'smart_failover') {
+                    throw $exception;
+                }
+            }
+        }
+
+        if ($mode === 'smart_failover' && $attempts !== []) {
+            throw new RuntimeException($this->buildFailoverErrorMessage($attempts, $lastMessage));
+        }
+
+        throw new RuntimeException('AI模型不可用或已达每日限制');
+    }
+
+    /**
+     * @return list<AiModel>
+     */
+    private function resolveAiModelCandidates(Task $task): array
+    {
+        $primaryModel = $this->resolveAiModel($task);
+        if (($task->model_selection_mode ?? 'fixed') !== 'smart_failover') {
+            return [$primaryModel];
+        }
+
+        $fallbackModels = AiModel::query()
+            ->whereKeyNot((int) $primaryModel->id)
+            ->where(function ($query): void {
+                $query->whereNull('model_type')
+                    ->orWhere('model_type', '')
+                    ->orWhere('model_type', 'chat');
+            })
+            ->orderBy('failover_priority')
+            ->orderBy('id')
+            ->get()
+            ->all();
+
+        return array_values(array_merge([$primaryModel], $fallbackModels));
+    }
+
+    private function getAiModelUnavailableReason(AiModel $aiModel): ?string
+    {
+        if (($aiModel->status ?? 'inactive') !== 'active') {
+            return 'AI模型不可用或已达每日限制';
+        }
+
+        $dailyLimit = (int) ($aiModel->daily_limit ?? 0);
+        $usedToday = (int) ($aiModel->used_today ?? 0);
+        if ($dailyLimit > 0 && $usedToday >= $dailyLimit) {
+            return 'AI模型不可用或已达每日限制';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{model_id:int,model_name:string,status:string,reason:?string}
+     */
+    private function buildModelAttempt(AiModel $aiModel, string $status, ?string $reason): array
+    {
+        return [
+            'model_id' => (int) $aiModel->id,
+            'model_name' => (string) $aiModel->name,
+            'status' => $status,
+            'reason' => $reason,
+        ];
+    }
+
+    /**
+     * @param  list<array{model_id:int,model_name:string,status:string,reason:?string}>  $attempts
+     */
+    private function buildFailoverErrorMessage(array $attempts, string $lastMessage): string
+    {
+        $summaries = [];
+        foreach ($attempts as $attempt) {
+            $reason = trim((string) ($attempt['reason'] ?? ''));
+            $summaries[] = (string) $attempt['model_name'].($reason !== '' ? '（'.$reason.'）' : '');
+        }
+
+        return '智能模型切换已尝试：'.implode('；', $summaries).'。最终失败：'.$lastMessage;
+    }
+
     private function pickTitle(Task $task): Title
     {
         $libraryId = (int) ($task->title_library_id ?? 0);
@@ -164,15 +415,21 @@ class WorkerExecutionService
             throw new RuntimeException('任务未配置标题库');
         }
 
+        $query = Title::query()->where('library_id', $libraryId);
+        if ((int) ($task->is_loop ?? 0) !== 1) {
+            $query->where(function ($builder): void {
+                $builder->whereNull('used_count')->orWhere('used_count', '<=', 0);
+            });
+        }
+
         /** @var Title|null $title */
-        $title = Title::query()
-            ->where('library_id', $libraryId)
+        $title = $query
             ->orderBy('used_count')
             ->orderBy('id')
             ->first();
 
         if (! $title) {
-            throw new RuntimeException('没有可用的标题');
+            throw new RuntimeException((int) ($task->is_loop ?? 0) === 1 ? '没有可用的标题' : '标题库已用尽');
         }
 
         return $title;
@@ -433,7 +690,8 @@ class WorkerExecutionService
             throw new RuntimeException('AI 模型密钥为空');
         }
 
-        $providerName = OpenAiRuntimeProvider::registerProvider('worker', 'openai', $providerUrl, $apiKey);
+        $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, (string) ($aiModel->model_id ?? ''));
+        $providerName = OpenAiRuntimeProvider::registerProvider('worker', $driver, $providerUrl, $apiKey);
         $agent = new MarkdownContentWriterAgent;
 
         try {
@@ -446,6 +704,12 @@ class WorkerExecutionService
         if ($content === '') {
             throw new RuntimeException('AI返回空正文');
         }
+
+        AiModel::query()->whereKey((int) $aiModel->id)->update([
+            'used_today' => DB::raw('COALESCE(used_today,0)+1'),
+            'total_used' => DB::raw('COALESCE(total_used,0)+1'),
+            'updated_at' => now(),
+        ]);
 
         return $content;
     }

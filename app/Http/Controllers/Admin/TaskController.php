@@ -195,6 +195,7 @@ class TaskController extends Controller
                 'knowledge_base_id' => (string) (($task['knowledge_base_id'] ?? '') ?: ''),
                 'fixed_category_id' => (string) (($task['fixed_category_id'] ?? '') ?: ''),
                 'status' => (string) ($task['status'] ?? 'active'),
+                'article_limit' => (string) ($task['article_limit'] ?? 10),
                 'draft_limit' => (string) ($task['draft_limit'] ?? 10),
                 'publish_interval' => (string) max(1, (int) (($task['publish_interval'] ?? 3600) / 60)),
                 'category_mode' => (string) ($task['category_mode'] ?? 'smart'),
@@ -291,18 +292,26 @@ class TaskController extends Controller
     private function deleteTaskCascade(int $taskId): void
     {
         DB::transaction(function () use ($taskId): void {
-            // 先软删任务文章，保持历史可追踪。
+            // 先软删任务文章，保持删除任务时文章进入回收站。
             Article::query()
                 ->where('task_id', $taskId)
                 ->whereNull('deleted_at')
-                ->update(['deleted_at' => now()]);
+                ->update([
+                    'deleted_at' => now(),
+                    'updated_at' => now(),
+                ]);
 
             DB::table('article_queue')->where('task_id', $taskId)->delete();
             DB::table('task_materials')->where('task_id', $taskId)->delete();
             DB::table('task_schedules')->where('task_id', $taskId)->delete();
 
-            // 解除文章与任务绑定，再删除任务主记录，避免引用残留。
-            Article::query()->where('task_id', $taskId)->update(['task_id' => null]);
+            // SoftDeletes 默认会排除刚软删的文章；这里必须包含回收站文章，否则 FK 会阻止删除任务。
+            Article::withTrashed()
+                ->where('task_id', $taskId)
+                ->update([
+                    'task_id' => null,
+                    'updated_at' => now(),
+                ]);
             Task::query()->whereKey($taskId)->delete();
         });
     }
@@ -338,6 +347,8 @@ class TaskController extends Controller
         return [
             'stopBatch' => __('admin.tasks.action.stop_batch'),
             'startBatch' => __('admin.tasks.action.start_batch'),
+            'createdOfLimitLabel' => __('admin.tasks.label.created_of_limit', ['created' => '__CREATED__', 'limit' => '__LIMIT__']),
+            'draftArticlesLabel' => __('admin.tasks.label.draft_articles', ['count' => '__COUNT__']),
             'createdArticlesLabel' => __('admin.tasks.label.created_articles', ['count' => '__COUNT__']),
             'publishedArticlesLabel' => __('admin.tasks.label.published_articles', ['count' => '__COUNT__']),
             'loopTimesLabel' => __('admin.tasks.label.loop_times', ['count' => '__COUNT__']),
@@ -346,8 +357,14 @@ class TaskController extends Controller
             'hoursSuffix' => __('admin.common.hours'),
             'daysSuffix' => __('admin.common.days'),
             'completed' => __('admin.tasks.status.completed'),
+            'waiting' => __('admin.tasks.status.waiting'),
+            'waitingPublish' => __('admin.tasks.status.waiting_publish'),
+            'draftPoolFull' => __('admin.tasks.status.draft_pool_full'),
+            'limitReached' => __('admin.tasks.status.limit_reached'),
             'queued' => __('admin.tasks.status.pending'),
             'running' => __('admin.tasks.status.running'),
+            'nextRunAt' => __('admin.tasks.label.next_run_at', ['time' => '__TIME__']),
+            'publishIntervalMinutes' => __('admin.tasks.label.publish_interval_minutes', ['count' => '__COUNT__']),
             'retryingWithAttempts' => __('admin.tasks.label.retrying_with_attempts', ['current' => '__CURRENT__', 'max' => '__MAX__']),
             'pendingRunning' => __('admin.tasks.label.pending_running', ['pending' => '__PENDING__', 'running' => '__RUNNING__']),
             'estimated' => __('admin.tasks.label.estimated', ['time' => '__TIME__']),
@@ -512,6 +529,7 @@ class TaskController extends Controller
      *     knowledge_base_id: int|null,
      *     fixed_category_id: int|null,
      *     status: string,
+     *     article_limit: int|null,
      *     draft_limit: int|null,
      *     publish_interval: int|null,
      *     category_mode: string|null,
@@ -531,6 +549,7 @@ class TaskController extends Controller
             'knowledge_base_id' => ['nullable', 'integer', 'min:1'],
             'fixed_category_id' => ['nullable', 'integer', 'min:1'],
             'status' => ['required', 'string', 'in:active,paused'],
+            'article_limit' => ['nullable', 'integer', 'min:1', 'max:99999'],
             'draft_limit' => ['nullable', 'integer', 'min:1', 'max:9999'],
             'publish_interval' => ['nullable', 'integer', 'min:1'],
             'category_mode' => ['nullable', 'string', 'in:smart,fixed,random'],
@@ -560,6 +579,7 @@ class TaskController extends Controller
             'knowledge_base_id' => isset($payload['knowledge_base_id']) ? (int) $payload['knowledge_base_id'] : null,
             'fixed_category_id' => isset($payload['fixed_category_id']) ? (int) $payload['fixed_category_id'] : null,
             'status' => (string) $payload['status'],
+            'article_limit' => (int) ($payload['article_limit'] ?? 10),
             'draft_limit' => (int) ($payload['draft_limit'] ?? 10),
             'publish_interval' => max(1, (int) ($payload['publish_interval'] ?? 60)) * 60,
             'need_review' => $request->boolean('need_review') ? 1 : 0,

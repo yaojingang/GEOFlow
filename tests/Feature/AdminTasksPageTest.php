@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Task;
+use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -54,5 +56,31 @@ class AdminTasksPageTest extends TestCase
             ->get(route('admin.tasks.create'))
             ->assertOk()
             ->assertSee(__('admin.task_create.page_heading'));
+    }
+
+    public function test_task_article_action_links_to_filtered_article_list(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_article_filter_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-article-filter-admin@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $task = Task::query()->create([
+            'name' => 'Filtered Task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('/'.AdminWeb::basePath().'/articles?task_id='.(int) $task->id, false);
     }
 }

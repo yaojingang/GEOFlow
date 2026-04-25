@@ -139,11 +139,23 @@
                                     </div>
                                 </td>
                                 <td class="px-5 py-4 align-top whitespace-nowrap text-sm text-gray-500">
-                                    <div id="task-created-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.created_articles', ['count' => (int) ($task['total_articles'] ?? 0)]) }}</div>
+                                    @php
+                                        $articleLimit = max(1, (int) ($task['article_limit'] ?? $task['draft_limit'] ?? 10));
+                                        $createdForProgress = min($articleLimit, (int) ($task['created_count'] ?? $task['total_articles'] ?? 0));
+                                        $progressPercent = (int) floor(($createdForProgress / $articleLimit) * 100);
+                                    @endphp
+                                    <div id="task-created-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.created_of_limit', ['created' => (int) ($task['created_count'] ?? $task['total_articles'] ?? 0), 'limit' => $articleLimit]) }}</div>
                                     <div id="task-published-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.published_articles', ['count' => (int) ($task['published_articles'] ?? 0)]) }}</div>
+                                    <div id="task-drafts-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.draft_articles', ['count' => (int) ($task['draft_articles'] ?? 0)]) }}</div>
+                                    <div class="mt-2 h-1.5 w-28 overflow-hidden rounded-full bg-gray-200">
+                                        <div id="task-progress-{{ (int) $task['id'] }}" class="h-full rounded-full bg-blue-600" style="width: {{ $progressPercent }}%"></div>
+                                    </div>
                                 </td>
                                 <td class="px-5 py-4 align-top whitespace-nowrap text-sm text-gray-500">
                                     <span id="task-loop-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.loop_times', ['count' => (int) ($task['loop_count'] ?? 0)]) }}</span>
+                                    <div id="task-publish-interval-{{ (int) $task['id'] }}" class="mt-1 text-xs text-gray-400">
+                                        {{ __('admin.tasks.label.publish_interval_minutes', ['count' => max(1, (int) ceil(((int) ($task['publish_interval'] ?? 3600)) / 60))]) }}
+                                    </div>
                                 </td>
                                 <td class="px-4 py-4 align-top">
                                     <form method="POST" action="{{ route('admin.tasks.toggle-status', ['taskId' => (int) $task['id']]) }}" class="inline" id="status-form-{{ (int) $task['id'] }}">
@@ -161,11 +173,11 @@
                                     <div class="flex w-fit items-center gap-1.5">
                                         @if (($task['status'] ?? '') === 'active')
                                             @if (in_array($task['batch_status'] ?? '', ['running', 'pending'], true))
-                                                <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                                <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="stop" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
                                                     <i data-lucide="square" class="w-4 h-4"></i>
                                                 </button>
                                             @else
-                                                <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                                <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="start" class="inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors border border-blue-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
                                                     <i data-lucide="play" class="w-4 h-4"></i>
                                                 </button>
                                             @endif
@@ -179,7 +191,7 @@
                                             <i data-lucide="settings" class="w-4 h-4"></i>
                                         </a>
 
-                                        <a href="{{ route('admin.articles.index') }}" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.articles') }}">
+                                        <a href="{{ route('admin.articles.index', ['task_id' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.articles') }}">
                                             <i data-lucide="file-text" class="w-4 h-4"></i>
                                         </a>
 
@@ -353,11 +365,20 @@
 
 @push('scripts')
 <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+@php
+    $taskInitialOverview = [
+        'tasks' => $tasks,
+        'queue_overview' => $queueStats,
+        'worker_overview' => $workers,
+        'recent_runs' => $recentJobs,
+    ];
+@endphp
 <script>
 const TASK_I18N = @json($taskI18n, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 const TASK_REALTIME = @json($taskRealtime, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 const TASK_HEALTH_URL = @js(route('admin.tasks.health'));
 const TASK_BATCH_URL = @js(route('admin.tasks.batch'));
+const TASK_INITIAL_OVERVIEW = @json($taskInitialOverview, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 const TASK_TEXT = {
     workerNone: @js(__('admin.tasks.worker.none')),
     workerCurrentJob: @js(__('admin.tasks.worker.current_job')),
@@ -378,9 +399,11 @@ function setButtonLoading(btn, text, classes) { btn.disabled = true; btn.classNa
 function updateBatchButton(btn, taskId, taskName, isRunning) {
     if (!btn) return;
     btn.disabled = false;
-    btn.className = isRunning ? 'inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200' : 'inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200';
+    btn.dataset.batchAction = isRunning ? 'stop' : 'start';
+    btn.className = isRunning ? 'inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200' : 'inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors border border-blue-200';
     btn.innerHTML = isRunning ? '<i data-lucide="square" class="w-4 h-4"></i>' : '<i data-lucide="play" class="w-4 h-4"></i>';
     btn.title = isRunning ? TASK_I18N.stopBatch : TASK_I18N.startBatch;
+    btn.setAttribute('aria-label', btn.title);
     btn.onclick = isRunning ? () => stopBatchExecution(taskId, taskName) : () => startBatchExecution(taskId, taskName);
     renderIcons();
 }
@@ -391,12 +414,19 @@ function escapeHtml(value) { return String(value).replaceAll('&', '&amp;').repla
 function truncateText(value, maxLength) { return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`; }
 function normalizeRuntimeError(message) { return String(message || '').trim(); }
 function getFailureMeta() { return {label: TASK_I18N.recentFailed, chipClasses: 'bg-red-50 text-red-700 border-red-200', detailClasses: 'text-red-700'}; }
+function formatTaskDateTime(value) {
+    if (!value) return '';
+    const date = new Date(String(value).replace(' ', 'T'));
+    if (Number.isNaN(date.getTime())) return String(value);
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 function updateBatchStatus(task) {
     const statusDiv = document.getElementById(`batch-status-${task.id}`);
     if (!statusDiv) return;
     const createdCount = Number(task.created_count || 0);
-    const draftLimit = Number(task.draft_limit || 0);
+    const articleLimit = Number(task.article_limit || task.draft_limit || 0);
     const pendingJobs = Number(task.pending_jobs || 0);
     const runningJobs = Number(task.running_jobs || 0);
     const isRunning = task.batch_status === 'running' || task.batch_status === 'pending';
@@ -407,13 +437,23 @@ function updateBatchStatus(task) {
             statusDiv.innerHTML = `<div class="flex flex-col gap-1 text-xs"><span class="inline-flex items-center justify-center rounded-full border px-2 py-1 ${failureMeta.chipClasses}">${escapeHtml(failureMeta.label)}</span>${errorMessage ? `<div class="mx-auto max-w-[220px] break-words leading-5 ${failureMeta.detailClasses}">${escapeHtml(truncateText(errorMessage, 60))}</div>` : ''}</div>`;
         } else if (task.batch_status === 'completed') {
             statusDiv.innerHTML = `<span class="text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-200">${escapeHtml(TASK_I18N.completed)}</span>`;
+        } else if (task.batch_status === 'waiting') {
+            const nextRunAt = formatTaskDateTime(task.next_run_at || '');
+            statusDiv.innerHTML = `<div class="flex flex-col gap-1 text-xs"><span class="inline-flex w-fit items-center rounded-full border px-2 py-1 bg-slate-50 text-slate-700 border-slate-200">${escapeHtml(TASK_I18N.waiting)}</span>${nextRunAt ? `<div class="text-gray-500">${escapeHtml(TASK_I18N.nextRunAt.replace('__TIME__', nextRunAt))}</div>` : ''}</div>`;
+        } else if (task.batch_status === 'waiting_publish') {
+            const nextPublishAt = formatTaskDateTime(task.next_publish_at || task.next_run_at || '');
+            statusDiv.innerHTML = `<div class="flex flex-col gap-1 text-xs"><span class="inline-flex w-fit items-center rounded-full border px-2 py-1 bg-cyan-50 text-cyan-700 border-cyan-200">${escapeHtml(TASK_I18N.waitingPublish)}</span>${nextPublishAt ? `<div class="text-gray-500">${escapeHtml(TASK_I18N.nextRunAt.replace('__TIME__', nextPublishAt))}</div>` : ''}</div>`;
+        } else if (task.batch_status === 'draft_pool_full') {
+            statusDiv.innerHTML = `<span class="text-xs text-orange-700 bg-orange-50 px-2 py-1 rounded-full border border-orange-200">${escapeHtml(TASK_I18N.draftPoolFull)}</span>`;
+        } else if (task.batch_status === 'limit_reached') {
+            statusDiv.innerHTML = `<span class="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">${escapeHtml(TASK_I18N.limitReached)}</span>`;
         } else { statusDiv.innerHTML = ''; }
         return;
     }
     const stateLabel = task.batch_status === 'pending' ? TASK_I18N.queued : TASK_I18N.running;
-    const remainingArticles = Math.max(0, draftLimit - createdCount);
+    const remainingArticles = Math.max(0, articleLimit - createdCount);
     const estimatedTime = formatEstimatedTime(remainingArticles * Number(task.publish_interval || 3600));
-    statusDiv.innerHTML = `<div class="flex flex-col gap-1 text-xs"><div class="flex items-center gap-2"><span class="inline-flex items-center rounded-full border px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200"><i data-lucide="activity" class="h-3 w-3 mr-1"></i>${stateLabel}</span><span class="text-gray-600">${createdCount}/${draftLimit}</span></div><div class="text-gray-500">${TASK_I18N.pendingRunning.replace('__PENDING__', pendingJobs).replace('__RUNNING__', runningJobs)}${remainingArticles > 0 ? ` · ${TASK_I18N.estimated.replace('__TIME__', estimatedTime)}` : ''}</div></div>`;
+    statusDiv.innerHTML = `<div class="flex flex-col gap-1 text-xs"><div class="flex items-center gap-2"><span class="inline-flex items-center rounded-full border px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200"><i data-lucide="activity" class="h-3 w-3 mr-1"></i>${stateLabel}</span><span class="text-gray-600">${createdCount}/${articleLimit}</span></div><div class="text-gray-500">${TASK_I18N.pendingRunning.replace('__PENDING__', pendingJobs).replace('__RUNNING__', runningJobs)}${remainingArticles > 0 ? ` · ${TASK_I18N.estimated.replace('__TIME__', estimatedTime)}` : ''}</div></div>`;
     renderIcons();
 }
 
@@ -422,15 +462,31 @@ function updateTaskUI(task) { const btn = document.getElementById(`batch-btn-${t
 function updateTaskCounters(task) {
     const createdEl = document.getElementById(`task-created-${task.id}`);
     const publishedEl = document.getElementById(`task-published-${task.id}`);
+    const draftsEl = document.getElementById(`task-drafts-${task.id}`);
+    const progressEl = document.getElementById(`task-progress-${task.id}`);
     const loopEl = document.getElementById(`task-loop-${task.id}`);
+    const publishIntervalEl = document.getElementById(`task-publish-interval-${task.id}`);
+    const createdCount = Number(task.created_count || task.total_articles || 0);
+    const articleLimit = Math.max(1, Number(task.article_limit || task.draft_limit || 10));
     if (createdEl) {
-        createdEl.textContent = TASK_I18N.createdArticlesLabel.replace('__COUNT__', String(Number(task.total_articles || 0)));
+        createdEl.textContent = TASK_I18N.createdOfLimitLabel.replace('__CREATED__', String(createdCount)).replace('__LIMIT__', String(articleLimit));
     }
     if (publishedEl) {
         publishedEl.textContent = TASK_I18N.publishedArticlesLabel.replace('__COUNT__', String(Number(task.published_articles || 0)));
     }
+    if (draftsEl) {
+        draftsEl.textContent = TASK_I18N.draftArticlesLabel.replace('__COUNT__', String(Number(task.draft_articles || 0)));
+    }
+    if (progressEl) {
+        const percent = Math.max(0, Math.min(100, Math.floor((createdCount / articleLimit) * 100)));
+        progressEl.style.width = `${percent}%`;
+    }
     if (loopEl) {
         loopEl.textContent = TASK_I18N.loopTimesLabel.replace('__COUNT__', String(Number(task.loop_count || 0)));
+    }
+    if (publishIntervalEl) {
+        const minutes = Math.max(1, Math.ceil(Number(task.publish_interval || 3600) / 60));
+        publishIntervalEl.textContent = TASK_I18N.publishIntervalMinutes.replace('__COUNT__', String(minutes));
     }
 }
 
@@ -572,7 +628,7 @@ function stopBatchExecution(taskId, taskName) {
 }
 
 function executeAllActiveTasks() {
-    const buttons = Array.from(document.querySelectorAll('[id^="batch-btn-"]')).filter(btn => btn.className.includes('text-green-600'));
+    const buttons = Array.from(document.querySelectorAll('[id^="batch-btn-"]')).filter(btn => btn.dataset.batchAction === 'start');
     if (buttons.length === 0) { showNotification('info', TASK_I18N.noRunnable); return; }
     if (!confirm(TASK_I18N.confirmRunAll)) return;
     let completed = 0; let success = 0;
@@ -596,6 +652,11 @@ function handleStatusToggle(taskId, checkbox) {
     form.submit();
 }
 
-document.addEventListener('DOMContentLoaded', () => { renderIcons(); requestTaskSnapshot(); initTaskRealtime(); });
+document.addEventListener('DOMContentLoaded', () => {
+    renderIcons();
+    applyOverview(TASK_INITIAL_OVERVIEW);
+    requestTaskSnapshot();
+    initTaskRealtime();
+});
 </script>
 @endpush

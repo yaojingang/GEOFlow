@@ -10,10 +10,18 @@
     $selectedDateTo = (string) ($filters['date_to'] ?? '');
     $selectedSearch = (string) ($filters['search'] ?? '');
     $selectedPerPage = (int) ($filters['per_page'] ?? 20);
+    $selectedTaskName = '';
+    foreach ($tasks as $taskOption) {
+        if ((int) ($taskOption['id'] ?? 0) === $selectedTaskId) {
+            $selectedTaskName = (string) ($taskOption['name'] ?? '');
+            break;
+        }
+    }
     $categoryManageUrl = route('admin.categories.index');
     $reviewCenterUrl = route('admin.articles.index', ['review_status' => 'pending']);
     $trashUrl = route('admin.articles.index', ['trashed' => 1]);
     $articlesIndexUrl = route('admin.articles.index');
+    $clearTaskFilterUrl = route('admin.articles.index', request()->except(['task_id', 'page']));
 @endphp
 
 @section('content')
@@ -137,6 +145,18 @@
                 <h3 class="text-lg font-medium text-gray-900">{{ __('admin.articles.filters.title') }}</h3>
             </div>
             <div class="px-6 py-4">
+                @if($selectedTaskId > 0)
+                    <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                        <div class="inline-flex items-center gap-2">
+                            <i data-lucide="filter" class="h-4 w-4"></i>
+                            <span>{{ __('admin.articles.filters.current_task', ['task' => $selectedTaskName !== '' ? $selectedTaskName : '#'.$selectedTaskId]) }}</span>
+                        </div>
+                        <a href="{{ $clearTaskFilterUrl }}" class="inline-flex items-center font-medium text-blue-700 hover:text-blue-900">
+                            <i data-lucide="x" class="mr-1 h-4 w-4"></i>
+                            {{ __('admin.articles.filters.clear_task') }}
+                        </a>
+                    </div>
+                @endif
                 <form method="GET" class="space-y-4">
                     @if($isTrashView)
                         <input type="hidden" name="trashed" value="1">

@@ -88,6 +88,7 @@ class TaskLifecycleService
                 'auto_keywords' => $normalized['auto_keywords'],
                 'auto_description' => $normalized['auto_description'],
                 'draft_limit' => $normalized['draft_limit'],
+                'article_limit' => $normalized['article_limit'],
                 'is_loop' => $normalized['is_loop'],
                 'model_selection_mode' => $normalized['model_selection_mode'],
                 'status' => $normalized['status'],
@@ -203,10 +204,8 @@ class TaskLifecycleService
             if ($enqueueNow) {
                 $jobId = $this->queueService->enqueueTaskJob($taskId, 'generate_article', ['source' => 'api_manual_start']);
                 if ($jobId !== null) {
-                    $taskRow = Task::query()->whereKey($taskId)->first(['publish_interval']);
-                    $nextRunAt = now()->addSeconds(max(60, (int) ($taskRow?->publish_interval ?? 3600)));
                     Task::query()->whereKey($taskId)->update([
-                        'next_run_at' => $nextRunAt,
+                        'next_run_at' => now()->addSeconds(60),
                         'updated_at' => now(),
                     ]);
                 }
@@ -472,6 +471,16 @@ class TaskLifecycleService
             $output['draft_limit'] = 10;
         }
 
+        if (array_key_exists('article_limit', $data)) {
+            $output['article_limit'] = max(1, (int) $data['article_limit']);
+        } elseif (! $isUpdate) {
+            $output['article_limit'] = max(10, (int) ($output['draft_limit'] ?? 10));
+        }
+
+        if (isset($output['article_limit'], $output['draft_limit']) && $output['draft_limit'] > $output['article_limit']) {
+            $output['draft_limit'] = $output['article_limit'];
+        }
+
         if (array_key_exists('category_mode', $data)) {
             $categoryMode = trim((string) $data['category_mode']);
             if (! in_array($categoryMode, ['smart', 'fixed'], true)) {
@@ -529,12 +538,18 @@ class TaskLifecycleService
      */
     private function activateTask(int $taskId, bool $resetNextRun): void
     {
-        Task::query()->whereKey($taskId)->update([
+        $task = Task::query()->whereKey($taskId)->first(['id', 'next_run_at']);
+        $updates = [
             'status' => 'active',
             'schedule_enabled' => 1,
-            'next_run_at' => $resetNextRun ? now() : DB::raw('COALESCE(next_run_at, CURRENT_TIMESTAMP)'),
             'updated_at' => now(),
-        ]);
+        ];
+
+        if ($resetNextRun || $task?->next_run_at === null) {
+            $updates['next_run_at'] = now();
+        }
+
+        Task::query()->whereKey($taskId)->update($updates);
         $this->queueService->initializeTaskSchedule($taskId);
     }
 

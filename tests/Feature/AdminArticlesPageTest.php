@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\SiteSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -53,5 +54,28 @@ class AdminArticlesPageTest extends TestCase
             ->get(route('admin.articles.create'))
             ->assertOk()
             ->assertSee(__('admin.article_create.page_heading'));
+    }
+
+    public function test_admin_brand_stays_geoflow_when_public_site_name_changes(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'admin_brand_admin',
+            'password' => 'secret-123',
+            'email' => 'admin-brand@example.com',
+            'display_name' => 'Brand Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        SiteSetting::query()->create([
+            'setting_key' => 'site_name',
+            'setting_value' => 'Public Frontend Name',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('GEOFlow')
+            ->assertDontSee('Public Frontend Name');
     }
 }

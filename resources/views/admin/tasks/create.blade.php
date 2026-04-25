@@ -294,12 +294,18 @@
                     <div class="px-6 py-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
+                                <label for="article_limit" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.article_limit') }}</label>
+                                <input type="number" name="article_limit" id="article_limit" min="1" value="{{ old('article_limit', (string) ($taskForm['article_limit'] ?? 10)) }}"
+                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.article_limit') }}</p>
+                            </div>
+                            <div>
                                 <label for="draft_limit" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.draft_limit') }}</label>
                                 <input type="number" name="draft_limit" id="draft_limit" min="1" value="{{ old('draft_limit', (string) ($taskForm['draft_limit'] ?? 10)) }}"
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                 <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.draft_limit') }}</p>
                             </div>
-                            <div>
+                            <div class="md:col-span-2">
                                 <div class="flex items-center">
                                     <input type="checkbox" name="is_loop" id="is_loop" @checked(old('is_loop', (string) ($taskForm['is_loop'] ?? '1')) === '1')
                                            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
@@ -338,6 +344,8 @@
             const imageCountSelect = document.getElementById('image_count');
             const needReviewCheckbox = document.getElementById('need_review');
             const publishIntervalInput = document.getElementById('publish_interval');
+            const articleLimitInput = document.getElementById('article_limit');
+            const draftLimitInput = document.getElementById('draft_limit');
             const fixedCategorySection = document.getElementById('fixed-category-section');
             const fixedCategorySelect = document.getElementById('fixed_category_id');
             const categoryModeRadios = document.querySelectorAll('input[name="category_mode"]');
@@ -385,8 +393,17 @@
                 }
             }
 
+            function syncDraftLimitMax() {
+                const articleLimit = Math.max(1, Number(articleLimitInput.value || 1));
+                draftLimitInput.max = String(articleLimit);
+                if (Number(draftLimitInput.value || 1) > articleLimit) {
+                    draftLimitInput.value = String(articleLimit);
+                }
+            }
+
             imageLibrarySelect.addEventListener('change', toggleImageCountByLibrary);
             needReviewCheckbox.addEventListener('change', togglePublishInterval);
+            articleLimitInput.addEventListener('input', syncDraftLimitMax);
             categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
 
             form.addEventListener('submit', function (event) {
@@ -414,6 +431,12 @@
                     return;
                 }
 
+                if (Number(draftLimitInput.value || 0) > Number(articleLimitInput.value || 0)) {
+                    alert(@json(__('admin.task_create.error.draft_limit_too_large')));
+                    event.preventDefault();
+                    return;
+                }
+
                 if (!isEditMode && !confirm(@json(__('admin.task_create.confirm.create')))) {
                     event.preventDefault();
                 }
@@ -422,6 +445,7 @@
             toggleImageCountByLibrary();
             togglePublishInterval();
             handleCategoryModeChange();
+            syncDraftLimitMax();
         });
     </script>
 @endpush
