@@ -171,7 +171,6 @@
                         <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">{{ __('admin.dashboard.quick_start.eyebrow') }}</p>
                         <h2 class="mt-2 text-xl font-semibold text-gray-900">{{ __('admin.dashboard.quick_start.title') }}</h2>
                     </div>
-                    <p class="max-w-2xl text-sm leading-6 text-gray-500">{{ __('admin.dashboard.quick_start.subtitle') }}</p>
                 </div>
             </div>
 
@@ -208,6 +207,9 @@
                                 </a>
                                 <a href="{{ route('admin.image-libraries.index') }}" class="inline-flex items-center rounded-full border border-purple-100 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100">
                                     {{ __('admin.dashboard.quick_start.images') }}
+                                </a>
+                                <a href="{{ route('admin.authors.index') }}" class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                                    {{ __('admin.dashboard.quick_start.authors') }}
                                 </a>
                             </div>
                         </div>

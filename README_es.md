@@ -21,13 +21,15 @@ El esqueleto del framework se publica bajo [MIT License](https://opensource.org/
 
 | Característica | Descripción |
 |----------------|-------------|
-| 🤖 Generación multi-modelo | APIs estilo OpenAI y varios proveedores |
-| 📦 Tareas por lotes | Creación, programación, cola, reintentos; **Horizon** opcional |
-| 🗂 Materiales unificados | Títulos, palabras clave, imágenes, conocimiento, prompts |
-| 📋 Revisión y publicación | Borrador → revisión → publicación; auto-publicación opcional |
-| 🔍 Orientado a búsqueda | Metadatos SEO, Open Graph, datos estructurados |
-| 🎨 Front y temas | Sitio de artículos y ajustes en el panel |
-| ⚡ Tiempo real | **Laravel Reverb** (activar en `.env`) |
+| 🤖 Generación multi-modelo | APIs estilo OpenAI, modelos chat / embedding, adaptación de URL del proveedor, failover inteligente y reintentos |
+| 📦 Tareas por lotes | Creación de tareas, límite de generación, cadencia de publicación, cola, registros de error y filtrado de artículos por tarea |
+| 🗂 Materiales unificados | Títulos, palabras clave, imágenes, autores, bases de conocimiento y prompts |
+| 🧠 RAG con base de conocimiento | Subida de documentos, generación de fragmentos, vectores con modelo embedding y recuperación de contexto |
+| 📋 Revisión y publicación | Borrador, revisión, publicación y filtros por estado, autor y tarea |
+| 🔍 Salida orientada a búsqueda | SEO, Open Graph, datos estructurados y renderizado Markdown GFM para títulos, tablas, listas e imágenes |
+| 🎨 Front y temas | Tema por defecto, paquetes de temas, rutas de preview y cambio de tema desde admin |
+| 🌍 i18n del admin | Chino, inglés, japonés, español y ruso |
+| 🔔 Avisos de versión | Consulta `version.json` de GitHub y avisa cuando hay una versión nueva |
 | 🐳 Listo para desplegar | **Docker Compose**: Postgres (pgvector), Redis, app, cola, scheduler, Reverb |
 | 🗄 PostgreSQL | Base por defecto para carga estable y escrituras concurrentes |
 
@@ -45,6 +47,19 @@ El esqueleto del framework se publica bajo [MIT License](https://opensource.org/
 </p>
 
 Cubre inicio, tareas, flujo de artículos y modelos. Si faltan imágenes en `docs/`, añádelas localmente.
+
+---
+
+## 🆕 Puntos clave de la versión Laravel actual
+
+La versión pública actual es la reestructuración sobre Laravel 12.
+
+- El admin mantiene la marca GEOFlow fija, soporta varios idiomas, gestión de administradores, bienvenida inicial y aviso de nuevas versiones desde GitHub.
+- Las tareas soportan modelo fijo y failover inteligente; la generación y la publicación se tratan como etapas separadas.
+- Los materiales incluyen base de conocimiento, títulos, palabras clave, imágenes y autores.
+- La base de conocimiento se divide en fragmentos; con un modelo embedding configurado puede escribir vectores y usarlos en RAG.
+- La configuración de modelos aclara reglas de URL para interfaces estilo OpenAI y proveedores con rutas no `/v1`.
+- El frontend renderiza Markdown GFM, incluidas tablas e imágenes, y normaliza rutas históricas `/uploads` hacia `/storage/uploads`.
 
 ---
 
@@ -74,7 +89,15 @@ Salida en el front-end
 | Dominio y Jobs | `app/Services`, `app/Jobs`, `app/Http/Controllers`, etc. |
 | Persistencia | **PostgreSQL** (recomendado **pgvector**) + **Redis** |
 
-Flujo principal: configurar en admin → crear tareas y encolar → workers generan contenido → borrador / revisión / publicación → front con SEO.
+Flujo principal: configurar modelos y prompts → preparar conocimiento, títulos, palabras clave, imágenes y autores → crear tareas y encolar → workers generan contenido → borrador / revisión / publicación → front con SEO.
+
+---
+
+## ⚡ Inicio rápido desde el admin
+
+1. **Configurar API**: añade al menos un modelo chat disponible; si necesitas RAG, añade un modelo embedding.
+2. **Configurar materiales**: prepara base de conocimiento, títulos, palabras clave, imágenes y autores con información real y verificable.
+3. **Crear tarea**: selecciona materiales, modelo, volumen y frecuencia de publicación; empieza con borrador o revisión antes de activar publicación automática completa.
 
 ---
 

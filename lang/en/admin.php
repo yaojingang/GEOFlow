@@ -740,6 +740,7 @@ return [
             'titles' => 'Titles',
             'keywords' => 'Keywords',
             'images' => 'Images',
+            'authors' => 'Authors',
             'task_title' => 'Create Task',
             'task_desc' => 'Choose title libraries, materials, and models, set generation limits and publishing frequency, then let GEOFlow generate and publish content.',
             'task_button' => 'Create Task',

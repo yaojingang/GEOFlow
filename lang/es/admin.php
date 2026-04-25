@@ -139,6 +139,7 @@ return array_replace_recursive($base, [
             'titles' => 'Títulos',
             'keywords' => 'Palabras clave',
             'images' => 'Imágenes',
+            'authors' => 'Autores',
             'task_title' => 'Crear tarea',
             'task_desc' => 'Selecciona biblioteca de títulos, materiales y modelo; define el volumen y la frecuencia de publicación.',
             'task_button' => 'Crear tarea',
