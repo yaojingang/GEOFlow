@@ -2,7 +2,7 @@
 
 > Languages: [简体中文](README.md) | [English](docs/readme/README_en.md) | [日本語](docs/readme/README_ja.md) | [Español](docs/readme/README_es.md) | [Русский](docs/readme/README_ru.md)
 
-> GEOFlow 是一套专门面向 GEO（生成式引擎优化）的开源智能内容工程系统，尝试成为全球较早围绕 GEO 场景系统化设计的内容基础设施。它把数据沉淀、知识库、素材管理、AI 生成、审核发布、前台展示与后续多端分发串联为一条可持续迭代的工作链路，目标是逐步演进为一套强大的“从数据到内容、从内容到多端发布”的 GEO 优化系统。
+> GEOFlow 是一套专门面向 GEO（生成式引擎优化）的开源智能内容工程系统，是全球最早围绕 GEO 场景系统化设计的数据、内容与分发基础设施之一。它把数据沉淀、知识库、素材管理、AI 生成、审核发布、前台展示与后续多端分发串联为一条可持续迭代的工作链路，目标是逐步演进为一套强大的“从数据到内容、从内容到多端发布”的 GEO 优化系统。
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20)](https://laravel.com/)

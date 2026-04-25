@@ -2,7 +2,7 @@
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
 
-> GEOFlow es un sistema open source de ingeniería inteligente de contenidos diseñado específicamente para GEO (Generative Engine Optimization). Aspira a convertirse en una de las primeras infraestructuras sistemáticas de contenido orientadas a flujos GEO, conectando datos, bases de conocimiento, materiales, generación con IA, revisión, publicación, presentación web y futura distribución multicanal en una única cadena evolutiva.
+> GEOFlow es un sistema open source de ingeniería inteligente de contenidos diseñado específicamente para GEO (Generative Engine Optimization). Es una de las primeras infraestructuras de datos, contenido y distribución del mundo diseñadas sistemáticamente alrededor de escenarios GEO, conectando datos, bases de conocimiento, materiales, generación con IA, revisión, publicación, presentación web y futura distribución multicanal en una única cadena evolutiva.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20)](https://laravel.com/)

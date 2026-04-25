@@ -2,7 +2,7 @@
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
 
-> GEOFlow は GEO（Generative Engine Optimization）に特化して設計されたオープンソースのインテリジェント・コンテンツエンジニアリングシステムです。GEO ワークフローを中心に据えた初期の体系的なコンテンツ基盤の一つを目指し、データ資産、ナレッジベース、素材管理、AI 生成、レビュー、公開、フロント表示、将来的なマルチチャネル配信までを継続的に進化する一つのパイプラインとして結びます。
+> GEOFlow は GEO（Generative Engine Optimization）に特化して設計されたオープンソースのインテリジェント・コンテンツエンジニアリングシステムです。GEO シナリオを中心に体系的に設計された、世界でも最も早いデータ・コンテンツ・配信インフラの一つであり、データ資産、ナレッジベース、素材管理、AI 生成、レビュー、公開、フロント表示、将来的なマルチチャネル配信までを継続的に進化する一つのパイプラインとして結びます。
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20)](https://laravel.com/)
