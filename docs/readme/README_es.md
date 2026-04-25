@@ -1,6 +1,6 @@
 # GEOFlow
 
-> Languages: [简体中文](README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
+> Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
 
 > GEOFlow es un sistema open source de ingeniería inteligente de contenidos diseñado específicamente para GEO (Generative Engine Optimization). Aspira a convertirse en una de las primeras infraestructuras sistemáticas de contenido orientadas a flujos GEO, conectando datos, bases de conocimiento, materiales, generación con IA, revisión, publicación, presentación web y futura distribución multicanal en una única cadena evolutiva.
 
@@ -8,12 +8,12 @@
 [![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20)](https://laravel.com/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-GEOFlow se publica bajo la [Apache License 2.0](LICENSE). Puedes usarlo, copiarlo, modificarlo y distribuirlo, incluso con fines comerciales, siempre que conserves los avisos de copyright y licencia y cumplas los términos de patente, marcas y exención de garantías de Apache-2.0.
+GEOFlow se publica bajo la [Apache License 2.0](../../LICENSE). Puedes usarlo, copiarlo, modificarlo y distribuirlo, incluso con fines comerciales, siempre que conserves los avisos de copyright y licencia y cumplas los términos de patente, marcas y exención de garantías de Apache-2.0.
 
 ---
 
@@ -38,15 +38,15 @@ GEOFlow se publica bajo la [Apache License 2.0](LICENSE). Puedes usarlo, copiarl
 ## 🖼 Vista previa de la interfaz
 
 <p>
-  <img src="docs/images/screenshots/dashboard-en.png" alt="Panel GEOFlow" width="48%" />
-  <img src="docs/images/screenshots/tasks-en.png" alt="Tareas GEOFlow" width="48%" />
+  <img src="../../docs/images/screenshots/dashboard-en.png" alt="Panel GEOFlow" width="48%" />
+  <img src="../../docs/images/screenshots/tasks-en.png" alt="Tareas GEOFlow" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/materials-en.png" alt="Materiales GEOFlow" width="48%" />
-  <img src="docs/images/screenshots/ai-config-en.png" alt="Configuración IA GEOFlow" width="48%" />
+  <img src="../../docs/images/screenshots/materials-en.png" alt="Materiales GEOFlow" width="48%" />
+  <img src="../../docs/images/screenshots/ai-config-en.png" alt="Configuración IA GEOFlow" width="48%" />
 </p>
 
-Cubre inicio, tareas, flujo de artículos y modelos. Si faltan imágenes en `docs/`, añádelas localmente.
+Cubre inicio, tareas, flujo de artículos y modelos. Si faltan imágenes en `../../docs/`, añádelas localmente.
 
 ---
 
@@ -182,9 +182,9 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d init
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue scheduler reverb
 ```
 
-- Frontend y admin entran por `web` (Nginx); PHP en `app` (php-fpm).  
-- **Admin por defecto:** en producción **no** se ejecuta `db:seed` automáticamente; tras las migraciones ejecute una vez el comando indicado en **`docs/deployment/DEPLOYMENT.md`** (sección sobre administrador inicial y *seed*; el documento está en chino).  
-- Más detalle: **`docs/deployment/DEPLOYMENT.md`**.
+- Frontend y admin entran por `web` (Nginx); PHP en `app` (php-fpm).
+- **Admin por defecto:** en producción **no** se ejecuta `db:seed` automáticamente; tras las migraciones ejecute una vez el comando indicado en **`../../docs/deployment/DEPLOYMENT.md`** (sección sobre administrador inicial y *seed*; el documento está en chino).
+- Más detalle: **`../../docs/deployment/DEPLOYMENT.md`**.
 
 ### Opción 2: PHP local
 
@@ -245,7 +245,7 @@ php artisan geoflow:admin-unlock admin
 
 **Desarrollo** (`docker-compose.yml`): `postgres`, `redis`, `init`, `app` (`${APP_PORT:-18080}:8080`), `queue`, `scheduler`, `reverb` (`${REVERB_EXPOSE_PORT:-18081}:8080`). Variables de `docker/entrypoint.sh`: como en [README_en.md](README_en.md).
 
-**Producción** (`docker-compose.prod.yml`): use `docker compose --env-file .env.prod -f docker-compose.prod.yml …` (véase el suplemento arriba y `docs/deployment/DEPLOYMENT.md`).
+**Producción** (`docker-compose.prod.yml`): use `docker compose --env-file .env.prod -f docker-compose.prod.yml …` (véase el suplemento arriba y `../../docs/deployment/DEPLOYMENT.md`).
 
 ---
 
@@ -260,7 +260,7 @@ composer test
 
 ## 🌍 Otros idiomas
 
-- [简体中文](README.md)
+- [简体中文](../../README.md)
 - [English](README_en.md)
 - [日本語](README_ja.md)
 - [Русский](README_ru.md)
@@ -269,7 +269,7 @@ composer test
 
 ## 📄 Licencia
 
-GEOFlow está licenciado bajo la [Apache License 2.0](LICENSE). Permite uso personal y comercial, modificación, redistribución y despliegue privado, siempre que se respeten los avisos de licencia, copyright, cambios, términos de patente y exenciones de garantía.
+GEOFlow está licenciado bajo la [Apache License 2.0](../../LICENSE). Permite uso personal y comercial, modificación, redistribución y despliegue privado, siempre que se respeten los avisos de licencia, copyright, cambios, términos de patente y exenciones de garantía.
 
 ---
 

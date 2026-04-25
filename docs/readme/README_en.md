@@ -1,6 +1,6 @@
 # GEOFlow
 
-> Languages: [简体中文](README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
+> Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
 
 > GEOFlow is an open-source intelligent content engineering system designed specifically for GEO (Generative Engine Optimization). It aims to become one of the earliest systematic content infrastructures built around GEO workflows, connecting data assets, knowledge bases, material management, AI generation, review and publishing, front-end presentation, and future multi-channel distribution into one evolving pipeline.
 
@@ -8,12 +8,12 @@
 [![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20)](https://laravel.com/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-GEOFlow is released under the [Apache License 2.0](LICENSE). You may use, copy, modify, and distribute it, including for commercial purposes, provided that you retain copyright and license notices and comply with the patent, trademark, and warranty-disclaimer terms of Apache-2.0.
+GEOFlow is released under the [Apache License 2.0](../../LICENSE). You may use, copy, modify, and distribute it, including for commercial purposes, provided that you retain copyright and license notices and comply with the patent, trademark, and warranty-disclaimer terms of Apache-2.0.
 
 ---
 
@@ -38,15 +38,15 @@ GEOFlow is released under the [Apache License 2.0](LICENSE). You may use, copy, 
 ## 🖼 UI Preview
 
 <p>
-  <img src="docs/images/screenshots/dashboard-en.png" alt="GEOFlow dashboard preview" width="48%" />
-  <img src="docs/images/screenshots/tasks-en.png" alt="GEOFlow task management preview" width="48%" />
+  <img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOFlow dashboard preview" width="48%" />
+  <img src="../../docs/images/screenshots/tasks-en.png" alt="GEOFlow task management preview" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/materials-en.png" alt="GEOFlow materials preview" width="48%" />
-  <img src="docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI configuration preview" width="48%" />
+  <img src="../../docs/images/screenshots/materials-en.png" alt="GEOFlow materials preview" width="48%" />
+  <img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI configuration preview" width="48%" />
 </p>
 
-These screens cover the home page, task scheduling, article workflow, and model configuration. More admin documentation lives under `docs/` (add or replace screenshots locally if paths are missing).
+These screens cover the home page, task scheduling, article workflow, and model configuration. More admin documentation lives under `../../docs/` (add or replace screenshots locally if paths are missing).
 
 ---
 
@@ -194,8 +194,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - Frontend and admin both enter through `web` (Nginx)
 - PHP is executed by `app` (php-fpm)
-- **Default admin:** production does **not** auto-run `db:seed`; run it once after migrations (command and credentials in `docs/deployment/DEPLOYMENT.md`, section *Default admin (first-time seeding)*).
-- See `docs/deployment/DEPLOYMENT.md` for details
+- **Default admin:** production does **not** auto-run `db:seed`; run it once after migrations (command and credentials in `../../docs/deployment/DEPLOYMENT.md`, section *Default admin (first-time seeding)*).
+- See `../../docs/deployment/DEPLOYMENT.md` for details
 
 ### Option 2: Local PHP stack
 
@@ -301,7 +301,7 @@ Optional localhost-only DB/Redis host ports: see `DB_EXPOSE_PORT` and `REDIS_EXP
 | `AUTO_GENERATE_APP_KEY` | enabled in `init` | Generate `APP_KEY` when missing |
 | `AUTO_SEED` | `false` | If `true`, runs **`db:seed` every start** (use with care) |
 
-`./storage` and `./.env` are mounted; application code lives in the image. For production, use the new **`docker-compose.prod.yml`** stack (`Nginx + php-fpm`) and see `docs/deployment/DEPLOYMENT.md`.
+`./storage` and `./.env` are mounted; application code lives in the image. For production, use the new **`docker-compose.prod.yml`** stack (`Nginx + php-fpm`) and see `../../docs/deployment/DEPLOYMENT.md`.
 
 **Upgrade:** `git pull` → `docker compose build` → `docker compose up -d`.
 
@@ -318,7 +318,7 @@ composer test
 
 ## 🌍 README in other languages
 
-- [简体中文](README.md)
+- [简体中文](../../README.md)
 - [日本語](README_ja.md)
 - [Español](README_es.md)
 - [Русский](README_ru.md)
@@ -327,7 +327,7 @@ composer test
 
 ## 📄 License
 
-GEOFlow is licensed under the [Apache License 2.0](LICENSE). It allows personal and commercial use, modification, redistribution, and private deployment, as long as the license, copyright notices, modification notices, patent terms, and warranty disclaimers are respected.
+GEOFlow is licensed under the [Apache License 2.0](../../LICENSE). It allows personal and commercial use, modification, redistribution, and private deployment, as long as the license, copyright notices, modification notices, patent terms, and warranty disclaimers are respected.
 
 ---
 
