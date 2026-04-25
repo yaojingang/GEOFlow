@@ -1,11 +1,11 @@
-# GEOFlow Gemini Instructions
+# GEOFlow Claude Instructions
 
 Laravel Boost support is installed for this repository.
 
 Before making Laravel, PHP, Tailwind, Horizon, or AI SDK changes, read:
 
-`../.boost/guidelines.md`
+`../../.boost/guidelines.md`
 
-Gemini MCP configuration is available at:
+Claude-specific Boost skills are available under:
 
-`../.gemini/settings.json`
+`../../.claude/skills/`

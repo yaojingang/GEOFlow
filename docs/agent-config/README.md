@@ -9,9 +9,9 @@ This folder keeps human-readable agent instructions in one place so the reposito
 - `CLAUDE.md` - Claude-oriented instructions.
 - `GEMINI.md` - Gemini-oriented instructions.
 
-## Required Root-Level Files
+## Required Root-Level Tooling
 
-Some integration files intentionally remain at the repository root because the related tools discover them by convention:
+Some integration files intentionally remain at the repository root because the related tools discover them by convention. Do not move these into `docs/` unless the tool configuration is changed and verified:
 
 - `.mcp.json` - shared MCP server configuration for Laravel Boost.
 - `boost.json` - Laravel Boost install and skill configuration.
@@ -22,4 +22,4 @@ Some integration files intentionally remain at the repository root because the r
 
 The full Laravel Boost guidance lives in:
 
-`../.boost/guidelines.md`
+`../../.boost/guidelines.md`

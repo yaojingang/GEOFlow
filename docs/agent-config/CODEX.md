@@ -4,12 +4,12 @@ Laravel Boost support is installed for this repository.
 
 Before making Laravel, PHP, Tailwind, Horizon, or AI SDK changes, read:
 
-`../.boost/guidelines.md`
+`../../.boost/guidelines.md`
 
 Codex MCP configuration is available at:
 
-`../.codex/config.toml`
+`../../.codex/config.toml`
 
 Shared Laravel Boost MCP configuration is available at:
 
-`../.mcp.json`
+`../../.mcp.json`
