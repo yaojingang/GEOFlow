@@ -51,6 +51,7 @@ final class AdminWeb
             'ja' => '日本語',
             'es' => 'Español',
             'ru' => 'Русский',
+            'pt_BR' => 'Português (BR)',
         ];
     }
 
