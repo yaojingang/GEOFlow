@@ -34,20 +34,6 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $trustedProxies = env('TRUSTED_PROXIES');
-        if (is_string($trustedProxies) && str_contains($trustedProxies, ',')) {
-            $trustedProxies = array_values(array_filter(array_map('trim', explode(',', $trustedProxies))));
-        }
-
-        $middleware->trustProxies(
-            at: $trustedProxies ?: null,
-            headers: Request::HEADER_X_FORWARDED_FOR
-                | Request::HEADER_X_FORWARDED_HOST
-                | Request::HEADER_X_FORWARDED_PORT
-                | Request::HEADER_X_FORWARDED_PROTO
-                | Request::HEADER_X_FORWARDED_PREFIX
-        );
-
         $middleware->alias([
             // 生成/透传 X-Request-Id，并写入响应头
             'api.request_id' => AssignApiRequestId::class,
