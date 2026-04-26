@@ -14,17 +14,14 @@ use Illuminate\View\View;
 use Throwable;
 
 /**
- * 安全设置控制器。
+ * 敏感词管理控制器。
  *
- * 对齐 bak/admin/security-settings.php 的核心能力：
- * 1. 管理敏感词（批量新增 + 删除）；
- * 2. 展示当前管理员基础信息；
- * 3. 修改当前管理员密码并强制重新登录。
+ * 敏感词管理已合并到网站设置模块下，旧 security-settings 路由仅保留兼容。
  */
 class SecuritySettingsController extends Controller
 {
     /**
-     * 安全设置主页。
+     * 敏感词管理页。
      */
     public function index(): View
     {
@@ -33,7 +30,7 @@ class SecuritySettingsController extends Controller
 
         return view('admin.security-settings.index', [
             'pageTitle' => __('admin.security.page_title'),
-            'activeMenu' => 'security',
+            'activeMenu' => 'site_settings',
             'adminSiteName' => AdminWeb::siteName(),
             'sensitiveWords' => $this->loadSensitiveWords(),
             'currentAdmin' => $currentAdmin,
@@ -88,7 +85,7 @@ class SecuritySettingsController extends Controller
             }
 
             return redirect()
-                ->route('admin.security-settings.index')
+                ->route('admin.site-settings.sensitive-words')
                 ->with('message', __('admin.security.message.words_added', ['count' => count($wordsToInsert)]));
         } catch (Throwable $exception) {
             return back()->withErrors(__('admin.security.message.words_add_error', ['message' => $exception->getMessage()]));
@@ -110,7 +107,7 @@ class SecuritySettingsController extends Controller
                 return back()->withErrors(__('admin.security.message.word_delete_failed'));
             }
 
-            return redirect()->route('admin.security-settings.index')->with('message', __('admin.security.message.word_deleted'));
+            return redirect()->route('admin.site-settings.sensitive-words')->with('message', __('admin.security.message.word_deleted'));
         } catch (Throwable $exception) {
             return back()->withErrors(__('admin.security.message.word_delete_error', ['message' => $exception->getMessage()]));
         }

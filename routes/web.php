@@ -203,9 +203,14 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('/', [SiteSettingsController::class, 'update'])->name('update');
             Route::post('theme', [SiteSettingsController::class, 'updateTheme'])->name('theme');
             Route::post('article-detail-ads', [SiteSettingsController::class, 'updateArticleDetailAds'])->name('ads');
+            Route::get('sensitive-words', [SecuritySettingsController::class, 'index'])->name('sensitive-words');
+            Route::post('sensitive-words', [SecuritySettingsController::class, 'storeSensitiveWords'])->name('sensitive-words.store');
+            Route::post('sensitive-words/{wordId}/delete', [SecuritySettingsController::class, 'destroySensitiveWord'])
+                ->name('sensitive-words.delete')
+                ->whereNumber('wordId');
         });
         Route::prefix('security-settings')->name('security-settings.')->group(function () {
-            Route::get('/', [SecuritySettingsController::class, 'index'])->name('index');
+            Route::get('/', fn () => redirect()->route('admin.site-settings.sensitive-words'))->name('index');
             Route::post('sensitive-words', [SecuritySettingsController::class, 'storeSensitiveWords'])->name('words.store');
             Route::post('sensitive-words/{wordId}/delete', [SecuritySettingsController::class, 'destroySensitiveWord'])->name('words.delete');
             Route::post('password', [SecuritySettingsController::class, 'updatePassword'])->name('password.update');

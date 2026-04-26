@@ -54,6 +54,12 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        Schema::create('sensitive_words', function (Blueprint $table) {
+            $table->id();
+            $table->string('word', 100)->unique();
+            $table->timestamp('created_at')->nullable();
+        });
+
         Schema::create('keyword_libraries', function (Blueprint $table) {
             $table->id();
             $table->string('name', 100);
@@ -262,6 +268,7 @@ return new class extends Migration
         Schema::dropIfExists('knowledge_bases');
         Schema::dropIfExists('authors');
         Schema::dropIfExists('categories');
+        Schema::dropIfExists('sensitive_words');
         Schema::dropIfExists('prompts');
         Schema::dropIfExists('ai_models');
         Schema::dropIfExists('api_idempotency_keys');

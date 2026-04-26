@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\SensitiveWord;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,7 +28,49 @@ class AdminSiteSettingsPageTest extends TestCase
             ->get(route('admin.site-settings.index'))
             ->assertOk()
             ->assertSee(__('admin.site_settings.field_admin_base_path'))
+            ->assertSee(__('admin.site_settings.module_sensitive_words'))
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
+    }
+
+    public function test_sensitive_words_are_managed_under_site_settings(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_sensitive_admin',
+            'password' => 'secret-123',
+            'email' => 'site-sensitive-admin@example.com',
+            'display_name' => 'Site Sensitive Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.sensitive-words'))
+            ->assertOk()
+            ->assertSee(__('admin.security.page_title'));
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.security-settings.index'))
+            ->assertRedirect(route('admin.site-settings.sensitive-words'));
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.sensitive-words.store'), [
+                'words' => "测试敏感词\n测试敏感词\n另一个敏感词",
+            ])
+            ->assertRedirect(route('admin.site-settings.sensitive-words'));
+
+        $this->assertDatabaseHas('sensitive_words', ['word' => '测试敏感词']);
+        $this->assertDatabaseHas('sensitive_words', ['word' => '另一个敏感词']);
+        $this->assertSame(2, SensitiveWord::query()->count());
+
+        $word = SensitiveWord::query()->where('word', '测试敏感词')->firstOrFail();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.sensitive-words.delete', ['wordId' => $word->id]))
+            ->assertRedirect(route('admin.site-settings.sensitive-words'));
+
+        $this->assertDatabaseMissing('sensitive_words', ['word' => '测试敏感词']);
     }
 
     public function test_admin_base_path_rejects_unsafe_value(): void

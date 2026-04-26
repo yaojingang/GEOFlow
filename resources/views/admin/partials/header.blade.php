@@ -23,7 +23,6 @@
         'materials' => ['route' => 'admin.materials.index', 'name' => __('admin.nav.materials')],
         'ai_config' => ['route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config')],
         'site_settings' => ['route' => 'admin.site-settings.index', 'name' => __('admin.nav.site_settings')],
-        'security' => ['route' => 'admin.security-settings.index', 'name' => __('admin.nav.security')],
     ];
     if ($isSuperAdmin) {
         $menu['admin_users'] = ['route' => 'admin.admin-users.index', 'name' => __('admin.nav.admin_users')];
@@ -73,6 +72,12 @@
         'admin.url-import' => 'materials',
         'admin.ai-models.index' => 'ai_config',
         'admin.ai-prompts' => 'ai_config',
+        'admin.site-settings.sensitive-words' => 'site_settings',
+        'admin.site-settings.sensitive-words.store' => 'site_settings',
+        'admin.site-settings.sensitive-words.delete' => 'site_settings',
+        'admin.security-settings.index' => 'site_settings',
+        'admin.security-settings.words.store' => 'site_settings',
+        'admin.security-settings.words.delete' => 'site_settings',
         'admin.api-tokens.index' => 'admin_users',
         'admin.api-tokens.store' => 'admin_users',
         'admin.api-tokens.revoke' => 'admin_users',

@@ -7,6 +7,20 @@
             <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.page_subtitle') }}</p>
         </div>
 
+        <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <a href="{{ route('admin.site-settings.sensitive-words') }}" class="group rounded-lg border border-gray-200 bg-white p-5 shadow hover:border-blue-200 hover:bg-blue-50/40">
+                <div class="flex items-start gap-3">
+                    <span class="inline-flex rounded-lg bg-red-50 p-2 text-red-600 group-hover:bg-red-100">
+                        <i data-lucide="shield-alert" class="h-5 w-5"></i>
+                    </span>
+                    <span class="min-w-0">
+                        <span class="block text-base font-semibold text-gray-900">{{ __('admin.site_settings.module_sensitive_words') }}</span>
+                        <span class="mt-1 block text-sm leading-6 text-gray-600">{{ __('admin.site_settings.module_sensitive_words_desc') }}</span>
+                    </span>
+                </div>
+            </a>
+        </div>
+
         <details class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
             <summary class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
                 <div>
