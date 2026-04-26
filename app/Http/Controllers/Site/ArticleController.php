@@ -50,8 +50,8 @@ class ArticleController extends Controller
             ->published()
             ->where('category_id', $article->category_id)
             ->whereKeyNot($article->id)
-            ->orderByDesc('published_at')
-            ->limit(3)
+            ->inRandomOrder()
+            ->limit(6)
             ->get(['id', 'title', 'slug']);
 
         $pageTitle = $article->title.' - '.$siteTitle;

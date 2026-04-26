@@ -29,6 +29,8 @@ return [
 
     // 前台 Blade 使用的 Laravel 翻译 locale（与 APP_LOCALE、后台会话语言独立；对齐旧站中文导航）
     'public_locale' => env('GEOFLOW_PUBLIC_LOCALE', 'zh_CN'),
+    // 默认前台主题；后台未显式选择主题时使用
+    'default_theme' => env('GEOFLOW_DEFAULT_THEME', 'toutiao-news-20260426'),
 
     // 当前系统版本（底部展示、GitHub 更新检查对比）
     'app_version' => env('GEOFLOW_APP_VERSION', '1.2.0'),

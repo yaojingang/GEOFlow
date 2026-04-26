@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -45,6 +46,19 @@ class CategoryController extends Controller
             }
         }
 
+        $hotArticles = collect();
+        if (Schema::hasColumn('articles', 'is_hot')) {
+            $hotArticles = Article::query()
+                ->with(['category', 'author'])
+                ->published()
+                ->where('category_id', $category->id)
+                ->where('is_hot', true)
+                ->orderByDesc('published_at')
+                ->orderByDesc('id')
+                ->limit(6)
+                ->get();
+        }
+
         $pageTitle = $category->name.' - '.$siteTitle;
         $pageDescription = trim((string) $category->description) !== ''
             ? (string) $category->description
@@ -54,6 +68,7 @@ class CategoryController extends Controller
             'activeNav' => 'category',
             'category' => $category,
             'articles' => $articles,
+            'hotArticles' => $hotArticles,
             'cardSummaries' => $summaries,
             'siteTitle' => $siteTitle,
             'siteDescription' => $siteDescription,

@@ -29,6 +29,8 @@ class Article extends Model
         'review_status',
         'view_count',
         'is_ai_generated',
+        'is_hot',
+        'is_featured',
         'published_at',
     ];
 
@@ -40,6 +42,8 @@ class Article extends Model
             'task_id' => 'integer',
             'view_count' => 'integer',
             'is_ai_generated' => 'integer',
+            'is_hot' => 'boolean',
+            'is_featured' => 'boolean',
             'published_at' => 'datetime',
         ];
     }

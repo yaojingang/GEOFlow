@@ -4,6 +4,8 @@ return [
     'home_hero_fallback' => 'Generación y publicación de contenido asistida por IA.',
     'home_featured' => 'Destacado',
     'home_featured_badge' => 'Destacado',
+    'home_hot' => 'Artículos populares',
+    'home_hot_badge' => 'Popular',
     'home_latest' => 'Últimos',
     'home_read_more' => 'Leer más',
     'home_empty_title' => 'Aún no hay artículos',

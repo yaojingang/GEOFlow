@@ -375,6 +375,16 @@
                                     @if((string) ($article->keywords ?? '') !== '')
                                         <div class="text-xs text-blue-600 mt-1">{{ __('admin.articles.keywords') }}: {{ $article->keywords }}</div>
                                     @endif
+                                    @if(!$isTrashView && (!empty($article->is_hot) || !empty($article->is_featured)))
+                                        <div class="mt-2 flex flex-wrap gap-1.5">
+                                            @if(!empty($article->is_hot))
+                                                <span class="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-100">{{ __('admin.articles.badge.hot') }}</span>
+                                            @endif
+                                            @if(!empty($article->is_featured))
+                                                <span class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-100">{{ __('admin.articles.badge.featured') }}</span>
+                                            @endif
+                                        </div>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     @if((string) ($article->task->name ?? '') !== '')

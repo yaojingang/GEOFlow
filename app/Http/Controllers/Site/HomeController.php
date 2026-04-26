@@ -9,6 +9,7 @@ use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 /**
@@ -24,12 +25,13 @@ class HomeController extends Controller
 
         $map = SiteSettingsBag::all();
         $perPage = max(1, min(200, (int) ($map['per_page'] ?? config('geoflow.items_per_page', 12))));
-        $featuredLimit = max(1, min(100, (int) ($map['featured_limit'] ?? 6)));
+        $featuredLimit = max(1, min(5, (int) ($map['featured_limit'] ?? 5)));
 
         $siteTitle = (string) ($map['site_name'] ?? config('geoflow.site_name', config('app.name')));
         $siteSubtitle = (string) ($map['site_subtitle'] ?? '');
         $siteDescription = (string) ($map['site_description'] ?? config('geoflow.site_description', ''));
         $siteKeywords = (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', ''));
+        $homepageCarouselSlides = $this->parseHomepageCarouselSlides((string) ($map['home_carousel_slides'] ?? '[]'));
 
         $category = null;
         $categoryMissing = false;
@@ -60,14 +62,29 @@ class HomeController extends Controller
             ->withQueryString();
 
         $featuredArticles = collect();
+        $hotArticles = collect();
         if ($search === '' && ! $category && $page === 1) {
-            $featuredArticles = Article::query()
-                ->with(['category', 'author'])
-                ->published()
-                ->orderByDesc('published_at')
-                ->orderByDesc('id')
-                ->limit($featuredLimit)
-                ->get();
+            if (Schema::hasColumn('articles', 'is_featured')) {
+                $featuredArticles = Article::query()
+                    ->with(['category', 'author'])
+                    ->published()
+                    ->where('is_featured', true)
+                    ->orderByDesc('published_at')
+                    ->orderByDesc('id')
+                    ->limit($featuredLimit)
+                    ->get();
+            }
+
+            if (Schema::hasColumn('articles', 'is_hot')) {
+                $hotArticles = Article::query()
+                    ->with(['category', 'author'])
+                    ->published()
+                    ->where('is_hot', true)
+                    ->orderByDesc('published_at')
+                    ->orderByDesc('id')
+                    ->limit(6)
+                    ->get();
+            }
         }
 
         $viewTitle = __('site.home_latest');
@@ -103,6 +120,11 @@ class HomeController extends Controller
                 $summaries[$row->id] = ArticleHtmlPresenter::cardSummary($row, 120);
             }
         }
+        foreach ($hotArticles as $row) {
+            if ($row instanceof Article && ! isset($summaries[$row->id])) {
+                $summaries[$row->id] = ArticleHtmlPresenter::cardSummary($row, 120);
+            }
+        }
 
         $canonicalUrl = route('site.home');
         if ($search !== '') {
@@ -121,11 +143,13 @@ class HomeController extends Controller
             'categoryId' => $categoryId,
             'articles' => $articles,
             'featuredArticles' => $featuredArticles,
+            'hotArticles' => $hotArticles,
             'cardSummaries' => $summaries,
             'siteTitle' => $siteTitle,
             'siteSubtitle' => $siteSubtitle,
             'siteDescription' => $siteDescription,
             'siteKeywords' => $siteKeywords,
+            'homepageCarouselSlides' => $homepageCarouselSlides,
             'viewTitle' => $viewTitle,
             'pageTitle' => $pageTitle,
             'pageDescription' => $pageDescription,
@@ -137,5 +161,40 @@ class HomeController extends Controller
     private function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    /**
+     * @return array<int, array{image_url:string,title:string,link_url:string}>
+     */
+    private function parseHomepageCarouselSlides(string $raw): array
+    {
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $slides = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item) || empty($item['enabled'])) {
+                continue;
+            }
+
+            $imageUrl = trim((string) ($item['image_url'] ?? ''));
+            if ($imageUrl === '') {
+                continue;
+            }
+
+            $slides[] = [
+                'image_url' => $imageUrl,
+                'title' => trim((string) ($item['title'] ?? '')),
+                'link_url' => trim((string) ($item['link_url'] ?? '')),
+            ];
+
+            if (count($slides) >= 3) {
+                break;
+            }
+        }
+
+        return $slides;
     }
 }

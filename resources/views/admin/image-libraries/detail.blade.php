@@ -15,6 +15,10 @@
 
         return $bytes.' B';
     };
+    $urlLabel = __('admin.image_detail.url_label');
+    if ($urlLabel === 'admin.image_detail.url_label') {
+        $urlLabel = 'URL';
+    }
 @endphp
 
 @section('content')
@@ -176,18 +180,28 @@
                 <div class="p-6">
                     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                         @foreach ($images as $image)
+                            @php
+                                $imagePath = '/'.ltrim((string) ($image->file_path ?? ''), '/');
+                                $imageUrl = url($imagePath);
+                            @endphp
                             <div class="image-item relative overflow-hidden rounded-lg border-2 border-transparent transition-all hover:border-purple-500 hover:scale-[1.02]" data-image-id="{{ (int) $image->id }}">
                                 <input type="checkbox" form="batch-form" name="image_ids[]" value="{{ (int) $image->id }}" class="image-checkbox hidden absolute top-2 left-2 rounded border-gray-300 text-purple-600 shadow-sm focus:border-purple-300 focus:ring focus:ring-purple-200 focus:ring-opacity-50 z-10">
                                 <img
-                                    src="/{{ ltrim((string) ($image->file_path ?? ''), '/') }}"
+                                    src="{{ $imageUrl }}"
                                     alt="{{ (string) ($image->original_name ?? '') }}"
                                     class="w-full aspect-square object-cover"
-                                    onclick="showImageModal('/{{ ltrim((string) ($image->file_path ?? ''), '/') }}', @js((string) ($image->original_name ?? '')), '{{ (int) ($image->width ?? 0) }}x{{ (int) ($image->height ?? 0) }}', @js($formatSize((int) ($image->file_size ?? 0))))"
+                                    onclick="showImageModal(@js($imageUrl), @js((string) ($image->original_name ?? '')), '{{ (int) ($image->width ?? 0) }}x{{ (int) ($image->height ?? 0) }}', @js($formatSize((int) ($image->file_size ?? 0))), @js($imageUrl))"
                                 >
                                 <div class="image-overlay absolute inset-0 bg-black/70 text-white flex flex-col justify-center items-center opacity-0 transition-opacity">
                                     <p class="text-xs text-center mb-2 px-2 break-all">{{ (string) ($image->original_name ?? '') }}</p>
                                     <p class="text-xs text-gray-300">{{ (int) ($image->width ?? 0) }}x{{ (int) ($image->height ?? 0) }}</p>
                                     <p class="text-xs text-gray-300">{{ $formatSize((int) ($image->file_size ?? 0)) }}</p>
+                                </div>
+                                <div class="border-t border-gray-100 bg-white p-2">
+                                    <div class="text-[11px] font-medium text-gray-500">{{ $urlLabel }}</div>
+                                    <a href="{{ $imageUrl }}" target="_blank" rel="noopener noreferrer" class="mt-1 block truncate text-xs text-blue-600 hover:text-blue-800" title="{{ $imageUrl }}">
+                                        {{ $imageUrl }}
+                                    </a>
                                 </div>
                             </div>
                         @endforeach
@@ -292,6 +306,10 @@
                 <div class="p-6 text-center">
                     <img id="image-preview" src="" alt="" class="max-w-full max-h-96 mx-auto rounded">
                     <div id="image-info" class="mt-4 text-sm text-gray-600"></div>
+                    <div class="mt-3 rounded-md bg-gray-50 px-3 py-2 text-left">
+                        <div class="text-xs font-medium text-gray-500">{{ $urlLabel }}</div>
+                        <a id="image-url" href="#" target="_blank" rel="noopener noreferrer" class="mt-1 block break-all text-sm text-blue-600 hover:text-blue-800"></a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -320,11 +338,16 @@
             document.getElementById('edit-modal').classList.add('hidden');
         }
 
-        function showImageModal(path, name, dimensions, size) {
+        function showImageModal(path, name, dimensions, size, url) {
             document.getElementById('image-title').textContent = name;
             document.getElementById('image-preview').src = path;
             document.getElementById('image-preview').alt = name;
             document.getElementById('image-info').textContent = @json(__('admin.image_detail.dimensions_label')) + ': ' + dimensions + ' | ' + @json(__('admin.image_detail.size_label')) + ': ' + size;
+            const imageUrl = document.getElementById('image-url');
+            if (imageUrl) {
+                imageUrl.href = url;
+                imageUrl.textContent = url;
+            }
             document.getElementById('image-modal').classList.remove('hidden');
         }
 

@@ -166,6 +166,95 @@
             </div>
         </div>
 
+        <div class="bg-white shadow rounded-lg mb-8 overflow-hidden">
+            <div class="p-6">
+                <div class="flex flex-wrap items-center gap-3">
+                    <span class="inline-flex items-center rounded-full bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700">
+                        <i data-lucide="sparkles" class="w-4 h-4 mr-2"></i>
+                        {{ __('admin.materials.url_import') }}
+                    </span>
+                    <span class="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-sm font-medium text-amber-700">
+                        <i data-lucide="triangle-alert" class="w-4 h-4 mr-2"></i>
+                        {{ __('admin.materials.url_import_warning') }}
+                    </span>
+                </div>
+
+                <div class="mt-5 grid grid-cols-1 xl:grid-cols-5 gap-6 xl:items-start">
+                    <div class="xl:col-span-3">
+                        <h2 class="text-2xl font-bold text-gray-900">{{ __('admin.materials.url_import_title') }}</h2>
+                        <p class="mt-3 text-sm leading-6 text-gray-600">{{ __('admin.materials.url_import_description') }}</p>
+                        <p class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{{ __('admin.materials.url_import_caution') }}</p>
+                    </div>
+
+                    <div class="xl:col-span-2">
+                        <form method="POST" action="{{ route('admin.url-import.store') }}" class="space-y-3">
+                            @csrf
+                            <label for="quick_url_import_url" class="block text-sm font-medium text-gray-700">{{ __('admin.materials.url_import_target_label') }}</label>
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <input
+                                    id="quick_url_import_url"
+                                    name="url"
+                                    type="url"
+                                    required
+                                    value="{{ old('url') }}"
+                                    placeholder="{{ __('admin.materials.url_import_placeholder') }}"
+                                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                >
+                                @foreach (['knowledge', 'keywords', 'titles', 'images'] as $output)
+                                    <input type="hidden" name="outputs[]" value="{{ $output }}">
+                                @endforeach
+                                <button type="submit" class="inline-flex shrink-0 items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                                    <i data-lucide="globe" class="w-4 h-4 mr-2"></i>
+                                    {{ __('admin.materials.url_import_start') }}
+                                </button>
+                            </div>
+                            @error('url')
+                                <p class="text-sm text-red-600">{{ $message }}</p>
+                            @enderror
+                        </form>
+
+                        <div class="mt-4 flex flex-wrap items-center gap-3">
+                            <a href="{{ route('admin.url-import') }}" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800">
+                                <i data-lucide="settings" class="w-4 h-4 mr-2"></i>
+                                {{ __('admin.url_import.section.new_job') }}
+                            </a>
+                            <a href="{{ route('admin.url-import.history') }}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-800">
+                                <i data-lucide="history" class="w-4 h-4 mr-2"></i>
+                                {{ __('admin.materials.url_import_history') }}
+                            </a>
+                        </div>
+
+                        <div class="mt-4 grid grid-cols-2 gap-2 text-sm text-gray-600">
+                            @foreach (['knowledge', 'keywords', 'titles', 'images', 'ai_cleaning', 'semantic'] as $option)
+                                <div class="flex items-center">
+                                    <i data-lucide="check-square" class="w-4 h-4 mr-2 text-blue-600"></i>
+                                    {{ __('admin.materials.url_import_option_' . $option) }}
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="rounded-lg border border-gray-200 p-4">
+                        <div class="text-sm font-medium text-gray-500">{{ __('admin.materials.url_import_flow_label') }}</div>
+                        <div class="mt-2 text-base font-semibold text-gray-900">{{ __('admin.materials.url_import_flow_title') }}</div>
+                        <p class="mt-2 text-sm text-gray-600">{{ __('admin.materials.url_import_flow_desc') }}</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 p-4">
+                        <div class="text-sm font-medium text-gray-500">{{ __('admin.materials.url_import_assets_label') }}</div>
+                        <div class="mt-2 text-base font-semibold text-gray-900">{{ __('admin.materials.url_import_assets_title') }}</div>
+                        <p class="mt-2 text-sm text-gray-600">{{ __('admin.materials.url_import_assets_desc') }}</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 p-4">
+                        <div class="text-sm font-medium text-gray-500">{{ __('admin.materials.url_import_stage_label') }}</div>
+                        <div class="mt-2 text-base font-semibold text-gray-900">{{ __('admin.materials.url_import_stage_title') }}</div>
+                        <p class="mt-2 text-sm text-gray-600">{{ __('admin.materials.url_import_stage_desc') }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">{{ __('admin.materials.quick_actions') }}</h3>
@@ -205,4 +294,3 @@
         </div>
     </div>
 @endsection
-

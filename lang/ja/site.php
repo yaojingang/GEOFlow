@@ -4,6 +4,8 @@ return [
     'home_hero_fallback' => 'AI支援のコンテンツ生成と公開。',
     'home_featured' => '注目',
     'home_featured_badge' => '注目',
+    'home_hot' => '人気記事',
+    'home_hot_badge' => '人気',
     'home_latest' => '最新',
     'home_read_more' => '続きを読む',
     'home_empty_title' => '記事はまだありません',

@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
+use App\Http\Controllers\Admin\UrlImportController;
 use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
@@ -178,6 +179,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
 
         // 业务页面
         Route::get('materials', [MaterialsController::class, 'index'])->name('materials.index');
+        Route::get('url-import', [UrlImportController::class, 'index'])->name('url-import');
+        Route::post('url-import', [UrlImportController::class, 'store'])->name('url-import.store');
+        Route::get('url-import/history', [UrlImportController::class, 'history'])->name('url-import.history');
+        Route::get('url-import/{jobId}', [UrlImportController::class, 'show'])
+            ->name('url-import.show')
+            ->whereNumber('jobId');
 
         // AI 配置模块（配置器 / 模型 / 提示词）
         Route::group([], function () {

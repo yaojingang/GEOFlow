@@ -35,6 +35,7 @@ class SiteSettingsController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'settings' => $settings,
             'availableThemes' => $this->discoverThemes(),
+            'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
         ]);
     }
@@ -57,6 +58,11 @@ class SiteSettingsController extends Controller
             'seo_description_template' => ['nullable', 'string', 'max:255'],
             'featured_limit' => ['nullable', 'integer', 'min:1', 'max:100'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'home_carousel_slides' => ['nullable', 'array', 'max:3'],
+            'home_carousel_slides.*.image_url' => ['nullable', 'string', 'max:500'],
+            'home_carousel_slides.*.title' => ['nullable', 'string', 'max:120'],
+            'home_carousel_slides.*.link_url' => ['nullable', 'string', 'max:500'],
+            'home_carousel_slides.*.enabled' => ['nullable'],
             'admin_base_path' => [
                 'required',
                 'string',
@@ -96,6 +102,7 @@ class SiteSettingsController extends Controller
             'seo_description_template' => trim((string) ($payload['seo_description_template'] ?? '')),
             'featured_limit' => (string) ((int) ($payload['featured_limit'] ?? 6)),
             'per_page' => (string) ((int) ($payload['per_page'] ?? 12)),
+            'home_carousel_slides' => (string) json_encode($this->normalizeHomeCarouselSlides($payload['home_carousel_slides'] ?? []), JSON_UNESCAPED_UNICODE),
             'admin_base_path' => $newAdminBasePath,
         ];
 
@@ -225,6 +232,7 @@ class SiteSettingsController extends Controller
      *   per_page:string,
      *   admin_base_path:string,
      *   active_theme:string,
+     *   home_carousel_slides:string,
      *   article_detail_ads:string
      * }
      */
@@ -244,7 +252,8 @@ class SiteSettingsController extends Controller
             'featured_limit' => '6',
             'per_page' => '12',
             'admin_base_path' => AdminWeb::basePath(),
-            'active_theme' => '',
+            'active_theme' => (string) config('geoflow.default_theme', ''),
+            'home_carousel_slides' => '[]',
             'article_detail_ads' => '[]',
         ];
 
@@ -275,7 +284,8 @@ class SiteSettingsController extends Controller
             'featured_limit' => (string) $stored['featured_limit'],
             'per_page' => (string) $stored['per_page'],
             'admin_base_path' => AdminWeb::basePath(),
-            'active_theme' => (string) $stored['active_theme'],
+            'active_theme' => (string) ($stored['active_theme'] !== '' ? $stored['active_theme'] : config('geoflow.default_theme', '')),
+            'home_carousel_slides' => (string) $stored['home_carousel_slides'],
             'article_detail_ads' => (string) $stored['article_detail_ads'],
         ];
     }
@@ -385,6 +395,102 @@ class SiteSettingsController extends Controller
         }
 
         return $ads;
+    }
+
+    /**
+     * @return array<int, array{image_url:string,title:string,link_url:string,enabled:bool}>
+     */
+    private function parseHomeCarouselSlides(string $raw): array
+    {
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $slides = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $slides[] = [
+                'image_url' => trim((string) ($item['image_url'] ?? '')),
+                'title' => trim((string) ($item['title'] ?? '')),
+                'link_url' => trim((string) ($item['link_url'] ?? '')),
+                'enabled' => ! empty($item['enabled']),
+            ];
+
+            if (count($slides) >= 3) {
+                break;
+            }
+        }
+
+        return $slides;
+    }
+
+    /**
+     * @param mixed $postedSlides
+     * @return array<int, array{image_url:string,title:string,link_url:string,enabled:bool}>
+     */
+    private function normalizeHomeCarouselSlides(mixed $postedSlides): array
+    {
+        if (! is_array($postedSlides)) {
+            return [];
+        }
+
+        $slides = [];
+        foreach ($postedSlides as $postedSlide) {
+            if (! is_array($postedSlide)) {
+                continue;
+            }
+
+            $imageUrl = $this->normalizePublicImageUrl((string) ($postedSlide['image_url'] ?? ''));
+            $title = trim((string) ($postedSlide['title'] ?? ''));
+            $linkUrl = $this->normalizeCtaTargetUrl((string) ($postedSlide['link_url'] ?? ''));
+            $enabled = ! empty($postedSlide['enabled']);
+
+            if ($imageUrl === '' && $title === '' && $linkUrl === '') {
+                continue;
+            }
+
+            if ($imageUrl === '') {
+                continue;
+            }
+
+            $slides[] = [
+                'image_url' => $imageUrl,
+                'title' => $title,
+                'link_url' => $linkUrl,
+                'enabled' => $enabled,
+            ];
+
+            if (count($slides) >= 3) {
+                break;
+            }
+        }
+
+        return $slides;
+    }
+
+    /**
+     * 首页海报图允许站内相对路径与 http(s) 图片地址；其它协议直接忽略，避免把无效资源写入前台。
+     */
+    private function normalizePublicImageUrl(string $url): string
+    {
+        $normalized = trim($url);
+        if ($normalized === '') {
+            return '';
+        }
+
+        if (str_starts_with($normalized, '/') && ! str_starts_with($normalized, '//')) {
+            return $normalized;
+        }
+
+        if (preg_match('#^https?://#i', $normalized) === 1) {
+            return $normalized;
+        }
+
+        return '';
     }
 
     /**
