@@ -37,6 +37,7 @@ vi .env.prod
 
 ```env
 APP_URL=https://your-domain.com
+TRUSTED_PROXIES=*
 APP_KEY=base64:replace-with-generated-key
 
 DB_DATABASE=geo_flow
@@ -51,6 +52,8 @@ REVERB_EXPOSE_PORT=18081
 说明：
 
 - `APP_KEY` 可留空：应用容器启动时会 `key:generate` 写回 `.env.prod`（可写挂载）；也可在宿主机执行 `php artisan key:generate --show` 后粘贴。
+- `TRUSTED_PROXIES` 用于反向代理、CDN、负载均衡或一级目录部署。若外层代理会传 `X-Forwarded-Proto` / `X-Forwarded-Host` / `X-Forwarded-Prefix`，生产环境通常可设为 `*` 或具体代理 IP。
+- 如果部署在任意一级目录下，例如外部访问路径是 `/wiki`、`/docs`、`/site`，不要把目录写进 `ADMIN_BASE_PATH`；应由反向代理透传 `X-Forwarded-Prefix`，后台路径仍保持 `ADMIN_BASE_PATH=geo_admin`。
 - `AUTO_MIGRATE` 在 `.env.prod` 中默认建议为 `false`
 - 生产镜像不会在启动时执行 `composer install`
 - **`postgres` / `redis` 凭据**：`docker-compose.prod.yml` 中 postgres 使用 `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` 映射为官方镜像的 `POSTGRES_*`；redis 使用 `REDIS_PASSWORD`；值均由 Compose 插值（推荐 `--env-file .env.prod`），与 Laravel 的 `DB_*` 同源、不重复定义。
