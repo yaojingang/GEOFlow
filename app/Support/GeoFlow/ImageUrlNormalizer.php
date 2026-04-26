@@ -7,6 +7,9 @@ namespace App\Support\GeoFlow;
  */
 final class ImageUrlNormalizer
 {
+    /**
+     * 将图片路径归一化为可公开访问的 URL。
+     */
     public static function toPublicUrl(string $path): string
     {
         $normalized = str_replace('\\', '/', trim($path));
@@ -34,16 +37,19 @@ final class ImageUrlNormalizer
         }
 
         if (str_starts_with($withoutLeadingSlash, 'storage/')) {
-            return '/'.$withoutLeadingSlash;
+            return asset($withoutLeadingSlash);
         }
 
         if (str_starts_with($withoutLeadingSlash, 'uploads/')) {
-            return '/storage/'.$withoutLeadingSlash;
+            return asset('storage/'.$withoutLeadingSlash);
         }
 
-        return '/'.ltrim($withoutLeadingSlash, '/');
+        return asset(ltrim($withoutLeadingSlash, '/'));
     }
 
+    /**
+     * 清理图片 alt 文案，避免把文件名直接展示给读者。
+     */
     public static function readableAlt(string $alt): string
     {
         $alt = trim($alt);
