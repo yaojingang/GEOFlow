@@ -8,6 +8,12 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+# Docker 环境变量优先级高于 .env。空值或无效 APP_KEY 会覆盖 .env 中的有效密钥，
+# 因此生产入口也需要先移除无效环境变量，再按需生成密钥。
+if [ -z "${APP_KEY:-}" ] || ! printf '%s' "${APP_KEY:-}" | grep -q '^base64:'; then
+  unset APP_KEY
+fi
+
 # .env.prod 为可写挂载时，无密钥则自动生成（宿主机可无 PHP）。
 if ! grep -q '^APP_KEY=base64:' .env 2>/dev/null; then
   echo "[entrypoint-prod] php artisan key:generate --force"

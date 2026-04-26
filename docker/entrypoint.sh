@@ -7,6 +7,12 @@ if [ ! -f .env ] && [ -f .env.example ]; then
   cp .env.example .env
 fi
 
+# Docker 环境变量优先级高于 .env。空值或无效 APP_KEY 会覆盖 .env 中的有效密钥，
+# 并导致 composer 脚本或 artisan 首次启动失败，因此尽早移除无效环境变量。
+if [ -z "${APP_KEY:-}" ] || ! printf '%s' "${APP_KEY:-}" | grep -q '^base64:'; then
+  unset APP_KEY
+fi
+
 COMPOSER_NEED_POST_INSTALL=false
 COMPOSER_ON_START="${COMPOSER_ON_START:-true}"
 RUN_COMPOSER=false
@@ -37,9 +43,6 @@ fi
 
 # 自动初始化 APP_KEY（仅在 .env 里缺失时生成，避免每次重置密钥）
 if [ "${AUTO_GENERATE_APP_KEY:-false}" = "true" ]; then
-  if [ -z "${APP_KEY:-}" ] || ! printf '%s' "${APP_KEY}" | grep -q '^base64:'; then
-    unset APP_KEY
-  fi
   if ! grep -Eq '^APP_KEY=base64:' .env 2>/dev/null; then
     php artisan key:generate --force --no-interaction
   fi

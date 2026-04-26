@@ -181,8 +181,7 @@
                     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                         @foreach ($images as $image)
                             @php
-                                $imagePath = '/'.ltrim((string) ($image->file_path ?? ''), '/');
-                                $imageUrl = url($imagePath);
+                                $imageUrl = \App\Support\GeoFlow\ImageUrlNormalizer::toPublicUrl((string) ($image->file_path ?? ''));
                             @endphp
                             <div class="image-item relative overflow-hidden rounded-lg border-2 border-transparent transition-all hover:border-purple-500 hover:scale-[1.02]" data-image-id="{{ (int) $image->id }}">
                                 <input type="checkbox" form="batch-form" name="image_ids[]" value="{{ (int) $image->id }}" class="image-checkbox hidden absolute top-2 left-2 rounded border-gray-300 text-purple-600 shadow-sm focus:border-purple-300 focus:ring focus:ring-purple-200 focus:ring-opacity-50 z-10">
