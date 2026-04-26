@@ -1,0 +1,17 @@
+{
+  "id": "toutiao-news-20260426",
+  "name": "Toutiao News Inspired",
+  "version": "1.0.0",
+  "description": "A Toutiao-inspired GEOFlow frontend theme with a channel rail, news feed, compact cards, and right-side hot list.",
+  "templates": [
+    "layout",
+    "home",
+    "category",
+    "article"
+  ],
+  "preview": "/previews/toutiao-news-20260426/index.html",
+  "notes": [
+    "Inspired by modern news portal layout patterns. Does not copy Toutiao assets, content, or proprietary code.",
+    "Keeps GEOFlow Blade variables, SEO meta fields, markdown HTML rendering, category navigation, footer, and article routes intact."
+  ]
+}

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\SensitiveWord;
+use App\Models\SiteSetting;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,6 +29,7 @@ class AdminSiteSettingsPageTest extends TestCase
             ->get(route('admin.site-settings.index'))
             ->assertOk()
             ->assertSee(__('admin.site_settings.field_admin_base_path'))
+            ->assertSee(__('admin.site_settings.section_home_carousel'))
             ->assertSee(__('admin.site_settings.module_sensitive_words'))
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
     }
@@ -103,5 +105,63 @@ class AdminSiteSettingsPageTest extends TestCase
                 'admin_base_path' => '../admin',
             ])
             ->assertSessionHasErrors('admin_base_path');
+    }
+
+    public function test_site_settings_save_home_carousel_slides(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_carousel_admin',
+            'password' => 'secret-123',
+            'email' => 'site-carousel-admin@example.com',
+            'display_name' => 'Site Carousel Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'Frontend Site',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+                'home_carousel_slides' => [
+                    [
+                        'image_url' => '/storage/banners/home.jpg',
+                        'title' => 'Home Banner',
+                        'link_url' => 'article/demo',
+                        'enabled' => '1',
+                    ],
+                    [
+                        'image_url' => 'javascript:alert(1)',
+                        'title' => 'Invalid Banner',
+                        'link_url' => '',
+                        'enabled' => '1',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $raw = (string) SiteSetting::query()
+            ->where('setting_key', 'home_carousel_slides')
+            ->value('setting_value');
+        $slides = json_decode($raw, true);
+
+        $this->assertIsArray($slides);
+        $this->assertCount(1, $slides);
+        $this->assertSame('/storage/banners/home.jpg', $slides[0]['image_url']);
+        $this->assertSame('Home Banner', $slides[0]['title']);
+        $this->assertSame('/article/demo', $slides[0]['link_url']);
+        $this->assertTrue($slides[0]['enabled']);
     }
 }

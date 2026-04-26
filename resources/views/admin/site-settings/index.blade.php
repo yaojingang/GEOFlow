@@ -114,6 +114,60 @@
                     </div>
 
                     <div class="border-t border-gray-200 pt-6">
+                        <div class="mb-4">
+                            <h4 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.section_home_carousel') }}</h4>
+                            <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.home_carousel_desc') }}</p>
+                        </div>
+                        @php
+                            $carouselSlides = $homeCarouselSlides ?? [];
+                            for ($slideIndex = count($carouselSlides); $slideIndex < 3; $slideIndex++) {
+                                $carouselSlides[] = [
+                                    'image_url' => '',
+                                    'title' => '',
+                                    'link_url' => '',
+                                    'enabled' => false,
+                                ];
+                            }
+                        @endphp
+                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                            @foreach(array_slice($carouselSlides, 0, 3) as $slideIndex => $slide)
+                                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                                    <div class="mb-3 flex items-center justify-between gap-3">
+                                        <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.home_carousel_slide', ['index' => $slideIndex + 1]) }}</div>
+                                        <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                                            <input type="checkbox" name="home_carousel_slides[{{ $slideIndex }}][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(!empty($slide['enabled']))>
+                                            {{ __('admin.site_settings.field_home_carousel_enabled') }}
+                                        </label>
+                                    </div>
+                                    <div class="space-y-3">
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_home_carousel_image') }}</label>
+                                            <input type="text" name="home_carousel_slides[{{ $slideIndex }}][image_url]"
+                                                   value="{{ $slide['image_url'] ?? '' }}"
+                                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                   placeholder="{{ __('admin.site_settings.placeholder_home_carousel_image') }}">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_home_carousel_title') }}</label>
+                                            <input type="text" name="home_carousel_slides[{{ $slideIndex }}][title]"
+                                                   value="{{ $slide['title'] ?? '' }}"
+                                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                   placeholder="{{ __('admin.site_settings.placeholder_home_carousel_title') }}">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_home_carousel_link') }}</label>
+                                            <input type="text" name="home_carousel_slides[{{ $slideIndex }}][link_url]"
+                                                   value="{{ $slide['link_url'] ?? '' }}"
+                                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                   placeholder="{{ __('admin.site_settings.placeholder_home_carousel_link') }}">
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="border-t border-gray-200 pt-6">
                         <h4 class="text-lg font-medium text-gray-900 mb-4">{{ __('admin.site_settings.section_seo') }}</h4>
 
                         <div class="space-y-4">

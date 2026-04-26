@@ -4,6 +4,8 @@ return [
     'home_hero_fallback' => 'AI-assisted content generation and publishing.',
     'home_featured' => 'Featured',
     'home_featured_badge' => 'Featured',
+    'home_hot' => 'Popular Articles',
+    'home_hot_badge' => 'Hot',
     'home_latest' => 'Latest',
     'home_read_more' => 'Read more',
     'home_empty_title' => 'No articles yet',

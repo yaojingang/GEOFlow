@@ -4,6 +4,8 @@ return [
     'home_hero_fallback' => 'Генерация и публикация контента с помощью AI.',
     'home_featured' => 'Избранное',
     'home_featured_badge' => 'Избранное',
+    'home_hot' => 'Популярные статьи',
+    'home_hot_badge' => 'Топ',
     'home_latest' => 'Последнее',
     'home_read_more' => 'Читать далее',
     'home_empty_title' => 'Статей пока нет',

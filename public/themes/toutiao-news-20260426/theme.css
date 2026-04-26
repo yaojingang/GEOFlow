@@ -1,0 +1,2019 @@
+    :root {
+        --tt-red: #f04142;
+        --tt-red-dark: #d91f26;
+        --tt-ink: #222226;
+        --tt-muted: #737985;
+        --tt-line: #eceff3;
+        --tt-bg: #f6f7f9;
+        --tt-card: #ffffff;
+        --tt-soft: #fff4f4;
+    }
+
+    .tt-body {
+        background: var(--tt-bg);
+        color: var(--tt-ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .tt-shell {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+    }
+
+    .tt-header {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: rgba(255, 255, 255, .96);
+        border-bottom: 1px solid var(--tt-line);
+        backdrop-filter: blur(12px);
+    }
+
+    .tt-header-row {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        min-height: 64px;
+    }
+
+    .tt-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--tt-ink);
+        font-size: 24px;
+        font-weight: 850;
+        letter-spacing: -0.04em;
+        white-space: nowrap;
+    }
+
+    .tt-brand-mark {
+        width: 10px;
+        height: 28px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, var(--tt-red), #ff7b5f);
+    }
+
+    .tt-topnav {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        color: #4b5563;
+        font-weight: 650;
+    }
+
+    .tt-topnav a {
+        padding: 22px 0 18px;
+        border-bottom: 3px solid transparent;
+    }
+
+    .tt-topnav a:hover,
+    .tt-topnav a.is-active {
+        color: var(--tt-red);
+        border-bottom-color: var(--tt-red);
+    }
+
+    .tt-search {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        width: min(320px, 32vw);
+        border: 1px solid var(--tt-line);
+        background: #f8fafc;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    .tt-search input {
+        min-width: 0;
+        flex: 1;
+        background: transparent;
+        padding: 10px 4px 10px 16px;
+        color: var(--tt-ink);
+        outline: none;
+    }
+
+    .tt-search button {
+        padding: 10px 14px;
+        color: var(--tt-red);
+    }
+
+    .tt-mobile-menu {
+        display: none;
+        margin-left: auto;
+        color: var(--tt-ink);
+    }
+
+    .tt-layout {
+        display: grid;
+        grid-template-columns: 148px minmax(0, 1fr) 292px;
+        gap: 18px;
+        padding: 22px 0 34px;
+        align-items: start;
+    }
+
+    .tt-channel-rail {
+        position: sticky;
+        top: 84px;
+        display: grid;
+        gap: 4px;
+        padding: 8px;
+        background: var(--tt-card);
+        border: 1px solid var(--tt-line);
+        border-radius: 18px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, .05);
+    }
+
+    .tt-channel {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 11px 12px;
+        border-radius: 12px;
+        color: #4b5563;
+        font-weight: 700;
+    }
+
+    .tt-channel:hover,
+    .tt-channel.is-active {
+        background: var(--tt-soft);
+        color: var(--tt-red);
+    }
+
+    .tt-feed {
+        display: grid;
+        gap: 12px;
+    }
+
+    .tt-breaking {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 16px;
+        background: #fff;
+        border: 1px solid var(--tt-line);
+        border-radius: 16px;
+        color: var(--tt-muted);
+        font-weight: 650;
+    }
+
+    .tt-breaking strong {
+        color: var(--tt-red);
+    }
+
+    .tt-feed-card,
+    .tt-panel,
+    .tt-article-card {
+        background: var(--tt-card);
+        border: 1px solid var(--tt-line);
+        border-radius: 16px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, .045);
+    }
+
+    .tt-feed-card {
+        padding: 22px 24px;
+    }
+
+    .tt-section-title {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        margin-bottom: 12px;
+        font-size: 18px;
+        font-weight: 850;
+        letter-spacing: -0.02em;
+    }
+
+    .tt-section-title::before {
+        content: "";
+        display: inline-block;
+        width: 4px;
+        height: 18px;
+        margin-right: 9px;
+        border-radius: 999px;
+        background: var(--tt-red);
+    }
+
+    .tt-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        text-align: left;
+    }
+
+    .tt-card-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 9px;
+        color: var(--tt-muted);
+        font-size: 13px;
+        font-weight: 650;
+    }
+
+    .tt-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: var(--tt-soft);
+        color: var(--tt-red);
+        font-size: 12px;
+        font-weight: 750;
+    }
+
+    .tt-article-card {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 142px;
+        gap: 18px;
+        padding: 18px;
+        transition: transform .18s ease, box-shadow .18s ease;
+    }
+
+    .tt-article-card:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 18px 42px rgba(15, 23, 42, .07);
+    }
+
+    .tt-article-title {
+        margin-top: 10px;
+        color: #111827;
+        font-size: 22px;
+        line-height: 1.28;
+        font-weight: 850;
+        letter-spacing: -0.03em;
+    }
+
+    .tt-article-title a:hover {
+        color: var(--tt-red);
+    }
+
+    .tt-article-summary {
+        margin-top: 10px;
+        color: #626a77;
+        font-size: 15px;
+        line-height: 1.75;
+    }
+
+    .tt-card-action {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 14px;
+        color: var(--tt-red);
+        font-weight: 800;
+    }
+
+    .tt-thumb {
+        min-height: 104px;
+        border-radius: 14px;
+        background:
+            radial-gradient(circle at 72% 24%, rgba(240, 65, 66, .22), transparent 34%),
+            linear-gradient(135deg, #fff3f3, #eef2ff);
+        border: 1px solid #f1e3e4;
+        display: grid;
+        place-items: center;
+        color: var(--tt-red);
+        font-size: 32px;
+        font-weight: 900;
+    }
+
+    .tt-sidebar {
+        position: sticky;
+        top: 84px;
+        display: grid;
+        gap: 14px;
+    }
+
+    .tt-panel {
+        padding: 18px;
+    }
+
+    .tt-hot-list {
+        display: grid;
+        gap: 14px;
+    }
+
+    .tt-hot-item {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+        color: #374151;
+        font-size: 14px;
+        line-height: 1.5;
+        font-weight: 700;
+    }
+
+    .tt-hot-index {
+        display: inline-grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 7px;
+        background: #f1f5f9;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 900;
+    }
+
+    .tt-hot-item:nth-child(-n+3) .tt-hot-index {
+        background: var(--tt-red);
+        color: #fff;
+    }
+
+    .tt-page-head {
+        padding: 26px 28px;
+        background:
+            radial-gradient(circle at top right, rgba(240, 65, 66, .1), transparent 36%),
+            #fff;
+        border: 1px solid var(--tt-line);
+        border-radius: 18px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, .045);
+    }
+
+    .tt-page-kicker {
+        margin-bottom: 8px;
+        color: var(--tt-red);
+        font-size: 13px;
+        font-weight: 850;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+
+    .tt-page-title {
+        color: #111827;
+        font-size: clamp(34px, 5vw, 56px);
+        line-height: 1.08;
+        font-weight: 900;
+        letter-spacing: -0.06em;
+    }
+
+    .tt-page-desc {
+        margin-top: 12px;
+        color: #5f6876;
+        font-size: 17px;
+        line-height: 1.8;
+    }
+
+    .tt-article-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        gap: 20px;
+        padding: 22px 0 34px;
+    }
+
+    .tt-article-main {
+        background: #fff;
+        border: 1px solid var(--tt-line);
+        border-radius: 20px;
+        padding: clamp(24px, 5vw, 54px);
+        box-shadow: 0 14px 34px rgba(15, 23, 42, .045);
+    }
+
+    .tt-article-h1 {
+        color: #111827;
+        font-size: clamp(32px, 5vw, 52px);
+        line-height: 1.12;
+        font-weight: 920;
+        letter-spacing: -0.06em;
+    }
+
+    .tt-prose {
+        margin-top: 28px;
+        color: #263241;
+        font-size: 18px;
+        line-height: 1.95;
+    }
+
+    .tt-prose h2,
+    .tt-prose h3 {
+        margin: 2em 0 .8em;
+        color: #111827;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+    }
+
+    .tt-prose h2 {
+        font-size: 1.65em;
+        border-left: 4px solid var(--tt-red);
+        padding-left: 12px;
+    }
+
+    .tt-prose h3 {
+        font-size: 1.28em;
+    }
+
+    .tt-prose p,
+    .tt-prose ul,
+    .tt-prose ol,
+    .tt-prose table,
+    .tt-prose blockquote {
+        margin: 1.05em 0;
+    }
+
+    .tt-prose a {
+        color: var(--tt-red);
+        font-weight: 750;
+    }
+
+    .tt-prose img {
+        width: 100%;
+        border-radius: 18px;
+        box-shadow: 0 14px 36px rgba(15, 23, 42, .1);
+    }
+
+    .tt-prose figcaption {
+        display: none;
+    }
+
+    .tt-prose table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        border-collapse: collapse;
+    }
+
+    .tt-prose th,
+    .tt-prose td {
+        border: 1px solid #e5e7eb;
+        padding: 10px 12px;
+    }
+
+    .tt-prose th {
+        background: #f8fafc;
+        font-weight: 850;
+    }
+
+    .tt-footer {
+        border-top: 1px solid var(--tt-line);
+        background: #fff;
+    }
+
+    .tt-footer-inner {
+        padding: 28px 0;
+        text-align: center;
+        color: var(--tt-muted);
+        font-size: 14px;
+    }
+
+    @media (max-width: 1080px) {
+        .tt-layout {
+            grid-template-columns: 132px minmax(0, 1fr);
+        }
+
+        .tt-sidebar {
+            display: none;
+        }
+    }
+
+    @media (max-width: 820px) {
+        .tt-shell {
+            width: min(100% - 20px, 1180px);
+        }
+
+        .tt-topnav,
+        .tt-search {
+            display: none;
+        }
+
+        .tt-mobile-menu {
+            display: inline-flex;
+        }
+
+        .tt-layout,
+        .tt-article-layout {
+            display: block;
+        }
+
+        .tt-channel-rail {
+            position: static;
+            display: flex;
+            overflow-x: auto;
+            margin-bottom: 14px;
+            border-radius: 16px;
+        }
+
+        .tt-channel {
+            white-space: nowrap;
+        }
+
+        .tt-feed {
+            gap: 10px;
+        }
+
+        .tt-article-card {
+            grid-template-columns: 1fr;
+        }
+
+        .tt-thumb {
+            min-height: 86px;
+        }
+    }
+
+    /*
+     * High-fidelity news portal pass:
+     * flatter white canvas, compact channel rail, feed rows with separators,
+     * and a right-side hot board closer to Toutiao's public information layout.
+     */
+    .tt-body {
+        background: #fff;
+    }
+
+    .tt-main {
+        background: #fff;
+    }
+
+    .tt-shell {
+        width: min(1170px, calc(100vw - 32px));
+    }
+
+    .tt-header {
+        background: #fff;
+        box-shadow: none;
+    }
+
+    .tt-header-row {
+        min-height: 58px;
+        gap: 24px;
+    }
+
+    .tt-brand {
+        min-width: 128px;
+        color: #222;
+        font-size: 26px;
+        font-weight: 900;
+    }
+
+    .tt-brand-mark {
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+        background: var(--tt-red);
+        box-shadow: inset 0 -7px 14px rgba(0, 0, 0, .08);
+    }
+
+    .tt-topnav {
+        gap: 20px;
+        color: #555;
+        font-size: 15px;
+    }
+
+    .tt-topnav a {
+        padding: 19px 0 16px;
+        border-bottom-width: 2px;
+        font-weight: 600;
+    }
+
+    .tt-search {
+        width: 330px;
+        height: 40px;
+        border-color: #e8e8e8;
+        background: #f5f6f7;
+        border-radius: 4px;
+    }
+
+    .tt-search input {
+        padding-left: 14px;
+        font-size: 14px;
+    }
+
+    .tt-search button {
+        min-width: 46px;
+        background: var(--tt-red);
+        color: #fff;
+    }
+
+    .tt-layout {
+        grid-template-columns: 110px minmax(0, 650px) 320px;
+        gap: 24px;
+        padding-top: 18px;
+    }
+
+    .tt-channel-rail {
+        top: 76px;
+        gap: 2px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .tt-channel {
+        height: 40px;
+        justify-content: flex-start;
+        padding: 0 12px;
+        border-radius: 4px;
+        color: #444;
+        font-size: 16px;
+        font-weight: 500;
+    }
+
+    .tt-channel small {
+        display: none;
+    }
+
+    .tt-channel:hover {
+        background: #f7f8fa;
+        color: var(--tt-red);
+    }
+
+    .tt-channel.is-active {
+        background: var(--tt-red);
+        color: #fff;
+        font-weight: 700;
+    }
+
+    .tt-feed {
+        gap: 0;
+        border-left: 1px solid #f2f2f2;
+        border-right: 1px solid #f2f2f2;
+        background: #fff;
+    }
+
+    .tt-page-head {
+        padding: 20px 22px 18px;
+        border: 0;
+        border-bottom: 1px solid #f0f0f0;
+        border-radius: 0;
+        background: #fff;
+        box-shadow: none;
+    }
+
+    .tt-page-kicker {
+        margin-bottom: 6px;
+        color: #999;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0;
+        text-transform: none;
+    }
+
+    .tt-page-title {
+        font-size: 28px;
+        line-height: 1.24;
+        letter-spacing: -.02em;
+        font-weight: 800;
+    }
+
+    .tt-page-desc {
+        margin-top: 8px;
+        color: #666;
+        font-size: 14px;
+        line-height: 1.7;
+    }
+
+    .tt-breaking {
+        margin: 0;
+        padding: 12px 22px;
+        border: 0;
+        border-bottom: 1px solid #f0f0f0;
+        border-radius: 0;
+        box-shadow: none;
+        background: #fff;
+        color: #444;
+        font-size: 15px;
+    }
+
+    .tt-breaking strong {
+        padding: 2px 7px;
+        border-radius: 3px;
+        background: var(--tt-red);
+        color: #fff;
+        font-size: 12px;
+    }
+
+    .tt-feed-card {
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .tt-section-title {
+        margin: 0;
+        padding: 14px 22px;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: 18px;
+        font-weight: 800;
+    }
+
+    .tt-section-title::before {
+        width: 3px;
+        height: 18px;
+        margin-right: 1px;
+        background: var(--tt-red);
+    }
+
+    .tt-article-card {
+        grid-template-columns: minmax(0, 1fr) 156px;
+        gap: 18px;
+        padding: 18px 22px;
+        border: 0;
+        border-bottom: 1px solid #f0f0f0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .tt-article-card:hover {
+        transform: none;
+        box-shadow: none;
+        background: #fafafa;
+    }
+
+    .tt-card-meta {
+        gap: 8px;
+        color: #999;
+        font-size: 13px;
+        font-weight: 400;
+    }
+
+    .tt-pill {
+        padding: 0;
+        background: transparent;
+        color: #999;
+        font-size: 13px;
+        font-weight: 400;
+    }
+
+    .tt-article-title {
+        margin-top: 6px;
+        font-size: 20px;
+        line-height: 1.38;
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    .tt-article-summary {
+        margin-top: 8px;
+        color: #666;
+        font-size: 14px;
+        line-height: 1.7;
+    }
+
+    .tt-card-action {
+        margin-top: 8px;
+        color: #999;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .tt-card-action:hover {
+        color: var(--tt-red);
+    }
+
+    .tt-thumb {
+        min-height: 96px;
+        border: 0;
+        border-radius: 4px;
+        background:
+            linear-gradient(135deg, rgba(240, 65, 66, .78), rgba(255, 144, 84, .88)),
+            linear-gradient(135deg, #fff3f3, #eef2ff);
+        color: rgba(255, 255, 255, .94);
+        font-size: 34px;
+    }
+
+    .tt-sidebar {
+        top: 76px;
+        gap: 16px;
+    }
+
+    .tt-panel {
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: #fff;
+        box-shadow: none;
+    }
+
+    .tt-panel .tt-section-title {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .tt-hot-list {
+        gap: 0;
+    }
+
+    .tt-hot-item {
+        grid-template-columns: 24px minmax(0, 1fr);
+        padding: 10px 0;
+        border-bottom: 1px solid #f4f4f4;
+        color: #333;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .tt-hot-index {
+        background: transparent;
+        color: #999;
+        font-size: 15px;
+    }
+
+    .tt-hot-item:nth-child(1) .tt-hot-index {
+        color: #f04142;
+    }
+
+    .tt-hot-item:nth-child(2) .tt-hot-index {
+        color: #ff7a00;
+    }
+
+    .tt-hot-item:nth-child(3) .tt-hot-index {
+        color: #ffb400;
+    }
+
+    .tt-article-layout {
+        grid-template-columns: minmax(0, 720px) 320px;
+        gap: 36px;
+        padding-top: 28px;
+    }
+
+    .tt-article-main {
+        padding: 0 0 40px;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: #fff;
+    }
+
+    .tt-article-h1 {
+        margin-top: 14px;
+        font-size: 34px;
+        line-height: 1.28;
+        letter-spacing: 0;
+        font-weight: 800;
+    }
+
+    .tt-article-main > .tt-card-meta {
+        padding-bottom: 2px;
+        color: #999;
+    }
+
+    .tt-prose {
+        margin-top: 22px;
+        color: #222;
+        font-size: 17px;
+        line-height: 1.95;
+    }
+
+    .tt-prose h2 {
+        margin: 1.9em 0 .75em;
+        padding-left: 10px;
+        border-left: 3px solid var(--tt-red);
+        font-size: 24px;
+        letter-spacing: 0;
+    }
+
+    .tt-prose h3 {
+        font-size: 20px;
+        letter-spacing: 0;
+    }
+
+    .tt-prose img {
+        border-radius: 4px;
+        box-shadow: none;
+    }
+
+    .tt-prose blockquote {
+        border-left: 4px solid #eee;
+        padding-left: 16px;
+        color: #555;
+    }
+
+    .tt-footer {
+        margin-top: 20px;
+    }
+
+    @media (max-width: 1080px) {
+        .tt-layout {
+            grid-template-columns: 96px minmax(0, 1fr);
+        }
+    }
+
+    @media (max-width: 820px) {
+        .tt-layout,
+        .tt-article-layout {
+            display: block;
+        }
+
+        .tt-feed {
+            border: 1px solid #f2f2f2;
+        }
+
+        .tt-channel-rail {
+            display: flex;
+            gap: 8px;
+            padding-bottom: 12px;
+            overflow-x: auto;
+        }
+
+        .tt-channel {
+            height: 36px;
+            white-space: nowrap;
+        }
+
+        .tt-article-card {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /*
+     * Kami editorial refinement:
+     * warm paper surface, ink-blue focus, fewer decorative red blocks, and
+     * text-first feed rows when GEOFlow has no real cover image available.
+     */
+    :root {
+        --tt-red: #1B365D;
+        --tt-red-dark: #142946;
+        --tt-ink: #141413;
+        --tt-muted: #5e5d59;
+        --tt-line: #e8e5da;
+        --tt-bg: #f5f4ed;
+        --tt-card: #faf9f5;
+        --tt-soft: #EEF2F7;
+    }
+
+    .tt-body,
+    .tt-main {
+        background: var(--tt-bg);
+    }
+
+    .tt-header {
+        background: rgba(250, 249, 245, .96);
+        border-bottom-color: var(--tt-line);
+    }
+
+    .tt-brand {
+        min-width: 132px;
+        gap: 8px;
+        font-size: 24px;
+        letter-spacing: -0.035em;
+    }
+
+    .tt-brand-mark {
+        width: 6px;
+        height: 28px;
+        border-radius: 999px;
+        background: var(--tt-red);
+        box-shadow: none;
+    }
+
+    .tt-topnav {
+        color: #4d4c48;
+    }
+
+    .tt-topnav a:hover,
+    .tt-topnav a.is-active {
+        color: var(--tt-red);
+        border-bottom-color: var(--tt-red);
+    }
+
+    .tt-search {
+        width: 300px;
+        border-color: var(--tt-line);
+        background: #faf9f5;
+        border-radius: 10px;
+    }
+
+    .tt-search button {
+        min-width: 44px;
+        background: var(--tt-red);
+        color: #faf9f5;
+    }
+
+    .tt-layout {
+        grid-template-columns: 116px minmax(0, 690px) 284px;
+        gap: 22px;
+        padding-top: 24px;
+    }
+
+    .tt-channel-rail {
+        top: 82px;
+        padding: 8px;
+        border: 1px solid var(--tt-line);
+        border-radius: 14px;
+        background: var(--tt-card);
+    }
+
+    .tt-channel {
+        height: 38px;
+        padding: 0 12px;
+        border-radius: 9px;
+        color: #4d4c48;
+        font-size: 15px;
+    }
+
+    .tt-channel:hover {
+        background: #eef2f7;
+        color: var(--tt-red);
+    }
+
+    .tt-channel.is-active {
+        background: #eef2f7;
+        color: var(--tt-red);
+        font-weight: 700;
+    }
+
+    .tt-feed {
+        gap: 14px;
+        border: 0;
+        background: transparent;
+    }
+
+    .tt-page-head,
+    .tt-feed-card,
+    .tt-panel {
+        border: 1px solid var(--tt-line);
+        border-radius: 16px;
+        background: var(--tt-card);
+    }
+
+    .tt-page-head {
+        padding: 26px 30px 24px;
+        box-shadow: none;
+    }
+
+    .tt-page-kicker {
+        color: #87867f;
+        font-size: 13px;
+        letter-spacing: .04em;
+    }
+
+    .tt-page-title {
+        max-width: 13em;
+        color: var(--tt-ink);
+        font-size: clamp(30px, 3.2vw, 42px);
+        line-height: 1.18;
+        letter-spacing: -0.045em;
+    }
+
+    .tt-page-desc {
+        max-width: 40em;
+        color: var(--tt-muted);
+        font-size: 15px;
+        line-height: 1.62;
+    }
+
+    .tt-breaking {
+        padding: 13px 18px;
+        border: 1px solid var(--tt-line);
+        border-radius: 14px;
+        background: #faf9f5;
+        color: #4d4c48;
+    }
+
+    .tt-breaking strong {
+        background: #eef2f7;
+        color: var(--tt-red);
+        font-weight: 700;
+    }
+
+    .tt-feed-card {
+        overflow: hidden;
+        padding: 0;
+    }
+
+    .tt-section-title {
+        padding: 16px 22px 14px;
+        border-bottom-color: var(--tt-line);
+        color: var(--tt-ink);
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    .tt-section-title::before {
+        width: 3px;
+        height: 18px;
+        background: var(--tt-red);
+    }
+
+    .tt-article-card {
+        grid-template-columns: 1fr;
+        padding: 22px;
+        border-bottom-color: var(--tt-line);
+        background: transparent;
+    }
+
+    .tt-article-card:hover {
+        background: #f7f6ef;
+    }
+
+    .tt-thumb {
+        display: none;
+    }
+
+    .tt-card-meta,
+    .tt-pill {
+        color: #87867f;
+        font-size: 13px;
+    }
+
+    .tt-pill {
+        color: var(--tt-red);
+        font-weight: 600;
+    }
+
+    .tt-article-title {
+        max-width: 22em;
+        margin-top: 7px;
+        color: var(--tt-ink);
+        font-size: 22px;
+        line-height: 1.35;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+    }
+
+    .tt-article-summary {
+        max-width: 42em;
+        color: var(--tt-muted);
+        font-size: 15px;
+        line-height: 1.62;
+    }
+
+    .tt-card-action {
+        color: #87867f;
+    }
+
+    .tt-card-action:hover {
+        color: var(--tt-red);
+    }
+
+    .tt-sidebar {
+        top: 82px;
+    }
+
+    .tt-panel {
+        padding: 0 18px 16px;
+    }
+
+    .tt-panel .tt-section-title {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .tt-hot-item {
+        border-bottom-color: var(--tt-line);
+        color: #3d3d3a;
+        font-size: 14px;
+        line-height: 1.55;
+    }
+
+    .tt-hot-index,
+    .tt-hot-item:nth-child(1) .tt-hot-index,
+    .tt-hot-item:nth-child(2) .tt-hot-index,
+    .tt-hot-item:nth-child(3) .tt-hot-index {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background: #eef2f7;
+        color: var(--tt-red);
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .tt-footer {
+        border-top-color: var(--tt-line);
+        background: var(--tt-bg);
+    }
+
+    @media (max-width: 820px) {
+        .tt-layout {
+            padding-top: 14px;
+        }
+
+        .tt-channel-rail {
+            padding: 8px;
+            margin-bottom: 14px;
+        }
+
+        .tt-page-head {
+            padding: 22px;
+        }
+    }
+
+    /*
+     * Grid alignment pass:
+     * home/category use balanced 20/60/20 columns; article detail becomes a
+     * single editorial reading column without side modules.
+     */
+    .tt-shell {
+        width: min(1240px, calc(100vw - 48px));
+    }
+
+    .tt-layout {
+        grid-template-columns: minmax(180px, 20%) minmax(0, 1fr) minmax(180px, 20%);
+        gap: 24px;
+        align-items: start;
+    }
+
+    .tt-brand {
+        min-width: 180px;
+    }
+
+    .tt-search {
+        width: min(360px, 28vw);
+    }
+
+    .tt-channel-rail,
+    .tt-sidebar {
+        width: 100%;
+    }
+
+    .tt-page-title {
+        max-width: 15em;
+    }
+
+    .tt-article-layout {
+        display: block;
+        width: min(860px, calc(100vw - 48px));
+        margin: 0 auto;
+        padding: 42px 0 56px;
+    }
+
+    .tt-article-layout .tt-sidebar {
+        display: none;
+    }
+
+    .tt-article-main {
+        padding: 44px 56px 52px;
+        border: 1px solid var(--tt-line);
+        border-radius: 18px;
+        background: var(--tt-card);
+    }
+
+    .tt-article-h1 {
+        max-width: 16em;
+        font-size: clamp(34px, 4vw, 48px);
+        line-height: 1.16;
+        letter-spacing: -0.04em;
+    }
+
+    .tt-prose {
+        max-width: none;
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    @media (max-width: 1080px) {
+        .tt-layout {
+            grid-template-columns: 156px minmax(0, 1fr);
+        }
+
+        .tt-brand {
+            min-width: 140px;
+        }
+    }
+
+    @media (max-width: 820px) {
+        .tt-shell,
+        .tt-article-layout {
+            width: min(100% - 20px, 1240px);
+        }
+
+        .tt-brand {
+            min-width: auto;
+        }
+
+        .tt-article-main {
+            padding: 28px 22px 34px;
+        }
+    }
+
+    /*
+     * Left rail detail pass: quieter border, softer active item, more breathing
+     * room, and smaller typography so the rail reads as navigation rather than
+     * a heavy card.
+     */
+    .tt-channel-rail {
+        padding: 10px;
+        border-color: #eeeadd;
+        border-radius: 18px;
+        background: rgba(250, 249, 245, .72);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .42);
+    }
+
+    .tt-channel {
+        height: 42px;
+        padding: 0 14px;
+        border-radius: 12px;
+        color: #4d4c48;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+    }
+
+    .tt-channel + .tt-channel {
+        margin-top: 3px;
+    }
+
+    .tt-channel:hover {
+        background: #f1f0e8;
+    }
+
+    .tt-channel.is-active {
+        background: #EEF2F7;
+        color: var(--tt-red);
+        box-shadow: inset 3px 0 0 var(--tt-red);
+    }
+
+    @media (min-width: 1081px) {
+        .tt-channel-rail {
+            max-width: 170px;
+        }
+    }
+
+    /*
+     * Kami table-of-contents pass: the rail behaves like an editorial contents
+     * block, not a button group. Focus is a thin ink-blue rule plus warm paper.
+     */
+    .tt-channel-rail {
+        max-width: 178px;
+        padding: 14px 10px;
+        border: 1px solid #e8e5da;
+        border-radius: 14px;
+        background: #faf9f5;
+        box-shadow: 0 10px 28px rgba(20, 20, 19, .035);
+    }
+
+    .tt-channel {
+        position: relative;
+        min-height: 36px;
+        height: auto;
+        padding: 8px 10px 8px 16px;
+        border-left: 2.5px solid transparent;
+        border-radius: 8px;
+        color: #5e5d59;
+        font-size: 13.5px;
+        font-weight: 600;
+        line-height: 1.35;
+    }
+
+    .tt-channel + .tt-channel {
+        margin-top: 6px;
+    }
+
+    .tt-channel:hover {
+        background: #f1f0e8;
+        color: #3d3d3a;
+    }
+
+    .tt-channel.is-active {
+        background: #EEF2F7;
+        border-left-color: var(--tt-red);
+        color: var(--tt-red);
+        box-shadow: none;
+    }
+
+    /*
+     * Final two-column home/category layout:
+     * top navigation now owns channel switching, so page content starts near the
+     * first nav item and keeps one consistent gutter to the recommendation rail.
+     */
+    .tt-layout {
+        --tt-content-offset: 210px;
+        width: calc(min(1240px, calc(100vw - 48px)) - var(--tt-content-offset));
+        margin-left: calc((100vw - min(1240px, calc(100vw - 48px))) / 2 + var(--tt-content-offset));
+        margin-right: auto;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        gap: 22px;
+    }
+
+    .tt-feed,
+    .tt-sidebar {
+        min-width: 0;
+    }
+
+    .tt-page-head {
+        padding: 24px 28px 22px;
+    }
+
+    .tt-page-title {
+        max-width: 14em;
+        font-size: clamp(30px, 3vw, 40px);
+    }
+
+    .tt-sidebar {
+        top: 82px;
+    }
+
+    .tt-panel {
+        border-radius: 14px;
+    }
+
+    @media (max-width: 1080px) {
+        .tt-layout {
+            width: min(100% - 32px, 900px);
+            margin-left: auto;
+            margin-right: auto;
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .tt-sidebar {
+            display: none;
+        }
+    }
+
+    @media (max-width: 820px) {
+        .tt-layout {
+            width: min(100% - 20px, 900px);
+        }
+    }
+
+    /*
+     * Unified container pass: header, two-column pages, and article detail now
+     * share the same centered width so both edges align consistently.
+     */
+    .tt-shell {
+        width: min(1364px, calc(100vw - 48px));
+    }
+
+    .tt-layout {
+        width: min(1364px, calc(100vw - 48px));
+        margin-left: auto;
+        margin-right: auto;
+        grid-template-columns: minmax(0, 1fr) 330px;
+        gap: 24px;
+    }
+
+    .tt-article-layout {
+        width: min(1364px, calc(100vw - 48px));
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .tt-article-main {
+        width: min(920px, 100%);
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .tt-search {
+        width: min(360px, 30vw);
+    }
+
+    @media (max-width: 1080px) {
+        .tt-shell,
+        .tt-layout,
+        .tt-article-layout {
+            width: min(100% - 32px, 980px);
+        }
+    }
+
+    @media (max-width: 820px) {
+        .tt-shell,
+        .tt-layout,
+        .tt-article-layout {
+            width: min(100% - 20px, 980px);
+        }
+    }
+
+    /*
+     * Compact editorial container: all public pages use the same 1100px rhythm.
+     * Search is intentionally hidden/removed for a calmer top bar.
+     */
+    .tt-shell,
+    .tt-layout,
+    .tt-article-layout {
+        width: min(1100px, calc(100vw - 48px));
+    }
+
+    .tt-layout {
+        grid-template-columns: minmax(0, 1fr) 300px;
+        gap: 22px;
+    }
+
+    .tt-search {
+        display: none;
+    }
+
+    .tt-header-row {
+        justify-content: flex-start;
+    }
+
+    .tt-topnav {
+        margin-left: 24px;
+    }
+
+    .tt-mobile-menu {
+        margin-left: auto;
+    }
+
+    .tt-article-main {
+        width: 100%;
+    }
+
+    @media (max-width: 1080px) {
+        .tt-shell,
+        .tt-layout,
+        .tt-article-layout {
+            width: min(100% - 32px, 980px);
+        }
+    }
+
+    @media (max-width: 820px) {
+        .tt-shell,
+        .tt-layout,
+        .tt-article-layout {
+            width: min(100% - 20px, 980px);
+        }
+
+        .tt-topnav {
+            margin-left: 0;
+        }
+    }
+
+    .tt-breadcrumb {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 0;
+        color: #87867f;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .tt-breadcrumb a {
+        color: #5e5d59;
+        font-weight: 600;
+    }
+
+    .tt-breadcrumb a:hover {
+        color: var(--tt-red);
+    }
+
+    .tt-breadcrumb span:last-child {
+        max-width: 38em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .tt-related-block {
+        margin-top: 0;
+        padding: 28px 56px 34px;
+    }
+
+    .tt-related-block .tt-section-title {
+        padding: 0 0 16px;
+        border-bottom: 0;
+    }
+
+    .tt-related-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px 18px;
+    }
+
+    .tt-related-card {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+        padding: 13px 0;
+        border-bottom: 1px solid var(--tt-line);
+        color: #3d3d3a;
+        font-size: 15px;
+        line-height: 1.55;
+        font-weight: 600;
+    }
+
+    .tt-related-card:hover {
+        color: var(--tt-red);
+    }
+
+    .tt-related-index {
+        display: inline-grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background: #EEF2F7;
+        color: var(--tt-red);
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    @media (max-width: 820px) {
+        .tt-related-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .tt-breadcrumb span:last-child {
+            max-width: 22em;
+        }
+    }
+
+    .tt-article-layout {
+        display: grid;
+        gap: 18px;
+    }
+
+    .tt-article-module {
+        border: 1px solid var(--tt-line);
+        border-radius: 18px;
+        background: var(--tt-card);
+    }
+
+    .tt-breadcrumb.tt-article-module {
+        padding: 16px 22px;
+    }
+
+    .tt-article-main.tt-article-module {
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    @media (max-width: 820px) {
+        .tt-related-block {
+            padding: 24px 22px 28px;
+        }
+    }
+
+    /*
+     * Article page hard reset: keep article detail as a clean single-column
+     * document flow. These rules intentionally sit last to avoid earlier
+     * two-column/home overrides leaking into detail pages.
+     */
+    .tt-article-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        width: min(1100px, calc(100vw - 48px));
+        margin: 0 auto;
+        padding: 34px 0 56px;
+    }
+
+    .tt-article-layout .tt-sidebar {
+        display: none !important;
+    }
+
+    .tt-article-module,
+    .tt-article-main.tt-article-module,
+    .tt-related-block.tt-article-module {
+        width: 100%;
+        border: 1px solid var(--tt-line);
+        border-radius: 18px;
+        background: var(--tt-card);
+        box-shadow: 0 10px 28px rgba(20, 20, 19, .025);
+    }
+
+    .tt-breadcrumb.tt-article-module {
+        padding: 15px 22px;
+    }
+
+    .tt-article-main.tt-article-module {
+        padding: 42px 56px 50px;
+    }
+
+    .tt-article-h1 {
+        max-width: 100%;
+        font-size: clamp(34px, 4.2vw, 54px);
+        line-height: 1.13;
+        letter-spacing: -0.045em;
+    }
+
+    .tt-article-main .tt-prose {
+        max-width: none;
+        width: 100%;
+        font-size: 17px;
+        line-height: 1.9;
+    }
+
+    .tt-related-block.tt-article-module {
+        padding: 28px 56px 34px;
+    }
+
+    @media (max-width: 820px) {
+        .tt-shell,
+        .tt-layout,
+        .tt-article-layout {
+            width: min(100% - 20px, 1100px);
+        }
+
+        .tt-header-row {
+            min-height: 56px;
+        }
+
+        .tt-brand {
+            font-size: 21px;
+        }
+
+        .tt-topnav {
+            display: none;
+        }
+
+        .tt-mobile-menu {
+            display: inline-flex;
+        }
+
+        .tt-layout {
+            grid-template-columns: 1fr;
+            gap: 14px;
+            padding-top: 16px;
+        }
+
+        .tt-sidebar {
+            display: none;
+        }
+
+        .tt-page-head {
+            padding: 22px 20px;
+        }
+
+        .tt-page-title {
+            font-size: 30px;
+            line-height: 1.18;
+        }
+
+        .tt-article-card {
+            padding: 20px;
+        }
+
+        .tt-article-title {
+            font-size: 21px;
+        }
+
+        .tt-article-layout {
+            gap: 12px;
+            padding: 16px 0 34px;
+        }
+
+        .tt-breadcrumb.tt-article-module {
+            padding: 12px 16px;
+            font-size: 12px;
+        }
+
+        .tt-article-main.tt-article-module {
+            padding: 26px 20px 32px;
+        }
+
+        .tt-article-h1 {
+            font-size: 34px;
+            line-height: 1.16;
+        }
+
+        .tt-article-main .tt-prose {
+            font-size: 16px;
+            line-height: 1.82;
+        }
+
+        .tt-related-block.tt-article-module {
+            padding: 24px 20px 28px;
+        }
+    }
+
+    /*
+     * List rows should be text-first when no real cover image is present.
+     * Remove the reserved thumbnail column so title and summary align evenly
+     * with the card padding on both sides.
+     */
+    .tt-feed .tt-article-card {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .tt-feed .tt-article-card > div {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .tt-feed .tt-thumb {
+        display: none !important;
+    }
+
+    .tt-feed .tt-article-title,
+    .tt-feed .tt-article-summary {
+        max-width: none;
+        width: 100%;
+    }
+
+    .tt-hot-carousel {
+        position: relative;
+        display: grid;
+        gap: 8px;
+    }
+
+    .tt-hot-carousel .tt-breaking {
+        display: none;
+    }
+
+    .tt-hot-carousel .tt-breaking.is-active {
+        display: flex;
+    }
+
+    .tt-hot-dots {
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+        padding-right: 4px;
+    }
+
+    .tt-hot-dots button {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #d8d6cf;
+    }
+
+    .tt-hot-dots button.is-active {
+        width: 18px;
+        background: var(--tt-red);
+    }
+
+    .tt-section-title::before {
+        display: none !important;
+    }
+
+    /*
+     * Article titles should feel editorial, not poster-sized. Keep the detail
+     * page readable while avoiding oversized two-line headlines on desktop.
+     */
+    .tt-article-h1 {
+        font-size: clamp(30px, 3vw, 40px) !important;
+        line-height: 1.22 !important;
+        letter-spacing: -0.03em;
+    }
+
+    @media (max-width: 768px) {
+        .tt-article-h1 {
+            font-size: 28px !important;
+            line-height: 1.24 !important;
+            letter-spacing: -0.02em;
+        }
+    }
+
+    /*
+     * Homepage poster + sidebar feed card. The main column now opens with an
+     * optional configured visual slot, while the site introduction moves into
+     * the right rail above the latest/hot list.
+     */
+    .tt-home-poster-carousel {
+        position: relative;
+        overflow: hidden;
+        min-height: 220px;
+        border: 1px solid var(--tt-line);
+        border-radius: 18px;
+        background: #ede9dc;
+        box-shadow: 0 12px 30px rgba(20, 20, 19, .035);
+    }
+
+    .tt-home-poster-slide {
+        display: none;
+        position: relative;
+        min-height: 220px;
+        color: #fff;
+    }
+
+    .tt-home-poster-slide.is-active {
+        display: block;
+    }
+
+    .tt-home-poster-slide img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 220px;
+        aspect-ratio: 16 / 6.2;
+        object-fit: cover;
+    }
+
+    .tt-home-poster-caption {
+        position: absolute;
+        left: 22px;
+        bottom: 20px;
+        max-width: min(520px, calc(100% - 44px));
+        border-radius: 999px;
+        background: rgba(17, 24, 39, .68);
+        padding: 9px 14px;
+        color: #fff;
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.35;
+        backdrop-filter: blur(10px);
+    }
+
+    .tt-home-poster-dots {
+        position: absolute;
+        right: 18px;
+        bottom: 16px;
+        display: flex;
+        gap: 7px;
+        z-index: 2;
+    }
+
+    .tt-home-poster-dots button {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, .62);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, .08);
+    }
+
+    .tt-home-poster-dots button.is-active {
+        width: 20px;
+        background: #fff;
+    }
+
+    .tt-feed-panel {
+        padding: 22px 20px 24px;
+    }
+
+    .tt-feed-panel-title {
+        margin-top: 8px;
+        color: var(--tt-ink);
+        font-size: 26px;
+        line-height: 1.15;
+        font-weight: 850;
+        letter-spacing: -0.045em;
+    }
+
+    .tt-feed-panel-desc {
+        margin-top: 12px;
+        color: var(--tt-muted);
+        font-size: 14px;
+        line-height: 1.7;
+    }
+
+    @media (max-width: 820px) {
+        .tt-home-poster-carousel,
+        .tt-home-poster-slide,
+        .tt-home-poster-slide img {
+            min-height: 168px;
+        }
+
+        .tt-home-poster-caption {
+            left: 14px;
+            bottom: 14px;
+            max-width: calc(100% - 28px);
+            border-radius: 14px;
+            font-size: 13px;
+        }
+    }
+
+    /*
+     * Markdown table reset for article detail pages. The global theme table
+     * rule used display:block for overflow handling, which made GFM tables keep
+     * their intrinsic width and left a large blank area on the right. Keep the
+     * scroll wrapper, but restore the table layout so columns fill the card.
+     */
+    .tt-prose .article-table-wrap {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        margin: 2rem auto;
+        overflow-x: auto;
+        overflow-y: hidden;
+        border: 1px solid var(--tt-line);
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 14px 34px rgba(20, 20, 19, .05);
+    }
+
+    .tt-prose .article-table {
+        display: table !important;
+        width: max(760px, 100%) !important;
+        min-width: 100%;
+        table-layout: auto;
+        border-collapse: collapse;
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.72;
+    }
+
+    .tt-prose .article-table th,
+    .tt-prose .article-table td {
+        border-color: #e6e2d7;
+        padding: 14px 16px;
+        vertical-align: top;
+        white-space: normal;
+    }
+
+    .tt-prose .article-table th {
+        background: #f6f5ef;
+        color: var(--tt-ink);
+        font-weight: 800;
+    }
+
+    .tt-prose .article-table td {
+        color: #354052;
+    }
+
+    @media (max-width: 820px) {
+        .tt-prose .article-table-wrap {
+            margin: 1.5rem auto;
+            border-radius: 14px;
+        }
+
+        .tt-prose .article-table {
+            width: max(640px, 100%) !important;
+            font-size: 14px;
+        }
+
+        .tt-prose .article-table th,
+        .tt-prose .article-table td {
+            padding: 12px 14px;
+        }
+    }

@@ -1,7 +1,6 @@
 @php
     $path = request()->path();
     $isHome = $path === '' || $path === '/';
-    $isArchive = str_starts_with($path, 'archive');
 @endphp
 <header class="site-header bg-white border-b border-gray-100 sticky top-0 z-50">
     <div class="site-container px-4 sm:px-6 lg:px-8">
@@ -44,10 +43,6 @@
                     </div>
                 </div>
 
-                <a href="{{ route('site.archive') }}" class="flex items-center text-sm font-medium {{ $isArchive ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900' }}">
-                    <i data-lucide="archive" class="w-4 h-4 mr-1"></i>
-                    {{ __('front.nav.archive') }}
-                </a>
             </nav>
 
             <button type="button" class="mobile-menu-toggle md:hidden flex items-center justify-center w-11 h-11 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-50" onclick="toggleMobileMenu()">
@@ -76,10 +71,6 @@
                         </a>
                     @endforeach
                 </div>
-                <a href="{{ route('site.archive') }}" class="mobile-nav-link flex items-center text-sm font-medium text-gray-600 hover:text-gray-900">
-                    <i data-lucide="archive" class="w-4 h-4 mr-3"></i>
-                    {{ __('front.nav.archive') }}
-                </a>
             </nav>
         </div>
     </div>

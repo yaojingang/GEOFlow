@@ -228,6 +228,8 @@ class ArticleController extends Controller
                 'review_status' => $workflowState['review_status'],
                 'published_at' => $workflowState['published_at'],
                 'is_ai_generated' => 0,
+                'is_hot' => (bool) ($payload['is_hot'] ?? false),
+                'is_featured' => (bool) ($payload['is_featured'] ?? false),
             ]);
         } catch (Throwable $e) {
             return back()->withInput()->withErrors(__('admin.article_create.error.create_exception', ['message' => $e->getMessage()]));
@@ -267,6 +269,8 @@ class ArticleController extends Controller
                 'slug' => (string) $article->slug,
                 'published_at' => $article->published_at?->format('Y-m-d H:i:s'),
                 'task_name' => (string) ($article->task->name ?? ''),
+                'is_hot' => (bool) ($article->is_hot ?? false),
+                'is_featured' => (bool) ($article->is_featured ?? false),
             ],
             'formOptions' => $this->loadFormOptions(),
         ]);
@@ -301,6 +305,8 @@ class ArticleController extends Controller
                 'status' => $workflowState['status'],
                 'review_status' => $workflowState['review_status'],
                 'published_at' => $workflowState['published_at'],
+                'is_hot' => (bool) ($payload['is_hot'] ?? false),
+                'is_featured' => (bool) ($payload['is_featured'] ?? false),
             ])->save();
         } catch (Throwable $e) {
             return back()->withInput()->withErrors(__('admin.article_edit.error.update_exception', ['message' => $e->getMessage()]));
@@ -540,6 +546,8 @@ class ArticleController extends Controller
      *     author_id: int,
      *     status: string,
      *     review_status: string
+     *     is_hot: bool,
+     *     is_featured: bool
      * }
      */
     private function validateArticleForm(Request $request, bool $isEdit): array
@@ -556,6 +564,8 @@ class ArticleController extends Controller
             'author_id' => ['required', 'integer', 'min:1'],
             'status' => ['required', 'string', 'in:draft,published,private'],
             'review_status' => ['required', 'string', 'in:pending,approved,rejected,auto_approved'],
+            'is_hot' => ['nullable', 'boolean'],
+            'is_featured' => ['nullable', 'boolean'],
         ], [
             'title.required' => __($keyPrefix.'.title_required'),
             'content.required' => __($keyPrefix.'.content_required'),

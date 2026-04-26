@@ -4,6 +4,8 @@ return [
     'home_hero_fallback' => '基于 AI 的智能内容生成与发布。',
     'home_featured' => '精选文章',
     'home_featured_badge' => '精选',
+    'home_hot' => '热门文章',
+    'home_hot_badge' => '热点',
     'home_latest' => '最新文章',
     'home_read_more' => '阅读全文',
     'home_empty_title' => '暂无文章',

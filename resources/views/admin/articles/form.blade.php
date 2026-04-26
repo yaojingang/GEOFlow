@@ -19,6 +19,8 @@
         'slug' => (string) ($articleForm['slug'] ?? ''),
         'published_at' => (string) ($articleForm['published_at'] ?? ''),
         'task_name' => (string) ($articleForm['task_name'] ?? ''),
+        'is_hot' => old('is_hot', !empty($articleForm['is_hot']) ? '1' : '0'),
+        'is_featured' => old('is_featured', !empty($articleForm['is_featured']) ? '1' : '0'),
     ];
 @endphp
 
@@ -125,6 +127,26 @@
                                     <option value="auto_approved" @selected($formData['review_status'] === 'auto_approved')>{{ __('admin.articles.review.auto_approved') }}</option>
                                 </select>
                                 <p class="mt-2 text-xs text-gray-500">{{ __($i18nRoot.'.help.review_status') }}</p>
+                            </div>
+                            <div class="rounded-lg border border-blue-100 bg-blue-50/70 p-4">
+                                <div class="text-sm font-medium text-gray-900">{{ __($i18nRoot.'.section.recommendation_title') }}</div>
+                                <p class="mt-1 text-xs text-gray-600">{{ __($i18nRoot.'.help.recommendation') }}</p>
+                                <div class="mt-3 space-y-3">
+                                    <label class="flex items-start gap-3 text-sm text-gray-700">
+                                        <input type="checkbox" name="is_hot" value="1" @checked((string) $formData['is_hot'] === '1') class="mt-1 rounded border-gray-300 text-blue-600 shadow-sm focus:ring-blue-500">
+                                        <span>
+                                            <span class="font-medium text-gray-900">{{ __($i18nRoot.'.field.is_hot') }}</span>
+                                            <span class="block text-xs text-gray-500">{{ __($i18nRoot.'.help.is_hot') }}</span>
+                                        </span>
+                                    </label>
+                                    <label class="flex items-start gap-3 text-sm text-gray-700">
+                                        <input type="checkbox" name="is_featured" value="1" @checked((string) $formData['is_featured'] === '1') class="mt-1 rounded border-gray-300 text-blue-600 shadow-sm focus:ring-blue-500">
+                                        <span>
+                                            <span class="font-medium text-gray-900">{{ __($i18nRoot.'.field.is_featured') }}</span>
+                                            <span class="block text-xs text-gray-500">{{ __($i18nRoot.'.help.is_featured') }}</span>
+                                        </span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>
