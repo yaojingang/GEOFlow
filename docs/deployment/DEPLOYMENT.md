@@ -37,6 +37,7 @@ vi .env.prod
 
 ```env
 APP_URL=https://your-domain.com
+TRUSTED_PROXIES=*
 APP_KEY=base64:replace-with-generated-key
 
 DB_DATABASE=geo_flow
@@ -51,10 +52,51 @@ REVERB_EXPOSE_PORT=18081
 说明：
 
 - `APP_KEY` 可留空：应用容器启动时会 `key:generate` 写回 `.env.prod`（可写挂载）；也可在宿主机执行 `php artisan key:generate --show` 后粘贴。
+- `APP_URL` 必须填写用户真实访问的公网地址；如果部署在一级目录，例如 `https://geo.ailingdaoli.com/wiki`，这里就必须写完整的 `https://geo.ailingdaoli.com/wiki`。
+- `TRUSTED_PROXIES=*` 用于反向代理、CDN 或负载均衡后方部署，确保 Laravel 正确识别 `X-Forwarded-Proto` / `X-Forwarded-Host` / `X-Forwarded-Prefix`，避免后台登录表单生成 `http://` 或丢失 `/wiki` 前缀。
 - `AUTO_MIGRATE` 在 `.env.prod` 中默认建议为 `false`
 - 生产镜像不会在启动时执行 `composer install`
 - **`postgres` / `redis` 凭据**：`docker-compose.prod.yml` 中 postgres 使用 `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` 映射为官方镜像的 `POSTGRES_*`；redis 使用 `REDIS_PASSWORD`；值均由 Compose 插值（推荐 `--env-file .env.prod`），与 Laravel 的 `DB_*` 同源、不重复定义。
 - **建议仍使用 `--env-file .env.prod`**：便于插值 `WEB_PORT`、`POSTGRES_DATA_DIR` 等与根目录 `.env` 对齐；若曾用错误密码初始化过 Postgres，须删掉 `POSTGRES_DATA_DIR` 对应数据目录后再启动。
+
+### 子目录部署示例
+
+如果外部访问地址是：
+
+```text
+https://geo.ailingdaoli.com/wiki/geo_admin/login
+```
+
+`.env.prod` 应配置为：
+
+```env
+APP_URL=https://geo.ailingdaoli.com/wiki
+SITE_URL="${APP_URL}"
+ADMIN_BASE_PATH=geo_admin
+TRUSTED_PROXIES=*
+SESSION_SECURE_COOKIE=true
+# 可选：若同一域名下有多个系统，想把后台 Cookie 限定在 /wiki 下，再开启：
+# SESSION_PATH=/wiki
+```
+
+注意：`/wiki` 是站点公开根路径，应写在 `APP_URL` 中；`ADMIN_BASE_PATH` 仍保持 `geo_admin`，不要写成 `wiki/geo_admin`。
+
+外层 Nginx 反向代理建议至少透传：
+
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Port $server_port;
+proxy_set_header X-Forwarded-Prefix /wiki;
+```
+
+修改 `.env.prod` 后请清理配置缓存并重启应用容器：
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec app php artisan optimize:clear
+docker compose --env-file .env.prod -f docker-compose.prod.yml restart app queue scheduler
+```
 
 ## 3. 启动步骤
 
