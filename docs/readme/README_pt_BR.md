@@ -1,18 +1,18 @@
 # GEOFlow
 
-> Idiomas: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | **Português (BR)**
+> Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | **Português (BR)**
 
-> GEOFlow é um sistema open-source de engenharia de conteúdo inteligente projetado especificamente para GEO (Otimização de Motor de Géneração). É uma das primeiras infraestruturas de dados, conteúdo e distribuição do mundo projetadas sistematicamente вокруг fluxos de trabalho GEO, conectando ativos de dados, bases de conhecimento, gestão de materiais, geração de IA, revisão e publicação, apresentação frontend e distribuição futura de múltiplos canais em um pipeline evolutivo.
+> GEOFlow é um sistema de engenharia de conteúdo inteligente de código aberto, projetado especificamente para GEO (Otimização de Motor de Geração). É uma das primeiras infraestruturas de dados, conteúdo e distribuição do mundo projetadas sistematicamente em torno de fluxos de trabalho GEO, conectando ativos de dados, bases de conhecimento, gerenciamento de materiais, geração de IA, revisão e publicação, apresentação frontend e distribuição futura de múltiplos canais em um pipeline em evolução.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
-[![PostgreSQL](https://img.shields.io/badge/Banco%20de%20Dados-PostgreSQL-336791)](https://www.postgresql.org/)
+[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![Licença](https://img.shields.io/badge/Licen%C3%A7a-Apache--2.0-blue.svg)](../../LICENSE)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-O GEOFlow é liberado sob a [Licença Apache 2.0](../../LICENSE). Você pode usar, copiar, modificar e distribuir, inclusive para fins comerciais, desde que mantenha os avisos de direitos autorais e licença e comply com os termos de patente, marca registrada e exoneração de garantia da Apache-2.0.
+O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usar, copiar, modificar e distribuir, inclusive para fins comerciais, desde que mantenha os avisos de direitos autorais e licença e complies com os termos de patente, marca registrada e exoneração de garantia da Apache-2.0.
 
 ---
 
@@ -21,7 +21,7 @@ O GEOFlow é liberado sob a [Licença Apache 2.0](../../LICENSE). Você pode usa
 | Recurso | Descrição |
 |---------|-----------|
 | 🤖 Geração multi-modelo | APIs estilo OpenAI, tipos de modelo chat / embedding, adaptação de URL do provider, failover inteligente e tratamento de retry |
-| 📦 Execução de tarefas em lote | Criação de tarefas, limites de geração, cadence de publicação, execução de fila, registros de falha e filtragem de artigos por tarefa |
+| 📦 Execução de tarefas em lote | Criação de tarefas, limites de geração, frequência de publicação, execução de fila, registros de falha e filtragem de artigos por tarefa |
 | 🗂 Gestão unificada de materiais | Bibliotecas de títulos, bibliotecas de palavras-chave, bibliotecas de imagens, biblioteca de autores, bases de conhecimento e prompts |
 | 🧠 RAG de base de conhecimento | Faça upload de documentos, gere chunks, escreva vetores quando um modelo de embedding está configurado e recupere contexto relevante durante a geração |
 | 📋 Fluxo de revisão e publicação | Estados rascunho, revisão e publicação, auto-publicação opcional, mais filtros de artigos por status, autor e tarefa |
@@ -61,6 +61,44 @@ Destaques da nova versão incluem:
 
 ---
 
+## 🏗 Fluxo de Execução
+
+```
+Admin
+  ↓
+Scheduler / Fila (opcional Horizon)
+  ↓
+Worker — chamada IA
+  ↓
+Rascunho / Revisão / Publicação
+  ↓
+Frontend
+```
+
+---
+
+## 🧱 Arquitetura
+
+| Camada | Descrição |
+|--------|------------|
+| Web / Admin | **Laravel**: rotas, controllers, **Blade** para admin e artigos |
+| API | `routes/api.php` e outros (autenticação conforme configuração do projeto) |
+| Scheduler / Fila / Reverb | **Scheduler**, **`queue:work` / Horizon**, se necessário **Reverb** |
+| Domínio e Jobs | `app/Services`, `app/Jobs`, `app/Http/Controllers` etc. |
+| Armazenamento | **PostgreSQL** (recomendado **pgvector**) + **Redis** |
+
+Fluxo principal: configuração de modelos e prompts → preparação de base de conhecimento, títulos, palavras-chave, imagens e autores → tarefas na fila → workers geram conteúdo → rascunho / revisão / publicação → páginas frontend com SEO.
+
+---
+
+## ⚡ Início Rápido no Admin
+
+1. **Configure a API**: adicione pelo menos um modelo de chat; para RAG, adicione um modelo de embedding.
+2. **Configure materiais**: prepare base de conhecimento, títulos, palavras-chave, imagens e autores com base em informações reais e verificáveis.
+3. **Crie uma tarefa**: escolha materiais, modelo, volume de geração e frequência de publicação; primeiro teste o fluxo via rascunhos ou revisão.
+
+---
+
 ## 🚀 Deploy com Docker Compose
 
 ### Configuração Rápida
@@ -71,16 +109,19 @@ git clone https://github.com/yaojingang/GEOFlow.git
 cd GEOFlow
 ```
 
-2. Inicie os containers:
+2. Copie o arquivo de ambiente:
 ```bash
-# Development
 cp .env.example .env
+```
+
+3. Inicie os containers:
+```bash
 docker compose up -d
 ```
 
 Acesse `http://localhost:18080` (frontend) e `http://localhost:18080/geo_admin` (admin).
 
-Para produção, configure `.env.prod` e usa `docker compose -f docker-compose.prod.yml up -d`.
+Para produção, configure `.env.prod` e use `docker compose -f docker-compose.prod.yml up -d`.
 
 ### portas
 
@@ -96,7 +137,7 @@ Para produção, configure `.env.prod` e usa `docker compose -f docker-compose.p
 
 ## 📖 Documentação
 
-- [Documentação em inglês](docs/README.md) - mais completa
+- [Documentação completa](docs/README.md)
 - [Changelog](docs/CHANGELOG.md)
 
 ---
