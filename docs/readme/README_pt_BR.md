@@ -12,7 +12,7 @@
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usar, copiar, modificar e distribuir, inclusive para fins comerciais, desde que mantenha os avisos de direitos autorais e licença e complies com os termos de patente, marca registrada e exoneração de garantia da Apache-2.0.
+O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usar, copiar, modificar e distribuir, inclusive para fins comerciais, desde que mantenha os avisos de direitos autorais e licença e cumpra os termos de patente, marca registrada e exoneração de garantia da Apache-2.0.
 
 ---
 
@@ -58,6 +58,8 @@ Destaques da nova versão incluem:
 - **Sistema de materiais**: bases de conhecimento, bibliotecas de títulos, bibliotecas de palavras-chave, bibliotecas de imagens e autores são todas entradas de admin de primeira classe.
 - **Preparação para RAG**: bases de conhecimento são divididas em chunks após upload; modelos de embedding permitem writes vetoriais e recuperação; falta de setup de embedding tem orientação explícita.
 - **Setup de modelo**: regras de URL de provider mais claras para APIs estilo OpenAI, Zhipu, Volcengine Ark e outros providers não-`/v1`.
+- **Saída frontend**: Markdown de artigos usa renderização GFM, incluindo títulos, tabelas, listas e imagens; caminhos antigos `/uploads` são normalizados para `/storage/uploads`.
+- **Deploy e segurança**: caminho admin customizável via `ADMIN_BASE_PATH`; produção deve usar Nginx + PHP-FPM; altere a senha admin inicial antes de publicar.
 
 ---
 
@@ -99,6 +101,54 @@ Fluxo principal: configuração de modelos e prompts → preparação de base de
 
 ---
 
+## 🎯 Casos de Uso e Resultados Esperados
+
+O GEOFlow é adequado para estes cenários práticos:
+
+- **Site GEO independente**
+  Organize conteúdo de produto, FAQs, casos e conhecimento de marca em um sistema sustentável. O objetivo é melhorar visibilidade em buscas com IA e eficiência operacional, não criar páginas fracas em massa.
+- **Subcanal GEO em um site oficial**
+  Adicione um canal de notícias, conhecimento ou soluções dentro de um site existente. Estruture o conteúdo para busca, citações e atualização em equipe.
+- **Site-fonte GEO independente**
+  Publique explicações, rankings, guias e referências de qualidade sobre um setor ou tema. Construa ativos confiáveis, não ruído na web.
+- **Gestão interna de conteúdo GEO**
+  Use como backend de produção para modelos, materiais, conhecimento, revisão e publicação. Reduza a dispersão de ferramentas e aumente a eficiência da equipe.
+- **GEO multi-site / multi-seção**
+  Opere múltiplos canais, marcas ou modelos com um padrão operacional comum.
+- **Gestão automatizada de fontes e distribuição**
+  Estruture bases de conhecimento, atualizações temáticas e distribuição para manter informação valiosa recuperável.
+
+O valor deve partir de uma **base de conhecimento real, confiável e mantida continuamente**.
+O GEOFlow não deve ser usado para fabricar ruído, poluir a internet ou publicar afirmações falsas. Ele existe para ajudar equipes a produzir e distribuir conteúdo **confiável** e melhorar a eficiência operacional de GEO.
+
+---
+
+## 🧭 Padrões Sugeridos de Deploy e Uso
+
+- **Como site GEO independente**
+  Publique frontend e admin completos; opere produtos, FAQ, casos e temas como uma propriedade própria.
+- **Como subcanal GEO**
+  Use subdiretório, subdomínio ou canal lateral sem reconstruir o site principal.
+- **Como site-fonte GEO**
+  Priorize a base de conhecimento e use tarefas para atualizações controladas e contínuas.
+- **Como backend GEO interno**
+  Dê menos foco ao site público e concentre-se em admin, modelos, materiais, agendamento, revisão e APIs.
+- **Como sistema multi-site ou multicanal**
+  Reutilize workflows entre marcas, temas e experimentos.
+- **Como camada de gestão automatizada de fontes**
+  Trate bibliotecas de títulos, imagens, prompts e conhecimento como infraestrutura de longo prazo.
+
+Ordem recomendada:
+
+1. Defina objetivos reais e público-alvo
+2. Construa a base de conhecimento antes de automatizar em escala
+3. Mantenha o conteúdo correto, verificável e sustentável
+4. Só depois escale com modelos, tarefas e templates
+
+Uma base de conhecimento fraca com automação forte apenas escala ruído. No GEOFlow, **a qualidade da base de conhecimento vem primeiro**.
+
+---
+
 ## 🚀 Deploy com Docker Compose
 
 ### Configuração Rápida
@@ -135,10 +185,66 @@ Para produção, configure `.env.prod` e use `docker compose -f docker-compose.p
 
 ---
 
+## 🧩 Notas de Deploy por Código-Fonte
+
+```bash
+chmod -R ug+rwx storage bootstrap/cache
+```
+
+**Admin padrão** após `php artisan db:seed`:
+
+| Campo | Valor |
+|-------|-------|
+| Usuário | `admin` |
+| Senha | `password` (**altere imediatamente em produção**) |
+
+### Bloqueio de login admin e desbloqueio manual
+
+- Contas admin são bloqueadas após **5** tentativas consecutivas de login inválido.
+- Contas bloqueadas precisam ser desbloqueadas por um administrador.
+- Comando de desbloqueio:
+
+```bash
+php artisan geoflow:admin-unlock <username>
+```
+
+**HTTP em produção:** use Nginx/Apache + **PHP-FPM**, com document root em **`public/`**. Não exponha a raiz do projeto como web root.
+
+---
+
+## 🐳 Notas de Deploy Docker
+
+### Serviços do Compose de desenvolvimento
+
+| Serviço | Papel |
+|---------|-------|
+| `postgres` | PostgreSQL 16 + pgvector |
+| `redis` | Redis 7 |
+| `init` | Bootstrap único (`restart: "no"`) |
+| `app` | `php artisan serve`, mapeia **`${APP_PORT:-18080}:8080`** |
+| `queue` | `queue:work redis` |
+| `scheduler` | `schedule:work` |
+| `reverb` | WebSocket, mapeia **`${REVERB_EXPOSE_PORT:-18081}:8080`** |
+
+Para produção, use a pilha **`docker-compose.prod.yml`** com Nginx + php-fpm e consulte `../deployment/DEPLOYMENT.md`.
+
+**Atualização:** `git pull` → `docker compose build` → `docker compose up -d`.
+
+---
+
+## Desenvolvimento e Testes
+
+```bash
+composer test
+./vendor/bin/pint
+```
+
+---
+
 ## 📖 Documentação
 
-- [Documentação completa](docs/README.md)
-- [Changelog](docs/CHANGELOG.md)
+- [Documentação completa](../README.md)
+- [Changelog](../CHANGELOG.md)
 
 ---
 
@@ -154,21 +260,17 @@ Para produção, configure `.env.prod` e use `docker compose -f docker-compose.p
 
 ## 📄 Licença
 
-GEOFlow é software livre sob a [Licença Apache 2.0](LICENSE).
+GEOFlow é software livre sob a [Licença Apache 2.0](../../LICENSE).
 
 ---
 
-## 👨‍💻 Stack Técnica
+## 🌍 README em Outros Idiomas
 
-<p>
-  <img src="https://img.shields.io/badge/PHP-8.4-blue" alt="PHP 8.4" />
-  <img src="https://img.shields.io/badge/Laravel-12-blue" alt="Laravel 12" />
-  <img src="https://img.shields.io/badge/Docker-29.4-blue" alt="Docker 29.4" />
-  <img src="https://img.shields.io/badge/PostgreSQL-16-blue" alt="PostgreSQL 16" />
-  <img src="https://img.shields.io/badge/Redis-7-blue" alt="Redis 7" />
-</p>
-
-Baseado em PHP 8.4, Laravel 12, PostgreSQL 16 (pgvector), Redis 7, Docker e Docker Compose.
+- [简体中文](../../README.md)
+- [English](README_en.md)
+- [日本語](README_ja.md)
+- [Español](README_es.md)
+- [Русский](README_ru.md)
 
 ---
 
@@ -183,3 +285,7 @@ Baseado em PHP 8.4, Laravel 12, PostgreSQL 16 (pgvector), Redis 7, Docker e Dock
     <img src="https://img.shields.io/github/issues/yaojingang/GEOFlow?style=flat" alt="GitHub Issues" />
   </a>
 </p>
+
+## ⭐ Histórico de Stars
+
+[![Star History Chart](https://api.star-history.com/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.com/#yaojingang/GEOFlow&Date)

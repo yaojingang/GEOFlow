@@ -24,6 +24,6 @@ return [
     'archive_empty' => 'Nenhum artigo neste período.',
     'pagination_prev' => 'Anterior',
     'pagination_next' => 'Próximo',
-    'search_placeholder' => 'Buscar título ou excerpt…',
+    'search_placeholder' => 'Buscar título ou resumo…',
     'search_button' => 'Buscar',
 ];

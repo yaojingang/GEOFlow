@@ -1,6 +1,6 @@
 # GEOFlow
 
-> Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
+> Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
 > GEOFlow is an open-source intelligent content engineering system designed specifically for GEO (Generative Engine Optimization). It is one of the world's earliest data, content, and distribution infrastructures systematically designed around GEO workflows, connecting data assets, knowledge bases, material management, AI generation, review and publishing, front-end presentation, and future multi-channel distribution into one evolving pipeline.
 
@@ -27,7 +27,7 @@ GEOFlow is released under the [Apache License 2.0](../../LICENSE). You may use, 
 | 📋 Review & publishing workflow | Draft, review, and publish states, optional auto-publish, plus article filters by status, author, and task |
 | 🔍 Search-oriented output | SEO metadata, Open Graph, structured data, and GFM Markdown rendering for headings, tables, lists, and images |
 | 🎨 Front-end & themes | Default theme, theme packages, preview routes, admin theme switching, and a fixed GEOFlow admin brand |
-| 🌍 Admin i18n | Admin UI supports Chinese, English, Japanese, Spanish, and Russian |
+| 🌍 Admin i18n | Admin UI supports Chinese, English, Japanese, Spanish, Russian, and Portuguese (Brazil) |
 | 🔔 Version updates | Admin can check GitHub `version.json` and notify admins when a newer version is available |
 | 🐳 Ready to deploy | **Docker Compose**: PostgreSQL (pgvector), Redis, app, queue, scheduler, Reverb |
 | 🗄 PostgreSQL runtime | PostgreSQL by default; suitable for steady load and concurrent writes |
@@ -321,6 +321,7 @@ composer test
 - [日本語](README_ja.md)
 - [Español](README_es.md)
 - [Русский](README_ru.md)
+- [Português (BR)](README_pt_BR.md)
 
 ---
 

@@ -1,6 +1,6 @@
 # GEOFlow
 
-> Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md)
+> Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
 > GEOFlow es un sistema open source de ingeniería inteligente de contenidos diseñado específicamente para GEO (Generative Engine Optimization). Es una de las primeras infraestructuras de datos, contenido y distribución del mundo diseñadas sistemáticamente alrededor de escenarios GEO, conectando datos, bases de conocimiento, materiales, generación con IA, revisión, publicación, presentación web y futura distribución multicanal en una única cadena evolutiva.
 
@@ -27,7 +27,7 @@ GEOFlow se publica bajo la [Apache License 2.0](../../LICENSE). Puedes usarlo, c
 | 📋 Revisión y publicación | Borrador, revisión, publicación y filtros por estado, autor y tarea |
 | 🔍 Salida orientada a búsqueda | SEO, Open Graph, datos estructurados y renderizado Markdown GFM para títulos, tablas, listas e imágenes |
 | 🎨 Front y temas | Tema por defecto, paquetes de temas, rutas de preview y cambio de tema desde admin |
-| 🌍 i18n del admin | Chino, inglés, japonés, español y ruso |
+| 🌍 i18n del admin | Chino, inglés, japonés, español, ruso y portugués (Brasil) |
 | 🔔 Avisos de versión | Consulta `version.json` de GitHub y avisa cuando hay una versión nueva |
 | 🐳 Listo para desplegar | **Docker Compose**: Postgres (pgvector), Redis, app, cola, scheduler, Reverb |
 | 🗄 PostgreSQL | Base por defecto para carga estable y escrituras concurrentes |
