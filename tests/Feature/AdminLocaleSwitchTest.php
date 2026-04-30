@@ -19,12 +19,13 @@ class AdminLocaleSwitchTest extends TestCase
             'ja',
             'es',
             'ru',
+            'pt_BR',
         ], array_keys(AdminWeb::supportedLocales()));
     }
 
     public function test_admin_locale_switch_accepts_new_languages(): void
     {
-        foreach (['ja', 'es', 'ru'] as $locale) {
+        foreach (['ja', 'es', 'ru', 'pt_BR'] as $locale) {
             $this->from(route('admin.login'))
                 ->get(route('admin.locale.switch', ['locale' => $locale]))
                 ->assertRedirect(route('admin.login'))
@@ -47,6 +48,7 @@ class AdminLocaleSwitchTest extends TestCase
             'ja' => 'ダッシュボード',
             'es' => 'Panel',
             'ru' => 'Панель',
+            'pt_BR' => 'Painel',
         ];
 
         foreach ($expectations as $locale => $heading) {
