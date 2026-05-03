@@ -75,6 +75,6 @@ return [
     // 超出次数后锁定时长（秒）
     'login_lockout_seconds' => (int) env('GEOFLOW_LOGIN_LOCKOUT_SECONDS', 900),
     // 会话空闲超时（秒）
-    'session_timeout_seconds' => (int) env('GEOFLOW_SESSION_TIMEOUT', 3600),
+    'session_timeout_seconds' => (int) env('GEOFLOW_SESSION_TIMEOUT', 2592000),
 
 ];

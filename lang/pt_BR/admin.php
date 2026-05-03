@@ -143,6 +143,8 @@ return array_replace_recursive($base, [
         'password_placeholder' => 'Digite a senha',
         'submit' => 'Entrar',
         'submitting' => 'Entrando...',
+        'remember_30_days' => 'Manter conectado por 30 dias',
+        'remember_30_days_hint' => 'Para dispositivos confiáveis',
         'language_label' => 'Idioma da Interface',
         'language_hint' => 'Escolha um idioma antes de entrar. O console de admin continuará com esta seleção após o login.',
         'language_switch_to' => 'Mudar interface para :language',

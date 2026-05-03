@@ -96,6 +96,8 @@ return array_replace_recursive($base, [
         'password_placeholder' => 'パスワードを入力',
         'submit' => 'ログイン',
         'submitting' => 'ログイン中...',
+        'remember_30_days' => '30日間ログイン状態を保持',
+        'remember_30_days_hint' => '信頼できる端末向け',
         'language_label' => '表示言語',
         'back_home' => 'ホームへ戻る',
         'error' => [

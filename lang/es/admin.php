@@ -96,6 +96,8 @@ return array_replace_recursive($base, [
         'password_placeholder' => 'Introduce la contraseña',
         'submit' => 'Iniciar sesión',
         'submitting' => 'Iniciando sesión...',
+        'remember_30_days' => 'Mantener sesión 30 días',
+        'remember_30_days_hint' => 'Para dispositivos de confianza',
         'language_label' => 'Idioma de la interfaz',
         'back_home' => 'Volver al inicio',
         'error' => [

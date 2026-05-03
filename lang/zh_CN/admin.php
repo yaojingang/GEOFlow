@@ -141,6 +141,8 @@ return [
         'password_placeholder' => '请输入密码',
         'submit' => '登录',
         'submitting' => '登录中...',
+        'remember_30_days' => '保持登录 30 天',
+        'remember_30_days_hint' => '适合个人设备',
         'language_label' => '界面语言',
         'language_hint' => '登录前可先切换语言，登录后后台将沿用本次选择。',
         'language_switch_to' => '切换为 :language',

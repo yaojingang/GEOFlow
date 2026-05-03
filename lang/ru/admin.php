@@ -96,6 +96,8 @@ return array_replace_recursive($base, [
         'password_placeholder' => 'Введите пароль',
         'submit' => 'Войти',
         'submitting' => 'Вход...',
+        'remember_30_days' => 'Оставаться в системе 30 дней',
+        'remember_30_days_hint' => 'Для доверенных устройств',
         'language_label' => 'Язык интерфейса',
         'back_home' => 'На главную',
         'error' => [

@@ -141,6 +141,8 @@ return [
         'password_placeholder' => 'Enter password',
         'submit' => 'Sign In',
         'submitting' => 'Signing in...',
+        'remember_30_days' => 'Keep me signed in for 30 days',
+        'remember_30_days_hint' => 'For trusted devices',
         'language_label' => 'Interface Language',
         'language_hint' => 'Choose a language before signing in. The admin console will continue with this selection after login.',
         'language_switch_to' => 'Switch interface to :language',

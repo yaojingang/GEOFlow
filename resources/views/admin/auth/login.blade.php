@@ -67,6 +67,14 @@
                        class="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                        placeholder="{{ __('admin.login.password_placeholder') }}" autocomplete="current-password">
             </div>
+            <input type="hidden" name="remember" value="0">
+            <label class="flex items-center justify-between rounded-lg border border-gray-200 bg-white/70 px-3 py-3 text-sm text-gray-600">
+                <span class="flex items-center gap-2">
+                    <input type="checkbox" name="remember" value="1" checked class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <span>{{ __('admin.login.remember_30_days') }}</span>
+                </span>
+                <span class="text-xs text-gray-400">{{ __('admin.login.remember_30_days_hint') }}</span>
+            </label>
             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg">
                 {{ __('admin.login.submit') }}
             </button>

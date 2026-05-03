@@ -47,7 +47,8 @@ class AdminAuthController extends Controller
             ])->onlyInput('username');
         }
 
-        $remember = $request->boolean('remember');
+        // 后台以长期维护为主，默认保持登录 30 天，避免频繁掉线影响管理操作。
+        $remember = $request->has('remember') ? $request->boolean('remember') : true;
 
         if (! Auth::guard('admin')->attempt(
             ['username' => $username, 'password' => $credentials['password'], 'status' => 'active'],
