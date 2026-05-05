@@ -356,7 +356,7 @@
             </div>
         </div>
 
-        <div class="mb-8 bg-white shadow rounded-lg">
+        <div class="bg-white shadow rounded-lg" style="margin-bottom: 2rem;">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">{{ __('admin.dashboard.trend_title') }}</h3>
             </div>
