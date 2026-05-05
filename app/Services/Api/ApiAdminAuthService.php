@@ -48,6 +48,7 @@ class ApiAdminAuthService
 
         return [
             'token' => $tokenResult['token'],
+            'scopes' => $tokenResult['record']['scopes'] ?? [],
             'expires_at' => $tokenResult['record']['expires_at'] ?? null,
             'admin' => [
                 'id' => (int) $admin->id,

@@ -4,6 +4,7 @@ namespace App\Services\GeoFlow;
 
 use App\Exceptions\ApiException;
 use App\Models\AiModel;
+use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\ImageLibrary;
@@ -15,6 +16,7 @@ use App\Models\TaskSchedule;
 use App\Models\TitleLibrary;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
@@ -184,6 +186,54 @@ class TaskLifecycleService
             }
             throw $e;
         }
+    }
+
+    /**
+     * 删除任务，并对齐后台删除逻辑：关联文章进入回收站后解除 task_id 绑定。
+     *
+     * @return array{id:int,name:string,deleted:bool}
+     */
+    public function deleteTask(int $taskId): array
+    {
+        $task = Task::query()->whereKey($taskId)->first(['id', 'name']);
+        if (! $task) {
+            throw new ApiException('task_not_found', '任务不存在', 404);
+        }
+
+        $taskName = (string) $task->name;
+
+        DB::transaction(function () use ($taskId): void {
+            Article::query()
+                ->where('task_id', $taskId)
+                ->whereNull('deleted_at')
+                ->update([
+                    'deleted_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+            foreach (['article_queue', 'task_materials', 'task_schedules'] as $table) {
+                if (Schema::hasTable($table)) {
+                    DB::table($table)->where('task_id', $taskId)->delete();
+                }
+            }
+
+            Article::withTrashed()
+                ->where('task_id', $taskId)
+                ->update([
+                    'task_id' => null,
+                    'updated_at' => now(),
+                ]);
+
+            Task::query()->whereKey($taskId)->delete();
+        });
+
+        $this->taskRealtimeBroadcastService->broadcastOverview();
+
+        return [
+            'id' => $taskId,
+            'name' => $taskName,
+            'deleted' => true,
+        ];
     }
 
     /**

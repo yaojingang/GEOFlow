@@ -411,6 +411,7 @@ CREATE TABLE IF NOT EXISTS url_import_jobs (
 CREATE TABLE IF NOT EXISTS url_import_job_logs (
     id BIGSERIAL PRIMARY KEY,
     job_id BIGINT NOT NULL,
+    step VARCHAR(50) DEFAULT 'queued',
     level VARCHAR(20) DEFAULT 'info',
     message TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

@@ -9,6 +9,7 @@ class TrustedProxyConfigurationTest extends TestCase
     public function test_admin_login_urls_respect_forwarded_prefix_from_trusted_proxy(): void
     {
         config(['trustedproxy.proxies' => '*']);
+        config(['session.driver' => 'array']);
 
         $loginPath = '/'.ltrim((string) app('router')->getRoutes()->getByName('admin.login')?->uri(), '/');
         $expectedLoginUrl = 'https://geo.example.com/docs'.$loginPath;

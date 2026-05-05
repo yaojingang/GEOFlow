@@ -13,6 +13,7 @@ class UrlImportJobLog extends Model
 
     protected $fillable = [
         'job_id',
+        'step',
         'level',
         'message',
     ];
@@ -21,6 +22,7 @@ class UrlImportJobLog extends Model
     {
         return [
             'job_id' => 'integer',
+            'step' => 'string',
         ];
     }
 

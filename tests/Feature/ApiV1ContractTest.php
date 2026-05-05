@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Keyword;
+use App\Models\KeywordLibrary;
+use App\Models\Task;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -83,11 +86,13 @@ class ApiV1ContractTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonStructure([
-                'data' => ['token', 'expires_at', 'admin' => ['id', 'username', 'display_name', 'role', 'status']],
+                'data' => ['token', 'scopes', 'expires_at', 'admin' => ['id', 'username', 'display_name', 'role', 'status']],
                 'meta' => ['request_id', 'timestamp'],
             ]);
 
         $this->assertNotEmpty($response->json('data.token'));
+        $this->assertContains('materials:read', $response->json('data.scopes'));
+        $this->assertContains('materials:write', $response->json('data.scopes'));
     }
 
     public function test_catalog_forbidden_when_scope_missing(): void
@@ -114,12 +119,107 @@ class ApiV1ContractTest extends TestCase
                 'data' => [
                     'models',
                     'prompts',
+                    'keyword_libraries',
                     'title_libraries',
+                    'image_libraries',
                     'knowledge_bases',
                     'authors',
                     'categories',
                 ],
                 'meta' => ['request_id', 'timestamp'],
             ]);
+    }
+
+    public function test_materials_require_materials_scope(): void
+    {
+        $admin = $this->createActiveAdmin('u5', 'p');
+        $bearer = $this->createBearerToken($admin, ['catalog:read']);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/materials')
+            ->assertStatus(403)
+            ->assertJsonPath('error.code', 'forbidden');
+    }
+
+    public function test_keyword_library_material_crud_and_items(): void
+    {
+        $admin = $this->createActiveAdmin('u6', 'p');
+        $bearer = $this->createBearerToken($admin, ['materials:read', 'materials:write']);
+
+        $create = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson('/api/v1/materials/keyword-libraries', [
+                'name' => 'API Keywords',
+                'description' => 'Created from API',
+            ]);
+
+        $create->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.type', 'keyword-libraries')
+            ->assertJsonPath('data.item.name', 'API Keywords');
+
+        $libraryId = (int) $create->json('data.item.id');
+
+        $item = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/materials/keyword-libraries/{$libraryId}/items", [
+                'keyword' => 'geo automation',
+            ]);
+
+        $item->assertCreated()
+            ->assertJsonPath('data.parent_id', $libraryId)
+            ->assertJsonPath('data.item.keyword', 'geo automation');
+
+        $this->assertDatabaseHas('keyword_libraries', ['id' => $libraryId, 'keyword_count' => 1]);
+        $this->assertDatabaseHas('keywords', ['library_id' => $libraryId, 'keyword' => 'geo automation']);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/materials/keyword-libraries')
+            ->assertOk()
+            ->assertJsonPath('data.type', 'keyword-libraries')
+            ->assertJsonPath('data.pagination.total', 1);
+    }
+
+    public function test_delete_material_items_refreshes_counts(): void
+    {
+        $admin = $this->createActiveAdmin('u7', 'p');
+        $bearer = $this->createBearerToken($admin, ['materials:read', 'materials:write']);
+        $library = KeywordLibrary::query()->create([
+            'name' => 'Delete Items',
+            'description' => '',
+            'keyword_count' => 1,
+        ]);
+        $keyword = Keyword::query()->create([
+            'library_id' => $library->id,
+            'keyword' => 'delete me',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->deleteJson("/api/v1/materials/keyword-libraries/{$library->id}/items", [
+                'ids' => [$keyword->id],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.deleted_count', 1);
+
+        $this->assertDatabaseMissing('keywords', ['id' => $keyword->id]);
+        $this->assertDatabaseHas('keyword_libraries', ['id' => $library->id, 'keyword_count' => 0]);
+    }
+
+    public function test_task_delete_api_removes_task(): void
+    {
+        $admin = $this->createActiveAdmin('u8', 'p');
+        $bearer = $this->createBearerToken($admin, ['tasks:write']);
+        $task = Task::query()->create([
+            'name' => 'API delete task',
+            'status' => 'paused',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->deleteJson("/api/v1/tasks/{$task->id}")
+            ->assertOk()
+            ->assertJsonPath('data.deleted', true)
+            ->assertJsonPath('data.id', $task->id);
+
+        $this->assertDatabaseMissing('tasks', ['id' => $task->id]);
     }
 }

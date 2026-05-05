@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\ArticleController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\JobController;
+use App\Http\Controllers\Api\V1\MaterialController;
 use App\Http\Controllers\Api\V1\TaskController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +38,9 @@ Route::prefix('v1')
             Route::patch('tasks/{task}', [TaskController::class, 'update'])
                 ->whereNumber('task')
                 ->middleware('api.scope:tasks:write');
+            Route::delete('tasks/{task}', [TaskController::class, 'destroy'])
+                ->whereNumber('task')
+                ->middleware('api.scope:tasks:write');
             Route::post('tasks/{task}/start', [TaskController::class, 'start'])
                 ->whereNumber('task')
                 ->middleware('api.scope:tasks:write');
@@ -54,6 +58,29 @@ Route::prefix('v1')
             Route::get('jobs/{job}', [JobController::class, 'show'])
                 ->whereNumber('job')
                 ->middleware('api.scope:jobs:read');
+
+            // materials:* — 后台素材库 CRUD 与库内条目管理
+            Route::get('materials', [MaterialController::class, 'summary'])->middleware('api.scope:materials:read');
+            Route::get('materials/{type}', [MaterialController::class, 'index'])->middleware('api.scope:materials:read');
+            Route::post('materials/{type}', [MaterialController::class, 'store'])->middleware('api.scope:materials:write');
+            Route::get('materials/{type}/{id}', [MaterialController::class, 'show'])
+                ->whereNumber('id')
+                ->middleware('api.scope:materials:read');
+            Route::patch('materials/{type}/{id}', [MaterialController::class, 'update'])
+                ->whereNumber('id')
+                ->middleware('api.scope:materials:write');
+            Route::delete('materials/{type}/{id}', [MaterialController::class, 'destroy'])
+                ->whereNumber('id')
+                ->middleware('api.scope:materials:write');
+            Route::get('materials/{type}/{id}/items', [MaterialController::class, 'items'])
+                ->whereNumber('id')
+                ->middleware('api.scope:materials:read');
+            Route::post('materials/{type}/{id}/items', [MaterialController::class, 'storeItem'])
+                ->whereNumber('id')
+                ->middleware('api.scope:materials:write');
+            Route::delete('materials/{type}/{id}/items', [MaterialController::class, 'destroyItems'])
+                ->whereNumber('id')
+                ->middleware('api.scope:materials:write');
 
             // articles:* — 文章 CRUD、审核、发布、软删
             Route::get('articles', [ArticleController::class, 'index'])->middleware('api.scope:articles:read');

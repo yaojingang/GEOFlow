@@ -168,6 +168,8 @@ class ApiTokenService
             'articles:read',
             'articles:write',
             'articles:publish',
+            'materials:read',
+            'materials:write',
         ];
     }
 

@@ -5,6 +5,8 @@ namespace App\Services\GeoFlow;
 use App\Models\AiModel;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\ImageLibrary;
+use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\TitleLibrary;
@@ -52,6 +54,28 @@ class CatalogGeoFlowService
             ])
             ->all();
 
+        $keywordLibraries = KeywordLibrary::query()
+            ->withCount(['keywords as keyword_count'])
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (KeywordLibrary $kl) => [
+                'id' => $kl->id,
+                'name' => $kl->name,
+                'keyword_count' => (int) ($kl->keyword_count ?? 0),
+            ])
+            ->all();
+
+        $imageLibraries = ImageLibrary::query()
+            ->withCount(['images as image_count'])
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (ImageLibrary $il) => [
+                'id' => $il->id,
+                'name' => $il->name,
+                'image_count' => (int) ($il->image_count ?? 0),
+            ])
+            ->all();
+
         $knowledgeBases = KnowledgeBase::query()
             ->orderBy('name')
             ->get(['id', 'name'])
@@ -74,7 +98,9 @@ class CatalogGeoFlowService
         return [
             'models' => $models,
             'prompts' => $prompts,
+            'keyword_libraries' => $keywordLibraries,
             'title_libraries' => $titleLibraries,
+            'image_libraries' => $imageLibraries,
             'knowledge_bases' => $knowledgeBases,
             'authors' => $authors,
             'categories' => $categories,

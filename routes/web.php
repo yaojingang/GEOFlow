@@ -182,6 +182,15 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::get('url-import', [UrlImportController::class, 'index'])->name('url-import');
         Route::post('url-import', [UrlImportController::class, 'store'])->name('url-import.store');
         Route::get('url-import/history', [UrlImportController::class, 'history'])->name('url-import.history');
+        Route::post('url-import/{jobId}/run', [UrlImportController::class, 'run'])
+            ->name('url-import.run')
+            ->whereNumber('jobId');
+        Route::get('url-import/{jobId}/status', [UrlImportController::class, 'status'])
+            ->name('url-import.status')
+            ->whereNumber('jobId');
+        Route::post('url-import/{jobId}/commit', [UrlImportController::class, 'commit'])
+            ->name('url-import.commit')
+            ->whereNumber('jobId');
         Route::get('url-import/{jobId}', [UrlImportController::class, 'show'])
             ->name('url-import.show')
             ->whereNumber('jobId');

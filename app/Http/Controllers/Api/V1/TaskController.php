@@ -75,6 +75,19 @@ class TaskController extends BaseApiController
     }
 
     /**
+     * 删除任务。幂等键：DELETE /tasks/{id}
+     */
+    public function destroy(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
+    {
+        $cached = IdempotencyService::maybeReplayJson($request, 'DELETE /tasks/{id}');
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        return $this->success($request, $tasks->deleteTask($task), 200, 'DELETE /tasks/{id}');
+    }
+
+    /**
      * 激活任务并可选择立即入队一条生成任务。
      *
      * 请求体可选 enqueue_now（布尔）。幂等键：POST /tasks/{id}/start

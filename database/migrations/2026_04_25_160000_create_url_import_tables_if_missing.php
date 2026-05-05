@@ -32,6 +32,7 @@ return new class extends Migration
             Schema::create('url_import_job_logs', function (Blueprint $table): void {
                 $table->id();
                 $table->foreignId('job_id')->constrained('url_import_jobs')->cascadeOnDelete();
+                $table->string('step', 50)->default('queued');
                 $table->string('level', 20)->default('info');
                 $table->text('message');
                 $table->timestamp('created_at')->nullable();

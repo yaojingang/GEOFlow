@@ -270,7 +270,7 @@ return array_replace_recursive($base, [
         'url_import_history_short' => 'Ver jobs e logs de importação de URL',
         'url_import_warning' => 'Esta funcionalidade ainda está evoluindo e não está madura',
         'url_import_title' => 'Digite uma URL de página web para gerar ativos importáveis automaticamente',
-        'url_import_description' => 'O sistema extrai conteúdo do artigo, executa limpeza e análise semântica de IA, depois prepara base de conhecimento IA, biblioteca de palavras-chave, biblioteca de títulos e visualizações de imagem do artigo para importação com um clique.',
+        'url_import_description' => 'O sistema extrai conteúdo do artigo, executa limpeza e análise semântica de IA, depois prepara base de conhecimento IA, biblioteca de palavras-chave e biblioteca de títulos para importação com um clique.',
         'url_import_caution' => 'Atualmente recomendado apenas para imports de página única com revisão manual. Precisão de extração, deduplicação, mapeamento de fonte e confirmação de importação final ainda estão sendo refinados.',
     ],
 ]);
