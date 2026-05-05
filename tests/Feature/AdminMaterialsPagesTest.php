@@ -14,8 +14,8 @@ use App\Models\UrlImportJob;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -286,8 +286,7 @@ class AdminMaterialsPagesTest extends TestCase
                             'content' => json_encode(['titles' => ['GEO 内容系统如何建立可信内容资产', '知识库如何支撑 GEO 内容生成']], JSON_UNESCAPED_UNICODE),
                         ],
                     ]],
-                ], 200)
-                ,
+                ], 200),
         ]);
 
         $admin = Admin::query()->create([
@@ -410,8 +409,7 @@ class AdminMaterialsPagesTest extends TestCase
                         ],
                         'finish_reason' => 'stop',
                     ]],
-                ], 200)
-                ,
+                ], 200),
         ]);
 
         Prompt::query()->create([
@@ -528,6 +526,64 @@ class AdminMaterialsPagesTest extends TestCase
         $this->assertSame('CRM 业务知识库', $result['analysis']['library_name'] ?? null);
         $this->assertContains('客户管理', $result['analysis']['keywords'] ?? []);
         $this->assertContains('客户管理系统如何帮助销售团队提升效率', $result['analysis']['titles'] ?? []);
+    }
+
+    public function test_url_import_accepts_plain_text_lists_from_ai_for_keywords_and_titles(): void
+    {
+        Http::fake([
+            'https://source.test/plain-lists' => Http::response(
+                '<!doctype html><html><head><title>CRM 自动化页</title><meta name="description" content="CRM 自动化页摘要"></head><body><article><h1>CRM 自动化页</h1><p>面向中小企业的客户数据统一、销售管道管理和营销自动化服务。</p></article></body></html>',
+                200,
+                ['Content-Type' => 'text/html; charset=utf-8']
+            ),
+            'https://ai.test/v1/chat/completions' => Http::sequence()
+                ->push(['choices' => [['message' => ['content' => json_encode([
+                    'clean_title' => 'CRM 自动化页',
+                    'clean_summary' => '面向中小企业的客户数据统一、销售管道管理和营销自动化服务。',
+                    'clean_text' => '面向中小企业的客户数据统一、销售管道管理和营销自动化服务。',
+                    'core_business' => ['industry' => 'CRM', 'products_services' => ['销售管道管理', '营销自动化']],
+                    'entities' => ['CRM', '中小企业'],
+                    'facts' => ['页面介绍客户数据统一、销售管道管理和营销自动化服务。'],
+                    'noise_removed' => [],
+                ], JSON_UNESCAPED_UNICODE)]]]], 200)
+                ->push(['choices' => [['message' => ['content' => json_encode([
+                    'summary' => '面向中小企业的客户数据统一、销售管道管理和营销自动化服务。',
+                    'library_name' => 'CRM 自动化知识库',
+                    'knowledge_markdown' => "# CRM 自动化知识库\n\n- 面向中小企业。\n- 支持客户数据统一、销售管道管理和营销自动化。",
+                ], JSON_UNESCAPED_UNICODE)]]]], 200)
+                ->push(['choices' => [['message' => ['content' => '智能CRM,营销自动化,销售管道管理,客户数据统一,中小企业CRM']]]], 200)
+                ->push(['choices' => [['message' => ['content' => "1. 智能 CRM 如何帮助中小企业统一客户数据\n2. 营销自动化系统怎么提升销售转化\n3. 销售管道管理工具选型要看哪些指标"]]]], 200),
+        ]);
+
+        $admin = Admin::query()->create([
+            'username' => 'url_import_plain_list_admin',
+            'password' => 'secret-123',
+            'email' => 'url-import-plain-list@example.com',
+            'display_name' => 'Url Import Plain List Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $this->createReadyUrlImportAiModel();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.url-import.store'), [
+                'url' => 'source.test/plain-lists',
+                'outputs' => ['knowledge', 'keywords', 'titles'],
+            ])
+            ->assertRedirect();
+
+        $job = UrlImportJob::query()->firstOrFail();
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
+            ->assertOk()
+            ->assertJsonPath('status', 'completed');
+
+        $result = json_decode((string) $job->refresh()->result_json, true);
+
+        $this->assertContains('营销自动化', $result['analysis']['keywords'] ?? []);
+        $this->assertContains('销售管道管理', $result['analysis']['keywords'] ?? []);
+        $this->assertContains('智能 CRM 如何帮助中小企业统一客户数据', $result['analysis']['titles'] ?? []);
     }
 
     public function test_url_import_fails_over_to_next_available_ai_model(): void

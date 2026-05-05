@@ -5,13 +5,20 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AiModel;
 use App\Models\Article;
+use App\Models\Author;
 use App\Models\Category;
 use App\Models\Image;
+use App\Models\ImageLibrary;
 use App\Models\Keyword;
+use App\Models\KeywordLibrary;
+use App\Models\KnowledgeBase;
+use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\Title;
+use App\Models\TitleLibrary;
+use App\Models\UrlImportJob;
 use App\Support\AdminWeb;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +43,13 @@ class DashboardController extends Controller
             (int) ($stats['completed_tasks'] ?? 0),
             (int) ($stats['failed_jobs'] ?? 0)
         );
+        $contentFunnel = $this->buildContentFunnel($stats);
+        $taskHealth = $this->buildTaskHealth();
+        $materialHealth = $this->buildMaterialHealth();
+        $aiHealth = $this->buildAiHealth();
+        $urlImportHealth = $this->buildUrlImportHealth();
+        $popularArticles = $this->buildPopularArticles();
+        $todoItems = $this->buildTodoItems($stats, $materialHealth, $aiHealth, $urlImportHealth);
 
         return view('admin.dashboard', [
             'pageTitle' => __('admin.dashboard.page_title'),
@@ -49,6 +63,13 @@ class DashboardController extends Controller
             'article_trend' => $articleTrend,
             'trend_chart' => $trendChart,
             'performance_stats' => $performanceStats,
+            'content_funnel' => $contentFunnel,
+            'task_health' => $taskHealth,
+            'material_health' => $materialHealth,
+            'ai_health' => $aiHealth,
+            'url_import_health' => $urlImportHealth,
+            'popular_articles' => $popularArticles,
+            'todo_items' => $todoItems,
         ]);
     }
 
@@ -206,6 +227,329 @@ class DashboardController extends Controller
         } catch (\Throwable) {
             return [];
         }
+    }
+
+    /**
+     * 内容生产漏斗：从素材供给到草稿、审核、发布和产生浏览的转化概览。
+     *
+     * @param  array<string, int|float>  $stats
+     * @return array{max: int, stages: list<array{key: string, label: string, count: int, tone: string}>}
+     */
+    private function buildContentFunnel(array $stats): array
+    {
+        $viewedArticles = 0;
+        try {
+            $viewedArticles = (int) Article::query()
+                ->whereNull('deleted_at')
+                ->where('view_count', '>', 0)
+                ->count();
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        $stages = [
+            [
+                'key' => 'titles',
+                'label' => __('admin.dashboard.funnel_titles'),
+                'count' => (int) ($stats['total_titles'] ?? 0),
+                'tone' => 'blue',
+            ],
+            [
+                'key' => 'drafts',
+                'label' => __('admin.dashboard.funnel_drafts'),
+                'count' => (int) ($stats['draft_articles'] ?? 0),
+                'tone' => 'amber',
+            ],
+            [
+                'key' => 'pending_review',
+                'label' => __('admin.dashboard.funnel_pending_review'),
+                'count' => (int) ($stats['pending_review'] ?? 0),
+                'tone' => 'purple',
+            ],
+            [
+                'key' => 'published',
+                'label' => __('admin.dashboard.funnel_published'),
+                'count' => (int) ($stats['published_articles'] ?? 0),
+                'tone' => 'green',
+            ],
+            [
+                'key' => 'viewed',
+                'label' => __('admin.dashboard.funnel_viewed'),
+                'count' => $viewedArticles,
+                'tone' => 'slate',
+            ],
+        ];
+
+        return [
+            'max' => max(1, ...array_column($stages, 'count')),
+            'stages' => $stages,
+        ];
+    }
+
+    /**
+     * @return array{
+     *   active_tasks: int,
+     *   paused_tasks: int,
+     *   running_jobs: int,
+     *   pending_jobs: int,
+     *   failed_jobs: int,
+     *   recent_failures: list<object>
+     * }
+     */
+    private function buildTaskHealth(): array
+    {
+        $out = [
+            'active_tasks' => 0,
+            'paused_tasks' => 0,
+            'running_jobs' => 0,
+            'pending_jobs' => 0,
+            'failed_jobs' => 0,
+            'recent_failures' => [],
+        ];
+
+        try {
+            $taskStatusCounts = Task::query()
+                ->selectRaw('status, COUNT(*) as c')
+                ->groupBy('status')
+                ->pluck('c', 'status')
+                ->all();
+            $out['active_tasks'] = (int) ($taskStatusCounts['active'] ?? 0);
+            $out['paused_tasks'] = (int) (($taskStatusCounts['paused'] ?? 0) + ($taskStatusCounts['inactive'] ?? 0));
+
+            $jobStatusCounts = TaskRun::query()
+                ->selectRaw('status, COUNT(*) as c')
+                ->groupBy('status')
+                ->pluck('c', 'status')
+                ->all();
+            $out['running_jobs'] = (int) ($jobStatusCounts['running'] ?? 0);
+            $out['pending_jobs'] = (int) ($jobStatusCounts['pending'] ?? 0);
+            $out['failed_jobs'] = (int) ($jobStatusCounts['failed'] ?? 0);
+
+            $out['recent_failures'] = DB::table('task_runs as tr')
+                ->leftJoin('tasks as t', 'tr.task_id', '=', 't.id')
+                ->where('tr.status', 'failed')
+                ->orderByDesc('tr.created_at')
+                ->select('tr.id', 'tr.error_message', 'tr.created_at', 't.name as task_name')
+                ->limit(4)
+                ->get()
+                ->all();
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function buildMaterialHealth(): array
+    {
+        $out = [
+            'keyword_libraries' => 0,
+            'title_libraries' => 0,
+            'knowledge_bases' => 0,
+            'image_libraries' => 0,
+            'authors' => 0,
+            'knowledge_chunks' => 0,
+            'vectorized_chunks' => 0,
+            'unvectorized_chunks' => 0,
+        ];
+
+        try {
+            $out['keyword_libraries'] = (int) KeywordLibrary::query()->count();
+            $out['title_libraries'] = (int) TitleLibrary::query()->count();
+            $out['knowledge_bases'] = (int) KnowledgeBase::query()->count();
+            $out['image_libraries'] = (int) ImageLibrary::query()->count();
+            $out['authors'] = (int) Author::query()->count();
+            $out['knowledge_chunks'] = (int) KnowledgeChunk::query()->count();
+            $out['vectorized_chunks'] = (int) KnowledgeChunk::query()
+                ->where(function ($query): void {
+                    $query->whereNotNull('embedding_json')
+                        ->orWhereNotNull('embedding_model_id')
+                        ->orWhereNotNull('embedding_vector');
+                })
+                ->count();
+            $out['unvectorized_chunks'] = max(0, $out['knowledge_chunks'] - $out['vectorized_chunks']);
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{chat_models: int, embedding_models: int, used_today: int, total_used: int, active_models: list<object>}
+     */
+    private function buildAiHealth(): array
+    {
+        $out = [
+            'chat_models' => 0,
+            'embedding_models' => 0,
+            'used_today' => 0,
+            'total_used' => 0,
+            'active_models' => [],
+        ];
+
+        try {
+            $activeModels = AiModel::query()->where('status', 'active');
+            $out['chat_models'] = (int) (clone $activeModels)
+                ->where(function ($query): void {
+                    $query->whereNull('model_type')
+                        ->orWhere('model_type', '')
+                        ->orWhere('model_type', 'chat');
+                })
+                ->count();
+            $out['embedding_models'] = (int) (clone $activeModels)
+                ->where('model_type', 'embedding')
+                ->count();
+            $out['used_today'] = (int) AiModel::query()->sum('used_today');
+            $out['total_used'] = (int) AiModel::query()->sum('total_used');
+            $out['active_models'] = AiModel::query()
+                ->where('status', 'active')
+                ->orderBy('failover_priority')
+                ->orderBy('id')
+                ->select('id', 'name', 'model_id', 'model_type', 'used_today', 'daily_limit')
+                ->limit(5)
+                ->get()
+                ->all();
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{total: int, running: int, completed: int, failed: int, waiting_import: int, recent_jobs: list<object>}
+     */
+    private function buildUrlImportHealth(): array
+    {
+        $out = [
+            'total' => 0,
+            'running' => 0,
+            'completed' => 0,
+            'failed' => 0,
+            'waiting_import' => 0,
+            'recent_jobs' => [],
+        ];
+
+        try {
+            $statusCounts = UrlImportJob::query()
+                ->selectRaw('status, COUNT(*) as c')
+                ->groupBy('status')
+                ->pluck('c', 'status')
+                ->all();
+            $out['total'] = (int) array_sum($statusCounts);
+            $out['running'] = (int) (($statusCounts['running'] ?? 0) + ($statusCounts['queued'] ?? 0));
+            $out['completed'] = (int) ($statusCounts['completed'] ?? 0);
+            $out['failed'] = (int) ($statusCounts['failed'] ?? 0);
+            $out['waiting_import'] = (int) UrlImportJob::query()
+                ->where('status', 'completed')
+                ->where('current_step', '!=', 'imported')
+                ->count();
+            $out['recent_jobs'] = UrlImportJob::query()
+                ->orderByDesc('created_at')
+                ->select('id', 'source_domain', 'page_title', 'status', 'current_step', 'progress_percent', 'created_at')
+                ->limit(5)
+                ->get()
+                ->all();
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<object>
+     */
+    private function buildPopularArticles(): array
+    {
+        try {
+            return DB::table('articles as a')
+                ->leftJoin('categories as c', 'a.category_id', '=', 'c.id')
+                ->whereNull('a.deleted_at')
+                ->orderByDesc('a.view_count')
+                ->orderByDesc('a.created_at')
+                ->select('a.id', 'a.title', 'a.view_count', 'a.status', 'c.name as category_name')
+                ->limit(5)
+                ->get()
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<string, int|float>  $stats
+     * @param  array<string, int>  $materialHealth
+     * @param  array{chat_models: int, embedding_models: int, used_today: int, total_used: int, active_models: list<object>}  $aiHealth
+     * @param  array{total: int, running: int, completed: int, failed: int, waiting_import: int, recent_jobs: list<object>}  $urlImportHealth
+     * @return list<array{label: string, value: int, href: string, tone: string}>
+     */
+    private function buildTodoItems(array $stats, array $materialHealth, array $aiHealth, array $urlImportHealth): array
+    {
+        $items = [];
+
+        if ((int) ($stats['failed_jobs'] ?? 0) > 0) {
+            $items[] = [
+                'label' => __('admin.dashboard.todo_failed_jobs'),
+                'value' => (int) ($stats['failed_jobs'] ?? 0),
+                'href' => route('admin.tasks.index'),
+                'tone' => 'red',
+            ];
+        }
+        if ((int) ($stats['pending_review'] ?? 0) > 0) {
+            $items[] = [
+                'label' => __('admin.dashboard.todo_pending_review'),
+                'value' => (int) ($stats['pending_review'] ?? 0),
+                'href' => route('admin.articles.index', ['review_status' => 'pending']),
+                'tone' => 'amber',
+            ];
+        }
+        if ((int) ($aiHealth['chat_models'] ?? 0) === 0) {
+            $items[] = [
+                'label' => __('admin.dashboard.todo_no_chat_model'),
+                'value' => 0,
+                'href' => route('admin.ai-models.index'),
+                'tone' => 'red',
+            ];
+        }
+        if ((int) ($aiHealth['embedding_models'] ?? 0) === 0 && (int) ($materialHealth['knowledge_bases'] ?? 0) > 0) {
+            $items[] = [
+                'label' => __('admin.dashboard.todo_no_embedding_model'),
+                'value' => 0,
+                'href' => route('admin.ai-models.index'),
+                'tone' => 'amber',
+            ];
+        }
+        if ((int) ($materialHealth['unvectorized_chunks'] ?? 0) > 0) {
+            $items[] = [
+                'label' => __('admin.dashboard.todo_unvectorized_chunks'),
+                'value' => (int) ($materialHealth['unvectorized_chunks'] ?? 0),
+                'href' => route('admin.knowledge-bases.index'),
+                'tone' => 'blue',
+            ];
+        }
+        if ((int) ($stats['total_titles'] ?? 0) < 20) {
+            $items[] = [
+                'label' => __('admin.dashboard.todo_low_titles'),
+                'value' => (int) ($stats['total_titles'] ?? 0),
+                'href' => route('admin.title-libraries.index'),
+                'tone' => 'slate',
+            ];
+        }
+        if ((int) ($urlImportHealth['failed'] ?? 0) > 0) {
+            $items[] = [
+                'label' => __('admin.dashboard.todo_url_import_failed'),
+                'value' => (int) ($urlImportHealth['failed'] ?? 0),
+                'href' => route('admin.url-import.history'),
+                'tone' => 'red',
+            ];
+        }
+
+        return array_slice($items, 0, 6);
     }
 
     /**

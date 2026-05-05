@@ -8,6 +8,20 @@
         $tc = $trend_chart ?? [];
         $ch = (int) ($tc['chart_height'] ?? 148);
         $cw = (int) ($tc['chart_width'] ?? 600);
+        $funnelTones = [
+            'blue' => ['bar' => 'bg-blue-600', 'pill' => 'bg-blue-50 text-blue-700'],
+            'amber' => ['bar' => 'bg-amber-500', 'pill' => 'bg-amber-50 text-amber-700'],
+            'purple' => ['bar' => 'bg-purple-600', 'pill' => 'bg-purple-50 text-purple-700'],
+            'green' => ['bar' => 'bg-emerald-600', 'pill' => 'bg-emerald-50 text-emerald-700'],
+            'slate' => ['bar' => 'bg-slate-700', 'pill' => 'bg-slate-100 text-slate-700'],
+            'red' => ['bar' => 'bg-red-600', 'pill' => 'bg-red-50 text-red-700'],
+        ];
+        $todoToneClasses = [
+            'red' => 'border-red-100 bg-red-50 text-red-700',
+            'amber' => 'border-amber-100 bg-amber-50 text-amber-700',
+            'blue' => 'border-blue-100 bg-blue-50 text-blue-700',
+            'slate' => 'border-slate-200 bg-slate-50 text-slate-700',
+        ];
     @endphp
 
     <div class="px-4 sm:px-0">
@@ -439,5 +453,236 @@
                 @endif
             </div>
         </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-100 px-6 py-5">
+                    <h3 class="text-lg font-semibold text-gray-900">{{ __('admin.dashboard.task_health') }}</h3>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="rounded-xl bg-blue-50 p-4">
+                            <div class="text-2xl font-bold text-blue-700">{{ $task_health['active_tasks'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs font-medium text-blue-700">{{ __('admin.dashboard.task_active') }}</div>
+                        </div>
+                        <div class="rounded-xl bg-slate-50 p-4">
+                            <div class="text-2xl font-bold text-slate-700">{{ $task_health['paused_tasks'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs font-medium text-slate-600">{{ __('admin.dashboard.task_paused') }}</div>
+                        </div>
+                        <div class="rounded-xl bg-emerald-50 p-4">
+                            <div class="text-2xl font-bold text-emerald-700">{{ $task_health['running_jobs'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs font-medium text-emerald-700">{{ __('admin.dashboard.task_running') }}</div>
+                        </div>
+                        <div class="rounded-xl bg-amber-50 p-4">
+                            <div class="text-2xl font-bold text-amber-700">{{ $task_health['pending_jobs'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs font-medium text-amber-700">{{ __('admin.dashboard.task_pending') }}</div>
+                        </div>
+                    </div>
+                    <div class="mt-5">
+                        <div class="mb-2 text-sm font-semibold text-gray-900">{{ __('admin.dashboard.recent_failures') }}</div>
+                        @if (empty($task_health['recent_failures']))
+                            <p class="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-500">{{ __('admin.dashboard.no_failures') }}</p>
+                        @else
+                            <div class="space-y-2">
+                                @foreach ($task_health['recent_failures'] as $failure)
+                                    <div class="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm">
+                                        <div class="font-medium text-red-700">{{ $failure->task_name ?? __('admin.dashboard.unknown_task') }}</div>
+                                        <div class="mt-1 line-clamp-2 text-xs text-red-600">{{ $failure->error_message }}</div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </section>
+
+            <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-100 px-6 py-5">
+                    <h3 class="text-lg font-semibold text-gray-900">{{ __('admin.dashboard.material_health') }}</h3>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <a href="{{ route('admin.keyword-libraries.index') }}" class="rounded-xl border border-gray-100 p-4 hover:bg-gray-50">
+                            <div class="text-xl font-bold text-gray-900">{{ $material_health['keyword_libraries'] ?? 0 }}</div>
+                            <div class="mt-1 text-gray-500">{{ __('admin.dashboard.material_keywords') }}</div>
+                        </a>
+                        <a href="{{ route('admin.title-libraries.index') }}" class="rounded-xl border border-gray-100 p-4 hover:bg-gray-50">
+                            <div class="text-xl font-bold text-gray-900">{{ $material_health['title_libraries'] ?? 0 }}</div>
+                            <div class="mt-1 text-gray-500">{{ __('admin.dashboard.material_titles') }}</div>
+                        </a>
+                        <a href="{{ route('admin.knowledge-bases.index') }}" class="rounded-xl border border-gray-100 p-4 hover:bg-gray-50">
+                            <div class="text-xl font-bold text-gray-900">{{ $material_health['knowledge_bases'] ?? 0 }}</div>
+                            <div class="mt-1 text-gray-500">{{ __('admin.dashboard.material_knowledge') }}</div>
+                        </a>
+                        <a href="{{ route('admin.authors.index') }}" class="rounded-xl border border-gray-100 p-4 hover:bg-gray-50">
+                            <div class="text-xl font-bold text-gray-900">{{ $material_health['authors'] ?? 0 }}</div>
+                            <div class="mt-1 text-gray-500">{{ __('admin.dashboard.material_authors') }}</div>
+                        </a>
+                    </div>
+                    <div class="mt-5 rounded-xl bg-slate-50 p-4">
+                        @php
+                            $chunkTotal = max(1, (int) ($material_health['knowledge_chunks'] ?? 0));
+                            $vectorPercent = min(100, round(((int) ($material_health['vectorized_chunks'] ?? 0) / $chunkTotal) * 100));
+                        @endphp
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="font-medium text-gray-700">{{ __('admin.dashboard.material_vectorized') }}</span>
+                            <span class="text-gray-500">{{ number_format($material_health['vectorized_chunks'] ?? 0) }} / {{ number_format($material_health['knowledge_chunks'] ?? 0) }}</span>
+                        </div>
+                        <div class="mt-3 h-2 rounded-full bg-white">
+                            <div class="h-full rounded-full bg-emerald-600" style="width: {{ $vectorPercent }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-100 px-6 py-5">
+                    <h3 class="text-lg font-semibold text-gray-900">{{ __('admin.dashboard.ai_health') }}</h3>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="rounded-xl bg-indigo-50 p-4">
+                            <div class="text-2xl font-bold text-indigo-700">{{ $ai_health['chat_models'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs font-medium text-indigo-700">{{ __('admin.dashboard.ai_chat_models') }}</div>
+                        </div>
+                        <div class="rounded-xl bg-purple-50 p-4">
+                            <div class="text-2xl font-bold text-purple-700">{{ $ai_health['embedding_models'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs font-medium text-purple-700">{{ __('admin.dashboard.ai_embedding_models') }}</div>
+                        </div>
+                    </div>
+                    <div class="mt-5 space-y-3 text-sm">
+                        <div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
+                            <span class="text-gray-500">{{ __('admin.dashboard.ai_used_today') }}</span>
+                            <span class="font-semibold text-gray-900">{{ number_format($ai_health['used_today'] ?? 0) }}</span>
+                        </div>
+                        <div class="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
+                            <span class="text-gray-500">{{ __('admin.dashboard.ai_total_calls') }}</span>
+                            <span class="font-semibold text-gray-900">{{ number_format($ai_health['total_used'] ?? 0) }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-100 px-6 py-5">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-900">{{ __('admin.dashboard.url_import_health') }}</h3>
+                        <a href="{{ route('admin.url-import.history') }}" class="text-sm font-medium text-blue-600 hover:text-blue-800">{{ __('admin.dashboard.view_all') }}</a>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-4 gap-3">
+                        <div class="rounded-xl bg-slate-50 p-3 text-center">
+                            <div class="text-xl font-bold text-slate-900">{{ $url_import_health['total'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs text-slate-500">{{ __('admin.dashboard.url_import_total') }}</div>
+                        </div>
+                        <div class="rounded-xl bg-blue-50 p-3 text-center">
+                            <div class="text-xl font-bold text-blue-700">{{ $url_import_health['running'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs text-blue-700">{{ __('admin.dashboard.url_import_running') }}</div>
+                        </div>
+                        <div class="rounded-xl bg-emerald-50 p-3 text-center">
+                            <div class="text-xl font-bold text-emerald-700">{{ $url_import_health['completed'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs text-emerald-700">{{ __('admin.dashboard.url_import_completed') }}</div>
+                        </div>
+                        <div class="rounded-xl bg-red-50 p-3 text-center">
+                            <div class="text-xl font-bold text-red-700">{{ $url_import_health['failed'] ?? 0 }}</div>
+                            <div class="mt-1 text-xs text-red-700">{{ __('admin.dashboard.url_import_failed') }}</div>
+                        </div>
+                    </div>
+                    <div class="mt-5 space-y-2">
+                        @forelse (($url_import_health['recent_jobs'] ?? []) as $job)
+                            <a href="{{ route('admin.url-import.show', $job->id) }}" class="flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3 text-sm hover:bg-gray-50">
+                                <span class="min-w-0 truncate text-gray-700">{{ $job->page_title ?: ($job->source_domain ?: '#'.$job->id) }}</span>
+                                <span class="ml-3 shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">{{ $job->status }}</span>
+                            </a>
+                        @empty
+                            <p class="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-500">{{ __('admin.dashboard.no_data') }}</p>
+                        @endforelse
+                    </div>
+                </div>
+            </section>
+
+            <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-100 px-6 py-5">
+                    <h3 class="text-lg font-semibold text-gray-900">{{ __('admin.dashboard.popular_articles') }}</h3>
+                </div>
+                <div class="p-6">
+                    <div class="space-y-3">
+                        @forelse (($popular_articles ?? []) as $article)
+                            <div class="flex items-start justify-between gap-4 rounded-xl border border-gray-100 px-4 py-3">
+                                <div class="min-w-0">
+                                    <div class="truncate text-sm font-medium text-gray-900">{{ $article->title }}</div>
+                                    <div class="mt-1 text-xs text-gray-500">{{ $article->category_name ?? __('admin.dashboard.uncategorized') }}</div>
+                                </div>
+                                <span class="shrink-0 text-sm font-semibold text-gray-700">{{ __('admin.dashboard.view_count_short', ['count' => number_format((int) $article->view_count)]) }}</span>
+                            </div>
+                        @empty
+                            <p class="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-500">{{ __('admin.dashboard.no_articles') }}</p>
+                        @endforelse
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+            <section class="xl:col-span-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-100 px-6 py-5">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">{{ __('admin.dashboard.content_funnel') }}</h3>
+                            <p class="mt-1 text-sm text-gray-500">{{ __('admin.dashboard.content_funnel_desc') }}</p>
+                        </div>
+                        <i data-lucide="activity" class="h-5 w-5 text-blue-500"></i>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-5">
+                        @foreach (($content_funnel['stages'] ?? []) as $stage)
+                            @php
+                                $tone = $funnelTones[$stage['tone'] ?? 'slate'] ?? $funnelTones['slate'];
+                                $percent = (($content_funnel['max'] ?? 1) > 0) ? min(100, round(($stage['count'] / ($content_funnel['max'] ?? 1)) * 100)) : 0;
+                            @endphp
+                            <div class="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+                                <div class="flex items-center justify-between gap-3">
+                                    <span class="text-sm font-medium text-gray-600">{{ $stage['label'] }}</span>
+                                    <span class="rounded-full px-2 py-1 text-xs font-semibold {{ $tone['pill'] }}">{{ number_format((int) $stage['count']) }}</span>
+                                </div>
+                                <div class="mt-4 h-2 overflow-hidden rounded-full bg-white">
+                                    <div class="h-full rounded-full {{ $tone['bar'] }}" style="width: {{ $percent }}%"></div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </section>
+
+            <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div class="border-b border-gray-100 px-6 py-5">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-900">{{ __('admin.dashboard.todo_title') }}</h3>
+                        <i data-lucide="bell-ring" class="h-5 w-5 text-amber-500"></i>
+                    </div>
+                </div>
+                <div class="p-6">
+                    @if (empty($todo_items))
+                        <div class="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-5 text-sm font-medium text-emerald-700">
+                            {{ __('admin.dashboard.todo_empty') }}
+                        </div>
+                    @else
+                        <div class="space-y-3">
+                            @foreach ($todo_items as $item)
+                                <a href="{{ $item['href'] }}" class="flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition hover:-translate-y-0.5 hover:shadow-sm {{ $todoToneClasses[$item['tone'] ?? 'slate'] ?? $todoToneClasses['slate'] }}">
+                                    <span>{{ $item['label'] }}</span>
+                                    <span>{{ number_format((int) $item['value']) }}</span>
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            </section>
+        </div>
+
     </div>
 @endsection

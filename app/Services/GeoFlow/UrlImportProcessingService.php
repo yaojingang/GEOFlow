@@ -170,7 +170,7 @@ final class UrlImportProcessingService
             $this->log($job, 'info', __('admin.url_import.log.preview_ready'));
 
             return $job->refresh();
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             $job->update([
                 'status' => 'failed',
                 'progress_percent' => 100,
@@ -347,7 +347,7 @@ final class UrlImportProcessingService
     private function parseHtml(string $html, string $baseUrl): array
     {
         $previous = libxml_use_internal_errors(true);
-        $dom = new DOMDocument();
+        $dom = new DOMDocument;
         $dom->loadHTML('<?xml encoding="utf-8" ?>'.$html);
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
@@ -437,7 +437,8 @@ final class UrlImportProcessingService
                 $keywordPayload = $this->requestAiJson(
                     $runtime,
                     $this->buildKeywordsSystemPrompt(),
-                    $this->buildKeywordsUserPrompt($pageJson, $cleaned, $aiKnowledge)
+                    $this->buildKeywordsUserPrompt($pageJson, $cleaned, $aiKnowledge),
+                    'keywords'
                 );
                 $keywordValues = $keywordPayload['keywords'] ?? (array_is_list($keywordPayload) ? $keywordPayload : []);
                 $aiKeywords = array_slice($this->cleanKeywordList($this->stringList($keywordValues)), 0, 10);
@@ -451,7 +452,8 @@ final class UrlImportProcessingService
                 $titlePayload = $this->requestAiJson(
                     $runtime,
                     $this->buildTitlesSystemPrompt(),
-                    $this->buildTitlesUserPrompt($pageJson, $cleaned, $aiKnowledge, $aiKeywords)
+                    $this->buildTitlesUserPrompt($pageJson, $cleaned, $aiKnowledge, $aiKeywords),
+                    'titles'
                 );
                 $titleValues = $titlePayload['titles'] ?? (array_is_list($titlePayload) ? $titlePayload : []);
                 $aiTitles = array_slice($this->stringList($titleValues), 0, 50);
@@ -543,7 +545,7 @@ final class UrlImportProcessingService
      * @param  array{provider:string,model_id:string,model:AiModel}  $runtime
      * @return array<string, mixed>
      */
-    private function requestAiJson(array $runtime, string $systemPrompt, string $userPrompt): array
+    private function requestAiJson(array $runtime, string $systemPrompt, string $userPrompt, ?string $listFallbackKey = null): array
     {
         $agent = new MarkdownContentWriterAgent($systemPrompt);
 
@@ -566,6 +568,13 @@ final class UrlImportProcessingService
         }
 
         $decoded = $this->decodeAiJson($content);
+        if ($decoded === []) {
+            $fallbackList = $listFallbackKey ? $this->parseAiList($content) : [];
+            if ($fallbackList !== []) {
+                $decoded = [$listFallbackKey => $fallbackList];
+            }
+        }
+
         if ($decoded === []) {
             throw new \RuntimeException(__('admin.url_import.error.ai_invalid_json', [
                 'preview' => $this->previewAiContent($content),
@@ -651,7 +660,7 @@ PROMPT;
             ."2. clean_summary 120-240 字，概括真实主体内容。\n"
             ."3. core_business 输出对象，包含 industry、products_services、target_audience、commercial_scenarios、value_proposition、evidence_limits。\n"
             ."4. facts 输出页面明确出现或可直接归纳的事实短句，优先服务/产品/能力/客户/场景/数据。\n"
-            ."5. entities 输出品牌、产品、服务、行业、目标用户、地名、人名等实体。";
+            .'5. entities 输出品牌、产品、服务、行业、目标用户、地名、人名等实体。';
     }
 
     private function buildKeywordsSystemPrompt(): string
@@ -848,11 +857,13 @@ PROMPT;
             if ($inString) {
                 if ($escaped) {
                     $escaped = false;
+
                     continue;
                 }
 
                 if ($char === '\\') {
                     $escaped = true;
+
                     continue;
                 }
 
@@ -865,11 +876,13 @@ PROMPT;
 
             if ($char === '"') {
                 $inString = true;
+
                 continue;
             }
 
             if ($char === $open) {
                 $depth++;
+
                 continue;
             }
 
@@ -890,6 +903,52 @@ PROMPT;
         $content = preg_replace('/\s+/u', ' ', $content) ?? $content;
 
         return Str::limit(trim($content), 240, '...');
+    }
+
+    /**
+     * Some models obey the semantic request but ignore the strict JSON wrapper and
+     * return comma-separated or numbered lists. Preserve those valid answers for
+     * list-only steps such as keywords and titles, while still requiring JSON for
+     * knowledge-base extraction.
+     *
+     * @return list<string>
+     */
+    private function parseAiList(string $content): array
+    {
+        $content = trim(strip_tags($content));
+        $content = preg_replace('/^\xEF\xBB\xBF/', '', $content) ?? $content;
+        $content = preg_replace('/<think\b[^>]*>.*?<\/think>/is', '', $content) ?? $content;
+        $content = preg_replace('/```(?:json|text)?\s*|\s*```/i', '', $content) ?? $content;
+        $content = trim($content);
+        if ($content === '') {
+            return [];
+        }
+
+        $lines = preg_split('/\R/u', $content) ?: [];
+        $items = [];
+        foreach ($lines as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+
+            $line = preg_replace('/^\s*(?:[-*•]|\d+[\.\)、)]|[（(]?\d+[）)])\s*/u', '', $line) ?? $line;
+            foreach (preg_split('/[,\x{FF0C};；、]/u', $line) ?: [] as $part) {
+                $part = trim((string) $part);
+                $part = preg_replace('/^[\"“”‘’]+|[\"“”‘’]+$/u', '', $part) ?? $part;
+                if ($part !== '') {
+                    $items[] = $part;
+                }
+            }
+        }
+
+        return Collection::make($items)
+            ->map(fn (string $item): string => $this->normalizeText($item))
+            ->filter(static fn (string $item): bool => $item !== '')
+            ->unique()
+            ->take(80)
+            ->values()
+            ->all();
     }
 
     /**
@@ -1057,7 +1116,6 @@ PROMPT;
     }
 
     /**
-     * @param  mixed  $value
      * @return list<string>
      */
     private function stringList(mixed $value): array
