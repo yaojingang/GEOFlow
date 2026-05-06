@@ -436,14 +436,25 @@ class WorkerExecutionService
         return $title;
     }
 
-    private function pickAuthor(Task $task): ?Author
+    private function pickAuthor(Task $task): Author
     {
         $authorId = (int) ($task->custom_author_id ?: $task->author_id);
         if ($authorId > 0) {
-            return Author::query()->find($authorId);
+            $author = Author::query()->find($authorId);
+            if ($author) {
+                return $author;
+            }
         }
 
-        return Author::query()->orderBy('id')->first();
+        $author = Author::query()->orderBy('id')->first();
+        if ($author) {
+            return $author;
+        }
+
+        return Author::query()->firstOrCreate(
+            ['name' => 'GEOFlow'],
+            ['bio' => 'Default GEOFlow author for automated content generation.']
+        );
     }
 
     private function pickCategory(Task $task): ?Category
@@ -501,6 +512,7 @@ class WorkerExecutionService
             }
 
             $value = $this->promptContextValue($name, $context);
+
             return trim($value) !== '' ? (string) ($matches[2] ?? '') : '';
         }, $prompt) ?? $prompt;
 
