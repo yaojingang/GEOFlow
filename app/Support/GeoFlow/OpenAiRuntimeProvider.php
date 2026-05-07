@@ -37,6 +37,32 @@ final class OpenAiRuntimeProvider
     }
 
     /**
+     * 将历史或自定义 api_url 规范为 Embeddings 可用的 base（根路径时补全 /v1）。
+     */
+    public static function resolveEmbeddingBaseUrl(string $apiUrl): string
+    {
+        $normalized = trim($apiUrl);
+        if ($normalized === '') {
+            return '';
+        }
+
+        $normalized = rtrim($normalized, '/');
+        if (preg_match('#/v1/embeddings$#', $normalized) === 1) {
+            return substr($normalized, 0, -strlen('/embeddings'));
+        }
+        if (preg_match('#/embeddings$#', $normalized) === 1) {
+            return substr($normalized, 0, -strlen('/embeddings'));
+        }
+
+        $path = (string) (parse_url($normalized, PHP_URL_PATH) ?? '');
+        if ($path === '' || $path === '/') {
+            return $normalized.'/v1';
+        }
+
+        return $normalized;
+    }
+
+    /**
      * Laravel AI 的 openai driver 默认走 Responses API；多数第三方兼容接口仍只支持 Chat Completions。
      */
     public static function resolveChatDriver(string $apiUrl, string $modelId = ''): string

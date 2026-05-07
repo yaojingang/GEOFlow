@@ -180,7 +180,7 @@ class KnowledgeChunkSyncService
             return null;
         }
 
-        $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($model->api_url ?? ''));
+        $providerUrl = OpenAiRuntimeProvider::resolveEmbeddingBaseUrl((string) ($model->api_url ?? ''));
         $apiKey = $this->decryptApiKey((string) ($model->getRawOriginal('api_key') ?? ''));
         $modelName = trim((string) ($model->model_id ?? ''));
         if ($providerUrl === '' || $apiKey === '' || $modelName === '') {

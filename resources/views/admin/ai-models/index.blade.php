@@ -150,9 +150,13 @@
                                         </span>
                                     @endif
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                    <button type="button" onclick='editModel(@json($model, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP))' class="text-blue-600 hover:text-blue-900">{{ __('admin.ai_models.edit') }}</button>
-                                    <button type="button" onclick="deleteModel({{ (int) $model['id'] }}, @js($model['name']))" class="text-red-600 hover:text-red-900">{{ __('admin.ai_models.delete') }}</button>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    <div class="flex items-center gap-3">
+                                        <button type="button" onclick="testModelConnection({{ (int) $model['id'] }}, this)" class="text-emerald-600 hover:text-emerald-900">{{ __('admin.ai_models.test') }}</button>
+                                        <button type="button" onclick='editModel(@json($model, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP))' class="text-blue-600 hover:text-blue-900">{{ __('admin.ai_models.edit') }}</button>
+                                        <button type="button" onclick="deleteModel({{ (int) $model['id'] }}, @js($model['name']))" class="text-red-600 hover:text-red-900">{{ __('admin.ai_models.delete') }}</button>
+                                    </div>
+                                    <div id="model-test-result-{{ (int) $model['id'] }}" class="mt-2 text-xs whitespace-normal max-w-xs"></div>
                                 </td>
                             </tr>
                         @endforeach
@@ -277,9 +281,15 @@
             apiKeyHelpCreate: @json(__('admin.ai_models.api_key_help_create')),
             apiKeyHelpEdit: @json(__('admin.ai_models.api_key_help_edit')),
             confirmDelete: @json(__('admin.ai_models.confirm_delete', ['name' => '__NAME__'])),
+            test: @json(__('admin.ai_models.test')),
+            testing: @json(__('admin.ai_models.testing')),
+            testSuccessPrefix: @json(__('admin.ai_models.test_success_prefix')),
+            testFailedPrefix: @json(__('admin.ai_models.test_failed_prefix')),
+            testNetworkError: @json(__('admin.ai_models.test_network_error')),
         };
         const UPDATE_URL_TEMPLATE = @json(route('admin.ai-models.update', ['modelId' => '__MODEL_ID__']));
         const DELETE_URL_TEMPLATE = @json(route('admin.ai-models.delete', ['modelId' => '__MODEL_ID__']));
+        const TEST_URL_TEMPLATE = @json(route('admin.ai-models.test', ['modelId' => '__MODEL_ID__']));
 
         const PROVIDER_PRESETS = {
             minimax: {name: 'MiniMax M2.7', version: 'M2.7', model_id: 'MiniMax-M2.7', api_url: 'https://api.minimax.io', model_type: 'chat'},
@@ -346,6 +356,54 @@
             `;
             document.body.appendChild(form);
             form.submit();
+        }
+
+        async function testModelConnection(id, button) {
+            const resultEl = document.getElementById(`model-test-result-${id}`);
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = AI_MODELS_I18N.testing;
+            button.classList.add('opacity-60', 'cursor-not-allowed');
+            setModelTestResult(resultEl, 'neutral', AI_MODELS_I18N.testing);
+
+            try {
+                const response = await fetch(TEST_URL_TEMPLATE.replace('__MODEL_ID__', String(id)), {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': @json(csrf_token()),
+                    },
+                    body: JSON.stringify({}),
+                });
+                const data = await response.json().catch(() => ({}));
+                const message = data.message || (response.ok ? AI_MODELS_I18N.testSuccessPrefix : AI_MODELS_I18N.testFailedPrefix);
+                const duration = data.meta && data.meta.duration_ms ? ` · ${data.meta.duration_ms}ms` : '';
+                setModelTestResult(
+                    resultEl,
+                    response.ok && data.success ? 'success' : 'failed',
+                    `${response.ok && data.success ? AI_MODELS_I18N.testSuccessPrefix : AI_MODELS_I18N.testFailedPrefix}${message}${duration}`
+                );
+            } catch (error) {
+                setModelTestResult(resultEl, 'failed', AI_MODELS_I18N.testNetworkError);
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+                button.classList.remove('opacity-60', 'cursor-not-allowed');
+            }
+        }
+
+        function setModelTestResult(element, state, message) {
+            if (!element) {
+                return;
+            }
+            const classes = {
+                neutral: 'text-slate-500',
+                success: 'text-emerald-700',
+                failed: 'text-red-700',
+            };
+            element.className = `mt-2 text-xs whitespace-normal max-w-xs ${classes[state] || classes.neutral}`;
+            element.textContent = message;
         }
 
         function fillPreset(provider) {

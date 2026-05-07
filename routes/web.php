@@ -202,6 +202,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::get('/', [AiModelController::class, 'index'])->name('index');
                 Route::post('create', [AiModelController::class, 'store'])->name('store');
                 Route::put('{modelId}', [AiModelController::class, 'update'])->name('update');
+                Route::post('{modelId}/test', [AiModelController::class, 'testConnection'])->name('test');
                 Route::post('{modelId}/delete', [AiModelController::class, 'destroy'])->name('delete');
                 Route::post('default-embedding', [AiModelController::class, 'updateDefaultEmbedding'])->name('default-embedding');
             });

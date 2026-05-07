@@ -40,4 +40,22 @@ class OpenAiRuntimeProviderTest extends TestCase
 
         $this->assertSame('DeepSeek Error: [invalid_request] model not found', $message);
     }
+
+    public function test_it_resolves_embedding_base_urls_without_forcing_chat_endpoint(): void
+    {
+        $this->assertSame(
+            'https://api.openai.com/v1',
+            OpenAiRuntimeProvider::resolveEmbeddingBaseUrl('https://api.openai.com')
+        );
+
+        $this->assertSame(
+            'https://api.example.com/v1',
+            OpenAiRuntimeProvider::resolveEmbeddingBaseUrl('https://api.example.com/v1/embeddings')
+        );
+
+        $this->assertSame(
+            'https://ark.cn-beijing.volces.com/api/v3',
+            OpenAiRuntimeProvider::resolveEmbeddingBaseUrl('https://ark.cn-beijing.volces.com/api/v3')
+        );
+    }
 }

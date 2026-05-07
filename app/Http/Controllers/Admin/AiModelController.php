@@ -8,10 +8,14 @@ use App\Models\Article;
 use App\Models\SiteSetting;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\View\View;
+use Throwable;
 
 /**
  * AI 模型配置控制器。
@@ -158,6 +162,84 @@ class AiModelController extends Controller
         }
 
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.delete_success'));
+    }
+
+    /**
+     * 测试单个 AI 模型的 API 连通性。
+     *
+     * 只发起最小化请求，不增加模型调用统计，也不返回敏感密钥。
+     */
+    public function testConnection(int $modelId): JsonResponse
+    {
+        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
+        $startedAt = microtime(true);
+
+        try {
+            $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
+            $endpoint = $this->resolveTestEndpoint($model, $modelType);
+            $apiKey = $this->decryptApiKey((string) ($model->getRawOriginal('api_key') ?? ''));
+            $modelName = trim((string) ($model->model_id ?? ''));
+
+            if ($endpoint === '') {
+                return $this->modelTestResponse(false, __('admin.ai_models.test_error_api_url_missing'), $startedAt, $modelType);
+            }
+            if ($apiKey === '') {
+                return $this->modelTestResponse(false, __('admin.ai_models.test_error_api_key_missing'), $startedAt, $modelType, $endpoint);
+            }
+            if ($modelName === '') {
+                return $this->modelTestResponse(false, __('admin.ai_models.test_error_model_missing'), $startedAt, $modelType, $endpoint);
+            }
+
+            $response = Http::acceptJson()
+                ->asJson()
+                ->withToken($apiKey)
+                ->timeout(45)
+                ->post($endpoint, $this->buildTestPayload($modelName, $modelType));
+
+            $json = $response->json();
+            if (! $response->successful()) {
+                return $this->modelTestResponse(
+                    false,
+                    __('admin.ai_models.test_failed_with_status', [
+                        'status' => (string) $response->status(),
+                        'message' => $this->previewResponseBody($response->body()),
+                    ]),
+                    $startedAt,
+                    $modelType,
+                    $endpoint,
+                    $response->status()
+                );
+            }
+
+            if (! $this->isValidTestResponse($json, $modelType)) {
+                return $this->modelTestResponse(
+                    false,
+                    __('admin.ai_models.test_invalid_response', [
+                        'message' => $this->previewResponseBody($response->body()),
+                    ]),
+                    $startedAt,
+                    $modelType,
+                    $endpoint,
+                    $response->status()
+                );
+            }
+
+            return $this->modelTestResponse(
+                true,
+                __('admin.ai_models.test_success', ['type' => $modelType === 'embedding' ? 'Embedding' : 'Chat']),
+                $startedAt,
+                $modelType,
+                $endpoint,
+                $response->status()
+            );
+        } catch (Throwable $exception) {
+            return $this->modelTestResponse(
+                false,
+                __('admin.ai_models.test_exception', ['message' => $this->previewResponseBody($exception->getMessage())]),
+                $startedAt,
+                $this->normalizeModelType((string) ($model->model_type ?? 'chat'))
+            );
+        }
     }
 
     /**
@@ -367,5 +449,83 @@ class AiModelController extends Controller
     private function decryptApiKey(string $storedApiKey): string
     {
         return $this->apiKeyCrypto->decrypt($storedApiKey);
+    }
+
+    private function resolveTestEndpoint(AiModel $model, string $modelType): string
+    {
+        $apiUrl = (string) ($model->api_url ?? '');
+        $providerBaseUrl = $modelType === 'embedding'
+            ? OpenAiRuntimeProvider::resolveEmbeddingBaseUrl($apiUrl)
+            : OpenAiRuntimeProvider::resolveChatBaseUrl($apiUrl);
+
+        if ($providerBaseUrl === '') {
+            return '';
+        }
+
+        return rtrim($providerBaseUrl, '/').($modelType === 'embedding' ? '/embeddings' : '/chat/completions');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildTestPayload(string $modelName, string $modelType): array
+    {
+        if ($modelType === 'embedding') {
+            return [
+                'model' => $modelName,
+                'input' => 'GEOFlow embedding connection test',
+            ];
+        }
+
+        return [
+            'model' => $modelName,
+            'messages' => [
+                ['role' => 'user', 'content' => 'Reply with OK.'],
+            ],
+            'temperature' => 0,
+            'max_tokens' => 8,
+        ];
+    }
+
+    private function isValidTestResponse(mixed $json, string $modelType): bool
+    {
+        if (! is_array($json)) {
+            return false;
+        }
+
+        if ($modelType === 'embedding') {
+            return isset($json['data'][0]['embedding']) && is_array($json['data'][0]['embedding']);
+        }
+
+        return isset($json['choices'][0]['message']['content'])
+            || isset($json['choices'][0]['text'])
+            || isset($json['choices'][0]['delta']['content']);
+    }
+
+    private function modelTestResponse(
+        bool $success,
+        string $message,
+        float $startedAt,
+        string $modelType,
+        string $endpoint = '',
+        ?int $httpStatus = null
+    ): JsonResponse {
+        return response()->json([
+            'success' => $success,
+            'message' => $message,
+            'meta' => [
+                'model_type' => $modelType,
+                'http_status' => $httpStatus,
+                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                'endpoint' => $endpoint,
+            ],
+        ], $success ? 200 : 422);
+    }
+
+    private function previewResponseBody(string $body): string
+    {
+        $body = trim(preg_replace('/\s+/u', ' ', $body) ?: $body);
+
+        return mb_strlen($body, 'UTF-8') > 240 ? mb_substr($body, 0, 240, 'UTF-8').'...' : $body;
     }
 }
