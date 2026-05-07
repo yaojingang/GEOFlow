@@ -189,6 +189,15 @@ docker compose up -d
 
 生产环境建议使用 **`docker-compose.prod.yml`**，改为 **`Nginx + php-fpm`**，而不是 `php artisan serve`。
 
+如果希望在常见云服务器上自动完成环境自检、Docker 检测、`.env.prod` 生成、容器部署和部署后健康检查，可以使用参考部署脚本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
+bash geoflow-docker-deploy.sh
+```
+
+脚本说明见 [`deploy-scripts/README.md`](deploy-scripts/README.md)。
+
 ```bash
 cp .env.prod.example .env.prod
 vi .env.prod

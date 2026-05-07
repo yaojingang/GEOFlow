@@ -181,6 +181,15 @@ Under **`docker-compose.yml`**, the **`init`** service runs first-time migration
 
 For production, use **`docker-compose.prod.yml`** with **Nginx + php-fpm** instead of `php artisan serve`.
 
+For common cloud servers, you can use the reference deployment script to run host checks, prepare `.env.prod`, deploy containers, and run post-deployment health checks:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
+bash geoflow-docker-deploy.sh
+```
+
+See [`../../deploy-scripts/README.md`](../../deploy-scripts/README.md).
+
 ```bash
 cp .env.prod.example .env.prod
 vi .env.prod

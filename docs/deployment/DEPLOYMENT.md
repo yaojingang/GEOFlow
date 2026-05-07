@@ -26,6 +26,32 @@
 - 开发：`docker-compose.yml`，继续使用 `php artisan serve`
 - 生产：`docker-compose.prod.yml`，改为 `nginx + php-fpm`
 
+## 1.1 一键部署脚本
+
+如果希望在常见云服务器、VPS 或面板服务器上先做环境自检，再自动完成生产 Docker 部署，可以使用仓库中的参考脚本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
+bash geoflow-docker-deploy.sh
+```
+
+脚本会完成：
+
+- 检查 CPU、内存、磁盘、Docker、Docker Compose 与端口占用
+- 克隆或更新 GEOFlow 源码
+- 生成 `.env.prod` 并写入生产默认配置
+- 启动 PostgreSQL、Redis、Nginx、PHP-FPM、队列、调度和 Reverb
+- 执行迁移、写入默认管理员、清理并重建 Laravel 缓存
+- 调用 `deploy-scripts/geoflow-healthcheck.sh` 做部署后自检
+
+如需部署成功后删除临时脚本，可使用：
+
+```bash
+GEOFLOW_SELF_DELETE=1 bash geoflow-docker-deploy.sh
+```
+
+完整变量说明见 `deploy-scripts/README.md`。
+
 ## 2. 准备环境文件
 
 ```bash
