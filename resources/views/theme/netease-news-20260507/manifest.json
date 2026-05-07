@@ -1,0 +1,28 @@
+{
+  "id": "netease-news-20260507",
+  "name": "NetEase News Inspired",
+  "version": "1.0.0",
+  "description": "A NetEase-inspired GEOFlow frontend theme mapping portal home, health-style category lists, and article detail pages while preserving GEOFlow data contracts.",
+  "templates": [
+    "layout",
+    "home",
+    "category",
+    "article"
+  ],
+  "notes": [
+    "Inspired by NetEase portal, NetEase Health channel, and NetEase article-page layout patterns. Does not copy NetEase assets, content, or proprietary code.",
+    "Keeps GEOFlow Blade variables, SEO meta fields, markdown HTML rendering, category navigation, footer, article routes, and optional article ad data intact.",
+    "Reference-only NetEase modules intentionally omitted: login, mailbox/register, app download widgets, comment/share widgets, large external ad slots, and unrelated image-heavy blocks."
+  ],
+  "base_theme_id": "toutiao-news-20260426",
+  "target_theme_id": "netease-news-20260507",
+  "mode": "theme",
+  "session_state": "published",
+  "created_at": "2026-05-07T21:48:48+08:00",
+  "preview_routes": [
+    "/",
+    "/category/{slug}",
+    "/article/{slug}",
+    "/archive"
+  ]
+}
