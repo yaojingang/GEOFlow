@@ -4,13 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AiModel;
-use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\ImageLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
-use App\Models\Task;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
@@ -18,7 +16,6 @@ use App\Support\AdminWeb;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Throwable;
 
@@ -107,7 +104,7 @@ class TaskController extends Controller
         }
 
         try {
-            $this->deleteTaskCascade($taskId);
+            $this->taskLifecycleService->deleteTask($taskId);
 
             return back()->with('message', __('admin.tasks.message.delete_success'));
         } catch (Throwable $e) {
@@ -284,36 +281,6 @@ class TaskController extends Controller
                 'message' => $e->getMessage(),
             ], 422);
         }
-    }
-
-    /**
-     * 与 bak 一致的关联删除顺序，避免外键阻塞。
-     */
-    private function deleteTaskCascade(int $taskId): void
-    {
-        DB::transaction(function () use ($taskId): void {
-            // 先软删任务文章，保持删除任务时文章进入回收站。
-            Article::query()
-                ->where('task_id', $taskId)
-                ->whereNull('deleted_at')
-                ->update([
-                    'deleted_at' => now(),
-                    'updated_at' => now(),
-                ]);
-
-            DB::table('article_queue')->where('task_id', $taskId)->delete();
-            DB::table('task_materials')->where('task_id', $taskId)->delete();
-            DB::table('task_schedules')->where('task_id', $taskId)->delete();
-
-            // SoftDeletes 默认会排除刚软删的文章；这里必须包含回收站文章，否则 FK 会阻止删除任务。
-            Article::withTrashed()
-                ->where('task_id', $taskId)
-                ->update([
-                    'task_id' => null,
-                    'updated_at' => now(),
-                ]);
-            Task::query()->whereKey($taskId)->delete();
-        });
     }
 
     /**

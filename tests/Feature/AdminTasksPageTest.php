@@ -122,4 +122,34 @@ class AdminTasksPageTest extends TestCase
             ->assertSee('data-batch-action="start"', false)
             ->assertSee('text-green-600 hover:text-green-800 hover:bg-green-50', false);
     }
+
+    public function test_authenticated_admin_can_delete_task_without_legacy_article_queue_table(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_delete_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-delete-admin@example.com',
+            'display_name' => 'Tasks Delete Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $task = Task::query()->create([
+            'name' => 'Delete Task Without Legacy Queue',
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.tasks.index'))
+            ->post(route('admin.tasks.delete', ['taskId' => (int) $task->id]))
+            ->assertRedirect(route('admin.tasks.index'))
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('message', __('admin.tasks.message.delete_success'));
+
+        $this->assertDatabaseMissing('tasks', ['id' => $task->id]);
+    }
 }
