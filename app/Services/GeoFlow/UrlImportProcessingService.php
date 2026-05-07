@@ -305,11 +305,16 @@ final class UrlImportProcessingService
         }
 
         $records = @dns_get_record($host, DNS_A + DNS_AAAA);
+        $hasPublicIp = false;
         foreach ($records ?: [] as $record) {
             $ip = (string) ($record['ip'] ?? $record['ipv6'] ?? '');
-            if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-                throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
+            if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+                $hasPublicIp = true;
+                break;
             }
+        }
+        if (! $hasPublicIp && ! empty($records)) {
+            throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
         }
     }
 

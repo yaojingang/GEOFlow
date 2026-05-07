@@ -88,7 +88,8 @@ class TitleAiGenerationService
             throw new \RuntimeException('ai_key_missing');
         }
 
-        $providerName = OpenAiRuntimeProvider::registerProvider('title_ai', 'openai', $providerUrl, $apiKey);
+        $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, (string) ($aiModel->model_id ?? ''));
+        $providerName = OpenAiRuntimeProvider::registerProvider('title_ai', $driver, $providerUrl, $apiKey);
 
         $styleMap = [
             'professional' => '专业严谨的',
