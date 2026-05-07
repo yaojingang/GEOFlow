@@ -114,9 +114,13 @@ MD);
     {
         $this->get(route('site.home'))
             ->assertOk()
+            ->assertSee('js/tailwindcss.play-cdn.js', false)
+            ->assertSee('js/lucide.min.js', false)
             ->assertSee('themes/toutiao-news-20260426/theme.css', false)
             ->assertSee('themes/toutiao-news-20260426/theme.js', false)
             ->assertSee('application/ld+json', false)
+            ->assertDontSee('cdn.tailwindcss.com', false)
+            ->assertDontSee('unpkg.com/lucide', false)
             ->assertDontSee('<style>', false)
             ->assertDontSee('data-hot-carousel]).forEach', false);
     }

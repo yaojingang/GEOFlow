@@ -15,11 +15,11 @@
     @endif
     <link rel="canonical" href="{{ $canonicalUrl ?? url()->current() }}">
     @stack('head')
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/custom.css') }}">
     <link rel="stylesheet" href="{{ asset('themes/toutiao-news-20260426/theme.css') }}">
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="{{ asset('js/lucide.min.js') }}"></script>
     @if(!empty($headAnalyticsCode))
         {!! $headAnalyticsCode !!}
     @endif
