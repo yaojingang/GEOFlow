@@ -304,18 +304,40 @@ final class UrlImportProcessingService
             throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
         }
 
-        $records = @dns_get_record($host, DNS_A + DNS_AAAA);
-        $hasPublicIp = false;
-        foreach ($records ?: [] as $record) {
+        $records = @dns_get_record($host, DNS_A + DNS_AAAA) ?: [];
+
+        // 跳过 ULA 地址（fc00::/7, fd00::/8），它们永远是本地 DNS 注入
+        //（如透明代理/Docker），不是真实攻击面。IP pinning 已在 fetchPage 中兜底。
+        $allowMixedDns = filter_var(env('URL_IMPORT_ALLOW_MIXED_DNS', false), FILTER_VALIDATE_BOOL);
+
+        foreach ($records as $record) {
             $ip = (string) ($record['ip'] ?? $record['ipv6'] ?? '');
-            if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
-                $hasPublicIp = true;
-                break;
+
+            if ($ip === '') {
+                continue;
+            }
+            if (! $allowMixedDns && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                // 默认：任一私有/保留 IP → 拒绝
+                throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
+            }
+            if ($allowMixedDns && ! self::isGloballyRoutable($ip) && ! self::isUlaAddress($ip)) {
+                // 宽松模式：仅拦截真实私有 IP，放过 ULA 注入地址
+                throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
             }
         }
-        if (! $hasPublicIp && ! empty($records)) {
-            throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
-        }
+    }
+
+    private static function isUlaAddress(string $ip): bool
+    {
+        // fc00::/7 = Unique Local Address (ULA)
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false
+            && inet_pton($ip) !== false
+            && (ord(inet_pton($ip)[0]) & 0xfe) === 0xfc;
+    }
+
+    private static function isGloballyRoutable(string $ip): bool
+    {
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
     }
 
     /**
@@ -323,13 +345,35 @@ final class UrlImportProcessingService
      */
     private function fetchPage(string $url): array
     {
-        $response = Http::timeout(20)
+        $effectiveUrl = $url;
+        $resolvedIp = null;
+
+        $parsed = parse_url($url);
+        $host = (string) ($parsed['host'] ?? '');
+        if ($host) {
+            $records = @dns_get_record($host, DNS_A + DNS_AAAA) ?: [];
+            foreach ($records as $record) {
+                $ip = (string) ($record['ip'] ?? $record['ipv6'] ?? '');
+                if ($ip && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                    $resolvedIp = $ip;
+                    $effectiveUrl = str_replace($host, $resolvedIp, $url);
+                    break;
+                }
+            }
+        }
+
+        $http = Http::timeout(20)
             ->connectTimeout(8)
             ->withHeaders([
                 'User-Agent' => 'GEOFlow URL Importer/1.0',
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            ])
-            ->get($url);
+            ]);
+
+        if ($resolvedIp) {
+            $http = $http->withHeaders(['Host' => $host]);
+        }
+
+        $response = $http->get($effectiveUrl);
 
         if (! $response->successful()) {
             throw new \RuntimeException(__('admin.url_import.error.fetch_failed', ['status' => $response->status()]));
