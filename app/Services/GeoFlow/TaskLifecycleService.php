@@ -452,6 +452,8 @@ class TaskLifecycleService
             if (! array_key_exists($field, $data)) {
                 if (! $isUpdate && $config['required']) {
                     $fieldErrors[$field] = '缺少必填字段';
+                } elseif (! $isUpdate) {
+                    $output[$field] = null;
                 }
 
                 continue;

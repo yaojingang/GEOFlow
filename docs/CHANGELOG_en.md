@@ -2,6 +2,35 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-05-08
+
+### v1.2.x
+
+- Added AI model connection testing:
+  - Admin AI model lists can now test API connectivity directly
+  - Basic checks cover both chat models and embedding models
+  - Failed tests return concrete errors to help diagnose API keys, endpoints, model IDs, and provider settings
+- Improved frontend and admin asset loading stability:
+  - Replaced external Tailwind Play CDN and Lucide CDN usage in frontend templates with locally hosted assets
+  - Reduces the risk of broken styles or scripts in regions where external CDNs are unstable
+- Added one-click deployment scripts and deployment documentation:
+  - Added `deploy-scripts/` for Docker deployment, server preflight checks, and post-deployment health checks
+  - Updated the Wiki with deployment guidance, server sizing recommendations, and deployment script usage notes
+- Fixed task deletion compatibility:
+  - Task deletion no longer depends on the legacy `article_queue` table
+  - Prevents `Undefined table: article_queue` errors on the current database schema
+- Improved optional material field handling in the task creation API:
+  - API task creation can now omit optional author, image library, knowledge base, and fixed category fields
+  - Omitted fields are written as explicit `null` values, keeping the API contract aligned with admin task creation
+  - Added API contract coverage for omitted optional material fields
+- Added a NetEase News-inspired frontend theme:
+  - Added the `netease-news-20260429` frontend theme
+  - Homepage, category, and article pages now support a cleaner two-column news-style reading layout
+  - Preserves GEOFlow article, category, author, SEO, and Schema data contracts
+- Added a TDWH English theme fork:
+  - Added the `tdwh-english-20260501` English theme sample
+  - Provides a clearer internationalized homepage, listing page, and article page structure for English content sites
+
 ## 2026-05-06
 
 ### v1.2.x
