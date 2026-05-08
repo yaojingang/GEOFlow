@@ -1,0 +1,29 @@
+{
+  "id": "tdwh-netease-news-en-20260508",
+  "name": "TDWH NetEase English",
+  "version": "1.0.0",
+  "description": "TDWH site-specific English frontend theme forked from NetEase News Inspired. It preserves GEOFlow data contracts while forcing English UI chrome for www.tdwh.com.",
+  "templates": [
+    "layout",
+    "home",
+    "category",
+    "article"
+  ],
+  "notes": [
+    "Inspired by NetEase portal, NetEase Health channel, and NetEase article-page layout patterns. Does not copy NetEase assets, content, or proprietary code.",
+    "Keeps GEOFlow Blade variables, SEO meta fields, markdown HTML rendering, category navigation, footer, article routes, and optional article ad data intact.",
+    "Reference-only NetEase modules intentionally omitted: login, mailbox/register, app download widgets, comment/share widgets, large external ad slots, and unrelated image-heavy blocks.",
+    "Site-specific English UI fork for www.tdwh.com. Article titles, category names, and article body content remain data-driven."
+  ],
+  "base_theme_id": "netease-news-20260507",
+  "target_theme_id": "tdwh-netease-news-en-20260508",
+  "mode": "theme",
+  "session_state": "published",
+  "created_at": "2026-05-08T12:56:40+08:00",
+  "preview_routes": [
+    "/",
+    "/category/{slug}",
+    "/article/{slug}",
+    "/archive"
+  ]
+}
