@@ -1,3 +1,20 @@
+@php
+    app()->setLocale('en');
+
+    if (($search ?? '') !== '') {
+        $viewTitle = 'Search: '.$search;
+        $pageTitle = $viewTitle.' - '.$siteTitle;
+        $pageDescription = $search.' - '.$siteDescription;
+    } elseif (($categoryMissing ?? false) === true) {
+        $viewTitle = 'Category not found';
+        $pageTitle = $viewTitle.' - '.$siteTitle;
+    } elseif (($category ?? null) !== null) {
+        $viewTitle = $category->name;
+    } else {
+        $viewTitle = 'Latest Articles';
+    }
+@endphp
+
 @extends('theme.netease-news-20260507.layout')
 
 @push('head')

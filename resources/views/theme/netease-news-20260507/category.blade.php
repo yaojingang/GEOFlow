@@ -1,3 +1,7 @@
+@php
+    app()->setLocale('en');
+@endphp
+
 @extends('theme.netease-news-20260507.layout')
 
 @push('head')
