@@ -2407,6 +2407,8 @@ return [
             'analyze_done' => 'Analysis completed. Keywords: :keywords, titles: :titles',
             'ai_analyze_done' => 'AI parsing completed with the default backend model: :model',
             'ai_model_try' => 'Trying AI model: :model',
+            'ai_model_attempt' => 'Trying AI model: :model (attempt :current/:max)',
+            'ai_model_retry' => 'AI model :model failed on attempt :current/:max. Retrying: :message',
             'ai_model_failed' => 'AI model :model failed: :message',
             'ai_skipped_no_model' => 'No available default chat model is configured. URL Smart Import cannot run.',
             'ai_fallback' => 'AI parsing failed and the job was stopped: :message',

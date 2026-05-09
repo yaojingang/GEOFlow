@@ -11,6 +11,7 @@ use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
+use App\Models\UrlImportJobLog;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -641,6 +642,71 @@ class AdminMaterialsPagesTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->post(route('admin.url-import.store'), [
                 'url' => 'source.test/failover',
+                'outputs' => ['knowledge', 'keywords', 'titles'],
+            ])
+            ->assertRedirect();
+
+        $job = UrlImportJob::query()->firstOrFail();
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
+            ->assertOk()
+            ->assertJsonPath('status', 'completed');
+
+        $result = json_decode((string) $job->refresh()->result_json, true);
+        $this->assertSame('URL Import AI Model', $result['analysis']['model']['name'] ?? null);
+        $this->assertDatabaseHas('url_import_job_logs', [
+            'job_id' => (int) $job->id,
+            'level' => 'warning',
+        ]);
+        $this->assertSame(3, UrlImportJobLog::query()
+            ->where('job_id', (int) $job->id)
+            ->where('level', 'warning')
+            ->where('message', 'like', '%Bad Model%')
+            ->count());
+    }
+
+    public function test_url_import_retries_transient_ai_failure_before_success(): void
+    {
+        Http::fake([
+            'https://source.test/transient' => Http::response(
+                '<!doctype html><html><head><title>CRM 增长页</title><meta name="description" content="CRM 增长页摘要"></head><body><article><h1>CRM 增长页</h1><p>面向企业的 CRM 增长服务。</p></article></body></html>',
+                200,
+                ['Content-Type' => 'text/html; charset=utf-8']
+            ),
+            'https://ai.test/v1/chat/completions' => Http::sequence()
+                ->push(['error' => ['message' => 'temporary upstream error']], 500)
+                ->push(['choices' => [['message' => ['content' => json_encode([
+                    'clean_title' => 'CRM 增长页',
+                    'clean_summary' => '面向企业的 CRM 增长服务。',
+                    'clean_text' => '面向企业的 CRM 增长服务。',
+                    'core_business' => ['industry' => 'CRM', 'products_services' => ['CRM 增长服务']],
+                    'entities' => ['CRM 增长服务'],
+                    'facts' => ['面向企业的 CRM 增长服务。'],
+                    'noise_removed' => [],
+                ], JSON_UNESCAPED_UNICODE)]]]], 200)
+                ->push(['choices' => [['message' => ['content' => json_encode([
+                    'summary' => '面向企业的 CRM 增长服务。',
+                    'library_name' => 'CRM 增长页',
+                    'knowledge_markdown' => "# CRM 增长页\n\n- 面向企业的 CRM 增长服务。",
+                ], JSON_UNESCAPED_UNICODE)]]]], 200)
+                ->push(['choices' => [['message' => ['content' => json_encode(['keywords' => ['CRM增长', '客户管理']], JSON_UNESCAPED_UNICODE)]]]], 200)
+                ->push(['choices' => [['message' => ['content' => json_encode(['titles' => ['CRM 增长服务如何支撑 GEO 运营']], JSON_UNESCAPED_UNICODE)]]]], 200),
+        ]);
+
+        $admin = Admin::query()->create([
+            'username' => 'url_import_retry_admin',
+            'password' => 'secret-123',
+            'email' => 'url-import-retry@example.com',
+            'display_name' => 'Url Import Retry Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $this->createReadyUrlImportAiModel();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.url-import.store'), [
+                'url' => 'source.test/transient',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
             ])
             ->assertRedirect();

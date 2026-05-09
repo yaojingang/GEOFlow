@@ -24,6 +24,8 @@ use Throwable;
 
 final class UrlImportProcessingService
 {
+    private const AI_ANALYSIS_MAX_ATTEMPTS = 3;
+
     public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
 
     /**
@@ -401,89 +403,107 @@ final class UrlImportProcessingService
         $errors = [];
 
         foreach ($models as $model) {
-            try {
-                $this->log($job, 'info', __('admin.url_import.log.ai_model_try', ['model' => $this->modelDisplayName($model)]), 'knowledge');
-                $runtime = $this->prepareAiRuntime($model);
+            for ($attempt = 1; $attempt <= self::AI_ANALYSIS_MAX_ATTEMPTS; $attempt++) {
+                try {
+                    $this->log($job, 'info', __('admin.url_import.log.ai_model_attempt', [
+                        'model' => $this->modelDisplayName($model),
+                        'current' => $attempt,
+                        'max' => self::AI_ANALYSIS_MAX_ATTEMPTS,
+                    ]), 'knowledge');
+                    $runtime = $this->prepareAiRuntime($model);
 
-                $this->updateStep($job, 'knowledge', 45);
-                $this->log($job, 'info', __('admin.url_import.log.knowledge_start'));
-                $this->log($job, 'info', __('admin.url_import.log.clean_start'));
-                $cleaned = $this->normalizeCleanedPage($this->requestAiJson(
-                    $runtime,
-                    $this->buildCleanSystemPrompt(),
-                    $this->buildCleanUserPrompt($pageJson)
-                ), $parsed);
-                $this->log($job, 'info', __('admin.url_import.log.clean_done', [
-                    'chars' => mb_strlen((string) $cleaned['text'], 'UTF-8'),
-                ]));
+                    $this->updateStep($job, 'knowledge', 45);
+                    $this->log($job, 'info', __('admin.url_import.log.knowledge_start'));
+                    $this->log($job, 'info', __('admin.url_import.log.clean_start'));
+                    $cleaned = $this->normalizeCleanedPage($this->requestAiJson(
+                        $runtime,
+                        $this->buildCleanSystemPrompt(),
+                        $this->buildCleanUserPrompt($pageJson)
+                    ), $parsed);
+                    $this->log($job, 'info', __('admin.url_import.log.clean_done', [
+                        'chars' => mb_strlen((string) $cleaned['text'], 'UTF-8'),
+                    ]));
 
-                $knowledgePayload = $this->requestAiJson(
-                    $runtime,
-                    $this->buildKnowledgeSystemPrompt(),
-                    $this->buildKnowledgeUserPrompt($pageJson, $cleaned, [])
-                );
-                $aiSummary = $this->normalizeText((string) ($knowledgePayload['summary'] ?? $cleaned['summary'] ?? $summary));
-                $aiLibraryName = $this->safeName((string) ($knowledgePayload['library_name'] ?? $cleaned['title'] ?? $libraryName));
-                $aiKnowledge = trim((string) ($knowledgePayload['knowledge_markdown'] ?? ''));
-                if ($aiKnowledge === '') {
-                    throw new \RuntimeException(__('admin.url_import.error.ai_knowledge_missing'));
+                    $knowledgePayload = $this->requestAiJson(
+                        $runtime,
+                        $this->buildKnowledgeSystemPrompt(),
+                        $this->buildKnowledgeUserPrompt($pageJson, $cleaned, [])
+                    );
+                    $aiSummary = $this->normalizeText($this->aiResponseTextToString($knowledgePayload['summary'] ?? $cleaned['summary'] ?? $summary));
+                    $aiLibraryName = $this->safeName($this->aiResponseTextToString($knowledgePayload['library_name'] ?? $cleaned['title'] ?? $libraryName));
+                    $aiKnowledge = trim($this->aiResponseTextToString($knowledgePayload['knowledge_markdown'] ?? ''));
+                    if ($aiKnowledge === '') {
+                        throw new \RuntimeException(__('admin.url_import.error.ai_knowledge_missing'));
+                    }
+                    $this->log($job, 'info', __('admin.url_import.log.knowledge_done', [
+                        'chars' => mb_strlen($aiKnowledge, 'UTF-8'),
+                    ]));
+
+                    $this->updateStep($job, 'keywords', 62);
+                    $this->log($job, 'info', __('admin.url_import.log.keywords_start'));
+                    $keywordPayload = $this->requestAiJson(
+                        $runtime,
+                        $this->buildKeywordsSystemPrompt(),
+                        $this->buildKeywordsUserPrompt($pageJson, $cleaned, $aiKnowledge),
+                        'keywords'
+                    );
+                    $keywordValues = $keywordPayload['keywords'] ?? (array_is_list($keywordPayload) ? $keywordPayload : []);
+                    $aiKeywords = array_slice($this->cleanKeywordList($this->stringList($keywordValues)), 0, 10);
+                    if ($aiKeywords === []) {
+                        throw new \RuntimeException(__('admin.url_import.error.ai_keywords_missing'));
+                    }
+                    $this->log($job, 'info', __('admin.url_import.log.keywords_done', ['count' => count($aiKeywords)]));
+
+                    $this->updateStep($job, 'titles', 80);
+                    $this->log($job, 'info', __('admin.url_import.log.titles_start'));
+                    $titlePayload = $this->requestAiJson(
+                        $runtime,
+                        $this->buildTitlesSystemPrompt(),
+                        $this->buildTitlesUserPrompt($pageJson, $cleaned, $aiKnowledge, $aiKeywords),
+                        'titles'
+                    );
+                    $titleValues = $titlePayload['titles'] ?? (array_is_list($titlePayload) ? $titlePayload : []);
+                    $aiTitles = array_slice($this->stringList($titleValues), 0, 50);
+                    if ($aiTitles === []) {
+                        throw new \RuntimeException(__('admin.url_import.error.ai_titles_missing'));
+                    }
+                    $this->log($job, 'info', __('admin.url_import.log.titles_done', ['count' => count($aiTitles)]));
+
+                    $this->log($job, 'info', __('admin.url_import.log.ai_analyze_done', ['model' => $this->modelDisplayName($model)]));
+
+                    return [
+                        'summary' => $aiSummary !== '' ? $aiSummary : Str::limit($text, 220, '...'),
+                        'library_name' => $aiLibraryName !== '' ? $aiLibraryName : $libraryName,
+                        'keywords' => $aiKeywords,
+                        'titles' => $aiTitles,
+                        'knowledge_markdown' => $aiKnowledge,
+                        'analysis_source' => 'ai',
+                        'model' => [
+                            'id' => (int) $model->id,
+                            'name' => (string) $model->name,
+                        ],
+                        'page_json' => $pageJson,
+                        'cleaned' => $cleaned,
+                    ];
+                } catch (Throwable $exception) {
+                    $message = $this->normalizeAiErrorMessage($exception, $model);
+                    if ($attempt < self::AI_ANALYSIS_MAX_ATTEMPTS) {
+                        $this->log($job, 'warning', __('admin.url_import.log.ai_model_retry', [
+                            'model' => $this->modelDisplayName($model),
+                            'current' => $attempt,
+                            'max' => self::AI_ANALYSIS_MAX_ATTEMPTS,
+                            'message' => $message,
+                        ]), (string) ($job->current_step ?: 'knowledge'));
+
+                        continue;
+                    }
+
+                    $errors[] = $this->formatModelFailure($model, $exception);
+                    $this->log($job, 'warning', __('admin.url_import.log.ai_model_failed', [
+                        'model' => $this->modelDisplayName($model),
+                        'message' => $message,
+                    ]), (string) ($job->current_step ?: 'knowledge'));
                 }
-                $this->log($job, 'info', __('admin.url_import.log.knowledge_done', [
-                    'chars' => mb_strlen($aiKnowledge, 'UTF-8'),
-                ]));
-
-                $this->updateStep($job, 'keywords', 62);
-                $this->log($job, 'info', __('admin.url_import.log.keywords_start'));
-                $keywordPayload = $this->requestAiJson(
-                    $runtime,
-                    $this->buildKeywordsSystemPrompt(),
-                    $this->buildKeywordsUserPrompt($pageJson, $cleaned, $aiKnowledge),
-                    'keywords'
-                );
-                $keywordValues = $keywordPayload['keywords'] ?? (array_is_list($keywordPayload) ? $keywordPayload : []);
-                $aiKeywords = array_slice($this->cleanKeywordList($this->stringList($keywordValues)), 0, 10);
-                if ($aiKeywords === []) {
-                    throw new \RuntimeException(__('admin.url_import.error.ai_keywords_missing'));
-                }
-                $this->log($job, 'info', __('admin.url_import.log.keywords_done', ['count' => count($aiKeywords)]));
-
-                $this->updateStep($job, 'titles', 80);
-                $this->log($job, 'info', __('admin.url_import.log.titles_start'));
-                $titlePayload = $this->requestAiJson(
-                    $runtime,
-                    $this->buildTitlesSystemPrompt(),
-                    $this->buildTitlesUserPrompt($pageJson, $cleaned, $aiKnowledge, $aiKeywords),
-                    'titles'
-                );
-                $titleValues = $titlePayload['titles'] ?? (array_is_list($titlePayload) ? $titlePayload : []);
-                $aiTitles = array_slice($this->stringList($titleValues), 0, 50);
-                if ($aiTitles === []) {
-                    throw new \RuntimeException(__('admin.url_import.error.ai_titles_missing'));
-                }
-                $this->log($job, 'info', __('admin.url_import.log.titles_done', ['count' => count($aiTitles)]));
-
-                $this->log($job, 'info', __('admin.url_import.log.ai_analyze_done', ['model' => $this->modelDisplayName($model)]));
-
-                return [
-                    'summary' => $aiSummary !== '' ? $aiSummary : Str::limit($text, 220, '...'),
-                    'library_name' => $aiLibraryName !== '' ? $aiLibraryName : $libraryName,
-                    'keywords' => $aiKeywords,
-                    'titles' => $aiTitles,
-                    'knowledge_markdown' => $aiKnowledge,
-                    'analysis_source' => 'ai',
-                    'model' => [
-                        'id' => (int) $model->id,
-                        'name' => (string) $model->name,
-                    ],
-                    'page_json' => $pageJson,
-                    'cleaned' => $cleaned,
-                ];
-            } catch (Throwable $exception) {
-                $errors[] = $this->formatModelFailure($model, $exception);
-                $this->log($job, 'warning', __('admin.url_import.log.ai_model_failed', [
-                    'model' => $this->modelDisplayName($model),
-                    'message' => $this->normalizeAiErrorMessage($exception, $model),
-                ]), (string) ($job->current_step ?: 'knowledge'));
             }
         }
 
@@ -562,7 +582,7 @@ final class UrlImportProcessingService
             throw new \RuntimeException($this->normalizeAiErrorMessage($exception, $model), 0, $exception);
         }
 
-        $content = trim((string) ($response->text ?? ''));
+        $content = $this->aiResponseTextToString($response->text ?? '');
         if ($content === '') {
             throw new \RuntimeException(__('admin.url_import.error.ai_empty_content'));
         }
@@ -590,6 +610,54 @@ final class UrlImportProcessingService
         ]);
 
         return $decoded;
+    }
+
+    private function aiResponseTextToString(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_string($value) || is_numeric($value) || is_bool($value)) {
+            return trim((string) $value);
+        }
+
+        if (is_array($value)) {
+            if (! array_is_list($value)) {
+                foreach (['text', 'content', 'message'] as $key) {
+                    if (array_key_exists($key, $value)) {
+                        $nested = $this->aiResponseTextToString($value[$key]);
+                        if ($nested !== '') {
+                            return $nested;
+                        }
+                    }
+                }
+
+                $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+
+                return is_string($json) ? trim($json) : '';
+            }
+
+            $parts = [];
+            foreach ($value as $item) {
+                $part = $this->aiResponseTextToString($item);
+                if ($part !== '') {
+                    $parts[] = $part;
+                }
+            }
+
+            return trim(implode("\n", $parts));
+        }
+
+        if (is_object($value)) {
+            if (method_exists($value, '__toString')) {
+                return trim((string) $value);
+            }
+
+            return $this->aiResponseTextToString(get_object_vars($value));
+        }
+
+        return '';
     }
 
     private function modelDisplayName(AiModel $model): string
@@ -1125,7 +1193,7 @@ PROMPT;
         }
 
         return Collection::make($value)
-            ->map(static fn (mixed $item): string => trim((string) $item))
+            ->map(fn (mixed $item): string => $this->aiResponseTextToString($item))
             ->filter(static fn (string $item): bool => $item !== '')
             ->unique()
             ->values()
@@ -1139,9 +1207,9 @@ PROMPT;
      */
     private function normalizeCleanedPage(array $decoded, array $parsed): array
     {
-        $title = $this->normalizeText((string) ($decoded['clean_title'] ?? $decoded['title'] ?? $parsed['title'] ?? ''));
-        $summary = $this->normalizeText((string) ($decoded['clean_summary'] ?? $decoded['summary'] ?? $parsed['summary'] ?? ''));
-        $text = $this->normalizeText((string) ($decoded['clean_text'] ?? $decoded['text'] ?? $parsed['text'] ?? ''));
+        $title = $this->normalizeText($this->aiResponseTextToString($decoded['clean_title'] ?? $decoded['title'] ?? $parsed['title'] ?? ''));
+        $summary = $this->normalizeText($this->aiResponseTextToString($decoded['clean_summary'] ?? $decoded['summary'] ?? $parsed['summary'] ?? ''));
+        $text = $this->normalizeText($this->aiResponseTextToString($decoded['clean_text'] ?? $decoded['text'] ?? $parsed['text'] ?? ''));
 
         if ($text === '') {
             $text = $this->normalizeText((string) ($parsed['text'] ?? ''));

@@ -2407,6 +2407,8 @@ return [
             'analyze_done' => '智能分析完成，关键词：:keywords 个，标题：:titles 个',
             'ai_analyze_done' => '已调用后台默认模型完成 AI 解析：:model',
             'ai_model_try' => '开始尝试 AI 模型：:model',
+            'ai_model_attempt' => '开始尝试 AI 模型：:model（第 :current/:max 次）',
+            'ai_model_retry' => 'AI 模型 :model 第 :current/:max 次调用失败，准备重试：:message',
             'ai_model_failed' => 'AI 模型 :model 调用失败：:message',
             'ai_skipped_no_model' => '未配置可用的默认聊天模型，无法执行 URL 智能采集',
             'ai_fallback' => 'AI 解析失败，任务已停止：:message',
