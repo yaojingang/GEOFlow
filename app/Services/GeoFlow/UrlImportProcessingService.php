@@ -307,12 +307,34 @@ final class UrlImportProcessingService
         }
 
         $records = @dns_get_record($host, DNS_A + DNS_AAAA);
+        $allowMixedDns = (bool) config('geoflow.url_import_allow_mixed_dns', false);
+
         foreach ($records ?: [] as $record) {
             $ip = (string) ($record['ip'] ?? $record['ipv6'] ?? '');
-            if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            if ($ip === '') {
+                continue;
+            }
+
+            // 默认严格阻断所有私有/保留地址。该开关仅用于明确受控的混合 DNS 环境。
+            if ($allowMixedDns && self::isUlaAddress($ip)) {
+                continue;
+            }
+
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
                 throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
             }
         }
+    }
+
+    private static function isUlaAddress(string $ip): bool
+    {
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+            return false;
+        }
+
+        $bin = @inet_pton($ip);
+
+        return $bin !== false && (ord($bin[0]) & 0xfe) === 0xfc;
     }
 
     /**

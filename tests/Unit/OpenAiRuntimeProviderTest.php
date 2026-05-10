@@ -58,4 +58,54 @@ class OpenAiRuntimeProviderTest extends TestCase
             OpenAiRuntimeProvider::resolveEmbeddingBaseUrl('https://ark.cn-beijing.volces.com/api/v3')
         );
     }
+
+    public function test_it_resolves_chat_driver_for_openai(): void
+    {
+        $this->assertSame('openai', OpenAiRuntimeProvider::resolveChatDriver('https://api.openai.com/v1', 'gpt-4'));
+    }
+
+    public function test_it_resolves_chat_driver_for_deepseek(): void
+    {
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.deepseek.com/v1', 'deepseek-chat'));
+    }
+
+    public function test_it_resolves_chat_driver_by_model_prefix(): void
+    {
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://custom.api.com/v1', 'deepseek-v4-pro'));
+    }
+
+    public function test_it_resolves_chat_driver_for_openrouter(): void
+    {
+        $this->assertSame('openrouter', OpenAiRuntimeProvider::resolveChatDriver('https://openrouter.ai/api/v1', 'anthropic/claude-3'));
+    }
+
+    public function test_it_resolves_chat_driver_for_zhipu(): void
+    {
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://open.bigmodel.cn/api/paas/v4', 'glm-5.1'));
+    }
+
+    public function test_it_resolves_chat_driver_for_minimax(): void
+    {
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimaxi.com/v1', 'MiniMax-M2.7'));
+    }
+
+    public function test_it_resolves_chat_driver_for_siliconflow(): void
+    {
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.siliconflow.cn/v1', 'deepseek-ai/DeepSeek-V4-Flash'));
+    }
+
+    public function test_it_resolves_chat_driver_for_volcengine(): void
+    {
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-2-0-lite-260428'));
+    }
+
+    public function test_it_resolves_chat_driver_for_aliyun(): void
+    {
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen3.6-plus'));
+    }
+
+    public function test_it_defaults_to_deepseek_for_unknown(): void
+    {
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.unknown-provider.com/v1', 'some-model'));
+    }
 }

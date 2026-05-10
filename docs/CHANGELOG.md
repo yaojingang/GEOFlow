@@ -2,6 +2,20 @@
 
 该文档记录公开仓库可见功能的持续更新。后续每次推送到 GitHub 时，同步更新本文件和英文版 `CHANGELOG_en.md`。
 
+## 2026-05-10
+
+### v1.2.x
+
+- 优化第三方 AI 标题生成兼容性：
+  - 标题库 AI 生成链路不再硬编码 `openai` driver
+  - 根据 API Base URL 与模型 ID 自动选择运行时 driver
+  - 避免 DeepSeek、智谱、MiniMax、火山方舟、阿里百炼等 OpenAI-compatible 接口被误调 `/v1/responses` 导致 404
+- 增强 URL 智能采集安全配置：
+  - URL 采集 SSRF 防护默认保持严格模式
+  - 新增 `URL_IMPORT_ALLOW_MIXED_DNS=false` 示例配置，仅用于明确受控的透明代理、Docker 或 VPN 混合 DNS 环境
+  - 业务代码统一读取 `config('geoflow.url_import_allow_mixed_dns')`，兼容 Laravel 配置缓存
+- 补充模型 driver 识别与 URL 标准化测试覆盖。
+
 ## 2026-05-08
 
 ### v1.2.x

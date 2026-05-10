@@ -2,6 +2,20 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-05-10
+
+### v1.2.x
+
+- Improved third-party AI title generation compatibility:
+  - The title generation flow no longer hardcodes the `openai` driver
+  - Runtime driver selection now uses the API base URL and model ID
+  - Prevents DeepSeek, Zhipu, MiniMax, Volcengine Ark, Alibaba DashScope, and other OpenAI-compatible providers from being routed to `/v1/responses` and returning 404 errors
+- Strengthened URL Smart Import security configuration:
+  - SSRF protection remains strict by default
+  - Added `URL_IMPORT_ALLOW_MIXED_DNS=false` as an example setting only for explicitly controlled transparent proxy, Docker, or VPN mixed-DNS environments
+  - Application code reads `config('geoflow.url_import_allow_mixed_dns')`, so it is compatible with Laravel config caching
+- Added coverage for model driver resolution and URL normalization.
+
 ## 2026-05-08
 
 ### v1.2.x
