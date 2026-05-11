@@ -182,7 +182,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 - フロント／管理は `web`（Nginx）経由、PHP は `app`（php-fpm）。
-- **既定管理者:** 本番の `entrypoint.prod.sh` は自動で `db:seed` しません。マイグレーション成功後に **1 回だけ** 実行するコマンドとアカウントは **`../../docs/deployment/DEPLOYMENT.md`**（「默认管理员（首次种子）」節・本文は中国語）に記載しています。
+- **既定管理者:** 本番の `init` サービスはマイグレーション後に `db:seed` を実行し、既定の管理者アカウントを作成します。再実行しても既存の `admin` ユーザーは上書きされません。
 - 手順の詳細は **`../../docs/deployment/DEPLOYMENT.md`** を参照してください。
 
 ### 方法 2：ローカル PHP

@@ -171,7 +171,7 @@ docker compose up -d
 
 Acesse `http://localhost:18080` (frontend) e `http://localhost:18080/geo_admin` (admin).
 
-Para produção, configure `.env.prod` e use `docker compose -f docker-compose.prod.yml up -d`.
+Para produção, configure `.env.prod` e use `docker compose -f docker-compose.prod.yml up -d`. O serviço `init` de produção executa as migrações e o `db:seed` inicial para criar a conta admin padrão; execuções repetidas não sobrescrevem o usuário `admin` existente.
 
 ### portas
 

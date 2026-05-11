@@ -49,6 +49,11 @@ if [ "${AUTO_MIGRATE:-false}" = "true" ]; then
   php artisan migrate --force --no-interaction
 fi
 
+if [ "${AUTO_SEED:-false}" = "true" ]; then
+  echo "[entrypoint-prod] php artisan db:seed --force"
+  php artisan db:seed --force --no-interaction
+fi
+
 if [ "${AUTO_OPTIMIZE:-true}" = "true" ]; then
   echo "[entrypoint-prod] php artisan optimize"
   php artisan optimize --no-interaction

@@ -182,7 +182,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 - Frontend y admin entran por `web` (Nginx); PHP en `app` (php-fpm).
-- **Admin por defecto:** en producción **no** se ejecuta `db:seed` automáticamente; tras las migraciones ejecute una vez el comando indicado en **`../../docs/deployment/DEPLOYMENT.md`** (sección sobre administrador inicial y *seed*; el documento está en chino).
+- **Admin por defecto:** el servicio `init` de producción ejecuta `db:seed` después de las migraciones para crear la cuenta admin inicial; las ejecuciones repetidas no sobrescriben el usuario `admin` existente.
 - Más detalle: **`../../docs/deployment/DEPLOYMENT.md`**.
 
 ### Opción 2: PHP local

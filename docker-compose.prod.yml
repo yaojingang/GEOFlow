@@ -54,6 +54,7 @@ services:
     command: ["php", "artisan", "about"]
     environment:
       AUTO_MIGRATE: "true"
+      AUTO_SEED: "true"
       AUTO_OPTIMIZE: "false"
     volumes:
       - ./.env.prod:/var/www/html/.env
@@ -166,4 +167,3 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-

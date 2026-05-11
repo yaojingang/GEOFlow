@@ -119,9 +119,10 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 
 ### 默认管理员（首次种子）
 
-生产镜像入口 **`docker/entrypoint.prod.sh` 不会执行 `db:seed`**，只有迁移（`init` 在 compose 里打开 `AUTO_MIGRATE` 时）与 `optimize`。因此**首次部署在迁移成功后**，需在本机执行一次种子以写入默认后台账号：
+生产 `docker-compose.prod.yml` 的 **`init`** 服务会在迁移完成后执行一次 `db:seed`，用于写入默认后台账号。常驻的 `app`、`queue`、`scheduler`、`reverb` 服务不会自动 seed，避免每次重启都执行种子。
 
 ```bash
+# 如果你没有使用 compose 的 init 服务，或手动关闭了 AUTO_SEED，可在迁移成功后补跑一次：
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php artisan db:seed --force
 ```
 

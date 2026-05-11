@@ -210,7 +210,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - 前台 / 后台统一经 `web`（Nginx）访问
 - PHP 由 `app`（php-fpm）解析
-- **默认管理员**：生产不会自动 `db:seed`，迁移成功后需手动执行一次（命令与账号见 `docs/deployment/DEPLOYMENT.md`「默认管理员（首次种子）」）
+- **默认管理员**：生产 `init` 服务会在迁移后执行一次 `db:seed`，写入默认后台账号；重复执行不会覆盖已有 `admin` 用户
 - 详细说明见 `docs/deployment/DEPLOYMENT.md`
 
 ### 方式二：本地 PHP 服务器

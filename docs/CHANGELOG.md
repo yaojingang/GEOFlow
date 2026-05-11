@@ -15,6 +15,10 @@
   - 新增 `URL_IMPORT_ALLOW_MIXED_DNS=false` 示例配置，仅用于明确受控的透明代理、Docker 或 VPN 混合 DNS 环境
   - 业务代码统一读取 `config('geoflow.url_import_allow_mixed_dns')`，兼容 Laravel 配置缓存
 - 补充模型 driver 识别与 URL 标准化测试覆盖。
+- 修复生产 Docker 首次部署默认管理员初始化：
+  - `docker/entrypoint.prod.sh` 新增 `AUTO_SEED` 支持
+  - `docker-compose.prod.yml` 仅在一次性 `init` 服务中开启 seed
+  - 首次迁移后自动写入默认后台账号，重复执行不会覆盖已有 `admin` 用户
 
 ## 2026-05-08
 
