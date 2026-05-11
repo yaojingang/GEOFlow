@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 # GEOFlow production Docker one-click deployment helper.
 # It performs host preflight checks, prepares .env.prod, deploys the
-# docker-compose.prod.yml stack, seeds the default admin, and runs a healthcheck.
+# docker-compose.prod.yml stack, and runs a healthcheck.
 
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 REPO_URL="${GEOFLOW_REPO_URL:-https://github.com/yaojingang/GEOFlow.git}"
@@ -242,6 +242,26 @@ get_env_value() {
   awk -F= -v k="$key" '$1 == k { value=substr($0, length(k) + 2) } END { print value }' "$file"
 }
 
+prepare_writable_paths() {
+  cd "$APP_DIR"
+
+  mkdir -p \
+    bootstrap/cache \
+    storage/app/public \
+    storage/framework/cache/data \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/logs
+
+  if [ "$(id -u)" -eq 0 ]; then
+    chown -R 33:33 storage bootstrap/cache || true
+  elif command_exists sudo; then
+    sudo chown -R 33:33 storage bootstrap/cache || true
+  fi
+
+  chmod -R ug+rwX storage bootstrap/cache || true
+}
+
 prepare_env() {
   cd "$APP_DIR"
   if [ ! -f .env.prod ]; then
@@ -251,7 +271,8 @@ prepare_env() {
   fi
 
   local default_ip current_app_url current_admin_path current_web_port current_reverb_port
-  local app_url admin_path web_port reverb_port db_password redis_password reverb_secret
+  local app_url admin_path web_port reverb_port db_password redis_password reverb_key reverb_secret
+  local app_host app_scheme reverb_host reverb_scheme reverb_public_port
   default_ip="$(detect_primary_ip || true)"
   default_ip="${default_ip:-127.0.0.1}"
 
@@ -264,12 +285,28 @@ prepare_env() {
   reverb_port="$(prompt_value GEOFLOW_REVERB_PORT "Public Reverb port" "${current_reverb_port:-18081}")"
   app_url="$(prompt_value GEOFLOW_APP_URL "Public APP_URL, including protocol and optional subdirectory" "${current_app_url:-http://${default_ip}:${web_port}}")"
   admin_path="$(prompt_value GEOFLOW_ADMIN_BASE_PATH "Admin base path without leading slash" "${current_admin_path:-geo_admin}")"
+  app_host="$(printf '%s\n' "$app_url" | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://([^/:/]+).*#\1#')"
+  [ -n "$app_host" ] || app_host="$default_ip"
+  app_scheme="$(printf '%s\n' "$app_url" | sed -nE 's#^([a-zA-Z][a-zA-Z0-9+.-]*)://.*#\1#p')"
+  app_scheme="${app_scheme:-http}"
+  reverb_host="${GEOFLOW_REVERB_HOST:-$app_host}"
+  reverb_scheme="${GEOFLOW_REVERB_SCHEME:-$app_scheme}"
+  reverb_public_port="${GEOFLOW_REVERB_PUBLIC_PORT:-}"
+  if [ -z "$reverb_public_port" ]; then
+    if [ "$reverb_scheme" = "https" ]; then
+      reverb_public_port=443
+    else
+      reverb_public_port="$reverb_port"
+    fi
+  fi
 
   db_password="${GEOFLOW_DB_PASSWORD:-$(get_env_value .env.prod DB_PASSWORD)}"
   redis_password="${GEOFLOW_REDIS_PASSWORD:-$(get_env_value .env.prod REDIS_PASSWORD)}"
+  reverb_key="${GEOFLOW_REVERB_APP_KEY:-$(get_env_value .env.prod REVERB_APP_KEY)}"
   reverb_secret="${GEOFLOW_REVERB_SECRET:-$(get_env_value .env.prod REVERB_APP_SECRET)}"
   db_password="${db_password:-$(random_secret)}"
   redis_password="${redis_password:-$(random_secret)}"
+  reverb_key="${reverb_key:-$(random_secret)}"
   reverb_secret="${reverb_secret:-$(random_secret)}"
 
   check_ports "$web_port" "$reverb_port"
@@ -287,14 +324,35 @@ prepare_env() {
   set_env_value .env.prod DB_USERNAME "${GEOFLOW_DB_USERNAME:-geo_user}"
   set_env_value .env.prod DB_PASSWORD "$db_password"
   set_env_value .env.prod REDIS_HOST redis
+  set_env_value .env.prod REDIS_PORT 6379
   set_env_value .env.prod REDIS_PASSWORD "$redis_password"
   set_env_value .env.prod WEB_PORT "$web_port"
   set_env_value .env.prod REVERB_EXPOSE_PORT "$reverb_port"
+  set_env_value .env.prod REVERB_APP_KEY "$reverb_key"
   set_env_value .env.prod REVERB_APP_SECRET "$reverb_secret"
+  set_env_value .env.prod REVERB_HOST "$reverb_host"
+  set_env_value .env.prod REVERB_PORT "$reverb_public_port"
+  set_env_value .env.prod REVERB_SCHEME "$reverb_scheme"
+  set_env_value .env.prod REVERB_BROADCAST_HOST reverb
+  set_env_value .env.prod REVERB_BROADCAST_PORT 8080
+  set_env_value .env.prod REVERB_BROADCAST_SCHEME http
+  set_env_value .env.prod REVERB_SERVER_HOST 0.0.0.0
+  set_env_value .env.prod REVERB_SERVER_PORT 8080
+  set_env_value .env.prod VITE_REVERB_APP_KEY '"${REVERB_APP_KEY}"'
+  set_env_value .env.prod VITE_REVERB_HOST '"${REVERB_HOST}"'
+  set_env_value .env.prod VITE_REVERB_PORT '"${REVERB_PORT}"'
+  set_env_value .env.prod VITE_REVERB_SCHEME '"${REVERB_SCHEME}"'
   set_env_value .env.prod SESSION_LIFETIME 43200
   set_env_value .env.prod GEOFLOW_SESSION_TIMEOUT 2592000
+  set_env_value .env.prod LOG_CHANNEL stderr
   set_env_value .env.prod AUTO_MIGRATE false
   set_env_value .env.prod AUTO_OPTIMIZE true
+  set_env_value .env.prod COMPOSER_PACKAGIST_MIRROR "${GEOFLOW_COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}"
+  set_env_value .env.prod COMPOSER_IMAGE "${GEOFLOW_COMPOSER_IMAGE:-m.daocloud.io/docker.io/library/composer:2}"
+  set_env_value .env.prod PHP_FPM_IMAGE "${GEOFLOW_PHP_FPM_IMAGE:-m.daocloud.io/docker.io/library/php:8.4-fpm-bookworm}"
+  set_env_value .env.prod NGINX_IMAGE "${GEOFLOW_NGINX_IMAGE:-m.daocloud.io/docker.io/library/nginx:1.27-alpine}"
+  set_env_value .env.prod PGVECTOR_IMAGE "${GEOFLOW_PGVECTOR_IMAGE:-m.daocloud.io/docker.io/pgvector/pgvector:pg16}"
+  set_env_value .env.prod REDIS_IMAGE "${GEOFLOW_REDIS_IMAGE:-m.daocloud.io/docker.io/library/redis:7-alpine}"
 
   log "Production environment prepared."
 }
@@ -302,6 +360,9 @@ prepare_env() {
 deploy_stack() {
   cd "$APP_DIR"
   COMPOSE=("${DOCKER_CMD[@]}" compose --env-file .env.prod -f docker-compose.prod.yml)
+
+  log "Preparing writable Laravel directories."
+  prepare_writable_paths
 
   log "Building production images."
   "${COMPOSE[@]}" build
@@ -314,9 +375,6 @@ deploy_stack() {
 
   log "Starting GEOFlow services."
   "${COMPOSE[@]}" up -d app web queue scheduler reverb
-
-  log "Seeding default admin account if it does not exist."
-  "${COMPOSE[@]}" run --rm app php artisan db:seed --force
 
   log "Clearing and rebuilding Laravel caches."
   "${COMPOSE[@]}" run --rm app php artisan optimize:clear
