@@ -210,7 +210,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - 前台 / 后台统一经 `web`（Nginx）访问
 - PHP 由 `app`（php-fpm）解析
-- **默认管理员**：生产不会自动 `db:seed`，迁移成功后需手动执行一次（命令与账号见 `docs/deployment/DEPLOYMENT.md`「默认管理员（首次种子）」）
+- **默认管理员**：生产 `init` 容器会在迁移后自动执行 `db:seed` 写入默认账号；账号与密码见 `docs/deployment/DEPLOYMENT.md`
 - 详细说明见 `docs/deployment/DEPLOYMENT.md`
 
 ### 方式二：本地 PHP 服务器
@@ -320,7 +320,7 @@ php artisan geoflow:admin-unlock admin
 |------|------|------|
 | `COMPOSER_ON_START` | `true` | 容器启动时执行 `composer install` |
 | `AUTO_MIGRATE` | `true` | 每次启动执行 `php artisan migrate --force` |
-| `AUTO_INIT_ONCE` | 仅 `init` 为 `true` | 新库时执行一次 `migrate` + `db:seed` |
+| `AUTO_INIT_ONCE` | 仅开发 `init` 为 `true` | 新库时执行一次 `migrate` + `db:seed` |
 | `AUTO_GENERATE_APP_KEY` | `init` 内为 `true` | 无有效 `APP_KEY` 时自动生成 |
 | `AUTO_SEED` | `false` | 为 `true` 时**每次**启动都 `db:seed`（慎用） |
 

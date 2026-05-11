@@ -41,7 +41,7 @@ bash geoflow-docker-deploy.sh
 - 克隆或更新 GEOFlow 源码
 - 生成 `.env.prod` 并写入生产默认配置
 - 启动 PostgreSQL、Redis、Nginx、PHP-FPM、队列、调度和 Reverb
-- 执行迁移、写入默认管理员、清理并重建 Laravel 缓存
+- 执行迁移、种子默认管理员、清理并重建 Laravel 缓存
 - 调用 `deploy-scripts/geoflow-healthcheck.sh` 做部署后自检
 
 如需部署成功后删除临时脚本，可使用：
@@ -119,13 +119,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 
 ### 默认管理员（首次种子）
 
-生产镜像入口 **`docker/entrypoint.prod.sh` 不会执行 `db:seed`**，只有迁移（`init` 在 compose 里打开 `AUTO_MIGRATE` 时）与 `optimize`。因此**首次部署在迁移成功后**，需在本机执行一次种子以写入默认后台账号：
-
-```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php artisan db:seed --force
-```
-
-账号由 `Database\Seeders\AdminUserSeeder` 使用 `firstOrCreate` 写入：**重复执行不会覆盖**已存在的 `admin` 用户。
+生产 `init` 容器会在迁移完成后自动执行一次 `db:seed`，写入默认后台账号。账号由 `Database\Seeders\AdminUserSeeder` 使用 `firstOrCreate` 写入：**重复执行不会覆盖**已存在的 `admin` 用户。
 
 | 项目 | 值 |
 |------|-----|

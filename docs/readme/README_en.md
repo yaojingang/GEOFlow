@@ -202,7 +202,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - Frontend and admin both enter through `web` (Nginx)
 - PHP is executed by `app` (php-fpm)
-- **Default admin:** production does **not** auto-run `db:seed`; run it once after migrations (command and credentials in `../../docs/deployment/DEPLOYMENT.md`, section *Default admin (first-time seeding)*).
+- **Default admin:** the production `init` container runs `db:seed` after migrations and creates the default account automatically. Credentials are listed in `../../docs/deployment/DEPLOYMENT.md`.
 - See `../../docs/deployment/DEPLOYMENT.md` for details
 
 ### Option 2: Local PHP stack
