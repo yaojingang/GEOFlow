@@ -11,6 +11,14 @@ node_modules
 *.log
 bak
 docker-compose*.yml
+docker-data
+storage/app/public/*
+storage/app/private/*
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/testing/*
+storage/framework/views/*
 
 # 本机 bootstrap 缓存可能含 dev 包发现结果；打进镜像会与 --no-dev 冲突
 bootstrap/cache/*
