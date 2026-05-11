@@ -1,0 +1,119 @@
+name: geoflow-laravel-quick
+
+x-runtime: &runtime
+  image: ${GEOFLOW_RUNTIME_IMAGE:-m.daocloud.io/docker.io/laravelsail/php84-composer:latest}
+  working_dir: /var/www/html
+  env_file:
+    - ./.env
+  user: "0:0"
+  environment:
+    GEOFLOW_BOOTSTRAP: |
+      set -eu
+      composer config -g repo.packagist composer "${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}" || true
+      if [ ! -f vendor/autoload.php ]; then
+        composer install --no-interaction --prefer-dist --optimize-autoloader
+      fi
+      if ! grep -Eq '^APP_KEY=base64:' .env 2>/dev/null; then
+        php artisan key:generate --force --no-interaction
+      fi
+      mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
+      php artisan storage:link --force --no-interaction || true
+    COMPOSER_ALLOW_SUPERUSER: "1"
+    COMPOSER_CACHE_DIR: /tmp/composer-cache
+    COMPOSER_MEMORY_LIMIT: -1
+    COMPOSER_PROCESS_TIMEOUT: "2000"
+  volumes:
+    - ./:/var/www/html
+    - composer-cache:/tmp/composer-cache
+
+services:
+  postgres:
+    image: ${PGVECTOR_IMAGE:-m.daocloud.io/docker.io/pgvector/pgvector:pg16}
+    container_name: geoflow-postgres-quick
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-geo_flow}
+      POSTGRES_USER: ${DB_USERNAME:-geo_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-geo_password}
+    ports:
+      - "127.0.0.1:${DB_EXPOSE_PORT:-15432}:5432"
+    volumes:
+      - ${POSTGRES_DATA_DIR:-./docker-data/dev/postgres}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-geo_user} -d ${DB_DATABASE:-geo_flow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: ${REDIS_IMAGE:-m.daocloud.io/docker.io/library/redis:7-alpine}
+    container_name: geoflow-redis-quick
+    ports:
+      - "127.0.0.1:${REDIS_EXPOSE_PORT:-16379}:6379"
+    restart: unless-stopped
+
+  init:
+    <<: *runtime
+    container_name: geoflow-init-quick
+    command:
+      - /bin/bash
+      - -lc
+      - |
+        eval "$$GEOFLOW_BOOTSTRAP"
+        php artisan migrate --force --no-interaction
+        php artisan db:seed --force --no-interaction
+        php artisan about
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: "no"
+
+  app:
+    <<: *runtime
+    container_name: geoflow-app-quick
+    command:
+      - /bin/bash
+      - -lc
+      - |
+        eval "$$GEOFLOW_BOOTSTRAP"
+        php artisan serve --host=0.0.0.0 --port=8080
+    ports:
+      - "${APP_PORT:-18080}:8080"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  queue:
+    <<: *runtime
+    container_name: geoflow-queue-quick
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,default", "--sleep=1", "--tries=1", "--timeout=300"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  scheduler:
+    <<: *runtime
+    container_name: geoflow-scheduler-quick
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  reverb:
+    <<: *runtime
+    container_name: geoflow-reverb-quick
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    ports:
+      - "${REVERB_EXPOSE_PORT:-18081}:8080"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  composer-cache:
