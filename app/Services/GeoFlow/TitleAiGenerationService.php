@@ -119,9 +119,14 @@ class TitleAiGenerationService
             throw new \RuntimeException(OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
         }
 
-        $content = trim((string) ($response->text ?? ''));
+        $rawContent = (string) ($response->text ?? '');
+        $content = OpenAiRuntimeProvider::normalizeGeneratedText($rawContent);
 
         if ($content === '') {
+            if (OpenAiRuntimeProvider::looksLikeSseCompletionPayload($rawContent)) {
+                throw new \RuntimeException('ai_empty_stream_content');
+            }
+
             throw new \RuntimeException('ai_empty_content');
         }
 

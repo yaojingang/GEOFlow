@@ -793,8 +793,13 @@ class WorkerExecutionService
             throw new RuntimeException('AI 生成失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
         }
 
-        $content = trim((string) ($response->text ?? ''));
+        $rawContent = (string) ($response->text ?? '');
+        $content = OpenAiRuntimeProvider::normalizeGeneratedText($rawContent);
         if ($content === '') {
+            if (OpenAiRuntimeProvider::looksLikeSseCompletionPayload($rawContent)) {
+                throw new RuntimeException('AI 返回空流式响应，未生成正文内容，请重试或检查模型流式输出兼容性');
+            }
+
             throw new RuntimeException('AI返回空正文');
         }
 

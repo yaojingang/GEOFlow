@@ -41,6 +41,34 @@ class OpenAiRuntimeProviderTest extends TestCase
         $this->assertSame('DeepSeek Error: [invalid_request] model not found', $message);
     }
 
+    public function test_it_keeps_regular_generated_text_unchanged(): void
+    {
+        $content = "# 标题\n\n这是正常生成的正文。";
+
+        $this->assertSame($content, OpenAiRuntimeProvider::normalizeGeneratedText($content));
+    }
+
+    public function test_it_extracts_generated_text_from_sse_chunks(): void
+    {
+        $content = implode("\n", [
+            'data: {"id":"1","object":"chat.completion.chunk","choices":[{"delta":{"content":"第一段"}}]}',
+            'data: {"id":"1","object":"chat.completion.chunk","choices":[{"delta":{"content":"，第二段"}}]}',
+            'data: [DONE]',
+        ]);
+
+        $this->assertSame('第一段，第二段', OpenAiRuntimeProvider::normalizeGeneratedText($content));
+    }
+
+    public function test_it_drops_empty_usage_only_sse_chunks(): void
+    {
+        $content = implode("\n\n", [
+            'data: {"id":"","object":"chat.completion.chunk","created":0,"model":"gpt-5.5","choices":[],"usage":{"prompt_tokens":1158,"completion_tokens":0,"total_tokens":1158}}',
+            'data: [DONE]',
+        ]);
+
+        $this->assertSame('', OpenAiRuntimeProvider::normalizeGeneratedText($content));
+    }
+
     public function test_it_resolves_embedding_base_urls_without_forcing_chat_endpoint(): void
     {
         $this->assertSame(
