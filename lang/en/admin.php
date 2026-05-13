@@ -1628,6 +1628,7 @@ return [
         'seo_description_help' => 'Available variables: {description}, {site_name}, {keywords}',
         'section_analytics' => 'Analytics',
         'analytics_help' => 'This snippet is injected into the page <head> tag',
+        'analytics_super_admin_only' => 'Analytics code is injected directly into public pages. Only super admins can edit it.',
         'save_settings' => 'Save Settings',
         'error' => [
             'site_name_required' => 'Site name is required',
@@ -2169,7 +2170,7 @@ return [
             'name' => 'Example: Local CLI Token',
         ],
         'help' => [
-            'expires_at' => 'Leave blank to keep it valid indefinitely.',
+            'expires_at' => 'Blank defaults to 30 days; choose a later time only when needed.',
         ],
         'column' => [
             'name' => 'Name',

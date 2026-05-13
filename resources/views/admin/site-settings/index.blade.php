@@ -205,9 +205,10 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_analytics') }}</label>
                             <textarea name="analytics_code" rows="4"
-                                      class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                                      class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 font-mono text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                      @disabled(!($canEditAnalytics ?? false))
                                       placeholder="{{ __('admin.site_settings.placeholder_analytics') }}">{{ $settings['analytics_code'] }}</textarea>
-                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.analytics_help') }}</p>
+                            <p class="mt-1 text-xs text-gray-500">{{ ($canEditAnalytics ?? false) ? __('admin.site_settings.analytics_help') : __('admin.site_settings.analytics_super_admin_only') }}</p>
                         </div>
                     </div>
 

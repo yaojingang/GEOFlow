@@ -37,7 +37,7 @@
 
                     <div>
                         <label for="expires_at" class="block text-sm font-medium text-gray-700">{{ __('admin.api_tokens.field.expires_at') }}</label>
-                        <input id="expires_at" name="expires_at" type="datetime-local" value="{{ old('expires_at') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <input id="expires_at" name="expires_at" type="datetime-local" value="{{ old('expires_at', $defaultExpiresAtInput ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                         <p class="mt-1 text-xs text-gray-500">{{ __('admin.api_tokens.help.expires_at') }}</p>
                     </div>
 

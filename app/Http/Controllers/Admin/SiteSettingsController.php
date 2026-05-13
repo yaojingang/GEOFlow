@@ -34,6 +34,7 @@ class SiteSettingsController extends Controller
             'activeMenu' => 'site_settings',
             'adminSiteName' => AdminWeb::siteName(),
             'settings' => $settings,
+            'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
             'availableThemes' => $this->discoverThemes(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
@@ -87,6 +88,8 @@ class SiteSettingsController extends Controller
         }
 
         $currentAdminBasePath = AdminWeb::basePath();
+        $currentSettings = $this->loadSettings();
+        $canEditAnalytics = auth('admin')->user()?->isSuperAdmin() === true;
 
         $settings = [
             'site_name' => trim((string) $payload['site_name']),
@@ -97,7 +100,9 @@ class SiteSettingsController extends Controller
             'copyright_info' => trim((string) ($payload['copyright_info'] ?? '')),
             'site_logo' => trim((string) ($payload['site_logo'] ?? '')),
             'site_favicon' => trim((string) ($payload['site_favicon'] ?? '')),
-            'analytics_code' => trim((string) ($payload['analytics_code'] ?? '')),
+            'analytics_code' => $canEditAnalytics
+                ? trim((string) ($payload['analytics_code'] ?? ''))
+                : (string) ($currentSettings['analytics_code'] ?? ''),
             'seo_title_template' => trim((string) ($payload['seo_title_template'] ?? '')),
             'seo_description_template' => trim((string) ($payload['seo_description_template'] ?? '')),
             'featured_limit' => (string) ((int) ($payload['featured_limit'] ?? 6)),
@@ -429,7 +434,6 @@ class SiteSettingsController extends Controller
     }
 
     /**
-     * @param mixed $postedSlides
      * @return array<int, array{image_url:string,title:string,link_url:string,enabled:bool}>
      */
     private function normalizeHomeCarouselSlides(mixed $postedSlides): array

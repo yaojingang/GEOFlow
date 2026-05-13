@@ -94,8 +94,30 @@ class ApiV1ContractTest extends TestCase
             ]);
 
         $this->assertNotEmpty($response->json('data.token'));
+        $this->assertNotEmpty($response->json('data.expires_at'));
         $this->assertContains('materials:read', $response->json('data.scopes'));
         $this->assertContains('materials:write', $response->json('data.scopes'));
+    }
+
+    public function test_login_locks_account_after_repeated_password_failures(): void
+    {
+        $admin = $this->createActiveAdmin('lock_me', 'right-pass');
+
+        for ($i = 0; $i < 4; $i++) {
+            $this->postJson('/api/v1/auth/login', [
+                'username' => 'lock_me',
+                'password' => 'wrong-pass',
+            ])->assertStatus(401);
+        }
+
+        $this->postJson('/api/v1/auth/login', [
+            'username' => 'lock_me',
+            'password' => 'wrong-pass',
+        ])
+            ->assertStatus(423)
+            ->assertJsonPath('error.code', 'account_locked');
+
+        $this->assertSame('locked', $admin->fresh()->status);
     }
 
     public function test_catalog_forbidden_when_scope_missing(): void

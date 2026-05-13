@@ -219,8 +219,10 @@ Admin: `http://127.0.0.1:8080/geo_admin/login`. **Producción:** Nginx + PHP-FPM
 
 | Campo | Valor |
 |-------|--------|
-| Usuario | `admin` |
-| Contraseña | `password` (**cámbiala en producción**) |
+| Usuario | `GEOFLOW_ADMIN_USERNAME`, por defecto `admin` |
+| Contraseña | En desarrollo local es `password`; en producción define `GEOFLOW_ADMIN_PASSWORD`. Si está vacío y la cuenta aún no existe, el seeder genera una contraseña aleatoria de un solo uso en los logs de init / `db:seed`. |
+
+El seeder solo crea la cuenta cuando el usuario objetivo no existe. Las ejecuciones repetidas nunca sobrescriben usuario, correo ni contraseña existentes.
 
 ### Bloqueo por intentos fallidos y desbloqueo manual
 

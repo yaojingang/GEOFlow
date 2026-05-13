@@ -36,6 +36,7 @@ class ApiTokenController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'tokens' => $this->apiTokenService->listTokens(),
             'availableScopes' => $this->apiTokenService->getAvailableScopes(),
+            'defaultExpiresAtInput' => $this->apiTokenService->defaultExpiresAtInputValue(),
         ]);
     }
 

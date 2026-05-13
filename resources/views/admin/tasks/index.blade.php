@@ -619,9 +619,15 @@ function initTaskRealtime() {
         wssPort: TASK_REALTIME.port || 443,
         forceTLS: TASK_REALTIME.scheme === 'https',
         enabledTransports: ['ws', 'wss'],
+        authEndpoint: @js(url('/broadcasting/auth')),
+        auth: {
+            headers: {
+                'X-CSRF-TOKEN': @js(csrf_token()),
+            },
+        },
     });
 
-    const channel = pusher.subscribe('admin.tasks');
+    const channel = pusher.subscribe('private-admin.tasks');
     channel.bind('tasks.overview.updated', (payload) => {
         applyOverview(payload);
     });

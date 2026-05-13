@@ -83,6 +83,18 @@ class ApiTokenService
             ]);
     }
 
+    public function defaultExpiresAt(): Carbon
+    {
+        $days = max(1, (int) config('geoflow.api_token_default_ttl_days', 30));
+
+        return now()->addDays($days);
+    }
+
+    public function defaultExpiresAtInputValue(): string
+    {
+        return $this->defaultExpiresAt()->format('Y-m-d\TH:i');
+    }
+
     /**
      * @param  array<string, mixed>  $token
      */
@@ -140,7 +152,7 @@ class ApiTokenService
         $tokenResult = $admin->createToken(
             $name,
             array_values($scopes),
-            $expires !== null ? Carbon::parse($expires) : null
+            Carbon::parse($expires)
         );
         $model = $tokenResult->accessToken->fresh();
         if (! $model instanceof PersonalAccessToken) {
@@ -214,11 +226,11 @@ class ApiTokenService
         return array_values(array_unique($normalized));
     }
 
-    private function normalizeExpiresAt(?string $expiresAt): ?string
+    private function normalizeExpiresAt(?string $expiresAt): string
     {
         $expiresAt = $expiresAt !== null ? trim($expiresAt) : null;
         if ($expiresAt === null || $expiresAt === '') {
-            return null;
+            return $this->defaultExpiresAt()->format('Y-m-d H:i:s');
         }
 
         $timestamp = strtotime($expiresAt);

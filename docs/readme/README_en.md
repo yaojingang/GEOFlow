@@ -260,8 +260,10 @@ chmod -R ug+rwx storage bootstrap/cache
 
 | Field | Value |
 |-------|--------|
-| Username | `admin` |
-| Password | `password` (**change immediately in production**) |
+| Username | `GEOFLOW_ADMIN_USERNAME`, default `admin` |
+| Password | Local/dev default `password`; in production set `GEOFLOW_ADMIN_PASSWORD`. If it is empty and the account does not exist yet, the seeder generates a one-time random password in the init / `db:seed` logs. |
+
+The seeder only creates the account when the target username does not exist. Repeated runs never overwrite an existing username, email, or password.
 
 ### Admin login lockout and manual unlock
 

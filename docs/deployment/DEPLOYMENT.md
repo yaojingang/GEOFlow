@@ -126,14 +126,14 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php artisan db:seed --force
 ```
 
-账号由 `Database\Seeders\AdminUserSeeder` 使用 `firstOrCreate` 写入：**重复执行不会覆盖**已存在的 `admin` 用户。
+账号由 `Database\Seeders\AdminUserSeeder` 写入：只在目标用户名不存在时创建，**重复执行不会覆盖**已存在账号的用户名、邮箱或密码。
 
 | 项目 | 值 |
 |------|-----|
-| 用户名 | `admin` |
-| 密码 | `password` |
+| 用户名 | `GEOFLOW_ADMIN_USERNAME`，默认 `admin` |
+| 密码 | 生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`；若留空且账号尚不存在，seed 会生成一次性随机密码并输出到初始化日志 |
 
-登录地址：站点根 URL + `/geo_admin/login`（默认；若改过 `ADMIN_BASE_PATH` 则把 `geo_admin` 换成你的前缀）。**上线后请立即修改密码。**
+登录地址：站点根 URL + `/geo_admin/login`（默认；若改过 `ADMIN_BASE_PATH` 则把 `geo_admin` 换成你的前缀）。账号已存在时，重复 seed 不会重新生成或打印密码。**上线后请立即修改默认或初始化生成的密码。**
 
 ## 5. 关键差异
 

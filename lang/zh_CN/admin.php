@@ -1628,6 +1628,7 @@ return [
         'seo_description_help' => '可用变量: {description}, {site_name}, {keywords}',
         'section_analytics' => '统计分析',
         'analytics_help' => '将会插入到页面 <head> 标签中',
+        'analytics_super_admin_only' => '统计代码会直接插入前台页面，只有超级管理员可以修改。',
         'save_settings' => '保存设置',
         'error' => [
             'site_name_required' => '网站名称不能为空',
@@ -2169,7 +2170,7 @@ return [
             'name' => '例如：本地 CLI Token',
         ],
         'help' => [
-            'expires_at' => '留空表示长期有效。',
+            'expires_at' => '留空默认 30 天过期；如需更长有效期请手动选择。',
         ],
         'column' => [
             'name' => '名称',

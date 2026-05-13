@@ -2,7 +2,7 @@
 
 namespace App\Events\Admin;
 
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -30,9 +30,9 @@ class TasksOverviewUpdated implements ShouldBroadcastNow
         public array $overview
     ) {}
 
-    public function broadcastOn(): Channel
+    public function broadcastOn(): PrivateChannel
     {
-        return new Channel('admin.tasks');
+        return new PrivateChannel('admin.tasks');
     }
 
     public function broadcastAs(): string
