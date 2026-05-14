@@ -1450,6 +1450,7 @@ return [
         'error' => [
             'select_images' => '请选择要上传的图片',
             'upload_none' => '没有成功上传任何图片。',
+            'upload_failed_detail' => '图片上传失败：:message。请检查 storage/app/public 是否可写，并确认已执行 php artisan storage:link。',
             'no_records' => '没有找到可删除的图片记录',
             'select_delete' => '请选择要删除的图片',
         ],

@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\File;
 use Illuminate\View\View;
@@ -112,7 +113,8 @@ class ImageLibraryController extends Controller
 
         $uploadedCount = 0;
         $skippedCount = 0;
-        DB::transaction(function () use ($uploadedFiles, $libraryId, &$uploadedCount, &$skippedCount): void {
+        $uploadErrors = [];
+        DB::transaction(function () use ($uploadedFiles, $libraryId, &$uploadedCount, &$skippedCount, &$uploadErrors): void {
             foreach ($uploadedFiles as $uploadedFile) {
                 try {
                     $stored = $this->storeUploadedImageFile($uploadedFile);
@@ -131,8 +133,14 @@ class ImageLibraryController extends Controller
                         'usage_count' => 0,
                     ]);
                     $uploadedCount++;
-                } catch (\Throwable) {
+                } catch (\Throwable $exception) {
                     $skippedCount++;
+                    $uploadErrors[] = $exception->getMessage();
+                    Log::warning('geoflow.image_upload_failed', [
+                        'library_id' => $libraryId,
+                        'original_name' => $uploadedFile->getClientOriginalName(),
+                        'error' => $exception->getMessage(),
+                    ]);
                 }
             }
 
@@ -140,7 +148,11 @@ class ImageLibraryController extends Controller
         });
 
         if ($uploadedCount <= 0) {
-            return back()->withErrors(__('admin.image_detail.error.upload_none'));
+            $firstError = trim((string) ($uploadErrors[0] ?? ''));
+
+            return back()->withErrors($firstError !== ''
+                ? __('admin.image_detail.error.upload_failed_detail', ['message' => $firstError])
+                : __('admin.image_detail.error.upload_none'));
         }
 
         $message = __('admin.image_detail.message.upload_success', ['count' => $uploadedCount]);
@@ -438,11 +450,29 @@ class ImageLibraryController extends Controller
         $uploadDirectory = 'images/'.date('Y/m');
         $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: 'jpg');
         $filename = bin2hex(random_bytes(16)).'.'.$extension;
-        $storedRelativePath = Storage::disk('public')->putFileAs('uploads/'.$uploadDirectory, $file, $filename);
+        $directory = 'uploads/'.$uploadDirectory;
+        if (! Storage::disk('public')->exists($directory) && ! Storage::disk('public')->makeDirectory($directory)) {
+            throw new \RuntimeException('创建图片上传目录失败：storage/app/public/'.$directory);
+        }
+
+        $storedRelativePath = Storage::disk('public')->putFileAs($directory, $file, $filename);
         if (! is_string($storedRelativePath) || $storedRelativePath === '') {
             throw new \RuntimeException('保存图片失败');
         }
+
+        if (! Storage::disk('public')->exists($storedRelativePath)) {
+            throw new \RuntimeException('图片文件写入后未找到：storage/app/public/'.$storedRelativePath);
+        }
+
         $targetPath = Storage::disk('public')->path($storedRelativePath);
+        if (! is_file($targetPath)) {
+            throw new \RuntimeException('图片文件路径不可访问：'.$targetPath);
+        }
+
+        $fileSize = filesize($targetPath);
+        if ($fileSize === false) {
+            throw new \RuntimeException('无法读取图片文件大小：'.$targetPath);
+        }
 
         $imageInfo = @getimagesize($targetPath) ?: [0, 0, null, null, 'mime' => (string) $file->getMimeType()];
 
@@ -451,7 +481,7 @@ class ImageLibraryController extends Controller
             'file_name' => $filename,
             'original_name' => (string) $file->getClientOriginalName(),
             'file_path' => 'storage/'.$storedRelativePath,
-            'file_size' => (int) filesize($targetPath),
+            'file_size' => (int) $fileSize,
             'mime_type' => (string) ($imageInfo['mime'] ?? $file->getMimeType() ?? ''),
             'width' => (int) ($imageInfo[0] ?? 0),
             'height' => (int) ($imageInfo[1] ?? 0),

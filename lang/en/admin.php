@@ -1450,6 +1450,7 @@ return [
         'error' => [
             'select_images' => 'Please choose images to upload',
             'upload_none' => 'No images were uploaded successfully. ',
+            'upload_failed_detail' => 'Image upload failed: :message. Please check whether storage/app/public is writable and run php artisan storage:link.',
             'no_records' => 'No image records found to delete',
             'select_delete' => 'Please select images to delete',
         ],

@@ -17,6 +17,7 @@ use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -862,6 +863,8 @@ class AdminMaterialsPagesTest extends TestCase
 
     public function test_admin_can_upload_image_and_knowledge_file_from_detail_flow(): void
     {
+        Storage::fake('public');
+
         $admin = Admin::query()->create([
             'username' => 'materials_upload_admin',
             'password' => 'secret-123',
@@ -887,6 +890,13 @@ class AdminMaterialsPagesTest extends TestCase
             'library_id' => (int) $imageLibrary->id,
             'original_name' => 'banner.png',
         ]);
+
+        $storedImage = Image::query()
+            ->where('library_id', (int) $imageLibrary->id)
+            ->where('original_name', 'banner.png')
+            ->firstOrFail();
+        $this->assertStringStartsWith('storage/uploads/images/', (string) $storedImage->file_path);
+        Storage::disk('public')->assertExists(str_replace('storage/', '', (string) $storedImage->file_path));
 
         $knowledgeFile = UploadedFile::fake()->createWithContent('manual.md', "# 标题\n内容段落");
         $this->actingAs($admin, 'admin')->post(route('admin.knowledge-bases.upload'), [
