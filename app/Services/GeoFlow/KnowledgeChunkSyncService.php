@@ -46,6 +46,9 @@ class KnowledgeChunkSyncService
                 $fallbackVector = $this->buildFallbackVector($chunkContent, 256);
                 $realEmbedding = $generatedEmbeddings[$index] ?? null;
                 $isRealEmbedding = is_array($realEmbedding);
+                $embeddingJson = $isRealEmbedding
+                    ? json_encode($realEmbedding['vector'] ?? [], JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION)
+                    : json_encode($fallbackVector, JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
 
                 KnowledgeChunk::query()->create([
                     'knowledge_base_id' => $knowledgeBaseId,
@@ -53,11 +56,11 @@ class KnowledgeChunkSyncService
                     'content' => $chunkContent,
                     'content_hash' => hash('sha256', $chunkContent),
                     'token_count' => $this->estimateTokenCount($chunkContent),
-                    'embedding_json' => json_encode($fallbackVector, JSON_UNESCAPED_UNICODE),
+                    'embedding_json' => $embeddingJson ?: '[]',
                     'embedding_model_id' => $isRealEmbedding ? (int) ($realEmbedding['model_id'] ?? 0) : null,
                     'embedding_dimensions' => $isRealEmbedding ? (int) ($realEmbedding['dimensions'] ?? 0) : 0,
                     'embedding_provider' => $isRealEmbedding ? (string) ($realEmbedding['provider'] ?? '') : '',
-                    'embedding_vector' => $isRealEmbedding ? (string) ($realEmbedding['vector_literal'] ?? '') : null,
+                    'embedding_vector' => $isRealEmbedding ? ($realEmbedding['vector_literal'] ?? null) : null,
                 ]);
             }
         });
@@ -93,13 +96,40 @@ class KnowledgeChunkSyncService
             return '';
         }
 
+        $rawVector = $this->generateQueryEmbeddingVector($query);
+        if ($rawVector === []) {
+            return '';
+        }
+
+        $paddedVector = $this->padVector($rawVector, $this->embeddingStorageDimensions());
+        if ($debug) {
+            Log::info('geoflow.knowledge_query_embedding', [
+                'outcome' => 'embedding_api_ok',
+                'raw_dimensions' => count($rawVector),
+                'storage_dimensions' => count($paddedVector),
+            ]);
+        }
+
+        return $this->vectorLiteral($paddedVector);
+    }
+
+    /**
+     * 生成检索查询文本对应的真实 embedding 数组。
+     *
+     * 当没有可用 embedding 模型或 API 调用失败时返回空数组，调用方可继续走 fallback 检索。
+     *
+     * @return list<float>
+     */
+    public function generateQueryEmbeddingVector(string $query): array
+    {
+        $query = trim($query);
+        if ($query === '') {
+            return [];
+        }
+
         $embeddingMetadata = $this->resolveEmbeddingMetadata();
         if ($embeddingMetadata === null) {
-            if ($debug) {
-                Log::info('geoflow.knowledge_query_embedding', ['outcome' => 'skip_no_embedding_model']);
-            }
-
-            return '';
+            return [];
         }
 
         $providerName = OpenAiRuntimeProvider::registerProvider(
@@ -115,45 +145,20 @@ class KnowledgeChunkSyncService
                 ->generate($providerName, (string) $embeddingMetadata['model_name']);
             $rawVector = $this->normalizeEmbeddingVector($response->embeddings[0] ?? null);
             if ($rawVector === null) {
-                if ($debug) {
-                    Log::info('geoflow.knowledge_query_embedding', [
-                        'outcome' => 'embedding_response_invalid',
-                        'embedding_model_id' => (int) ($embeddingMetadata['model_id'] ?? 0),
-                        'model_identifier' => (string) ($embeddingMetadata['model_name'] ?? ''),
-                        'query_length' => mb_strlen($query, 'UTF-8'),
-                    ]);
-                }
-
-                return '';
+                return [];
             }
 
-            $paddedVector = $this->padVector($rawVector, $this->embeddingStorageDimensions());
+            $this->recordEmbeddingUsage((int) $embeddingMetadata['model_id']);
 
-            if ($debug) {
-                Log::info('geoflow.knowledge_query_embedding', [
-                    'outcome' => 'embedding_api_ok',
-                    'embedding_model_id' => (int) ($embeddingMetadata['model_id'] ?? 0),
-                    'model_identifier' => (string) ($embeddingMetadata['model_name'] ?? ''),
-                    'provider_host' => (string) ($embeddingMetadata['provider'] ?? ''),
-                    'raw_dimensions' => count($rawVector),
-                    'storage_dimensions' => count($paddedVector),
-                    'query_length' => mb_strlen($query, 'UTF-8'),
-                ]);
-            }
-
-            return $this->vectorLiteral($paddedVector);
+            return $rawVector;
         } catch (Throwable $exception) {
-            if ($debug) {
-                Log::info('geoflow.knowledge_query_embedding', [
-                    'outcome' => 'embedding_api_exception',
-                    'embedding_model_id' => (int) ($embeddingMetadata['model_id'] ?? 0),
-                    'model_identifier' => (string) ($embeddingMetadata['model_name'] ?? ''),
-                    'query_length' => mb_strlen($query, 'UTF-8'),
-                    'message' => OpenAiRuntimeProvider::normalizeApiException($exception, (string) ($embeddingMetadata['api_url'] ?? '')),
-                ]);
-            }
+            Log::info('geoflow.knowledge_query_embedding_failed', [
+                'embedding_model_id' => (int) ($embeddingMetadata['model_id'] ?? 0),
+                'model_identifier' => (string) ($embeddingMetadata['model_name'] ?? ''),
+                'message' => OpenAiRuntimeProvider::normalizeApiException($exception, (string) ($embeddingMetadata['api_url'] ?? '')),
+            ]);
 
-            return '';
+            return [];
         }
     }
 
@@ -167,19 +172,44 @@ class KnowledgeChunkSyncService
         $defaultEmbeddingModelId = (int) (SiteSetting::query()
             ->where('setting_key', 'default_embedding_model_id')
             ->value('setting_value') ?? 0);
-        if ($defaultEmbeddingModelId <= 0) {
-            return null;
-        }
 
-        $model = AiModel::query()
-            ->whereKey($defaultEmbeddingModelId)
+        $query = AiModel::query()
             ->where('status', 'active')
-            ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'")
-            ->first();
-        if (! $model) {
-            return null;
+            ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'");
+
+        $candidates = [];
+        if ($defaultEmbeddingModelId > 0) {
+            $defaultModel = (clone $query)->whereKey($defaultEmbeddingModelId)->first();
+            if ($defaultModel) {
+                $candidates[] = $defaultModel;
+            }
         }
 
+        foreach (
+            (clone $query)
+                ->when($defaultEmbeddingModelId > 0, fn ($builder) => $builder->whereKeyNot($defaultEmbeddingModelId))
+                ->orderBy('failover_priority')
+                ->orderByDesc('id')
+                ->get() as $fallbackModel
+        ) {
+            $candidates[] = $fallbackModel;
+        }
+
+        foreach ($candidates as $model) {
+            $metadata = $this->modelToEmbeddingMetadata($model);
+            if ($metadata !== null) {
+                return $metadata;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string}|null
+     */
+    private function modelToEmbeddingMetadata(AiModel $model): ?array
+    {
         $providerUrl = OpenAiRuntimeProvider::resolveEmbeddingBaseUrl((string) ($model->api_url ?? ''));
         $apiKey = $this->decryptApiKey((string) ($model->getRawOriginal('api_key') ?? ''));
         $modelName = trim((string) ($model->model_id ?? ''));
@@ -201,14 +231,15 @@ class KnowledgeChunkSyncService
      *
      * @param  list<string>  $chunks
      * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string}|null  $embeddingMetadata
-     * @return array<int, array{model_id:int,dimensions:int,provider:string,vector_literal:string}>
+     * @return array<int, array{model_id:int,dimensions:int,provider:string,vector:list<float>,vector_literal:?string}>
      */
     private function generateEmbeddingsForChunks(array $chunks, ?array $embeddingMetadata): array
     {
-        if ($chunks === [] || $embeddingMetadata === null || ! $this->canStoreEmbeddingVector()) {
+        if ($chunks === [] || $embeddingMetadata === null) {
             return [];
         }
 
+        $canStoreEmbeddingVector = $this->canStoreEmbeddingVector();
         $providerName = OpenAiRuntimeProvider::registerProvider(
             'embedding',
             'openai',
@@ -232,18 +263,28 @@ class KnowledgeChunkSyncService
                     }
 
                     $actualDimensions = count($rawVector);
-                    $paddedVector = $this->padVector($rawVector, $this->embeddingStorageDimensions());
                     $results[$batchKeys[$position]] = [
                         'model_id' => (int) $embeddingMetadata['model_id'],
                         'dimensions' => $actualDimensions,
                         'provider' => (string) $embeddingMetadata['provider'],
-                        'vector_literal' => $this->vectorLiteral($paddedVector),
+                        'vector' => $rawVector,
+                        'vector_literal' => $canStoreEmbeddingVector
+                            ? $this->vectorLiteral($this->padVector($rawVector, $this->embeddingStorageDimensions()))
+                            : null,
                     ];
                 }
+
+                $this->recordEmbeddingUsage((int) $embeddingMetadata['model_id']);
             }
 
             return count($results) === count($chunks) ? $results : [];
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            Log::info('geoflow.knowledge_embedding_failed', [
+                'embedding_model_id' => (int) ($embeddingMetadata['model_id'] ?? 0),
+                'model_identifier' => (string) ($embeddingMetadata['model_name'] ?? ''),
+                'message' => OpenAiRuntimeProvider::normalizeApiException($exception, (string) ($embeddingMetadata['api_url'] ?? '')),
+            ]);
+
             // 关键兜底：向量 API 不可用时，不中断知识库同步主流程。
             return [];
         }
@@ -334,6 +375,22 @@ class KnowledgeChunkSyncService
         }
 
         return $vector === [] ? null : $vector;
+    }
+
+    /**
+     * 记录 embedding API 成功调用次数。
+     */
+    private function recordEmbeddingUsage(int $modelId): void
+    {
+        if ($modelId <= 0) {
+            return;
+        }
+
+        AiModel::query()->whereKey($modelId)->update([
+            'used_today' => DB::raw('COALESCE(used_today,0)+1'),
+            'total_used' => DB::raw('COALESCE(total_used,0)+1'),
+            'updated_at' => now(),
+        ]);
     }
 
     /**

@@ -643,14 +643,25 @@ class WorkerExecutionService
         $rows = KnowledgeChunk::query()
             ->where('knowledge_base_id', $knowledgeBaseId)
             ->orderBy('chunk_index')
-            ->get(['chunk_index', 'content', 'embedding_json'])
+            ->get(['chunk_index', 'content', 'embedding_json', 'embedding_model_id', 'embedding_dimensions'])
             ->all();
         if ($rows === []) {
             return '';
         }
 
         $queryTerms = $this->termFrequencies($query);
-        $queryVector = $this->decodeVector(json_encode($this->buildFallbackVector($query, 256)));
+        $hasRealEmbeddingRows = collect($rows)->contains(
+            fn ($row): bool => $this->chunkHasRealEmbedding($row)
+        );
+        $useRealEmbeddingScore = false;
+        $queryVector = [];
+        if ($hasRealEmbeddingRows && trim($query) !== '') {
+            $queryVector = $this->knowledgeChunkSyncService->generateQueryEmbeddingVector($query);
+            $useRealEmbeddingScore = $queryVector !== [];
+        }
+        if ($queryVector === []) {
+            $queryVector = $this->decodeVector(json_encode($this->buildFallbackVector($query, 256)));
+        }
 
         $scored = [];
         foreach ($rows as $row) {
@@ -662,7 +673,10 @@ class WorkerExecutionService
             $vector = $this->decodeVector((string) ($row->embedding_json ?? ''));
             $chunkTerms = $this->termFrequencies($content);
             $lexicalScore = $this->lexicalScore($queryTerms, $chunkTerms);
-            $vectorScore = $this->dotProduct($queryVector, $vector);
+            $chunkUsesRealEmbedding = $this->chunkHasRealEmbedding($row);
+            $vectorScore = ($useRealEmbeddingScore === $chunkUsesRealEmbedding)
+                ? $this->dotProduct($queryVector, $vector)
+                : 0.0;
             $score = ($vectorScore * 0.75) + ($lexicalScore * 0.25);
 
             $scored[] = [
@@ -679,6 +693,15 @@ class WorkerExecutionService
         });
 
         return $this->composeKnowledgeContext($scored, $limit, $maxChars);
+    }
+
+    /**
+     * 判断 chunk 是否保存了真实 embedding，而不是 fallback hash 向量。
+     */
+    private function chunkHasRealEmbedding(object $row): bool
+    {
+        return (int) ($row->embedding_model_id ?? 0) > 0
+            && (int) ($row->embedding_dimensions ?? 0) > 0;
     }
 
     /**
