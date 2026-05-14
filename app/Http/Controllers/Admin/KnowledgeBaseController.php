@@ -263,6 +263,48 @@ class KnowledgeBaseController extends Controller
         return redirect()->route('admin.knowledge-bases.index')->with('message', __('admin.knowledge_bases.message.delete_success'));
     }
 
+    public function refreshChunks(int $knowledgeBaseId): RedirectResponse
+    {
+        $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
+        $content = trim((string) ($knowledgeBase->content ?? ''));
+
+        if ($content === '') {
+            return redirect()
+                ->route('admin.knowledge-bases.index')
+                ->withErrors(__('admin.knowledge_bases.error.content_required'));
+        }
+
+        try {
+            $chunkCount = $this->chunkSyncService->sync((int) $knowledgeBase->id, $content, true);
+            $stats = $this->loadChunkStats((int) $knowledgeBase->id);
+            $vectorizedCount = (int) ($stats['vectorized_count'] ?? 0);
+
+            if ($chunkCount > 0 && $vectorizedCount < $chunkCount) {
+                return redirect()
+                    ->route('admin.knowledge-bases.index')
+                    ->withErrors(__('admin.knowledge_bases.error.embedding_sync_partial', [
+                        'chunks' => $chunkCount,
+                        'vectorized' => $vectorizedCount,
+                    ]));
+            }
+
+            return redirect()
+                ->route('admin.knowledge-bases.index')
+                ->with('message', __('admin.knowledge_bases.message.chunks_refreshed', [
+                    'chunks' => $chunkCount,
+                    'vectorized' => $vectorizedCount,
+                ]));
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('admin.knowledge-bases.index')
+                ->withErrors(__('admin.knowledge_bases.message.chunks_refresh_error', [
+                    'message' => $exception->getMessage(),
+                ]));
+        }
+    }
+
     /**
      * @return array<int, array<string,mixed>>
      */
@@ -271,6 +313,11 @@ class KnowledgeBaseController extends Controller
         $query = KnowledgeBase::query()
             ->select(['id', 'name', 'description', 'file_type', 'word_count', 'usage_count', 'created_at', 'updated_at'])
             ->withCount('chunks as chunk_count')
+            ->withCount([
+                'chunks as vectorized_chunk_count' => fn ($query) => $query
+                    ->whereNotNull('embedding_model_id')
+                    ->where('embedding_dimensions', '>', 0),
+            ])
             ->orderByDesc('created_at');
 
         return $query->get()->map(static function (KnowledgeBase $knowledgeBase): array {
@@ -282,6 +329,7 @@ class KnowledgeBaseController extends Controller
                 'word_count' => (int) ($knowledgeBase->word_count ?? 0),
                 'usage_count' => (int) ($knowledgeBase->usage_count ?? 0),
                 'chunk_count' => (int) ($knowledgeBase->chunk_count ?? 0),
+                'vectorized_chunk_count' => (int) ($knowledgeBase->vectorized_chunk_count ?? 0),
                 'created_at' => $knowledgeBase->created_at?->format('Y-m-d H:i:s'),
                 'updated_at' => $knowledgeBase->updated_at?->format('Y-m-d H:i:s'),
             ];

@@ -157,6 +157,95 @@ class AdminMaterialsPagesTest extends TestCase
         $this->assertGreaterThan(0, KnowledgeBase::query()->count());
     }
 
+    public function test_admin_can_refresh_knowledge_chunks_with_real_embedding_model(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/embeddings' => Http::response([
+                'data' => [
+                    ['embedding' => [0.1, 0.2, 0.3]],
+                ],
+            ]),
+        ]);
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_refresh_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-refresh-admin@example.com',
+            'display_name' => 'Knowledge Refresh Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $embeddingModel = AiModel::query()->create([
+            'name' => 'Test Embedding',
+            'version' => '',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
+            'model_id' => 'test-embedding-model',
+            'model_type' => 'embedding',
+            'api_url' => 'https://ai.test',
+            'failover_priority' => 1,
+            'daily_limit' => 100,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '待向量化知识库',
+            'description' => 'desc',
+            'content' => 'GEOFlow 支持知识库切片和向量化检索。',
+            'character_count' => 22,
+            'file_type' => 'markdown',
+            'word_count' => 22,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.knowledge-bases.index'))
+            ->assertOk()
+            ->assertSee(__('admin.knowledge_bases.refresh_chunks'));
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.knowledge-bases.chunks.refresh', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
+            ->assertRedirect(route('admin.knowledge-bases.index'))
+            ->assertSessionHas('message');
+
+        $chunk = $knowledgeBase->chunks()->firstOrFail();
+        $this->assertSame((int) $embeddingModel->id, (int) $chunk->embedding_model_id);
+        $this->assertSame(3, (int) $chunk->embedding_dimensions);
+        $this->assertSame([0.1, 0.2, 0.3], json_decode((string) $chunk->embedding_json, true));
+    }
+
+    public function test_refresh_knowledge_chunks_requires_embedding_model(): void
+    {
+        Http::fake();
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_no_embedding_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-no-embedding-admin@example.com',
+            'display_name' => 'Knowledge No Embedding Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '无向量模型知识库',
+            'description' => 'desc',
+            'content' => '没有 embedding 模型时不能把 fallback 当作真实向量。',
+            'character_count' => 28,
+            'file_type' => 'markdown',
+            'word_count' => 28,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.knowledge-bases.chunks.refresh', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
+            ->assertRedirect(route('admin.knowledge-bases.index'))
+            ->assertSessionHasErrors();
+
+        $this->assertSame(0, $knowledgeBase->chunks()->count());
+        Http::assertNothingSent();
+    }
+
     public function test_admin_can_create_url_import_job_without_url_scheme(): void
     {
         Http::fake([

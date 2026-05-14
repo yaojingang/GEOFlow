@@ -102,12 +102,16 @@
                     </div>
                 </div>
             @else
+                <div class="flex items-center justify-between gap-6 px-6 py-3 border-b border-gray-200 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <div>{{ __('admin.knowledge_bases.column_knowledge_base') }}</div>
+                    <div class="text-right" style="width: 440px;">{{ __('admin.common.actions') }}</div>
+                </div>
                 <div class="divide-y divide-gray-200">
                     @foreach ($knowledgeBases as $item)
                         <div class="px-6 py-6">
-                            <div class="flex items-center justify-between">
-                                <div class="flex-1">
-                                    <div class="flex items-center space-x-3">
+                            <div class="flex flex-col gap-5 lg:flex-row lg:items-center">
+                                <div class="min-w-0 lg:flex-1">
+                                    <div class="flex flex-wrap items-center gap-2">
                                         <h4 class="text-lg font-medium text-gray-900">
                                             <a href="{{ route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $item['id']]) }}" class="hover:text-orange-600">
                                                 {{ $item['name'] }}
@@ -128,11 +132,19 @@
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
                                             {{ __('admin.knowledge_bases.text_unit', ['count' => number_format((int) $item['word_count'])]) }}
                                         </span>
+                                        @if ((int) ($item['chunk_count'] ?? 0) > 0)
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                                                {{ __('admin.knowledge_bases.vectorized_summary', [
+                                                    'vectorized' => (int) ($item['vectorized_chunk_count'] ?? 0),
+                                                    'chunks' => (int) ($item['chunk_count'] ?? 0),
+                                                ]) }}
+                                            </span>
+                                        @endif
                                     </div>
                                     @if ($item['description'] !== '')
                                         <p class="mt-1 text-sm text-gray-600">{{ $item['description'] }}</p>
                                     @endif
-                                    <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
+                                    <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                                         <span>
                                             {{ __('admin.knowledge_bases.created_at', ['value' => $item['created_at'] ? \Illuminate\Support\Carbon::parse($item['created_at'])->format('Y-m-d H:i') : '-']) }}
                                         </span>
@@ -145,11 +157,19 @@
                                     </div>
                                 </div>
 
-                                <div class="flex items-center space-x-2">
-                                    @if (! $hasDefaultEmbeddingModel)
+                                <div class="flex flex-wrap items-center justify-start gap-2 lg:shrink-0 lg:justify-end lg:pl-8" style="width: 440px;">
+                                    @if ($hasDefaultEmbeddingModel)
+                                        <form method="POST" action="{{ route('admin.knowledge-bases.chunks.refresh', ['knowledgeBaseId' => (int) $item['id']]) }}" onsubmit="return confirm(@js(__('admin.knowledge_bases.confirm_refresh_chunks', ['name' => $item['name']])));" class="inline-block">
+                                            @csrf
+                                            <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-emerald-200 text-xs font-medium rounded text-emerald-700 bg-emerald-50 hover:bg-emerald-100">
+                                                <i data-lucide="refresh-cw" class="w-4 h-4 mr-1"></i>
+                                                {{ __('admin.knowledge_bases.refresh_chunks') }}
+                                            </button>
+                                        </form>
+                                    @else
                                         <button type="button" onclick="showEmbeddingConfigModal()" class="inline-flex items-center px-3 py-1.5 border border-amber-200 text-xs font-medium rounded text-amber-800 bg-amber-50 hover:bg-amber-100">
-                                            <i data-lucide="cpu" class="w-4 h-4 mr-1"></i>
-                                            {{ __('admin.knowledge_bases.vector_notice_configure_link') }}
+                                            <i data-lucide="refresh-cw" class="w-4 h-4 mr-1"></i>
+                                            {{ __('admin.knowledge_bases.refresh_chunks') }}
                                         </button>
                                     @endif
                                     <a href="{{ route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $item['id']]) }}#chunk-preview" class="inline-flex items-center px-3 py-1.5 border border-blue-200 text-xs font-medium rounded text-blue-700 bg-blue-50 hover:bg-blue-100">
@@ -361,4 +381,3 @@
         });
     </script>
 @endpush
-

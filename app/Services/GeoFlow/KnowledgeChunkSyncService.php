@@ -28,8 +28,11 @@ class KnowledgeChunkSyncService
 
     /**
      * 将知识库正文重建为 chunks，并同步向量相关字段。
+     *
+     * 默认仍允许 fallback 向量，避免上传/编辑知识库时被 embedding 服务阻断。
+     * 管理后台“更新切片”会启用强制真实 embedding 模式，失败时抛错并保留原切片。
      */
-    public function sync(int $knowledgeBaseId, string $content): int
+    public function sync(int $knowledgeBaseId, string $content, bool $requireRealEmbedding = false): int
     {
         if ($knowledgeBaseId <= 0) {
             return 0;
@@ -37,7 +40,11 @@ class KnowledgeChunkSyncService
 
         $chunks = $this->chunkText($content);
         $embeddingMetadata = $this->resolveEmbeddingMetadata();
-        $generatedEmbeddings = $this->generateEmbeddingsForChunks($chunks, $embeddingMetadata);
+        $generatedEmbeddings = $this->generateEmbeddingsForChunks($chunks, $embeddingMetadata, $requireRealEmbedding);
+
+        if ($requireRealEmbedding && count($generatedEmbeddings) !== count($chunks)) {
+            throw new \RuntimeException(__('admin.knowledge_bases.error.embedding_sync_failed'));
+        }
 
         DB::transaction(function () use ($knowledgeBaseId, $chunks, $generatedEmbeddings): void {
             KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->delete();
@@ -233,9 +240,16 @@ class KnowledgeChunkSyncService
      * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string}|null  $embeddingMetadata
      * @return array<int, array{model_id:int,dimensions:int,provider:string,vector:list<float>,vector_literal:?string}>
      */
-    private function generateEmbeddingsForChunks(array $chunks, ?array $embeddingMetadata): array
+    private function generateEmbeddingsForChunks(array $chunks, ?array $embeddingMetadata, bool $requireRealEmbedding = false): array
     {
-        if ($chunks === [] || $embeddingMetadata === null) {
+        if ($chunks === []) {
+            return [];
+        }
+        if ($embeddingMetadata === null) {
+            if ($requireRealEmbedding) {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.embedding_required'));
+            }
+
             return [];
         }
 
@@ -279,11 +293,16 @@ class KnowledgeChunkSyncService
 
             return count($results) === count($chunks) ? $results : [];
         } catch (Throwable $exception) {
+            $message = OpenAiRuntimeProvider::normalizeApiException($exception, (string) ($embeddingMetadata['api_url'] ?? ''));
             Log::info('geoflow.knowledge_embedding_failed', [
                 'embedding_model_id' => (int) ($embeddingMetadata['model_id'] ?? 0),
                 'model_identifier' => (string) ($embeddingMetadata['model_name'] ?? ''),
-                'message' => OpenAiRuntimeProvider::normalizeApiException($exception, (string) ($embeddingMetadata['api_url'] ?? '')),
+                'message' => $message,
             ]);
+
+            if ($requireRealEmbedding) {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.embedding_api_failed', ['message' => $message]));
+            }
 
             // 关键兜底：向量 API 不可用时，不中断知识库同步主流程。
             return [];
