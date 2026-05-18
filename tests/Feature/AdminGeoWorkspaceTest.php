@@ -12,6 +12,8 @@ use App\Models\GeoAnswer;
 use App\Models\GeoArticleAudit;
 use App\Models\GeoArticleDraft;
 use App\Models\GeoKeyword;
+use App\Models\GeoPublishRecord;
+use App\Models\GeoPublishTarget;
 use App\Models\GeoReport;
 use App\Models\GeoScore;
 use App\Models\GeoTask;
@@ -1140,6 +1142,67 @@ class AdminGeoWorkspaceTest extends TestCase
             ->assertOk()
             ->assertSee('发布后复测')
             ->assertSee('复测得分');
+    }
+
+    public function test_admin_can_create_yixiaoer_publish_handoff_after_geo_audit(): void
+    {
+        [$admin, $task, $draft] = $this->createReportDraftFixture();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.reports.article-drafts.convert', [
+                'taskId' => $task->id,
+                'draftId' => $draft->id,
+            ]))
+            ->assertRedirect();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.reports.article-drafts.yixiaoer-handoff', [
+                'taskId' => $task->id,
+                'draftId' => $draft->id,
+            ]), [
+                'platform_codes' => ['xiaohongshu', 'douyin', 'shipinhao'],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.reports.article-drafts.audit', [
+                'taskId' => $task->id,
+                'draftId' => $draft->id,
+            ]))
+            ->assertRedirect(route('admin.geo.reports.show', ['taskId' => $task->id]));
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.reports.article-drafts.yixiaoer-handoff', [
+                'taskId' => $task->id,
+                'draftId' => $draft->id,
+            ]), [
+                'platform_codes' => ['xiaohongshu', 'douyin', 'shipinhao'],
+            ])
+            ->assertRedirect(route('admin.geo.reports.show', ['taskId' => $task->id]))
+            ->assertSessionHas('message');
+
+        $target = GeoPublishTarget::query()->firstOrFail();
+        $this->assertSame('yixiaoer', $target->type);
+        $this->assertSame('蚁小二发布交接', $target->name);
+
+        $record = GeoPublishRecord::query()->firstOrFail();
+        $this->assertSame($draft->id, $record->geo_article_draft_id);
+        $this->assertSame($target->id, $record->geo_publish_target_id);
+        $this->assertSame('ready_handoff', $record->status);
+        $this->assertSame(['xiaohongshu', 'douyin', 'shipinhao'], $record->platform_codes);
+        $this->assertSame('yixiaoer', $record->handoff_payload['channel']);
+        $this->assertSame('draft_publish_handoff', $record->handoff_payload['action']);
+        $this->assertSame($draft->title, $record->handoff_payload['article']['title']);
+        $this->assertStringContainsString('恒森全屋定制服务重庆涪陵', $record->handoff_payload['article']['content_markdown']);
+        $this->assertSame(100, $record->handoff_payload['geo_audit']['score']);
+        $this->assertSame('geo_report', $record->handoff_payload['provenance']['source']);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.geo.reports.show', ['taskId' => $task->id]))
+            ->assertOk()
+            ->assertSee('蚁小二交接')
+            ->assertSee('待蚁小二接管');
     }
 
     private function createAdmin(): Admin

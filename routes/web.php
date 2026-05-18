@@ -124,6 +124,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('reports/{taskId}/article-drafts/{draftId}/retest', [GeoWorkspaceController::class, 'retestArticleDraft'])
                 ->name('reports.article-drafts.retest')
                 ->whereNumber(['taskId', 'draftId']);
+            Route::post('reports/{taskId}/article-drafts/{draftId}/yixiaoer-handoff', [GeoWorkspaceController::class, 'createYixiaoerHandoff'])
+                ->name('reports.article-drafts.yixiaoer-handoff')
+                ->whereNumber(['taskId', 'draftId']);
         });
 
         // 任务管理（Blade 新路径）

@@ -56,4 +56,9 @@ class GeoArticleDraft extends Model
     {
         return $this->hasMany(GeoPublishRetest::class, 'geo_article_draft_id');
     }
+
+    public function publishRecords(): HasMany
+    {
+        return $this->hasMany(GeoPublishRecord::class, 'geo_article_draft_id');
+    }
 }

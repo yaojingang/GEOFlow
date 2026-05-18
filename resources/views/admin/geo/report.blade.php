@@ -11,6 +11,12 @@
     $platformNames = $platformNames ?? [];
     $reportMode = (string) ($task->report_mode ?: 'with_recommendations');
     $reportModeLabel = $reportMode === 'visibility_only' ? '客户报告' : '内部优化报告';
+    $yixiaoerPlatformLabels = [
+        'xiaohongshu' => '小红书',
+        'douyin' => '抖音',
+        'shipinhao' => '视频号',
+        'bilibili' => 'B站',
+    ];
     $auditCheckLabels = [
         'brand_mentioned' => '品牌已出现',
         'service_area_mentioned' => '服务区域已出现',
@@ -146,6 +152,7 @@
                                 ? 'bg-emerald-50 text-emerald-700'
                                 : 'bg-amber-50 text-amber-700';
                             $latestAudit = $draft->audits->first();
+                            $latestPublishRecord = $draft->publishRecords->first();
                             $latestRetest = $draft->publishRetests->first();
                         @endphp
                         <article class="space-y-4 p-5">
@@ -179,6 +186,16 @@
                                                 <button type="submit" class="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100">
                                                     <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
                                                     发布后复测
+                                                </button>
+                                            </form>
+                                            <form method="POST" action="{{ route('admin.geo.reports.article-drafts.yixiaoer-handoff', ['taskId' => (int) $task->id, 'draftId' => (int) $draft->id]) }}" class="flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2 py-1">
+                                                @csrf
+                                                @foreach(['xiaohongshu', 'douyin', 'shipinhao'] as $platformCode)
+                                                    <input type="hidden" name="platform_codes[]" value="{{ $platformCode }}">
+                                                @endforeach
+                                                <button type="submit" class="inline-flex items-center gap-1 px-1 text-xs font-medium text-purple-700 hover:text-purple-800">
+                                                    <i data-lucide="send-to-back" class="h-3.5 w-3.5"></i>
+                                                    蚁小二交接
                                                 </button>
                                             </form>
                                         @else
@@ -217,6 +234,22 @@
                                             @endforeach
                                         </ul>
                                     @endif
+                                </div>
+                            @endif
+                            @if($latestPublishRecord)
+                                <div class="rounded-lg border border-purple-100 bg-purple-50/60 p-4">
+                                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                            <h4 class="text-sm font-semibold text-gray-900">蚁小二交接</h4>
+                                            <p class="mt-1 text-xs text-gray-600">状态：待蚁小二接管 · {{ $latestPublishRecord->created_at?->format('Y-m-d H:i') }}</p>
+                                        </div>
+                                        <div class="text-xs font-medium text-purple-700">{{ $latestPublishRecord->publishTarget?->name ?? '蚁小二' }}</div>
+                                    </div>
+                                    <div class="mt-3 flex flex-wrap gap-2">
+                                        @foreach((array) $latestPublishRecord->platform_codes as $platformCode)
+                                            <span class="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-purple-700">{{ $yixiaoerPlatformLabels[$platformCode] ?? $platformCode }}</span>
+                                        @endforeach
+                                    </div>
                                 </div>
                             @endif
                             @if($latestRetest)

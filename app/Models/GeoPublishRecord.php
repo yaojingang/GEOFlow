@@ -12,6 +12,8 @@ class GeoPublishRecord extends Model
     protected $fillable = [
         'geo_article_draft_id',
         'geo_publish_target_id',
+        'platform_codes',
+        'handoff_payload',
         'status',
         'target_url',
         'error_message',
@@ -23,6 +25,8 @@ class GeoPublishRecord extends Model
         return [
             'geo_article_draft_id' => 'integer',
             'geo_publish_target_id' => 'integer',
+            'platform_codes' => 'array',
+            'handoff_payload' => 'array',
             'published_at' => 'datetime',
         ];
     }
@@ -30,5 +34,10 @@ class GeoPublishRecord extends Model
     public function articleDraft(): BelongsTo
     {
         return $this->belongsTo(GeoArticleDraft::class, 'geo_article_draft_id');
+    }
+
+    public function publishTarget(): BelongsTo
+    {
+        return $this->belongsTo(GeoPublishTarget::class, 'geo_publish_target_id');
     }
 }

@@ -32,6 +32,7 @@ use App\Services\Geo\GeoReferenceContentQualityScorer;
 use App\Services\Geo\GeoReferenceDraftGenerator;
 use App\Services\Geo\GeoReferencePageCrawler;
 use App\Services\Geo\GeoSearchBatchRunner;
+use App\Services\Geo\GeoYixiaoerHandoffService;
 use App\Support\AdminWeb;
 use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Http\RedirectResponse;
@@ -750,6 +751,8 @@ class GeoWorkspaceController extends Controller
                 ->with([
                     'articleDrafts.article',
                     'articleDrafts.audits' => fn ($query) => $query->latest()->limit(1),
+                    'articleDrafts.publishRecords' => fn ($query) => $query->latest()->limit(1),
+                    'articleDrafts.publishRecords.publishTarget',
                     'articleDrafts.publishRetests' => fn ($query) => $query->latest()->limit(1),
                 ])
                 ->latest()
@@ -892,6 +895,30 @@ class GeoWorkspaceController extends Controller
         return redirect()
             ->route('admin.geo.reports.show', ['taskId' => $task->id])
             ->with('message', '发布后复测已完成');
+    }
+
+    public function createYixiaoerHandoff(int $taskId, int $draftId, Request $request, GeoYixiaoerHandoffService $handoffService): RedirectResponse
+    {
+        $payload = $request->validate([
+            'platform_codes' => ['required', 'array', 'min:1'],
+            'platform_codes.*' => ['required', Rule::in(['xiaohongshu', 'douyin', 'shipinhao', 'bilibili'])],
+        ], [
+            'platform_codes.required' => '请至少选择一个蚁小二目标平台',
+        ]);
+
+        $organization = $this->resolveOrganization($this->currentAdmin());
+        $task = $this->loadReportTask($organization, $taskId);
+        $draft = $this->loadDraftForReport($organization, $task, $draftId);
+
+        try {
+            $handoffService->create($task, $draft, (array) $payload['platform_codes']);
+        } catch (\InvalidArgumentException $exception) {
+            return back()->withErrors($exception->getMessage());
+        }
+
+        return redirect()
+            ->route('admin.geo.reports.show', ['taskId' => $task->id])
+            ->with('message', '蚁小二发布交接已生成');
     }
 
     private function currentAdmin(): Admin
