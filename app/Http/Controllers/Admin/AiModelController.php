@@ -7,6 +7,7 @@ use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\SiteSetting;
 use App\Support\AdminWeb;
+use App\Support\GeoFlow\AnthropicRuntimeProvider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Http\JsonResponse;
@@ -190,11 +191,15 @@ class AiModelController extends Controller
                 return $this->modelTestResponse(false, __('admin.ai_models.test_error_model_missing'), $startedAt, $modelType, $endpoint);
             }
 
-            $response = Http::acceptJson()
+            $request = Http::acceptJson()
                 ->asJson()
                 ->withToken($apiKey)
-                ->timeout(45)
-                ->post($endpoint, $this->buildTestPayload($modelName, $modelType));
+                ->timeout(45);
+            if ($this->usesAnthropicMessages($model, $modelType)) {
+                $request = $request->withHeaders(AnthropicRuntimeProvider::headers());
+            }
+
+            $response = $request->post($endpoint, $this->buildTestPayload($model, $modelName, $modelType));
 
             $json = $response->json();
             if (! $response->successful()) {
@@ -211,7 +216,7 @@ class AiModelController extends Controller
                 );
             }
 
-            if (! $this->isValidTestResponse($json, $modelType)) {
+            if (! $this->isValidTestResponse($json, $modelType, $model)) {
                 return $this->modelTestResponse(
                     false,
                     __('admin.ai_models.test_invalid_response', [
@@ -422,7 +427,7 @@ class AiModelController extends Controller
             $row = DB::selectOne("SELECT extname FROM pg_extension WHERE extname = 'vector' LIMIT 1");
 
             return $row !== null;
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return false;
         }
     }
@@ -453,6 +458,10 @@ class AiModelController extends Controller
 
     private function resolveTestEndpoint(AiModel $model, string $modelType): string
     {
+        if ($this->usesAnthropicMessages($model, $modelType)) {
+            return AnthropicRuntimeProvider::resolveMessagesEndpoint((string) ($model->api_url ?? ''));
+        }
+
         $apiUrl = (string) ($model->api_url ?? '');
         $providerBaseUrl = $modelType === 'embedding'
             ? OpenAiRuntimeProvider::resolveEmbeddingBaseUrl($apiUrl)
@@ -468,13 +477,23 @@ class AiModelController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function buildTestPayload(string $modelName, string $modelType): array
+    private function buildTestPayload(AiModel $model, string $modelName, string $modelType): array
     {
         if ($modelType === 'embedding') {
             return [
                 'model' => $modelName,
                 'input' => 'GEOFlow embedding connection test',
             ];
+        }
+
+        if ($this->usesAnthropicMessages($model, $modelType)) {
+            return AnthropicRuntimeProvider::buildPayload(
+                $modelName,
+                'Reply with OK.',
+                '',
+                8,
+                0
+            );
         }
 
         return [
@@ -487,7 +506,7 @@ class AiModelController extends Controller
         ];
     }
 
-    private function isValidTestResponse(mixed $json, string $modelType): bool
+    private function isValidTestResponse(mixed $json, string $modelType, AiModel $model): bool
     {
         if (! is_array($json)) {
             return false;
@@ -497,9 +516,18 @@ class AiModelController extends Controller
             return isset($json['data'][0]['embedding']) && is_array($json['data'][0]['embedding']);
         }
 
+        if ($this->usesAnthropicMessages($model, $modelType)) {
+            return AnthropicRuntimeProvider::extractResponseText($json, '') !== '';
+        }
+
         return isset($json['choices'][0]['message']['content'])
             || isset($json['choices'][0]['text'])
             || isset($json['choices'][0]['delta']['content']);
+    }
+
+    private function usesAnthropicMessages(AiModel $model, string $modelType): bool
+    {
+        return $modelType === 'chat' && AnthropicRuntimeProvider::isAnthropicCompatible($model);
     }
 
     private function modelTestResponse(

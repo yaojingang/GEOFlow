@@ -18,6 +18,7 @@
     $notificationStatus = (string) ($updateState['status'] ?? 'disabled');
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],
+        'geo' => ['route' => 'admin.geo.workspace', 'name' => __('admin.nav.geo')],
         'tasks' => ['route' => 'admin.tasks.index', 'name' => __('admin.nav.tasks')],
         'articles' => ['route' => 'admin.articles.index', 'name' => __('admin.nav.articles')],
         'materials' => ['route' => 'admin.materials.index', 'name' => __('admin.nav.materials')],
@@ -30,6 +31,17 @@
     $subMap = [
         'admin.tasks.create' => 'tasks',
         'admin.tasks.edit' => 'tasks',
+        'admin.geo.workspace' => 'geo',
+        'admin.geo.brand-profile.save' => 'geo',
+        'admin.geo.keywords.store' => 'geo',
+        'admin.geo.diagnosis.store' => 'geo',
+        'admin.geo.diagnosis.run' => 'geo',
+        'admin.geo.reports.show' => 'geo',
+        'admin.geo.reports.article-draft.store' => 'geo',
+        'admin.geo.reports.article-drafts.edit' => 'geo',
+        'admin.geo.reports.article-drafts.update' => 'geo',
+        'admin.geo.reports.article-drafts.convert' => 'geo',
+        'admin.geo.reports.article-drafts.audit' => 'geo',
         'admin.articles.create' => 'articles',
         'admin.articles.edit' => 'articles',
         'admin.categories.index' => 'materials',

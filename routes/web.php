@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\GeoWorkspaceController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
@@ -67,6 +68,62 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+        // GEO 智能优化工作台
+        Route::prefix('geo')->name('geo.')->group(function () {
+            Route::get('/', [GeoWorkspaceController::class, 'index'])->name('workspace');
+            Route::post('brand-profile', [GeoWorkspaceController::class, 'saveBrandProfile'])->name('brand-profile.save');
+            Route::post('keywords', [GeoWorkspaceController::class, 'storeKeyword'])->name('keywords.store');
+            Route::post('opportunities/generate', [GeoWorkspaceController::class, 'generateOpportunities'])->name('opportunities.generate');
+            Route::post('search-runs', [GeoWorkspaceController::class, 'storeSearchRun'])->name('search-runs.store');
+            Route::post('search-runs/{runId}/run', [GeoWorkspaceController::class, 'runSearchRun'])
+                ->name('search-runs.run')
+                ->whereNumber('runId');
+            Route::get('citation-sources', [GeoWorkspaceController::class, 'citationSources'])->name('citation-sources.index');
+            Route::post('citation-sources/batch-crawl', [GeoWorkspaceController::class, 'batchCrawlCitationSources'])
+                ->name('citation-sources.batch-crawl');
+            Route::post('citation-sources/batch-score', [GeoWorkspaceController::class, 'batchScoreCitationSources'])
+                ->name('citation-sources.batch-score');
+            Route::post('citation-sources/reference-brief', [GeoWorkspaceController::class, 'storeReferenceBrief'])
+                ->name('citation-sources.reference-brief.store');
+            Route::post('citation-sources/reference-briefs/{writingTaskId}/article-draft', [GeoWorkspaceController::class, 'generateReferenceBriefDraft'])
+                ->name('citation-sources.reference-briefs.article-draft.store')
+                ->whereNumber('writingTaskId');
+            Route::get('citation-sources/{sourceId}', [GeoWorkspaceController::class, 'showCitationSource'])
+                ->name('citation-sources.show')
+                ->whereNumber('sourceId');
+            Route::post('citation-sources/{sourceId}/crawl', [GeoWorkspaceController::class, 'crawlCitationSource'])
+                ->name('citation-sources.crawl')
+                ->whereNumber('sourceId');
+            Route::post('citation-sources/{sourceId}/score', [GeoWorkspaceController::class, 'scoreCitationSource'])
+                ->name('citation-sources.score')
+                ->whereNumber('sourceId');
+            Route::post('diagnosis', [GeoWorkspaceController::class, 'storeDiagnosis'])->name('diagnosis.store');
+            Route::post('diagnosis/{taskId}/run', [GeoWorkspaceController::class, 'runDiagnosis'])
+                ->name('diagnosis.run')
+                ->whereNumber('taskId');
+            Route::get('reports/{taskId}', [GeoWorkspaceController::class, 'showReport'])
+                ->name('reports.show')
+                ->whereNumber('taskId');
+            Route::post('reports/{taskId}/article-draft', [GeoWorkspaceController::class, 'generateArticleDraft'])
+                ->name('reports.article-draft.store')
+                ->whereNumber('taskId');
+            Route::get('reports/{taskId}/article-drafts/{draftId}/edit', [GeoWorkspaceController::class, 'editArticleDraft'])
+                ->name('reports.article-drafts.edit')
+                ->whereNumber(['taskId', 'draftId']);
+            Route::put('reports/{taskId}/article-drafts/{draftId}', [GeoWorkspaceController::class, 'updateArticleDraft'])
+                ->name('reports.article-drafts.update')
+                ->whereNumber(['taskId', 'draftId']);
+            Route::post('reports/{taskId}/article-drafts/{draftId}/convert', [GeoWorkspaceController::class, 'convertArticleDraft'])
+                ->name('reports.article-drafts.convert')
+                ->whereNumber(['taskId', 'draftId']);
+            Route::post('reports/{taskId}/article-drafts/{draftId}/audit', [GeoWorkspaceController::class, 'auditArticleDraft'])
+                ->name('reports.article-drafts.audit')
+                ->whereNumber(['taskId', 'draftId']);
+            Route::post('reports/{taskId}/article-drafts/{draftId}/retest', [GeoWorkspaceController::class, 'retestArticleDraft'])
+                ->name('reports.article-drafts.retest')
+                ->whereNumber(['taskId', 'draftId']);
+        });
 
         // 任务管理（Blade 新路径）
         Route::prefix('tasks')->name('tasks.')->group(function () {

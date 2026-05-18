@@ -39,6 +39,41 @@ class AdminAiModelsPageTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer test-api-key'));
     }
 
+    public function test_admin_can_test_anthropic_compatible_chat_model_connection(): void
+    {
+        Http::fake([
+            'https://anthropic.test/v1/messages' => Http::response([
+                'content' => [
+                    ['type' => 'text', 'text' => 'OK'],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createAiModel('chat', [
+            'name' => 'GPT 5.5 Anthropic',
+            'version' => 'anthropic-compatible',
+            'model_id' => 'gpt-5.5',
+            'api_url' => 'https://anthropic.test/v1',
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.model_type', 'chat')
+            ->assertJsonPath('meta.endpoint', 'https://anthropic.test/v1/messages')
+            ->assertJsonPath('meta.http_status', 200);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://anthropic.test/v1/messages'
+            && $request['model'] === 'gpt-5.5'
+            && $request['messages'][0]['role'] === 'user'
+            && $request['messages'][0]['content'] === 'Reply with OK.'
+            && $request->hasHeader('Authorization', 'Bearer test-api-key')
+            && $request->hasHeader('anthropic-version', '2023-06-01'));
+    }
+
     public function test_admin_models_page_shows_test_action(): void
     {
         $this->createAiModel('chat');
@@ -47,7 +82,8 @@ class AdminAiModelsPageTest extends TestCase
             ->get(route('admin.ai-models.index'));
 
         $response->assertOk()
-            ->assertSee(__('admin.ai_models.test'));
+            ->assertSee(__('admin.ai_models.test'))
+            ->assertSee('GPT-5.5 Anthropic');
     }
 
     public function test_admin_can_test_embedding_model_connection(): void
@@ -105,9 +141,9 @@ class AdminAiModelsPageTest extends TestCase
         ]);
     }
 
-    private function createAiModel(string $type): AiModel
+    private function createAiModel(string $type, array $overrides = []): AiModel
     {
-        return AiModel::query()->create([
+        return AiModel::query()->create(array_merge([
             'name' => $type === 'embedding' ? 'Test Embedding' : 'Test Chat',
             'version' => 'test',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -119,6 +155,6 @@ class AdminAiModelsPageTest extends TestCase
             'used_today' => 0,
             'total_used' => 0,
             'status' => 'active',
-        ]);
+        ], $overrides));
     }
 }

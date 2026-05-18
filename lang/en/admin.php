@@ -3,6 +3,7 @@
 return [
     'nav' => [
         'dashboard' => 'Dashboard',
+        'geo' => 'GEO Workspace',
         'tasks' => 'Tasks',
         'articles' => 'Articles',
         'materials' => 'Materials',

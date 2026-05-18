@@ -3,6 +3,7 @@
 return [
     'nav' => [
         'dashboard' => '首页',
+        'geo' => 'GEO工作台',
         'tasks' => '任务管理',
         'articles' => '文章管理',
         'materials' => '素材管理',

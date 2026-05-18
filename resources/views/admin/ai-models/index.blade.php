@@ -188,6 +188,7 @@
                             <button type="button" onclick="fillPreset('minimax')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">MiniMax</button>
                             <button type="button" onclick="fillPreset('minimax_highspeed')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">MiniMax Highspeed</button>
                             <button type="button" onclick="fillPreset('openai')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">OpenAI</button>
+                            <button type="button" onclick="fillPreset('anthropic_gpt55')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">GPT-5.5 Anthropic</button>
                             <button type="button" onclick="fillPreset('deepseek')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">DeepSeek</button>
                             <button type="button" onclick="fillPreset('zhipu')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Zhipu GLM</button>
                             <button type="button" onclick="fillPreset('volcengine_ark')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Volcengine Ark</button>
@@ -295,6 +296,7 @@
             minimax: {name: 'MiniMax M2.7', version: 'M2.7', model_id: 'MiniMax-M2.7', api_url: 'https://api.minimax.io', model_type: 'chat'},
             minimax_highspeed: {name: 'MiniMax M2.7 Highspeed', version: 'M2.7', model_id: 'MiniMax-M2.7-highspeed', api_url: 'https://api.minimax.io', model_type: 'chat'},
             openai: {name: 'GPT-4o', version: '', model_id: 'gpt-4o', api_url: 'https://api.openai.com', model_type: 'chat'},
+            anthropic_gpt55: {name: 'GPT-5.5 Anthropic 兼容', version: 'anthropic-compatible', model_id: 'gpt-5.5', api_url: 'http://43.165.185.203:8080/v1', model_type: 'chat'},
             deepseek: {name: 'DeepSeek Chat', version: '', model_id: 'deepseek-chat', api_url: 'https://api.deepseek.com', model_type: 'chat'},
             zhipu: {name: '智谱 GLM-4.6', version: 'v4', model_id: 'glm-4.6', api_url: 'https://open.bigmodel.cn/api/paas/v4', model_type: 'chat'},
             volcengine_ark: {name: '火山方舟 Chat', version: 'v3', model_id: '', api_url: 'https://ark.cn-beijing.volces.com/api/v3', model_type: 'chat'},

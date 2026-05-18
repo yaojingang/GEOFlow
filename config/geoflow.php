@@ -51,6 +51,8 @@ return [
     'url_import_allow_mixed_dns' => filter_var(env('URL_IMPORT_ALLOW_MIXED_DNS', false), FILTER_VALIDATE_BOOLEAN),
     // 为 true 时记录知识库「查询向量」是否由默认 embedding 接口生成（便于对照 bak 验证；默认关闭）
     'debug_knowledge_query_embedding' => filter_var(env('GEOFLOW_DEBUG_KNOWLEDGE_QUERY_EMBEDDING', false), FILTER_VALIDATE_BOOLEAN),
+    // GEO 生产链路是否使用 Laravel 队列执行批量采集、批量评分和发布后复测；默认同步执行，便于本地调试。
+    'geo_async_jobs' => filter_var(env('GEOFLOW_GEO_ASYNC_JOBS', false), FILTER_VALIDATE_BOOLEAN),
 
     // 本地上传根目录（绝对路径）
     'upload_path' => env('GEOFLOW_UPLOAD_PATH', public_path('assets/images')),

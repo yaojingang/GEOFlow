@@ -31,6 +31,7 @@ class Article extends Model
         'is_ai_generated',
         'is_hot',
         'is_featured',
+        'metadata',
         'published_at',
     ];
 
@@ -44,6 +45,7 @@ class Article extends Model
             'is_ai_generated' => 'integer',
             'is_hot' => 'boolean',
             'is_featured' => 'boolean',
+            'metadata' => 'array',
             'published_at' => 'datetime',
         ];
     }
