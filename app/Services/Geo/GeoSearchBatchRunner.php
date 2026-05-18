@@ -127,7 +127,7 @@ class GeoSearchBatchRunner
 
     private function buildPrompt(BrandProfile $brandProfile, GeoAiSearchQuestion $question): string
     {
-        return implode("\n", [
+        return implode("\n", array_merge([
             '请像真实用户在 AI 搜索里提问一样回答，不要说明你在执行测试。',
             '搜索问题：'.$question->question,
             '目标品牌：'.$brandProfile->brand_name,
@@ -136,8 +136,9 @@ class GeoSearchBatchRunner
             '核心优势：'.(string) $brandProfile->advantages,
             '服务区域：'.(string) $brandProfile->service_area,
             '补充事实：'.(string) $brandProfile->extra_facts,
+        ], BrandProfileContextFormatter::promptLines($brandProfile), [
             '请尽量给出你会参考的网站、文章、帖子或资料来源链接；如果没有链接，也要说明判断依据。',
-        ]);
+        ]));
     }
 
     /**

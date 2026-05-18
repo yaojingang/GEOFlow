@@ -18,6 +18,7 @@ class BrandProfile extends Model
         'pain_points',
         'service_area',
         'extra_facts',
+        'extended_profile',
         'status',
     ];
 
@@ -26,6 +27,7 @@ class BrandProfile extends Model
         return [
             'organization_id' => 'integer',
             'aliases' => 'array',
+            'extended_profile' => 'array',
         ];
     }
 

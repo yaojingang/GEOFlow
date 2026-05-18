@@ -9,6 +9,8 @@
     ];
     $band = collect($scoreBands)->first(fn (array $item): bool => (int) $report->total_score >= $item['min']);
     $platformNames = $platformNames ?? [];
+    $reportMode = (string) ($task->report_mode ?: 'with_recommendations');
+    $reportModeLabel = $reportMode === 'visibility_only' ? '客户报告' : '内部优化报告';
     $auditCheckLabels = [
         'brand_mentioned' => '品牌已出现',
         'service_area_mentioned' => '服务区域已出现',
@@ -33,6 +35,9 @@
                 <p class="mt-1 text-sm text-gray-500">{{ $organization->name }} · {{ $task->created_at?->format('Y-m-d H:i') }}</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+                <div class="rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700">
+                    {{ $reportModeLabel }}
+                </div>
                 <div class="rounded-lg border {{ $band['class'] ?? 'border-gray-200 bg-white text-gray-700' }} px-4 py-3 text-sm font-medium">
                     {{ $band['label'] ?? '待评估' }}
                 </div>
@@ -120,7 +125,7 @@
 
         <section class="rounded-lg border border-gray-200 bg-white shadow-sm">
             <div class="border-b border-gray-100 px-5 py-4">
-                <h2 class="text-base font-semibold text-gray-900">优化建议</h2>
+                <h2 class="text-base font-semibold text-gray-900">{{ $reportMode === 'visibility_only' ? '报告正文' : '优化建议' }}</h2>
             </div>
             <div class="prose max-w-none p-5 text-sm leading-7 text-gray-700">
                 {!! $report->html_report !!}

@@ -2,6 +2,7 @@
 
 @php
     $aliasesText = implode("\n", (array) ($brandProfile?->aliases ?? []));
+    $extendedProfile = (array) ($brandProfile?->extended_profile ?? []);
     $keywordTypeLabels = [
         'industry' => '行业词',
         'brand' => '品牌词',
@@ -43,6 +44,34 @@
     $opportunities = $opportunities ?? collect();
     $searchRuns = $searchRuns ?? collect();
     $citationSources = $citationSources ?? collect();
+    $manualExpansionDefaults = [
+        'area_prefixes' => trim((string) ($brandProfile?->service_area ?? '')),
+        'modifiers' => "靠谱的\n口碑好的\n专业的",
+        'core_terms' => trim((string) ($brandProfile?->products ?? '全屋定制')),
+        'entity_terms' => "品牌\n厂家\n公司",
+        'recommend_terms' => '推荐',
+        'question_terms' => "哪家好\n有哪些",
+        'limit' => 80,
+    ];
+    $manualExpansionPatterns = [
+        'C+D' => 'C+D',
+        'A+C+D' => 'A+C+D',
+        'B+C+D' => 'B+C+D',
+        'A+B+C+D' => 'A+B+C+D',
+        'C+D+E' => 'C+D+E',
+        'C+D+F' => 'C+D+F',
+        'A+C+D+E' => 'A+C+D+E',
+        'A+B+C+D+E' => 'A+B+C+D+E',
+        'A+B+C+D+F' => 'A+B+C+D+F',
+    ];
+    $selectedManualExpansionPatterns = old('combination_patterns', [
+        'C+D',
+        'A+C+D',
+        'B+C+D',
+        'A+B+C+D',
+        'C+D+E',
+        'C+D+F',
+    ]);
     $aiPlatformCount = $platforms->count() + $realAiModels->count();
     $trendDelta = $trendMetrics['delta'];
     $trendDeltaLabel = $trendDelta === null
@@ -168,6 +197,64 @@
                     </form>
                 </div>
 
+                <div class="border-b border-gray-100 p-5">
+                    <form method="POST" action="{{ route('admin.geo.opportunities.expand') }}" class="space-y-4">
+                        @csrf
+                        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <h3 class="text-sm font-semibold text-gray-900">手工拓词</h3>
+                                <p class="mt-1 text-xs text-gray-500">A 地域、B 修饰、C 核心、D 实体、E 推荐、F 问法</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label for="manual_expansion_limit" class="text-xs font-medium text-gray-600">数量</label>
+                                <input id="manual_expansion_limit" name="limit" type="number" min="1" max="200" value="{{ old('limit', $manualExpansionDefaults['limit']) }}" class="h-9 w-20 rounded-lg border border-gray-300 px-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+                            </div>
+                        </div>
+
+                        <div class="grid gap-3 md:grid-cols-3">
+                            <div>
+                                <label for="manual_area_prefixes" class="block text-xs font-medium text-gray-700">A 地域前缀</label>
+                                <textarea id="manual_area_prefixes" name="area_prefixes" rows="3" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('area_prefixes', $manualExpansionDefaults['area_prefixes']) }}</textarea>
+                            </div>
+                            <div>
+                                <label for="manual_modifiers" class="block text-xs font-medium text-gray-700">B 修饰词</label>
+                                <textarea id="manual_modifiers" name="modifiers" rows="3" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('modifiers', $manualExpansionDefaults['modifiers']) }}</textarea>
+                            </div>
+                            <div>
+                                <label for="manual_core_terms" class="block text-xs font-medium text-gray-700">C 核心产品词</label>
+                                <textarea id="manual_core_terms" name="core_terms" rows="3" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('core_terms', $manualExpansionDefaults['core_terms']) }}</textarea>
+                            </div>
+                            <div>
+                                <label for="manual_entity_terms" class="block text-xs font-medium text-gray-700">D 实体类型词</label>
+                                <textarea id="manual_entity_terms" name="entity_terms" rows="3" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('entity_terms', $manualExpansionDefaults['entity_terms']) }}</textarea>
+                            </div>
+                            <div>
+                                <label for="manual_recommend_terms" class="block text-xs font-medium text-gray-700">E 推荐词</label>
+                                <textarea id="manual_recommend_terms" name="recommend_terms" rows="3" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('recommend_terms', $manualExpansionDefaults['recommend_terms']) }}</textarea>
+                            </div>
+                            <div>
+                                <label for="manual_question_terms" class="block text-xs font-medium text-gray-700">F 问法词</label>
+                                <textarea id="manual_question_terms" name="question_terms" rows="3" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('question_terms', $manualExpansionDefaults['question_terms']) }}</textarea>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                            <div class="grid flex-1 gap-2 sm:grid-cols-3">
+                                @foreach ($manualExpansionPatterns as $patternValue => $patternLabel)
+                                    <label class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                                        <input type="checkbox" name="combination_patterns[]" value="{{ $patternValue }}" @checked(in_array($patternValue, $selectedManualExpansionPatterns, true)) class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span>{{ $patternLabel }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                                <i data-lucide="plus" class="h-4 w-4"></i>
+                                生成拓展机会词
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
                 <form method="POST" action="{{ route('admin.geo.search-runs.store') }}" class="space-y-4 p-5">
                     @csrf
                     <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
@@ -198,7 +285,12 @@
                                         <td class="px-4 py-3">
                                             <input type="checkbox" name="opportunity_ids[]" value="{{ (int) $opportunity->id }}" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                         </td>
-                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ $opportunity->keyword }}</td>
+                                        <td class="px-4 py-3 text-sm font-medium text-gray-900">
+                                            <span>{{ $opportunity->keyword }}</span>
+                                            @if ($opportunity->cluster_name)
+                                                <span class="mt-1 block text-xs font-normal text-gray-500">{{ $opportunity->cluster_name }}</span>
+                                            @endif
+                                        </td>
                                         <td class="px-4 py-3 text-sm text-gray-600">{{ $opportunity->intent }}</td>
                                         <td class="px-4 py-3 text-sm font-semibold text-emerald-700">{{ (int) $opportunity->opportunity_score }}</td>
                                         <td class="px-4 py-3 text-sm text-gray-500">{{ $opportunity->rationale }}</td>
@@ -374,6 +466,46 @@
                         </div>
                     </div>
 
+                    <div class="border-t border-gray-100 pt-4">
+                        <div class="mb-3">
+                            <h3 class="text-sm font-semibold text-gray-900">扩展品牌资料</h3>
+                        </div>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label for="short_name" class="block text-sm font-medium text-gray-700">品牌简称</label>
+                                <input id="short_name" name="short_name" type="text" value="{{ old('short_name', $extendedProfile['short_name'] ?? '') }}" class="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label for="writing_directions" class="block text-sm font-medium text-gray-700">写作方向</label>
+                                <input id="writing_directions" name="writing_directions" type="text" value="{{ old('writing_directions', $extendedProfile['writing_directions'] ?? '') }}" class="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label for="copy_types" class="block text-sm font-medium text-gray-700">文案类型</label>
+                                <textarea id="copy_types" name="copy_types" rows="3" class="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('copy_types', implode("\n", (array) ($extendedProfile['copy_types'] ?? []))) }}</textarea>
+                            </div>
+                            <div>
+                                <label for="product_features" class="block text-sm font-medium text-gray-700">产品特点</label>
+                                <textarea id="product_features" name="product_features" rows="3" class="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('product_features', implode("\n", (array) ($extendedProfile['product_features'] ?? []))) }}</textarea>
+                            </div>
+                            <div>
+                                <label for="brand_story" class="block text-sm font-medium text-gray-700">品牌故事</label>
+                                <textarea id="brand_story" name="brand_story" rows="3" class="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('brand_story', $extendedProfile['brand_story'] ?? '') }}</textarea>
+                            </div>
+                            <div>
+                                <label for="trust_proofs" class="block text-sm font-medium text-gray-700">信任背书</label>
+                                <textarea id="trust_proofs" name="trust_proofs" rows="3" class="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('trust_proofs', implode("\n", (array) ($extendedProfile['trust_proofs'] ?? []))) }}</textarea>
+                            </div>
+                            <div>
+                                <label for="promotion_regions" class="block text-sm font-medium text-gray-700">推广区域</label>
+                                <textarea id="promotion_regions" name="promotion_regions" rows="3" class="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('promotion_regions', implode("\n", (array) ($extendedProfile['promotion_regions'] ?? []))) }}</textarea>
+                            </div>
+                            <div>
+                                <label for="forbidden_claims" class="block text-sm font-medium text-gray-700">禁用表达</label>
+                                <textarea id="forbidden_claims" name="forbidden_claims" rows="3" class="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500">{{ old('forbidden_claims', implode("\n", (array) ($extendedProfile['forbidden_claims'] ?? []))) }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="flex justify-end">
                         <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                             <i data-lucide="save" class="h-4 w-4"></i>
@@ -483,6 +615,25 @@
                                         @endforeach
                                     </div>
                                 @endif
+                            </div>
+                        </div>
+                        <div>
+                            <div class="mb-2 text-sm font-medium text-gray-700">报告模式</div>
+                            <div class="grid gap-2">
+                                <label class="flex items-start gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                                    <input type="radio" name="report_mode" value="with_recommendations" checked class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>
+                                        <span class="block font-medium text-gray-900">内部优化报告</span>
+                                        <span class="block text-xs leading-5 text-gray-500">包含优化建议，适合运营和内容团队执行。</span>
+                                    </span>
+                                </label>
+                                <label class="flex items-start gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                                    <input type="radio" name="report_mode" value="visibility_only" class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>
+                                        <span class="block font-medium text-gray-900">客户可读报告</span>
+                                        <span class="block text-xs leading-5 text-gray-500">只展示可见度结论和平台评分，不展示内部优化建议。</span>
+                                    </span>
+                                </label>
                             </div>
                         </div>
                         <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">

@@ -147,7 +147,7 @@ class GeoDiagnosisRunner
 
     private function buildPrompt(BrandProfile $brandProfile, GeoTaskQuestion $question): string
     {
-        return implode("\n", [
+        return implode("\n", array_merge([
             '请像真实 AI 搜索助手一样回答用户问题。',
             '用户问题：'.$question->question,
             '品牌：'.$brandProfile->brand_name,
@@ -156,7 +156,7 @@ class GeoDiagnosisRunner
             '核心优势：'.(string) $brandProfile->advantages,
             '服务区域：'.(string) $brandProfile->service_area,
             '补充事实：'.(string) $brandProfile->extra_facts,
-        ]);
+        ], BrandProfileContextFormatter::promptLines($brandProfile)));
     }
 
     /**

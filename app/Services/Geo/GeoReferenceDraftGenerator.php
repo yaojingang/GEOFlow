@@ -113,6 +113,10 @@ class GeoReferenceDraftGenerator
         $evidenceLines = $evidencePoints->isEmpty()
             ? '- 参考来源提示：补充报价、板材、流程、案例和售后信息。'
             : $evidencePoints->map(static fn (string $item): string => '- '.$item)->implode("\n");
+        $extendedProfileLines = BrandProfileContextFormatter::markdownBullets($brandProfile);
+        $extendedProfileSection = $extendedProfileLines === []
+            ? '- 暂无扩展品牌资料。'
+            : implode("\n", $extendedProfileLines);
 
         return implode("\n\n", [
             '# '.$title,
@@ -124,6 +128,8 @@ class GeoReferenceDraftGenerator
             '- 核心优势：'.($brandProfile?->advantages ?: '待补充'),
             '- 服务区域：'.($brandProfile?->service_area ?: '待补充'),
             '- 补充事实：'.($brandProfile?->extra_facts ?: '待补充'),
+            '## 写作约束和品牌补充',
+            $extendedProfileSection,
             '## 高分参考内容',
             $referenceLines,
             '## 文章结构建议',

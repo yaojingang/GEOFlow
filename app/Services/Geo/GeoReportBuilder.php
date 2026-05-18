@@ -16,6 +16,7 @@ class GeoReportBuilder
         $task->loadMissing(['brandProfile', 'answers.question', 'answers.score']);
         $brandName = (string) $task->brandProfile->brand_name;
         $score = (int) $task->total_score;
+        $reportMode = (string) ($task->report_mode ?: 'with_recommendations');
         $summary = $this->summaryForScore($score);
         $platformNames = $this->platformNames($task->answers->pluck('platform_code')->all());
 
@@ -32,18 +33,27 @@ class GeoReportBuilder
             })
             ->implode("\n");
 
-        $markdown = implode("\n\n", [
+        $sections = [
             '# '.$brandName.' GEO 诊断报告',
+            '## 报告类型',
+            $reportMode === 'visibility_only' ? '客户可读可见度报告' : '内部优化建议报告',
             '## 诊断结论',
             '- 综合得分：'.$score,
             '- 结论：'.$summary,
             '## 平台回答评分',
             "| 平台 | 问题 | 提及品牌 | 正向推荐 | 分数 |\n|---|---|---|---|---|\n".$rows,
-            '## 优化建议',
-            '- 继续补充品牌官网、门店地址、联系方式、案例和常见问题内容。',
-            '- 围绕低曝光问题词生成结构化文章，让 AI 更容易识别品牌实体和服务范围。',
-            '- 保留同一评分口径持续复测，区分模拟平台和真实模型的趋势变化。',
-        ]);
+        ];
+
+        if ($reportMode === 'with_recommendations') {
+            $sections = array_merge($sections, [
+                '## 优化建议',
+                '- 继续补充品牌官网、门店地址、联系方式、案例和常见问题内容。',
+                '- 围绕低曝光问题词生成结构化文章，让 AI 更容易识别品牌实体和服务范围。',
+                '- 保留同一评分口径持续复测，区分模拟平台和真实模型的趋势变化。',
+            ]);
+        }
+
+        $markdown = implode("\n\n", $sections);
 
         return [
             'title' => $brandName.' GEO 诊断报告',

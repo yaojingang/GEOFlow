@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\BrandProfile;
 use App\Models\GeoArticleDraft;
+use App\Models\GeoKeywordOpportunity;
 use App\Models\GeoWritingTask;
 use App\Models\Organization;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -70,6 +71,63 @@ class AdminGeoOpportunityWorkflowTest extends TestCase
             ->assertSee('关键词机会库')
             ->assertSee('机会分')
             ->assertSee('重庆涪陵全屋定制哪家靠谱');
+    }
+
+    public function test_admin_can_expand_keyword_opportunities_with_abcdef_combinations(): void
+    {
+        [$admin, $organization] = $this->createBrandFixture();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.opportunities.expand'), [
+                'area_prefixes' => '重庆涪陵',
+                'modifiers' => "靠谱的\n口碑好的",
+                'core_terms' => '全屋定制',
+                'entity_terms' => "品牌\n厂家",
+                'recommend_terms' => '推荐',
+                'question_terms' => '哪家好',
+                'combination_patterns' => [
+                    'C+D',
+                    'A+C+D',
+                    'B+C+D',
+                    'A+B+C+D',
+                    'C+D+E',
+                    'C+D+F',
+                ],
+                'limit' => 50,
+            ])
+            ->assertRedirect(route('admin.geo.workspace'))
+            ->assertSessionHas('message');
+
+        foreach ([
+            '全屋定制品牌',
+            '重庆涪陵全屋定制品牌',
+            '靠谱的全屋定制品牌',
+            '重庆涪陵靠谱的全屋定制品牌',
+            '全屋定制品牌推荐',
+            '全屋定制品牌哪家好',
+        ] as $keyword) {
+            $this->assertDatabaseHas('geo_keyword_opportunities', [
+                'organization_id' => $organization->id,
+                'keyword' => $keyword,
+                'intent' => 'manual_expansion',
+                'status' => 'active',
+                'generation_source' => 'manual_abcdef',
+            ]);
+        }
+
+        $opportunity = GeoKeywordOpportunity::query()
+            ->where('organization_id', $organization->id)
+            ->where('keyword', '重庆涪陵靠谱的全屋定制品牌')
+            ->firstOrFail();
+
+        $this->assertSame('A+B+C+D', $opportunity->metadata['pattern']);
+        $this->assertGreaterThanOrEqual(70, $opportunity->opportunity_score);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.geo.workspace'))
+            ->assertOk()
+            ->assertSee('手工拓词')
+            ->assertSee('重庆涪陵靠谱的全屋定制品牌');
     }
 
     public function test_admin_can_run_ai_search_batch_and_extract_citation_sources(): void

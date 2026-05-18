@@ -75,6 +75,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('brand-profile', [GeoWorkspaceController::class, 'saveBrandProfile'])->name('brand-profile.save');
             Route::post('keywords', [GeoWorkspaceController::class, 'storeKeyword'])->name('keywords.store');
             Route::post('opportunities/generate', [GeoWorkspaceController::class, 'generateOpportunities'])->name('opportunities.generate');
+            Route::post('opportunities/expand', [GeoWorkspaceController::class, 'expandOpportunities'])->name('opportunities.expand');
             Route::post('search-runs', [GeoWorkspaceController::class, 'storeSearchRun'])->name('search-runs.store');
             Route::post('search-runs/{runId}/run', [GeoWorkspaceController::class, 'runSearchRun'])
                 ->name('search-runs.run')

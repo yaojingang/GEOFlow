@@ -24,6 +24,7 @@ use App\Services\Geo\GeoArticleAuditService;
 use App\Services\Geo\GeoArticleDraftGenerator;
 use App\Services\Geo\GeoArticlePublisher;
 use App\Services\Geo\GeoDiagnosisRunner;
+use App\Services\Geo\GeoKeywordCombinationService;
 use App\Services\Geo\GeoKeywordDiscoveryService;
 use App\Services\Geo\GeoPostPublishRetestRunner;
 use App\Services\Geo\GeoReferenceBriefBuilder;
@@ -114,6 +115,14 @@ class GeoWorkspaceController extends Controller
             'pain_points' => ['nullable', 'string'],
             'service_area' => ['nullable', 'string', 'max:255'],
             'extra_facts' => ['nullable', 'string'],
+            'short_name' => ['nullable', 'string', 'max:120'],
+            'writing_directions' => ['nullable', 'string'],
+            'copy_types' => ['nullable', 'string'],
+            'product_features' => ['nullable', 'string'],
+            'brand_story' => ['nullable', 'string'],
+            'trust_proofs' => ['nullable', 'string'],
+            'promotion_regions' => ['nullable', 'string'],
+            'forbidden_claims' => ['nullable', 'string'],
         ], [
             'organization_name.required' => '请填写企业名称',
             'brand_name.required' => '请填写品牌名称',
@@ -139,6 +148,7 @@ class GeoWorkspaceController extends Controller
                     'pain_points' => trim((string) ($payload['pain_points'] ?? '')),
                     'service_area' => trim((string) ($payload['service_area'] ?? '')),
                     'extra_facts' => trim((string) ($payload['extra_facts'] ?? '')),
+                    'extended_profile' => $this->extendedProfileFromPayload($payload),
                     'status' => 'active',
                 ]
             );
@@ -208,6 +218,50 @@ class GeoWorkspaceController extends Controller
         return redirect()
             ->route('admin.geo.workspace')
             ->with('message', '已生成 '.$opportunities->count().' 个关键词机会，可创建 AI 搜索批次');
+    }
+
+    /**
+     * 根据 ABCDEF 词组手工拓展 GEO 关键词机会。
+     */
+    public function expandOpportunities(Request $request, GeoKeywordCombinationService $combinationService): RedirectResponse
+    {
+        $payload = $request->validate([
+            'area_prefixes' => ['nullable', 'string', 'max:5000'],
+            'modifiers' => ['nullable', 'string', 'max:5000'],
+            'core_terms' => ['required', 'string', 'max:5000'],
+            'entity_terms' => ['required', 'string', 'max:5000'],
+            'recommend_terms' => ['nullable', 'string', 'max:5000'],
+            'question_terms' => ['nullable', 'string', 'max:5000'],
+            'combination_patterns' => ['required', 'array', 'min:1'],
+            'combination_patterns.*' => ['required', Rule::in(GeoKeywordCombinationService::allowedPatterns())],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
+        ], [
+            'core_terms.required' => '请填写 C 核心产品词',
+            'entity_terms.required' => '请填写 D 实体类型词',
+            'combination_patterns.required' => '请选择至少一种组合规则',
+        ]);
+
+        $admin = $this->currentAdmin();
+        $organization = $this->resolveOrganization($admin);
+        $brandProfile = $this->loadBrandProfile($organization);
+        if (! $brandProfile instanceof BrandProfile) {
+            return back()->withErrors('请先保存品牌知识库，再进行手工拓词');
+        }
+
+        $opportunities = $combinationService->generateFromManualParts(
+            $organization,
+            $brandProfile,
+            $admin,
+            $payload
+        );
+
+        if ($opportunities->isEmpty()) {
+            return back()->withErrors('没有生成新机会词，请检查词组和组合规则');
+        }
+
+        return redirect()
+            ->route('admin.geo.workspace')
+            ->with('message', '已生成 '.$opportunities->count().' 个手工拓词机会，可创建 AI 搜索批次');
     }
 
     /**
@@ -575,6 +629,7 @@ class GeoWorkspaceController extends Controller
             'keyword_ids.*' => ['integer'],
             'platform_codes' => ['required', 'array', 'min:1'],
             'platform_codes.*' => ['string', 'max:80'],
+            'report_mode' => ['nullable', Rule::in(['visibility_only', 'with_recommendations'])],
         ], [
             'keyword_ids.required' => '请先选择至少一个关键词',
             'platform_codes.required' => '请先选择至少一个 AI 平台',
@@ -600,8 +655,9 @@ class GeoWorkspaceController extends Controller
         if ($platformCodes === []) {
             return back()->withErrors('请先选择至少一个 AI 平台');
         }
+        $reportMode = (string) ($payload['report_mode'] ?? 'with_recommendations');
 
-        DB::transaction(function () use ($admin, $organization, $brandProfile, $keywords, $platformCodes): void {
+        DB::transaction(function () use ($admin, $organization, $brandProfile, $keywords, $platformCodes, $reportMode): void {
             $task = GeoTask::query()->create([
                 'organization_id' => $organization->id,
                 'brand_profile_id' => $brandProfile->id,
@@ -609,6 +665,7 @@ class GeoWorkspaceController extends Controller
                 'name' => 'GEO 诊断 - '.$brandProfile->brand_name.' - '.now()->format('m-d H:i'),
                 'status' => 'pending',
                 'points_cost' => $keywords->count() * count($platformCodes),
+                'report_mode' => $reportMode,
             ]);
 
             foreach ($keywords as $keyword) {
@@ -947,6 +1004,49 @@ class GeoWorkspaceController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $payload
+     * @return array{
+     *     short_name: string,
+     *     writing_directions: string,
+     *     copy_types: list<string>,
+     *     product_features: list<string>,
+     *     brand_story: string,
+     *     trust_proofs: list<string>,
+     *     promotion_regions: list<string>,
+     *     forbidden_claims: list<string>
+     * }
+     */
+    private function extendedProfileFromPayload(array $payload): array
+    {
+        return [
+            'short_name' => trim((string) ($payload['short_name'] ?? '')),
+            'writing_directions' => trim((string) ($payload['writing_directions'] ?? '')),
+            'copy_types' => $this->parseProfileList((string) ($payload['copy_types'] ?? '')),
+            'product_features' => $this->parseProfileList((string) ($payload['product_features'] ?? '')),
+            'brand_story' => trim((string) ($payload['brand_story'] ?? '')),
+            'trust_proofs' => $this->parseProfileList((string) ($payload['trust_proofs'] ?? '')),
+            'promotion_regions' => $this->parseProfileList((string) ($payload['promotion_regions'] ?? '')),
+            'forbidden_claims' => $this->parseProfileList((string) ($payload['forbidden_claims'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function parseProfileList(string $text): array
+    {
+        $normalized = str_replace(['，', '、', ';', '；'], "\n", $text);
+        $parts = preg_split('/\R|,/u', $normalized) ?: [];
+
+        return collect($parts)
+            ->map(static fn (string $part): string => trim($part))
+            ->filter(static fn (string $part): bool => $part !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
      * @param  array<int, mixed>  $codes
      * @return array<int, string>
      */
@@ -1114,11 +1214,18 @@ class GeoWorkspaceController extends Controller
      */
     private function referenceTermsFromBrandProfile(BrandProfile $brandProfile): array
     {
+        $extendedProfile = (array) ($brandProfile->extended_profile ?? []);
         $rawTerms = [
             $brandProfile->service_area,
             $brandProfile->products,
             $brandProfile->advantages,
             $brandProfile->pain_points,
+            $extendedProfile['short_name'] ?? '',
+            $extendedProfile['writing_directions'] ?? '',
+            $extendedProfile['brand_story'] ?? '',
+            implode(' ', (array) ($extendedProfile['product_features'] ?? [])),
+            implode(' ', (array) ($extendedProfile['trust_proofs'] ?? [])),
+            implode(' ', (array) ($extendedProfile['promotion_regions'] ?? [])),
         ];
 
         return collect($rawTerms)

@@ -116,6 +116,106 @@ class AdminGeoWorkspaceTest extends TestCase
         $this->assertSame(['deepseek_mock', 'kimi_mock'], GeoTaskQuestion::query()->firstOrFail()->platform_codes);
     }
 
+    public function test_rich_brand_profile_feeds_prompts_and_reference_drafts(): void
+    {
+        $admin = $this->createAdmin();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.brand-profile.save'), [
+                'organization_name' => '恒森全屋定制',
+                'brand_name' => '恒森全屋定制',
+                'aliases_text' => "恒森定制\n涪陵恒森",
+                'products' => '衣柜、橱柜、鞋柜、全屋定制',
+                'advantages' => '本地工厂、透明计价',
+                'cases' => '涪陵本地旧房改造案例',
+                'pain_points' => '价格不透明、板材环保难判断',
+                'service_area' => '重庆涪陵',
+                'extra_facts' => '支持上门量尺和定制设计',
+                'short_name' => '恒森',
+                'writing_directions' => '用本地业主案例讲清楚选择标准',
+                'copy_types' => "客户问答\n避坑指南",
+                'product_features' => "E0级板材\n自有工厂交付",
+                'brand_story' => '扎根涪陵本地服务，重视复购和转介绍',
+                'trust_proofs' => "本地展厅可看样\n老客户转介绍",
+                'promotion_regions' => "重庆涪陵\n重庆武隆",
+                'forbidden_claims' => "行业第一\n百分百环保",
+            ])
+            ->assertRedirect(route('admin.geo.workspace'));
+
+        $organization = Organization::query()->where('owner_admin_id', $admin->id)->firstOrFail();
+        $brandProfile = BrandProfile::query()->where('organization_id', $organization->id)->firstOrFail();
+
+        $this->assertSame('恒森', $brandProfile->extended_profile['short_name']);
+        $this->assertSame('用本地业主案例讲清楚选择标准', $brandProfile->extended_profile['writing_directions']);
+        $this->assertSame(['客户问答', '避坑指南'], $brandProfile->extended_profile['copy_types']);
+        $this->assertSame(['E0级板材', '自有工厂交付'], $brandProfile->extended_profile['product_features']);
+        $this->assertSame(['本地展厅可看样', '老客户转介绍'], $brandProfile->extended_profile['trust_proofs']);
+        $this->assertSame(['重庆涪陵', '重庆武隆'], $brandProfile->extended_profile['promotion_regions']);
+        $this->assertSame(['行业第一', '百分百环保'], $brandProfile->extended_profile['forbidden_claims']);
+
+        $keyword = GeoKeyword::query()->create([
+            'organization_id' => $organization->id,
+            'type' => 'question',
+            'keyword' => '涪陵全屋定制怎么选',
+            'intent' => 'commercial',
+        ]);
+        $task = GeoTask::query()->create([
+            'organization_id' => $organization->id,
+            'brand_profile_id' => $brandProfile->id,
+            'created_by_admin_id' => $admin->id,
+            'name' => 'GEO 诊断 - 恒森全屋定制',
+            'status' => 'pending',
+            'points_cost' => 1,
+        ]);
+        GeoTaskQuestion::query()->create([
+            'geo_task_id' => $task->id,
+            'geo_keyword_id' => $keyword->id,
+            'question' => '涪陵全屋定制怎么选',
+            'platform_codes' => ['deepseek_mock'],
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.diagnosis.run', ['taskId' => $task->id]))
+            ->assertRedirect(route('admin.geo.workspace'));
+
+        $prompt = (string) GeoAnswer::query()->firstOrFail()->prompt;
+        $this->assertStringContainsString('品牌简称：恒森', $prompt);
+        $this->assertStringContainsString('写作方向：用本地业主案例讲清楚选择标准', $prompt);
+        $this->assertStringContainsString('产品特点：E0级板材、自有工厂交付', $prompt);
+        $this->assertStringContainsString('信任背书：本地展厅可看样、老客户转介绍', $prompt);
+        $this->assertStringContainsString('禁用表达：行业第一、百分百环保', $prompt);
+
+        $writingTask = GeoWritingTask::query()->create([
+            'organization_id' => $organization->id,
+            'geo_report_id' => null,
+            'geo_keyword_id' => $keyword->id,
+            'title' => '涪陵全屋定制参考内容简报',
+            'status' => 'ready',
+            'brief' => [
+                'source' => 'reference_content',
+                'references' => [[
+                    'title' => '涪陵全屋定制避坑指南',
+                    'url' => 'https://example.test/hengsen-guide',
+                    'score' => 88,
+                    'summary' => '重点讲报价、板材和售后。',
+                ]],
+                'recommended_outline' => ['先讲选择标准', '再讲本地案例'],
+                'evidence_points' => ['需要说明板材、报价和售后'],
+            ],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.citation-sources.reference-briefs.article-draft.store', ['writingTaskId' => $writingTask->id]))
+            ->assertRedirect();
+
+        $draft = GeoArticleDraft::query()->where('geo_writing_task_id', $writingTask->id)->firstOrFail();
+        $this->assertStringContainsString('写作方向：用本地业主案例讲清楚选择标准', (string) $draft->content_markdown);
+        $this->assertStringContainsString('产品特点：E0级板材、自有工厂交付', (string) $draft->content_markdown);
+        $this->assertStringContainsString('信任背书：本地展厅可看样、老客户转介绍', (string) $draft->content_markdown);
+        $this->assertStringContainsString('禁用表达：行业第一、百分百环保', (string) $draft->content_markdown);
+    }
+
     public function test_admin_can_run_mock_diagnosis_and_generate_report(): void
     {
         $admin = $this->createAdmin();
@@ -181,6 +281,81 @@ class AdminGeoWorkspaceTest extends TestCase
             'points_delta' => -2,
         ]);
         $this->assertSame(-2, PointLog::query()->firstOrFail()->points_delta);
+    }
+
+    public function test_diagnosis_report_modes_split_customer_report_from_internal_recommendations(): void
+    {
+        $admin = $this->createAdmin();
+        $organization = Organization::query()->create([
+            'name' => '恒森全屋定制',
+            'owner_admin_id' => $admin->id,
+            'points' => 100,
+            'status' => 'active',
+        ]);
+        $brandProfile = BrandProfile::query()->create([
+            'organization_id' => $organization->id,
+            'brand_name' => '恒森全屋定制',
+            'aliases' => ['恒森定制'],
+            'products' => '衣柜、橱柜、鞋柜、全屋定制',
+            'advantages' => '本地工厂、环保板材、透明计价',
+            'service_area' => '重庆涪陵',
+            'extra_facts' => '支持上门量尺和定制设计',
+        ]);
+        $keyword = GeoKeyword::query()->create([
+            'organization_id' => $organization->id,
+            'type' => 'question',
+            'keyword' => '涪陵全屋定制哪家好',
+            'intent' => 'commercial',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.diagnosis.store'), [
+                'keyword_ids' => [$keyword->id],
+                'platform_codes' => ['deepseek_mock'],
+                'report_mode' => 'visibility_only',
+            ])
+            ->assertRedirect(route('admin.geo.workspace'));
+
+        $customerTask = GeoTask::query()->firstOrFail();
+        $this->assertSame('visibility_only', $customerTask->report_mode);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.diagnosis.run', ['taskId' => $customerTask->id]))
+            ->assertRedirect(route('admin.geo.workspace'));
+
+        $customerReport = GeoReport::query()->where('geo_task_id', $customerTask->id)->firstOrFail();
+        $this->assertStringContainsString('客户可读可见度报告', (string) $customerReport->markdown_report);
+        $this->assertStringNotContainsString('## 优化建议', (string) $customerReport->markdown_report);
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.geo.reports.show', ['taskId' => $customerTask->id]))
+            ->assertOk()
+            ->assertSee('客户报告')
+            ->assertDontSee('优化建议');
+
+        $internalTask = GeoTask::query()->create([
+            'organization_id' => $organization->id,
+            'brand_profile_id' => $brandProfile->id,
+            'created_by_admin_id' => $admin->id,
+            'name' => 'GEO 诊断 - 内部版',
+            'status' => 'pending',
+            'points_cost' => 1,
+            'report_mode' => 'with_recommendations',
+        ]);
+        GeoTaskQuestion::query()->create([
+            'geo_task_id' => $internalTask->id,
+            'geo_keyword_id' => $keyword->id,
+            'question' => '涪陵全屋定制哪家好',
+            'platform_codes' => ['deepseek_mock'],
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.geo.diagnosis.run', ['taskId' => $internalTask->id]))
+            ->assertRedirect(route('admin.geo.workspace'));
+
+        $internalReport = GeoReport::query()->where('geo_task_id', $internalTask->id)->firstOrFail();
+        $this->assertStringContainsString('内部优化建议报告', (string) $internalReport->markdown_report);
+        $this->assertStringContainsString('## 优化建议', (string) $internalReport->markdown_report);
     }
 
     public function test_admin_can_run_diagnosis_with_configured_real_ai_model(): void

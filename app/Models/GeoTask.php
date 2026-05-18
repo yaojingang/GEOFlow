@@ -19,6 +19,7 @@ class GeoTask extends Model
         'status',
         'total_score',
         'points_cost',
+        'report_mode',
         'started_at',
         'finished_at',
         'error_message',
