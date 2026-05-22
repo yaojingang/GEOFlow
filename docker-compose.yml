@@ -77,7 +77,7 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env
-    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,default", "--sleep=1", "--tries=1", "--timeout=300"]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,default", "--sleep=1", "--tries=1", "--timeout=300"]
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -120,4 +120,3 @@ services:
       init:
         condition: service_completed_successfully
     restart: unless-stopped
-

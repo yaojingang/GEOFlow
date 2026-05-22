@@ -78,6 +78,11 @@ class Article extends Model
         return $this->hasMany(TaskRun::class, 'article_id');
     }
 
+    public function distributions(): HasMany
+    {
+        return $this->hasMany(ArticleDistribution::class, 'article_id');
+    }
+
     /**
      * @param  Builder<Article>  $query
      * @return Builder<Article>

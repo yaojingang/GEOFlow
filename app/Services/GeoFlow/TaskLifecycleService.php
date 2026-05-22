@@ -94,6 +94,7 @@ class TaskLifecycleService
                 'is_loop' => $normalized['is_loop'],
                 'model_selection_mode' => $normalized['model_selection_mode'],
                 'status' => $normalized['status'],
+                'publish_scope' => $normalized['publish_scope'],
                 'knowledge_base_id' => $normalized['knowledge_base_id'],
                 'category_mode' => $normalized['category_mode'],
                 'fixed_category_id' => $normalized['fixed_category_id'],
@@ -564,6 +565,17 @@ class TaskLifecycleService
             }
         } elseif (! $isUpdate) {
             $output['status'] = 'active';
+        }
+
+        if (array_key_exists('publish_scope', $data)) {
+            $publishScope = trim((string) $data['publish_scope']);
+            if (! in_array($publishScope, ['local_and_distribution', 'distribution_only', 'local_only'], true)) {
+                $fieldErrors['publish_scope'] = '发布范围无效';
+            } else {
+                $output['publish_scope'] = $publishScope;
+            }
+        } elseif (! $isUpdate) {
+            $output['publish_scope'] = 'local_and_distribution';
         }
 
         $effectiveCategoryMode = $output['category_mode'] ?? (($data['category_mode'] ?? 'smart') ?: 'smart');

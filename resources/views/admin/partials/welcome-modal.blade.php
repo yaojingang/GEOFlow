@@ -1,33 +1,33 @@
 @if (!empty($adminWelcomeModalPayload))
     <div id="admin-welcome-modal" class="hidden fixed inset-0 z-[70]">
-        <div class="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"></div>
+        <div class="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"></div>
         <div class="relative flex min-h-full items-center justify-center p-4 sm:p-6 lg:p-8">
-            <div class="w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-                <div class="border-b border-slate-200 bg-white px-6 py-4 sm:px-8">
+            <div data-kami-document class="w-full max-w-4xl overflow-hidden rounded-2xl border border-[#e8e5da] bg-white shadow-[0_24px_80px_rgba(20,20,19,0.14)] ring-1 ring-[#e8e5da]">
+                <div class="border-b border-[#e8e5da] bg-white px-6 py-4 sm:px-8">
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <div id="admin-welcome-badge" class="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600"></div>
+                            <div id="admin-welcome-badge" class="inline-flex rounded-full bg-[#EEF2F7] px-3 py-1 text-[12px] font-semibold text-[#1B365D]"></div>
                         </div>
                         <div class="flex items-center gap-2 self-start sm:self-auto">
-                            <button type="button" data-welcome-switch class="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:border-blue-300 hover:text-blue-700"></button>
-                            <button type="button" data-welcome-close class="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-100"></button>
+                            <button type="button" data-welcome-switch class="rounded-full border border-[#d1cfc5] bg-white px-3.5 py-2 text-[13px] font-medium text-[#3d3d3a] hover:border-[#1B365D] hover:text-[#1B365D]"></button>
+                            <button type="button" data-welcome-close class="rounded-full border border-[#d1cfc5] bg-white px-3.5 py-2 text-[13px] font-medium text-[#3d3d3a] hover:bg-[#f7f6f1]"></button>
                         </div>
                     </div>
                 </div>
 
-                <div class="max-h-[80vh] overflow-y-auto bg-white px-6 py-8 sm:px-8 sm:py-10">
+                <div class="max-h-[80vh] overflow-y-auto bg-white px-6 py-7 sm:px-8 sm:py-8">
                     <article class="mx-auto max-w-3xl">
-                        <h2 id="admin-welcome-title" class="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl"></h2>
-                        <p id="admin-welcome-subtitle" class="mt-4 text-lg leading-8 text-slate-600 sm:text-xl"></p>
-                        <div id="admin-welcome-content" class="mt-8 space-y-6 text-[17px] leading-8 text-slate-700"></div>
+                        <h2 id="admin-welcome-title" class="font-serif text-[28px] font-medium leading-tight text-[#141413]"></h2>
+                        <p id="admin-welcome-subtitle" class="mt-3 border-l-[3px] border-[#1B365D] pl-4 text-[14px] leading-6 text-[#5e5d59]"></p>
+                        <div id="admin-welcome-content" class="mt-7 space-y-5 text-[15px] leading-7 text-[#3d3d3a]"></div>
                     </article>
 
-                    <div class="mx-auto mt-10 max-w-3xl border-t border-slate-200 pt-6">
-                        <p id="admin-welcome-links-label" class="text-sm text-slate-600"></p>
-                        <div class="mt-4 flex flex-wrap gap-3">
-                            <a id="admin-welcome-link-x" class="inline-flex items-center rounded-full bg-white px-4 py-2 text-sm font-medium text-blue-700 shadow-sm ring-1 ring-slate-200 hover:bg-blue-50" target="_blank" rel="noopener noreferrer"></a>
-                            <a id="admin-welcome-link-github" class="inline-flex items-center rounded-full bg-white px-4 py-2 text-sm font-medium text-blue-700 shadow-sm ring-1 ring-slate-200 hover:bg-blue-50" target="_blank" rel="noopener noreferrer"></a>
-                            <a id="admin-welcome-link-changelog" class="inline-flex items-center rounded-full bg-white px-4 py-2 text-sm font-medium text-blue-700 shadow-sm ring-1 ring-slate-200 hover:bg-blue-50" target="_blank" rel="noopener noreferrer"></a>
+                    <div class="mx-auto mt-8 max-w-3xl border-t border-[#e8e5da] pt-5">
+                        <p id="admin-welcome-links-label" class="text-[13px] leading-6 text-[#5e5d59]"></p>
+                        <div class="mt-3 flex flex-wrap gap-2.5">
+                            <a id="admin-welcome-link-x" class="inline-flex items-center rounded-full bg-[#EEF2F7] px-3.5 py-2 text-[13px] font-medium text-[#1B365D] ring-1 ring-[#d1cfc5] hover:bg-[#E4ECF5]" target="_blank" rel="noopener noreferrer"></a>
+                            <a id="admin-welcome-link-github" class="inline-flex items-center rounded-full bg-[#EEF2F7] px-3.5 py-2 text-[13px] font-medium text-[#1B365D] ring-1 ring-[#d1cfc5] hover:bg-[#E4ECF5]" target="_blank" rel="noopener noreferrer"></a>
+                            <a id="admin-welcome-link-changelog" class="inline-flex items-center rounded-full bg-[#EEF2F7] px-3.5 py-2 text-[13px] font-medium text-[#1B365D] ring-1 ring-[#d1cfc5] hover:bg-[#E4ECF5]" target="_blank" rel="noopener noreferrer"></a>
                         </div>
                     </div>
                 </div>
@@ -69,15 +69,15 @@
                 }
 
                 if (block.type === 'heading') {
-                    return `<h3 class="pt-2 text-2xl font-semibold tracking-tight text-slate-900">${block.content || ''}</h3>`;
+                    return `<h3 class="border-l-[3px] border-[#1B365D] pl-3 pt-0.5 font-serif text-[18px] font-medium leading-snug text-[#141413]">${block.content || ''}</h3>`;
                 }
 
                 if (block.type === 'list') {
                     const items = Array.isArray(block.items) ? block.items : [];
-                    return `<ul class="space-y-3 pl-1 text-slate-700">${items.map((item) => `<li class="flex gap-3"><span class="mt-[13px] h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400"></span><span>${item}</span></li>`).join('')}</ul>`;
+                    return `<ul class="space-y-2.5 pl-1 text-[#3d3d3a]">${items.map((item) => `<li class="flex gap-3"><span class="mt-[11px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#1B365D]"></span><span>${item}</span></li>`).join('')}</ul>`;
                 }
 
-                return `<p>${block.content || ''}</p>`;
+                return `<p class="text-[#3d3d3a]">${block.content || ''}</p>`;
             }
 
             function render(nextLocale) {

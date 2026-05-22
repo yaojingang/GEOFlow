@@ -6,6 +6,10 @@
     $hasCategories = (bool) ($hasCategories ?? true);
     $categoryCreateUrl = (string) ($categoryCreateUrl ?? route('admin.categories.create'));
     $t = static fn (string $key, array $replace = []): string => __("admin.$key", $replace);
+    $selectedDistributionChannelIds = collect(old('distribution_channel_ids', $taskForm['distribution_channel_ids'] ?? []))
+        ->map(static fn ($id): string => (string) $id)
+        ->all();
+    $publishScope = (string) old('publish_scope', (string) ($taskForm['publish_scope'] ?? 'local_and_distribution'));
 @endphp
 
 @section('content')
@@ -188,6 +192,64 @@
                                 <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.publish_interval') }}</p>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="bg-white shadow rounded-lg">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.distribution_title') }}</h3>
+                        <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.distribution_desc') }}</p>
+                    </div>
+                    <div class="px-6 py-4">
+                        <fieldset class="mb-5">
+                            <legend class="text-sm font-medium text-gray-900">{{ $t('task_create.distribution.scope_title') }}</legend>
+                            <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.distribution.scope_help') }}</p>
+                            <div class="mt-4 grid grid-cols-1 gap-3">
+                                <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
+                                    <input type="radio" name="publish_scope" value="local_and_distribution" @checked($publishScope === 'local_and_distribution') class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>
+                                        <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.scope_local_and_distribution') }}</span>
+                                        <span class="block text-gray-500">{{ $t('task_create.distribution.scope_local_and_distribution_desc') }}</span>
+                                    </span>
+                                </label>
+                                <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
+                                    <input type="radio" name="publish_scope" value="distribution_only" @checked($publishScope === 'distribution_only') class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>
+                                        <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.scope_distribution_only') }}</span>
+                                        <span class="block text-gray-500">{{ $t('task_create.distribution.scope_distribution_only_desc') }}</span>
+                                    </span>
+                                </label>
+                                <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
+                                    <input type="radio" name="publish_scope" value="local_only" @checked($publishScope === 'local_only') class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>
+                                        <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.scope_local_only') }}</span>
+                                        <span class="block text-gray-500">{{ $t('task_create.distribution.scope_local_only_desc') }}</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </fieldset>
+
+                        @if (empty($formOptions['distributionChannels']))
+                            <div class="rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                                {{ $t('task_create.distribution.empty') }}
+                                <a href="{{ route('admin.distribution.create') }}" class="font-medium text-blue-600 hover:text-blue-700">{{ $t('task_create.distribution.create_link') }}</a>
+                            </div>
+                        @else
+                            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                @foreach ($formOptions['distributionChannels'] as $channel)
+                                    @php($channelId = (string) $channel['id'])
+                                    <label class="flex items-start gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
+                                        <input type="checkbox" name="distribution_channel_ids[]" value="{{ $channelId }}" @checked(in_array($channelId, $selectedDistributionChannelIds, true))
+                                               class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span class="min-w-0">
+                                            <span class="block font-medium text-gray-900">{{ $channel['name'] }}</span>
+                                            <span class="block break-all text-gray-500">{{ $channel['domain'] }}</span>
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            <p class="mt-3 text-sm text-gray-500">{{ $t('task_create.distribution.help') }}</p>
+                        @endif
                     </div>
                 </div>
 

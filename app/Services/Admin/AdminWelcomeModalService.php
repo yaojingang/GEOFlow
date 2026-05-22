@@ -60,7 +60,7 @@ class AdminWelcomeModalService
      */
     private function resolveWelcomeState(): array
     {
-        $introVersion = (string) config('geoflow.welcome_intro_version', '1.2.0');
+        $introVersion = (string) config('geoflow.welcome_intro_version', '2.0');
         $updateState = $this->updateMetadataService->fetchState($introVersion);
 
         if (! empty($updateState['is_update_available']) && empty($updateState['is_ignored'])) {
@@ -83,7 +83,7 @@ class AdminWelcomeModalService
      */
     private function welcomeVersionKey(array $welcomeState): string
     {
-        return (string) ($welcomeState['version'] ?? ('intro:'.config('geoflow.welcome_intro_version', '1.2.0')));
+        return (string) ($welcomeState['version'] ?? ('intro:'.config('geoflow.welcome_intro_version', '2.0')));
     }
 
     /**

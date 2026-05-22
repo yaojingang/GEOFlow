@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 return static function (array $welcomeState): array {
     $updateState = $welcomeState['update'] ?? [];
-    $defaultVersion = (string) config('geoflow.welcome_intro_version', '1.2.0');
+    $defaultVersion = (string) config('geoflow.welcome_intro_version', '2.0');
     $currentVersion = (string) ($updateState['current_version'] ?? $defaultVersion);
     $latestVersion = (string) ($updateState['latest_version'] ?? '');
     $payload = is_array($updateState['payload'] ?? null) ? $updateState['payload'] : [];

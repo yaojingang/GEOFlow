@@ -1,7 +1,7 @@
 @php
     $projectGithubUrl = 'https://github.com/yaojingang/GEOFlow';
     $xProfileUrl = 'https://x.com/yaojingang';
-    $appVersion = (string) config('geoflow.app_version', '1.2.0');
+    $appVersion = (string) config('geoflow.app_version', '2.0');
     $changelogUrl = app()->getLocale() === 'en'
         ? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md'
         : 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md';

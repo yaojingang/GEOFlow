@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\Article;
+use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\DistributionChannel;
 use App\Models\SiteSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -135,6 +137,54 @@ class AdminArticlesPageTest extends TestCase
             ->assertOk()
             ->assertSee(__('admin.articles.badge.hot'))
             ->assertSee(__('admin.articles.badge.featured'));
+    }
+
+    public function test_article_list_shows_distribution_status_badge(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_distribution_status_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-distribution-status@example.com',
+            'display_name' => 'Articles Distribution Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '分发分类',
+            'slug' => 'distribution-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $channel = DistributionChannel::query()->create([
+            'name' => '目标站点',
+            'domain' => 'target.example.com',
+            'endpoint_url' => 'https://target.example.com/geoflow/agent',
+            'status' => 'active',
+        ]);
+        $article = Article::query()->create([
+            'title' => '分发状态展示文章',
+            'slug' => 'distribution-status-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'synced',
+            'idempotency_key' => 'article-list-synced',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.index'))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.article_status.synced'));
     }
 
     public function test_admin_brand_stays_geoflow_when_public_site_name_changes(): void

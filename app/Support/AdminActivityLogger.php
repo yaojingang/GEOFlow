@@ -85,6 +85,7 @@ final class AdminActivityLogger
     {
         $sensitiveKeys = [
             'password',
+            'package_password',
             'current_password',
             'new_password',
             'confirm_password',

@@ -3,6 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Article;
+use App\Models\ArticleDistribution;
+use App\Models\Author;
+use App\Models\Category;
+use App\Models\DistributionChannel;
 use App\Models\Task;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -121,6 +126,64 @@ class AdminTasksPageTest extends TestCase
             ->assertSee('id="batch-btn-'.(int) $pausedTask->id.'"', false)
             ->assertSee('data-batch-action="start"', false)
             ->assertSee('text-green-600 hover:text-green-800 hover:bg-green-50', false);
+    }
+
+    public function test_task_list_shows_distribution_failure_summary(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_distribution_status_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-distribution-status@example.com',
+            'display_name' => 'Tasks Distribution Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $task = Task::query()->create([
+            'name' => 'Distribution Failure Task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+        $category = Category::query()->create([
+            'name' => '任务分发分类',
+            'slug' => 'task-distribution-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $channel = DistributionChannel::query()->create([
+            'name' => '失败目标站点',
+            'domain' => 'failed-target.example.com',
+            'endpoint_url' => 'https://failed-target.example.com/geoflow/agent',
+            'status' => 'active',
+        ]);
+        $article = Article::query()->create([
+            'title' => '任务分发失败文章',
+            'slug' => 'task-distribution-failed-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => $task->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'failed',
+            'idempotency_key' => 'task-list-failed',
+            'last_error_message' => 'Target timeout',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.task_status.failed', ['count' => 1]));
     }
 
     public function test_authenticated_admin_can_delete_task_without_legacy_article_queue_table(): void

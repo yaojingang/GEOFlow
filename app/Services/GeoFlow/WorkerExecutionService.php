@@ -32,7 +32,8 @@ class WorkerExecutionService
      */
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
-        private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService
+        private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
+        private readonly DistributionOrchestrator $distributionOrchestrator
     ) {}
 
     /**
@@ -52,6 +53,8 @@ class WorkerExecutionService
 
         $publishResult = $this->publishDueDraftArticle($task);
         if ($publishResult !== null) {
+            $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
+
             return $publishResult;
         }
 
@@ -186,7 +189,7 @@ class WorkerExecutionService
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
-                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at']);
+                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
             if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
                 throw new RuntimeException('任务未激活');
             }
@@ -208,7 +211,9 @@ class WorkerExecutionService
                 return null;
             }
 
-            $workflow = ArticleWorkflow::normalizeState('published', (string) ($article->review_status ?: 'approved'));
+            $publishScope = (string) ($freshTask->publish_scope ?? 'local_and_distribution');
+            $targetStatus = $publishScope === 'distribution_only' ? 'private' : 'published';
+            $workflow = ArticleWorkflow::normalizeState($targetStatus, (string) ($article->review_status ?: 'approved'));
             Article::query()->whereKey((int) $article->id)->update([
                 'status' => $workflow['status'],
                 'review_status' => $workflow['review_status'],

@@ -355,6 +355,32 @@
                                     'rejected' => 'bg-red-100 text-red-800 border border-red-200',
                                     default => 'bg-yellow-100 text-yellow-800 border border-yellow-200'
                                 };
+                                $distributionTotal = (int) ($article->distribution_total_count ?? 0);
+                                $distributionSynced = (int) ($article->distribution_synced_count ?? 0);
+                                $distributionFailed = (int) ($article->distribution_failed_count ?? 0);
+                                $distributionPending = max(0, $distributionTotal - $distributionSynced - $distributionFailed);
+                                $distributionBadge = null;
+                                if (!$isTrashView && $distributionTotal > 0) {
+                                    if ($distributionFailed > 0) {
+                                        $distributionBadge = [
+                                            'label' => __('admin.distribution.article_status.failed'),
+                                            'detail' => $distributionFailed.'/'.$distributionTotal,
+                                            'class' => 'bg-red-50 text-red-700 ring-red-100',
+                                        ];
+                                    } elseif ($distributionSynced >= $distributionTotal) {
+                                        $distributionBadge = [
+                                            'label' => __('admin.distribution.article_status.synced'),
+                                            'detail' => $distributionSynced.'/'.$distributionTotal,
+                                            'class' => 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+                                        ];
+                                    } else {
+                                        $distributionBadge = [
+                                            'label' => __('admin.distribution.article_status.queued'),
+                                            'detail' => $distributionPending.'/'.$distributionTotal,
+                                            'class' => 'bg-sky-50 text-sky-700 ring-sky-100',
+                                        ];
+                                    }
+                                }
                             @endphp
                             <tr class="hover:bg-gray-50">
                                 <td class="batch-checkbox hidden px-6 py-4">
@@ -383,6 +409,15 @@
                                             @if(!empty($article->is_featured))
                                                 <span class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-100">{{ __('admin.articles.badge.featured') }}</span>
                                             @endif
+                                        </div>
+                                    @endif
+                                    @if($distributionBadge !== null)
+                                        <div class="mt-2">
+                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 {{ $distributionBadge['class'] }}">
+                                                <i data-lucide="send" class="mr-1 h-3 w-3"></i>
+                                                {{ $distributionBadge['label'] }}
+                                                <span class="ml-1 font-mono text-[11px] opacity-80">{{ $distributionBadge['detail'] }}</span>
+                                            </span>
                                         </div>
                                     @endif
                                 </td>

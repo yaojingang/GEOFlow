@@ -2,6 +2,20 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-05-21
+
+### v2.0
+
+- Updated the admin version to `2.0`, including `version.json`, environment examples, and default admin version display values.
+- Reworked the first-login admin welcome panel into a first-deployment guide:
+  - Reminds administrators to check passwords, admin path, site URL, language, and baseline security settings first
+  - Guides verification of PostgreSQL, Redis, queue workers, scheduler, and writable storage paths
+  - Clarifies the first-run flow: configure models and prompts, prepare materials, generate a small sample, review/publish, then scale to larger tasks
+- Added first-use guidance for Distribution Management 2.0:
+  - Explains target channels, Agent URL, secrets, static mode, and target-site packages
+  - Guides package download, connection tests, remote settings sync, and distribution log review
+  - Emphasizes backing up the database, `.env`, uploads, `storage`, and target-site packages before upgrades or migrations
+
 ## 2026-05-10
 
 ### v1.2.x

@@ -18,7 +18,9 @@
     $notificationStatus = (string) ($updateState['status'] ?? 'disabled');
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],
+        'analytics' => ['route' => 'admin.analytics', 'name' => __('admin.nav.analytics')],
         'tasks' => ['route' => 'admin.tasks.index', 'name' => __('admin.nav.tasks')],
+        'distribution' => ['route' => 'admin.distribution.index', 'name' => __('admin.nav.distribution')],
         'articles' => ['route' => 'admin.articles.index', 'name' => __('admin.nav.articles')],
         'materials' => ['route' => 'admin.materials.index', 'name' => __('admin.nav.materials')],
         'ai_config' => ['route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config')],
@@ -28,8 +30,21 @@
         $menu['admin_users'] = ['route' => 'admin.admin-users.index', 'name' => __('admin.nav.admin_users')];
     }
     $subMap = [
+        'admin.analytics' => 'analytics',
         'admin.tasks.create' => 'tasks',
         'admin.tasks.edit' => 'tasks',
+        'admin.distribution.index' => 'distribution',
+        'admin.distribution.create' => 'distribution',
+        'admin.distribution.store' => 'distribution',
+        'admin.distribution.edit' => 'distribution',
+        'admin.distribution.update' => 'distribution',
+        'admin.distribution.show' => 'distribution',
+        'admin.distribution.jobs' => 'distribution',
+        'admin.distribution.retry' => 'distribution',
+        'admin.distribution.health' => 'distribution',
+        'admin.distribution.pause' => 'distribution',
+        'admin.distribution.activate' => 'distribution',
+        'admin.distribution.rotate-secret' => 'distribution',
         'admin.articles.create' => 'articles',
         'admin.articles.edit' => 'articles',
         'admin.categories.index' => 'materials',
@@ -142,7 +157,7 @@
                             @endif
 
                             <div class="mt-4 space-y-1 rounded-xl bg-gray-50 px-3 py-3 text-xs text-gray-500">
-                                <div>{{ __('admin.header.notifications.current_version', ['version' => (string) ($updateState['current_version'] ?? config('geoflow.app_version', '1.2.0'))]) }}</div>
+                                <div>{{ __('admin.header.notifications.current_version', ['version' => (string) ($updateState['current_version'] ?? config('geoflow.app_version', '2.0'))]) }}</div>
                                 @if(!empty($updateState['latest_version']))
                                     <div>{{ __('admin.header.notifications.latest_version', ['version' => (string) $updateState['latest_version']]) }}</div>
                                 @endif

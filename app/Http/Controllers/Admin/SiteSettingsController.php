@@ -7,6 +7,7 @@ use App\Models\SiteSetting;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
 use App\Support\Site\SiteSettingsBag;
+use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -22,6 +23,8 @@ use Illuminate\View\View;
  */
 class SiteSettingsController extends Controller
 {
+    public function __construct(private readonly SiteThemeCatalog $siteThemeCatalog) {}
+
     /**
      * 网站设置页面。
      */
@@ -35,7 +38,7 @@ class SiteSettingsController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'settings' => $settings,
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
-            'availableThemes' => $this->discoverThemes(),
+            'availableThemes' => $this->siteThemeCatalog->all(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
         ]);
@@ -145,7 +148,7 @@ class SiteSettingsController extends Controller
         $selectedTheme = trim((string) $request->input('active_theme', ''));
         $availableThemeIds = array_map(
             static fn (array $theme): string => (string) $theme['id'],
-            $this->discoverThemes()
+            $this->siteThemeCatalog->all()
         );
 
         if ($selectedTheme !== '' && ! in_array($selectedTheme, $availableThemeIds, true)) {
@@ -293,73 +296,6 @@ class SiteSettingsController extends Controller
             'home_carousel_slides' => (string) $stored['home_carousel_slides'],
             'article_detail_ads' => (string) $stored['article_detail_ads'],
         ];
-    }
-
-    /**
-     * @return array<int, array{id:string,name:string,version:string,description:string}>
-     */
-    private function discoverThemes(): array
-    {
-        $themesRoot = resource_path('views/theme');
-        if (! is_dir($themesRoot)) {
-            return [];
-        }
-
-        $themes = [];
-        $entries = scandir($themesRoot);
-        if (! is_array($entries)) {
-            return [];
-        }
-
-        foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..') {
-                continue;
-            }
-
-            if (! preg_match('/^[a-zA-Z0-9_-]+$/', $entry)) {
-                continue;
-            }
-
-            $themeDir = $themesRoot.DIRECTORY_SEPARATOR.$entry;
-            if (! is_dir($themeDir)) {
-                continue;
-            }
-
-            $manifestPath = $themeDir.DIRECTORY_SEPARATOR.'manifest.json';
-            if (is_file($manifestPath)) {
-                $manifestRaw = file_get_contents($manifestPath);
-                if (! is_string($manifestRaw) || $manifestRaw === '') {
-                    continue;
-                }
-
-                $manifest = json_decode($manifestRaw, true);
-                if (! is_array($manifest)) {
-                    continue;
-                }
-
-                $themes[] = [
-                    'id' => (string) $entry,
-                    'name' => (string) ($manifest['name'] ?? $entry),
-                    'version' => (string) ($manifest['version'] ?? ''),
-                    'description' => (string) ($manifest['description'] ?? ''),
-                ];
-
-                continue;
-            }
-
-            if (! is_file($themeDir.DIRECTORY_SEPARATOR.'home.blade.php')) {
-                continue;
-            }
-
-            $themes[] = [
-                'id' => (string) $entry,
-                'name' => ucfirst(str_replace(['-', '_'], ' ', $entry)),
-                'version' => '',
-                'description' => '',
-            ];
-        }
-
-        return $themes;
     }
 
     /**

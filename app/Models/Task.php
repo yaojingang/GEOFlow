@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Task extends Model
@@ -29,6 +30,7 @@ class Task extends Model
         'is_loop',
         'model_selection_mode',
         'status',
+        'publish_scope',
         'created_count',
         'published_count',
         'loop_count',
@@ -130,5 +132,12 @@ class Task extends Model
     public function taskRuns(): HasMany
     {
         return $this->hasMany(TaskRun::class, 'task_id');
+    }
+
+    public function distributionChannels(): BelongsToMany
+    {
+        return $this->belongsToMany(DistributionChannel::class, 'task_distribution_channels')
+            ->withPivot(['trigger', 'remote_status', 'failure_policy', 'max_attempts'])
+            ->withTimestamps();
     }
 }
