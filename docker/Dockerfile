@@ -1,4 +1,6 @@
-FROM php:8.4-cli-bookworm
+ARG PHP_CLI_IMAGE=php:8.4-cli-bookworm
+
+FROM ${PHP_CLI_IMAGE}
 
 WORKDIR /var/www/html
 
@@ -39,7 +41,14 @@ RUN apt-get update \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-ENV COMPOSER_ALLOW_SUPERUSER=1
+ENV COMPOSER_ALLOW_SUPERUSER=1 \
+    COMPOSER_MEMORY_LIMIT=-1 \
+    COMPOSER_PROCESS_TIMEOUT=2000
+
+ARG COMPOSER_PACKAGIST_MIRROR=https://mirrors.aliyun.com/composer/
+RUN if [ -n "${COMPOSER_PACKAGIST_MIRROR}" ]; then \
+        composer config -g repo.packagist composer "${COMPOSER_PACKAGIST_MIRROR}"; \
+    fi
 
 COPY composer.json composer.lock ./
 RUN composer install --no-interaction --prefer-dist --no-dev --no-scripts

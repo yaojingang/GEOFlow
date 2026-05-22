@@ -3,7 +3,7 @@ name: geoflow-laravel-prod
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
     container_name: geoflow-postgres-prod
     environment:
       POSTGRES_DB: "${DB_DATABASE:-geo_flow}"
@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     container_name: geoflow-redis-prod
     environment:
       REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
@@ -47,6 +47,10 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
+      args:
+        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-init-prod
     working_dir: /var/www/html
     env_file:
@@ -71,6 +75,10 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
+      args:
+        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-app-prod
     working_dir: /var/www/html
     env_file:
@@ -93,6 +101,8 @@ services:
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile.prod
+      args:
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginx:1.27-alpine}
     container_name: geoflow-web-prod
     ports:
       - "${WEB_PORT:-18080}:80"
@@ -113,6 +123,10 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
+      args:
+        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-queue-prod
     working_dir: /var/www/html
     env_file:
@@ -133,6 +147,10 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
+      args:
+        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-scheduler-prod
     working_dir: /var/www/html
     env_file:
@@ -151,6 +169,10 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
+      args:
+        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-reverb-prod
     working_dir: /var/www/html
     env_file:

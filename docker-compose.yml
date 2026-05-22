@@ -2,7 +2,7 @@ name: geoflow-laravel
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
     container_name: geoflow-postgres
     environment:
       POSTGRES_DB: ${DB_DATABASE:-geo_flow}
@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     container_name: geoflow-redis
     ports:
       - "127.0.0.1:${REDIS_EXPOSE_PORT:-16379}:6379"
@@ -31,6 +31,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-init
     working_dir: /var/www/html
     env_file:
@@ -54,6 +57,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-app
     working_dir: /var/www/html
     env_file:
@@ -73,6 +79,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-queue
     working_dir: /var/www/html
     env_file:
@@ -90,6 +99,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-scheduler
     working_dir: /var/www/html
     env_file:
@@ -107,6 +119,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-reverb
     working_dir: /var/www/html
     env_file:

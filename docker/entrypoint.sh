@@ -23,8 +23,8 @@ elif [ "${COMPOSER_ON_START}" = "true" ]; then
 fi
 
 if [ "${RUN_COMPOSER}" = "true" ]; then
-  # Packagist 中国镜像，加速 composer install（见 https://packagist.phpcomposer.com ）
-  COMPOSER_PACKAGIST_MIRROR="${COMPOSER_PACKAGIST_MIRROR:-https://packagist.phpcomposer.com}"
+  # Packagist 中国镜像，加速 composer install。
+  COMPOSER_PACKAGIST_MIRROR="${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}"
   COMPOSER_HOME="${COMPOSER_HOME:-/tmp/composer}"
   export COMPOSER_HOME
   mkdir -p "${COMPOSER_HOME}"

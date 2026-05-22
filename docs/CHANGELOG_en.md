@@ -35,9 +35,13 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Completed Portuguese admin localization:
   - Incorporated and completed the `pt_BR` admin translations from PR #27, covering navigation, notifications, authors, frontend copy, materials, AI configuration, Analytics, Distribution Management, and all current admin language keys.
   - Added Portuguese locale coverage tests to prevent new admin modules from falling back to English copy.
+- Incorporated low-risk Docker deployment PR improvements:
+  - Development and production compose files can now configure PHP, Composer, Nginx, pgvector, Redis, and Composer Packagist mirror images through environment variables.
+  - `.dockerignore` now excludes local Docker data, logs, caches, sessions, view caches, and upload directories so runtime data is not copied into built images.
+  - Added default-admin seeder coverage for creating the initial admin and preserving existing credentials.
 - Expanded test coverage:
   - Added tests for Distribution Management, Analytics, access logs, admin activity sanitization, the welcome guide, migration structure, and retry policy.
-  - Full release verification passed with `186 passed` and `1219 assertions`.
+  - Full release verification passed with `188 passed` and `1231 assertions`.
 
 ## 2026-05-21
 
