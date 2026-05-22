@@ -32,9 +32,12 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Improved the first-deployment guide:
   - `GEOFlow 2.0 First Deployment Guide` now uses a compact white Kami-style document layout with smaller title and body typography.
   - Copy now covers dashboard navigation, Analytics, single-site operations, multi-site distribution, and backup checks before production.
+- Completed Portuguese admin localization:
+  - Incorporated and completed the `pt_BR` admin translations from PR #27, covering navigation, notifications, authors, frontend copy, materials, AI configuration, Analytics, Distribution Management, and all current admin language keys.
+  - Added Portuguese locale coverage tests to prevent new admin modules from falling back to English copy.
 - Expanded test coverage:
   - Added tests for Distribution Management, Analytics, access logs, admin activity sanitization, the welcome guide, migration structure, and retry policy.
-  - Full release verification passed with `184 passed` and `1138 assertions`.
+  - Full release verification passed with `186 passed` and `1219 assertions`.
 
 ## 2026-05-21
 
