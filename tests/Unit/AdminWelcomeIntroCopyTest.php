@@ -32,13 +32,18 @@ class AdminWelcomeIntroCopyTest extends TestCase
         ])->render();
 
         $this->assertStringContainsString('data-kami-document', $html);
+        $this->assertStringContainsString('admin-welcome-document', $html);
         $this->assertStringContainsString('bg-white', $html);
-        $this->assertStringContainsString('text-[28px]', $html);
-        $this->assertStringContainsString('text-[15px] leading-7', $html);
-        $this->assertStringContainsString('border-l-[3px] border-[#1B365D]', $html);
+        $this->assertStringContainsString('--admin-welcome-title-size: 24px;', $html);
+        $this->assertStringContainsString('--admin-welcome-body-size: 14px;', $html);
+        $this->assertStringContainsString('--admin-welcome-body-leading: 1.52;', $html);
+        $this->assertStringContainsString('border-left: 3px solid #1B365D;', $html);
+        $this->assertStringContainsString('admin-welcome-document-body', $html);
         $this->assertStringNotContainsString('text-4xl', $html);
         $this->assertStringNotContainsString('sm:text-5xl', $html);
+        $this->assertStringNotContainsString('text-[28px]', $html);
         $this->assertStringNotContainsString('text-[17px]', $html);
+        $this->assertStringNotContainsString('text-[15px]', $html);
         $this->assertStringNotContainsString('bg-[#f5f4ed]', $html);
         $this->assertStringNotContainsString('bg-[#faf9f5]', $html);
     }

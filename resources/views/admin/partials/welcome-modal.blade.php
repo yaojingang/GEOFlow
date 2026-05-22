@@ -1,33 +1,127 @@
 @if (!empty($adminWelcomeModalPayload))
+    <style>
+        #admin-welcome-modal .admin-welcome-document {
+            --admin-welcome-title-size: 24px;
+            --admin-welcome-section-size: 16px;
+            --admin-welcome-body-size: 14px;
+            --admin-welcome-body-leading: 1.52;
+            --admin-welcome-ink: #141413;
+            --admin-welcome-body: #3d3d3a;
+            --admin-welcome-muted: #5e5d59;
+            --admin-welcome-brand: #1B365D;
+            --admin-welcome-border: #e8e5da;
+            max-width: 860px;
+            background: #ffffff;
+            color: var(--admin-welcome-body);
+            font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        }
+
+        #admin-welcome-modal .admin-welcome-reader {
+            max-width: 640px;
+        }
+
+        #admin-welcome-title {
+            font-family: ui-serif, "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+            font-size: var(--admin-welcome-title-size);
+            font-weight: 500;
+            line-height: 1.22;
+            letter-spacing: 0;
+            color: var(--admin-welcome-ink);
+        }
+
+        #admin-welcome-subtitle {
+            margin-top: 12px;
+            border-left: 3px solid #1B365D;
+            padding-left: 14px;
+            color: var(--admin-welcome-muted);
+            font-size: var(--admin-welcome-body-size);
+            font-weight: 400;
+            line-height: var(--admin-welcome-body-leading);
+            letter-spacing: 0;
+        }
+
+        #admin-welcome-content {
+            margin-top: 24px;
+            color: var(--admin-welcome-body);
+            font-size: var(--admin-welcome-body-size);
+            font-weight: 400;
+            line-height: var(--admin-welcome-body-leading);
+            letter-spacing: 0;
+        }
+
+        #admin-welcome-content .admin-welcome-paragraph {
+            margin: 0;
+        }
+
+        #admin-welcome-content .admin-welcome-section-title {
+            margin: 18px 0 8px;
+            border-left: 3px solid #1B365D;
+            padding-left: 10px;
+            font-family: ui-serif, "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+            font-size: var(--admin-welcome-section-size);
+            font-weight: 500;
+            line-height: 1.28;
+            color: var(--admin-welcome-ink);
+            letter-spacing: 0;
+        }
+
+        #admin-welcome-content .admin-welcome-list {
+            display: grid;
+            gap: 7px;
+            margin: 0;
+            padding: 0;
+        }
+
+        #admin-welcome-content .admin-welcome-list-item {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        #admin-welcome-content .admin-welcome-bullet {
+            width: 4px;
+            height: 4px;
+            margin-top: 8px;
+            flex-shrink: 0;
+            border-radius: 9999px;
+            background: var(--admin-welcome-brand);
+        }
+
+        #admin-welcome-modal .admin-welcome-meta-text {
+            font-size: 12px;
+            line-height: 1.45;
+        }
+    </style>
+
     <div id="admin-welcome-modal" class="hidden fixed inset-0 z-[70]">
         <div class="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"></div>
         <div class="relative flex min-h-full items-center justify-center p-4 sm:p-6 lg:p-8">
-            <div data-kami-document class="w-full max-w-4xl overflow-hidden rounded-2xl border border-[#e8e5da] bg-white shadow-[0_24px_80px_rgba(20,20,19,0.14)] ring-1 ring-[#e8e5da]">
-                <div class="border-b border-[#e8e5da] bg-white px-6 py-4 sm:px-8">
+            <div data-kami-document class="admin-welcome-document w-full overflow-hidden rounded-2xl border border-[#e8e5da] bg-white shadow-[0_24px_80px_rgba(20,20,19,0.14)] ring-1 ring-[#e8e5da]">
+                <div class="border-b border-[#e8e5da] bg-white px-5 py-3.5 sm:px-7">
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <div id="admin-welcome-badge" class="inline-flex rounded-full bg-[#EEF2F7] px-3 py-1 text-[12px] font-semibold text-[#1B365D]"></div>
+                            <div id="admin-welcome-badge" class="admin-welcome-meta-text inline-flex rounded-full bg-[#EEF2F7] px-2.5 py-1 font-semibold text-[#1B365D]"></div>
                         </div>
                         <div class="flex items-center gap-2 self-start sm:self-auto">
-                            <button type="button" data-welcome-switch class="rounded-full border border-[#d1cfc5] bg-white px-3.5 py-2 text-[13px] font-medium text-[#3d3d3a] hover:border-[#1B365D] hover:text-[#1B365D]"></button>
-                            <button type="button" data-welcome-close class="rounded-full border border-[#d1cfc5] bg-white px-3.5 py-2 text-[13px] font-medium text-[#3d3d3a] hover:bg-[#f7f6f1]"></button>
+                            <button type="button" data-welcome-switch class="admin-welcome-meta-text rounded-full border border-[#d1cfc5] bg-white px-3 py-1.5 font-medium text-[#3d3d3a] hover:border-[#1B365D] hover:text-[#1B365D]"></button>
+                            <button type="button" data-welcome-close class="admin-welcome-meta-text rounded-full border border-[#d1cfc5] bg-white px-3 py-1.5 font-medium text-[#3d3d3a] hover:bg-[#f7f6f1]"></button>
                         </div>
                     </div>
                 </div>
 
-                <div class="max-h-[80vh] overflow-y-auto bg-white px-6 py-7 sm:px-8 sm:py-8">
-                    <article class="mx-auto max-w-3xl">
-                        <h2 id="admin-welcome-title" class="font-serif text-[28px] font-medium leading-tight text-[#141413]"></h2>
-                        <p id="admin-welcome-subtitle" class="mt-3 border-l-[3px] border-[#1B365D] pl-4 text-[14px] leading-6 text-[#5e5d59]"></p>
-                        <div id="admin-welcome-content" class="mt-7 space-y-5 text-[15px] leading-7 text-[#3d3d3a]"></div>
+                <div class="max-h-[80vh] overflow-y-auto bg-white px-5 py-7 sm:px-7 sm:py-8">
+                    <article class="admin-welcome-reader mx-auto">
+                        <h2 id="admin-welcome-title"></h2>
+                        <p id="admin-welcome-subtitle"></p>
+                        <div id="admin-welcome-content" class="admin-welcome-document-body space-y-4"></div>
                     </article>
 
-                    <div class="mx-auto mt-8 max-w-3xl border-t border-[#e8e5da] pt-5">
-                        <p id="admin-welcome-links-label" class="text-[13px] leading-6 text-[#5e5d59]"></p>
-                        <div class="mt-3 flex flex-wrap gap-2.5">
-                            <a id="admin-welcome-link-x" class="inline-flex items-center rounded-full bg-[#EEF2F7] px-3.5 py-2 text-[13px] font-medium text-[#1B365D] ring-1 ring-[#d1cfc5] hover:bg-[#E4ECF5]" target="_blank" rel="noopener noreferrer"></a>
-                            <a id="admin-welcome-link-github" class="inline-flex items-center rounded-full bg-[#EEF2F7] px-3.5 py-2 text-[13px] font-medium text-[#1B365D] ring-1 ring-[#d1cfc5] hover:bg-[#E4ECF5]" target="_blank" rel="noopener noreferrer"></a>
-                            <a id="admin-welcome-link-changelog" class="inline-flex items-center rounded-full bg-[#EEF2F7] px-3.5 py-2 text-[13px] font-medium text-[#1B365D] ring-1 ring-[#d1cfc5] hover:bg-[#E4ECF5]" target="_blank" rel="noopener noreferrer"></a>
+                    <div class="admin-welcome-reader mx-auto mt-7 border-t border-[#e8e5da] pt-4">
+                        <p id="admin-welcome-links-label" class="admin-welcome-meta-text text-[#5e5d59]"></p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <a id="admin-welcome-link-x" class="admin-welcome-meta-text inline-flex items-center rounded-full bg-[#EEF2F7] px-3 py-1.5 font-medium text-[#1B365D] ring-1 ring-[#d1cfc5] hover:bg-[#E4ECF5]" target="_blank" rel="noopener noreferrer"></a>
+                            <a id="admin-welcome-link-github" class="admin-welcome-meta-text inline-flex items-center rounded-full bg-[#EEF2F7] px-3 py-1.5 font-medium text-[#1B365D] ring-1 ring-[#d1cfc5] hover:bg-[#E4ECF5]" target="_blank" rel="noopener noreferrer"></a>
+                            <a id="admin-welcome-link-changelog" class="admin-welcome-meta-text inline-flex items-center rounded-full bg-[#EEF2F7] px-3 py-1.5 font-medium text-[#1B365D] ring-1 ring-[#d1cfc5] hover:bg-[#E4ECF5]" target="_blank" rel="noopener noreferrer"></a>
                         </div>
                     </div>
                 </div>
@@ -69,15 +163,15 @@
                 }
 
                 if (block.type === 'heading') {
-                    return `<h3 class="border-l-[3px] border-[#1B365D] pl-3 pt-0.5 font-serif text-[18px] font-medium leading-snug text-[#141413]">${block.content || ''}</h3>`;
+                    return `<h3 class="admin-welcome-section-title">${block.content || ''}</h3>`;
                 }
 
                 if (block.type === 'list') {
                     const items = Array.isArray(block.items) ? block.items : [];
-                    return `<ul class="space-y-2.5 pl-1 text-[#3d3d3a]">${items.map((item) => `<li class="flex gap-3"><span class="mt-[11px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#1B365D]"></span><span>${item}</span></li>`).join('')}</ul>`;
+                    return `<ul class="admin-welcome-list">${items.map((item) => `<li class="admin-welcome-list-item"><span class="admin-welcome-bullet"></span><span>${item}</span></li>`).join('')}</ul>`;
                 }
 
-                return `<p class="text-[#3d3d3a]">${block.content || ''}</p>`;
+                return `<p class="admin-welcome-paragraph">${block.content || ''}</p>`;
             }
 
             function render(nextLocale) {
