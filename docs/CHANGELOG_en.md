@@ -2,6 +2,40 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-05-22
+
+### v2.0.1
+
+- Added a working Distribution Management flow:
+  - The admin now includes distribution channel listing, creation, editing, detail pages, queue view, logs, connection tests, pause/enable actions, secret reset, and remote article management.
+  - Channel secrets are shown once after creation, and super admins can temporarily reveal them again by verifying the current login password.
+  - Tasks and articles can be bound to distribution channels. After local publishing, articles can automatically enter the distribution queue, with distribution status visible on task and article lists.
+  - The distribution queue supports remote-copy editing and deletion. Remote edits also update the local GEOFlow article, and remote deletion refreshes the target homepage and map files.
+- Added target-site packages and static-site delivery:
+  - Channel detail pages can download target-site packages preconfigured with the current channel secret, site settings, and deployment path.
+  - Packages include a PHP Agent, homepage, article detail pages, static assets, sitemap, TXT map, Apache `.htaccess`, and Nginx rewrite-rule examples.
+  - Static mode is enabled by default. Publishing or deleting articles regenerates the static homepage, detail pages, sitemap, and LM-friendly TXT map files.
+  - Article pages now include Markdown rendering, tables, code blocks, quotes, image rendering, Schema structured data, and external CSS asset references.
+- Added remote site-settings synchronization:
+  - Distribution channel edit pages can manage target-site title, subtitle, description, copyright, ICP/filing text, theme template, and categories.
+  - Added an Update Target Site action to resync homepage, article pages, map files, and remote configuration after uploading a fresh package or changing settings.
+  - Added static-mode and rewrite-mode guidance, plus copyable Apache/Nginx rules in the admin.
+- Added the Analytics page:
+  - The admin top navigation now includes Analytics, centralizing system overview, single-site operations, multi-site distribution, and self-service log data.
+  - Analytics supports date range, quick time ranges, distribution channel, task, category, article, traffic type, and log source filters. Quick time selection updates the form first; data refreshes after clicking Apply Filters.
+  - Content analytics includes publishing trends, task trends, content funnel, category distribution, and task/material/AI health panels.
+  - Log analytics includes visit trends, top articles, top channel sites, AI crawler recognition, status codes, source types, and sample access-log visualization.
+- Reworked the admin dashboard into a navigation hub:
+  - Removed dashboard statistics cards and moved statistics into Analytics.
+  - Kept the three-step setup guide and grouped common entries into Single-Site Operations, Multi-Site Distribution, and companion Skill resources.
+  - Added prompt configuration and user management entries under single-site operations, plus target packages, distribution queue/logs, and related skills under multi-site distribution.
+- Improved the first-deployment guide:
+  - `GEOFlow 2.0 First Deployment Guide` now uses a compact white Kami-style document layout with smaller title and body typography.
+  - Copy now covers dashboard navigation, Analytics, single-site operations, multi-site distribution, and backup checks before production.
+- Expanded test coverage:
+  - Added tests for Distribution Management, Analytics, access logs, admin activity sanitization, the welcome guide, migration structure, and retry policy.
+  - Full release verification passed with `184 passed` and `1138 assertions`.
+
 ## 2026-05-21
 
 ### v2.0
