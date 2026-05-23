@@ -2,9 +2,9 @@
 
 > **给 Agent 执行者：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 按任务逐步执行。本文中的步骤使用复选框（`- [ ]`）语法，便于执行时跟踪进度。
 
-**目标：** 将 GEOFlow 的内容分发能力建设为 Agent 优先、异步执行、带签名校验的内容同步层，并确保远端分发失败不会阻塞或回滚本地文章发布。
+**目标：** 将 GEOFlow 的内容分发能力建设为 Agent 优先、异步执行、可扩展 Provider 的内容同步层，并确保远端分发失败不会阻塞或回滚本地文章发布。
 
-**架构：** GEOFlow 继续作为文章生成、审核和本地发布的事实源。当本地文章进入 `published` 状态后，GEOFlow 创建 `article_distributions` 记录，并把任务投递到专用的 `distribution` 队列；队列任务向目标站点 Agent 发送 HMAC 签名 HTTP 请求，并记录远端 ID、URL、状态和日志。WordPress、Ghost、微信公众号、Telegram 和社交平台等第三方 Provider 是建立在该基础能力之上的后续适配器，不作为第一版闭环的阻塞项。
+**架构：** GEOFlow 继续作为文章生成、审核和本地发布的事实源。当本地文章进入 `published` 状态后，GEOFlow 创建 `article_distributions` 记录，并把任务投递到专用的 `distribution` 队列；队列任务通过 `DistributionPublisherManager` 按渠道类型选择发布器，当前支持 `geoflow_agent` 目标站 Agent 和 `wordpress_rest` WordPress REST API 两类渠道，并记录远端 ID、URL、状态、元数据和日志。Ghost、微信公众号、Telegram 和社交平台等第三方 Provider 仍作为后续适配器扩展。
 
 **技术栈：** Laravel 12、PHP 8.2+、Blade 管理后台、Tailwind CSS、lucide 图标、Eloquent 模型、Laravel 队列、Laravel HTTP Client、PHPUnit、Laravel Pint。
 
@@ -19,7 +19,7 @@
 
 统一结论：
 
-- 第一版采用 Agent 优先路线，不直接把 WordPress、Ghost、微信公众号、社交平台等 Provider 做进首个闭环。
+- 第一版采用 Agent 优先路线；GEOFlow 2.x 已在同一分发抽象层上补充 WordPress REST 渠道。
 - `multi-platform-distribution-plan.md` 保留为长期 Provider 路线参考。
 - `distribution-management-agent-plan.md` 的 Agent 架构成为当前实施基线，但本文补齐后台功能逻辑、UI 设计约束、代码调用链和数据库逻辑。
 
@@ -42,7 +42,7 @@
 
 不纳入第一版：
 
-- 微信公众号、WordPress、Ghost 等直接平台 Provider。
+- 微信公众号、Ghost 等直接平台 Provider；WordPress Core REST API 已作为 2.x 渠道能力补充。
 - OAuth 授权流程。
 - 多平台内容格式自动改写。
 - 远端物理删除。
@@ -61,12 +61,28 @@
 
 ### 2.3 Agent 优先
 
-目标站点只需要实现一组稳定 Agent 接口：
+GEOFlow 的第一类目标仍是自有目标站 Agent，目标站点只需要实现一组稳定 Agent 接口：
 
 - `GET /geoflow-agent/v1/health`
 - `POST /geoflow-agent/v1/articles`
 
-GEOFlow 只关心 Agent 协议，不直接关心目标站点底层是 WordPress、静态站、Laravel、Next.js 还是其他系统。后续 Provider 也应该优先封装成目标站 Agent 或独立适配器，而不是把每个平台的复杂 API 直接塞进首版核心流程。
+GEOFlow 只关心 Agent 协议，不直接关心目标站点底层是 WordPress、静态站、Laravel、Next.js 还是其他系统。第三方平台应通过独立发布器接入，保持和 Agent 相同的队列、状态、日志、重试和远端元数据模型，而不是把平台 API 直接塞进文章发布主流程。
+
+### 2.5 WordPress 渠道
+
+GEOFlow 2.x 支持通过 WordPress Core REST API 将文章分发到 WordPress 站点。管理员需要在 WordPress 用户资料页创建 Application Password，并在 GEOFlow 分发渠道中选择“WordPress REST”后填写站点地址、用户名和 Application Password。
+
+首版 WordPress 渠道支持：
+
+- Application Password 鉴权，不保存或展示 WordPress 登录密码。
+- 文章发布、更新和删除，对应 `/wp/v2/posts` 接口。
+- 图片上传到 WordPress 媒体库，并把正文中的本地图片链接替换为媒体库 URL。
+- 分类匹配、分类创建、固定分类和关键词转标签。
+- 基础站点设置同步，包括站点标题、描述和每页文章数。
+- 后台健康检查，检测 `/wp-json` 和当前用户编辑、发布、上传权限。
+- 分发队列中的远端编辑、删除、重试和日志记录继续复用统一分发管理能力。
+
+WordPress 渠道不需要目标站点包、伪静态规则或 GEOFlow Agent 签名协议。`llms.txt`、TXT 地图、Schema 深度控制、SEO 插件字段和模板控制属于后续 WordPress Connector 插件增强能力。
 
 ### 2.4 安全边界
 

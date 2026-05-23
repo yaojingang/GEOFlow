@@ -4,6 +4,14 @@
 
 ## 2026-05-23
 
+### 分发管理
+
+- 新增 WordPress REST API 分发渠道设计与实现：
+  - 支持 WordPress Application Password 鉴权，密钥加密保存且不明文回显。
+  - 支持文章发布、更新、删除、图片上传到媒体库、分类/标签同步和基础站点设置同步。
+  - 分发渠道后台按 GEOFlow Agent 与 WordPress REST 渠道展示不同配置项和接入引导。
+  - WordPress 渠道复用统一分发队列、远端元数据、健康检查、远端编辑/删除和日志记录能力。
+
 ### 文档
 
 - 系统性更新仓库首页 README 与多语言 README：

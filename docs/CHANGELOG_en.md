@@ -4,6 +4,14 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## 2026-05-23
 
+### Distribution Management
+
+- Added WordPress REST API distribution channel support:
+  - Supports WordPress Application Password authentication, with encrypted storage and no plaintext reveal.
+  - Supports post publish, update, delete, media upload, category/tag sync, and basic site settings sync.
+  - Shows different configuration fields and onboarding guidance for GEOFlow Agent and WordPress REST channels.
+  - Reuses the unified distribution queue, remote metadata, health checks, remote edit/delete actions, and distribution logs for WordPress channels.
+
 ### Documentation
 
 - Systematically refreshed the repository homepage README and localized READMEs:
