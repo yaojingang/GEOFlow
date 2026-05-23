@@ -119,6 +119,41 @@ class WordPressRestPublisherTest extends TestCase
         $this->assertTrue($result['can_edit_posts']);
     }
 
+    public function test_it_syncs_supported_site_settings_to_wordpress_settings_endpoint(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/settings' => Http::response([
+                'title' => '远程 WordPress',
+                'description' => '远程站点描述',
+                'posts_per_page' => 16,
+            ]),
+        ]);
+
+        [$channel] = $this->makeDistribution();
+        $channel->forceFill([
+            'site_settings' => [
+                'site_name' => '远程 WordPress',
+                'site_description' => '远程站点描述',
+                'per_page' => 16,
+            ],
+        ])->save();
+
+        $result = app(WordPressRestPublisher::class)->syncSiteSettings($channel);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame([
+            'title' => '远程 WordPress',
+            'description' => '远程站点描述',
+            'posts_per_page' => 16,
+        ], $result['settings']);
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://wp.example.com/wp-json/wp/v2/settings'
+            && $request['title'] === '远程 WordPress'
+            && $request['description'] === '远程站点描述'
+            && $request['posts_per_page'] === 16);
+    }
+
     public function test_orchestrator_persists_wordpress_remote_metadata(): void
     {
         Http::fake([

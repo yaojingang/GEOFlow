@@ -317,6 +317,57 @@ class AdminDistributionPageTest extends TestCase
             ->assertDontSee(__('admin.site_settings.theme.section_title'));
     }
 
+    public function test_wordpress_distribution_health_check_updates_channel_status(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json' => Http::response(['name' => 'WordPress']),
+            'https://wp.example.com/wp-json/wp/v2/users/me*' => Http::response([
+                'id' => 7,
+                'name' => 'Editor',
+                'capabilities' => [
+                    'edit_posts' => true,
+                    'publish_posts' => true,
+                    'upload_files' => true,
+                ],
+            ]),
+        ]);
+
+        $channel = DistributionChannel::query()->create([
+            'name' => 'WordPress 站点',
+            'domain' => 'wp.example.com',
+            'endpoint_url' => 'https://wp.example.com',
+            'channel_type' => 'wordpress_rest',
+            'channel_config' => [
+                'wordpress_username' => 'editor',
+                'wordpress_post_status' => 'draft',
+                'wordpress_category_strategy' => 'fixed',
+                'wordpress_tag_strategy' => 'disabled',
+                'wordpress_image_strategy' => 'keep_original',
+            ],
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'wp_health',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('app password'),
+            'status' => 'active',
+            'scopes' => ['wordpress.rest'],
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.health', ['channelId' => (int) $channel->id]))
+            ->assertRedirect()
+            ->assertSessionHas('message');
+
+        $this->assertDatabaseHas('distribution_channels', [
+            'id' => (int) $channel->id,
+            'last_health_status' => 'ok',
+            'last_error_message' => null,
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://wp.example.com/wp-json/wp/v2/users/me?context=edit');
+    }
+
     public function test_admin_can_update_distribution_channel(): void
     {
         $admin = $this->admin();
@@ -1632,6 +1683,73 @@ MD,
             && str_contains((string) $request['article']['content_html'], '<div class="article-table-wrap"><table class="article-table">')
             && str_contains((string) $request['article']['content_html'], 'src="/storage/uploads/images/2026/04/demo.png"')
             && ! str_contains((string) $request['article']['content_html'], '<h1>已发布分发文章</h1>'));
+    }
+
+    public function test_wordpress_distribution_queue_process_publishes_article_and_records_remote_result(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/posts' => Http::response([
+                'id' => 123,
+                'link' => 'https://wp.example.com/geo-article/',
+            ], 201),
+        ]);
+
+        $fixtures = $this->taskFixtures();
+        $channel = DistributionChannel::query()->create([
+            'name' => 'WordPress 站点',
+            'domain' => 'wp.example.com',
+            'endpoint_url' => 'https://wp.example.com',
+            'channel_type' => 'wordpress_rest',
+            'channel_config' => [
+                'wordpress_username' => 'editor',
+                'wordpress_post_status' => 'draft',
+                'wordpress_category_strategy' => 'fixed',
+                'wordpress_fixed_category' => '',
+                'wordpress_tag_strategy' => 'disabled',
+                'wordpress_image_strategy' => 'keep_original',
+            ],
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'wp_queue',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('app password'),
+            'status' => 'active',
+            'scopes' => ['wordpress.rest'],
+        ]);
+        $article = Article::query()->create([
+            'title' => 'WordPress 队列文章',
+            'slug' => 'geo-article',
+            'excerpt' => '摘要',
+            'content' => "## 核心观点\n\n正文",
+            'category_id' => $fixtures['category']->id,
+            'author_id' => $fixtures['author']->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => (int) $article->id,
+            'distribution_channel_id' => (int) $channel->id,
+            'action' => 'publish',
+            'status' => 'queued',
+            'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
+        ]);
+
+        app(DistributionOrchestrator::class)->process($distribution);
+
+        $this->assertDatabaseHas('article_distributions', [
+            'id' => (int) $distribution->id,
+            'status' => 'synced',
+            'remote_id' => '123',
+            'remote_url' => 'https://wp.example.com/geo-article/',
+        ]);
+        $distribution->refresh();
+        $this->assertSame(123, $distribution->remote_meta['wordpress_post_id'] ?? null);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://wp.example.com/wp-json/wp/v2/posts'
+            && $request['title'] === 'WordPress 队列文章'
+            && $request['status'] === 'draft'
+            && str_contains((string) $request['content'], '<h2>核心观点</h2>'));
     }
 
     public function test_distribution_payload_embeds_local_image_assets_for_target_site(): void
