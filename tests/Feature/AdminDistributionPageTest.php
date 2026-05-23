@@ -1494,7 +1494,7 @@ MD,
     public function test_distribution_payload_embeds_local_image_assets_for_target_site(): void
     {
         $fixtures = $this->taskFixtures();
-        $imagePath = public_path('storage/uploads/images/2026/05/distribution-demo.png');
+        $imagePath = storage_path('app/public/uploads/images/2026/05/distribution-demo.png');
         if (! is_dir(dirname($imagePath))) {
             mkdir(dirname($imagePath), 0755, true);
         }
@@ -1526,7 +1526,7 @@ MD,
     public function test_distribution_payload_does_not_embed_oversized_local_image_assets(): void
     {
         $fixtures = $this->taskFixtures();
-        $imagePath = public_path('storage/uploads/images/2026/05/distribution-large.png');
+        $imagePath = storage_path('app/public/uploads/images/2026/05/distribution-large.png');
         if (! is_dir(dirname($imagePath))) {
             mkdir(dirname($imagePath), 0755, true);
         }

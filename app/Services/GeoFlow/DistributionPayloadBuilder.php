@@ -141,7 +141,16 @@ class DistributionPayloadBuilder
             return null;
         }
 
-        return public_path($relativePath);
+        $publicPath = public_path($relativePath);
+        if (is_file($publicPath)) {
+            return $publicPath;
+        }
+
+        if (str_starts_with($relativePath, 'storage/')) {
+            return storage_path('app/public/'.substr($relativePath, strlen('storage/')));
+        }
+
+        return $publicPath;
     }
 
     private function imageAssetFilename(string $url, string $mimeType): string
