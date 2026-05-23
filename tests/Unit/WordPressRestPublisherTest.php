@@ -8,6 +8,7 @@ use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\WordPressRestPublisher;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -116,6 +117,25 @@ class WordPressRestPublisherTest extends TestCase
         $this->assertSame('wordpress_rest', $result['channel_type']);
         $this->assertSame(7, $result['user_id']);
         $this->assertTrue($result['can_edit_posts']);
+    }
+
+    public function test_orchestrator_persists_wordpress_remote_metadata(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/posts' => Http::response([
+                'id' => 123,
+                'link' => 'https://wp.example.com/hello-world/',
+            ], 201),
+        ]);
+
+        [$channel, $distribution] = $this->makeDistribution();
+
+        app(DistributionOrchestrator::class)->process($distribution);
+
+        $distribution->refresh();
+        $this->assertSame('synced', (string) $distribution->status);
+        $this->assertSame('123', (string) $distribution->remote_id);
+        $this->assertSame(123, $distribution->remote_meta['wordpress_post_id'] ?? null);
     }
 
     /**
