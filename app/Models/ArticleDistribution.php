@@ -15,6 +15,7 @@ class ArticleDistribution extends Model
         'status',
         'remote_id',
         'remote_url',
+        'remote_meta',
         'idempotency_key',
         'attempt_count',
         'next_retry_at',
@@ -31,7 +32,20 @@ class ArticleDistribution extends Model
             'attempt_count' => 'integer',
             'next_retry_at' => 'datetime',
             'last_attempt_at' => 'datetime',
+            'remote_meta' => 'array',
         ];
+    }
+
+    public function wordpressPostId(): ?int
+    {
+        if ($this->remote_id !== null && ctype_digit((string) $this->remote_id)) {
+            return (int) $this->remote_id;
+        }
+
+        $meta = is_array($this->remote_meta) ? $this->remote_meta : [];
+        $postId = $meta['wordpress_post_id'] ?? null;
+
+        return is_numeric($postId) ? (int) $postId : null;
     }
 
     public function article(): BelongsTo

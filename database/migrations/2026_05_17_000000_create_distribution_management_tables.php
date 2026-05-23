@@ -17,6 +17,7 @@ return new class extends Migration
                 $table->string('channel_type', 60)->default('geoflow_agent');
                 $table->string('template_key', 120)->nullable();
                 $table->json('site_settings')->nullable();
+                $table->json('channel_config')->nullable();
                 $table->string('status', 30)->default('active')->index();
                 $table->text('description')->nullable();
                 $table->string('last_health_status', 30)->nullable();
@@ -64,6 +65,7 @@ return new class extends Migration
                 $table->string('status', 30)->default('queued')->index();
                 $table->string('remote_id', 120)->nullable();
                 $table->string('remote_url', 500)->nullable();
+                $table->json('remote_meta')->nullable();
                 $table->string('idempotency_key', 120)->unique();
                 $table->unsignedInteger('attempt_count')->default(0);
                 $table->timestamp('next_retry_at')->nullable()->index();

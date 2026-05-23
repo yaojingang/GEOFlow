@@ -22,6 +22,7 @@ class DistributionSchemaMigrationTest extends TestCase
 
         $this->assertTrue(Schema::hasColumn('distribution_channels', 'channel_type'));
         $this->assertTrue(Schema::hasColumn('distribution_channels', 'site_settings'));
+        $this->assertTrue(Schema::hasColumn('distribution_channels', 'channel_config'));
         $this->assertTrue(Schema::hasColumn('distribution_channels', 'front_mode'));
         $this->assertTrue(Schema::hasColumn('task_distribution_channels', 'trigger'));
         $this->assertTrue(Schema::hasColumn('task_distribution_channels', 'remote_status'));
@@ -29,6 +30,7 @@ class DistributionSchemaMigrationTest extends TestCase
         $this->assertTrue(Schema::hasColumn('task_distribution_channels', 'max_attempts'));
         $this->assertTrue(Schema::hasColumn('tasks', 'publish_scope'));
         $this->assertTrue(Schema::hasColumn('article_distributions', 'idempotency_key'));
+        $this->assertTrue(Schema::hasColumn('article_distributions', 'remote_meta'));
         $this->assertTrue(Schema::hasColumn('distribution_logs', 'event'));
     }
 

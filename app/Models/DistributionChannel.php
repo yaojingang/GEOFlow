@@ -17,6 +17,7 @@ class DistributionChannel extends Model
         'front_mode',
         'template_key',
         'site_settings',
+        'channel_config',
         'status',
         'description',
         'last_health_status',
@@ -31,6 +32,7 @@ class DistributionChannel extends Model
             'created_by_admin_id' => 'integer',
             'last_health_checked_at' => 'datetime',
             'site_settings' => 'array',
+            'channel_config' => 'array',
         ];
     }
 
@@ -91,6 +93,60 @@ class DistributionChannel extends Model
     public function usesStaticFront(): bool
     {
         return $this->frontMode() === 'static';
+    }
+
+    public function channelType(): string
+    {
+        $type = (string) ($this->channel_type ?? 'geoflow_agent');
+
+        return in_array($type, ['geoflow_agent', 'wordpress_rest'], true) ? $type : 'geoflow_agent';
+    }
+
+    public function isGeoFlowAgent(): bool
+    {
+        return $this->channelType() === 'geoflow_agent';
+    }
+
+    public function isWordPressRest(): bool
+    {
+        return $this->channelType() === 'wordpress_rest';
+    }
+
+    /**
+     * @return array{
+     *   wordpress_username:string,
+     *   wordpress_post_status:string,
+     *   wordpress_category_strategy:string,
+     *   wordpress_fixed_category:string,
+     *   wordpress_tag_strategy:string,
+     *   wordpress_image_strategy:string,
+     *   wordpress_content_format:string
+     * }
+     */
+    public function resolvedChannelConfig(): array
+    {
+        $stored = is_array($this->channel_config) ? $this->channel_config : [];
+        $postStatus = (string) ($stored['wordpress_post_status'] ?? 'publish');
+        $categoryStrategy = (string) ($stored['wordpress_category_strategy'] ?? 'match_or_create');
+        $tagStrategy = (string) ($stored['wordpress_tag_strategy'] ?? 'keywords_to_tags');
+        $imageStrategy = (string) ($stored['wordpress_image_strategy'] ?? 'upload_to_media');
+
+        return [
+            'wordpress_username' => trim((string) ($stored['wordpress_username'] ?? '')),
+            'wordpress_post_status' => in_array($postStatus, ['publish', 'draft', 'pending', 'private'], true) ? $postStatus : 'publish',
+            'wordpress_category_strategy' => in_array($categoryStrategy, ['match_or_create', 'match_only', 'fixed'], true) ? $categoryStrategy : 'match_or_create',
+            'wordpress_fixed_category' => trim((string) ($stored['wordpress_fixed_category'] ?? '')),
+            'wordpress_tag_strategy' => in_array($tagStrategy, ['keywords_to_tags', 'disabled'], true) ? $tagStrategy : 'keywords_to_tags',
+            'wordpress_image_strategy' => in_array($imageStrategy, ['upload_to_media', 'keep_original'], true) ? $imageStrategy : 'upload_to_media',
+            'wordpress_content_format' => 'html',
+        ];
+    }
+
+    public function wordpressRestBaseUrl(): string
+    {
+        $base = rtrim((string) $this->endpoint_url, '/');
+
+        return str_ends_with($base, '/wp-json') ? $base : $base.'/wp-json';
     }
 
     public function secrets(): HasMany
