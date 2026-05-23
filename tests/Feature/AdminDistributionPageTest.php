@@ -174,6 +174,149 @@ class AdminDistributionPageTest extends TestCase
             ->assertSee(__('admin.distribution.help.endpoint_url'));
     }
 
+    public function test_wordpress_distribution_channel_form_shows_wordpress_fields(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.create'))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.channel_type.wordpress_rest'))
+            ->assertSee(__('admin.distribution.wordpress.section_title'))
+            ->assertSee('name="wordpress_username"', false)
+            ->assertSee('name="wordpress_application_password"', false)
+            ->assertSee('name="wordpress_post_status"', false)
+            ->assertSee('name="wordpress_category_strategy"', false)
+            ->assertSee('name="wordpress_tag_strategy"', false)
+            ->assertSee('name="wordpress_image_strategy"', false);
+    }
+
+    public function test_admin_can_create_wordpress_distribution_channel(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.store'), [
+                'name' => 'WordPress 站点',
+                'domain' => 'wp.example.com',
+                'endpoint_url' => 'https://wp.example.com',
+                'channel_type' => 'wordpress_rest',
+                'wordpress_username' => 'editor',
+                'wordpress_application_password' => 'app password',
+                'wordpress_post_status' => 'draft',
+                'wordpress_category_strategy' => 'match_or_create',
+                'wordpress_fixed_category' => '',
+                'wordpress_tag_strategy' => 'keywords_to_tags',
+                'wordpress_image_strategy' => 'upload_to_media',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.distribution.index'))
+            ->assertSessionMissing('distribution_secret');
+
+        $this->assertDatabaseHas('distribution_channels', [
+            'name' => 'WordPress 站点',
+            'channel_type' => 'wordpress_rest',
+            'endpoint_url' => 'https://wp.example.com',
+        ]);
+
+        $channel = DistributionChannel::query()->where('name', 'WordPress 站点')->firstOrFail();
+        $this->assertSame('editor', $channel->resolvedChannelConfig()['wordpress_username']);
+        $this->assertSame('draft', $channel->resolvedChannelConfig()['wordpress_post_status']);
+        $this->assertSame('upload_to_media', $channel->resolvedChannelConfig()['wordpress_image_strategy']);
+
+        $secret = DistributionChannelSecret::query()
+            ->where('distribution_channel_id', (int) $channel->id)
+            ->where('status', 'active')
+            ->firstOrFail();
+        $this->assertStringStartsWith('wp_', (string) $secret->key_id);
+        $this->assertSame(['wordpress.rest'], $secret->scopes);
+        $this->assertSame('app password', app(ApiKeyCrypto::class)->decrypt((string) $secret->secret_ciphertext));
+    }
+
+    public function test_wordpress_distribution_channel_requires_application_password_on_create(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.store'), [
+                'name' => 'WordPress 站点',
+                'domain' => 'wp.example.com',
+                'endpoint_url' => 'https://wp.example.com',
+                'channel_type' => 'wordpress_rest',
+                'wordpress_username' => 'editor',
+                'wordpress_post_status' => 'draft',
+                'wordpress_category_strategy' => 'match_or_create',
+                'wordpress_tag_strategy' => 'keywords_to_tags',
+                'wordpress_image_strategy' => 'upload_to_media',
+                'status' => 'active',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('wordpress_application_password');
+    }
+
+    public function test_wordpress_distribution_detail_hides_target_site_package_and_shows_connection_guide(): void
+    {
+        $channel = DistributionChannel::query()->create([
+            'name' => 'WordPress 站点',
+            'domain' => 'wp.example.com',
+            'endpoint_url' => 'https://wp.example.com',
+            'channel_type' => 'wordpress_rest',
+            'channel_config' => [
+                'wordpress_username' => 'editor',
+                'wordpress_post_status' => 'draft',
+                'wordpress_category_strategy' => 'match_or_create',
+                'wordpress_tag_strategy' => 'keywords_to_tags',
+                'wordpress_image_strategy' => 'upload_to_media',
+            ],
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'wp_testsecret',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('app password'),
+            'status' => 'active',
+            'scopes' => ['wordpress.rest'],
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.show', ['channelId' => (int) $channel->id]))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.channel_type.wordpress_rest'))
+            ->assertSee(__('admin.distribution.wordpress.guide_title'))
+            ->assertSee('/wp-json/wp/v2/users/me?context=edit')
+            ->assertSee(__('admin.distribution.wordpress.secret_hint'))
+            ->assertDontSee(__('admin.distribution.detail.target_package_files'))
+            ->assertDontSee(__('admin.distribution.detail.agent_package_name'))
+            ->assertDontSee(__('admin.distribution.button.download_package'))
+            ->assertDontSee(__('admin.distribution.rewrite.copy_nginx'))
+            ->assertDontSee(__('admin.distribution.button.rotate_secret'));
+    }
+
+    public function test_wordpress_distribution_edit_shows_wordpress_settings_without_agent_rewrite_controls(): void
+    {
+        $channel = DistributionChannel::query()->create([
+            'name' => 'WordPress 站点',
+            'domain' => 'wp.example.com',
+            'endpoint_url' => 'https://wp.example.com',
+            'channel_type' => 'wordpress_rest',
+            'channel_config' => [
+                'wordpress_username' => 'editor',
+                'wordpress_post_status' => 'draft',
+                'wordpress_category_strategy' => 'match_or_create',
+                'wordpress_tag_strategy' => 'keywords_to_tags',
+                'wordpress_image_strategy' => 'upload_to_media',
+            ],
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.edit', ['channelId' => (int) $channel->id]))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.channel_type.wordpress_rest'))
+            ->assertSee(__('admin.distribution.help.channel_type_locked'))
+            ->assertSee(__('admin.distribution.wordpress.section_title'))
+            ->assertSee('name="channel_type" value="wordpress_rest"', false)
+            ->assertSee('name="wordpress_username"', false)
+            ->assertSee(__('admin.distribution.wordpress.application_password_update_help'))
+            ->assertDontSee(__('admin.distribution.front_mode.static'))
+            ->assertDontSee(__('admin.distribution.rewrite.title'))
+            ->assertDontSee(__('admin.site_settings.theme.section_title'));
+    }
+
     public function test_admin_can_update_distribution_channel(): void
     {
         $admin = $this->admin();

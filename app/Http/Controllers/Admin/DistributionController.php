@@ -9,8 +9,8 @@ use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
-use App\Services\GeoFlow\DistributionHttpClient;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use App\Services\GeoFlow\DistributionPublisherManager;
 use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -29,7 +29,7 @@ class DistributionController extends Controller
 {
     public function __construct(
         private readonly DistributionOrchestrator $distributionOrchestrator,
-        private readonly DistributionHttpClient $distributionHttpClient,
+        private readonly DistributionPublisherManager $publisherManager,
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly DistributionTargetSitePackageBuilder $targetSitePackageBuilder,
         private readonly SiteThemeCatalog $siteThemeCatalog,
@@ -87,14 +87,23 @@ class DistributionController extends Controller
             'name' => (string) $payload['name'],
             'domain' => $this->normalizeDomain((string) $payload['domain']),
             'endpoint_url' => (string) $payload['endpoint_url'],
-            'channel_type' => 'geoflow_agent',
+            'channel_type' => (string) $payload['channel_type'],
             'front_mode' => (string) ($payload['front_mode'] ?? 'static'),
             'template_key' => filled($payload['template_key'] ?? null) ? (string) $payload['template_key'] : null,
             'site_settings' => $this->normalizeChannelSiteSettings($payload),
+            'channel_config' => $this->normalizeChannelConfig($payload),
             'status' => (string) $payload['status'],
             'description' => filled($payload['description'] ?? null) ? (string) $payload['description'] : null,
             'created_by_admin_id' => auth('admin')->id(),
         ]);
+
+        if ($channel->isWordPressRest()) {
+            $this->createWordPressSecret($channel, (string) $payload['wordpress_application_password']);
+
+            return redirect()
+                ->route('admin.distribution.index')
+                ->with('message', __('admin.distribution.message.created'));
+        }
 
         $secret = $this->createChannelSecret($channel);
 
@@ -140,12 +149,22 @@ class DistributionController extends Controller
             'name' => (string) $payload['name'],
             'domain' => $this->normalizeDomain((string) $payload['domain']),
             'endpoint_url' => (string) $payload['endpoint_url'],
+            'channel_type' => (string) $payload['channel_type'],
             'front_mode' => (string) ($payload['front_mode'] ?? 'static'),
             'template_key' => filled($payload['template_key'] ?? null) ? (string) $payload['template_key'] : null,
             'site_settings' => $this->normalizeChannelSiteSettings($payload, $channel),
+            'channel_config' => $this->normalizeChannelConfig($payload, $channel),
             'status' => (string) $payload['status'],
             'description' => filled($payload['description'] ?? null) ? (string) $payload['description'] : null,
         ])->save();
+
+        if ($channel->isWordPressRest() && filled($payload['wordpress_application_password'] ?? null)) {
+            DistributionChannelSecret::query()
+                ->where('distribution_channel_id', (int) $channel->id)
+                ->where('status', 'active')
+                ->update(['status' => 'revoked']);
+            $this->createWordPressSecret($channel, (string) $payload['wordpress_application_password']);
+        }
 
         $message = __('admin.distribution.message.updated');
         $channel->load('activeSecret');
@@ -254,6 +273,9 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
+        if ($channel->isWordPressRest()) {
+            return back()->withErrors(__('admin.distribution.message.wordpress_secret_rotation_hint'));
+        }
 
         DistributionChannelSecret::query()
             ->where('distribution_channel_id', (int) $channel->id)
@@ -280,6 +302,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($channel->isWordPressRest()) {
+            return back()->withErrors(__('admin.distribution.message.package_not_available_for_wordpress'));
         }
 
         /** @var Admin|null $admin */
@@ -332,6 +357,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($channel->isWordPressRest()) {
+            return back()->withErrors(__('admin.distribution.message.package_not_available_for_wordpress'));
         }
 
         /** @var Admin|null $admin */
@@ -578,7 +606,7 @@ class DistributionController extends Controller
     private function syncChannelSiteSettings(DistributionChannel $channel): array
     {
         try {
-            $result = $this->distributionHttpClient->syncSiteSettings($channel);
+            $result = $this->publisherManager->forChannel($channel)->syncSiteSettings($channel);
             $this->distributionOrchestrator->log(
                 'info',
                 '目标站点设置已同步',
@@ -654,7 +682,7 @@ class DistributionController extends Controller
     }
 
     /**
-     * @return array{name:string,domain:string,endpoint_url:string,front_mode:string,template_key?:string|null,status:string,description?:string|null}
+     * @return array<string,mixed>
      */
     private function validateChannel(Request $request): array
     {
@@ -662,10 +690,18 @@ class DistributionController extends Controller
             'name' => ['required', 'string', 'max:120'],
             'domain' => ['required', 'string', 'max:255'],
             'endpoint_url' => ['required', 'string', 'max:500'],
+            'channel_type' => ['nullable', 'string', 'in:geoflow_agent,wordpress_rest'],
             'front_mode' => ['nullable', 'string', 'in:static,rewrite'],
             'template_key' => ['nullable', 'string', 'max:120'],
             'status' => ['required', 'string', 'in:active,paused'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'wordpress_username' => ['nullable', 'string', 'max:120'],
+            'wordpress_application_password' => ['nullable', 'string', 'max:255'],
+            'wordpress_post_status' => ['nullable', 'string', 'in:publish,draft,pending,private'],
+            'wordpress_category_strategy' => ['nullable', 'string', 'in:match_or_create,match_only,fixed'],
+            'wordpress_fixed_category' => ['nullable', 'string', 'max:120'],
+            'wordpress_tag_strategy' => ['nullable', 'string', 'in:keywords_to_tags,disabled'],
+            'wordpress_image_strategy' => ['nullable', 'string', 'in:upload_to_media,keep_original'],
             'site_name' => ['nullable', 'string', 'max:120'],
             'site_subtitle' => ['nullable', 'string', 'max:255'],
             'site_description' => ['nullable', 'string'],
@@ -680,11 +716,24 @@ class DistributionController extends Controller
         ]);
 
         $payload['endpoint_url'] = $this->normalizeEndpointUrl((string) $payload['endpoint_url']);
+        $payload['channel_type'] = (string) ($payload['channel_type'] ?? 'geoflow_agent');
         $payload['front_mode'] = (string) ($payload['front_mode'] ?? 'static');
         if (! $this->isValidHttpEndpoint((string) $payload['endpoint_url'])) {
             throw ValidationException::withMessages([
                 'endpoint_url' => __('admin.distribution.validation.endpoint_url'),
             ]);
+        }
+        if ($payload['channel_type'] === 'wordpress_rest') {
+            if (! filled($payload['wordpress_username'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'wordpress_username' => __('admin.distribution.validation.wordpress_username'),
+                ]);
+            }
+            if ($request->isMethod('post') && ! filled($payload['wordpress_application_password'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'wordpress_application_password' => __('admin.distribution.validation.wordpress_application_password'),
+                ]);
+            }
         }
 
         return $payload;
@@ -727,6 +776,37 @@ class DistributionController extends Controller
     }
 
     /**
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function normalizeChannelConfig(array $payload, ?DistributionChannel $channel = null): array
+    {
+        if ((string) ($payload['channel_type'] ?? 'geoflow_agent') !== 'wordpress_rest') {
+            return [];
+        }
+
+        $defaults = $channel?->resolvedChannelConfig() ?? [
+            'wordpress_username' => '',
+            'wordpress_post_status' => 'publish',
+            'wordpress_category_strategy' => 'match_or_create',
+            'wordpress_fixed_category' => '',
+            'wordpress_tag_strategy' => 'keywords_to_tags',
+            'wordpress_image_strategy' => 'upload_to_media',
+            'wordpress_content_format' => 'html',
+        ];
+
+        return [
+            'wordpress_username' => trim((string) ($payload['wordpress_username'] ?? $defaults['wordpress_username'])),
+            'wordpress_post_status' => (string) ($payload['wordpress_post_status'] ?? $defaults['wordpress_post_status']),
+            'wordpress_category_strategy' => (string) ($payload['wordpress_category_strategy'] ?? $defaults['wordpress_category_strategy']),
+            'wordpress_fixed_category' => trim((string) ($payload['wordpress_fixed_category'] ?? $defaults['wordpress_fixed_category'])),
+            'wordpress_tag_strategy' => (string) ($payload['wordpress_tag_strategy'] ?? $defaults['wordpress_tag_strategy']),
+            'wordpress_image_strategy' => (string) ($payload['wordpress_image_strategy'] ?? $defaults['wordpress_image_strategy']),
+            'wordpress_content_format' => 'html',
+        ];
+    }
+
+    /**
      * @return array{key_id:string,secret:string}
      */
     private function createChannelSecret(DistributionChannel $channel): array
@@ -746,6 +826,17 @@ class DistributionController extends Controller
             'key_id' => $keyId,
             'secret' => $plainSecret,
         ];
+    }
+
+    private function createWordPressSecret(DistributionChannel $channel, string $applicationPassword): void
+    {
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'wp_'.Str::lower(Str::random(18)),
+            'secret_ciphertext' => $this->apiKeyCrypto->encrypt($applicationPassword),
+            'status' => 'active',
+            'scopes' => ['wordpress.rest'],
+        ]);
     }
 
     private function setStatus(int $channelId, string $status, string $message): RedirectResponse

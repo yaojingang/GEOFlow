@@ -86,8 +86,13 @@
                             @foreach ($channels as $channel)
                                 @php($channelStatusKey = 'admin.distribution.status.'.(string) $channel->status)
                                 @php($channelStatusLabel = trans()->has($channelStatusKey) ? __($channelStatusKey) : (string) $channel->status)
+                                @php($channelTypeKey = 'admin.distribution.channel_type.'.$channel->channelType())
+                                @php($channelTypeLabel = trans()->has($channelTypeKey) ? __($channelTypeKey) : $channel->channelType())
                                 <tr>
-                                    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ $channel->name }}</td>
+                                    <td class="px-6 py-4 text-sm">
+                                        <div class="font-medium text-gray-900">{{ $channel->name }}</div>
+                                        <div class="mt-1 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{{ $channelTypeLabel }}</div>
+                                    </td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{{ $channel->domain }}</td>
                                     <td class="px-6 py-4 text-sm">
                                         <span class="inline-flex rounded-full px-2 py-1 text-xs font-medium {{ $channel->status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }}">{{ $channelStatusLabel }}</span>

@@ -6,7 +6,10 @@
 @php($healthStatusKey = 'admin.distribution.health_status.'.$healthStatus)
 @php($healthStatusLabel = $healthStatus !== '' && trans()->has($healthStatusKey) ? __($healthStatusKey) : ($healthStatus !== '' ? $healthStatus : __('admin.common.none')))
 @php($canRevealSecret = auth('admin')->user() instanceof \App\Models\Admin && auth('admin')->user()->isSuperAdmin())
-@php($healthCheckUrl = rtrim((string) $channel->endpoint_url, '/').'/geoflow-agent/v1/health')
+@php($channelType = $channel->channelType())
+@php($channelTypeLabel = __('admin.distribution.channel_type.'.$channelType))
+@php($channelConfig = $channel->resolvedChannelConfig())
+@php($healthCheckUrl = $channel->isWordPressRest() ? $channel->wordpressRestBaseUrl().'/wp/v2/users/me?context=edit' : rtrim((string) $channel->endpoint_url, '/').'/geoflow-agent/v1/health')
 @php($indexAgentBaseUrl = str_ends_with(rtrim((string) $channel->endpoint_url, '/'), '/index.php') ? rtrim((string) $channel->endpoint_url, '/') : rtrim((string) $channel->endpoint_url, '/').'/index.php')
 @php($indexHealthCheckUrl = $indexAgentBaseUrl.'/geoflow-agent/v1/health')
 
@@ -34,13 +37,15 @@
                         {{ $channel->status === 'active' ? __('admin.distribution.button.pause') : __('admin.distribution.button.activate') }}
                     </button>
                 </form>
-                <form method="POST" action="{{ route('admin.distribution.rotate-secret', ['channelId' => (int) $channel->id]) }}" onsubmit="return confirm('{{ __('admin.distribution.confirm.rotate_secret') }}')">
-                    @csrf
-                    <button type="submit" class="inline-flex items-center rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50">
-                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.distribution.button.rotate_secret') }}
-                    </button>
-                </form>
+                @if ($channel->isGeoFlowAgent())
+                    <form method="POST" action="{{ route('admin.distribution.rotate-secret', ['channelId' => (int) $channel->id]) }}" onsubmit="return confirm('{{ __('admin.distribution.confirm.rotate_secret') }}')">
+                        @csrf
+                        <button type="submit" class="inline-flex items-center rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50">
+                            <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.distribution.button.rotate_secret') }}
+                        </button>
+                    </form>
+                @endif
                 <form method="POST" action="{{ route('admin.distribution.health', ['channelId' => (int) $channel->id]) }}">
                     @csrf
                     <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
@@ -89,13 +94,28 @@
                         <dd class="mt-1 break-all font-medium text-gray-900">{{ $channel->endpoint_url }}</dd>
                     </div>
                     <div>
+                        <dt class="text-gray-500">{{ __('admin.distribution.field.channel_type') }}</dt>
+                        <dd class="mt-1 font-medium text-gray-900">{{ $channelTypeLabel }}</dd>
+                    </div>
+                    <div>
                         <dt class="text-gray-500">{{ __('admin.distribution.field.status') }}</dt>
                         <dd class="mt-1 font-medium text-gray-900">{{ $channelStatusLabel }}</dd>
                     </div>
-                    <div>
-                        <dt class="text-gray-500">{{ __('admin.distribution.field.template_key') }}</dt>
-                        <dd class="mt-1 font-medium text-gray-900">{{ $channel->template_key ?: __('admin.common.none') }}</dd>
-                    </div>
+                    @if ($channel->isGeoFlowAgent())
+                        <div>
+                            <dt class="text-gray-500">{{ __('admin.distribution.field.template_key') }}</dt>
+                            <dd class="mt-1 font-medium text-gray-900">{{ $channel->template_key ?: __('admin.common.none') }}</dd>
+                        </div>
+                    @else
+                        <div>
+                            <dt class="text-gray-500">{{ __('admin.distribution.wordpress.username') }}</dt>
+                            <dd class="mt-1 font-medium text-gray-900">{{ $channelConfig['wordpress_username'] ?: __('admin.common.none') }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('admin.distribution.wordpress.post_status') }}</dt>
+                            <dd class="mt-1 font-medium text-gray-900">{{ __('admin.distribution.wordpress.post_status_'.$channelConfig['wordpress_post_status']) }}</dd>
+                        </div>
+                    @endif
                     <div>
                         <dt class="text-gray-500">{{ __('admin.distribution.field.health_status') }}</dt>
                         <dd class="mt-1 font-medium text-gray-900">{{ $healthStatusLabel }}</dd>
@@ -120,7 +140,11 @@
                     </div>
                 </dl>
                 @if ($channel->activeSecret)
-                    @if ($canRevealSecret)
+                    @if ($channel->isWordPressRest())
+                        <div class="mt-5 rounded-md border border-blue-100 bg-blue-50 px-3 py-3 text-sm leading-6 text-blue-900">
+                            {{ __('admin.distribution.wordpress.secret_hint') }}
+                        </div>
+                    @elseif ($canRevealSecret)
                         <form method="POST" action="{{ route('admin.distribution.reveal-secret', ['channelId' => (int) $channel->id]) }}" class="mt-5 border-t border-gray-200 pt-5">
                             @csrf
                             <label for="distribution-secret-password" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.field.admin_password') }}</label>
@@ -143,109 +167,136 @@
             </div>
         </div>
 
-        <div class="rounded-lg bg-white p-6 shadow">
-            <div class="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+        @if ($channel->isGeoFlowAgent())
+            <div class="rounded-lg bg-white p-6 shadow">
+                <div class="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+                    <div class="max-w-3xl">
+                        <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.detail.target_package') }}</h2>
+                        <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.distribution.detail.target_package_desc') }}</p>
+                        <div class="mt-5 grid grid-cols-1 gap-3 text-sm text-gray-700 sm:grid-cols-2 xl:grid-cols-4">
+                            <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
+                                <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_feature_health') }}</div>
+                                <code class="mt-1 block break-all text-xs text-gray-500">/geoflow-agent/v1/health</code>
+                            </div>
+                            <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
+                                <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_feature_article') }}</div>
+                                <code class="mt-1 block break-all text-xs text-gray-500">/geoflow-agent/v1/articles</code>
+                            </div>
+                            <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
+                                <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_feature_home') }}</div>
+                                <code class="mt-1 block break-all text-xs text-gray-500">/</code>
+                            </div>
+                            <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
+                                <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_feature_detail') }}</div>
+                                <code class="mt-1 block break-all text-xs text-gray-500">/article/{slug}</code>
+                            </div>
+                        </div>
+                        <div class="mt-5">
+                            <div class="text-sm font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_files') }}</div>
+                            <ul class="mt-2 space-y-2 text-sm text-gray-600">
+                                <li>{{ __('admin.distribution.detail.target_package_file_config') }}</li>
+                                <li>{{ __('admin.distribution.detail.target_package_file_index') }}</li>
+                                <li>{{ __('admin.distribution.detail.target_package_file_storage') }}</li>
+                            </ul>
+                        </div>
+                        <div class="mt-5 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+                            <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
+                                <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.package_configured_base') }}</div>
+                                <code class="mt-1 block break-all text-xs text-gray-600">{{ rtrim((string) $channel->endpoint_url, '/') }}</code>
+                            </div>
+                            <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
+                                <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.package_no_rewrite_entry') }}</div>
+                                <code class="mt-1 block break-all text-xs text-gray-600">{{ $indexHealthCheckUrl }}</code>
+                            </div>
+                        </div>
+                        <div class="mt-5 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <div class="font-medium">{{ __('admin.distribution.detail.health_before_deploy_title') }}</div>
+                            <p class="mt-1 leading-6">{{ __('admin.distribution.detail.health_before_deploy_desc') }}</p>
+                        </div>
+                    </div>
+
+                    <div class="w-full rounded-lg border border-blue-100 bg-blue-50 p-4 xl:max-w-sm">
+                        @if ($channel->activeSecret && $canRevealSecret)
+                            <form method="POST" action="{{ route('admin.distribution.download-package', ['channelId' => (int) $channel->id]) }}">
+                                @csrf
+                                <label for="distribution-package-password" class="block text-sm font-medium text-gray-800">{{ __('admin.distribution.field.admin_password') }}</label>
+                                <input id="distribution-package-password" name="package_password" type="password" autocomplete="current-password" required class="mt-2 block w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                @error('package_password')
+                                    <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                                @enderror
+                                <p class="mt-2 text-xs leading-5 text-gray-600">{{ __('admin.distribution.help.download_package') }}</p>
+                                <button type="submit" class="mt-4 inline-flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                                    <i data-lucide="download" class="mr-2 h-4 w-4"></i>
+                                    {{ __('admin.distribution.button.download_package') }}
+                                </button>
+                            </form>
+                        @elseif (! $channel->activeSecret)
+                            <div class="text-sm text-gray-600">{{ __('admin.distribution.message.active_secret_not_found') }}</div>
+                        @else
+                            <div class="text-sm text-gray-600">{{ __('admin.distribution.message.package_download_forbidden') }}</div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            @include('admin.distribution._rewrite-rules', ['channel' => $channel])
+
+            <div class="rounded-lg bg-white p-6 shadow">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                        <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.detail.agent_guide') }}</h2>
+                        <p class="mt-2 text-sm text-gray-600">{{ __('admin.distribution.detail.agent_config_hint') }}</p>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        <span class="font-medium">{{ __('admin.distribution.detail.agent_package') }}：</span>
+                        <code class="break-all text-gray-900">{{ __('admin.distribution.detail.agent_package_name') }}</code>
+                    </div>
+                </div>
+                <ol class="mt-6 grid grid-cols-1 gap-4 text-sm text-gray-700 md:grid-cols-2 xl:grid-cols-4">
+                    <li class="flex gap-3">
+                        <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">1</span>
+                        <span>{{ __('admin.distribution.detail.agent_step_deploy') }}</span>
+                    </li>
+                    <li class="flex gap-3">
+                        <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">2</span>
+                        <span>{{ __('admin.distribution.detail.agent_step_configure') }}</span>
+                    </li>
+                    <li class="flex gap-3">
+                        <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">3</span>
+                        <span>{{ __('admin.distribution.detail.agent_step_health') }}</span>
+                    </li>
+                    <li class="flex gap-3">
+                        <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">4</span>
+                        <span>{{ __('admin.distribution.detail.agent_step_task') }}</span>
+                    </li>
+                </ol>
+            </div>
+        @else
+            <div class="rounded-lg bg-white p-6 shadow">
                 <div class="max-w-3xl">
-                    <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.detail.target_package') }}</h2>
-                    <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.distribution.detail.target_package_desc') }}</p>
-                    <div class="mt-5 grid grid-cols-1 gap-3 text-sm text-gray-700 sm:grid-cols-2 xl:grid-cols-4">
-                        <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
-                            <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_feature_health') }}</div>
-                            <code class="mt-1 block break-all text-xs text-gray-500">/geoflow-agent/v1/health</code>
-                        </div>
-                        <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
-                            <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_feature_article') }}</div>
-                            <code class="mt-1 block break-all text-xs text-gray-500">/geoflow-agent/v1/articles</code>
-                        </div>
-                        <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
-                            <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_feature_home') }}</div>
-                            <code class="mt-1 block break-all text-xs text-gray-500">/</code>
-                        </div>
-                        <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
-                            <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_feature_detail') }}</div>
-                            <code class="mt-1 block break-all text-xs text-gray-500">/article/{slug}</code>
-                        </div>
-                    </div>
-                    <div class="mt-5">
-                        <div class="text-sm font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_files') }}</div>
-                        <ul class="mt-2 space-y-2 text-sm text-gray-600">
-                            <li>{{ __('admin.distribution.detail.target_package_file_config') }}</li>
-                            <li>{{ __('admin.distribution.detail.target_package_file_index') }}</li>
-                            <li>{{ __('admin.distribution.detail.target_package_file_storage') }}</li>
-                        </ul>
-                    </div>
-                    <div class="mt-5 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-                        <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
-                            <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.package_configured_base') }}</div>
-                            <code class="mt-1 block break-all text-xs text-gray-600">{{ rtrim((string) $channel->endpoint_url, '/') }}</code>
-                        </div>
-                        <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
-                            <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.package_no_rewrite_entry') }}</div>
-                            <code class="mt-1 block break-all text-xs text-gray-600">{{ $indexHealthCheckUrl }}</code>
-                        </div>
-                    </div>
-                    <div class="mt-5 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        <div class="font-medium">{{ __('admin.distribution.detail.health_before_deploy_title') }}</div>
-                        <p class="mt-1 leading-6">{{ __('admin.distribution.detail.health_before_deploy_desc') }}</p>
-                    </div>
+                    <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.wordpress.guide_title') }}</h2>
+                    <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.distribution.wordpress.guide_desc') }}</p>
                 </div>
-
-                <div class="w-full rounded-lg border border-blue-100 bg-blue-50 p-4 xl:max-w-sm">
-                    @if ($channel->activeSecret && $canRevealSecret)
-                        <form method="POST" action="{{ route('admin.distribution.download-package', ['channelId' => (int) $channel->id]) }}">
-                            @csrf
-                            <label for="distribution-package-password" class="block text-sm font-medium text-gray-800">{{ __('admin.distribution.field.admin_password') }}</label>
-                            <input id="distribution-package-password" name="package_password" type="password" autocomplete="current-password" required class="mt-2 block w-full rounded-md border-gray-300 bg-white shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                            @error('package_password')
-                                <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
-                            @enderror
-                            <p class="mt-2 text-xs leading-5 text-gray-600">{{ __('admin.distribution.help.download_package') }}</p>
-                            <button type="submit" class="mt-4 inline-flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                                <i data-lucide="download" class="mr-2 h-4 w-4"></i>
-                                {{ __('admin.distribution.button.download_package') }}
-                            </button>
-                        </form>
-                    @elseif (! $channel->activeSecret)
-                        <div class="text-sm text-gray-600">{{ __('admin.distribution.message.active_secret_not_found') }}</div>
-                    @else
-                        <div class="text-sm text-gray-600">{{ __('admin.distribution.message.package_download_forbidden') }}</div>
-                    @endif
-                </div>
+                <ol class="mt-6 grid grid-cols-1 gap-4 text-sm text-gray-700 md:grid-cols-2 xl:grid-cols-4">
+                    <li class="flex gap-3">
+                        <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">1</span>
+                        <span>{{ __('admin.distribution.wordpress.guide_step_password') }}</span>
+                    </li>
+                    <li class="flex gap-3">
+                        <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">2</span>
+                        <span>{{ __('admin.distribution.wordpress.guide_step_config') }}</span>
+                    </li>
+                    <li class="flex gap-3">
+                        <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">3</span>
+                        <span>{{ __('admin.distribution.wordpress.guide_step_health') }}</span>
+                    </li>
+                    <li class="flex gap-3">
+                        <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">4</span>
+                        <span>{{ __('admin.distribution.wordpress.guide_step_draft') }}</span>
+                    </li>
+                </ol>
             </div>
-        </div>
-
-        @include('admin.distribution._rewrite-rules', ['channel' => $channel])
-
-        <div class="rounded-lg bg-white p-6 shadow">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                    <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.detail.agent_guide') }}</h2>
-                    <p class="mt-2 text-sm text-gray-600">{{ __('admin.distribution.detail.agent_config_hint') }}</p>
-                </div>
-                <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                    <span class="font-medium">{{ __('admin.distribution.detail.agent_package') }}：</span>
-                    <code class="break-all text-gray-900">{{ __('admin.distribution.detail.agent_package_name') }}</code>
-                </div>
-            </div>
-            <ol class="mt-6 grid grid-cols-1 gap-4 text-sm text-gray-700 md:grid-cols-2 xl:grid-cols-4">
-                <li class="flex gap-3">
-                    <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">1</span>
-                    <span>{{ __('admin.distribution.detail.agent_step_deploy') }}</span>
-                </li>
-                <li class="flex gap-3">
-                    <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">2</span>
-                    <span>{{ __('admin.distribution.detail.agent_step_configure') }}</span>
-                </li>
-                <li class="flex gap-3">
-                    <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">3</span>
-                    <span>{{ __('admin.distribution.detail.agent_step_health') }}</span>
-                </li>
-                <li class="flex gap-3">
-                    <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">4</span>
-                    <span>{{ __('admin.distribution.detail.agent_step_task') }}</span>
-                </li>
-            </ol>
-        </div>
+        @endif
 
         <div class="rounded-lg bg-white shadow">
             <div class="border-b border-gray-200 px-6 py-4">
