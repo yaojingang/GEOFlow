@@ -152,8 +152,9 @@ class WordPressRestPublisherTest extends TestCase
             'channel_config' => [
                 'wordpress_username' => 'editor',
                 'wordpress_post_status' => 'publish',
-                'wordpress_category_strategy' => 'match_or_create',
-                'wordpress_tag_strategy' => 'keywords_to_tags',
+                'wordpress_category_strategy' => 'fixed',
+                'wordpress_fixed_category' => '',
+                'wordpress_tag_strategy' => 'disabled',
                 'wordpress_image_strategy' => 'keep_original',
             ],
             'status' => 'active',
