@@ -2,6 +2,15 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-05-23
+
+### Documentation
+
+- Systematically refreshed the repository homepage README and localized READMEs:
+  - Updated the hero description from future multi-channel distribution to the current GEO content engineering and multi-site distribution system.
+  - Added Analytics, Distribution Management, target-site packages, static page distribution, `llms.txt` / TXT maps, remote site-settings sync, and LLM-friendly output to the feature tables.
+  - Updated runtime and architecture sections with target-site Agents, distribution queues, remote static pages, and log analytics.
+
 ## 2026-05-22
 
 ### v2.0.1

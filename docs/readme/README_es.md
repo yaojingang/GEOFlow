@@ -2,7 +2,7 @@
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
-> GEOFlow es un sistema open source de ingeniería inteligente de contenidos diseñado específicamente para GEO (Generative Engine Optimization). Es una de las primeras infraestructuras de datos, contenido y distribución del mundo diseñadas sistemáticamente alrededor de escenarios GEO, conectando datos, bases de conocimiento, materiales, generación con IA, revisión, publicación, presentación web y futura distribución multicanal en una única cadena evolutiva.
+> GEOFlow es un sistema open source de ingeniería de contenidos GEO (Generative Engine Optimization) y distribución multi-sitio. Conecta bases de conocimiento, bibliotecas de materiales, prompts, tareas de generación con IA, revisión y publicación, analítica, paquetes de sitios destino y distribución remota de páginas estáticas para convertir información confiable en activos GEO publicables, trazables y distribuibles.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
@@ -20,17 +20,19 @@ GEOFlow se publica bajo la [Apache License 2.0](../../LICENSE). Puedes usarlo, c
 
 | Característica | Descripción |
 |----------------|-------------|
-| 🤖 Generación multi-modelo | APIs estilo OpenAI, modelos chat / embedding, adaptación de URL del proveedor, failover inteligente y reintentos |
-| 📦 Tareas por lotes | Creación de tareas, límite de generación, cadencia de publicación, cola, registros de error y filtrado de artículos por tarea |
-| 🗂 Materiales unificados | Títulos, palabras clave, imágenes, autores, bases de conocimiento y prompts |
-| 🧠 RAG con base de conocimiento | Subida de documentos, generación de fragmentos, vectores con modelo embedding y recuperación de contexto |
-| 📋 Revisión y publicación | Borrador, revisión, publicación y filtros por estado, autor y tarea |
-| 🔍 Salida orientada a búsqueda | SEO, Open Graph, datos estructurados y renderizado Markdown GFM para títulos, tablas, listas e imágenes |
-| 🎨 Front y temas | Tema por defecto, paquetes de temas, rutas de preview y cambio de tema desde admin |
-| 🌍 i18n del admin | Chino, inglés, japonés, español, ruso y portugués (Brasil) |
+| 🤖 Generación multi-modelo | APIs estilo OpenAI, modelos chat / embedding, adaptación de URL, failover inteligente, reintentos y estadísticas de uso |
+| 🧠 RAG con base de conocimiento | Subida de documentos, fragmentación, vectores con modelo embedding y recuperación de contexto durante la generación |
+| 🗂 Materiales y prompts | Títulos, palabras clave, imágenes, autores, bases de conocimiento, prompts de cuerpo y prompts especiales |
+| 📦 Automatización de tareas | Límites de generación, pool de borradores, revisión, cadencia de publicación, colas, reintentos y filtros por tarea |
+| 📋 Revisión y artículos | Borradores, revisión, publicación, papelera, autores, categorías, SEO y origen de tarea en un solo flujo |
+| 📡 Distribución multi-sitio | Canales, secretos de Agent, paquetes de sitio destino, modo estático, reglas rewrite, edición/eliminación remota, colas y logs |
+| 🧾 Paquetes de sitio destino | PHP Agent por canal con home, páginas de artículo, assets estáticos, sitemap, `llms.txt` / mapas TXT y Schema |
+| 📊 Analítica | Vista global, operación de sitio único, distribución multi-sitio, logs de acceso, top contenidos, crawlers de IA y tendencias |
+| 🔍 Salida SEO y LLM-friendly | SEO, Open Graph, Schema, Markdown GFM, CSS independiente, sincronización de imágenes, sitemap y mapas TXT |
+| 🎨 Front y temas | Temas, preview, cambio desde admin y sincronización remota de título, copyright, tema y categorías |
+| 🌍 i18n del admin | Chino, inglés, japonés, español, ruso y portugués (Brasil), con módulos GEOFlow 2.0 cubiertos |
 | 🔔 Avisos de versión | Consulta `version.json` de GitHub y avisa cuando hay una versión nueva |
-| 🐳 Listo para desplegar | **Docker Compose**: Postgres (pgvector), Redis, app, cola, scheduler, Reverb |
-| 🗄 PostgreSQL | Base por defecto para carga estable y escrituras concurrentes |
+| 🐳 Listo para desplegar | **Docker Compose**: Postgres (pgvector), Redis, app, cola, scheduler, Reverb y producción con Nginx/php-fpm |
 
 ---
 
@@ -51,14 +53,15 @@ Cubre inicio, tareas, flujo de artículos y modelos. Si faltan imágenes en `../
 
 ## 🆕 Puntos clave de la nueva versión
 
-La nueva versión incluye estos cambios clave:
+GEOFlow 2.0 incluye estos cambios clave:
 
-- El admin mantiene la marca GEOFlow fija, soporta varios idiomas, gestión de administradores, bienvenida inicial y aviso de nuevas versiones desde GitHub.
-- Las tareas soportan modelo fijo y failover inteligente; la generación y la publicación se tratan como etapas separadas.
-- Los materiales incluyen base de conocimiento, títulos, palabras clave, imágenes y autores.
-- La base de conocimiento se divide en fragmentos; con un modelo embedding configurado puede escribir vectores y usarlos en RAG.
-- La configuración de modelos aclara reglas de URL para interfaces estilo OpenAI y proveedores con rutas no `/v1`.
-- El frontend renderiza Markdown GFM, incluidas tablas e imágenes, y normaliza rutas históricas `/uploads` hacia `/storage/uploads`.
+- **Panel como hub operativo**: conserva la guía de tres pasos y organiza entradas por operación de sitio único, distribución multi-sitio y skills complementarias.
+- **Página de analítica independiente**: vista global, operación de contenido, salud de tareas/materiales, estado de distribución, logs de acceso y tendencias de crawlers de IA en `/admin/analytics`.
+- **Distribución usable de extremo a extremo**: canales, secretos, pruebas de conexión, paquetes de sitio destino, modos estático/rewrite, sincronización de ajustes remotos, colas, logs, edición y eliminación remota.
+- **Sitios destino en modo estático**: la distribución regenera home remota, páginas de artículo, sitemap, mapas TXT, `llms.txt`, imágenes y CSS independiente.
+- **Materiales y RAG más completos**: fragmentos, estado de vectorización, títulos, palabras clave, imágenes, autores y prompts forman la capa de entrada de las tareas.
+- **Despliegue y seguridad mejorados**: Docker de producción usa Nginx + PHP-FPM, el seeder no sobrescribe admins existentes y los mirrors Docker/Composer son configurables.
+- **Cobertura i18n para los módulos actuales**: los módulos GEOFlow 2.0 ya no dependen de claves sin traducir ni fallback en inglés.
 
 ---
 
@@ -67,13 +70,17 @@ La nueva versión incluye estos cambios clave:
 ```
 Panel admin
   ↓
-Programador / cola (Horizon opcional)
+Configuración IA / materiales / prompts / tareas
   ↓
-Worker ejecuta la IA
+Scheduler / cola / worker ejecuta la IA
   ↓
 Borrador / revisión / publicación
   ↓
-Salida en el front-end
+Artículos locales y páginas SEO
+  ↓
+Cola de distribución / Agent del sitio destino
+  ↓
+Home remota, artículos, sitemap, mapas TXT y llms.txt
 ```
 
 ---
@@ -82,13 +89,13 @@ Salida en el front-end
 
 | Capa | Descripción |
 |------|-------------|
-| Web / Admin | **Laravel**: rutas, controladores, **Blade** para admin y artículos |
-| API | `routes/api.php` (autenticación según configuración) |
-| Scheduler / cola / Reverb | **Scheduler**, **`queue:work` / Horizon**, **Reverb** si aplica |
-| Dominio y Jobs | `app/Services`, `app/Jobs`, `app/Http/Controllers`, etc. |
-| Persistencia | **PostgreSQL** (recomendado **pgvector**) + **Redis** |
+| Web / Admin | **Laravel**: rutas, controladores, sitio de artículos, **Blade** admin, analítica, distribución, materiales y tareas |
+| API / Agent | APIs locales y PHP Agent de sitios destino para health check, recibir/actualizar/eliminar artículos, sincronizar ajustes y generar estáticos |
+| Scheduler / cola / Reverb | **Scheduler**, **`queue:work` / Horizon** para generación y distribución, **Reverb** si aplica |
+| Dominio y Jobs | `app/Services`, `app/Jobs`, `app/Http/Controllers` para IA, RAG, publicación, distribución y análisis de logs |
+| Persistencia | **PostgreSQL** (recomendado **pgvector**) + **Redis** + JSON/archivos estáticos en sitios destino |
 
-Flujo principal: configurar modelos y prompts → preparar conocimiento, títulos, palabras clave, imágenes y autores → crear tareas y encolar → workers generan contenido → borrador / revisión / publicación → front con SEO.
+Flujo principal: configurar modelos y prompts → preparar conocimiento, títulos, palabras clave, imágenes y autores → crear tareas y encolar → workers generan contenido → borrador / revisión / publicación → páginas SEO locales → distribución a canales seleccionados → analítica de producción, distribución, acceso y crawlers de IA.
 
 ---
 
@@ -206,7 +213,7 @@ php artisan serve --host=127.0.0.1 --port=8080
 Otros terminales:
 
 ```bash
-php artisan queue:work redis --queue=geoflow,default --sleep=1 --tries=1 --timeout=300
+php artisan queue:work redis --queue=geoflow,distribution,default --sleep=1 --tries=1 --timeout=300
 php artisan schedule:work
 php artisan reverb:start
 ```
