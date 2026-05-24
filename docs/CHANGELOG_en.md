@@ -2,6 +2,32 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-05-24
+
+### AI Models and Knowledge Bases
+
+- Added native Gemini model support:
+  - Gemini chat and embedding models can be configured without relying only on OpenAI-compatible routes.
+  - Model listings, connection tests, and task generation now recognize Gemini providers consistently.
+- Added knowledge-base chunking strategy configuration:
+  - Supports structured rule chunking, automatic strategy selection, and optional LLM semantic planning.
+  - The LLM only plans semantic boundaries; final chunks are rebuilt from the source text, with rule chunking as the stable fallback.
+  - Chunk metadata now includes title, section path, strategy, sequence, and source hash for preview, debugging, and rebuilds.
+
+### Tasks and Distribution
+
+- Improved task create/edit pages:
+  - Form width now aligns with the task-management list and reduces unused side whitespace.
+  - Content settings, material choices, and distribution-scope sections use the wider layout more effectively.
+- Fixed channel selection when the publication scope is local-only:
+  - Selecting “publish only to local site” disables and clears distribution channel checkboxes in the UI.
+  - The backend ignores stale `distribution_channel_ids` under `local_only`, preventing accidental remote distribution jobs.
+
+### Documentation
+
+- Updated the repository README and localized READMEs with Gemini, semantic chunking, WordPress REST channels, and publication-scope behavior.
+- Updated the Chinese and English Wiki outline and added focused pages for Distribution Management, Analytics, and Knowledge Chunking / RAG.
+
 ## 2026-05-23
 
 ### Distribution Management

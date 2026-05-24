@@ -2,7 +2,7 @@
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
-> GEOFlow es un sistema open source de ingeniería de contenidos GEO (Generative Engine Optimization) y distribución multi-sitio. Conecta bases de conocimiento, bibliotecas de materiales, prompts, tareas de generación con IA, revisión y publicación, analítica, paquetes de sitios destino y distribución remota de páginas estáticas para convertir información confiable en activos GEO publicables, trazables y distribuibles.
+> GEOFlow es un sistema open source de ingeniería de contenidos GEO (Generative Engine Optimization) y distribución multi-sitio. Conecta bases de conocimiento, bibliotecas de materiales, prompts, tareas de generación con IA, revisión y publicación, analítica, paquetes de sitios destino GEOFlow Agent, canales WordPress REST y distribución remota de páginas estáticas para convertir información confiable en activos GEO publicables, trazables y distribuibles.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
@@ -20,12 +20,12 @@ GEOFlow se publica bajo la [Apache License 2.0](../../LICENSE). Puedes usarlo, c
 
 | Característica | Descripción |
 |----------------|-------------|
-| 🤖 Generación multi-modelo | APIs estilo OpenAI, modelos chat / embedding, adaptación de URL, failover inteligente, reintentos y estadísticas de uso |
-| 🧠 RAG con base de conocimiento | Subida de documentos, fragmentación, vectores con modelo embedding y recuperación de contexto durante la generación |
+| 🤖 Generación multi-modelo | APIs estilo OpenAI y endpoints nativos de Gemini, modelos chat / embedding, adaptación de URL, failover inteligente, reintentos y estadísticas de uso |
+| 🧠 RAG con base de conocimiento | Fragmentación por reglas, planificación semántica opcional con LLM, fallback estable, vectores con modelo embedding y recuperación de contexto durante la generación |
 | 🗂 Materiales y prompts | Títulos, palabras clave, imágenes, autores, bases de conocimiento, prompts de cuerpo y prompts especiales |
-| 📦 Automatización de tareas | Límites de generación, pool de borradores, revisión, cadencia de publicación, colas, reintentos y filtros por tarea |
+| 📦 Automatización de tareas | Límites de generación, pool de borradores, revisión, cadencia de publicación, colas, reintentos, alcance de publicación y filtros por tarea |
 | 📋 Revisión y artículos | Borradores, revisión, publicación, papelera, autores, categorías, SEO y origen de tarea en un solo flujo |
-| 📡 Distribución multi-sitio | Canales, secretos de Agent, paquetes de sitio destino, modo estático, reglas rewrite, edición/eliminación remota, colas y logs |
+| 📡 Distribución multi-sitio | Canales GEOFlow Agent y WordPress REST, secretos, paquetes de sitio destino, modo estático, reglas rewrite, edición/eliminación remota, colas y logs |
 | 🧾 Paquetes de sitio destino | PHP Agent por canal con home, páginas de artículo, assets estáticos, sitemap, `llms.txt` / mapas TXT y Schema |
 | 📊 Analítica | Vista global, operación de sitio único, distribución multi-sitio, logs de acceso, top contenidos, crawlers de IA y tendencias |
 | 🔍 Salida SEO y LLM-friendly | SEO, Open Graph, Schema, Markdown GFM, CSS independiente, sincronización de imágenes, sitemap y mapas TXT |
@@ -56,8 +56,11 @@ Cubre inicio, tareas, flujo de artículos y modelos. Si faltan imágenes en `../
 GEOFlow 2.0 incluye estos cambios clave:
 
 - **Panel como hub operativo**: conserva la guía de tres pasos y organiza entradas por operación de sitio único, distribución multi-sitio y skills complementarias.
+- **Gemini y proveedores OpenAI-compatible**: la configuración de modelos cubre rutas OpenAI-style y Gemini nativo para chat / embedding.
+- **Fragmentación semántica de conocimiento**: permite reglas estructuradas, modo automático o planificación semántica opcional con LLM; el LLM solo planifica límites y los chunks finales se reconstruyen desde el texto original.
 - **Página de analítica independiente**: vista global, operación de contenido, salud de tareas/materiales, estado de distribución, logs de acceso y tendencias de crawlers de IA en `/admin/analytics`.
-- **Distribución usable de extremo a extremo**: canales, secretos, pruebas de conexión, paquetes de sitio destino, modos estático/rewrite, sincronización de ajustes remotos, colas, logs, edición y eliminación remota.
+- **Distribución usable de extremo a extremo**: canales GEOFlow Agent y WordPress REST, secretos, pruebas de conexión, paquetes de sitio destino, modos estático/rewrite, sincronización de ajustes remotos, colas, logs, edición y eliminación remota.
+- **Alcance de publicación explícito**: una tarea puede publicar en local y canales, solo en canales o solo en el sitio GEOFlow local; el modo local desactiva la selección de canales.
 - **Sitios destino en modo estático**: la distribución regenera home remota, páginas de artículo, sitemap, mapas TXT, `llms.txt`, imágenes y CSS independiente.
 - **Materiales y RAG más completos**: fragmentos, estado de vectorización, títulos, palabras clave, imágenes, autores y prompts forman la capa de entrada de las tareas.
 - **Despliegue y seguridad mejorados**: Docker de producción usa Nginx + PHP-FPM, el seeder no sobrescribe admins existentes y los mirrors Docker/Composer son configurables.
@@ -101,9 +104,9 @@ Flujo principal: configurar modelos y prompts → preparar conocimiento, título
 
 ## ⚡ Inicio rápido desde el admin
 
-1. **Configurar API**: añade al menos un modelo chat disponible; si necesitas RAG, añade un modelo embedding.
+1. **Configurar API**: añade al menos un modelo chat disponible; si necesitas RAG, añade un modelo embedding y elige una estrategia de fragmentación.
 2. **Configurar materiales**: prepara base de conocimiento, títulos, palabras clave, imágenes y autores con información real y verificable.
-3. **Crear tarea**: selecciona materiales, modelo, volumen y frecuencia de publicación; empieza con borrador o revisión antes de activar publicación automática completa.
+3. **Crear tarea**: selecciona materiales, modelo, volumen, frecuencia y alcance de publicación; empieza con borrador o revisión antes de activar publicación automática y distribución multi-sitio.
 
 ---
 
