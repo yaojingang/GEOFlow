@@ -38,16 +38,25 @@ GEOFlow is released under the [Apache License 2.0](../../LICENSE). You may use, 
 
 ## 🖼 UI Preview
 
-<p>
-  <img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOFlow dashboard preview" width="48%" />
-  <img src="../../docs/images/screenshots/tasks-en.png" alt="GEOFlow task management preview" width="48%" />
-</p>
-<p>
-  <img src="../../docs/images/screenshots/materials-en.png" alt="GEOFlow materials preview" width="48%" />
-  <img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI configuration preview" width="48%" />
-</p>
+<table>
+  <tr>
+    <td width="33%"><img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOFlow admin dashboard preview" /><br /><sub>Admin Dashboard</sub></td>
+    <td width="33%"><img src="../../docs/images/screenshots/analytics-en.png" alt="GEOFlow analytics preview" /><br /><sub>Analytics</sub></td>
+    <td width="33%"><img src="../../docs/images/screenshots/tasks-en.png" alt="GEOFlow task management preview" /><br /><sub>Task Management</sub></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="../../docs/images/screenshots/distribution-channel-en.png" alt="GEOFlow distribution channel preview" /><br /><sub>Distribution Channel</sub></td>
+    <td width="33%"><img src="../../docs/images/screenshots/materials-en.png" alt="GEOFlow materials preview" /><br /><sub>Materials</sub></td>
+    <td width="33%"><img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI model configuration preview" /><br /><sub>AI Model Configuration</sub></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="../../docs/images/screenshots/site-settings-en.png" alt="GEOFlow site settings preview" /><br /><sub>Site Settings</sub></td>
+    <td width="33%"></td>
+    <td width="33%"></td>
+  </tr>
+</table>
 
-These screens cover the home page, task scheduling, article workflow, and model configuration. More admin documentation lives under `../../docs/` (add or replace screenshots locally if paths are missing).
+These screens cover the admin dashboard, analytics, task scheduling, multi-site distribution, materials, model configuration, and site settings. More admin documentation lives under `../../docs/`.
 
 ---
 

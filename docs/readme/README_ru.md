@@ -38,16 +38,25 @@ GEOFlow распространяется по лицензии [Apache License 2
 
 ## 🖼 Предпросмотр UI
 
-<p>
-  <img src="../../docs/images/screenshots/dashboard-en.png" alt="Панель GEOFlow" width="48%" />
-  <img src="../../docs/images/screenshots/tasks-en.png" alt="Задачи GEOFlow" width="48%" />
-</p>
-<p>
-  <img src="../../docs/images/screenshots/materials-en.png" alt="Материалы GEOFlow" width="48%" />
-  <img src="../../docs/images/screenshots/ai-config-en.png" alt="Настройка ИИ GEOFlow" width="48%" />
-</p>
+<table>
+  <tr>
+    <td width="33%"><img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOFlow admin dashboard preview" /><br /><sub>Admin Dashboard</sub></td>
+    <td width="33%"><img src="../../docs/images/screenshots/analytics-en.png" alt="GEOFlow analytics preview" /><br /><sub>Analytics</sub></td>
+    <td width="33%"><img src="../../docs/images/screenshots/tasks-en.png" alt="GEOFlow task management preview" /><br /><sub>Task Management</sub></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="../../docs/images/screenshots/distribution-channel-en.png" alt="GEOFlow distribution channel preview" /><br /><sub>Distribution Channel</sub></td>
+    <td width="33%"><img src="../../docs/images/screenshots/materials-en.png" alt="GEOFlow materials preview" /><br /><sub>Materials</sub></td>
+    <td width="33%"><img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI model configuration preview" /><br /><sub>AI Model Configuration</sub></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="../../docs/images/screenshots/site-settings-en.png" alt="GEOFlow site settings preview" /><br /><sub>Site Settings</sub></td>
+    <td width="33%"></td>
+    <td width="33%"></td>
+  </tr>
+</table>
 
-Охватывает главную, задачи, статьи и модели. При отсутствии файлов добавьте скриншоты локально.
+Охватывает админ-панель, аналитику, задачи, мультисайтовую дистрибуцию, материалы, модели и настройки сайта.
 
 ---
 
