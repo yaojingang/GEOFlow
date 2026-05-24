@@ -598,6 +598,10 @@ class TaskController extends Controller
      */
     private function selectedDistributionChannelIds(Request $request): array
     {
+        if ((string) $request->input('publish_scope', 'local_and_distribution') === 'local_only') {
+            return [];
+        }
+
         return collect($request->input('distribution_channel_ids', []))
             ->map(static fn ($id): int => (int) $id)
             ->filter(static fn (int $id): bool => $id > 0)

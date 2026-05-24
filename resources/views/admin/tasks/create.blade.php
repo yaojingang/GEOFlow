@@ -10,6 +10,7 @@
         ->map(static fn ($id): string => (string) $id)
         ->all();
     $publishScope = (string) old('publish_scope', (string) ($taskForm['publish_scope'] ?? 'local_and_distribution'));
+    $distributionChannelsDisabled = $publishScope === 'local_only';
 @endphp
 
 @section('content')
@@ -26,7 +27,7 @@
             </div>
         </div>
 
-        <div class="max-w-4xl mx-auto">
+        <div data-task-form-shell class="w-full">
             @if (! $hasCategories)
                 <div class="bg-amber-50 border border-amber-200 rounded-lg p-5">
                     <h3 class="text-base font-semibold text-amber-900">{{ $t('task_create.error.no_categories_configured') }}</h3>
@@ -39,26 +40,26 @@
                     </div>
                 </div>
             @else
-            <form method="POST" action="{{ $isEdit ? route('admin.tasks.update', ['taskId' => $taskId]) : route('admin.tasks.store') }}" class="space-y-8">
+            <form method="POST" action="{{ $isEdit ? route('admin.tasks.update', ['taskId' => $taskId]) : route('admin.tasks.store') }}" class="grid grid-cols-1 gap-6 xl:grid-cols-12">
                 @csrf
                 @if ($isEdit)
                     @method('PUT')
                 @endif
 
-                <div class="bg-white shadow rounded-lg">
+                <div class="bg-white shadow rounded-lg xl:col-span-12">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.basic_title') }}</h3>
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.basic_desc') }}</p>
                     </div>
                     <div class="px-6 py-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div class="md:col-span-2">
+                        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                            <div class="lg:col-span-3">
                                 <label for="task_name" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.task_name') }} *</label>
                                 <input type="text" name="task_name" id="task_name" required value="{{ old('task_name', (string) ($taskForm['task_name'] ?? '')) }}"
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                                        placeholder="{{ $t('task_create.placeholder.task_name') }}">
                             </div>
-                            <div>
+                            <div class="lg:col-span-2">
                                 <label for="title_library_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.title_library') }} *</label>
                                 <select name="title_library_id" id="title_library_id" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                     <option value="">{{ $t('task_create.option.select_title_library') }}</option>
@@ -80,13 +81,13 @@
                     </div>
                 </div>
 
-                <div class="bg-white shadow rounded-lg">
+                <div class="bg-white shadow rounded-lg xl:col-span-12">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.content_title') }}</h3>
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.content_desc') }}</p>
                     </div>
                     <div class="px-6 py-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
                             <div>
                                 <label for="prompt_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.content_prompt') }} *</label>
                                 <select name="prompt_id" id="prompt_id" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
@@ -135,7 +136,7 @@
                     </div>
                 </div>
 
-                <div class="bg-white shadow rounded-lg">
+                <div class="bg-white shadow rounded-lg xl:col-span-6">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.image_title') }}</h3>
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.image_desc') }}</p>
@@ -170,7 +171,7 @@
                     </div>
                 </div>
 
-                <div class="bg-white shadow rounded-lg">
+                <div class="bg-white shadow rounded-lg xl:col-span-6">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.publish_title') }}</h3>
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.publish_desc') }}</p>
@@ -195,7 +196,7 @@
                     </div>
                 </div>
 
-                <div class="bg-white shadow rounded-lg">
+                <div class="bg-white shadow rounded-lg xl:col-span-12">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.distribution_title') }}</h3>
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.distribution_desc') }}</p>
@@ -204,23 +205,23 @@
                         <fieldset class="mb-5">
                             <legend class="text-sm font-medium text-gray-900">{{ $t('task_create.distribution.scope_title') }}</legend>
                             <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.distribution.scope_help') }}</p>
-                            <div class="mt-4 grid grid-cols-1 gap-3">
+                            <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
                                 <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
-                                    <input type="radio" name="publish_scope" value="local_and_distribution" @checked($publishScope === 'local_and_distribution') class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <input type="radio" name="publish_scope" value="local_and_distribution" @checked($publishScope === 'local_and_distribution') data-publish-scope-option class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
                                     <span>
                                         <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.scope_local_and_distribution') }}</span>
                                         <span class="block text-gray-500">{{ $t('task_create.distribution.scope_local_and_distribution_desc') }}</span>
                                     </span>
                                 </label>
                                 <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
-                                    <input type="radio" name="publish_scope" value="distribution_only" @checked($publishScope === 'distribution_only') class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <input type="radio" name="publish_scope" value="distribution_only" @checked($publishScope === 'distribution_only') data-publish-scope-option class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
                                     <span>
                                         <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.scope_distribution_only') }}</span>
                                         <span class="block text-gray-500">{{ $t('task_create.distribution.scope_distribution_only_desc') }}</span>
                                     </span>
                                 </label>
                                 <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
-                                    <input type="radio" name="publish_scope" value="local_only" @checked($publishScope === 'local_only') class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <input type="radio" name="publish_scope" value="local_only" @checked($publishScope === 'local_only') data-publish-scope-option class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
                                     <span>
                                         <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.scope_local_only') }}</span>
                                         <span class="block text-gray-500">{{ $t('task_create.distribution.scope_local_only_desc') }}</span>
@@ -235,12 +236,16 @@
                                 <a href="{{ route('admin.distribution.create') }}" class="font-medium text-blue-600 hover:text-blue-700">{{ $t('task_create.distribution.create_link') }}</a>
                             </div>
                         @else
-                            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                                 @foreach ($formOptions['distributionChannels'] as $channel)
                                     @php($channelId = (string) $channel['id'])
-                                    <label class="flex items-start gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
-                                        <input type="checkbox" name="distribution_channel_ids[]" value="{{ $channelId }}" @checked(in_array($channelId, $selectedDistributionChannelIds, true))
-                                               class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <label data-distribution-channel-card @class([
+                                        'flex items-start gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm transition',
+                                        'cursor-pointer hover:border-blue-300 hover:bg-blue-50' => ! $distributionChannelsDisabled,
+                                        'cursor-not-allowed bg-gray-50 opacity-50' => $distributionChannelsDisabled,
+                                    ])>
+                                        <input type="checkbox" name="distribution_channel_ids[]" value="{{ $channelId }}" @checked(! $distributionChannelsDisabled && in_array($channelId, $selectedDistributionChannelIds, true)) @disabled($distributionChannelsDisabled) data-distribution-channel-input
+                                               class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
                                         <span class="min-w-0">
                                             <span class="block font-medium text-gray-900">{{ $channel['name'] }}</span>
                                             <span class="block break-all text-gray-500">{{ $channel['domain'] }}</span>
@@ -253,13 +258,13 @@
                     </div>
                 </div>
 
-                <div class="bg-white shadow rounded-lg">
+                <div class="bg-white shadow rounded-lg xl:col-span-12">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.seo_title') }}</h3>
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.seo_desc') }}</p>
                     </div>
                     <div class="px-6 py-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
                             <div>
                                 <div class="flex items-center">
                                     <input type="checkbox" name="auto_keywords" id="auto_keywords" @checked(old('auto_keywords', (string) ($taskForm['auto_keywords'] ?? '1')) === '1')
@@ -280,7 +285,7 @@
                     </div>
                 </div>
 
-                <div class="bg-white shadow rounded-lg">
+                <div class="bg-white shadow rounded-lg xl:col-span-8">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.category_title') }}</h3>
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.category_desc') }}</p>
@@ -292,8 +297,8 @@
                             <p class="text-sm leading-5 text-gray-500">{{ $t('task_create.help.category_mode') }}</p>
                             <fieldset class="mt-4">
                                 <legend class="sr-only">{{ $t('task_create.field.category_mode') }}</legend>
-                                <div class="space-y-4">
-                                    <div class="flex items-start">
+                                <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                                    <div class="flex items-start rounded-md border border-gray-200 px-4 py-3">
                                         <div class="flex items-center h-5">
                                             <input id="category_smart" name="category_mode" type="radio" value="smart" @checked($categoryMode === 'smart')
                                                    class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300">
@@ -303,7 +308,7 @@
                                             <p class="text-gray-500">{{ $t('task_create.help.category_smart') }}</p>
                                         </div>
                                     </div>
-                                    <div class="flex items-start">
+                                    <div class="flex items-start rounded-md border border-gray-200 px-4 py-3">
                                         <div class="flex items-center h-5">
                                             <input id="category_fixed" name="category_mode" type="radio" value="fixed" @checked($categoryMode === 'fixed')
                                                    class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300">
@@ -313,7 +318,7 @@
                                             <p class="text-gray-500">{{ $t('task_create.help.category_fixed') }}</p>
                                         </div>
                                     </div>
-                                    <div class="flex items-start">
+                                    <div class="flex items-start rounded-md border border-gray-200 px-4 py-3">
                                         <div class="flex items-center h-5">
                                             <input id="category_random" name="category_mode" type="radio" value="random" @checked($categoryMode === 'random')
                                                    class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300">
@@ -348,7 +353,7 @@
                     </div>
                 </div>
 
-                <div class="bg-white shadow rounded-lg">
+                <div class="bg-white shadow rounded-lg xl:col-span-4">
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.advanced_title') }}</h3>
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.advanced_desc') }}</p>
@@ -367,7 +372,7 @@
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                 <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.draft_limit') }}</p>
                             </div>
-                            <div class="md:col-span-2">
+                            <div>
                                 <div class="flex items-center">
                                     <input type="checkbox" name="is_loop" id="is_loop" @checked(old('is_loop', (string) ($taskForm['is_loop'] ?? '1')) === '1')
                                            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
@@ -379,7 +384,7 @@
                     </div>
                 </div>
 
-                <div class="flex justify-end space-x-4">
+                <div class="flex justify-end space-x-4 xl:col-span-12">
                     <a href="{{ route('admin.tasks.index') }}" class="px-6 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                         {{ __('admin.button.cancel') }}
                     </a>
@@ -411,6 +416,8 @@
             const fixedCategorySection = document.getElementById('fixed-category-section');
             const fixedCategorySelect = document.getElementById('fixed_category_id');
             const categoryModeRadios = document.querySelectorAll('input[name="category_mode"]');
+            const publishScopeRadios = document.querySelectorAll('[data-publish-scope-option]');
+            const distributionChannelInputs = document.querySelectorAll('[data-distribution-channel-input]');
             const form = document.querySelector('form');
 
             if (!form) {
@@ -463,10 +470,35 @@
                 }
             }
 
+            function syncDistributionChannelsByScope() {
+                const selectedScope = document.querySelector('input[name="publish_scope"]:checked');
+                const isLocalOnly = selectedScope && selectedScope.value === 'local_only';
+
+                distributionChannelInputs.forEach((input) => {
+                    input.disabled = isLocalOnly;
+                    if (isLocalOnly) {
+                        input.checked = false;
+                    }
+
+                    const card = input.closest('[data-distribution-channel-card]');
+                    if (!card) {
+                        return;
+                    }
+
+                    card.classList.toggle('cursor-pointer', !isLocalOnly);
+                    card.classList.toggle('hover:border-blue-300', !isLocalOnly);
+                    card.classList.toggle('hover:bg-blue-50', !isLocalOnly);
+                    card.classList.toggle('cursor-not-allowed', isLocalOnly);
+                    card.classList.toggle('bg-gray-50', isLocalOnly);
+                    card.classList.toggle('opacity-50', isLocalOnly);
+                });
+            }
+
             imageLibrarySelect.addEventListener('change', toggleImageCountByLibrary);
             needReviewCheckbox.addEventListener('change', togglePublishInterval);
             articleLimitInput.addEventListener('input', syncDraftLimitMax);
             categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
+            publishScopeRadios.forEach((radio) => radio.addEventListener('change', syncDistributionChannelsByScope));
 
             form.addEventListener('submit', function (event) {
                 if (!document.getElementById('task_name').value.trim()) {
@@ -508,6 +540,7 @@
             togglePublishInterval();
             handleCategoryModeChange();
             syncDraftLimitMax();
+            syncDistributionChannelsByScope();
         });
     </script>
 @endpush
