@@ -228,6 +228,132 @@ class AdminAiModelsPageTest extends TestCase
             ->assertSee('Gemini 3.1 Flash Lite');
     }
 
+    public function test_admin_models_page_shows_semantic_chunking_controls_and_badge(): void
+    {
+        $model = $this->createAiModel('chat', ['name' => 'Semantic Chat']);
+        SiteSetting::query()->create([
+            'setting_key' => 'semantic_chunking_chat_model_ids',
+            'setting_value' => json_encode([(int) $model->id]),
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-models.index'));
+
+        $response->assertOk()
+            ->assertSee(__('admin.ai_models.semantic_chunking_label'))
+            ->assertSee(__('admin.ai_models.semantic_chunking_badge'));
+    }
+
+    public function test_admin_can_enable_semantic_chunking_for_chat_model_without_schema_change(): void
+    {
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->post(route('admin.ai-models.store'), [
+                'name' => 'Semantic Chat',
+                'version' => 'test',
+                'api_key' => 'test-api-key',
+                'model_id' => 'test-chat-model',
+                'model_type' => 'chat',
+                'api_url' => 'https://ai.test',
+                'failover_priority' => 5,
+                'daily_limit' => 0,
+                'semantic_chunking_enabled' => '1',
+            ]);
+
+        $response->assertRedirect(route('admin.ai-models.index'));
+
+        $model = AiModel::query()->where('name', 'Semantic Chat')->firstOrFail();
+        $storedIds = json_decode((string) SiteSetting::query()
+            ->where('setting_key', 'semantic_chunking_chat_model_ids')
+            ->value('setting_value'), true);
+
+        $this->assertSame([(int) $model->id], $storedIds);
+    }
+
+    public function test_semantic_chunking_capability_is_removed_when_model_becomes_unavailable(): void
+    {
+        $model = $this->createAiModel('chat', ['name' => 'Semantic Chat']);
+        SiteSetting::query()->create([
+            'setting_key' => 'semantic_chunking_chat_model_ids',
+            'setting_value' => json_encode([(int) $model->id]),
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->put(route('admin.ai-models.update', ['modelId' => (int) $model->id]), [
+                'name' => 'Semantic Chat',
+                'version' => 'test',
+                'api_key' => '',
+                'model_id' => 'test-chat-model',
+                'model_type' => 'chat',
+                'api_url' => 'https://ai.test',
+                'failover_priority' => 5,
+                'daily_limit' => 0,
+                'status' => 'inactive',
+                'semantic_chunking_enabled' => '1',
+            ]);
+
+        $response->assertRedirect(route('admin.ai-models.index'));
+
+        $storedIds = json_decode((string) SiteSetting::query()
+            ->where('setting_key', 'semantic_chunking_chat_model_ids')
+            ->value('setting_value'), true);
+
+        $this->assertSame([], $storedIds);
+    }
+
+    public function test_semantic_chunking_capability_is_removed_when_unchecked_changed_to_embedding_or_deleted(): void
+    {
+        $admin = $this->createAdmin();
+        $model = $this->createAiModel('chat', ['name' => 'Semantic Chat']);
+        SiteSetting::query()->create([
+            'setting_key' => 'semantic_chunking_chat_model_ids',
+            'setting_value' => json_encode([(int) $model->id]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.ai-models.update', ['modelId' => (int) $model->id]), [
+                'name' => 'Semantic Chat',
+                'version' => 'test',
+                'api_key' => '',
+                'model_id' => 'test-chat-model',
+                'model_type' => 'chat',
+                'api_url' => 'https://ai.test',
+                'failover_priority' => 5,
+                'daily_limit' => 0,
+                'status' => 'active',
+                'semantic_chunking_enabled' => '0',
+            ])
+            ->assertRedirect(route('admin.ai-models.index'));
+        $this->assertSame([], $this->semanticChunkingModelIds());
+
+        SiteSetting::query()
+            ->where('setting_key', 'semantic_chunking_chat_model_ids')
+            ->update(['setting_value' => json_encode([(int) $model->id])]);
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.ai-models.update', ['modelId' => (int) $model->id]), [
+                'name' => 'Semantic Chat',
+                'version' => 'test',
+                'api_key' => '',
+                'model_id' => 'test-embedding-model',
+                'model_type' => 'embedding',
+                'api_url' => 'https://ai.test/v1/embeddings',
+                'failover_priority' => 5,
+                'daily_limit' => 0,
+                'status' => 'active',
+                'semantic_chunking_enabled' => '1',
+            ])
+            ->assertRedirect(route('admin.ai-models.index'));
+        $this->assertSame([], $this->semanticChunkingModelIds());
+
+        SiteSetting::query()
+            ->where('setting_key', 'semantic_chunking_chat_model_ids')
+            ->update(['setting_value' => json_encode([(int) $model->id])]);
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.ai-models.delete', ['modelId' => (int) $model->id]))
+            ->assertRedirect(route('admin.ai-models.index'));
+
+        $this->assertSame([], $this->semanticChunkingModelIds());
+    }
+
     public function test_model_connection_test_reports_provider_errors(): void
     {
         Http::fake([
@@ -272,5 +398,17 @@ class AdminAiModelsPageTest extends TestCase
             'total_used' => 0,
             'status' => 'active',
         ], $overrides));
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function semanticChunkingModelIds(): array
+    {
+        $value = SiteSetting::query()
+            ->where('setting_key', 'semantic_chunking_chat_model_ids')
+            ->value('setting_value');
+
+        return json_decode((string) $value, true) ?: [];
     }
 }

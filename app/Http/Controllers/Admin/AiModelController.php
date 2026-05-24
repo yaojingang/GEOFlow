@@ -28,6 +28,8 @@ use Throwable;
  */
 class AiModelController extends Controller
 {
+    private const SEMANTIC_CHUNKING_MODEL_IDS_KEY = 'semantic_chunking_chat_model_ids';
+
     /**
      * 注入统一 API Key 加解密工具，避免控制器内重复维护密钥兼容逻辑。
      */
@@ -90,6 +92,14 @@ class AiModelController extends Controller
         if ($createdModel->model_type === 'embedding' && $this->getDefaultEmbeddingModelId() <= 0) {
             $this->setDefaultEmbeddingModelId((int) $createdModel->id);
         }
+        $this->syncSemanticChunkingCapability(
+            (int) $createdModel->id,
+            $this->shouldPersistSemanticChunkingCapability(
+                $request->boolean('semantic_chunking_enabled'),
+                (string) $createdModel->model_type,
+                (string) $createdModel->status
+            )
+        );
 
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.create_success'));
     }
@@ -139,6 +149,14 @@ class AiModelController extends Controller
         if ($defaultEmbeddingModelId === (int) $model->id && ($modelType !== 'embedding' || $status !== 'active')) {
             $this->setDefaultEmbeddingModelId(0);
         }
+        $this->syncSemanticChunkingCapability(
+            (int) $model->id,
+            $this->shouldPersistSemanticChunkingCapability(
+                $request->boolean('semantic_chunking_enabled'),
+                $modelType,
+                $status
+            )
+        );
 
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.update_success'));
     }
@@ -162,6 +180,7 @@ class AiModelController extends Controller
         if ($this->getDefaultEmbeddingModelId() === (int) $model->id) {
             $this->setDefaultEmbeddingModelId(0);
         }
+        $this->removeSemanticChunkingModelId((int) $model->id);
 
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.delete_success'));
     }
@@ -355,9 +374,13 @@ class AiModelController extends Controller
             ->get();
 
         $defaultEmbeddingModelId = $this->getDefaultEmbeddingModelId();
+        $semanticChunkingModelIds = $this->getSemanticChunkingChatModelIds();
 
-        return $models->map(function (AiModel $model) use ($defaultEmbeddingModelId): array {
+        return $models->map(function (AiModel $model) use ($defaultEmbeddingModelId, $semanticChunkingModelIds): array {
             $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
+            $semanticChunkingEnabled = $modelType === 'chat'
+                && (string) ($model->status ?? 'active') === 'active'
+                && in_array((int) $model->id, $semanticChunkingModelIds, true);
 
             return [
                 'id' => (int) $model->id,
@@ -375,6 +398,7 @@ class AiModelController extends Controller
                 'article_count' => (int) ($model->article_count ?? 0),
                 'masked_api_key' => $this->maskApiKey((string) ($model->getRawOriginal('api_key') ?? '')),
                 'is_default_embedding' => $modelType === 'embedding' && $defaultEmbeddingModelId === (int) $model->id,
+                'semantic_chunking_enabled' => $semanticChunkingEnabled,
             ];
         })->all();
     }
@@ -444,6 +468,7 @@ class AiModelController extends Controller
             'api_url' => ['nullable', 'string', 'max:500'],
             'failover_priority' => ['nullable', 'integer', 'min:1'],
             'daily_limit' => ['nullable', 'integer', 'min:0'],
+            'semantic_chunking_enabled' => ['nullable', 'boolean'],
         ];
         if ($isUpdate) {
             $rules['status'] = ['nullable', 'in:active,inactive'];
@@ -480,7 +505,10 @@ class AiModelController extends Controller
         $settings = SiteSetting::query()
             ->whereIn('setting_key', ['knowledge_chunk_strategy', 'knowledge_chunking_model_id'])
             ->pluck('setting_value', 'setting_key');
-        $strategy = (string) ($settings['knowledge_chunk_strategy'] ?? 'rule');
+        $strategy = (string) ($settings['knowledge_chunk_strategy'] ?? '');
+        if ($strategy === '') {
+            $strategy = $this->getSemanticChunkingChatModelIds() === [] ? 'rule' : 'auto';
+        }
 
         return [
             'strategy' => in_array($strategy, ['rule', 'auto', 'semantic_llm'], true) ? $strategy : 'rule',
@@ -497,6 +525,73 @@ class AiModelController extends Controller
             ['setting_key' => 'default_embedding_model_id'],
             ['setting_value' => (string) max(0, $modelId)]
         );
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function getSemanticChunkingChatModelIds(): array
+    {
+        $raw = SiteSetting::query()
+            ->where('setting_key', self::SEMANTIC_CHUNKING_MODEL_IDS_KEY)
+            ->value('setting_value');
+        $decoded = is_string($raw) && trim($raw) !== '' ? json_decode($raw, true) : [];
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($decoded as $id) {
+            $id = (int) $id;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * @param  list<int>  $modelIds
+     */
+    private function setSemanticChunkingChatModelIds(array $modelIds): void
+    {
+        $modelIds = array_values(array_unique(array_filter(
+            array_map(static fn (int $modelId): int => max(0, $modelId), $modelIds),
+            static fn (int $modelId): bool => $modelId > 0
+        )));
+
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => self::SEMANTIC_CHUNKING_MODEL_IDS_KEY],
+            ['setting_value' => json_encode($modelIds, JSON_UNESCAPED_UNICODE)]
+        );
+    }
+
+    private function syncSemanticChunkingCapability(int $modelId, bool $enabled): void
+    {
+        $modelIds = $this->getSemanticChunkingChatModelIds();
+        if ($enabled) {
+            $modelIds[] = $modelId;
+        } else {
+            $modelIds = array_values(array_filter(
+                $modelIds,
+                static fn (int $storedModelId): bool => $storedModelId !== $modelId
+            ));
+        }
+
+        $this->setSemanticChunkingChatModelIds($modelIds);
+    }
+
+    private function removeSemanticChunkingModelId(int $modelId): void
+    {
+        $this->syncSemanticChunkingCapability($modelId, false);
+    }
+
+    private function shouldPersistSemanticChunkingCapability(bool $requested, string $modelType, string $status): bool
+    {
+        return $requested
+            && $this->normalizeModelType($modelType) === 'chat'
+            && $status === 'active';
     }
 
     /**

@@ -21,6 +21,9 @@ return array_replace_recursive($base, [
         'quick_help' => 'Haz clic para autocompletar configuraciones comunes. Gemini usa la API nativa v1beta de Google; los demás proveedores conservan las reglas compatibles con OpenAI.',
         'gemini_embedding_notice' => 'Gemini Embedding 2 aplica automáticamente prefijos query/document para retrieval; este sistema no admite la configuración task_type de gemini-embedding-001.',
         'api_url_help' => 'Puedes indicar una URL base o un endpoint completo. Gemini se normaliza a https://generativelanguage.googleapis.com/v1beta; los demás modelos usan las rutas compatibles con OpenAI existentes.',
+        'semantic_chunking_badge' => 'Chunking semántico',
+        'semantic_chunking_label' => 'Admite chunking semántico',
+        'semantic_chunking_help' => 'Al activarlo, la reconstrucción de la base intenta primero este modelo de chat para límites semánticos; si falla o supera el límite, vuelve al chunking PHP.',
     ],
     'header' => [
         'welcome' => 'Bienvenido, :name',

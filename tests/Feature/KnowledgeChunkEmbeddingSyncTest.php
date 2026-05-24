@@ -199,6 +199,111 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer test-api-key'));
     }
 
+    public function test_enabled_semantic_chunking_model_triggers_auto_planning_without_global_model(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => [
+                        'content' => json_encode([
+                            'chunks' => [
+                                ['title' => '自动语义规划', 'block_indexes' => [0, 1]],
+                            ],
+                        ], JSON_UNESCAPED_UNICODE),
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $model = $this->createChatModel();
+        SiteSetting::query()->create([
+            'setting_key' => 'semantic_chunking_chat_model_ids',
+            'setting_value' => json_encode([(int) $model->id]),
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '自动语义规划知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# 自动语义规划\n\n启用模型能力后，即使未单独保存切片策略，也会尝试语义规划。"
+        );
+
+        $chunk = $knowledgeBase->chunks()->firstOrFail();
+        $this->assertSame('semantic_llm', (string) $chunk->chunk_strategy);
+        $model->refresh();
+        $this->assertSame(1, (int) $model->used_today);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
+            && str_contains(json_encode($request->data(), JSON_UNESCAPED_UNICODE) ?: '', 'Plan semantic chunks'));
+    }
+
+    public function test_semantic_chunking_fails_over_to_next_enabled_chat_model(): void
+    {
+        Http::fake([
+            'https://bad.test/v1/chat/completions' => Http::response(['detail' => 'bad key'], 401),
+            'https://good.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => [
+                        'content' => json_encode([
+                            'chunks' => [
+                                ['title' => '第一部分', 'block_indexes' => [0, 1]],
+                                ['title' => '第二部分', 'block_indexes' => [2, 3]],
+                            ],
+                        ], JSON_UNESCAPED_UNICODE),
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $badModel = $this->createChatModel([
+            'name' => 'Bad Semantic Chat',
+            'api_url' => 'https://bad.test',
+            'failover_priority' => 1,
+        ]);
+        $goodModel = $this->createChatModel([
+            'name' => 'Good Semantic Chat',
+            'api_url' => 'https://good.test',
+            'failover_priority' => 2,
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'semantic_chunking_chat_model_ids',
+            'setting_value' => json_encode([(int) $goodModel->id, (int) $badModel->id]),
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '语义规划故障转移知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# 第一部分\n\n第一部分内容。\n\n## 第二部分\n\n第二部分内容。"
+        );
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
+        $this->assertCount(2, $chunks);
+        $this->assertSame('semantic_llm', (string) $chunks[0]->chunk_strategy);
+
+        $badModel->refresh();
+        $goodModel->refresh();
+        $this->assertSame(0, (int) $badModel->used_today);
+        $this->assertSame(1, (int) $goodModel->used_today);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://bad.test/v1/chat/completions');
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://good.test/v1/chat/completions');
+    }
+
     public function test_semantic_chunking_falls_back_to_structured_rules_when_plan_is_invalid(): void
     {
         Http::fake([

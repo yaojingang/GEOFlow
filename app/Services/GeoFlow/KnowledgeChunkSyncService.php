@@ -27,6 +27,8 @@ class KnowledgeChunkSyncService
 
     private const SEMANTIC_CHUNKING_MAX_PROMPT_CHARS = 20000;
 
+    private const SEMANTIC_CHUNKING_MODEL_IDS_KEY = 'semantic_chunking_chat_model_ids';
+
     /**
      * 复用统一 API Key 解密组件，保证 embedding 调用与模型配置页完全一致。
      */
@@ -136,9 +138,13 @@ class KnowledgeChunkSyncService
 
     private function resolveChunkStrategy(): string
     {
-        $strategy = trim((string) (SiteSetting::query()
+        $rawStrategy = SiteSetting::query()
             ->where('setting_key', 'knowledge_chunk_strategy')
-            ->value('setting_value') ?? 'rule'));
+            ->value('setting_value');
+        $strategy = trim((string) ($rawStrategy ?? ''));
+        if ($strategy === '') {
+            return $this->enabledSemanticChunkingModelIds() === [] ? 'rule' : 'auto';
+        }
 
         return in_array($strategy, ['rule', 'semantic_llm', 'auto'], true) ? $strategy : 'rule';
     }
@@ -454,44 +460,50 @@ class KnowledgeChunkSyncService
      */
     private function buildSemanticChunks(int $knowledgeBaseId, array $blocks): array
     {
-        $model = $this->resolveSemanticChunkingModel();
-        if (! $model) {
-            return [];
-        }
-
-        try {
+        foreach ($this->resolveSemanticChunkingModels() as $model) {
             $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($model->api_url ?? ''));
-            $apiKey = $this->decryptApiKey((string) ($model->getRawOriginal('api_key') ?? ''));
-            $modelId = trim((string) ($model->model_id ?? ''));
-            if ($providerUrl === '' || $apiKey === '' || $modelId === '') {
-                return [];
+            try {
+                $apiKey = $this->decryptApiKey((string) ($model->getRawOriginal('api_key') ?? ''));
+                $modelId = trim((string) ($model->model_id ?? ''));
+                if ($providerUrl === '' || $apiKey === '' || $modelId === '') {
+                    throw new \RuntimeException('semantic chunking model is missing API URL, API key, or model id');
+                }
+
+                $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
+                $providerName = OpenAiRuntimeProvider::registerProvider('knowledge_chunking', $driver, $providerUrl, $apiKey);
+                $agent = new MarkdownContentWriterAgent($this->semanticChunkingSystemPrompt());
+                $response = $agent->prompt(
+                    $this->semanticChunkingUserPrompt($knowledgeBaseId, $blocks),
+                    [],
+                    $providerName,
+                    $modelId
+                );
+                $content = OpenAiRuntimeProvider::normalizeGeneratedText((string) ($response->text ?? ''));
+                $chunks = $this->chunksFromSemanticPlan($blocks, $this->decodeSemanticChunkPlan($content));
+                if ($chunks === []) {
+                    Log::info('geoflow.knowledge_semantic_chunking_invalid_response', [
+                        'knowledge_base_id' => $knowledgeBaseId,
+                        'semantic_model_id' => (int) $model->id,
+                        'model_identifier' => $modelId,
+                    ]);
+
+                    continue;
+                }
+
+                $this->recordSemanticChunkingUsage((int) $model->id);
+
+                return $chunks;
+            } catch (Throwable $exception) {
+                Log::info('geoflow.knowledge_semantic_chunking_failed', [
+                    'knowledge_base_id' => $knowledgeBaseId,
+                    'semantic_model_id' => (int) $model->id,
+                    'model_identifier' => (string) ($model->model_id ?? ''),
+                    'message' => OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl),
+                ]);
             }
-
-            $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
-            $providerName = OpenAiRuntimeProvider::registerProvider('knowledge_chunking', $driver, $providerUrl, $apiKey);
-            $agent = new MarkdownContentWriterAgent($this->semanticChunkingSystemPrompt());
-            $response = $agent->prompt(
-                $this->semanticChunkingUserPrompt($knowledgeBaseId, $blocks),
-                [],
-                $providerName,
-                $modelId
-            );
-            $content = OpenAiRuntimeProvider::normalizeGeneratedText((string) ($response->text ?? ''));
-            AiModel::query()->whereKey((int) $model->id)->update([
-                'used_today' => DB::raw('COALESCE(used_today,0)+1'),
-                'total_used' => DB::raw('COALESCE(total_used,0)+1'),
-                'updated_at' => now(),
-            ]);
-
-            return $this->chunksFromSemanticPlan($blocks, $this->decodeSemanticChunkPlan($content));
-        } catch (Throwable $exception) {
-            Log::info('geoflow.knowledge_semantic_chunking_failed', [
-                'knowledge_base_id' => $knowledgeBaseId,
-                'message' => OpenAiRuntimeProvider::normalizeApiException($exception),
-            ]);
-
-            return [];
         }
+
+        return [];
     }
 
     /**
@@ -500,7 +512,12 @@ class KnowledgeChunkSyncService
     private function canAttemptSemanticChunking(array $blocks): bool
     {
         return count($blocks) <= self::SEMANTIC_CHUNKING_MAX_BLOCKS
-            && $this->estimateSemanticPlanningPromptChars($blocks) <= self::SEMANTIC_CHUNKING_MAX_PROMPT_CHARS;
+            && $this->estimateSemanticPlanningPromptChars($blocks) <= $this->semanticChunkingMaxPromptChars();
+    }
+
+    private function semanticChunkingMaxPromptChars(): int
+    {
+        return max(1, (int) config('geoflow.semantic_chunking_max_chars', self::SEMANTIC_CHUNKING_MAX_PROMPT_CHARS));
     }
 
     /**
@@ -519,29 +536,84 @@ class KnowledgeChunkSyncService
         return $total;
     }
 
-    private function resolveSemanticChunkingModel(): ?AiModel
+    /**
+     * @return list<AiModel>
+     */
+    private function resolveSemanticChunkingModels(): array
     {
         $modelId = (int) (SiteSetting::query()
             ->where('setting_key', 'knowledge_chunking_model_id')
             ->value('setting_value') ?? 0);
-        if ($modelId <= 0) {
-            return null;
+        $models = [];
+
+        if ($modelId > 0) {
+            $selectedModel = $this->semanticChunkingModelQuery()
+                ->whereKey($modelId)
+                ->first();
+            if ($selectedModel instanceof AiModel) {
+                $models[(int) $selectedModel->id] = $selectedModel;
+            }
         }
 
+        $enabledModelIds = $this->enabledSemanticChunkingModelIds();
+        if ($enabledModelIds !== []) {
+            $enabledModels = $this->semanticChunkingModelQuery()
+                ->whereIn('id', $enabledModelIds)
+                ->orderBy('failover_priority')
+                ->orderBy('id')
+                ->get();
+
+            foreach ($enabledModels as $enabledModel) {
+                $models[(int) $enabledModel->id] = $enabledModel;
+            }
+        }
+
+        return array_values($models);
+    }
+
+    private function semanticChunkingModelQuery()
+    {
         return AiModel::query()
-            ->whereKey($modelId)
             ->where('status', 'active')
             ->where(function ($query): void {
                 $query->whereNull('model_type')
                     ->orWhere('model_type', '')
                     ->orWhere('model_type', 'chat');
             })
-            ->first();
+            ->where(function ($query): void {
+                $query->whereNull('daily_limit')
+                    ->orWhere('daily_limit', 0)
+                    ->orWhereColumn('used_today', '<', 'daily_limit');
+            });
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function enabledSemanticChunkingModelIds(): array
+    {
+        $raw = SiteSetting::query()
+            ->where('setting_key', self::SEMANTIC_CHUNKING_MODEL_IDS_KEY)
+            ->value('setting_value');
+        $decoded = is_string($raw) && trim($raw) !== '' ? json_decode($raw, true) : [];
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($decoded as $id) {
+            $id = (int) $id;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 
     private function semanticChunkingSystemPrompt(): string
     {
-        return '你是 GEOFlow 的知识库语义切片规划器。你只规划原文 block 的组合边界，不改写、不总结、不新增内容。必须只输出 JSON。';
+        return 'You are GEOFlow\'s knowledge-base semantic chunk planner. You only group original block indexes into chunks. Do not rewrite, summarize, translate, add facts, or return source text. Output strict JSON only.';
     }
 
     /**
@@ -558,13 +630,28 @@ class KnowledgeChunkSyncService
             ];
         }, $blocks);
 
-        return "请为知识库 {$knowledgeBaseId} 规划语义 chunk。\n"
-            ."要求：\n"
-            ."1. 每个 block index 必须且只能出现一次。\n"
-            ."2. 相邻且语义连续的 block 可以合并；不同标题主题尽量拆开。\n"
-            ."3. 每个 chunk 只返回标题和 block_indexes，不要返回正文。\n"
-            ."4. 输出格式必须是 JSON：{\"chunks\":[{\"title\":\"...\",\"block_indexes\":[0,1]}]}。\n\n"
-            ."blocks:\n".json_encode($blockPayload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        return "Plan semantic chunks for knowledge base {$knowledgeBaseId}.\n"
+            ."Requirements:\n"
+            ."1. Every block index must appear exactly once across all chunks.\n"
+            ."2. Keep block indexes in their original ascending order. Do not reorder, skip, duplicate, or invent indexes.\n"
+            ."3. Merge adjacent blocks when they are semantically continuous; split chunks at heading, topic, list, or table boundaries when useful.\n"
+            ."4. Return only a short title and block_indexes for each chunk. Do not return source text.\n"
+            ."5. Output strict JSON only. Do not include Markdown fences, comments, or explanations.\n"
+            ."JSON schema: {\"chunks\":[{\"title\":\"short title\",\"block_indexes\":[0,1]}]}.\n\n"
+            ."Blocks:\n".json_encode($blockPayload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    }
+
+    private function recordSemanticChunkingUsage(int $modelId): void
+    {
+        if ($modelId <= 0) {
+            return;
+        }
+
+        AiModel::query()->whereKey($modelId)->update([
+            'used_today' => DB::raw('COALESCE(used_today,0)+1'),
+            'total_used' => DB::raw('COALESCE(total_used,0)+1'),
+            'updated_at' => now(),
+        ]);
     }
 
     /**

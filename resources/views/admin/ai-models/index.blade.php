@@ -149,6 +149,9 @@
                                             @if ($model['is_default_embedding'])
                                                 <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">{{ __('admin.ai_models.embedding_default') }}</span>
                                             @endif
+                                            @if ($model['semantic_chunking_enabled'])
+                                                <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-violet-100 text-violet-800">{{ __('admin.ai_models.semantic_chunking_badge') }}</span>
+                                            @endif
                                         </div>
                                         <div class="text-sm text-gray-500">{{ $model['model_id'] }}</div>
                                         <div class="text-xs text-gray-400">{{ __('admin.ai_models.api_key_mask') }}: {{ $model['masked_api_key'] }}</div>
@@ -261,6 +264,17 @@
                         <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.type_help') }}</p>
                     </div>
 
+                    <div id="semanticChunkingField" class="rounded-md border border-violet-200 bg-violet-50 px-4 py-3">
+                        <input type="hidden" name="semantic_chunking_enabled" value="0">
+                        <label class="flex items-start gap-3 text-sm text-violet-950">
+                            <input type="checkbox" name="semantic_chunking_enabled" id="semantic_chunking_enabled" value="1" class="mt-1 h-4 w-4 rounded border-violet-300 text-violet-600 focus:ring-violet-500">
+                            <span>
+                                <span class="font-medium">{{ __('admin.ai_models.semantic_chunking_label') }}</span>
+                                <span class="mt-1 block text-xs text-violet-700">{{ __('admin.ai_models.semantic_chunking_help') }}</span>
+                            </span>
+                        </label>
+                    </div>
+
                     <div>
                         <label for="model_id" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_model_id') }}</label>
                         <input type="text" name="model_id" id="model_id" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.placeholder_model_id') }}">
@@ -358,6 +372,8 @@
             document.getElementById('apiKeyHelp').textContent = AI_MODELS_I18N.apiKeyHelpCreate;
             document.getElementById('api_url').value = 'https://api.deepseek.com';
             document.getElementById('failover_priority').value = 100;
+            document.getElementById('semantic_chunking_enabled').checked = false;
+            updateSemanticChunkingField();
             document.getElementById('modelModal').classList.remove('hidden');
         }
 
@@ -378,7 +394,9 @@
             document.getElementById('failover_priority').value = model.failover_priority || 100;
             document.getElementById('daily_limit').value = model.daily_limit || 0;
             document.getElementById('status').value = model.status || 'active';
+            document.getElementById('semantic_chunking_enabled').checked = Boolean(model.semantic_chunking_enabled);
             document.getElementById('statusField').classList.remove('hidden');
+            updateSemanticChunkingField();
             document.getElementById('modelModal').classList.remove('hidden');
         }
 
@@ -459,6 +477,20 @@
             document.getElementById('model_id').value = preset.model_id;
             document.getElementById('api_url').value = preset.api_url;
             document.getElementById('model_type').value = preset.model_type;
+            updateSemanticChunkingField();
+        }
+
+        function updateSemanticChunkingField() {
+            const modelType = document.getElementById('model_type').value || 'chat';
+            const field = document.getElementById('semanticChunkingField');
+            const checkbox = document.getElementById('semantic_chunking_enabled');
+            if (modelType === 'chat') {
+                field.classList.remove('hidden');
+                return;
+            }
+
+            checkbox.checked = false;
+            field.classList.add('hidden');
         }
 
         window.addEventListener('click', function (event) {
@@ -467,5 +499,8 @@
                 closeModelModal();
             }
         });
+
+        document.getElementById('model_type').addEventListener('change', updateSemanticChunkingField);
+        updateSemanticChunkingField();
     </script>
 @endpush
