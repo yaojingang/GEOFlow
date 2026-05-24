@@ -370,6 +370,157 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_semantic_chunking_fails_over_to_next_active_chat_model(): void
+    {
+        Http::fake([
+            'https://bad.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => ['content' => '不是合法规划'],
+                ]],
+            ]),
+            'https://good.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => [
+                        'content' => json_encode([
+                            'chunks' => [
+                                ['title' => '总览', 'block_indexes' => [0, 1]],
+                                ['title' => '细节', 'block_indexes' => [2, 3]],
+                            ],
+                        ], JSON_UNESCAPED_UNICODE),
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $badModel = $this->createChatModel([
+            'name' => 'Bad Semantic Planner',
+            'api_url' => 'https://bad.test',
+            'failover_priority' => 1,
+        ]);
+        $goodModel = $this->createChatModel([
+            'name' => 'Good Semantic Planner',
+            'api_url' => 'https://good.test',
+            'failover_priority' => 2,
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_strategy',
+            'setting_value' => 'semantic_llm',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $badModel->id,
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '语义模型切换知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# 总览\n\n总览内容。\n\n## 细节\n\n细节内容。"
+        );
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
+
+        $this->assertCount(2, $chunks);
+        $this->assertSame('semantic_llm', (string) $chunks[0]->chunk_strategy);
+
+        $badModel->refresh();
+        $goodModel->refresh();
+        $this->assertSame(0, (int) $badModel->used_today);
+        $this->assertSame(0, (int) $badModel->total_used);
+        $this->assertSame(1, (int) $goodModel->used_today);
+        $this->assertSame(1, (int) $goodModel->total_used);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://bad.test/v1/chat/completions');
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://good.test/v1/chat/completions'
+            && str_contains(json_encode($request->data(), JSON_UNESCAPED_UNICODE), 'Output strict JSON only'));
+    }
+
+    public function test_semantic_chunking_counts_usage_only_after_valid_plan(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => ['content' => '不是合法 JSON'],
+                ]],
+            ]),
+        ]);
+
+        $model = $this->createChatModel();
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_strategy',
+            'setting_value' => 'semantic_llm',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '语义计数知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# 总览\n\n总览内容。\n\n## 细节\n\n细节内容。"
+        );
+
+        $chunk = $knowledgeBase->chunks()->orderBy('chunk_index')->firstOrFail();
+
+        $this->assertSame('semantic_fallback', (string) $chunk->chunk_strategy);
+
+        $model->refresh();
+        $this->assertSame(0, (int) $model->used_today);
+        $this->assertSame(0, (int) $model->total_used);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions');
+    }
+
+    public function test_semantic_chunking_prompt_limit_is_configurable(): void
+    {
+        config(['geoflow.semantic_chunking_max_chars' => 10]);
+        Http::fake();
+
+        $model = $this->createChatModel();
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_strategy',
+            'setting_value' => 'semantic_llm',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '可配置上限知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# 总览\n\n总览内容。\n\n## 细节\n\n细节内容。"
+        );
+
+        $chunk = $knowledgeBase->chunks()->orderBy('chunk_index')->firstOrFail();
+
+        $this->assertSame('semantic_fallback', (string) $chunk->chunk_strategy);
+        Http::assertNothingSent();
+    }
+
     public function test_sync_skips_invalid_default_embedding_model_and_uses_next_active_model(): void
     {
         Http::fake([
