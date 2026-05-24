@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\SiteSetting;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -189,6 +190,42 @@ class AdminAiModelsPageTest extends TestCase
             ->assertSee('Gemini', false)
             ->assertSee('Gemini Embedding', false)
             ->assertSee(__('admin.ai_models.gemini_embedding_notice'));
+    }
+
+    public function test_admin_can_update_knowledge_chunking_config(): void
+    {
+        $model = $this->createAiModel('chat');
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->post(route('admin.ai-models.chunking-config'), [
+                'knowledge_chunk_strategy' => 'semantic_llm',
+                'knowledge_chunking_model_id' => (int) $model->id,
+            ]);
+
+        $response->assertRedirect(route('admin.ai-models.index'))
+            ->assertSessionHas('message');
+
+        $this->assertSame(
+            'semantic_llm',
+            (string) SiteSetting::query()->where('setting_key', 'knowledge_chunk_strategy')->value('setting_value')
+        );
+        $this->assertSame(
+            (string) $model->id,
+            (string) SiteSetting::query()->where('setting_key', 'knowledge_chunking_model_id')->value('setting_value')
+        );
+    }
+
+    public function test_admin_models_page_shows_knowledge_chunking_config(): void
+    {
+        $model = $this->createAiModel('chat', ['name' => 'Gemini 3.1 Flash Lite']);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-models.index'));
+
+        $response->assertOk()
+            ->assertSee(__('admin.ai_models.chunking_title'))
+            ->assertSee(__('admin.ai_models.chunk_strategy_semantic'))
+            ->assertSee('Gemini 3.1 Flash Lite');
     }
 
     public function test_model_connection_test_reports_provider_errors(): void

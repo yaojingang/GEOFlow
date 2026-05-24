@@ -129,6 +129,18 @@
                                     @endif
                                 </td>
                                 <td class="px-6 py-4 text-sm text-gray-700">
+                                    <div class="mb-2 flex flex-wrap items-center gap-2">
+                                        <span class="inline-flex rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                                            {{ __('admin.knowledge_detail.chunk_strategy_label') }}:
+                                            {{ __('admin.knowledge_detail.chunk_strategy_'.$chunkRow['chunk_strategy']) }}
+                                        </span>
+                                        @if ($chunkRow['chunk_title'] !== '')
+                                            <span class="text-xs font-medium text-gray-700">{{ $chunkRow['chunk_title'] }}</span>
+                                        @endif
+                                    </div>
+                                    @if ($chunkRow['section_path'] !== '')
+                                        <div class="mb-2 text-xs text-gray-500">{{ $chunkRow['section_path'] }}</div>
+                                    @endif
                                     <div class="max-w-xl break-words">{{ $chunkRow['content_preview'] }}</div>
                                 </td>
                             </tr>

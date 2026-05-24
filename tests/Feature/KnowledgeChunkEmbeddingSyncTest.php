@@ -83,6 +83,293 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_structured_rule_chunking_keeps_markdown_sections_separate(): void
+    {
+        Http::fake();
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '结构化切片知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# GEOFlow 总览\n\nGEOFlow 是面向 GEO 内容工程的系统。\n\n## 多站分发\n\n分发管理负责把文章同步到多个目标站点。\n\n## 素材库\n\n素材库负责沉淀知识、关键词、标题和图片。"
+        );
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->pluck('content')->all();
+        $firstChunk = $knowledgeBase->chunks()->orderBy('chunk_index')->firstOrFail();
+
+        $this->assertCount(3, $chunks);
+        $this->assertStringContainsString('# GEOFlow 总览', $chunks[0]);
+        $this->assertStringContainsString('## 多站分发', $chunks[1]);
+        $this->assertStringContainsString('## 素材库', $chunks[2]);
+        $this->assertSame('structured_rule', (string) $firstChunk->getAttribute('chunk_strategy'));
+        $this->assertSame('GEOFlow 总览', (string) $firstChunk->getAttribute('chunk_title'));
+        Http::assertNothingSent();
+    }
+
+    public function test_structured_rule_chunking_splits_oversized_single_blocks(): void
+    {
+        Http::fake();
+
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_max_chars',
+            'setting_value' => '300',
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '超长段落知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+        $longParagraph = str_repeat('GEOFlow 语义切片需要稳定处理超长段落。', 30);
+
+        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, $longParagraph);
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
+
+        $this->assertGreaterThan(1, $chunks->count());
+        $chunks->each(function ($chunk): void {
+            $this->assertLessThanOrEqual(300, mb_strlen((string) $chunk->content, 'UTF-8'));
+            $this->assertSame('structured_rule', (string) $chunk->chunk_strategy);
+        });
+        Http::assertNothingSent();
+    }
+
+    public function test_semantic_chunking_uses_llm_plan_without_rewriting_original_text(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => [
+                        'content' => json_encode([
+                            'chunks' => [
+                                ['title' => '平台定位', 'block_indexes' => [0, 1]],
+                                ['title' => '分发与素材', 'block_indexes' => [2, 3, 4, 5]],
+                            ],
+                        ], JSON_UNESCAPED_UNICODE),
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $model = $this->createChatModel();
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_strategy',
+            'setting_value' => 'semantic_llm',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '语义切片知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# 平台定位\n\nGEOFlow 负责内容工程后台。\n\n## 分发能力\n\n分发管理同步文章到渠道站点。\n\n## 素材能力\n\n素材库沉淀业务事实。"
+        );
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->pluck('content')->all();
+        $firstChunk = $knowledgeBase->chunks()->orderBy('chunk_index')->firstOrFail();
+
+        $this->assertCount(2, $chunks);
+        $this->assertSame("# 平台定位\n\nGEOFlow 负责内容工程后台。", $chunks[0]);
+        $this->assertStringContainsString('## 分发能力', $chunks[1]);
+        $this->assertStringContainsString('## 素材能力', $chunks[1]);
+        $this->assertSame('semantic_llm', (string) $firstChunk->getAttribute('chunk_strategy'));
+        $this->assertSame('平台定位', (string) $firstChunk->getAttribute('chunk_title'));
+        $this->assertSame([0, 1], json_decode((string) $firstChunk->getAttribute('metadata_json'), true)['block_indexes'] ?? []);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
+            && $request->hasHeader('Authorization', 'Bearer test-api-key'));
+    }
+
+    public function test_semantic_chunking_falls_back_to_structured_rules_when_plan_is_invalid(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => ['content' => '不是合法 JSON'],
+                ]],
+            ]),
+        ]);
+
+        $model = $this->createChatModel();
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_strategy',
+            'setting_value' => 'semantic_llm',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '语义回退知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# 总览\n\n总览内容。\n\n## 细节\n\n细节内容。"
+        );
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->pluck('content')->all();
+        $firstChunk = $knowledgeBase->chunks()->orderBy('chunk_index')->firstOrFail();
+
+        $this->assertCount(2, $chunks);
+        $this->assertStringContainsString('# 总览', $chunks[0]);
+        $this->assertStringContainsString('## 细节', $chunks[1]);
+        $this->assertSame('semantic_fallback', (string) $firstChunk->getAttribute('chunk_strategy'));
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions');
+    }
+
+    public function test_semantic_chunking_falls_back_when_plan_reorders_blocks(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => [
+                        'content' => json_encode([
+                            'chunks' => [
+                                ['title' => '后文', 'block_indexes' => [2, 3]],
+                                ['title' => '前文', 'block_indexes' => [0, 1]],
+                            ],
+                        ], JSON_UNESCAPED_UNICODE),
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $model = $this->createChatModel();
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_strategy',
+            'setting_value' => 'semantic_llm',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '乱序规划知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# 前文\n\n前文内容。\n\n## 后文\n\n后文内容。"
+        );
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
+
+        $this->assertCount(2, $chunks);
+        $this->assertStringContainsString('# 前文', (string) $chunks[0]->content);
+        $this->assertSame('semantic_fallback', (string) $chunks[0]->chunk_strategy);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions');
+    }
+
+    public function test_semantic_chunking_falls_back_when_plan_contains_invalid_index_values(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => [
+                        'content' => json_encode([
+                            'chunks' => [
+                                ['title' => '坏索引', 'block_indexes' => [0, 'bad']],
+                            ],
+                        ], JSON_UNESCAPED_UNICODE),
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $model = $this->createChatModel();
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_strategy',
+            'setting_value' => 'semantic_llm',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '坏索引知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, '只有一个短段落。');
+
+        $chunk = $knowledgeBase->chunks()->firstOrFail();
+
+        $this->assertSame('semantic_fallback', (string) $chunk->chunk_strategy);
+        $this->assertSame('只有一个短段落。', (string) $chunk->content);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions');
+    }
+
+    public function test_auto_semantic_chunking_uses_rule_chunks_without_llm_for_large_inputs(): void
+    {
+        Http::fake();
+
+        $model = $this->createChatModel();
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_strategy',
+            'setting_value' => 'auto',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '大输入知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+        $content = collect(range(1, 130))
+            ->map(static fn (int $index): string => "## 第 {$index} 节\n\n第 {$index} 节内容。")
+            ->implode("\n\n");
+
+        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, $content);
+
+        $firstChunk = $knowledgeBase->chunks()->orderBy('chunk_index')->firstOrFail();
+
+        $this->assertSame('structured_rule', (string) $firstChunk->chunk_strategy);
+        Http::assertNothingSent();
+    }
+
     public function test_sync_skips_invalid_default_embedding_model_and_uses_next_active_model(): void
     {
         Http::fake([
@@ -208,6 +495,23 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
             'model_id' => 'test-embedding-model',
             'model_type' => 'embedding',
+            'api_url' => 'https://ai.test',
+            'failover_priority' => 100,
+            'daily_limit' => 0,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ], $overrides));
+    }
+
+    private function createChatModel(array $overrides = []): AiModel
+    {
+        return AiModel::query()->create(array_merge([
+            'name' => 'Test Chat',
+            'version' => 'test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
+            'model_id' => 'test-chat-model',
+            'model_type' => 'chat',
             'api_url' => 'https://ai.test',
             'failover_priority' => 100,
             'daily_limit' => 0,

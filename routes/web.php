@@ -231,6 +231,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::post('{modelId}/test', [AiModelController::class, 'testConnection'])->name('test');
                 Route::post('{modelId}/delete', [AiModelController::class, 'destroy'])->name('delete');
                 Route::post('default-embedding', [AiModelController::class, 'updateDefaultEmbedding'])->name('default-embedding');
+                Route::post('chunking-config', [AiModelController::class, 'updateChunkingConfig'])->name('chunking-config');
             });
             Route::get('ai-prompts', [AiPromptController::class, 'index'])->name('ai-prompts');
             Route::post('ai-prompts/create', [AiPromptController::class, 'store'])->name('ai-prompts.store');

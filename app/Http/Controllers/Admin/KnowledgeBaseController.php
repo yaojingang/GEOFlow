@@ -430,6 +430,9 @@ class KnowledgeBaseController extends Controller
             ->select([
                 'chunk_index',
                 'content',
+                'chunk_title',
+                'section_path',
+                'chunk_strategy',
                 'token_count',
                 'embedding_model_id',
                 'embedding_dimensions',
@@ -449,6 +452,9 @@ class KnowledgeBaseController extends Controller
                     'embedding_model_id' => $chunk->embedding_model_id !== null ? (int) $chunk->embedding_model_id : null,
                     'embedding_dimensions' => (int) ($chunk->embedding_dimensions ?? 0),
                     'embedding_provider' => (string) ($chunk->embedding_provider ?? ''),
+                    'chunk_title' => (string) ($chunk->chunk_title ?? ''),
+                    'section_path' => (string) ($chunk->section_path ?? ''),
+                    'chunk_strategy' => (string) ($chunk->chunk_strategy ?? 'structured_rule'),
                     'content_preview' => $preview,
                 ];
             });

@@ -18,7 +18,7 @@
             </button>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
                     <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.vector_title') }}</h3>
@@ -65,6 +65,44 @@
                     <p>{{ __('admin.ai_models.type_embedding') }}</p>
                     <p>{{ __('admin.ai_models.type_rerank') }}</p>
                     <p>{{ __('admin.ai_models.type_fallback') }}</p>
+                </div>
+            </div>
+
+            <div class="bg-white shadow rounded-lg">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.chunking_title') }}</h3>
+                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_models.chunking_desc') }}</p>
+                </div>
+                <div class="px-6 py-5">
+                    <form method="POST" action="{{ route('admin.ai-models.chunking-config') }}" class="space-y-4">
+                        @csrf
+                        <div>
+                            <label for="knowledge_chunk_strategy" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.chunk_strategy') }}</label>
+                            <select name="knowledge_chunk_strategy" id="knowledge_chunk_strategy" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="rule" @selected(($chunkingConfig['strategy'] ?? 'rule') === 'rule')>{{ __('admin.ai_models.chunk_strategy_rule') }}</option>
+                                <option value="auto" @selected(($chunkingConfig['strategy'] ?? 'rule') === 'auto')>{{ __('admin.ai_models.chunk_strategy_auto') }}</option>
+                                <option value="semantic_llm" @selected(($chunkingConfig['strategy'] ?? 'rule') === 'semantic_llm')>{{ __('admin.ai_models.chunk_strategy_semantic') }}</option>
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.chunk_strategy_help') }}</p>
+                        </div>
+                        <div>
+                            <label for="knowledge_chunking_model_id" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.chunking_model') }}</label>
+                            <select name="knowledge_chunking_model_id" id="knowledge_chunking_model_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="0">{{ __('admin.ai_models.chunking_model_none') }}</option>
+                                @foreach ($chatModels as $chatModel)
+                                    <option value="{{ (int) $chatModel['id'] }}" @selected((int) ($chunkingConfig['model_id'] ?? 0) === (int) $chatModel['id'])>
+                                        {{ $chatModel['name'].' ('.$chatModel['model_id'].')' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.chunking_model_help') }}</p>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-800 hover:bg-slate-900">
+                                {{ __('admin.ai_models.save_chunking') }}
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
