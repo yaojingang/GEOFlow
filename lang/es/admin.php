@@ -17,6 +17,11 @@ return array_replace_recursive($base, [
         'admin_management' => 'Gestión de usuarios',
         'activity_logs' => 'Registro de actividad',
     ],
+    'ai_models' => [
+        'quick_help' => 'Haz clic para autocompletar configuraciones comunes. Gemini usa la API nativa v1beta de Google; los demás proveedores conservan las reglas compatibles con OpenAI.',
+        'gemini_embedding_notice' => 'Gemini Embedding 2 aplica automáticamente prefijos query/document para retrieval; este sistema no admite la configuración task_type de gemini-embedding-001.',
+        'api_url_help' => 'Puedes indicar una URL base o un endpoint completo. Gemini se normaliza a https://generativelanguage.googleapis.com/v1beta; los demás modelos usan las rutas compatibles con OpenAI existentes.',
+    ],
     'header' => [
         'welcome' => 'Bienvenido, :name',
         'super_admin' => 'Superadmin',

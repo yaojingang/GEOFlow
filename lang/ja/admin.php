@@ -17,6 +17,11 @@ return array_replace_recursive($base, [
         'admin_management' => 'ユーザー管理',
         'activity_logs' => '操作ログ',
     ],
+    'ai_models' => [
+        'quick_help' => 'クリックすると一般的なプロバイダー設定を自動入力します。Gemini は Google ネイティブ v1beta API を使用し、その他のプロバイダーは OpenAI 互換ルールを使用します。',
+        'gemini_embedding_notice' => 'Gemini Embedding 2 は retrieval 用の query/document プレフィックスを自動適用します。このシステムは gemini-embedding-001 の task_type 設定をサポートしません。',
+        'api_url_help' => 'ベース URL または完全なエンドポイント URL を入力できます。Gemini は https://generativelanguage.googleapis.com/v1beta に正規化され、その他のモデルは既存の OpenAI 互換ルートを使用します。',
+    ],
     'header' => [
         'welcome' => 'ようこそ、:name',
         'super_admin' => 'スーパー管理者',

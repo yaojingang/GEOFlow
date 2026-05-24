@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Models\AiModel;
+use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\SiteSetting;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -40,7 +41,8 @@ class KnowledgeChunkSyncService
 
         $chunks = $this->chunkText($content);
         $embeddingMetadata = $this->resolveEmbeddingMetadata();
-        $generatedEmbeddings = $this->generateEmbeddingsForChunks($chunks, $embeddingMetadata, $requireRealEmbedding);
+        $embeddingDocumentTitle = $this->resolveEmbeddingDocumentTitle($knowledgeBaseId);
+        $generatedEmbeddings = $this->generateEmbeddingsForChunks($chunks, $embeddingMetadata, $requireRealEmbedding, $embeddingDocumentTitle);
 
         if ($requireRealEmbedding && count($generatedEmbeddings) !== count($chunks)) {
             throw new \RuntimeException(__('admin.knowledge_bases.error.embedding_sync_failed'));
@@ -141,13 +143,13 @@ class KnowledgeChunkSyncService
 
         $providerName = OpenAiRuntimeProvider::registerProvider(
             'embedding_query',
-            'openai',
+            (string) ($embeddingMetadata['driver'] ?? 'openai'),
             (string) $embeddingMetadata['api_url'],
             (string) $embeddingMetadata['api_key']
         );
 
         try {
-            $response = Embeddings::for([$query])
+            $response = Embeddings::for([$this->formatEmbeddingQueryInput($query, $embeddingMetadata)])
                 ->timeout(45)
                 ->generate($providerName, (string) $embeddingMetadata['model_name']);
             $rawVector = $this->normalizeEmbeddingVector($response->embeddings[0] ?? null);
@@ -172,7 +174,7 @@ class KnowledgeChunkSyncService
     /**
      * 读取可用的默认 embedding 模型元数据。
      *
-     * @return array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string}|null
+     * @return array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}|null
      */
     private function resolveEmbeddingMetadata(): ?array
     {
@@ -213,7 +215,7 @@ class KnowledgeChunkSyncService
     }
 
     /**
-     * @return array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string}|null
+     * @return array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}|null
      */
     private function modelToEmbeddingMetadata(AiModel $model): ?array
     {
@@ -230,6 +232,7 @@ class KnowledgeChunkSyncService
             'provider' => (string) (parse_url($providerUrl, PHP_URL_HOST) ?: ''),
             'api_url' => $providerUrl,
             'api_key' => $apiKey,
+            'driver' => OpenAiRuntimeProvider::resolveEmbeddingDriver($providerUrl, $modelName),
         ];
     }
 
@@ -237,10 +240,15 @@ class KnowledgeChunkSyncService
      * 批量生成真实向量；任一异常则整体回退到 fallback 向量。
      *
      * @param  list<string>  $chunks
-     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string}|null  $embeddingMetadata
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}|null  $embeddingMetadata
      * @return array<int, array{model_id:int,dimensions:int,provider:string,vector:list<float>,vector_literal:?string}>
      */
-    private function generateEmbeddingsForChunks(array $chunks, ?array $embeddingMetadata, bool $requireRealEmbedding = false): array
+    private function generateEmbeddingsForChunks(
+        array $chunks,
+        ?array $embeddingMetadata,
+        bool $requireRealEmbedding = false,
+        ?string $documentTitle = null
+    ): array
     {
         if ($chunks === []) {
             return [];
@@ -256,7 +264,7 @@ class KnowledgeChunkSyncService
         $canStoreEmbeddingVector = $this->canStoreEmbeddingVector();
         $providerName = OpenAiRuntimeProvider::registerProvider(
             'embedding',
-            'openai',
+            (string) ($embeddingMetadata['driver'] ?? 'openai'),
             (string) $embeddingMetadata['api_url'],
             (string) $embeddingMetadata['api_key']
         );
@@ -265,7 +273,8 @@ class KnowledgeChunkSyncService
             $results = [];
             foreach (array_chunk($chunks, 12, true) as $batch) {
                 $batchKeys = array_keys($batch);
-                $response = Embeddings::for(array_values($batch))
+                $batchInputs = $this->formatEmbeddingDocumentInputs(array_values($batch), $embeddingMetadata, $documentTitle);
+                $response = Embeddings::for($batchInputs)
                     ->timeout(45)
                     ->generate($providerName, (string) $embeddingMetadata['model_name']);
 
@@ -307,6 +316,60 @@ class KnowledgeChunkSyncService
             // 关键兜底：向量 API 不可用时，不中断知识库同步主流程。
             return [];
         }
+    }
+
+    private function resolveEmbeddingDocumentTitle(int $knowledgeBaseId): string
+    {
+        $title = trim((string) (KnowledgeBase::query()->whereKey($knowledgeBaseId)->value('name') ?? ''));
+
+        return $title !== '' ? $this->normalizeGeminiEmbeddingSegment($title) : 'none';
+    }
+
+    /**
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     */
+    private function formatEmbeddingQueryInput(string $query, array $embeddingMetadata): string
+    {
+        $query = trim($query);
+        if (! $this->isGeminiEmbeddingMetadata($embeddingMetadata)) {
+            return $query;
+        }
+
+        return 'task: search result | query: '.$this->normalizeGeminiEmbeddingSegment($query);
+    }
+
+    /**
+     * @param  list<string>  $chunks
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     * @return list<string>
+     */
+    private function formatEmbeddingDocumentInputs(array $chunks, array $embeddingMetadata, ?string $documentTitle): array
+    {
+        if (! $this->isGeminiEmbeddingMetadata($embeddingMetadata)) {
+            return $chunks;
+        }
+
+        $title = trim((string) $documentTitle);
+        $title = $title !== '' ? $this->normalizeGeminiEmbeddingSegment($title) : 'none';
+
+        return array_map(
+            fn (string $chunk): string => 'title: '.$title.' | text: '.$this->normalizeGeminiEmbeddingSegment($chunk),
+            $chunks
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $embeddingMetadata
+     */
+    private function isGeminiEmbeddingMetadata(array $embeddingMetadata): bool
+    {
+        return (string) ($embeddingMetadata['driver'] ?? '') === 'gemini'
+            || OpenAiRuntimeProvider::isGeminiProviderUrl((string) ($embeddingMetadata['api_url'] ?? ''));
+    }
+
+    private function normalizeGeminiEmbeddingSegment(string $value): string
+    {
+        return trim(preg_replace('/\s+/u', ' ', $value) ?: $value);
     }
 
     /**

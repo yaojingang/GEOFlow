@@ -21,6 +21,10 @@ final class OpenAiRuntimeProvider
         }
 
         $normalized = rtrim($normalized, '/');
+        if (self::isGeminiProviderUrl($normalized)) {
+            return self::resolveGeminiBaseUrl($normalized);
+        }
+
         if (preg_match('#/v1/chat/completions$#', $normalized) === 1) {
             return substr($normalized, 0, -strlen('/chat/completions'));
         }
@@ -47,6 +51,10 @@ final class OpenAiRuntimeProvider
         }
 
         $normalized = rtrim($normalized, '/');
+        if (self::isGeminiProviderUrl($normalized)) {
+            return self::resolveGeminiBaseUrl($normalized);
+        }
+
         if (preg_match('#/v1/embeddings$#', $normalized) === 1) {
             return substr($normalized, 0, -strlen('/embeddings'));
         }
@@ -71,6 +79,10 @@ final class OpenAiRuntimeProvider
         $model = strtolower(trim($modelId));
         $host = strtolower((string) (parse_url($normalized, PHP_URL_HOST) ?? ''));
 
+        if (self::isGeminiProviderUrl($normalized)) {
+            return 'gemini';
+        }
+
         if ($host === 'api.openai.com') {
             return 'openai';
         }
@@ -85,6 +97,50 @@ final class OpenAiRuntimeProvider
 
         // 通用 Chat Completions 兼容接口：复用 DeepSeek driver 的 chat/completions 请求形态。
         return 'deepseek';
+    }
+
+    /**
+     * Laravel AI 的 embedding 入口默认走 OpenAI 兼容接口；Gemini 原生接口使用独立 driver。
+     */
+    public static function resolveEmbeddingDriver(string $apiUrl, string $modelId = ''): string
+    {
+        if (self::isGeminiProviderUrl($apiUrl)) {
+            return 'gemini';
+        }
+
+        return 'openai';
+    }
+
+    /**
+     * 判断 URL 是否指向 Google Gemini API 原生服务。
+     */
+    public static function isGeminiProviderUrl(string $apiUrl): bool
+    {
+        $host = strtolower((string) (parse_url(trim($apiUrl), PHP_URL_HOST) ?? ''));
+
+        return $host === 'generativelanguage.googleapis.com';
+    }
+
+    /**
+     * Gemini 原生 Chat/Embedding API 共用 v1beta base，不使用 OpenAI compatibility 子路径。
+     */
+    public static function resolveGeminiBaseUrl(string $apiUrl): string
+    {
+        $normalized = trim($apiUrl);
+        if ($normalized === '') {
+            return '';
+        }
+
+        $parts = parse_url($normalized);
+        $host = (string) ($parts['host'] ?? '');
+        if ($host === '') {
+            return '';
+        }
+
+        $scheme = (string) ($parts['scheme'] ?? 'https');
+        $port = isset($parts['port']) ? ':'.(string) $parts['port'] : '';
+
+        return strtolower($scheme).'://'.$host.$port.'/v1beta';
     }
 
     /**

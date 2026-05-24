@@ -179,6 +179,7 @@ class AiModelController extends Controller
             $endpoint = $this->resolveTestEndpoint($model, $modelType);
             $apiKey = $this->decryptApiKey((string) ($model->getRawOriginal('api_key') ?? ''));
             $modelName = trim((string) ($model->model_id ?? ''));
+            $isGemini = OpenAiRuntimeProvider::isGeminiProviderUrl($endpoint);
 
             if ($endpoint === '') {
                 return $this->modelTestResponse(false, __('admin.ai_models.test_error_api_url_missing'), $startedAt, $modelType);
@@ -190,11 +191,15 @@ class AiModelController extends Controller
                 return $this->modelTestResponse(false, __('admin.ai_models.test_error_model_missing'), $startedAt, $modelType, $endpoint);
             }
 
-            $response = Http::acceptJson()
+            $request = Http::acceptJson()
                 ->asJson()
-                ->withToken($apiKey)
-                ->timeout(45)
-                ->post($endpoint, $this->buildTestPayload($modelName, $modelType));
+                ->timeout(45);
+
+            $request = $isGemini
+                ? $request->withHeaders(['x-goog-api-key' => $apiKey])
+                : $request->withToken($apiKey);
+
+            $response = $request->post($endpoint, $this->buildTestPayload($modelName, $modelType, $isGemini));
 
             $json = $response->json();
             if (! $response->successful()) {
@@ -211,7 +216,7 @@ class AiModelController extends Controller
                 );
             }
 
-            if (! $this->isValidTestResponse($json, $modelType)) {
+            if (! $this->isValidTestResponse($json, $modelType, $isGemini)) {
                 return $this->modelTestResponse(
                     false,
                     __('admin.ai_models.test_invalid_response', [
@@ -462,14 +467,62 @@ class AiModelController extends Controller
             return '';
         }
 
+        if (OpenAiRuntimeProvider::isGeminiProviderUrl($providerBaseUrl)) {
+            $modelName = $this->normalizeGeminiModelName((string) ($model->model_id ?? ''));
+
+            return rtrim($providerBaseUrl, '/').'/models/'.$modelName.($modelType === 'embedding' ? ':batchEmbedContents' : ':generateContent');
+        }
+
         return rtrim($providerBaseUrl, '/').($modelType === 'embedding' ? '/embeddings' : '/chat/completions');
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function buildTestPayload(string $modelName, string $modelType): array
+    private function buildTestPayload(string $modelName, string $modelType, bool $isGemini = false): array
     {
+        if ($isGemini) {
+            if ($modelType === 'embedding') {
+                return [
+                    'requests' => [
+                        [
+                            'model' => 'models/'.$this->normalizeGeminiModelName($modelName),
+                            'content' => [
+                                'parts' => [
+                                    ['text' => $this->formatGeminiRetrievalQuery('GEOFlow embedding connection test')],
+                                ],
+                            ],
+                            'output_dimensionality' => 3072,
+                        ],
+                    ],
+                ];
+            }
+
+            $generationConfig = [
+                'temperature' => 0,
+                'maxOutputTokens' => 64,
+            ];
+
+            $thinkingLevel = $this->resolveGeminiTestThinkingLevel($modelName);
+            if ($thinkingLevel !== null) {
+                $generationConfig['thinkingConfig'] = [
+                    'thinkingLevel' => $thinkingLevel,
+                ];
+            }
+
+            return [
+                'contents' => [
+                    [
+                        'role' => 'user',
+                        'parts' => [
+                            ['text' => 'Reply with OK.'],
+                        ],
+                    ],
+                ],
+                'generationConfig' => $generationConfig,
+            ];
+        }
+
         if ($modelType === 'embedding') {
             return [
                 'model' => $modelName,
@@ -487,9 +540,29 @@ class AiModelController extends Controller
         ];
     }
 
-    private function isValidTestResponse(mixed $json, string $modelType): bool
+    private function isValidTestResponse(mixed $json, string $modelType, bool $isGemini = false): bool
     {
         if (! is_array($json)) {
+            return false;
+        }
+
+        if ($isGemini) {
+            if ($modelType === 'embedding') {
+                return isset($json['embeddings'][0]['values']) && is_array($json['embeddings'][0]['values']);
+            }
+
+            foreach (($json['candidates'] ?? []) as $candidate) {
+                if (! is_array($candidate)) {
+                    continue;
+                }
+
+                foreach (($candidate['content']['parts'] ?? []) as $part) {
+                    if (is_array($part) && trim((string) ($part['text'] ?? '')) !== '') {
+                        return true;
+                    }
+                }
+            }
+
             return false;
         }
 
@@ -500,6 +573,33 @@ class AiModelController extends Controller
         return isset($json['choices'][0]['message']['content'])
             || isset($json['choices'][0]['text'])
             || isset($json['choices'][0]['delta']['content']);
+    }
+
+    private function normalizeGeminiModelName(string $modelName): string
+    {
+        $modelName = trim($modelName);
+
+        return preg_replace('#^models/#', '', $modelName) ?: $modelName;
+    }
+
+    private function formatGeminiRetrievalQuery(string $query): string
+    {
+        return 'task: search result | query: '.trim($query);
+    }
+
+    private function resolveGeminiTestThinkingLevel(string $modelName): ?string
+    {
+        $modelName = strtolower($this->normalizeGeminiModelName($modelName));
+
+        if (str_starts_with($modelName, 'gemini-3-flash')) {
+            return 'minimal';
+        }
+
+        if (str_starts_with($modelName, 'gemini-3-')) {
+            return 'low';
+        }
+
+        return null;
     }
 
     private function modelTestResponse(

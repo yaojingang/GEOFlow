@@ -132,6 +132,74 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         Http::assertSent(fn ($request): bool => $request->url() === 'https://fallback.test/v1/embeddings');
     }
 
+    public function test_sync_uses_gemini_embedding_document_prefix_without_task_type(): void
+    {
+        Http::fake([
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents' => Http::response([
+                'embeddings' => [
+                    ['values' => [0.11, 0.22, 0.33]],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createEmbeddingModel([
+            'name' => 'Gemini Embedding 2',
+            'model_id' => 'gemini-embedding-2',
+            'api_url' => 'https://generativelanguage.googleapis.com/v1beta',
+        ]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => 'GEOFlow Guide',
+            'description' => '',
+            'content' => 'GEOFlow 是面向 GEO 内容工程的系统。',
+            'character_count' => 24,
+            'file_type' => 'markdown',
+            'word_count' => 24,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            'GEOFlow 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
+        );
+
+        $chunk = $knowledgeBase->chunks()->firstOrFail();
+
+        $this->assertSame((int) $model->id, (int) $chunk->embedding_model_id);
+        $this->assertSame([0.11, 0.22, 0.33], json_decode((string) $chunk->embedding_json, true));
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents'
+            && $request->hasHeader('x-goog-api-key', 'test-api-key')
+            && ($request['requests'][0]['content']['parts'][0]['text'] ?? '') === 'title: GEOFlow Guide | text: GEOFlow 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
+            && ! isset($request['requests'][0]['taskType'])
+            && ! isset($request['taskType']));
+    }
+
+    public function test_query_embedding_uses_gemini_search_result_prefix_without_task_type(): void
+    {
+        Http::fake([
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents' => Http::response([
+                'embeddings' => [
+                    ['values' => [0.7, 0.8, 0.9]],
+                ],
+            ]),
+        ]);
+
+        $this->createEmbeddingModel([
+            'name' => 'Gemini Embedding 2',
+            'model_id' => 'gemini-embedding-2',
+            'api_url' => 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent',
+        ]);
+
+        $vector = app(KnowledgeChunkSyncService::class)->generateQueryEmbeddingVector('如何使用 GEOFlow?');
+
+        $this->assertSame([0.7, 0.8, 0.9], $vector);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents'
+            && $request->hasHeader('x-goog-api-key', 'test-api-key')
+            && ($request['requests'][0]['content']['parts'][0]['text'] ?? '') === 'task: search result | query: 如何使用 GEOFlow?'
+            && ! isset($request['requests'][0]['taskType'])
+            && ! isset($request['taskType']));
+    }
+
     private function createEmbeddingModel(array $overrides = []): AiModel
     {
         return AiModel::query()->create(array_merge([
