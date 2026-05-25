@@ -271,6 +271,7 @@ body.target-theme-netease{background:#f7f7f7}.target-theme-netease header{border
 body.target-theme-tdwh{background:#f8fbff}.target-theme-tdwh header{border-bottom-color:#bfdbfe}.target-theme-tdwh .brand,.target-theme-tdwh h2 a:hover,.target-theme-tdwh .read{color:#1d4ed8}.target-theme-tdwh .chip{border-color:#bfdbfe;background:#eff6ff;color:#1e40af}.target-theme-tdwh .card{border-color:#dbeafe}
 body.target-theme-apparel{background:#f7f4ee;color:#1d2527;font-family:Georgia,"Times New Roman",serif}.target-theme-apparel header{background:#fffdf8;border-top:4px solid #24483f;border-bottom-color:#d9d3c7}.target-theme-apparel .brand,.target-theme-apparel h2 a:hover,.target-theme-apparel .read{color:#24483f}.target-theme-apparel .hero h1,.target-theme-apparel .detail h1{font-family:Georgia,"Times New Roman",serif;letter-spacing:0}.target-theme-apparel .chip{border-color:#d9d3c7;background:#fffdf8;color:#a87628}.target-theme-apparel .card{border-color:#d9d3c7;background:#fffdf8;box-shadow:0 18px 50px rgba(29,37,39,.11)}
 body.target-theme-fashion{background:#faf6f0;color:#1f1a17;font-family:"Segoe UI",Tahoma,sans-serif}.target-theme-fashion header{background:rgba(250,246,240,.95);border-bottom-color:#efebe4}.target-theme-fashion .brand,.target-theme-fashion .hero h1,.target-theme-fashion .detail h1,.target-theme-fashion h2{font-family:Georgia,"Times New Roman",serif}.target-theme-fashion .brand,.target-theme-fashion h2 a:hover,.target-theme-fashion .read{color:#1f1a17}.target-theme-fashion .chip{border-color:#eadfce;background:rgba(197,168,128,.08);color:#9b7a4f}.target-theme-fashion .card{border-color:#efebe4;background:#fff;box-shadow:0 15px 35px rgba(31,26,23,.07)}.target-theme-fashion .content{font-family:Georgia,"Times New Roman",serif;color:rgba(31,26,23,.92)}
+body.target-theme-fashion{font-family:Montserrat,"Segoe UI",Tahoma,sans-serif;background:#faf6f0;color:#1f1a17}.target-theme-fashion .wrap{max-width:1280px;padding:0 32px}.target-theme-fashion header{position:fixed;left:0;right:0;top:0;background:rgba(250,246,240,.82);border-bottom:1px solid rgba(239,235,228,.78);backdrop-filter:blur(14px);z-index:20}.target-theme-fashion header .bar{height:76px}.target-theme-fashion .brand{font-family:Georgia,"Times New Roman",serif;font-size:25px;font-weight:600;letter-spacing:.08em}.target-theme-fashion nav a{color:rgba(31,26,23,.62);font-size:13px}.target-theme-fashion main.wrap{padding-top:76px}.target-theme-fashion .fashion-hero{position:relative;text-align:center;overflow:hidden;padding:88px 0 112px}.target-theme-fashion .fashion-wordmark{position:absolute;left:50%;top:4px;transform:translateX(-50%);font-family:Georgia,"Times New Roman",serif;font-size:clamp(96px,16vw,220px);font-weight:800;letter-spacing:.08em;line-height:.85;color:rgba(239,235,228,.68);pointer-events:none;user-select:none}.target-theme-fashion .fashion-hero-inner{position:relative;z-index:1;max-width:820px;margin:0 auto}.target-theme-fashion .fashion-kicker{display:inline-flex;padding-bottom:9px;border-bottom:1px solid rgba(197,168,128,.34);color:#c5a880;text-transform:uppercase;letter-spacing:.25em;font-size:10px;font-weight:700}.target-theme-fashion .fashion-hero h1{margin:36px 0 22px;font-family:Georgia,"Times New Roman",serif;font-size:clamp(44px,7vw,88px);line-height:1.03;font-weight:800;letter-spacing:0}.target-theme-fashion .fashion-hero p{margin:0 auto;max-width:720px;color:rgba(31,26,23,.62);text-transform:uppercase;letter-spacing:.24em;font-size:13px;line-height:1.85;font-weight:600}.target-theme-fashion .fashion-search{display:flex;gap:14px;max-width:700px;margin:38px auto 0}.target-theme-fashion .fashion-search input{flex:1;min-width:0;border:1px solid #efebe4;border-radius:18px;background:rgba(255,255,255,.66);padding:16px 22px;font-size:13px;color:#1f1a17;outline:none}.target-theme-fashion .fashion-search button{border:0;border-radius:18px;background:#1f1a17;color:#fff;padding:0 38px;text-transform:uppercase;letter-spacing:.2em;font-size:12px;font-weight:800;box-shadow:0 14px 28px rgba(31,26,23,.18)}.target-theme-fashion .fashion-section{margin-bottom:84px}.target-theme-fashion .fashion-section-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(239,235,228,.82);padding-bottom:18px;margin-bottom:40px}.target-theme-fashion .fashion-section-head h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:28px;letter-spacing:0}.target-theme-fashion .fashion-section-head span{font-size:10px;text-transform:uppercase;letter-spacing:.25em;color:rgba(31,26,23,.5);font-weight:700}.target-theme-fashion .fashion-feature-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(320px,5fr);gap:32px;align-items:stretch}.target-theme-fashion .fashion-feature-card{position:relative;min-height:540px;overflow:hidden;border:1px solid rgba(239,235,228,.72);border-radius:26px;background:linear-gradient(135deg,#1f1a17,#c5a88066);box-shadow:0 20px 52px rgba(31,26,23,.08)}.target-theme-fashion .fashion-feature-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.target-theme-fashion .fashion-feature-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(31,26,23,.94),rgba(31,26,23,.55),rgba(31,26,23,.08))}.target-theme-fashion .fashion-feature-content{position:absolute;left:44px;right:44px;bottom:38px;color:#fff}.target-theme-fashion .fashion-feature-content>span{display:inline-flex;border-radius:999px;background:#c5a880;color:#1f1a17;padding:6px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.18em;font-weight:800}.target-theme-fashion .fashion-feature-content h3{font-family:Georgia,"Times New Roman",serif;font-size:clamp(30px,4vw,48px);line-height:1.06;margin:20px 0 14px}.target-theme-fashion .fashion-feature-content a{color:inherit;text-decoration:none}.target-theme-fashion .fashion-feature-content p{max-width:680px;color:rgba(255,255,255,.82);font-size:14px;line-height:1.8}.target-theme-fashion .fashion-feature-content div{display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.2);padding-top:18px;margin-top:22px}.target-theme-fashion .fashion-feature-content time{font-size:11px;letter-spacing:.14em;color:rgba(255,255,255,.55)}.target-theme-fashion .fashion-feature-content div a,.target-theme-fashion .fashion-feature-side article>a{font-size:10px;text-transform:uppercase;letter-spacing:.22em;font-weight:800}.target-theme-fashion .fashion-feature-side{display:flex;flex-direction:column;gap:24px}.target-theme-fashion .fashion-feature-side article{flex:1;border:1px solid rgba(239,235,228,.72);border-radius:24px;background:rgba(255,255,255,.42);padding:28px;display:flex;flex-direction:column;justify-content:space-between;transition:background .25s,box-shadow .25s}.target-theme-fashion .fashion-feature-side article:hover,.target-theme-fashion .fashion-card:hover{background:rgba(255,255,255,.78);box-shadow:0 18px 42px rgba(31,26,23,.08)}.target-theme-fashion .fashion-feature-side article div,.target-theme-fashion .fashion-card-meta{display:flex;justify-content:space-between;gap:16px;color:rgba(31,26,23,.54);font-size:10px;text-transform:uppercase;letter-spacing:.18em;font-weight:700}.target-theme-fashion .fashion-feature-side span,.target-theme-fashion .fashion-card-meta span{color:#c5a880}.target-theme-fashion .fashion-feature-side h3,.target-theme-fashion .fashion-card h3{font-family:Georgia,"Times New Roman",serif;line-height:1.15;letter-spacing:0}.target-theme-fashion .fashion-feature-side h3{font-size:24px;margin:18px 0 12px}.target-theme-fashion .fashion-feature-side a,.target-theme-fashion .fashion-card a{color:#1f1a17;text-decoration:none}.target-theme-fashion .fashion-feature-side a:hover,.target-theme-fashion .fashion-card a:hover{color:#c5a880}.target-theme-fashion .fashion-feature-side p,.target-theme-fashion .fashion-card p{color:rgba(31,26,23,.68);font-size:13px;line-height:1.75}.target-theme-fashion .fashion-feature-placeholder{align-items:center;text-align:center;color:rgba(31,26,23,.42);text-transform:uppercase;letter-spacing:.24em;font-size:12px}.target-theme-fashion .fashion-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px}.target-theme-fashion .fashion-card{border:1px solid rgba(239,235,228,.72);border-radius:24px;background:rgba(255,255,255,.42);padding:22px;display:flex;flex-direction:column;transition:background .25s,box-shadow .25s}.target-theme-fashion .fashion-card-media{display:block;aspect-ratio:4/3;border-radius:18px;overflow:hidden;background:linear-gradient(135deg,#faf6f0,#efebe4);margin-bottom:20px}.target-theme-fashion .fashion-card-media img{width:100%;height:100%;object-fit:cover;transition:transform .45s}.target-theme-fashion .fashion-card:hover img{transform:scale(1.04)}.target-theme-fashion .fashion-card h3{font-size:25px;margin:16px 0 10px}.target-theme-fashion .fashion-card-foot{margin-top:auto;border-top:1px solid rgba(239,235,228,.75);padding-top:18px;text-align:right}.target-theme-fashion .fashion-card-foot a{font-size:10px;text-transform:uppercase;letter-spacing:.22em;font-weight:800}.target-theme-fashion .fashion-empty{border:1px solid #efebe4;border-radius:26px;background:rgba(255,255,255,.34);padding:64px;text-align:center;max-width:760px;margin:0 auto 80px}.target-theme-fashion .fashion-empty h2{font-family:Georgia,"Times New Roman",serif;font-size:28px}.target-theme-fashion .detail{max-width:900px;margin:28px auto 76px;border:1px solid rgba(239,235,228,.8);border-radius:26px;background:rgba(255,255,255,.72);padding:48px;box-shadow:0 20px 52px rgba(31,26,23,.06)}.target-theme-fashion .detail h1{font-size:clamp(38px,5vw,64px);line-height:1.08;letter-spacing:0;margin:16px 0 18px}.target-theme-fashion .fashion-article-kicker{display:flex;gap:14px;color:#c5a880;text-transform:uppercase;letter-spacing:.2em;font-size:11px;font-weight:800}.target-theme-fashion .summary{font-size:16px;line-height:1.85;color:rgba(31,26,23,.6);margin-bottom:30px}.target-theme-fashion .content{font-family:Georgia,"Times New Roman",serif;font-size:18px;line-height:1.95}.target-theme-fashion .back{margin-top:32px}.target-theme-fashion footer{border-top-color:#efebe4;padding:44px 0 52px}@media(max-width:900px){.target-theme-fashion .wrap{padding:0 20px}.target-theme-fashion .fashion-search{flex-direction:column}.target-theme-fashion .fashion-search button{padding:15px 28px}.target-theme-fashion .fashion-feature-grid,.target-theme-fashion .fashion-card-grid{grid-template-columns:1fr}.target-theme-fashion .fashion-feature-card{min-height:420px}.target-theme-fashion .fashion-feature-content{left:26px;right:26px}.target-theme-fashion .fashion-section-head{align-items:flex-start;gap:12px;flex-direction:column}.target-theme-fashion .detail{padding:30px 22px}}
 body.target-theme-boutique{background:#f8f1e6;color:#221b14;font-family:"Segoe UI",Tahoma,sans-serif}.target-theme-boutique header{background:rgba(255,252,246,.96);border-bottom-color:#d6b879}.target-theme-boutique .brand,.target-theme-boutique h2 a:hover,.target-theme-boutique .read{color:#8a6326}.target-theme-boutique .hero h1,.target-theme-boutique .detail h1{font-family:Georgia,"Times New Roman",serif}.target-theme-boutique .chip{border-color:#d6b879;background:#fff7e8;color:#7c5520}.target-theme-boutique .card{border-color:#ead8b7;background:#fffaf2;box-shadow:0 18px 45px rgba(75,48,18,.1)}
 CSS;
     }
@@ -716,6 +717,31 @@ function keywordTags(string $keywords): array
     }
 
     return array_slice($tags, 0, 12);
+}
+
+function articleImageUrl(array $article): string
+{
+    $html = is_string($article['content_html'] ?? null) ? (string) $article['content_html'] : '';
+    if ($html !== '' && preg_match('/<img\b[^>]*\bsrc=(["\'])(.*?)\1/iu', $html, $matches) === 1) {
+        return safeContentUrl((string) ($matches[2] ?? ''));
+    }
+
+    $markdown = is_string($article['content'] ?? null) ? (string) $article['content'] : '';
+    if ($markdown !== '' && preg_match('/!\[[^\]]*\]\(([^)\s]+)(?:\s+["\'][^"\']*["\'])?\)/u', $markdown, $matches) === 1) {
+        return safeContentUrl((string) ($matches[1] ?? ''));
+    }
+
+    return '';
+}
+
+function articleSummary(array $article, int $limit = 160): string
+{
+    $summary = trim((string) ($article['excerpt'] ?? $article['meta_description'] ?? ''));
+    if ($summary !== '') {
+        return $summary;
+    }
+
+    return mb_substr(trim(strip_tags((string) ($article['content'] ?? ''))), 0, $limit);
 }
 
 function renderTemplateString(string $template, array $vars): string
@@ -1252,6 +1278,10 @@ function pageHeader(array $config, string $title): void
     if ((string) $settings['site_favicon'] !== '') {
         echo '<link rel="icon" href="'.h((string) $settings['site_favicon']).'">';
     }
+    if ($themeClass === 'target-theme-fashion') {
+        echo '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
+        echo '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&amp;family=Montserrat:wght@300;400;500;600;700&amp;display=swap">';
+    }
     echo '<link rel="stylesheet" href="'.h(frontVersionedAssetPath($config, '/assets/css/site.css')).'">';
     echo '<script defer src="'.h(frontVersionedAssetPath($config, '/assets/js/site.js')).'"></script>';
     echo '</head><body class="'.h($themeClass).'"><header><div class="wrap bar"><a class="brand" href="'.h($homeUrl).'">'.h($siteName).'</a><nav><a href="'.h($homeUrl).'">首页</a></nav></div></header><main class="wrap">';
@@ -1266,6 +1296,12 @@ function pageFooter(array $config): void
 function renderHomePage(array $config): void
 {
     $settings = siteSettings($config);
+    if (themeClass($settings) === 'target-theme-fashion') {
+        renderFashionHomePage($config, $settings);
+
+        return;
+    }
+
     $siteName = (string) $settings['site_name'];
     $articles = array_slice(loadArticles($config), 0, (int) $settings['per_page']);
     pageHeader($config, '首页');
@@ -1298,6 +1334,93 @@ function renderHomePage(array $config): void
     }
     echo '</section>';
     pageFooter($config);
+}
+
+function renderFashionHomePage(array $config, array $settings): void
+{
+    $siteName = (string) $settings['site_name'];
+    $description = (string) $settings['site_description'];
+    $subtitle = trim((string) ($settings['site_subtitle'] ?? ''));
+    $articles = array_slice(loadArticles($config), 0, (int) $settings['per_page']);
+    $featured = array_slice($articles, 0, min(3, count($articles)));
+    $latest = array_slice($articles, 0);
+
+    pageHeader($config, '首页');
+    echo jsonLdScript([
+        "@context"=>"https://schema.org",
+        "@type"=>"WebSite",
+        "name"=>$siteName,
+        "url"=>frontSiteUrl($config, '/'),
+        "description"=>$description,
+    ]);
+    echo '<section class="fashion-hero"><div class="fashion-wordmark">TREND</div><div class="fashion-hero-inner">';
+    echo '<span class="fashion-kicker">Apparel &amp; Textile Intelligence</span>';
+    echo '<h1>'.h($siteName).'</h1>';
+    echo '<p>'.h($subtitle !== '' ? $subtitle : ($description !== '' ? $description : 'Global sourcing updates, supply chain dynamics, and forward-looking fashion market analytics.')).'</p>';
+    echo '<form class="fashion-search" action="'.h(frontSitePath($config, '/')).'" method="get"><input type="search" name="search" placeholder="Search trends, fabrics, materials..."><button type="submit">Search</button></form>';
+    echo '</div></section>';
+
+    if ($articles === []) {
+        echo '<section class="fashion-empty"><h2>No Articles Yet</h2><p>Stay tuned! Premium sourcing and textile research reports are coming soon.</p></section>';
+        pageFooter($config);
+
+        return;
+    }
+
+    if ($featured !== []) {
+        echo '<section class="fashion-section"><div class="fashion-section-head"><h2>Vanguard Choice</h2><span>Curated Highlights</span></div>';
+        $first = $featured[0];
+        $firstUrl = frontSitePath($config, '/article/'.rawurlencode((string) ($first['slug'] ?? '')));
+        $firstImage = articleImageUrl($first);
+        echo '<div class="fashion-feature-grid"><article class="fashion-feature-card">';
+        if ($firstImage !== '') {
+            echo '<img src="'.h($firstImage).'" alt="'.h((string) ($first['title'] ?? '')).'" loading="lazy" decoding="async">';
+        }
+        echo '<div class="fashion-feature-overlay"></div><div class="fashion-feature-content"><span>Featured Report</span>';
+        echo '<h3><a href="'.h($firstUrl).'">'.h((string) ($first['title'] ?? 'Untitled Article')).'</a></h3>';
+        echo '<p>'.h(articleSummary($first, 220)).'</p><div><time>'.h(substr((string) ($first['published_at'] ?? $first['updated_at'] ?? ''), 0, 10)).'</time><a href="'.h($firstUrl).'">Read Analysis</a></div></div></article>';
+        echo '<div class="fashion-feature-side">';
+        foreach (array_slice($featured, 1, 2) as $item) {
+            $url = frontSitePath($config, '/article/'.rawurlencode((string) ($item['slug'] ?? '')));
+            $category = is_array($item['category'] ?? null) ? (string) ($item['category']['name'] ?? 'Insight') : 'Insight';
+            echo '<article><div><span>'.h($category).'</span><time>'.h(substr((string) ($item['published_at'] ?? $item['updated_at'] ?? ''), 0, 10)).'</time></div>';
+            echo '<h3><a href="'.h($url).'">'.h((string) ($item['title'] ?? 'Untitled Article')).'</a></h3><p>'.h(articleSummary($item, 120)).'</p><a href="'.h($url).'">Read Report</a></article>';
+        }
+        if (count($featured) === 1) {
+            echo '<article class="fashion-feature-placeholder"><span>Tailored Trends for Apparel Sourcing</span></article>';
+        }
+        echo '</div></div></section>';
+    }
+
+    echo '<section class="fashion-section"><div class="fashion-section-head"><h2>Latest Intelligence</h2><span>Apparel &amp; Materials Research</span></div><div class="fashion-card-grid">';
+    foreach ($latest as $article) {
+        renderFashionArticleCard($config, $article);
+    }
+    echo '</div></section>';
+    pageFooter($config);
+}
+
+function renderFashionArticleCard(array $config, array $article): void
+{
+    $slug = (string) ($article['slug'] ?? '');
+    $url = frontSitePath($config, '/article/'.rawurlencode($slug));
+    $title = (string) ($article['title'] ?? 'Untitled Article');
+    $image = articleImageUrl($article);
+    $category = is_array($article['category'] ?? null) ? (string) ($article['category']['name'] ?? 'Insight') : 'Insight';
+    $date = substr((string) ($article['published_at'] ?? $article['updated_at'] ?? ''), 0, 10);
+
+    echo '<article class="fashion-card">';
+    echo '<a class="fashion-card-media" href="'.h($url).'">';
+    if ($image !== '') {
+        echo '<img src="'.h($image).'" alt="'.h($title).'" loading="lazy" decoding="async">';
+    }
+    echo '</a><div class="fashion-card-meta"><span>'.h($category).'</span><time>'.h($date).'</time></div>';
+    echo '<h3><a href="'.h($url).'">'.h($title).'</a></h3>';
+    $summary = articleSummary($article, 140);
+    if ($summary !== '') {
+        echo '<p>'.h($summary).'</p>';
+    }
+    echo '<div class="fashion-card-foot"><a href="'.h($url).'">Read Report</a></div></article>';
 }
 
 function renderArticlePage(array $config, string $slug): void
@@ -1340,7 +1463,13 @@ function renderArticlePage(array $config, string $slug): void
             ["@type"=>"ListItem", "position"=>2, "name"=>$title, "item"=>frontSiteUrl($config, '/article/'.rawurlencode($slug))],
         ],
     ]);
-    echo '<a class="back" href="'.h(frontSitePath($config, '/')).'">返回首页</a><article class="card detail"><div class="meta"><span class="chip">'.h($category).'</span><span>'.h($publishedAt).'</span></div>';
+    $isFashion = themeClass(siteSettings($config)) === 'target-theme-fashion';
+    echo '<a class="back" href="'.h(frontSitePath($config, '/')).'">'.($isFashion ? 'Back to Reports' : '返回首页').'</a><article class="card detail">';
+    if ($isFashion) {
+        echo '<div class="fashion-article-kicker"><span>'.h($category).'</span><time>'.h($publishedAt).'</time></div>';
+    } else {
+        echo '<div class="meta"><span class="chip">'.h($category).'</span><span>'.h($publishedAt).'</span></div>';
+    }
     echo '<h1>'.h($title).'</h1>';
     $excerpt = (string) ($article['excerpt'] ?? '');
     if ($excerpt !== '') {
