@@ -157,7 +157,7 @@ HTACCESS;
         return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             .'<title>'.htmlspecialchars('首页 - '.$siteName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</title>'
             .'<meta name="description" content="'.htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'">'
-            .'<link rel="stylesheet" href="assets/css/site.css"><script defer src="assets/js/site.js"></script>'
+            .'<link rel="stylesheet" href="assets/css/site.css?v='.$this->targetAssetVersion($channel).'"><script defer src="assets/js/site.js?v='.$this->targetAssetVersion($channel).'"></script>'
             .'</head><body class="'.htmlspecialchars($themeClass, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'"><header><div class="wrap bar"><div class="brand">'.htmlspecialchars($siteName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</div></div></header><main class="wrap">'
             .'<section class="hero"><h1>'.htmlspecialchars($siteName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</h1><p>'.htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</p></section>'
             .'<div class="empty">暂无文章。请先从 GEOFlow 发布一篇绑定此渠道的文章。</div></main>'
@@ -196,6 +196,15 @@ HTACCESS;
         }
 
         return 'target-theme-default';
+    }
+
+    private function targetAssetVersion(DistributionChannel $channel): string
+    {
+        return substr(hash('sha256', implode('|', [
+            (string) ($channel->template_key ?? ''),
+            (string) ($channel->updated_at ?? ''),
+            (string) config('geoflow.app_version', ''),
+        ])), 0, 12);
     }
 
     private function initialLlmsText(DistributionChannel $channel): string
@@ -854,6 +863,20 @@ function frontAssetPath(array $config, string $path): string
     return ($basePath !== '' ? $basePath : '').$path;
 }
 
+function frontVersionedAssetPath(array $config, string $path): string
+{
+    $assetPath = frontAssetPath($config, $path);
+    $filePath = staticRoot($config).'/'.ltrim($path, '/');
+    $settings = siteSettings($config);
+    $versionSeed = implode('|', [
+        (string) ($settings['active_theme'] ?? ''),
+        is_file($filePath) ? (string) filemtime($filePath) : '',
+    ]);
+    $separator = str_contains($assetPath, '?') ? '&' : '?';
+
+    return $assetPath.$separator.'v='.substr(hash('sha256', $versionSeed), 0, 12);
+}
+
 function frontSiteUrl(array $config, string $path): string
 {
     $publicBaseUrl = rtrim((string) ($config['public_base_url'] ?? ''), '/');
@@ -1229,8 +1252,8 @@ function pageHeader(array $config, string $title): void
     if ((string) $settings['site_favicon'] !== '') {
         echo '<link rel="icon" href="'.h((string) $settings['site_favicon']).'">';
     }
-    echo '<link rel="stylesheet" href="'.h(frontAssetPath($config, '/assets/css/site.css')).'">';
-    echo '<script defer src="'.h(frontAssetPath($config, '/assets/js/site.js')).'"></script>';
+    echo '<link rel="stylesheet" href="'.h(frontVersionedAssetPath($config, '/assets/css/site.css')).'">';
+    echo '<script defer src="'.h(frontVersionedAssetPath($config, '/assets/js/site.js')).'"></script>';
     echo '</head><body class="'.h($themeClass).'"><header><div class="wrap bar"><a class="brand" href="'.h($homeUrl).'">'.h($siteName).'</a><nav><a href="'.h($homeUrl).'">首页</a></nav></div></header><main class="wrap">';
 }
 
