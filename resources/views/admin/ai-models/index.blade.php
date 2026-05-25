@@ -328,9 +328,9 @@
             testFailedPrefix: @json(__('admin.ai_models.test_failed_prefix')),
             testNetworkError: @json(__('admin.ai_models.test_network_error')),
         };
-        const UPDATE_URL_TEMPLATE = @json(route('admin.ai-models.update', ['modelId' => '__MODEL_ID__']));
-        const DELETE_URL_TEMPLATE = @json(route('admin.ai-models.delete', ['modelId' => '__MODEL_ID__']));
-        const TEST_URL_TEMPLATE = @json(route('admin.ai-models.test', ['modelId' => '__MODEL_ID__']));
+        const UPDATE_URL_TEMPLATE = @json(route('admin.ai-models.update', ['modelId' => '__MODEL_ID__'], false));
+        const DELETE_URL_TEMPLATE = @json(route('admin.ai-models.delete', ['modelId' => '__MODEL_ID__'], false));
+        const TEST_URL_TEMPLATE = @json(route('admin.ai-models.test', ['modelId' => '__MODEL_ID__'], false));
 
         const PROVIDER_PRESETS = {
             minimax: {name: 'MiniMax M2.7', version: 'M2.7', model_id: 'MiniMax-M2.7', api_url: 'https://api.minimax.io', model_type: 'chat'},
