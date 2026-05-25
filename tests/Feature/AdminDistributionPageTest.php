@@ -7,11 +7,14 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
+use App\Models\ArticleImage;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
+use App\Models\Image;
+use App\Models\ImageLibrary;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
@@ -1102,6 +1105,57 @@ class AdminDistributionPageTest extends TestCase
         unlink($zipPath);
     }
 
+    public function test_apparel_target_site_package_does_not_render_dead_category_navigation(): void
+    {
+        $channel = DistributionChannel::query()->create([
+            'name' => '服装情报站',
+            'domain' => 'apparel.example.com',
+            'endpoint_url' => 'https://apparel.example.com',
+            'template_key' => 'apparel-sourcing-intelligence',
+            'site_settings' => [
+                'site_name' => 'Apparel Intelligence',
+                'site_description' => 'Global sourcing reports',
+            ],
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'gfk_apparel',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_apparel_secret'),
+            'status' => 'active',
+            'scopes' => ['article.publish', 'health.check'],
+        ]);
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.download-package', ['channelId' => (int) $channel->id]), [
+                'package_password' => 'secret-123',
+            ]);
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'geoflow-target-site-');
+        $this->assertIsString($zipPath);
+        file_put_contents($zipPath, $response->streamedContent());
+
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($zipPath));
+
+        $staticIndex = (string) $zip->getFromName('index.html');
+        $this->assertStringContainsString('assets/css/site.css?v=', $staticIndex);
+        $this->assertStringContainsString('assets/js/site.js?v=', $staticIndex);
+        $this->assertStringContainsString('class="target-theme-apparel"', $staticIndex);
+
+        $siteCss = (string) $zip->getFromName('assets/css/site.css');
+        $this->assertStringContainsString('target-theme-apparel', $siteCss);
+        $this->assertSame(1, substr_count($siteCss, 'body.target-theme-fashion{'));
+
+        $frontController = (string) $zip->getFromName('public/index.php');
+        $this->assertStringContainsString('function frontVersionedAssetPath', $frontController);
+        $this->assertStringNotContainsString("foreach (array_slice(siteCategories(\$config), 0, 7)", $frontController);
+        $this->assertStringNotContainsString("frontSitePath(\$config, '/')\">'.h((string) \$category['name'])", $frontController);
+
+        $zip->close();
+        unlink($zipPath);
+    }
+
     public function test_rewrite_mode_package_disables_static_publish(): void
     {
         $channel = DistributionChannel::query()->create([
@@ -1782,6 +1836,59 @@ MD,
         $this->assertSame('image/png', $image['mime_type']);
         $this->assertNotEmpty($image['content_base64']);
         $this->assertStringContainsString('src="/storage/uploads/images/2026/05/distribution-demo.png"', (string) $payload['article']['content_html']);
+    }
+
+    public function test_distribution_payload_includes_selected_article_hero_image_asset(): void
+    {
+        $fixtures = $this->taskFixtures();
+        $imagePath = storage_path('app/public/uploads/images/2026/05/hero-demo.png');
+        if (! is_dir(dirname($imagePath))) {
+            mkdir(dirname($imagePath), 0755, true);
+        }
+        file_put_contents($imagePath, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=') ?: '');
+
+        $article = Article::query()->create([
+            'title' => '封面图分发文章',
+            'slug' => 'article-with-hero-image',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $fixtures['category']->id,
+            'author_id' => $fixtures['author']->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        $library = ImageLibrary::query()->create([
+            'name' => '封面图库',
+        ]);
+        $image = Image::query()->create([
+            'library_id' => (int) $library->id,
+            'filename' => 'hero-demo.png',
+            'original_name' => 'hero-demo.png',
+            'file_name' => 'hero-demo.png',
+            'file_path' => 'storage/uploads/images/2026/05/hero-demo.png',
+            'file_size' => 67,
+            'mime_type' => 'image/png',
+            'width' => 1,
+            'height' => 1,
+        ]);
+        ArticleImage::query()->create([
+            'article_id' => (int) $article->id,
+            'image_id' => (int) $image->id,
+            'position' => 1,
+        ]);
+
+        try {
+            $payload = app(DistributionPayloadBuilder::class)->build($article);
+        } finally {
+            @unlink($imagePath);
+        }
+
+        $this->assertSame('/storage/uploads/images/2026/05/hero-demo.png', $payload['article']['hero_image_url'] ?? null);
+        $this->assertCount(1, $payload['assets']['images'] ?? []);
+        $this->assertSame('/storage/uploads/images/2026/05/hero-demo.png', $payload['assets']['images'][0]['source_url'] ?? null);
+        $this->assertSame('image/png', $payload['assets']['images'][0]['mime_type'] ?? null);
+        $this->assertNotEmpty($payload['assets']['images'][0]['content_base64'] ?? '');
     }
 
     public function test_distribution_payload_does_not_embed_oversized_local_image_assets(): void

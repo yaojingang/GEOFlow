@@ -110,6 +110,52 @@ MD);
             ->assertSee('首页精选文章');
     }
 
+    public function test_frontend_category_navigation_hides_categories_without_published_articles(): void
+    {
+        $visibleCategory = Category::query()->create([
+            'name' => '可见分类',
+            'slug' => 'visible-category',
+        ]);
+        Category::query()->create([
+            'name' => '空分类',
+            'slug' => 'empty-category',
+        ]);
+        $draftCategory = Category::query()->create([
+            'name' => '草稿分类',
+            'slug' => 'draft-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        Article::query()->create([
+            'title' => '已发布文章',
+            'slug' => 'published-category-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $visibleCategory->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        Article::query()->create([
+            'title' => '草稿文章',
+            'slug' => 'draft-category-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $draftCategory->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('可见分类')
+            ->assertDontSee('空分类')
+            ->assertDontSee('草稿分类');
+    }
+
     public function test_frontend_theme_loads_external_assets_without_inline_css(): void
     {
         $this->get(route('site.home'))
