@@ -24,6 +24,9 @@ final class SiteLayoutComposer
         $categories = collect();
         if (Schema::hasTable('categories')) {
             $categories = Category::query()
+                ->whereHas('articles', function ($q): void {
+                    $q->published();
+                })
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->withCount([
