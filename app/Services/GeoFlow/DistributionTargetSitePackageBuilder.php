@@ -270,6 +270,7 @@ body.target-theme-toutiao{background:#fffafa}.target-theme-toutiao header{border
 body.target-theme-netease{background:#f7f7f7}.target-theme-netease header{border-top:3px solid #d7000f}.target-theme-netease .brand,.target-theme-netease h2 a:hover,.target-theme-netease .read{color:#b91c1c}.target-theme-netease .chip{border-color:#fee2e2;background:#fff1f2;color:#991b1b}.target-theme-netease .hero h1{font-weight:900}.target-theme-netease .card{box-shadow:none}
 body.target-theme-tdwh{background:#f8fbff}.target-theme-tdwh header{border-bottom-color:#bfdbfe}.target-theme-tdwh .brand,.target-theme-tdwh h2 a:hover,.target-theme-tdwh .read{color:#1d4ed8}.target-theme-tdwh .chip{border-color:#bfdbfe;background:#eff6ff;color:#1e40af}.target-theme-tdwh .card{border-color:#dbeafe}
 body.target-theme-apparel{background:#f7f4ee;color:#1d2527;font-family:Georgia,"Times New Roman",serif}.target-theme-apparel header{background:#fffdf8;border-top:4px solid #24483f;border-bottom-color:#d9d3c7}.target-theme-apparel .brand,.target-theme-apparel h2 a:hover,.target-theme-apparel .read{color:#24483f}.target-theme-apparel .hero h1,.target-theme-apparel .detail h1{font-family:Georgia,"Times New Roman",serif;letter-spacing:0}.target-theme-apparel .chip{border-color:#d9d3c7;background:#fffdf8;color:#a87628}.target-theme-apparel .card{border-color:#d9d3c7;background:#fffdf8;box-shadow:0 18px 50px rgba(29,37,39,.11)}
+.target-theme-apparel{--asi-ink:#1d2527;--asi-muted:#657173;--asi-soft:#f7f4ee;--asi-paper:#fffdf8;--asi-line:#d9d3c7;--asi-green:#24483f;--asi-sage:#6f8379;--asi-brass:#a87628;--asi-red:#8f352c;--asi-shadow:0 18px 50px rgba(29,37,39,.11);background:var(--asi-soft);color:var(--asi-ink);font-family:Georgia,"Times New Roman",serif}.target-theme-apparel a{color:inherit;text-decoration:none}.target-theme-apparel .wrap{max-width:none;padding:0}.target-theme-apparel .asi-shell{width:min(1180px,calc(100vw - 48px));margin:0 auto}.target-theme-apparel header{position:static;border:0;background:transparent}.target-theme-apparel main.wrap{max-width:none;padding:0}.target-theme-apparel .asi-topline{background:var(--asi-green);color:#fbf6ea;font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase}.target-theme-apparel .asi-topline-row{display:flex;justify-content:space-between;gap:24px;padding:9px 0}.target-theme-apparel .asi-masthead{border-bottom:1px solid var(--asi-line);background:rgba(255,253,248,.97)}.target-theme-apparel .asi-masthead-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:22px;padding:24px 0 22px}.target-theme-apparel .asi-brand{display:grid;gap:8px;min-width:0}.target-theme-apparel .asi-brand-kicker{color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;letter-spacing:.09em;line-height:1.4;text-transform:uppercase}.target-theme-apparel .asi-brand-name{max-width:820px;font-size:clamp(34px,5vw,62px);font-weight:700;letter-spacing:0;line-height:.95;overflow-wrap:anywhere}.target-theme-apparel .asi-search{display:grid;grid-template-columns:minmax(120px,1fr) auto;align-items:center;width:min(340px,36vw);border:1px solid var(--asi-line);border-radius:999px;background:#fff;padding:5px}.target-theme-apparel .asi-search input{min-width:0;border:0;background:transparent;color:var(--asi-ink);font-family:"Segoe UI",Tahoma,sans-serif;font-size:14px;outline:none;padding:8px 12px}.target-theme-apparel .asi-search button{border:0;border-radius:999px;background:var(--asi-green);color:#fffdf8;font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;font-weight:700;padding:8px 14px}.target-theme-apparel .asi-nav{display:flex;justify-content:center;gap:24px;border-top:1px solid var(--asi-line);padding:12px 0;color:#394548;font-family:"Segoe UI",Tahoma,sans-serif;font-size:14px;overflow-x:auto}.target-theme-apparel .asi-nav a{border-bottom:2px solid transparent;padding:2px 0;white-space:nowrap}.target-theme-apparel .asi-nav a:hover,.target-theme-apparel .asi-nav .is-active{border-color:var(--asi-brass);color:var(--asi-green)}.target-theme-apparel .asi-page{padding:34px 0 54px}.target-theme-apparel .asi-hero{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:28px;align-items:stretch}.target-theme-apparel .asi-lead{display:grid;grid-template-rows:minmax(290px,1fr) auto;min-height:510px;border-bottom:1px solid var(--asi-ink)}.target-theme-apparel .asi-visual{position:relative;display:block;overflow:hidden;border-radius:6px;background:#e7dfd2;min-height:110px}.target-theme-apparel .asi-visual img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.01);transition:transform .35s ease}.target-theme-apparel .asi-visual:hover img{transform:scale(1.05)}.target-theme-apparel .asi-visual-pattern{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,rgba(36,72,63,.18),rgba(168,118,40,.2)),repeating-linear-gradient(90deg,rgba(29,37,39,.08) 0 1px,transparent 1px 32px),repeating-linear-gradient(0deg,rgba(29,37,39,.06) 0 1px,transparent 1px 26px),#efe8dc}.target-theme-apparel .asi-visual-pattern span{display:grid;place-items:center;width:74px;height:74px;border:1px solid rgba(36,72,63,.22);border-radius:50%;background:rgba(255,253,248,.82);color:var(--asi-green);font-family:"Segoe UI",Tahoma,sans-serif;font-size:32px;font-weight:800}.target-theme-apparel .asi-lead-visual{min-height:320px;box-shadow:var(--asi-shadow)}.target-theme-apparel .asi-visual-badge{position:absolute;left:18px;bottom:18px;max-width:calc(100% - 36px);border:1px solid rgba(217,211,199,.88);border-radius:6px;background:rgba(255,253,248,.94);font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;letter-spacing:.08em;line-height:1.4;overflow-wrap:anywhere;padding:10px 12px;text-transform:uppercase}.target-theme-apparel .asi-lead-copy{padding-top:22px}.target-theme-apparel .asi-kicker,.target-theme-apparel .asi-panel-kicker,.target-theme-apparel .asi-article-section{color:var(--asi-red);font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;font-weight:800;letter-spacing:.1em;line-height:1.5;text-transform:uppercase}.target-theme-apparel .asi-lead h1,.target-theme-apparel .asi-article-head h1{margin:0;font-size:clamp(36px,4vw,58px);font-weight:700;letter-spacing:0;line-height:.99;overflow-wrap:anywhere}.target-theme-apparel .asi-lead h1{margin-top:12px;max-width:720px}.target-theme-apparel .asi-lead p,.target-theme-apparel .asi-article-head p{max-width:680px;margin:16px 0 0;color:#465153;font-family:"Segoe UI",Tahoma,sans-serif;font-size:17px;line-height:1.58}.target-theme-apparel .asi-hero-rail{display:grid;grid-template-rows:auto 1fr;gap:18px}.target-theme-apparel .asi-briefing,.target-theme-apparel .asi-briefing-panel{background:var(--asi-green);color:#fffaf0}.target-theme-apparel .asi-briefing{display:grid;align-content:space-between;min-height:172px;border-radius:6px;padding:22px}.target-theme-apparel .asi-briefing span,.target-theme-apparel .asi-briefing small{font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase}.target-theme-apparel .asi-briefing strong{display:block;margin-top:18px;font-size:28px;line-height:1.05}.target-theme-apparel .asi-briefing div{display:grid;grid-template-columns:1fr auto;gap:18px;border-top:1px solid rgba(255,255,255,.24);margin-top:20px;padding-top:16px}.target-theme-apparel .asi-headline-stack,.target-theme-apparel .asi-feed-section,.target-theme-apparel .asi-panel{border:1px solid var(--asi-line);border-radius:6px;background:var(--asi-paper)}.target-theme-apparel .asi-headline-stack{overflow:hidden}.target-theme-apparel .asi-mini-story{display:grid;grid-template-columns:112px minmax(0,1fr);gap:16px;min-height:128px;border-bottom:1px solid var(--asi-line);padding:18px}.target-theme-apparel .asi-mini-story:last-child{border-bottom:0}.target-theme-apparel .asi-mini-visual{min-height:92px}.target-theme-apparel .asi-mini-story h2{margin:0;font-size:20px;letter-spacing:0;line-height:1.12;overflow-wrap:anywhere}.target-theme-apparel .asi-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;letter-spacing:.04em;line-height:1.5;text-transform:uppercase}.target-theme-apparel .asi-meta a,.target-theme-apparel .asi-meta span:first-child{color:var(--asi-red);font-weight:800}.target-theme-apparel .asi-content-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:34px;align-items:start;margin-top:38px}.target-theme-apparel .asi-feed-section{border-top:3px solid var(--asi-ink);overflow:hidden}.target-theme-apparel .asi-section-head,.target-theme-apparel .asi-panel-head{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--asi-line);margin:0 18px;padding:18px 0}.target-theme-apparel .asi-section-head span,.target-theme-apparel .asi-panel-head h2{margin:0;color:var(--asi-ink);font-family:"Segoe UI",Tahoma,sans-serif;font-size:18px;font-weight:800;letter-spacing:.08em;line-height:1.25;text-transform:uppercase}.target-theme-apparel .asi-feed-list{display:grid}.target-theme-apparel .asi-card{display:grid;grid-template-columns:150px minmax(0,1fr);gap:20px;align-items:start;border-bottom:1px solid var(--asi-line);padding:20px 18px}.target-theme-apparel .asi-card:last-child{border-bottom:0}.target-theme-apparel .asi-card-visual{aspect-ratio:4/3;min-height:112px}.target-theme-apparel .asi-card h2{margin:6px 0 0;font-size:25px;font-weight:700;letter-spacing:0;line-height:1.14;overflow-wrap:anywhere}.target-theme-apparel .asi-card p{margin:9px 0 0;color:#4d595b;font-family:"Segoe UI",Tahoma,sans-serif;font-size:14px;line-height:1.6}.target-theme-apparel .asi-sidebar{display:grid;gap:22px}.target-theme-apparel .asi-panel{padding-bottom:18px}.target-theme-apparel .asi-briefing-panel{border-color:var(--asi-green);padding:22px}.target-theme-apparel .asi-briefing-panel h2{margin:14px 0 0;font-size:28px;line-height:1.08}.target-theme-apparel .asi-briefing-panel p{color:rgba(255,250,240,.78);font-family:"Segoe UI",Tahoma,sans-serif;line-height:1.6}.target-theme-apparel .asi-rank-list{display:grid}.target-theme-apparel .asi-rank-item{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;border-bottom:1px solid var(--asi-line);padding:14px 18px}.target-theme-apparel .asi-rank-item:last-child{border-bottom:0}.target-theme-apparel .asi-rank-item span{color:var(--asi-brass);font-size:24px;font-weight:700}.target-theme-apparel .asi-rank-item strong{font-size:17px;line-height:1.22}.target-theme-apparel .asi-article-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:34px;padding:34px 0 56px}.target-theme-apparel .asi-breadcrumb{display:flex;gap:8px;margin-bottom:18px;color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;text-transform:uppercase}.target-theme-apparel .asi-article{border-top:3px solid var(--asi-ink);background:var(--asi-paper);border:1px solid var(--asi-line);border-radius:6px;padding:30px}.target-theme-apparel .asi-article-head{border-bottom:1px solid var(--asi-line);padding-bottom:24px}.target-theme-apparel .asi-post-info{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;text-transform:uppercase}.target-theme-apparel .asi-article-visual{aspect-ratio:16/9;margin:28px 0;min-height:280px}.target-theme-apparel .content,.target-theme-apparel .asi-prose{font-size:18px;line-height:1.92;color:#263033}.target-theme-apparel .content h2,.target-theme-apparel .asi-prose h2{font-size:28px;line-height:1.18;margin:1.6em 0 .65em}.target-theme-apparel .tags,.target-theme-apparel .asi-tag-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px;padding-top:22px;border-top:1px solid var(--asi-line)}.target-theme-apparel .tags span,.target-theme-apparel .asi-tag-list span{display:inline-flex;border:1px solid var(--asi-line);border-radius:999px;background:#fff;color:#394548;font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;font-weight:700;padding:7px 11px}.target-theme-apparel footer{border-top:1px solid var(--asi-line);background:var(--asi-paper);color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;padding:28px 0}@media(max-width:900px){.target-theme-apparel .asi-shell{width:min(100% - 32px,1180px)}.target-theme-apparel .asi-topline-row,.target-theme-apparel .asi-masthead-row{display:grid;gap:10px}.target-theme-apparel .asi-search{width:100%}.target-theme-apparel .asi-hero,.target-theme-apparel .asi-content-grid,.target-theme-apparel .asi-article-layout{grid-template-columns:1fr}.target-theme-apparel .asi-card{grid-template-columns:1fr}.target-theme-apparel .asi-card-visual{min-height:200px}.target-theme-apparel .asi-mini-story{grid-template-columns:96px minmax(0,1fr)}.target-theme-apparel .asi-article{padding:22px}}
 body.target-theme-fashion{background:#faf6f0;color:#1f1a17;font-family:"Segoe UI",Tahoma,sans-serif}.target-theme-fashion header{background:rgba(250,246,240,.95);border-bottom-color:#efebe4}.target-theme-fashion .brand,.target-theme-fashion .hero h1,.target-theme-fashion .detail h1,.target-theme-fashion h2{font-family:Georgia,"Times New Roman",serif}.target-theme-fashion .brand,.target-theme-fashion h2 a:hover,.target-theme-fashion .read{color:#1f1a17}.target-theme-fashion .chip{border-color:#eadfce;background:rgba(197,168,128,.08);color:#9b7a4f}.target-theme-fashion .card{border-color:#efebe4;background:#fff;box-shadow:0 15px 35px rgba(31,26,23,.07)}.target-theme-fashion .content{font-family:Georgia,"Times New Roman",serif;color:rgba(31,26,23,.92)}
 body.target-theme-fashion{font-family:Montserrat,"Segoe UI",Tahoma,sans-serif;background:#faf6f0;color:#1f1a17}.target-theme-fashion .wrap{max-width:1280px;padding:0 32px}.target-theme-fashion header{position:fixed;left:0;right:0;top:0;background:rgba(250,246,240,.82);border-bottom:1px solid rgba(239,235,228,.78);backdrop-filter:blur(14px);z-index:20}.target-theme-fashion header .bar{height:76px}.target-theme-fashion .brand{font-family:Georgia,"Times New Roman",serif;font-size:25px;font-weight:600;letter-spacing:.08em}.target-theme-fashion nav a{color:rgba(31,26,23,.62);font-size:13px}.target-theme-fashion main.wrap{padding-top:76px}.target-theme-fashion .fashion-hero{position:relative;text-align:center;overflow:hidden;padding:88px 0 112px}.target-theme-fashion .fashion-wordmark{position:absolute;left:50%;top:4px;transform:translateX(-50%);font-family:Georgia,"Times New Roman",serif;font-size:clamp(96px,16vw,220px);font-weight:800;letter-spacing:.08em;line-height:.85;color:rgba(239,235,228,.68);pointer-events:none;user-select:none}.target-theme-fashion .fashion-hero-inner{position:relative;z-index:1;max-width:820px;margin:0 auto}.target-theme-fashion .fashion-kicker{display:inline-flex;padding-bottom:9px;border-bottom:1px solid rgba(197,168,128,.34);color:#c5a880;text-transform:uppercase;letter-spacing:.25em;font-size:10px;font-weight:700}.target-theme-fashion .fashion-hero h1{margin:36px 0 22px;font-family:Georgia,"Times New Roman",serif;font-size:clamp(44px,7vw,88px);line-height:1.03;font-weight:800;letter-spacing:0}.target-theme-fashion .fashion-hero p{margin:0 auto;max-width:720px;color:rgba(31,26,23,.62);text-transform:uppercase;letter-spacing:.24em;font-size:13px;line-height:1.85;font-weight:600}.target-theme-fashion .fashion-search{display:flex;gap:14px;max-width:700px;margin:38px auto 0}.target-theme-fashion .fashion-search input{flex:1;min-width:0;border:1px solid #efebe4;border-radius:18px;background:rgba(255,255,255,.66);padding:16px 22px;font-size:13px;color:#1f1a17;outline:none}.target-theme-fashion .fashion-search button{border:0;border-radius:18px;background:#1f1a17;color:#fff;padding:0 38px;text-transform:uppercase;letter-spacing:.2em;font-size:12px;font-weight:800;box-shadow:0 14px 28px rgba(31,26,23,.18)}.target-theme-fashion .fashion-section{margin-bottom:84px}.target-theme-fashion .fashion-section-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(239,235,228,.82);padding-bottom:18px;margin-bottom:40px}.target-theme-fashion .fashion-section-head h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:28px;letter-spacing:0}.target-theme-fashion .fashion-section-head span{font-size:10px;text-transform:uppercase;letter-spacing:.25em;color:rgba(31,26,23,.5);font-weight:700}.target-theme-fashion .fashion-feature-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(320px,5fr);gap:32px;align-items:stretch}.target-theme-fashion .fashion-feature-card{position:relative;min-height:540px;overflow:hidden;border:1px solid rgba(239,235,228,.72);border-radius:26px;background:linear-gradient(135deg,#1f1a17,#c5a88066);box-shadow:0 20px 52px rgba(31,26,23,.08)}.target-theme-fashion .fashion-feature-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.target-theme-fashion .fashion-feature-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(31,26,23,.94),rgba(31,26,23,.55),rgba(31,26,23,.08))}.target-theme-fashion .fashion-feature-content{position:absolute;left:44px;right:44px;bottom:38px;color:#fff}.target-theme-fashion .fashion-feature-content>span{display:inline-flex;border-radius:999px;background:#c5a880;color:#1f1a17;padding:6px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.18em;font-weight:800}.target-theme-fashion .fashion-feature-content h3{font-family:Georgia,"Times New Roman",serif;font-size:clamp(30px,4vw,48px);line-height:1.06;margin:20px 0 14px}.target-theme-fashion .fashion-feature-content a{color:inherit;text-decoration:none}.target-theme-fashion .fashion-feature-content p{max-width:680px;color:rgba(255,255,255,.82);font-size:14px;line-height:1.8}.target-theme-fashion .fashion-feature-content div{display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.2);padding-top:18px;margin-top:22px}.target-theme-fashion .fashion-feature-content time{font-size:11px;letter-spacing:.14em;color:rgba(255,255,255,.55)}.target-theme-fashion .fashion-feature-content div a,.target-theme-fashion .fashion-feature-side article>a{font-size:10px;text-transform:uppercase;letter-spacing:.22em;font-weight:800}.target-theme-fashion .fashion-feature-side{display:flex;flex-direction:column;gap:24px}.target-theme-fashion .fashion-feature-side article{flex:1;border:1px solid rgba(239,235,228,.72);border-radius:24px;background:rgba(255,255,255,.42);padding:28px;display:flex;flex-direction:column;justify-content:space-between;transition:background .25s,box-shadow .25s}.target-theme-fashion .fashion-feature-side article:hover,.target-theme-fashion .fashion-card:hover{background:rgba(255,255,255,.78);box-shadow:0 18px 42px rgba(31,26,23,.08)}.target-theme-fashion .fashion-feature-side article div,.target-theme-fashion .fashion-card-meta{display:flex;justify-content:space-between;gap:16px;color:rgba(31,26,23,.54);font-size:10px;text-transform:uppercase;letter-spacing:.18em;font-weight:700}.target-theme-fashion .fashion-feature-side span,.target-theme-fashion .fashion-card-meta span{color:#c5a880}.target-theme-fashion .fashion-feature-side h3,.target-theme-fashion .fashion-card h3{font-family:Georgia,"Times New Roman",serif;line-height:1.15;letter-spacing:0}.target-theme-fashion .fashion-feature-side h3{font-size:24px;margin:18px 0 12px}.target-theme-fashion .fashion-feature-side a,.target-theme-fashion .fashion-card a{color:#1f1a17;text-decoration:none}.target-theme-fashion .fashion-feature-side a:hover,.target-theme-fashion .fashion-card a:hover{color:#c5a880}.target-theme-fashion .fashion-feature-side p,.target-theme-fashion .fashion-card p{color:rgba(31,26,23,.68);font-size:13px;line-height:1.75}.target-theme-fashion .fashion-feature-placeholder{align-items:center;text-align:center;color:rgba(31,26,23,.42);text-transform:uppercase;letter-spacing:.24em;font-size:12px}.target-theme-fashion .fashion-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px}.target-theme-fashion .fashion-card{border:1px solid rgba(239,235,228,.72);border-radius:24px;background:rgba(255,255,255,.42);padding:22px;display:flex;flex-direction:column;transition:background .25s,box-shadow .25s}.target-theme-fashion .fashion-card-media{display:block;aspect-ratio:4/3;border-radius:18px;overflow:hidden;background:linear-gradient(135deg,#faf6f0,#efebe4);margin-bottom:20px}.target-theme-fashion .fashion-card-media img{width:100%;height:100%;object-fit:cover;transition:transform .45s}.target-theme-fashion .fashion-card:hover img{transform:scale(1.04)}.target-theme-fashion .fashion-card h3{font-size:25px;margin:16px 0 10px}.target-theme-fashion .fashion-card-foot{margin-top:auto;border-top:1px solid rgba(239,235,228,.75);padding-top:18px;text-align:right}.target-theme-fashion .fashion-card-foot a{font-size:10px;text-transform:uppercase;letter-spacing:.22em;font-weight:800}.target-theme-fashion .fashion-empty{border:1px solid #efebe4;border-radius:26px;background:rgba(255,255,255,.34);padding:64px;text-align:center;max-width:760px;margin:0 auto 80px}.target-theme-fashion .fashion-empty h2{font-family:Georgia,"Times New Roman",serif;font-size:28px}.target-theme-fashion .detail{max-width:900px;margin:28px auto 76px;border:1px solid rgba(239,235,228,.8);border-radius:26px;background:rgba(255,255,255,.72);padding:48px;box-shadow:0 20px 52px rgba(31,26,23,.06)}.target-theme-fashion .detail h1{font-size:clamp(38px,5vw,64px);line-height:1.08;letter-spacing:0;margin:16px 0 18px}.target-theme-fashion .fashion-article-kicker{display:flex;gap:14px;color:#c5a880;text-transform:uppercase;letter-spacing:.2em;font-size:11px;font-weight:800}.target-theme-fashion .summary{font-size:16px;line-height:1.85;color:rgba(31,26,23,.6);margin-bottom:30px}.target-theme-fashion .content{font-family:Georgia,"Times New Roman",serif;font-size:18px;line-height:1.95}.target-theme-fashion .back{margin-top:32px}.target-theme-fashion footer{border-top-color:#efebe4;padding:44px 0 52px}@media(max-width:900px){.target-theme-fashion .wrap{padding:0 20px}.target-theme-fashion .fashion-search{flex-direction:column}.target-theme-fashion .fashion-search button{padding:15px 28px}.target-theme-fashion .fashion-feature-grid,.target-theme-fashion .fashion-card-grid{grid-template-columns:1fr}.target-theme-fashion .fashion-feature-card{min-height:420px}.target-theme-fashion .fashion-feature-content{left:26px;right:26px}.target-theme-fashion .fashion-section-head{align-items:flex-start;gap:12px;flex-direction:column}.target-theme-fashion .detail{padding:30px 22px}}
 body.target-theme-boutique{background:#f8f1e6;color:#221b14;font-family:"Segoe UI",Tahoma,sans-serif}.target-theme-boutique header{background:rgba(255,252,246,.96);border-bottom-color:#d6b879}.target-theme-boutique .brand,.target-theme-boutique h2 a:hover,.target-theme-boutique .read{color:#8a6326}.target-theme-boutique .hero h1,.target-theme-boutique .detail h1{font-family:Georgia,"Times New Roman",serif}.target-theme-boutique .chip{border-color:#d6b879;background:#fff7e8;color:#7c5520}.target-theme-boutique .card{border-color:#ead8b7;background:#fffaf2;box-shadow:0 18px 45px rgba(75,48,18,.1)}
@@ -721,6 +722,11 @@ function keywordTags(string $keywords): array
 
 function articleImageUrl(array $article): string
 {
+    $heroImageUrl = safeContentUrl((string) ($article['hero_image_url'] ?? ''));
+    if ($heroImageUrl !== '') {
+        return $heroImageUrl;
+    }
+
     $html = is_string($article['content_html'] ?? null) ? (string) $article['content_html'] : '';
     if ($html !== '' && preg_match('/<img\b[^>]*\bsrc=(["\'])(.*?)\1/iu', $html, $matches) === 1) {
         return safeContentUrl((string) ($matches[2] ?? ''));
@@ -1160,7 +1166,7 @@ function localizeArticleAssets(array $config, array $article, array $assets): ar
         return $article;
     }
 
-    foreach (['content', 'content_html'] as $field) {
+    foreach (['content', 'content_html', 'hero_image_url'] as $field) {
         if (is_string($article[$field] ?? null)) {
             $article[$field] = str_replace(array_keys($replacements), array_values($replacements), (string) $article[$field]);
         }
@@ -1254,11 +1260,53 @@ function findArticle(array $config, string $slug): ?array
     return null;
 }
 
+function articleCategoryName(array $article): string
+{
+    return is_array($article['category'] ?? null) ? (string) ($article['category']['name'] ?? 'Insight') : 'Insight';
+}
+
+function articleCategorySlug(array $article): string
+{
+    return is_array($article['category'] ?? null) ? (string) ($article['category']['slug'] ?? '') : '';
+}
+
+function articleDate(array $article, string $format = 'Y-m-d'): string
+{
+    $date = substr((string) ($article['published_at'] ?? $article['updated_at'] ?? ''), 0, 10);
+    if ($date === '') {
+        return '';
+    }
+    $timestamp = strtotime($date);
+
+    return $timestamp ? date($format, $timestamp) : $date;
+}
+
+function siteCategories(array $config): array
+{
+    $categories = [];
+    foreach (loadArticles($config) as $article) {
+        $name = articleCategoryName($article);
+        $slug = articleCategorySlug($article);
+        if ($name === '' || $slug === '') {
+            continue;
+        }
+        $categories[$slug] ??= ['name' => $name, 'slug' => $slug, 'count' => 0];
+        $categories[$slug]['count']++;
+    }
+
+    return array_values($categories);
+}
+
 function pageHeader(array $config, string $title): void
 {
     $settings = siteSettings($config);
     $siteName = (string) $settings['site_name'];
     $themeClass = themeClass($settings);
+    if ($themeClass === 'target-theme-apparel') {
+        apparelPageHeader($config, $settings, $title);
+
+        return;
+    }
     $description = renderTemplateString((string) $settings['seo_description_template'], [
         'description' => (string) $settings['site_description'],
         'site_name' => $siteName,
@@ -1290,12 +1338,55 @@ function pageHeader(array $config, string $title): void
 function pageFooter(array $config): void
 {
     $settings = siteSettings($config);
+    if (themeClass($settings) === 'target-theme-apparel') {
+        echo '</main><footer><div class="asi-shell">'.h((string) $settings['copyright_info']).'</div></footer></body></html>';
+
+        return;
+    }
+
     echo '</main><footer><div class="wrap">'.h((string) $settings['copyright_info']).'</div></footer></body></html>';
+}
+
+function apparelPageHeader(array $config, array $settings, string $title): void
+{
+    $siteName = (string) $settings['site_name'];
+    $description = renderTemplateString((string) $settings['seo_description_template'], [
+        'description' => (string) $settings['site_description'],
+        'site_name' => $siteName,
+        'keywords' => (string) $settings['site_keywords'],
+    ]);
+    $pageTitle = renderTemplateString((string) $settings['seo_title_template'], [
+        'title' => $title,
+        'site_name' => $siteName,
+        'category' => '',
+    ]);
+    $homeUrl = frontSitePath($config, '/');
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+    echo '<title>'.h($pageTitle).'</title><meta name="description" content="'.h($description).'">';
+    if ((string) $settings['site_keywords'] !== '') {
+        echo '<meta name="keywords" content="'.h((string) $settings['site_keywords']).'">';
+    }
+    echo '<link rel="stylesheet" href="'.h(frontVersionedAssetPath($config, '/assets/css/site.css')).'">';
+    echo '<script defer src="'.h(frontVersionedAssetPath($config, '/assets/js/site.js')).'"></script>';
+    echo '</head><body class="target-theme-apparel"><header><div class="asi-topline"><div class="asi-shell asi-topline-row"><span>Global apparel sourcing, trade policy and supplier intelligence</span><span>'.h(date('l, F j, Y')).'</span></div></div>';
+    echo '<div class="asi-masthead"><div class="asi-shell asi-masthead-row"><a class="asi-brand" href="'.h($homeUrl).'"><span class="asi-brand-kicker">Independent Market Briefing</span><span class="asi-brand-name">'.h($siteName).'</span></a>';
+    echo '<form class="asi-search" action="'.h($homeUrl).'" method="get"><input type="search" name="search" placeholder="Search intelligence"><button type="submit">Search</button></form></div>';
+    echo '<nav class="asi-nav asi-shell" aria-label="Primary"><a class="is-active" href="'.h($homeUrl).'">Latest</a>';
+    foreach (array_slice(siteCategories($config), 0, 7) as $category) {
+        echo '<a href="'.h(frontSitePath($config, '/')).'">'.h((string) $category['name']).'</a>';
+    }
+    echo '</nav></div></header><main class="wrap">';
 }
 
 function renderHomePage(array $config): void
 {
     $settings = siteSettings($config);
+    if (themeClass($settings) === 'target-theme-apparel') {
+        renderApparelHomePage($config, $settings);
+
+        return;
+    }
+
     if (themeClass($settings) === 'target-theme-fashion') {
         renderFashionHomePage($config, $settings);
 
@@ -1334,6 +1425,103 @@ function renderHomePage(array $config): void
     }
     echo '</section>';
     pageFooter($config);
+}
+
+function renderApparelHomePage(array $config, array $settings): void
+{
+    $siteName = (string) $settings['site_name'];
+    $articles = array_slice(loadArticles($config), 0, (int) $settings['per_page']);
+    $lead = $articles[0] ?? null;
+    $headlines = array_slice($articles, 1, 3);
+    $latest = $lead ? array_slice($articles, 1) : $articles;
+
+    pageHeader($config, 'Latest Intelligence');
+    echo jsonLdScript([
+        "@context"=>"https://schema.org",
+        "@type"=>"CollectionPage",
+        "name"=>"Latest Intelligence - ".$siteName,
+        "url"=>frontSiteUrl($config, '/'),
+        "description"=>(string) $settings['site_description'],
+    ]);
+    echo '<div class="asi-shell asi-page">';
+
+    if ($lead) {
+        $leadUrl = frontSitePath($config, '/article/'.rawurlencode((string) ($lead['slug'] ?? '')));
+        echo '<section class="asi-hero"><article class="asi-lead">';
+        renderApparelVisual($config, $lead, 'asi-lead-visual', articleCategoryName($lead));
+        echo '<div class="asi-lead-copy"><div class="asi-kicker">Lead Analysis</div><h1><a href="'.h($leadUrl).'">'.h((string) ($lead['title'] ?? 'Untitled Article')).'</a></h1>';
+        echo '<p>'.h(articleSummary($lead, 240) ?: (string) $settings['site_description']).'</p></div></article>';
+        echo '<aside class="asi-hero-rail"><section class="asi-briefing"><span>Today\'s Briefing</span><strong>'.h((string) ($settings['site_subtitle'] ?: 'Buyers are rebalancing sourcing maps as cost, speed and compliance collide.')).'</strong><div><small>Daily market note</small><small>'.h(date('H:i T')).'</small></div></section>';
+        echo '<section class="asi-headline-stack">';
+        foreach ($headlines as $headline) {
+            $url = frontSitePath($config, '/article/'.rawurlencode((string) ($headline['slug'] ?? '')));
+            echo '<article class="asi-mini-story">';
+            renderApparelVisual($config, $headline, 'asi-mini-visual');
+            echo '<div><h2><a href="'.h($url).'">'.h((string) ($headline['title'] ?? 'Untitled Article')).'</a></h2><div class="asi-meta"><span>'.h(articleCategoryName($headline)).'</span><time>'.h(articleDate($headline, 'M j')).'</time></div></div></article>';
+        }
+        if ($headlines === []) {
+            echo '<div class="empty">No featured stories yet.</div>';
+        }
+        echo '</section></aside></section>';
+    }
+
+    echo '<div class="asi-content-grid"><section class="asi-feed-section"><div class="asi-section-head"><span>Latest Intelligence</span><small>Updated continuously</small></div><div class="asi-feed-list">';
+    if ($latest === []) {
+        echo '<div class="empty">No articles yet.</div>';
+    }
+    foreach ($latest as $article) {
+        renderApparelArticleCard($config, $article);
+    }
+    echo '</div></section>';
+    renderApparelSidebar($config, $settings, $articles);
+    echo '</div></div>';
+    pageFooter($config);
+}
+
+function renderApparelVisual(array $config, array $article, string $class, string $badge = ''): void
+{
+    $url = frontSitePath($config, '/article/'.rawurlencode((string) ($article['slug'] ?? '')));
+    $title = (string) ($article['title'] ?? 'Untitled Article');
+    $image = articleImageUrl($article);
+    $initial = mb_strtoupper(mb_substr(articleCategoryName($article), 0, 1));
+    echo '<a class="asi-visual '.h($class).'" href="'.h($url).'" aria-label="'.h($title).'">';
+    if ($image !== '') {
+        echo '<img src="'.h($image).'" alt="'.h($title).'" loading="lazy" decoding="async">';
+    } else {
+        echo '<span class="asi-visual-pattern"><span>'.h($initial).'</span></span>';
+    }
+    if ($badge !== '') {
+        echo '<span class="asi-visual-badge">'.h($badge).'</span>';
+    }
+    echo '</a>';
+}
+
+function renderApparelArticleCard(array $config, array $article): void
+{
+    $url = frontSitePath($config, '/article/'.rawurlencode((string) ($article['slug'] ?? '')));
+    echo '<article class="asi-card">';
+    renderApparelVisual($config, $article, 'asi-card-visual');
+    echo '<div class="asi-card-copy"><div class="asi-meta"><span>'.h(articleCategoryName($article)).'</span><time>'.h(articleDate($article, 'M j, Y')).'</time></div>';
+    echo '<h2><a href="'.h($url).'">'.h((string) ($article['title'] ?? 'Untitled Article')).'</a></h2>';
+    $summary = articleSummary($article, 180);
+    if ($summary !== '') {
+        echo '<p>'.h($summary).'</p>';
+    }
+    echo '</div></article>';
+}
+
+function renderApparelSidebar(array $config, array $settings, array $articles): void
+{
+    echo '<aside class="asi-sidebar"><section class="asi-panel asi-briefing-panel"><span class="asi-panel-kicker">Daily Briefing</span><h2>'.h((string) ($settings['site_subtitle'] ?: 'Compliance costs are now a sourcing decision.')).'</h2>';
+    if ((string) $settings['site_description'] !== '') {
+        echo '<p>'.h((string) $settings['site_description']).'</p>';
+    }
+    echo '</section><section class="asi-panel"><div class="asi-panel-head"><h2>Editor Picks</h2></div><div class="asi-rank-list">';
+    foreach (array_slice($articles, 0, 6) as $index => $article) {
+        $url = frontSitePath($config, '/article/'.rawurlencode((string) ($article['slug'] ?? '')));
+        echo '<a class="asi-rank-item" href="'.h($url).'"><span>'.($index + 1).'</span><strong>'.h((string) ($article['title'] ?? 'Untitled Article')).'</strong></a>';
+    }
+    echo '</div></section></aside>';
 }
 
 function renderFashionHomePage(array $config, array $settings): void
@@ -1463,19 +1651,35 @@ function renderArticlePage(array $config, string $slug): void
             ["@type"=>"ListItem", "position"=>2, "name"=>$title, "item"=>frontSiteUrl($config, '/article/'.rawurlencode($slug))],
         ],
     ]);
-    $isFashion = themeClass(siteSettings($config)) === 'target-theme-fashion';
-    echo '<a class="back" href="'.h(frontSitePath($config, '/')).'">'.($isFashion ? 'Back to Reports' : '返回首页').'</a><article class="card detail">';
+    $themeClass = themeClass(siteSettings($config));
+    $isFashion = $themeClass === 'target-theme-fashion';
+    $isApparel = $themeClass === 'target-theme-apparel';
+    echo $isApparel ? '<div class="asi-shell asi-article-layout"><main class="asi-article-column"><nav class="asi-breadcrumb"><a href="'.h(frontSitePath($config, '/')).'">Latest</a><span>/</span><span>'.h($category).'</span></nav>' : '';
+    echo '<a class="back" href="'.h(frontSitePath($config, '/')).'">'.($isFashion || $isApparel ? 'Back to Reports' : '返回首页').'</a><article class="'.($isApparel ? 'asi-article' : 'card detail').'">';
     if ($isFashion) {
         echo '<div class="fashion-article-kicker"><span>'.h($category).'</span><time>'.h($publishedAt).'</time></div>';
+    } elseif ($isApparel) {
+        echo '<header class="asi-article-head"><a class="asi-article-section" href="'.h(frontSitePath($config, '/')).'">'.h($category).'</a>';
     } else {
         echo '<div class="meta"><span class="chip">'.h($category).'</span><span>'.h($publishedAt).'</span></div>';
     }
     echo '<h1>'.h($title).'</h1>';
+    if ($isApparel) {
+        echo '<div class="asi-post-info"><time>'.h($publishedAt).'</time>';
+        if (is_array($article['author'] ?? null)) {
+            echo '<span>'.h((string) ($article['author']['name'] ?? '')).'</span>';
+        }
+        echo '</div>';
+    }
     $excerpt = (string) ($article['excerpt'] ?? '');
     if ($excerpt !== '') {
         echo '<p class="summary">'.h($excerpt).'</p>';
     }
-    echo '<div class="content">'.articleContentHtml($article).'</div>';
+    if ($isApparel) {
+        echo '</header>';
+        renderApparelVisual($config, $article, 'asi-article-visual');
+    }
+    echo '<div class="'.($isApparel ? 'asi-prose content' : 'content').'">'.articleContentHtml($article).'</div>';
     $tags = keywordTags((string) ($article['keywords'] ?? ''));
     if ($tags !== []) {
         echo '<div class="tags">';
@@ -1485,6 +1689,11 @@ function renderArticlePage(array $config, string $slug): void
         echo '</div>';
     }
     echo '</article>';
+    if ($isApparel) {
+        echo '</main>';
+        renderApparelSidebar($config, siteSettings($config), loadArticles($config));
+        echo '</div>';
+    }
     pageFooter($config);
 }
 
