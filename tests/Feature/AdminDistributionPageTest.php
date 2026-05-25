@@ -2085,7 +2085,7 @@ MD,
             'review_status' => 'approved',
             'published_at' => now(),
         ]);
-        ArticleDistribution::query()->create([
+        $distribution = ArticleDistribution::query()->create([
             'article_id' => (int) $article->id,
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
@@ -2094,12 +2094,16 @@ MD,
             'attempt_count' => 3,
             'idempotency_key' => 'compact-jobs-table',
         ]);
+        config(['app.url' => 'https://configured.example']);
+        $deletePath = route('admin.distribution.article.delete', ['distributionId' => (int) $distribution->id], false);
 
         $this->actingAs($this->admin(), 'admin')
             ->get(route('admin.distribution.show', ['channelId' => (int) $channel->id]))
             ->assertOk()
             ->assertSee('data-distribution-delete-form', false)
             ->assertSee('data-distribution-delete-status', false)
+            ->assertSee('action="'.$deletePath.'"', false)
+            ->assertDontSee('https://configured.example'.$deletePath, false)
             ->assertSee('whitespace-nowrap', false)
             ->assertSee('break-words', false)
             ->assertSee('break-all', false);

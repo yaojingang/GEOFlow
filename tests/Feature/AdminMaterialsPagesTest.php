@@ -283,13 +283,20 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
 
         $job = UrlImportJob::query()->firstOrFail();
+        config(['app.url' => 'https://configured.example']);
+        $runPath = route('admin.url-import.run', ['jobId' => (int) $job->id], false);
+        $statusPath = route('admin.url-import.status', ['jobId' => (int) $job->id], false);
+
         $this->actingAs($admin, 'admin')
             ->get(route('admin.url-import.show', ['jobId' => (int) $job->id]))
             ->assertOk()
             ->assertSee('name="csrf-token"', false)
-            ->assertSee('data-run-url', false)
+            ->assertSee('data-run-url="'.$runPath.'"', false)
+            ->assertSee('data-status-url="'.$statusPath.'"', false)
             ->assertSee('data-status="queued"', false)
             ->assertSee('data-has-result="0"', false)
+            ->assertDontSee('https://configured.example'.$runPath, false)
+            ->assertDontSee('https://configured.example'.$statusPath, false)
             ->assertDontSee('sessionStorage', false)
             ->assertDontSee('setTimeout(() => window.location.reload(), 1000)', false);
 

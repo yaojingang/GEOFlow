@@ -94,4 +94,30 @@ class AdminDashboardQuickStartTest extends TestCase
         $this->assertSame(1, substr_count($html, route('admin.image-libraries.index')));
         $this->assertSame(1, substr_count($html, route('admin.authors.index')));
     }
+
+    public function test_welcome_modal_dismiss_url_is_relative_when_app_url_differs_from_origin(): void
+    {
+        config(['app.url' => 'https://configured.example']);
+
+        $admin = Admin::query()->create([
+            'username' => 'dashboard_origin_admin',
+            'password' => 'secret-123',
+            'email' => 'dashboard-origin@example.com',
+            'display_name' => 'Dashboard Origin Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'));
+
+        $dismissPath = route('admin.welcome.dismiss', [], false);
+        $escapedDismissPath = str_replace('/', '\\/', $dismissPath);
+        $html = $response->getContent();
+
+        $response->assertOk();
+        $this->assertStringContainsString($escapedDismissPath, $html);
+        $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedDismissPath, $html);
+        $this->assertStringNotContainsString('https://configured.example'.$dismissPath, $html);
+    }
 }

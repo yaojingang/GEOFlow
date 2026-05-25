@@ -50,7 +50,7 @@
                                 <span class="text-gray-400">{{ __('admin.distribution.job_state.remote_copy_deleted') }}</span>
                             @elseif ($job->article)
                                 <a href="{{ route('admin.distribution.article.edit', ['distributionId' => (int) $job->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.distribution.button.edit_remote_article') }}</a>
-                                <form method="POST" action="{{ route('admin.distribution.article.delete', ['distributionId' => (int) $job->id]) }}" data-distribution-delete-form data-confirm-message="{{ __('admin.articles.confirm.delete_title') }}" data-deleting-label="{{ __('admin.distribution.job_state.remote_copy_deleting') }}" data-deleted-label="{{ __('admin.distribution.job_state.remote_copy_deleted') }}">
+                                <form method="POST" action="{{ route('admin.distribution.article.delete', ['distributionId' => (int) $job->id], false) }}" data-distribution-delete-form data-confirm-message="{{ __('admin.articles.confirm.delete_title') }}" data-deleting-label="{{ __('admin.distribution.job_state.remote_copy_deleting') }}" data-deleted-label="{{ __('admin.distribution.job_state.remote_copy_deleted') }}">
                                     @csrf
                                     <button type="submit" class="text-red-600 hover:text-red-800">{{ __('admin.distribution.button.delete_remote_article') }}</button>
                                 </form>
