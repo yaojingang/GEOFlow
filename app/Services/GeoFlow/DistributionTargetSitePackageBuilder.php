@@ -183,6 +183,18 @@ HTACCESS;
             return 'target-theme-tdwh';
         }
 
+        if (str_contains($theme, 'apparel-sourcing-intelligence')) {
+            return 'target-theme-apparel';
+        }
+
+        if (str_contains($theme, 'fashion-insight')) {
+            return 'target-theme-fashion';
+        }
+
+        if (str_contains($theme, 'boutiquesourcingpro')) {
+            return 'target-theme-boutique';
+        }
+
         return 'target-theme-default';
     }
 
@@ -248,6 +260,9 @@ footer{border-top:1px solid #e5e7eb;color:#6b7280;font-size:13px;padding:24px 0 
 body.target-theme-toutiao{background:#fffafa}.target-theme-toutiao header{border-bottom-color:#fecaca}.target-theme-toutiao .brand,.target-theme-toutiao h2 a:hover,.target-theme-toutiao .read{color:#dc2626}.target-theme-toutiao .chip{border-color:#fecaca;background:#fef2f2;color:#b91c1c}.target-theme-toutiao .card{border-color:#fee2e2}
 body.target-theme-netease{background:#f7f7f7}.target-theme-netease header{border-top:3px solid #d7000f}.target-theme-netease .brand,.target-theme-netease h2 a:hover,.target-theme-netease .read{color:#b91c1c}.target-theme-netease .chip{border-color:#fee2e2;background:#fff1f2;color:#991b1b}.target-theme-netease .hero h1{font-weight:900}.target-theme-netease .card{box-shadow:none}
 body.target-theme-tdwh{background:#f8fbff}.target-theme-tdwh header{border-bottom-color:#bfdbfe}.target-theme-tdwh .brand,.target-theme-tdwh h2 a:hover,.target-theme-tdwh .read{color:#1d4ed8}.target-theme-tdwh .chip{border-color:#bfdbfe;background:#eff6ff;color:#1e40af}.target-theme-tdwh .card{border-color:#dbeafe}
+body.target-theme-apparel{background:#f7f4ee;color:#1d2527;font-family:Georgia,"Times New Roman",serif}.target-theme-apparel header{background:#fffdf8;border-top:4px solid #24483f;border-bottom-color:#d9d3c7}.target-theme-apparel .brand,.target-theme-apparel h2 a:hover,.target-theme-apparel .read{color:#24483f}.target-theme-apparel .hero h1,.target-theme-apparel .detail h1{font-family:Georgia,"Times New Roman",serif;letter-spacing:0}.target-theme-apparel .chip{border-color:#d9d3c7;background:#fffdf8;color:#a87628}.target-theme-apparel .card{border-color:#d9d3c7;background:#fffdf8;box-shadow:0 18px 50px rgba(29,37,39,.11)}
+body.target-theme-fashion{background:#faf6f0;color:#1f1a17;font-family:"Segoe UI",Tahoma,sans-serif}.target-theme-fashion header{background:rgba(250,246,240,.95);border-bottom-color:#efebe4}.target-theme-fashion .brand,.target-theme-fashion .hero h1,.target-theme-fashion .detail h1,.target-theme-fashion h2{font-family:Georgia,"Times New Roman",serif}.target-theme-fashion .brand,.target-theme-fashion h2 a:hover,.target-theme-fashion .read{color:#1f1a17}.target-theme-fashion .chip{border-color:#eadfce;background:rgba(197,168,128,.08);color:#9b7a4f}.target-theme-fashion .card{border-color:#efebe4;background:#fff;box-shadow:0 15px 35px rgba(31,26,23,.07)}.target-theme-fashion .content{font-family:Georgia,"Times New Roman",serif;color:rgba(31,26,23,.92)}
+body.target-theme-boutique{background:#f8f1e6;color:#221b14;font-family:"Segoe UI",Tahoma,sans-serif}.target-theme-boutique header{background:rgba(255,252,246,.96);border-bottom-color:#d6b879}.target-theme-boutique .brand,.target-theme-boutique h2 a:hover,.target-theme-boutique .read{color:#8a6326}.target-theme-boutique .hero h1,.target-theme-boutique .detail h1{font-family:Georgia,"Times New Roman",serif}.target-theme-boutique .chip{border-color:#d6b879;background:#fff7e8;color:#7c5520}.target-theme-boutique .card{border-color:#ead8b7;background:#fffaf2;box-shadow:0 18px 45px rgba(75,48,18,.1)}
 CSS;
     }
 
@@ -406,6 +421,18 @@ function themeClass(array $settings): string
     }
     if (str_contains($theme, 'tdwh')) {
         return 'target-theme-tdwh';
+    }
+
+    if (str_contains($theme, 'apparel-sourcing-intelligence')) {
+        return 'target-theme-apparel';
+    }
+
+    if (str_contains($theme, 'fashion-insight')) {
+        return 'target-theme-fashion';
+    }
+
+    if (str_contains($theme, 'boutiquesourcingpro')) {
+        return 'target-theme-boutique';
     }
 
     return 'target-theme-default';
