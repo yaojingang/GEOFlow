@@ -951,6 +951,16 @@ class AdminDistributionPageTest extends TestCase
 
         $siteCss = (string) $zip->getFromName('assets/css/site.css');
         $siteJs = (string) $zip->getFromName('assets/js/site.js');
+        $channel->refresh();
+        $expectedAssetVersion = substr(hash('sha256', implode('|', [
+            (string) ($channel->template_key ?? ''),
+            (string) ($channel->updated_at ?? ''),
+            (string) config('geoflow.app_version', ''),
+            hash('sha256', $siteCss),
+            hash('sha256', $siteJs),
+        ])), 0, 12);
+        $this->assertStringContainsString('assets/css/site.css?v='.$expectedAssetVersion, $staticIndex);
+        $this->assertStringContainsString('assets/js/site.js?v='.$expectedAssetVersion, $staticIndex);
         $this->assertStringContainsString('.content img', $siteCss);
         $this->assertStringContainsString('data-copy-target', $siteJs);
         $this->assertStringContainsString('body.target-theme-toutiao', $siteCss);
@@ -1041,6 +1051,51 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('rebuildStaticSite($config)', $frontController);
         $this->assertStringContainsString("'removed' => \$removed", $frontController);
         $this->assertStringContainsString("frontSiteUrl(\$config, '/article/'.rawurlencode(\$slug))", $frontController);
+
+        $zip->close();
+        unlink($zipPath);
+    }
+
+    public function test_fashion_target_site_package_is_self_contained_without_google_fonts(): void
+    {
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Fashion Insight',
+            'domain' => 'fashion.example.com',
+            'endpoint_url' => 'https://fashion.example.com',
+            'template_key' => 'fashion-insight',
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'gfk_fashion',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_fashion_secret'),
+            'status' => 'active',
+            'scopes' => ['article.publish', 'health.check'],
+        ]);
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.download-package', ['channelId' => (int) $channel->id]), [
+                'package_password' => 'secret-123',
+            ]);
+
+        $response->assertOk();
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'geoflow-target-site-');
+        $this->assertIsString($zipPath);
+        file_put_contents($zipPath, $response->streamedContent());
+
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($zipPath));
+
+        $staticIndex = (string) $zip->getFromName('index.html');
+        $frontController = (string) $zip->getFromName('public/index.php');
+        $siteCss = (string) $zip->getFromName('assets/css/site.css');
+
+        $this->assertStringContainsString('class="target-theme-fashion"', $staticIndex);
+        $this->assertStringContainsString('body.target-theme-fashion', $siteCss);
+        $this->assertStringNotContainsString('fonts.googleapis.com', $frontController);
+        $this->assertStringNotContainsString('fonts.gstatic.com', $frontController);
+        $this->assertStringNotContainsString('fonts.googleapis.com', $staticIndex);
 
         $zip->close();
         unlink($zipPath);

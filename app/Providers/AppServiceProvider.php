@@ -35,7 +35,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Http::globalOptions(static fn (): array => OutboundHttpProxy::httpClientOptions());
+        Http::globalMiddleware(OutboundHttpProxy::middleware());
 
         View::composer(['site.layout', 'theme.*.layout'], SiteLayoutComposer::class);
 

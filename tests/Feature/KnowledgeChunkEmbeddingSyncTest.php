@@ -611,6 +611,110 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             && ! isset($request['taskType']));
     }
 
+    public function test_sync_splits_embedding_requests_into_configured_batch_size(): void
+    {
+        config(['geoflow.embedding_batch_size' => 3]);
+
+        Http::fake([
+            'https://ai.test/v1/embeddings' => function ($request) {
+                $inputs = $request['input'] ?? [];
+                $this->assertIsArray($inputs);
+                $this->assertLessThanOrEqual(3, count($inputs));
+
+                return Http::response([
+                    'data' => array_map(
+                        static fn (int $index): array => ['embedding' => [0.1 + $index, 0.2, 0.3]],
+                        array_keys($inputs)
+                    ),
+                ]);
+            },
+        ]);
+
+        $model = $this->createEmbeddingModel();
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '批量向量知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+        $content = collect(range(1, 8))
+            ->map(static fn (int $index): string => "## 第 {$index} 节\n\n第 {$index} 节内容。")
+            ->implode("\n\n");
+
+        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, $content, true);
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
+
+        $this->assertCount(8, $chunks);
+        $chunks->each(function ($chunk) use ($model): void {
+            $this->assertSame((int) $model->id, (int) $chunk->embedding_model_id);
+            $this->assertSame(3, (int) $chunk->embedding_dimensions);
+        });
+
+        Http::assertSentCount(3);
+
+        $model->refresh();
+        $this->assertSame(3, (int) $model->used_today);
+        $this->assertSame(3, (int) $model->total_used);
+    }
+
+    public function test_sync_retries_embedding_batches_as_single_requests_when_provider_rejects_batch_size(): void
+    {
+        config(['geoflow.embedding_batch_size' => 4]);
+
+        Http::fake([
+            'https://ai.test/v1/embeddings' => function ($request) {
+                $inputs = $request['input'] ?? [];
+                $this->assertIsArray($inputs);
+
+                if (count($inputs) > 1) {
+                    return Http::response([
+                        'error' => [
+                            'message' => '<400> InternalError.Algo.InvalidParameter: Value error, batch size is invalid, it should not be larger than 1',
+                        ],
+                    ], 400);
+                }
+
+                return Http::response([
+                    'data' => [
+                        ['embedding' => [0.4, 0.5, 0.6]],
+                    ],
+                ]);
+            },
+        ]);
+
+        $model = $this->createEmbeddingModel();
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '单条降级向量知识库',
+            'description' => '',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
+        $content = collect(range(1, 4))
+            ->map(static fn (int $index): string => "## 第 {$index} 节\n\n第 {$index} 节内容。")
+            ->implode("\n\n");
+
+        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, $content, true);
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
+
+        $this->assertCount(4, $chunks);
+        $chunks->each(function ($chunk) use ($model): void {
+            $this->assertSame((int) $model->id, (int) $chunk->embedding_model_id);
+            $this->assertSame([0.4, 0.5, 0.6], json_decode((string) $chunk->embedding_json, true));
+        });
+
+        Http::assertSentCount(5);
+
+        $model->refresh();
+        $this->assertSame(4, (int) $model->used_today);
+        $this->assertSame(4, (int) $model->total_used);
+    }
+
     public function test_query_embedding_uses_gemini_search_result_prefix_without_task_type(): void
     {
         Http::fake([

@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Support\GeoFlow\OutboundHttpProxy;
-use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class OutboundHttpProxyTest extends TestCase
@@ -36,28 +35,41 @@ class OutboundHttpProxyTest extends TestCase
         ], OutboundHttpProxy::httpClientOptions());
     }
 
-    public function test_laravel_http_requests_receive_global_proxy_options(): void
+    public function test_it_only_applies_default_proxy_to_ai_hosts(): void
     {
         config([
             'geoflow.outbound_http_proxy' => 'http://host.docker.internal:9999',
             'geoflow.outbound_https_proxy' => 'http://host.docker.internal:9999',
             'geoflow.outbound_no_proxy' => 'localhost,127.0.0.1',
+            'geoflow.outbound_proxy_hosts' => [
+                'generativelanguage.googleapis.com',
+                'api.openai.com',
+            ],
         ]);
-
-        $capturedOptions = null;
-
-        Http::fake(function ($request, array $options) use (&$capturedOptions) {
-            $capturedOptions = $options;
-
-            return Http::response(['ok' => true]);
-        });
-
-        Http::get('https://generativelanguage.googleapis.com/v1beta/models');
 
         $this->assertSame([
             'http' => 'http://host.docker.internal:9999',
             'https' => 'http://host.docker.internal:9999',
             'no' => ['localhost', '127.0.0.1'],
-        ], $capturedOptions['proxy'] ?? null);
+        ], OutboundHttpProxy::httpClientOptionsForUrl('https://generativelanguage.googleapis.com/v1beta/models')['proxy'] ?? null);
+
+        $this->assertSame([], OutboundHttpProxy::httpClientOptionsForUrl('https://wp.example.com/wp-json/wp/v2/posts'));
+        $this->assertSame([], OutboundHttpProxy::httpClientOptionsForUrl('https://example.com/geoflow-agent/v1/health'));
+    }
+
+    public function test_it_can_apply_proxy_to_all_hosts_when_configured(): void
+    {
+        config([
+            'geoflow.outbound_http_proxy' => 'http://host.docker.internal:9999',
+            'geoflow.outbound_https_proxy' => 'http://host.docker.internal:9999',
+            'geoflow.outbound_no_proxy' => 'localhost,127.0.0.1',
+            'geoflow.outbound_proxy_hosts' => '*',
+        ]);
+
+        $this->assertSame([
+            'http' => 'http://host.docker.internal:9999',
+            'https' => 'http://host.docker.internal:9999',
+            'no' => ['localhost', '127.0.0.1'],
+        ], OutboundHttpProxy::httpClientOptionsForUrl('https://wp.example.com/wp-json/wp/v2/posts')['proxy'] ?? null);
     }
 }
