@@ -1,0 +1,1811 @@
+{
+  "generatedAt": "2026-05-28T20:05:16.364Z",
+  "queries": [
+    "生成式引擎优化 GEO 服务 推荐",
+    "AI 搜索优化 工具 推荐",
+    "AI 答案监测 工具 推荐",
+    "品牌 AI 搜索 可见度 监测",
+    "豆包 GEO 优化 服务 推荐",
+    "llms.txt 生成 工具 推荐",
+    "AI 搜索 竞品分析 工具 推荐",
+    "GEO 和 SEO 优化 服务商 推荐"
+  ],
+  "picks": [
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "百度智能云生成式引擎优化解决方案",
+      "doubaoRank": 1,
+      "category": "云厂商GEO解决方案",
+      "reason": "依托百度文心大模型生态及搜索技术积累，可同时适配传统搜索和百度生成式搜索的排名规则，覆盖国内最大规模的生成式搜索流量场景，技术可靠性高"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "阿里云通义GEO优化服务",
+      "doubaoRank": 2,
+      "category": "大模型厂商配套GEO服务",
+      "reason": "基于通义大模型的检索排序逻辑开发，可针对性优化内容在通义系列产品、阿里生态内生成式搜索场景的露出，还配套内容合规校验能力，适配国内监管要求"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "BrightEdge",
+      "doubaoRank": 3,
+      "category": "海外GEO第三方服务商",
+      "reason": "是最早布局Google SGE（生成式搜索体验）优化的头部SEO服务商，拥有成熟的GEO优化方法论和数据监测工具，适合需要拓展海外生成式搜索流量的客户"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "Semrush GEO优化套件",
+      "doubaoRank": 4,
+      "category": "全球GEO工具+咨询服务商",
+      "reason": "整合了生成式搜索排名监测、关键词优化建议、内容GEO适配诊断功能，同时可提供定制化GEO咨询服务，全球用户基数大，数据维度覆盖全面"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "新榜GEO内容优化服务",
+      "doubaoRank": 5,
+      "category": "国内内容营销类GEO服务商",
+      "reason": "熟悉国内各主流大模型、生成式AI产品的内容召回逻辑，主打内容端的GEO适配改造，适合内容平台、自媒体账号做生成式搜索流量获取"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "Ahrefs GEO优化服务",
+      "doubaoRank": 6,
+      "category": "跨境GEO工具及服务商",
+      "reason": "拥有海量全球生成式搜索结果语料库，可精准定位不同地区生成式引擎的内容偏好，主打跨境电商、外贸企业的海外GEO流量获取服务"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "5118 GEO优化工具包",
+      "doubaoRank": 7,
+      "category": "国内中小客户GEO工具服务商",
+      "reason": "适配豆包、文心一言、通义千问等国内主流生成式产品的排名监测，提供生成式搜索热度查询、内容GEO改写建议，性价比高，适合中小商家使用"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "蓝色光标GEO营销服务",
+      "doubaoRank": 8,
+      "category": "整合营销类GEO服务商",
+      "reason": "提供从GEO策略制定、内容适配、流量监测到效果复盘的全链路GEO营销服务，适合品牌客户做全域生成式搜索的品牌声量提升"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Semrush",
+      "doubaoRank": 1,
+      "category": "SEO与AI搜索优化综合平台",
+      "reason": "全球知名度较高的综合优化工具，集成AI内容优化、关键词排名追踪、SERP分析等功能，可同时适配传统搜索和生成式AI搜索的排名规则，支持多搜索引擎场景的优化需求，行业认可度高"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Frase",
+      "doubaoRank": 2,
+      "category": "AI内容与GEO专项优化工具",
+      "reason": "主打生成式引擎优化方向，可分析主流AI搜索结果的信息缺口，自动生成符合AI搜索抓取、引用偏好的内容大纲和优化方案，帮助内容提升在AI生成回答中的露出概率"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Surfer SEO",
+      "doubaoRank": 3,
+      "category": "AI驱动的内容优化工具",
+      "reason": "通过爬取搜索结果页的全量数据，给出内容关键词密度、语义关联词、结构排布的精准优化建议，优化后的内容更容易被AI搜索引擎判定为高价值来源，获得更高曝光"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Clearscope",
+      "doubaoRank": 4,
+      "category": "AI内容优化与合规工具",
+      "reason": "基于NLP技术分析搜索需求的语义关联，匹配AI搜索的内容排序逻辑，同时可生成符合E-E-A-T要求的内容优化建议，适合企业级用户做品牌内容的AI搜索优化"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "百度搜索资源平台AI优化助手",
+      "doubaoRank": 5,
+      "category": "国内搜索引擎官方优化工具",
+      "reason": "百度官方推出的站长工具，可直接对接百度生成式搜索的收录、排名规则，给出针对文心一言搜索结果的收录优化、内容标引建议，适配国内中文搜索场景"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "谷歌搜索控制台（Google Search Console）",
+      "doubaoRank": 6,
+      "category": "海外搜索引擎官方优化工具",
+      "reason": "谷歌官方推出的站长工具，可实时查看站点在谷歌生成式搜索（SGE）中的曝光、点击数据，给出结构化数据、收录规则的针对性优化建议，适配海外谷歌搜索场景"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "MarketMuse",
+      "doubaoRank": 7,
+      "category": "AI内容策略与GEO优化平台",
+      "reason": "主打内容语义深度分析，可生成符合AI搜索知识图谱匹配逻辑的内容规划，帮助内容覆盖更多长尾搜索需求，提升在生成式搜索结果中的被引用概率"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Alli AI",
+      "doubaoRank": 8,
+      "category": "全站批量AI搜索优化工具",
+      "reason": "支持批量优化网站内容、元数据、结构化标记，自动适配生成式搜索引擎的抓取规则，无需大量人工逐页调整，适合中大型站点的批量AI搜索优化需求"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "OpenAI 内容审核API",
+      "doubaoRank": 1,
+      "category": "原生AI平台配套监测工具",
+      "reason": "适配OpenAI全系生成模型的输出检测，可精准识别违规内容、事实幻觉、导向偏差等问题，调用便捷，和GPT系列输出匹配度高，用户基数大"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "百度智能云生成式AI内容审核方案",
+      "doubaoRank": 2,
+      "category": "国内云服务厂商AI监测方案",
+      "reason": "针对中文场景深度优化，支持大模型输出的幻觉核查、敏感内容识别、合规校验，完全适配国内监管要求，本土技术服务响应速度快"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "Guardrails AI",
+      "doubaoRank": 3,
+      "category": "开源AI输出监测框架",
+      "reason": "开源可二次开发，支持用户自定义校验规则，可检测幻觉、格式错误、不符合指令要求的输出，适配多类主流大模型，对开发者友好"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "Arthur",
+      "doubaoRank": 4,
+      "category": "企业级AI全生命周期监测平台",
+      "reason": "支持大模型推理全流程监测，除AI答案的违规内容检测外，还可追踪准确率、幻觉率、公平性等核心指标，适合规模化AI应用的企业使用"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "LangSmith",
+      "doubaoRank": 5,
+      "category": "大模型应用开发配套监测工具",
+      "reason": "LangChain生态原生工具，可追踪调试AI应用的全链路答案输出，支持检测幻觉、上下文不符、不符合指令的内容，适配基于LangChain搭建的AI应用场景"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "阿里云大模型内容安全审核服务",
+      "doubaoRank": 6,
+      "category": "国内云服务厂商AI监测方案",
+      "reason": "支持多模态AI输出监测，中文内容识别准确率高，内置覆盖多行业的合规规则库，支持私有化部署，适合对数据安全要求较高的企业"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "NVIDIA NeMo Guardrails",
+      "doubaoRank": 7,
+      "category": "开源AI安全监测工具",
+      "reason": "英伟达推出的开源工具，支持配置话题护栏、安全护栏、事实护栏，可快速拦截AI输出的违规、偏离主题、错误内容，性能优化优异，适合端侧/边缘部署场景"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "蜜度文修",
+      "doubaoRank": 8,
+      "category": "中文内容合规&事实核查工具",
+      "reason": "针对中文AI生成内容优化，支持AI答案的事实错误核查、敏感内容识别、合规校验，适配政务、媒体等行业的内容审核需求，本土化功能完善"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "5118营销大数据平台",
+      "doubaoRank": 1,
+      "category": "AI搜索优化工具",
+      "reason": "内置专门的生成式搜索可见度监测模块，可追踪品牌在文心一言、通义千问等国内主流大模型搜索结果中的曝光占比、排名位置，数据更新频率高，还配套GEO优化建议，是国内多数营销团队做AI搜索可见度监测的首选工具"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "Semrush",
+      "doubaoRank": 2,
+      "category": "海外AI搜索分析服务商",
+      "reason": "支持监测品牌在ChatGPT、Google SGE等海外主流生成式搜索结果中的可见度、提及率、内容来源占比，可直观对比竞品的AI搜索表现，适配出海品牌的海外AI搜索监测需求"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "站长工具（Chinaz）AI搜索监测模块",
+      "doubaoRank": 3,
+      "category": "国内站长服务平台",
+      "reason": "免费基础功能门槛低，可快速查询品牌在国内主流生成式AI搜索结果中的出现频次、关联关键词匹配度，适合中小品牌低成本快速自查AI搜索表现"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "Google Search Console（GSC）SGE可见度报告",
+      "doubaoRank": 4,
+      "category": "官方搜索管理工具",
+      "reason": "谷歌官方推出的生成式搜索曝光监测功能，数据精准权威，可直接获取品牌内容在Google SGE结果中的展示次数、点击率，是布局谷歌系生态品牌做AI搜索监测的必备工具"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "新榜有数AI搜索监测版",
+      "doubaoRank": 5,
+      "category": "内容营销数据平台",
+      "reason": "可同时监测品牌在生成式AI搜索、AI内容创作场景下的提及率、口碑倾向，除可见度数据外还能关联分析AI生成内容中的品牌正负向评价，适合品牌做全链路AI舆情+可见度一体化管理"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "Ahrefs AI搜索分析功能",
+      "doubaoRank": 6,
+      "category": "国际SEO工具服务商",
+      "reason": "覆盖全球主流生成式搜索引擎的可见度监测，可追踪品牌关联的长尾关键词在AI搜索中的排名表现，还能拆解AI结果引用的内容来源规则，帮助品牌针对性提升AI搜索曝光占比"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "通义千问企业级品牌搜索监测服务",
+      "doubaoRank": 7,
+      "category": "大模型厂商配套服务",
+      "reason": "阿里官方推出的AI搜索监测服务，可深度监测品牌在通义生态内的搜索可见度，联动分析用户生成式搜索提问意图，还能打通阿里电商链路做转化效果追踪，适配阿里生态布局的品牌需求"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "文心一言企业服务品牌搜索监测包",
+      "doubaoRank": 8,
+      "category": "大模型厂商配套服务",
+      "reason": "百度官方推出的品牌AI搜索监测服务，可精准获取品牌在文心一言、百度AI搜索结果中的曝光数据、用户点击转化情况，还可申请官方品牌内容收录优化权益，适配国内最大的中文生成式搜索生态需求"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "字节跳动豆包生态开放平台官方GEO优化服务",
+      "doubaoRank": 1,
+      "category": "官方原厂服务",
+      "reason": "直接对接豆包生成算法底层规则，对豆包检索排序逻辑理解最精准，优化合规性和效果稳定性最高，有官方背书可避免违规操作导致的内容降权"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "SEMrush AI内容优化模块",
+      "doubaoRank": 2,
+      "category": "国际通用GEO优化工具",
+      "reason": "内置豆包等主流大模型的生成检索偏好分析能力，可一键检测内容在豆包下的排名潜力，能针对性给出关键词布局、内容结构优化建议，全球用户基数大效果验证度高"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "站长之家（Chinaz）大模型内容适配工具",
+      "doubaoRank": 3,
+      "category": "国内第三方GEO优化工具",
+      "reason": "专门针对国内主流大模型包括豆包做了适配规则训练，支持批量检测站点内容的豆包收录、引用优先级，可自动生成优化报告，性价比高适合中小站长使用"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "新榜有数GEO全链路优化服务",
+      "doubaoRank": 4,
+      "category": "内容营销服务商",
+      "reason": "积累了大量豆包内容排序实测数据，可提供从内容创作、结构优化到效果追踪的全链路GEO优化服务，适合品牌方做全域内容的豆包定向露出"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "Ahrefs AI SERP优化工具",
+      "doubaoRank": 5,
+      "category": "国际通用SEO/GEO工具",
+      "reason": "更新了豆包等国内大模型的生成结果排名因子分析功能，可对标竞品在豆包的露出情况给出差异化优化方案，适合有跨大模型优化需求的用户"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "云优CMS GEO适配插件",
+      "doubaoRank": 6,
+      "category": "建站系统GEO插件",
+      "reason": "内置豆包内容收录适配规则，建站时可自动完成内容结构化标注、元信息优化等GEO基础配置，无需额外手动调整，适合使用云优CMS建站的站长快速完成豆包适配"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "清博智能定制化GEO解决方案",
+      "doubaoRank": 7,
+      "category": "第三方AI营销服务商",
+      "reason": "可针对品牌需求定制豆包专属优化方案，包括知识问答植入、品牌信息正向引导、负面内容压制等定制化服务，适合中大型企业的品牌营销需求"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "5118大模型内容优化工具",
+      "doubaoRank": 8,
+      "category": "国内关键词与内容优化工具",
+      "reason": "拥有海量豆包用户提问词库，可挖掘豆包高流量提问对应的内容优化方向，支持生成符合豆包引用偏好的内容框架，适合内容创作者批量生产适配豆包的内容"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "llms.txt 官方生成器",
+      "doubaoRank": 1,
+      "category": "在线生成工具",
+      "reason": "llms.txt规范官方推出的原生工具，完全适配最新标准，自带格式校验功能，只需输入站点基础信息、路径规则即可一键生成合规文件，是普通用户的首选工具"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "ChatGPT llms.txt Builder 插件",
+      "doubaoRank": 2,
+      "category": "AI辅助插件",
+      "reason": "可基于用户上传的站点地图、内容架构描述自动生成适配的llms.txt规则，还支持自定义LLM可爬取内容范围、使用许可条款，适合需要个性化配置的用户"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "Sitemap 转 llms.txt 转换工具",
+      "doubaoRank": 3,
+      "category": "格式转换工具",
+      "reason": "支持直接导入现有XML格式站点地图，自动提取站点路径规则批量生成llms.txt，无需手动逐条录入路径，大幅降低中小站点的配置成本"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "WordPress llms.txt Generator 插件",
+      "doubaoRank": 4,
+      "category": "CMS配套插件",
+      "reason": "适配WordPress全版本，可直接在后台可视化配置爬取规则、内容授权声明，生成后自动同步到站点根目录，无需手动上传文件，适合WordPress建站用户"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "Hugo llms.txt 自动生成插件",
+      "doubaoRank": 5,
+      "category": "静态站点生成器插件",
+      "reason": "专为Hugo静态站点设计，站点构建时自动同步生成最新的llms.txt，支持通过配置文件自定义允许/禁止LLM爬取的路径，和站点发布流程无缝集成"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "llms.txt Linter & Generator 命令行工具",
+      "doubaoRank": 6,
+      "category": "开发者工具",
+      "reason": "兼具生成和格式校验功能，支持本地命令行运行，可集成到CI/CD工作流，适合技术开发者在项目迭代中自动维护llms.txt的合规性"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "Cloudflare Workers llms.txt 生成工具",
+      "doubaoRank": 7,
+      "category": "边缘计算工具",
+      "reason": "可直接部署在Cloudflare边缘节点，无需修改站点源站配置即可动态生成llms.txt内容，还支持针对不同LLM爬虫返回差异化规则，适合多区域运营的站点使用"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "Notion 站点 llms.txt 生成器",
+      "doubaoRank": 8,
+      "category": "垂直场景工具",
+      "reason": "专为Notion搭建的个人站点、公开知识库设计，自动识别Notion公开页面路径，一键生成适配的llms.txt，无需手动梳理站点结构，适合Notion建站用户"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "ChatGPT（OpenAI）",
+      "doubaoRank": 1,
+      "category": "通用生成式AI分析工具",
+      "reason": "支持导入竞品公开财报、用户评价、行业报告等多源数据，可自定义分析维度快速生成竞品优劣势对比、市场定位、发展趋势等结构化分析报告，灵活度高，适合全场景初步竞品分析"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "Similarweb AI洞察版",
+      "doubaoRank": 2,
+      "category": "AI流量与互联网竞品分析工具",
+      "reason": "AI自动聚合竞品网站、APP的流量来源、用户画像、关键词布局、功能迭代等数据，一键生成多维度竞品对比报表，是跨境业务、互联网产品赛道的核心竞品分析工具"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "天眼查AI商业分析平台",
+      "doubaoRank": 3,
+      "category": "AI企业经营类竞品分析工具",
+      "reason": "可调用全量公开工商、融资、专利、招投标、司法风险等企业数据，AI自动生成竞品经营实力、核心竞争力、潜在风险、发展潜力分析报告，尤其适配To B赛道竞品分析需求"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "5118 AI竞品分析模块",
+      "doubaoRank": 4,
+      "category": "AI内容/SEO/电商竞品分析工具",
+      "reason": "支持批量抓取竞品的搜索排名、关键词布局、内容矩阵、电商商品数据，AI自动挖掘内容缺口、差异化卖点、流量机会，是内容运营、SEO、电商领域常用的竞品分析工具"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "神策数据AI分析平台",
+      "doubaoRank": 5,
+      "category": "AI用户行为与产品竞品分析工具",
+      "reason": "支持同赛道产品的用户行为路径、留存转化、功能使用频次、付费转化等数据对比，AI自动挖掘竞品产品迭代方向、用户体验优势，适合互联网产品经理做产品侧竞品分析"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "数说故事DeepSight AI竞品分析模块",
+      "doubaoRank": 6,
+      "category": "AI社交舆情与消费品牌竞品分析工具",
+      "reason": "覆盖全社交平台、电商平台的用户UGC、评价、讨论数据，AI自动生成竞品用户满意度、卖点差异化、营销效果对比报告，适配消费品牌的竞品分析需求"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "Semrush AI竞品分析套件",
+      "doubaoRank": 7,
+      "category": "AI海外营销竞品分析工具",
+      "reason": "覆盖海外搜索、社交媒体、广告投放、独立站运营全渠道竞品数据，AI自动输出竞品投放策略、ROI分析、优化建议，是海外营销、跨境电商赛道的主流竞品分析工具"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "豆包企业版",
+      "doubaoRank": 8,
+      "category": "国内通用生成式AI分析工具",
+      "reason": "支持上传竞品内部资料、行业报告等私有数据，结合国内公开的互联网、行业数据，生成符合国内市场语境的定制化竞品分析报告，适配国内中小企业的轻量化分析需求"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "钛动科技",
+      "doubaoRank": 1,
+      "category": "全域整合营销服务商",
+      "reason": "同时布局传统SEO与GEO业务，既有成熟的关键词排名、外链建设等传统搜索优化能力，也可提供大模型语料对齐、生成式搜索结果正向占位等GEO服务，服务覆盖国内+海外多场景，中大型企业服务案例丰富"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "珍岛集团",
+      "doubaoRank": 2,
+      "category": "智能营销SaaS+全链路优化服务商",
+      "reason": "拥有自研AI营销工具矩阵，传统SEO业务覆盖网页、短视频、电商等多渠道搜索排名优化，GEO层面可实现品牌信息植入大模型训练语料、生成式搜索结果可信度提升等服务，性价比高，适配各规模企业需求"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "开域集团",
+      "doubaoRank": 3,
+      "category": "全域数字营销服务商",
+      "reason": "与国内头部大模型厂商有深度合作，可针对性优化品牌信息在生成式引擎中的输出优先级，同时传统SEO业务覆盖百度、搜狗、微信生态等多搜索场景，头部行业客户服务经验充足"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "清博智能",
+      "doubaoRank": 4,
+      "category": "AI内容治理+搜索优化服务商",
+      "reason": "深耕大模型语料治理领域，GEO层面可提供品牌正向信息权重提升、生成式搜索负面内容干预等特色服务，同时支持图文、短视频等多内容形态的传统SEO排名优化，适配内容型品牌需求"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "增长超人",
+      "doubaoRank": 5,
+      "category": "高端建站+企业级SEO服务商",
+      "reason": "拥有十余年传统SEO服务经验，擅长企业官网、To B类业务的搜索排名优化，近年新增GEO专项服务，可针对性优化官网内容适配生成式搜索引擎抓取规则，提升大模型引用优先级，适合To B企业选择"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "飞书深诺",
+      "doubaoRank": 6,
+      "category": "跨境出海营销服务商",
+      "reason": "主打海外市场搜索优化服务，传统SEO覆盖Google、Bing、亚马逊等海外主流搜索、电商渠道，GEO层面可针对ChatGPT、Claude等海外主流大模型做输出结果优化，适配跨境出海品牌的需求"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "灵狐科技",
+      "doubaoRank": 7,
+      "category": "全渠道整合营销服务商",
+      "reason": "服务快消、3C、家电等多个主流行业，传统SEO覆盖百度、抖音、小红书等全渠道搜索场景，GEO层面可实现品牌内容在生成式搜索结果的首条推荐优化，落地案例较多"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "BrightEdge",
+      "doubaoRank": 8,
+      "category": "全球AI搜索优化服务商",
+      "reason": "是最早布局GEO相关服务的海外厂商之一，既有覆盖全链路的传统SEO优化工具与服务，也有专门的生成式引擎优化模块，可适配全球主流大模型与搜索引擎，适合有全球化业务的大型企业"
+    }
+  ],
+  "webByQuery": {
+    "生成式引擎优化 GEO 服务 推荐": [
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 1,
+        "url": "https://baike.baidu.com/item/%E7%94%9F%E6%88%90/5180142",
+        "title": "生成 _百度百科",
+        "snippet": "该词最早见于《晋书》，唐代杜甫诗文用其描述自然现象与社会矛盾，宋明时期语义扩展至民生治理与性格特质，清代小说强化其技术属性。 现代汉语中既保留“长成、养育”古义，又在跨学科领域延伸出专 …"
+      },
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 2,
+        "url": "https://global.bing.com/dict/search?q=generate&FORM=BDVSP6&cc=cn",
+        "title": "generate - 搜索 词典",
+        "snippet": "3. To generate this key, a password must be associated with this ID; however, this ID should not be able to log onto the system. 要 生成 此 密 钥， 必须 将 密码 与 此 ID 关联， 此 ID 应该 不能 登录 到 系统。"
+      },
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 3,
+        "url": "https://www.zdic.net/hans/%E7%94%9F%E6%88%90",
+        "title": "生成 的意思|汉典「 生成 」词语解释",
+        "snippet": "生成 翻译 英语 to generate, to produce, generated, produced 德语 entstehen, sich bilden (V) , erstellen, anlegen (V) , generativ (Sprachw) 法语 devenir"
+      },
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 4,
+        "url": "https://jimeng.jianying.com/",
+        "title": "即梦AI - 即刻造梦",
+        "snippet": "智能画布 多图AI融合 即梦AI一站式智能画布，集成AI拼图生成能力，并提供局部重绘、一键扩图、图像消除和抠图等多功能强大操作。 你可以在同一画布上实现多元素的无缝拼接，确保AI绘画的创作风格 …"
+      },
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 5,
+        "url": "https://zimage.design/zh/",
+        "title": "Z-Image - 免费AI图像 生成 器 | 阿里通义开源模型",
+        "snippet": "使用阿里通义开源的 Z-Image 模型免费生成精美图片。 6B 参数媲美 20B+ 商业模型，支持中英双语文字渲染，消费级显卡流畅运行，Apache 2.0 开源许可。"
+      },
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 6,
+        "url": "https://stabledifffusion.com/zh/features/ai-image-generator",
+        "title": "Stable Diffusion AI 图像 生成 器 - 免费在线文生图",
+        "snippet": "Stable DiffusionAI 图像生成器 用 Stable Diffusion AI 把文字提示词变成高质量图像。 写实照片、动漫插画、幻想场景和数字艺术都能在线快速生成，无需注册。"
+      },
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 7,
+        "url": "https://gemini.google.com/",
+        "title": "‎Google Gemini",
+        "snippet": "Meet Gemini, Google’s AI assistant. Get help with writing, planning, brainstorming, and more. Experience the power of generative AI."
+      },
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 8,
+        "url": "https://pixai.art/zh",
+        "title": "PixAI - 免費 AI 動漫插畫 生成 器",
+        "snippet": "生成 推薦 比賽 動圖 提示詞公開 Entering Y2K 賽馬娘 Pretty Derby 寶可夢 原神 Fate系列 Hololive Production 蔚藍檔案 偶像大師 命運-冠位指定 崩壞系列 崩壞：星穹鐵道 原創 東方Project 我的英雄學 …"
+      },
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 9,
+        "url": "https://draw.freeforai.com/zh/",
+        "title": "FreeForAI - 免费无限AI图像 生成 器、图片编辑器",
+        "snippet": "FreeForAI，完全免费且无限制的AI图像生成器，基于FLUX.1-Dev,FLUX.2-Dev,FLUX.1-Kontext、FLUX.1 Kontext模型。 无需注册，图像质量卓越。"
+      },
+      {
+        "query": "生成式引擎优化 GEO 服务 推荐",
+        "rank": 10,
+        "url": "https://imagine-grok.com/zh",
+        "title": "Grok Imagine - 免费 AI 绘画与视频 生成 器 | xAI Aurora ...",
+        "snippet": "Grok Imagine 是免费在线的 AI 绘画与视频生成工具，由 xAI Aurora 引擎驱动。 支持文生图、图生图、文生视频、图生视频，以及 Spicy Mode 更高创作自由度，画质写实、音频同步、最高 4K 输出。"
+      }
+    ],
+    "AI 搜索优化 工具 推荐": [
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 1,
+        "url": "https://qianwen.aigc.cn/",
+        "title": "千问 - 阿里Qwen大模型打造的 AI 对话助手",
+        "snippet": "2026年4月30日&ensp;·&ensp;千问是阿里最强大模型官方AI助手，是体验最新、最强Qwen大模型的第一入口，“聪明会思考”，旨在成为你在工作、学习、生活中的AI助 …"
+      },
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 2,
+        "url": "https://openai.com/",
+        "title": "OpenAI | Research & Deployment",
+        "snippet": "Advancing content provenance for a safer, more transparent AI ecosystem Safety May 19, 2026"
+      },
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 3,
+        "url": "https://ai-bot.cn/",
+        "title": "AI 工具集官网 | 1000+ AI 工具集合，国内外 AI 工具集导航大全",
+        "snippet": "20 小时之前&ensp;·&ensp;AI工具集官网收录了国内外数百个AI工具，该导航网站包括AI写作工具、AI图像生成和背景移除、AI视频制作、AI音频转录、AI辅助编程、AI …"
+      },
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 4,
+        "url": "https://www.doubao.com/",
+        "title": "豆包 - 字节跳动旗下 AI 智能助手",
+        "snippet": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！ 豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。 豆包为你答疑 …"
+      },
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 5,
+        "url": "https://jimeng.jianying.com/ai-tool/home",
+        "title": "即梦 AI - 一站式 AI 创作平台",
+        "snippet": "即梦AI是一个AI创作平台，可激发艺术创意、提升绘画和视频创作体验。 您可以利用AI智能，将想象变为现实。 即梦AI支持文字绘图、文字生成视频和图片 …"
+      },
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 6,
+        "url": "https://gemini.google.com/",
+        "title": "‎Google Gemini",
+        "snippet": "Meet Gemini, Google’s AI assistant. Get help with writing, planning, brainstorming, and more. Experience the power of generative AI."
+      },
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 7,
+        "url": "https://zhuanlan.zhihu.com/p/622871383",
+        "title": "AI 网站汇总（免费chatgpt）（70个持续增加中） - 知乎",
+        "snippet": "2024年1月9日&ensp;·&ensp;本文总结了八大类AI工具，包括：聊天AI、绘画AI、AI提示词、图像处理、UI设计和3D设计，汇总60个AI网站，一键收藏。 2024.1.9更新 …"
+      },
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 8,
+        "url": "https://www.perplexity.ai/",
+        "title": "Perplexity AI",
+        "snippet": "3 天之前&ensp;·&ensp;Perplexity is a free AI-powered answer engine that provides accurate, trusted, and real-time answers to any question."
+      },
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 9,
+        "url": "https://ai-kit.cn/",
+        "title": "AI 工具箱官网 | 3000 + 免费 AI 工具集合 | AI 软件一站式导航网站",
+        "snippet": "2 天之前&ensp;·&ensp;写作没灵感？ 设计缺思路？ 学习效率低？ 日常琐事费时间？ 这里集结 AI 写作、编程、办公、设计、剪辑、学习辅助、生活服务等实用工具，找 …"
+      },
+      {
+        "query": "AI 搜索优化 工具 推荐",
+        "rank": 10,
+        "url": "https://ai.google/",
+        "title": "Google AI - How we're making AI helpful for everyone",
+        "snippet": "Discover how Google AI is committed to enriching knowledge, solving complex challenges and helping people grow by building useful AI tools and …"
+      }
+    ],
+    "AI 答案监测 工具 推荐": [
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 1,
+        "url": "https://qianwen.aigc.cn/",
+        "title": "千问 - 阿里Qwen大模型打造的 AI 对话助手",
+        "snippet": "2026年4月30日&ensp;·&ensp;千问是阿里最强大模型官方AI助手，是体验最新、最强Qwen大模型的第一入口，“聪明会思考”，旨在成为你在工作、学习、生活中的AI助 …"
+      },
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 2,
+        "url": "https://openai.com/",
+        "title": "OpenAI | Research & Deployment",
+        "snippet": "Advancing content provenance for a safer, more transparent AI ecosystem Safety May 19, 2026"
+      },
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 3,
+        "url": "https://ai-bot.cn/",
+        "title": "AI 工具集官网 | 1000+ AI 工具集合，国内外 AI 工具集导航大全",
+        "snippet": "20 小时之前&ensp;·&ensp;AI工具集官网收录了国内外数百个AI工具，该导航网站包括AI写作工具、AI图像生成和背景移除、AI视频制作、AI音频转录、AI辅助编程、AI …"
+      },
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 4,
+        "url": "https://www.doubao.com/",
+        "title": "豆包 - 字节跳动旗下 AI 智能助手",
+        "snippet": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！ 豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。 豆包为你答疑 …"
+      },
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 5,
+        "url": "https://jimeng.jianying.com/ai-tool/home",
+        "title": "即梦 AI - 一站式 AI 创作平台",
+        "snippet": "即梦AI是一个AI创作平台，可激发艺术创意、提升绘画和视频创作体验。 您可以利用AI智能，将想象变为现实。 即梦AI支持文字绘图、文字生成视频和图片 …"
+      },
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 6,
+        "url": "https://gemini.google.com/",
+        "title": "‎Google Gemini",
+        "snippet": "Meet Gemini, Google’s AI assistant. Get help with writing, planning, brainstorming, and more. Experience the power of generative AI."
+      },
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 7,
+        "url": "https://zhuanlan.zhihu.com/p/622871383",
+        "title": "AI 网站汇总（免费chatgpt）（70个持续增加中） - 知乎",
+        "snippet": "2024年1月9日&ensp;·&ensp;本文总结了八大类AI工具，包括：聊天AI、绘画AI、AI提示词、图像处理、UI设计和3D设计，汇总60个AI网站，一键收藏。 2024.1.9更新 …"
+      },
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 8,
+        "url": "https://www.perplexity.ai/",
+        "title": "Perplexity AI",
+        "snippet": "3 天之前&ensp;·&ensp;Perplexity is a free AI-powered answer engine that provides accurate, trusted, and real-time answers to any question."
+      },
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 9,
+        "url": "https://ai-kit.cn/",
+        "title": "AI 工具箱官网 | 3000 + 免费 AI 工具集合 | AI 软件一站式导航网站",
+        "snippet": "2 天之前&ensp;·&ensp;写作没灵感？ 设计缺思路？ 学习效率低？ 日常琐事费时间？ 这里集结 AI 写作、编程、办公、设计、剪辑、学习辅助、生活服务等实用工具，找 …"
+      },
+      {
+        "query": "AI 答案监测 工具 推荐",
+        "rank": 10,
+        "url": "https://ai.google/",
+        "title": "Google AI - How we're making AI helpful for everyone",
+        "snippet": "Discover how Google AI is committed to enriching knowledge, solving complex challenges and helping people grow by building useful AI tools and …"
+      }
+    ],
+    "品牌 AI 搜索 可见度 监测": [
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 1,
+        "url": "https://baike.baidu.com/item/%E5%93%81%E7%89%8C/235720",
+        "title": "品牌 （名词词汇）_百度百科",
+        "snippet": "品牌 (Brand)是一个汉语词语，拼音是pǐn pái，品牌是一种社会群体对特定事物或产品的识别认知，是建立在受众群体认知与认可基础之上的集体意识体现，该定义由品牌专家吕天祝先生提出。"
+      },
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 2,
+        "url": "https://www.chinapp.com/",
+        "title": "品牌 网-十大 品牌 排行榜- 品牌 大数据服务平台",
+        "snippet": "2 天之前&ensp;·&ensp;集成灶十大品牌 Meida美大 9807 火星人集成灶 9473 Lajoson蓝炬星 9397 4 亿田Entive 9174 5 奥普集成灶AUPU 9105 6 老板ROBAM 9086 7 帅丰SANFER 8939 8 潮邦Caoban 8635 9 海尔Haier …"
+      },
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 3,
+        "url": "https://www.cnpp.cn/",
+        "title": "十大 品牌 网CNPP → 品牌 排行榜， 品牌 网门户",
+        "snippet": "十大品牌网是正宗十大品牌榜中榜查询网站，由CNPP品牌数据研究院授权查询，品牌大数据一站式服务平台，有近20年历史闻名海内外的著名站点！ 专业 客观 公正 杜绝刷票 查询免费！"
+      },
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 4,
+        "url": "https://www.brandstar.com.cn/",
+        "title": "品牌 星球Brandstar - 美好 品牌 发现者",
+        "snippet": "2026年3月26日&ensp;·&ensp;「品牌星球Brandstar」是关注品牌创新、新消费与 DTC 品牌的数字媒体，内容涵盖前沿资讯、深度报道、营销案例、创意设计及趋势洞察等，致力于以国际的视野挖掘驱动美好生活的品 …"
+      },
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 5,
+        "url": "https://chinanationalbrand.org.cn/",
+        "title": "中国国家 品牌 网",
+        "snippet": "博鳌论坛共话新质生产力引领酒业未来——陕西白水杜康荣膺“2025年度 (行业)最具商业价值品牌” 品牌价值1.1万亿元！ 苹果首次登顶胡润中国品牌榜 贵州茅台第二 从“中国制造”到“全球青睐”——一双拖鞋 …"
+      },
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 6,
+        "url": "https://zhuanlan.zhihu.com/p/638900197",
+        "title": "什么是 品牌 ？ 品牌 的本质是什么？ - 知乎",
+        "snippet": "2023年7月29日&ensp;·&ensp;品牌是企业的核心资产之一，是企业与消费者建立信任和忠诚度的重要工具，也是企业价值和竞争力的重要来源。 然而，对于品牌的定义和本质，却存在着不同的解释和观点。 本文将探 …"
+      },
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 7,
+        "url": "https://news.qq.com/rain/a/20251217A05MG500",
+        "title": "2025年世界 品牌 500强发布，中国 品牌 入选数50个，位居全球 ...",
+        "snippet": "2025年12月17日&ensp;·&ensp;由世界品牌实验室（World Brand Lab）独家编制的2025年度（第二十二届）《世界品牌500强》排行榜于12月17日在美国纽约揭晓，并在中国香港举行发布会 ..."
+      },
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 8,
+        "url": "https://brand.icxo.com/world/2025/",
+        "title": "2025年（第二十二届）世界 品牌 500强排行榜隆重揭晓",
+        "snippet": "2025年12月17日&ensp;·&ensp;按照品牌影响力的三项关键指标，即市场占有率（Market Share）、品牌忠诚度（Brand Loyalty）和全球领导力（Global Leadership），世界品牌实验室对全球约8000多个知名品牌 …"
+      },
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 9,
+        "url": "https://www.phb123.com/pinpai/daquan/",
+        "title": "品牌 大全-全球、中国知名 品牌 库-排行榜123网",
+        "snippet": "2024年10月11日&ensp;·&ensp;排行榜123网旗下品牌排行榜频道收集了知名国内外品牌，包括大行业品牌数据，以及细分行业品牌数据，每个品牌包含了其详细的口碑好评率、品牌价值指数、销量、全网销量等信息。"
+      },
+      {
+        "query": "品牌 AI 搜索 可见度 监测",
+        "rank": 10,
+        "url": "https://cbrand.com.cn/",
+        "title": "中国 品牌 网 - 国家市场监督管理总局 中国 品牌 杂志社主办",
+        "snippet": "1 天前&ensp;·&ensp;中国品牌网是中国品牌杂志社战略布局融媒体建设的重要互联网媒体平台之一，与中国品牌杂志形成刊网融合发展的联动格局，共同为促进中国品牌建设，推动质量强国、品牌强国发挥新闻媒体的 …"
+      }
+    ],
+    "豆包 GEO 优化 服务 推荐": [
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 1,
+        "url": "https://www.doubao.com/",
+        "title": "豆包 - 字节跳动旗下 AI 智能助手",
+        "snippet": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！ 豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。 豆包为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任 …"
+      },
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 2,
+        "url": "https://doubao.zube.cn/index.html",
+        "title": "豆包 网页版 - 豆包 AI网页版在线入口",
+        "snippet": "2025年9月10日&ensp;·&ensp;豆包是字节跳动推出的AI智能助手，支持文本创作、代码编程、多模态交互等核心功能。 豆包网页版无需下载即可使用，提供文档解析、智能修图、学习辅导等场景化服务。 实时响应专 …"
+      },
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 3,
+        "url": "https://www.doubao-cn.hl.cn/",
+        "title": "豆包 | AI智能助手下载 - 字节跳动大模型对话工具",
+        "snippet": "3 天之前&ensp;·&ensp;豆包 AI助手 智能对话 更懂你 字节跳动推出的AI智能助手，支持智能问答、AI写作、文案创作、翻译润色等功能。全平台覆盖永久免费，让AI成为你的得力助手。"
+      },
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 4,
+        "url": "https://doubao.zhanlian.net/doubao/index.html",
+        "title": "豆包 官网入口 - 豆包 Ai网页版在线使用",
+        "snippet": "2026年5月20日&ensp;·&ensp;豆包（Doubao）是字节跳动推出的免费AI助手，豆包网页版即开即用，支持智能对话、文档处理、图像视频生成及多模态创作，提供精准问答、学习辅导、办公提效等场景化服务。"
+      },
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 5,
+        "url": "https://apps-doubaocn.com.cn/",
+        "title": "豆包 - 字节旗下免费AI神器，全球亿万用户的选择",
+        "snippet": "2 天之前&ensp;·&ensp;豆包桌面电脑版下载，免费AI神器，全球亿万用户的选择。支持智能问答、写作润色、图片理解、学习辅导和办公提效，适合 Windows、macOS、iOS 与 Android 多端使用。"
+      },
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 6,
+        "url": "https://apps.microsoft.com/detail/xp99jw18tlbk06?hl=zh-cn&gl=CN",
+        "title": "豆包 - Windows官方下载 | 微软应用商店 | Microsoft Store",
+        "snippet": "豆包可以帮助你快速 AI 搜索，单击一下就能搜索整个互联网，无广告，快如闪电；同时当你在其他应用中划词选中文本后也能为你提供搜索、翻译、解释、总结等各类 AI 辅助功能；同时还能固定在你桌 …"
+      },
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 7,
+        "url": "https://tubatool.github.io/",
+        "title": "豆包 官网入口_ 豆包 AI网页版在线使用",
+        "snippet": "2026年5月12日&ensp;·&ensp;在视频生成方面，豆包提供两种强大的模型：PixelDance 和 Seaweed。 用户输入与歌曲相关的提示词，如“流行风格的音乐视频，画面中出现年轻情侣在海边漫步”，豆包便能生成契合主 …"
+      },
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 8,
+        "url": "https://apps.microsoft.com/detail/xpddtbmm6tz365?launch=true&hl=zh-cn&gl=cn",
+        "title": "豆包 - Windows官方下载 | 微软应用商店 | Microsoft Store",
+        "snippet": "豆包是随时帮忙的 AI 助手。 看不懂的信息它能解释，遇到疑问随时提问，想做一道菜、了解新概念或获取灵感，都能快速得到清晰答案；无论是查资料、规划出行还是安排生活，豆包都能抓住重点，把复 …"
+      },
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 9,
+        "url": "https://do-doubao.com.cn/",
+        "title": "豆包 AI智能体 - 下载 豆包 桌面版 | 多功能智能体应用",
+        "snippet": "2026年3月15日&ensp;·&ensp;豆包AI智能体具备哪些能力？ 豆包AI是多功能智能体应用，支持 AI 对话、联网检索、翻译、修图、网页浏览等能力。安装豆包桌面版后，按 Alt+空格键唤起豆包桌面助手，即可在对话中 …"
+      },
+      {
+        "query": "豆包 GEO 优化 服务 推荐",
+        "rank": 10,
+        "url": "https://sj.qq.com/appdetail/com.larus.nova",
+        "title": "豆包 app-官方正版软件2026最新版本免费下载-应用宝官网",
+        "snippet": "1 天前&ensp;·&ensp;豆包是随时帮忙的AI助手。 看不懂的信息它能解释，遇到疑问随时提问，想做一道菜、了解新概念或获取灵感，都能快速得到清晰答案；无论是查资料、规划出行还是安排生活，豆包都能抓住重 …"
+      }
+    ],
+    "llms.txt 生成 工具 推荐": [
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 1,
+        "url": "https://zhuanlan.zhihu.com/p/639318309",
+        "title": "大型语言模型（Large Language Models， LLMs ）概览 - 知乎",
+        "snippet": "2023年6月25日&ensp;·&ensp;在这篇文章中，我们将深入探讨 大型语言模型 （LLMs）的迷人世界，以及它们理解和生成类似人类语言的不可思议能力。 我们将讨论这些模型的历史和演变，涉及到重要的里程碑，如 …"
+      },
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 2,
+        "url": "https://blog.csdn.net/Javachichi/article/details/140052472",
+        "title": "大语言模型（ LLMs ）全面学习指南（非常详细）零基础入门 ...",
+        "snippet": "2024年6月28日&ensp;·&ensp;如下这份指南将涵盖LLMs的基础知识、训练过程、用例和未来趋势……大语言模型（LLMs）是一种深度学习模型，专门设计用于理解、分析和生成类似人类的文本。 _大语言模型学习"
+      },
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 3,
+        "url": "https://github.com/MLNLP-World/LLMs-from-scratch-CN",
+        "title": "MLNLP-World/ LLMs -from-scratch-CN - GitHub",
+        "snippet": "2026年3月19日&ensp;·&ensp;在 《LLMs-from-scratch》 项目中，不仅关注 LLMs 的基础构建，如 Transformer 架构、序列建模 等，还深入探索了 GPT、BERT 等深度学习模型 的底层实现。 项目中的每一部分均配备 …"
+      },
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 4,
+        "url": "https://gitcode.com/lhf-Ai/llms-from-scratch-cn/overview",
+        "title": "llms -from-scratch-cn:基于 PyTorch 的大语言模型构建实践 ...",
+        "snippet": "可帮助开发者和研究者从0掌握大语言模型核心技术，提供系统化学习路径与实践导向教程，涵盖GPT-like、GLM4、Llama3、RWKV6等模型架构实现，通过简洁代码深入理解模型原理。"
+      },
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 5,
+        "url": "https://www.aigc.cn/large-models",
+        "title": "什么是大模型（ LLMs ）？一文读懂什么是大模型 | AIGC工具导航",
+        "snippet": "2 天之前&ensp;·&ensp;本文将继续深入探讨大型语言模型（LLMs）的迷人世界，以及它们理解和生成类似人类语言的不可思议能力。 我们将讨论这些模型的历史和演变，涉及到重要的里程碑，如GPT系列及其后继模 …"
+      },
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 6,
+        "url": "https://lm-studio.cn/home",
+        "title": "LM Studio - 发现、下载并运行本地大型语言模型 ( LLMs ...",
+        "snippet": "2026年4月10日&ensp;·&ensp;产品 下载应用 模型 开发者文档 LM Studio 中心 测试版发布 开发者 lmstudio-js lmstudio-python LM Studio CLI (lms) llms.txt llms-full.txt 公司 招贤纳士 正在招聘！"
+      },
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 7,
+        "url": "https://aws.amazon.com/cn/what-is/large-language-model/",
+        "title": "什么是 LLM？— 大型语言模型简介 — AWS",
+        "snippet": "2026年5月13日&ensp;·&ensp;了解什么是大型语言模型以及为什么 LLM 必不可少。了解企业人工智能的好处，以及如何用其创建新的内容和想法，包括文本、对话、图像、视频和音频。"
+      },
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 8,
+        "url": "https://segmentfault.com/a/1190000045419127",
+        "title": "LLMs 入门实战系列大全： LLMs 应用、领域大模型介绍、大 ...",
+        "snippet": "2024年10月27日&ensp;·&ensp;大模型【LLMs】Few-shot-CoT 提示策略应用方法是什么？ 大模型【LLMs】涌现现象篇 大模型【LLMs】中有一种 涌现现象，你知道么？ 大模型【LLMs】涌现现象主要体现在哪些方 …"
+      },
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 9,
+        "url": "https://www.cnblogs.com/wintersun/p/18424949",
+        "title": "大型语言模型 (Large Language Models)的介绍 - PetterLiu ...",
+        "snippet": "2024年9月22日&ensp;·&ensp;背景大型语言模型（Large Language Models，简称LLMs）是一类先进的人工智能模型，它们通过深度学习技术，特别是神经网络，来理解和生成自然语言。 这些模型在自然语言处 …"
+      },
+      {
+        "query": "llms.txt 生成 工具 推荐",
+        "rank": 10,
+        "url": "https://cloud.tencent.com/developer/article/2631039",
+        "title": "大语言模型 (Large Language Models，LLM)如何颠覆未来 ...",
+        "snippet": "2026年2月24日&ensp;·&ensp;# 大语言模型 (Large Language Models，LLM)如何颠覆未来：深入解析应用、挑战与趋势 摘要 大型语言模型（LLM）正以惊人的速度重塑技术格局。本文将从技术原理、行业应用、核心 …"
+      }
+    ],
+    "AI 搜索 竞品分析 工具 推荐": [
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 1,
+        "url": "https://qianwen.aigc.cn/",
+        "title": "千问 - 阿里Qwen大模型打造的 AI 对话助手",
+        "snippet": "2026年4月30日&ensp;·&ensp;千问是阿里最强大模型官方AI助手，是体验最新、最强Qwen大模型的第一入口，“聪明会思考”，旨在成为你在工作、学习、生活中的AI助手。千问集成了文生图、智能编码、文档解析、 …"
+      },
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 2,
+        "url": "https://openai.com/",
+        "title": "OpenAI | Research & Deployment",
+        "snippet": "Advancing content provenance for a safer, more transparent AI ecosystem Safety May 19, 2026"
+      },
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 3,
+        "url": "https://ai-bot.cn/",
+        "title": "AI 工具集官网 | 1000+ AI 工具集合，国内外 AI 工具集导航大全",
+        "snippet": "20 小时之前&ensp;·&ensp;AI工具集官网收录了国内外数百个AI工具，该导航网站包括AI写作工具、AI图像生成和背景移除、AI视频制作、AI音频转录、AI辅助编程、AI音乐生成、AI绘画设计、AI对话聊天等AI工具集合 …"
+      },
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 4,
+        "url": "https://www.doubao.com/",
+        "title": "豆包 - 字节跳动旗下 AI 智能助手",
+        "snippet": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！ 豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。 豆包为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任 …"
+      },
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 5,
+        "url": "https://jimeng.jianying.com/ai-tool/home",
+        "title": "即梦 AI - 一站式 AI 创作平台",
+        "snippet": "即梦AI是一个AI创作平台，可激发艺术创意、提升绘画和视频创作体验。 您可以利用AI智能，将想象变为现实。 即梦AI支持文字绘图、文字生成视频和图片生成视频，并提供创作灵感。 让即梦AI开启您 …"
+      },
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 6,
+        "url": "https://gemini.google.com/",
+        "title": "‎Google Gemini",
+        "snippet": "Meet Gemini, Google’s AI assistant. Get help with writing, planning, brainstorming, and more. Experience the power of generative AI."
+      },
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 7,
+        "url": "https://zhuanlan.zhihu.com/p/622871383",
+        "title": "AI 网站汇总（免费chatgpt）（70个持续增加中） - 知乎",
+        "snippet": "2024年1月9日&ensp;·&ensp;本文总结了八大类AI工具，包括：聊天AI、绘画AI、AI提示词、图像处理、UI设计和3D设计，汇总60个AI网站，一键收藏。 2024.1.9更新 …"
+      },
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 8,
+        "url": "https://www.perplexity.ai/",
+        "title": "Perplexity AI",
+        "snippet": "3 天之前&ensp;·&ensp;Perplexity is a free AI-powered answer engine that provides accurate, trusted, and real-time answers to any question."
+      },
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 9,
+        "url": "https://ai-kit.cn/",
+        "title": "AI 工具箱官网 | 3000 + 免费 AI 工具集合 | AI 软件一站式导航网站",
+        "snippet": "2 天之前&ensp;·&ensp;写作没灵感？ 设计缺思路？ 学习效率低？ 日常琐事费时间？ 这里集结 AI 写作、编程、办公、设计、剪辑、学习辅助、生活服务等实用工具，找到趁手神器，让效率翻倍，轻松搞定从任务到生 …"
+      },
+      {
+        "query": "AI 搜索 竞品分析 工具 推荐",
+        "rank": 10,
+        "url": "https://ai.google/",
+        "title": "Google AI - How we're making AI helpful for everyone",
+        "snippet": "Discover how Google AI is committed to enriching knowledge, solving complex challenges and helping people grow by building useful AI tools and technologies."
+      }
+    ],
+    "GEO 和 SEO 优化 服务商 推荐": [
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 1,
+        "url": "https://zhuanlan.zhihu.com/p/1981693721281053388",
+        "title": "GEO 是什么？与SEO/SEM区别+2026决策指南 - 知乎",
+        "snippet": "2025年12月9日&ensp;·&ensp;2025 年 AI 搜索成主流，GEO 优化彻底火了，但很多企业还分不清它和 SEO/SEM 的区别。今天用大白话拆清楚定 …"
+      },
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 2,
+        "url": "https://developer.volcengine.com/articles/7635672299743494187",
+        "title": "什么是 GEO ？普通人也能看懂的 GEO 入门笔记",
+        "snippet": "2026年5月4日&ensp;·&ensp;你好，我是兰多。 一个从零开始摸索 GEO 的普通人，这是我把学习笔记整理成的第一篇内容。 GEO（Generative …"
+      },
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 3,
+        "url": "https://www.163.com/dy/article/KQURC7I90556LLPP.html",
+        "title": "大白话科普：到底什么是 GEO ？一次性讲清原理、区别与误区",
+        "snippet": "2026年4月20日&ensp;·&ensp;大白话科普：到底什么是 GEO？一次性讲清原理、区别与误区,算法,原理,geo,seo,搜索引擎,大白话科普 现在互联网 …"
+      },
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 4,
+        "url": "https://cloud.tencent.com/developer/article/2542886",
+        "title": "什么是 GEO 和 SEO ？ GEO 与 SEO 有什么区别？如何快速 ...",
+        "snippet": "2025年7月17日&ensp;·&ensp;文章介绍SEO与GEO的定义、核心目标及关键策略，对比二者在查询方式、结果展示、排名机制上的差异，提供7步 …"
+      },
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 5,
+        "url": "https://www.sohu.com/a/952368436_121191318",
+        "title": "一文读懂 GEO 是什么？企业如何落地 GEO ？（2万字长文解密）",
+        "snippet": "2025年11月9日&ensp;·&ensp;以新能源行业为例：传统GEO发布“电池续航长”的科普文，半年曝光10万次，最终转化20个咨询；而采用动态GEO模 …"
+      },
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 6,
+        "url": "https://www.jiemian.com/article/14219525.html",
+        "title": "什么是 GEO ？如何挑选 GEO 服务商？如何避坑？企业做 GEO ...",
+        "snippet": "2026年4月7日&ensp;·&ensp;增长超人：全链路意图驱动的GEO品效合一标杆 增长超人以综合评分93.5位列本次测评第二位，是国内GEO领域的开 …"
+      },
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 7,
+        "url": "https://news.qq.com/rain/a/20260423A03D9M00",
+        "title": "SEO VS GEO ：核心区别与实战对比_腾讯新闻",
+        "snippet": "2026年4月23日&ensp;·&ensp;一手权威媒体资源，筑牢GEO基础——我们软文街整合了10万+国内外媒体，跟央媒、门户、垂直媒体都能直接合 …"
+      },
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 8,
+        "url": "https://tech.ifeng.com/c/8tCOhRkR63x",
+        "title": "AI流量下半场，2026年6大主流AI搜索优化（ GEO ）平台核心 ...",
+        "snippet": "2026年5月17日&ensp;·&ensp;AI流量下半场，2026年6大主流AI搜索优化（GEO）平台核心竞争力拆解 2026年，生成式AI搜索逐步融入用户决策全 …"
+      },
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 9,
+        "url": "https://geo.meituan.com/",
+        "title": "美团 GEO 营销门户",
+        "snippet": "GEO 是一种新型的搜索优化方式，专注于在 AI 对话平台中提升主体曝光和内容可见性。 与传统 SEO 优化搜索引擎排名不同， GEO …"
+      },
+      {
+        "query": "GEO 和 SEO 优化 服务商 推荐",
+        "rank": 10,
+        "url": "https://www.cnblogs.com/yahengwang/p/9676422.html",
+        "title": "GEO （Gene Expression Omnibus）：高通量基因表达数据库",
+        "snippet": "Gene Expression Omnibus（GEO）是一个公共存储库，可以存档和自由分发由科学界提交的全套微阵列，新一代测序和其他形式的 …"
+      }
+    ]
+  },
+  "gaps": [
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "百度智能云生成式引擎优化解决方案",
+      "doubaoRank": 1,
+      "category": "云厂商GEO解决方案",
+      "reason": "依托百度文心大模型生态及搜索技术积累，可同时适配传统搜索和百度生成式搜索的排名规则，覆盖国内最大规模的生成式搜索流量场景，技术可靠性高",
+      "webRank": 99,
+      "gap": 98,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Semrush",
+      "doubaoRank": 1,
+      "category": "SEO与AI搜索优化综合平台",
+      "reason": "全球知名度较高的综合优化工具，集成AI内容优化、关键词排名追踪、SERP分析等功能，可同时适配传统搜索和生成式AI搜索的排名规则，支持多搜索引擎场景的优化需求，行业认可度高",
+      "webRank": 99,
+      "gap": 98,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "OpenAI 内容审核API",
+      "doubaoRank": 1,
+      "category": "原生AI平台配套监测工具",
+      "reason": "适配OpenAI全系生成模型的输出检测，可精准识别违规内容、事实幻觉、导向偏差等问题，调用便捷，和GPT系列输出匹配度高，用户基数大",
+      "webRank": 99,
+      "gap": 98,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "5118营销大数据平台",
+      "doubaoRank": 1,
+      "category": "AI搜索优化工具",
+      "reason": "内置专门的生成式搜索可见度监测模块，可追踪品牌在文心一言、通义千问等国内主流大模型搜索结果中的曝光占比、排名位置，数据更新频率高，还配套GEO优化建议，是国内多数营销团队做AI搜索可见度监测的首选工具",
+      "webRank": 99,
+      "gap": 98,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "字节跳动豆包生态开放平台官方GEO优化服务",
+      "doubaoRank": 1,
+      "category": "官方原厂服务",
+      "reason": "直接对接豆包生成算法底层规则，对豆包检索排序逻辑理解最精准，优化合规性和效果稳定性最高，有官方背书可避免违规操作导致的内容降权",
+      "webRank": 99,
+      "gap": 98,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "llms.txt 官方生成器",
+      "doubaoRank": 1,
+      "category": "在线生成工具",
+      "reason": "llms.txt规范官方推出的原生工具，完全适配最新标准，自带格式校验功能，只需输入站点基础信息、路径规则即可一键生成合规文件，是普通用户的首选工具",
+      "webRank": 99,
+      "gap": 98,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "钛动科技",
+      "doubaoRank": 1,
+      "category": "全域整合营销服务商",
+      "reason": "同时布局传统SEO与GEO业务，既有成熟的关键词排名、外链建设等传统搜索优化能力，也可提供大模型语料对齐、生成式搜索结果正向占位等GEO服务，服务覆盖国内+海外多场景，中大型企业服务案例丰富",
+      "webRank": 99,
+      "gap": 98,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "阿里云通义GEO优化服务",
+      "doubaoRank": 2,
+      "category": "大模型厂商配套GEO服务",
+      "reason": "基于通义大模型的检索排序逻辑开发，可针对性优化内容在通义系列产品、阿里生态内生成式搜索场景的露出，还配套内容合规校验能力，适配国内监管要求",
+      "webRank": 99,
+      "gap": 97,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Frase",
+      "doubaoRank": 2,
+      "category": "AI内容与GEO专项优化工具",
+      "reason": "主打生成式引擎优化方向，可分析主流AI搜索结果的信息缺口，自动生成符合AI搜索抓取、引用偏好的内容大纲和优化方案，帮助内容提升在AI生成回答中的露出概率",
+      "webRank": 99,
+      "gap": 97,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "百度智能云生成式AI内容审核方案",
+      "doubaoRank": 2,
+      "category": "国内云服务厂商AI监测方案",
+      "reason": "针对中文场景深度优化，支持大模型输出的幻觉核查、敏感内容识别、合规校验，完全适配国内监管要求，本土技术服务响应速度快",
+      "webRank": 99,
+      "gap": 97,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "Semrush",
+      "doubaoRank": 2,
+      "category": "海外AI搜索分析服务商",
+      "reason": "支持监测品牌在ChatGPT、Google SGE等海外主流生成式搜索结果中的可见度、提及率、内容来源占比，可直观对比竞品的AI搜索表现，适配出海品牌的海外AI搜索监测需求",
+      "webRank": 99,
+      "gap": 97,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "SEMrush AI内容优化模块",
+      "doubaoRank": 2,
+      "category": "国际通用GEO优化工具",
+      "reason": "内置豆包等主流大模型的生成检索偏好分析能力，可一键检测内容在豆包下的排名潜力，能针对性给出关键词布局、内容结构优化建议，全球用户基数大效果验证度高",
+      "webRank": 99,
+      "gap": 97,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "ChatGPT llms.txt Builder 插件",
+      "doubaoRank": 2,
+      "category": "AI辅助插件",
+      "reason": "可基于用户上传的站点地图、内容架构描述自动生成适配的llms.txt规则，还支持自定义LLM可爬取内容范围、使用许可条款，适合需要个性化配置的用户",
+      "webRank": 99,
+      "gap": 97,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "Similarweb AI洞察版",
+      "doubaoRank": 2,
+      "category": "AI流量与互联网竞品分析工具",
+      "reason": "AI自动聚合竞品网站、APP的流量来源、用户画像、关键词布局、功能迭代等数据，一键生成多维度竞品对比报表，是跨境业务、互联网产品赛道的核心竞品分析工具",
+      "webRank": 99,
+      "gap": 97,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "珍岛集团",
+      "doubaoRank": 2,
+      "category": "智能营销SaaS+全链路优化服务商",
+      "reason": "拥有自研AI营销工具矩阵，传统SEO业务覆盖网页、短视频、电商等多渠道搜索排名优化，GEO层面可实现品牌信息植入大模型训练语料、生成式搜索结果可信度提升等服务，性价比高，适配各规模企业需求",
+      "webRank": 99,
+      "gap": 97,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "BrightEdge",
+      "doubaoRank": 3,
+      "category": "海外GEO第三方服务商",
+      "reason": "是最早布局Google SGE（生成式搜索体验）优化的头部SEO服务商，拥有成熟的GEO优化方法论和数据监测工具，适合需要拓展海外生成式搜索流量的客户",
+      "webRank": 99,
+      "gap": 96,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Surfer SEO",
+      "doubaoRank": 3,
+      "category": "AI驱动的内容优化工具",
+      "reason": "通过爬取搜索结果页的全量数据，给出内容关键词密度、语义关联词、结构排布的精准优化建议，优化后的内容更容易被AI搜索引擎判定为高价值来源，获得更高曝光",
+      "webRank": 99,
+      "gap": 96,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "Guardrails AI",
+      "doubaoRank": 3,
+      "category": "开源AI输出监测框架",
+      "reason": "开源可二次开发，支持用户自定义校验规则，可检测幻觉、格式错误、不符合指令要求的输出，适配多类主流大模型，对开发者友好",
+      "webRank": 99,
+      "gap": 96,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "站长工具（Chinaz）AI搜索监测模块",
+      "doubaoRank": 3,
+      "category": "国内站长服务平台",
+      "reason": "免费基础功能门槛低，可快速查询品牌在国内主流生成式AI搜索结果中的出现频次、关联关键词匹配度，适合中小品牌低成本快速自查AI搜索表现",
+      "webRank": 99,
+      "gap": 96,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "站长之家（Chinaz）大模型内容适配工具",
+      "doubaoRank": 3,
+      "category": "国内第三方GEO优化工具",
+      "reason": "专门针对国内主流大模型包括豆包做了适配规则训练，支持批量检测站点内容的豆包收录、引用优先级，可自动生成优化报告，性价比高适合中小站长使用",
+      "webRank": 99,
+      "gap": 96,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "Sitemap 转 llms.txt 转换工具",
+      "doubaoRank": 3,
+      "category": "格式转换工具",
+      "reason": "支持直接导入现有XML格式站点地图，自动提取站点路径规则批量生成llms.txt，无需手动逐条录入路径，大幅降低中小站点的配置成本",
+      "webRank": 99,
+      "gap": 96,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "天眼查AI商业分析平台",
+      "doubaoRank": 3,
+      "category": "AI企业经营类竞品分析工具",
+      "reason": "可调用全量公开工商、融资、专利、招投标、司法风险等企业数据，AI自动生成竞品经营实力、核心竞争力、潜在风险、发展潜力分析报告，尤其适配To B赛道竞品分析需求",
+      "webRank": 99,
+      "gap": 96,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "开域集团",
+      "doubaoRank": 3,
+      "category": "全域数字营销服务商",
+      "reason": "与国内头部大模型厂商有深度合作，可针对性优化品牌信息在生成式引擎中的输出优先级，同时传统SEO业务覆盖百度、搜狗、微信生态等多搜索场景，头部行业客户服务经验充足",
+      "webRank": 99,
+      "gap": 96,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "Semrush GEO优化套件",
+      "doubaoRank": 4,
+      "category": "全球GEO工具+咨询服务商",
+      "reason": "整合了生成式搜索排名监测、关键词优化建议、内容GEO适配诊断功能，同时可提供定制化GEO咨询服务，全球用户基数大，数据维度覆盖全面",
+      "webRank": 99,
+      "gap": 95,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Clearscope",
+      "doubaoRank": 4,
+      "category": "AI内容优化与合规工具",
+      "reason": "基于NLP技术分析搜索需求的语义关联，匹配AI搜索的内容排序逻辑，同时可生成符合E-E-A-T要求的内容优化建议，适合企业级用户做品牌内容的AI搜索优化",
+      "webRank": 99,
+      "gap": 95,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "Arthur",
+      "doubaoRank": 4,
+      "category": "企业级AI全生命周期监测平台",
+      "reason": "支持大模型推理全流程监测，除AI答案的违规内容检测外，还可追踪准确率、幻觉率、公平性等核心指标，适合规模化AI应用的企业使用",
+      "webRank": 99,
+      "gap": 95,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "Google Search Console（GSC）SGE可见度报告",
+      "doubaoRank": 4,
+      "category": "官方搜索管理工具",
+      "reason": "谷歌官方推出的生成式搜索曝光监测功能，数据精准权威，可直接获取品牌内容在Google SGE结果中的展示次数、点击率，是布局谷歌系生态品牌做AI搜索监测的必备工具",
+      "webRank": 99,
+      "gap": 95,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "新榜有数GEO全链路优化服务",
+      "doubaoRank": 4,
+      "category": "内容营销服务商",
+      "reason": "积累了大量豆包内容排序实测数据，可提供从内容创作、结构优化到效果追踪的全链路GEO优化服务，适合品牌方做全域内容的豆包定向露出",
+      "webRank": 99,
+      "gap": 95,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "WordPress llms.txt Generator 插件",
+      "doubaoRank": 4,
+      "category": "CMS配套插件",
+      "reason": "适配WordPress全版本，可直接在后台可视化配置爬取规则、内容授权声明，生成后自动同步到站点根目录，无需手动上传文件，适合WordPress建站用户",
+      "webRank": 99,
+      "gap": 95,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "5118 AI竞品分析模块",
+      "doubaoRank": 4,
+      "category": "AI内容/SEO/电商竞品分析工具",
+      "reason": "支持批量抓取竞品的搜索排名、关键词布局、内容矩阵、电商商品数据，AI自动挖掘内容缺口、差异化卖点、流量机会，是内容运营、SEO、电商领域常用的竞品分析工具",
+      "webRank": 99,
+      "gap": 95,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "清博智能",
+      "doubaoRank": 4,
+      "category": "AI内容治理+搜索优化服务商",
+      "reason": "深耕大模型语料治理领域，GEO层面可提供品牌正向信息权重提升、生成式搜索负面内容干预等特色服务，同时支持图文、短视频等多内容形态的传统SEO排名优化，适配内容型品牌需求",
+      "webRank": 99,
+      "gap": 95,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "新榜GEO内容优化服务",
+      "doubaoRank": 5,
+      "category": "国内内容营销类GEO服务商",
+      "reason": "熟悉国内各主流大模型、生成式AI产品的内容召回逻辑，主打内容端的GEO适配改造，适合内容平台、自媒体账号做生成式搜索流量获取",
+      "webRank": 99,
+      "gap": 94,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "百度搜索资源平台AI优化助手",
+      "doubaoRank": 5,
+      "category": "国内搜索引擎官方优化工具",
+      "reason": "百度官方推出的站长工具，可直接对接百度生成式搜索的收录、排名规则，给出针对文心一言搜索结果的收录优化、内容标引建议，适配国内中文搜索场景",
+      "webRank": 99,
+      "gap": 94,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "LangSmith",
+      "doubaoRank": 5,
+      "category": "大模型应用开发配套监测工具",
+      "reason": "LangChain生态原生工具，可追踪调试AI应用的全链路答案输出，支持检测幻觉、上下文不符、不符合指令的内容，适配基于LangChain搭建的AI应用场景",
+      "webRank": 99,
+      "gap": 94,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "新榜有数AI搜索监测版",
+      "doubaoRank": 5,
+      "category": "内容营销数据平台",
+      "reason": "可同时监测品牌在生成式AI搜索、AI内容创作场景下的提及率、口碑倾向，除可见度数据外还能关联分析AI生成内容中的品牌正负向评价，适合品牌做全链路AI舆情+可见度一体化管理",
+      "webRank": 99,
+      "gap": 94,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "Ahrefs AI SERP优化工具",
+      "doubaoRank": 5,
+      "category": "国际通用SEO/GEO工具",
+      "reason": "更新了豆包等国内大模型的生成结果排名因子分析功能，可对标竞品在豆包的露出情况给出差异化优化方案，适合有跨大模型优化需求的用户",
+      "webRank": 99,
+      "gap": 94,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "Hugo llms.txt 自动生成插件",
+      "doubaoRank": 5,
+      "category": "静态站点生成器插件",
+      "reason": "专为Hugo静态站点设计，站点构建时自动同步生成最新的llms.txt，支持通过配置文件自定义允许/禁止LLM爬取的路径，和站点发布流程无缝集成",
+      "webRank": 99,
+      "gap": 94,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "神策数据AI分析平台",
+      "doubaoRank": 5,
+      "category": "AI用户行为与产品竞品分析工具",
+      "reason": "支持同赛道产品的用户行为路径、留存转化、功能使用频次、付费转化等数据对比，AI自动挖掘竞品产品迭代方向、用户体验优势，适合互联网产品经理做产品侧竞品分析",
+      "webRank": 99,
+      "gap": 94,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "Ahrefs GEO优化服务",
+      "doubaoRank": 6,
+      "category": "跨境GEO工具及服务商",
+      "reason": "拥有海量全球生成式搜索结果语料库，可精准定位不同地区生成式引擎的内容偏好，主打跨境电商、外贸企业的海外GEO流量获取服务",
+      "webRank": 99,
+      "gap": 93,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "谷歌搜索控制台（Google Search Console）",
+      "doubaoRank": 6,
+      "category": "海外搜索引擎官方优化工具",
+      "reason": "谷歌官方推出的站长工具，可实时查看站点在谷歌生成式搜索（SGE）中的曝光、点击数据，给出结构化数据、收录规则的针对性优化建议，适配海外谷歌搜索场景",
+      "webRank": 99,
+      "gap": 93,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "阿里云大模型内容安全审核服务",
+      "doubaoRank": 6,
+      "category": "国内云服务厂商AI监测方案",
+      "reason": "支持多模态AI输出监测，中文内容识别准确率高，内置覆盖多行业的合规规则库，支持私有化部署，适合对数据安全要求较高的企业",
+      "webRank": 99,
+      "gap": 93,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "Ahrefs AI搜索分析功能",
+      "doubaoRank": 6,
+      "category": "国际SEO工具服务商",
+      "reason": "覆盖全球主流生成式搜索引擎的可见度监测，可追踪品牌关联的长尾关键词在AI搜索中的排名表现，还能拆解AI结果引用的内容来源规则，帮助品牌针对性提升AI搜索曝光占比",
+      "webRank": 99,
+      "gap": 93,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "云优CMS GEO适配插件",
+      "doubaoRank": 6,
+      "category": "建站系统GEO插件",
+      "reason": "内置豆包内容收录适配规则，建站时可自动完成内容结构化标注、元信息优化等GEO基础配置，无需额外手动调整，适合使用云优CMS建站的站长快速完成豆包适配",
+      "webRank": 99,
+      "gap": 93,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "llms.txt Linter & Generator 命令行工具",
+      "doubaoRank": 6,
+      "category": "开发者工具",
+      "reason": "兼具生成和格式校验功能，支持本地命令行运行，可集成到CI/CD工作流，适合技术开发者在项目迭代中自动维护llms.txt的合规性",
+      "webRank": 99,
+      "gap": 93,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "数说故事DeepSight AI竞品分析模块",
+      "doubaoRank": 6,
+      "category": "AI社交舆情与消费品牌竞品分析工具",
+      "reason": "覆盖全社交平台、电商平台的用户UGC、评价、讨论数据，AI自动生成竞品用户满意度、卖点差异化、营销效果对比报告，适配消费品牌的竞品分析需求",
+      "webRank": 99,
+      "gap": 93,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "飞书深诺",
+      "doubaoRank": 6,
+      "category": "跨境出海营销服务商",
+      "reason": "主打海外市场搜索优化服务，传统SEO覆盖Google、Bing、亚马逊等海外主流搜索、电商渠道，GEO层面可针对ChatGPT、Claude等海外主流大模型做输出结果优化，适配跨境出海品牌的需求",
+      "webRank": 99,
+      "gap": 93,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "5118 GEO优化工具包",
+      "doubaoRank": 7,
+      "category": "国内中小客户GEO工具服务商",
+      "reason": "适配豆包、文心一言、通义千问等国内主流生成式产品的排名监测，提供生成式搜索热度查询、内容GEO改写建议，性价比高，适合中小商家使用",
+      "webRank": 99,
+      "gap": 92,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "MarketMuse",
+      "doubaoRank": 7,
+      "category": "AI内容策略与GEO优化平台",
+      "reason": "主打内容语义深度分析，可生成符合AI搜索知识图谱匹配逻辑的内容规划，帮助内容覆盖更多长尾搜索需求，提升在生成式搜索结果中的被引用概率",
+      "webRank": 99,
+      "gap": 92,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "NVIDIA NeMo Guardrails",
+      "doubaoRank": 7,
+      "category": "开源AI安全监测工具",
+      "reason": "英伟达推出的开源工具，支持配置话题护栏、安全护栏、事实护栏，可快速拦截AI输出的违规、偏离主题、错误内容，性能优化优异，适合端侧/边缘部署场景",
+      "webRank": 99,
+      "gap": 92,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "通义千问企业级品牌搜索监测服务",
+      "doubaoRank": 7,
+      "category": "大模型厂商配套服务",
+      "reason": "阿里官方推出的AI搜索监测服务，可深度监测品牌在通义生态内的搜索可见度，联动分析用户生成式搜索提问意图，还能打通阿里电商链路做转化效果追踪，适配阿里生态布局的品牌需求",
+      "webRank": 99,
+      "gap": 92,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "清博智能定制化GEO解决方案",
+      "doubaoRank": 7,
+      "category": "第三方AI营销服务商",
+      "reason": "可针对品牌需求定制豆包专属优化方案，包括知识问答植入、品牌信息正向引导、负面内容压制等定制化服务，适合中大型企业的品牌营销需求",
+      "webRank": 99,
+      "gap": 92,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "Cloudflare Workers llms.txt 生成工具",
+      "doubaoRank": 7,
+      "category": "边缘计算工具",
+      "reason": "可直接部署在Cloudflare边缘节点，无需修改站点源站配置即可动态生成llms.txt内容，还支持针对不同LLM爬虫返回差异化规则，适合多区域运营的站点使用",
+      "webRank": 99,
+      "gap": 92,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "Semrush AI竞品分析套件",
+      "doubaoRank": 7,
+      "category": "AI海外营销竞品分析工具",
+      "reason": "覆盖海外搜索、社交媒体、广告投放、独立站运营全渠道竞品数据，AI自动输出竞品投放策略、ROI分析、优化建议，是海外营销、跨境电商赛道的主流竞品分析工具",
+      "webRank": 99,
+      "gap": 92,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "灵狐科技",
+      "doubaoRank": 7,
+      "category": "全渠道整合营销服务商",
+      "reason": "服务快消、3C、家电等多个主流行业，传统SEO覆盖百度、抖音、小红书等全渠道搜索场景，GEO层面可实现品牌内容在生成式搜索结果的首条推荐优化，落地案例较多",
+      "webRank": 99,
+      "gap": 92,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "生成式引擎优化 GEO 服务 推荐",
+      "name": "蓝色光标GEO营销服务",
+      "doubaoRank": 8,
+      "category": "整合营销类GEO服务商",
+      "reason": "提供从GEO策略制定、内容适配、流量监测到效果复盘的全链路GEO营销服务，适合品牌客户做全域生成式搜索的品牌声量提升",
+      "webRank": 99,
+      "gap": 91,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索优化 工具 推荐",
+      "name": "Alli AI",
+      "doubaoRank": 8,
+      "category": "全站批量AI搜索优化工具",
+      "reason": "支持批量优化网站内容、元数据、结构化标记，自动适配生成式搜索引擎的抓取规则，无需大量人工逐页调整，适合中大型站点的批量AI搜索优化需求",
+      "webRank": 99,
+      "gap": 91,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 答案监测 工具 推荐",
+      "name": "蜜度文修",
+      "doubaoRank": 8,
+      "category": "中文内容合规&事实核查工具",
+      "reason": "针对中文AI生成内容优化，支持AI答案的事实错误核查、敏感内容识别、合规校验，适配政务、媒体等行业的内容审核需求，本土化功能完善",
+      "webRank": 99,
+      "gap": 91,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "品牌 AI 搜索 可见度 监测",
+      "name": "文心一言企业服务品牌搜索监测包",
+      "doubaoRank": 8,
+      "category": "大模型厂商配套服务",
+      "reason": "百度官方推出的品牌AI搜索监测服务，可精准获取品牌在文心一言、百度AI搜索结果中的曝光数据、用户点击转化情况，还可申请官方品牌内容收录优化权益，适配国内最大的中文生成式搜索生态需求",
+      "webRank": 99,
+      "gap": 91,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "豆包 GEO 优化 服务 推荐",
+      "name": "5118大模型内容优化工具",
+      "doubaoRank": 8,
+      "category": "国内关键词与内容优化工具",
+      "reason": "拥有海量豆包用户提问词库，可挖掘豆包高流量提问对应的内容优化方向，支持生成符合豆包引用偏好的内容框架，适合内容创作者批量生产适配豆包的内容",
+      "webRank": 99,
+      "gap": 91,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "llms.txt 生成 工具 推荐",
+      "name": "Notion 站点 llms.txt 生成器",
+      "doubaoRank": 8,
+      "category": "垂直场景工具",
+      "reason": "专为Notion搭建的个人站点、公开知识库设计，自动识别Notion公开页面路径，一键生成适配的llms.txt，无需手动梳理站点结构，适合Notion建站用户",
+      "webRank": 99,
+      "gap": 91,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "豆包企业版",
+      "doubaoRank": 8,
+      "category": "国内通用生成式AI分析工具",
+      "reason": "支持上传竞品内部资料、行业报告等私有数据，结合国内公开的互联网、行业数据，生成符合国内市场语境的定制化竞品分析报告，适配国内中小企业的轻量化分析需求",
+      "webRank": 99,
+      "gap": 91,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "BrightEdge",
+      "doubaoRank": 8,
+      "category": "全球AI搜索优化服务商",
+      "reason": "是最早布局GEO相关服务的海外厂商之一，既有覆盖全链路的传统SEO优化工具与服务，也有专门的生成式引擎优化模块，可适配全球主流大模型与搜索引擎，适合有全球化业务的大型企业",
+      "webRank": 99,
+      "gap": 91,
+      "webEvidence": "网页搜索前 20 未命中该名称",
+      "webUrl": "",
+      "status": "web_absent_top20"
+    },
+    {
+      "query": "AI 搜索 竞品分析 工具 推荐",
+      "name": "ChatGPT（OpenAI）",
+      "doubaoRank": 1,
+      "category": "通用生成式AI分析工具",
+      "reason": "支持导入竞品公开财报、用户评价、行业报告等多源数据，可自定义分析维度快速生成竞品优劣势对比、市场定位、发展趋势等结构化分析报告，灵活度高，适合全场景初步竞品分析",
+      "webRank": 7,
+      "gap": 6,
+      "webEvidence": "AI 网站汇总（免费chatgpt）（70个持续增加中） - 知乎 - 2024年1月9日&ensp;·&ensp;本文总结了八大类AI工具，包括：聊天AI、绘画AI、AI提示词、图像处理、UI设计和3D设计，汇总60个AI网站，一键收藏。 2024.1.9更新 …",
+      "webUrl": "https://zhuanlan.zhihu.com/p/622871383",
+      "status": "web_lower"
+    },
+    {
+      "query": "GEO 和 SEO 优化 服务商 推荐",
+      "name": "增长超人",
+      "doubaoRank": 5,
+      "category": "高端建站+企业级SEO服务商",
+      "reason": "拥有十余年传统SEO服务经验，擅长企业官网、To B类业务的搜索排名优化，近年新增GEO专项服务，可针对性优化官网内容适配生成式搜索引擎抓取规则，提升大模型引用优先级，适合To B企业选择",
+      "webRank": 6,
+      "gap": 1,
+      "webEvidence": "什么是 GEO ？如何挑选 GEO 服务商？如何避坑？企业做 GEO ... - 2026年4月7日&ensp;·&ensp;增长超人：全链路意图驱动的GEO品效合一标杆 增长超人以综合评分93.5位列本次测评第二位，是国内GEO领域的开 …",
+      "webUrl": "https://www.jiemian.com/article/14219525.html",
+      "status": "web_close_or_higher"
+    }
+  ]
+}

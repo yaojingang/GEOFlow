@@ -985,6 +985,168 @@ FAQ、案例页、竞品对比页、小红书/抖音种草内容处于中间地�
 `,
   },
   {
+    slug: "doubao-api-vs-web-search-rank-gap-report",
+    title: "豆包靠前但网页靠后的产品差异报告",
+    excerpt:
+      "用生产环境 Doubao API 生成 8 组 GEO / AI 搜索优化查询的产品推荐排名，再对照 Bing 网页搜索前 20，找出豆包答案靠前但网页搜索靠后或缺席的最大差异项。",
+    type: "研究报告",
+    tags: ["豆包", "GEO", "SEO", "排名差", "豆包API", "网页搜索", "产品清单"],
+    body: `# 豆包靠前但网页靠后的产品差异报告
+
+生成日期：2026-05-28
+
+## 这次修正了什么
+
+前一版“豆包 GEO 与传统 SEO 差异最大的产品清单”测的是 GEOFlow 可交付模块：豆包答案采样、事实修正、来源审计、品牌事实库等。它回答的是“我们应该优先产品化什么”。
+
+这篇报告改成你真正要的口径：同一批查询里，哪些产品、工具、平台或服务商在豆包答案里排得很靠前，但在网页搜索自然结果里靠后，甚至前 20 完全找不到。
+
+所以这里的差值不是主观评分，而是排名差：
+
+| 指标 | 含义 |
+|---|---|
+| 豆包排名 | 生产环境 Doubao API 对同一查询生成的前 8 个产品/服务结果。 |
+| 网页排名 | 同一查询下 Bing 网页搜索前 20 条自然结果里的命中位置。 |
+| 未进前20 | 网页侧没有在前 20 条命中该名称，记为 99。 |
+| 差值 | 网页排名 - 豆包排名；差值越大，说明豆包越靠前但网页越靠后。 |
+
+运行记录：
+
+- \`scripts/doubao-research/run-doubao-vs-web-rank-gap.ts\`
+- \`research-runs/doubao-vs-web-rank-gap/20260528T200516Z-doubao-vs-web-rank-gap.json\`
+- \`research-runs/doubao-vs-web-rank-gap/20260528T200516Z-doubao-vs-web-rank-gap.md\`
+
+这篇报告连接 [[豆包 GEO 信号地图：品牌如何进入答案]]、[[豆包答案可见度]]、[[证据链与资料路由]] 和 [[豆包 GEO 与传统 SEO 差异最大的产品清单]]。
+
+## 一句话结论
+
+豆包答案排名和网页搜索排名的最大差异，不只是“某些品牌 SEO 弱”。更关键的是：豆包会把一些听起来合理、但网页前 20 不存在或不稳定的“平台型方案名 / 官方服务名 / 模块名”排在非常靠前的位置。
+
+这说明豆包 GEO 监测不能只看“有没有被提到”。必须同时记录：
+
+- 名称是否真实存在；
+- 是否能在网页搜索里复核；
+- 是否是品牌、产品、模块、服务商，还是模型组合出来的概念名；
+- 豆包给出的推荐理由是否来自可验证证据。
+
+## 查询集
+
+本轮使用 8 个通用查询，刻意不把 GEOFlow 写入提示，避免豆包偏向我们自己：
+
+| 查询 |
+|---|
+| 生成式引擎优化 GEO 服务 推荐 |
+| AI 搜索优化 工具 推荐 |
+| AI 答案监测 工具 推荐 |
+| 品牌 AI 搜索 可见度 监测 |
+| 豆包 GEO 优化 服务 推荐 |
+| llms.txt 生成 工具 推荐 |
+| AI 搜索 竞品分析 工具 推荐 |
+| GEO 和 SEO 优化 服务商 推荐 |
+
+## 差异最大清单
+
+| 排名 | 产品/服务 | 查询 | 豆包排名 | 网页排名 | 差值 | 判断 |
+|---|---|---|---:|---:|---:|---|
+| 1 | 百度智能云生成式引擎优化解决方案 | 生成式引擎优化 GEO 服务 推荐 | 1 | 未进前20 | 98 | 高差值，但名称需复核，像模型组合出的方案名。 |
+| 2 | Semrush | AI 搜索优化 工具 推荐 | 1 | 未进前20 | 98 | 真实工具品牌，但在中文“AI 搜索优化工具”网页结果里未进入前 20。 |
+| 3 | OpenAI 内容审核API | AI 答案监测 工具 推荐 | 1 | 未进前20 | 98 | 真实能力，但与“答案监测工具”意图不完全一致。 |
+| 4 | 5118营销大数据平台 | 品牌 AI 搜索 可见度 监测 | 1 | 未进前20 | 98 | 真实国内 SEO/营销工具，豆包将其扩展到 AI 可见度语境。 |
+| 5 | 字节跳动豆包生态开放平台官方GEO优化服务 | 豆包 GEO 优化 服务 推荐 | 1 | 未进前20 | 98 | 高风险项，像官方服务名幻觉，不能直接当市场事实。 |
+| 6 | llms.txt 官方生成器 | llms.txt 生成 工具 推荐 | 1 | 未进前20 | 98 | 高风险项，需复核是否存在官方生成器。 |
+| 7 | 钛动科技 | GEO 和 SEO 优化 服务商 推荐 | 1 | 未进前20 | 98 | 真实服务商方向，但本查询网页前 20 未命中。 |
+| 8 | 阿里云通义GEO优化服务 | 生成式引擎优化 GEO 服务 推荐 | 2 | 未进前20 | 97 | 高风险项，像大模型厂商服务名组合。 |
+| 9 | Frase | AI 搜索优化 工具 推荐 | 2 | 未进前20 | 97 | 真实内容优化工具，中文网页搜索弱。 |
+| 10 | 百度智能云生成式AI内容审核方案 | AI 答案监测 工具 推荐 | 2 | 未进前20 | 97 | 可能是能力组合名，需找官方文档复核。 |
+| 11 | SEMrush AI内容优化模块 | 豆包 GEO 优化 服务 推荐 | 2 | 未进前20 | 97 | 真实品牌 + 可能组合模块，需复核产品名。 |
+| 12 | ChatGPT llms.txt Builder 插件 | llms.txt 生成 工具 推荐 | 2 | 未进前20 | 97 | 高风险项，像插件名幻觉。 |
+| 13 | Similarweb AI洞察版 | AI 搜索 竞品分析 工具 推荐 | 2 | 未进前20 | 97 | 真实品牌 + 可能组合产品名。 |
+| 14 | 珍岛集团 | GEO 和 SEO 优化 服务商 推荐 | 2 | 未进前20 | 97 | 真实服务商，网页搜索同查询未命中。 |
+| 15 | BrightEdge | 生成式引擎优化 GEO 服务 推荐 | 3 | 未进前20 | 96 | 真实企业 SEO / 内容平台，中文 GEO 查询网页弱。 |
+| 16 | Surfer SEO | AI 搜索优化 工具 推荐 | 3 | 未进前20 | 96 | 真实内容优化工具，中文网页搜索弱。 |
+| 17 | Guardrails AI | AI 答案监测 工具 推荐 | 3 | 未进前20 | 96 | 真实 AI 输出约束框架，和“答案监测”有交集但不等同。 |
+| 18 | 站长工具（Chinaz）AI搜索监测模块 | 品牌 AI 搜索 可见度 监测 | 3 | 未进前20 | 96 | 真实品牌 + 可能组合模块，需复核是否有该模块。 |
+| 19 | 站长之家（Chinaz）大模型内容适配工具 | 豆包 GEO 优化 服务 推荐 | 3 | 未进前20 | 96 | 真实品牌 + 高风险产品名。 |
+| 20 | Sitemap 转 llms.txt 转换工具 | llms.txt 生成 工具 推荐 | 3 | 未进前20 | 96 | 更像工具类型，不是明确产品。 |
+
+## 最重要的发现
+
+### 1. 豆包会把“品牌 + 新概念”组合成靠前结果
+
+例如“百度智能云生成式引擎优化解决方案”“阿里云通义GEO优化服务”“字节跳动豆包生态开放平台官方GEO优化服务”。这些名称符合大模型对行业结构的推断：大厂有模型、有云、有搜索能力，所以应该有 GEO 方案。
+
+但网页搜索前 20 没有命中时，不能把它们当作真实产品发布。它们更像“豆包认为合理存在的服务形态”。这对研究很有价值，因为它暴露了豆包的产品联想路径。
+
+### 2. 真实海外工具在豆包里靠前，但中文网页搜索弱
+
+Semrush、Frase、BrightEdge、Surfer SEO、Guardrails AI 这类名称很容易被豆包推荐，但在中文查询的网页前 20 里没有稳定命中。
+
+这说明豆包可能从英文 AI/SEO 工具知识中抽取“业内常见品牌”，再投射到中文 GEO 查询上。对 GEOFlow 来说，这是一类可利用信号：如果客户产品是 AI-native 或英文资料强，可能先在豆包答案里出现，再慢慢补中文网页证据。
+
+### 3. 国内营销/SEO 服务商被豆包迁移到 AI 可见度语境
+
+5118、钛动科技、珍岛集团、Chinaz 等名称说明豆包会把传统 SEO、站长工具、营销服务商迁移到 GEO 语境。
+
+这不是错误，但需要区分两件事：
+
+- 它们是否真的有 AI 搜索可见度、GEO、豆包优化相关产品；
+- 还是豆包根据传统 SEO 心智把它们推到 GEO 场景里。
+
+这类产品最适合做后续复核：查官网、查产品页、查案例、查社区讨论，再决定是否进入“已验证服务商清单”。
+
+### 4. llms.txt 领域容易出现工具名幻觉
+
+“llms.txt 官方生成器”“ChatGPT llms.txt Builder 插件”“Sitemap 转 llms.txt 转换工具”这几个结果都说明：当用户问新兴技术配置时，豆包会倾向于生成一个合理工具名，而不是只回答“没有明确官方工具”。
+
+这对豆包研究中心很关键：llms.txt 和 AI 可发现性相关内容必须强证据化，不能把模型输出的工具名直接写成事实。
+
+## 可进入后续监测的产品池
+
+下面这些不是“已验证排名结论”，而是下一轮应该重点复测和查证的产品池：
+
+| 类型 | 名称 | 下一步 |
+|---|---|---|
+| 真实海外工具 | Semrush, Frase, BrightEdge, Surfer SEO, Similarweb, Guardrails AI | 查官网是否已有 AI search / GEO / answer visibility 相关页面。 |
+| 国内营销/SEO服务商 | 5118, 钛动科技, 珍岛集团, Chinaz, 清博智能, 增长超人 | 查是否有明确 GEO、AEO、AI 搜索优化、豆包优化服务页。 |
+| 高风险组合名 | 百度智能云生成式引擎优化解决方案, 阿里云通义GEO优化服务, 豆包生态开放平台官方GEO优化服务 | 只作为“豆包联想信号”，未找到官方页面前不得发布为事实。 |
+| 工具类型名 | llms.txt 官方生成器, Sitemap 转 llms.txt 转换工具, ChatGPT llms.txt Builder 插件 | 改为“工具需求信号”，不要写成具体产品。 |
+
+## 对 GEOFlow 的意义
+
+这轮实验证明：GEO 和 SEO 的差异可以被量化成“答案排名 - 网页排名”的差值。
+
+传统 SEO 关心网页能不能排到搜索结果前面；豆包 GEO 还要关心模型是否会在没有强网页排名的情况下，把某个品牌、产品或概念放进答案前列。
+
+产品上应该新增一个监测视图：
+
+| 字段 | 用途 |
+|---|---|
+| query | 采样问题。 |
+| answer_rank | 豆包答案中的位置。 |
+| web_rank | 同查询网页自然结果位置。 |
+| rank_gap | web_rank - answer_rank。 |
+| entity_type | brand / product / module / service / generated_name。 |
+| verification_status | verified / likely / needs_check / hallucination_risk。 |
+| evidence_url | 能复核的官网、文档、报告或第三方页面。 |
+
+这样能把客户分成三类：
+
+1. 豆包靠前，网页也靠前：传统 SEO 和 GEO 都强。
+2. 豆包靠前，网页靠后：AI 答案心智强，但需要补证据页和官网资产。
+3. 豆包靠前，网页缺席且无法复核：高风险幻觉，需要事实纠错或避免被错误绑定。
+
+## 结论
+
+本轮最大差异项表面上是一批“豆包高排名、网页未命中”的产品/服务名，实质上是豆包在 GEO 新领域里的三种行为：
+
+- 用已有品牌推断新服务；
+- 把海外 SEO / AI 工具迁移到中文 AI 搜索语境；
+- 在新概念缺少稳定网页证据时生成合理名称。
+
+因此，下一步研究不应该只问“豆包推荐了谁”，而要问“豆包推荐的这个名字能不能被网页证据证明”。这正是 GEOFlow 需要做的：把豆包答案排名、网页证据、事实复核和后续发布资产连成一个闭环。
+`,
+  },
+  {
     slug: "doubao-source-grounding-sampling",
     title: "豆包来源引用采样协议",
     excerpt: "把联网搜索和来源引用拆成可采样的问题、字段和判断标准，避免把讨论信号误写成事实。",
@@ -1262,6 +1424,36 @@ export async function ensureResearchStarterNotes(workspaceId: string) {
       toNoteId: bySlug.get("doubao-geo-vs-seo-product-gap-report")!.id,
       label: "豆包 API 评分",
       strength: 92,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      toNoteId: bySlug.get("doubao-geo-vs-seo-product-gap-report")!.id,
+      label: "修正排名口径",
+      strength: 96,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      toNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+      label: "答案排名差",
+      strength: 94,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      toNoteId: bySlug.get("doubao-answer-visibility")!.id,
+      label: "豆包靠前",
+      strength: 92,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      toNoteId: bySlug.get("evidence-routing")!.id,
+      label: "网页证据对照",
+      strength: 88,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-geo-vs-seo-product-gap-report")!.id,
+      toNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      label: "改为排名差",
+      strength: 90,
     }),
     linkResearchNotes({
       fromNoteId: bySlug.get("doubao-search-generation-research-report")!.id,
