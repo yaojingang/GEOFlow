@@ -18,6 +18,8 @@
 /.zed
 /auth.json
 /node_modules
+/.next
+/out
 /public/build
 /public/hot
 /public/storage

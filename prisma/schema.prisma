@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AgentMode {
+  Explain
+  Assist
+  Control
+}
+
+enum StepStatus {
+  Pending
+  Active
+  Complete
+  Blocked
+}
+
+enum Platform {
+  Doubao
+  DeepSeek
+  Kimi
+  Qianwen
+  Yuanbao
+  ChatGPT
+  Gemini
+}
+
+model Workspace {
+  id          String   @id @default(cuid())
+  name        String
+  domain      String?
+  industry    String
+  market      String   @default("China")
+  summary     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  brandFacts       BrandFact[]
+  competitors      Competitor[]
+  sourceAssets     SourceAsset[]
+  questionSets     QuestionSet[]
+  answerSamples    AnswerSample[]
+  contentAssets    ContentAsset[]
+  reports          Report[]
+  socialAccounts   SocialAccount[]
+  analyticsConfigs AnalyticsConfig[]
+  agentSettings    AgentSetting?
+  agentSessions    AgentSession[]
+  apiTokens        WorkspaceApiToken[]
+  geoLessons       GeoLesson[]
+  researchNotes    ResearchNote[]
+  leads            Lead[]
+}
+
+model AgentSetting {
+  id                    String    @id @default(cuid())
+  workspaceId           String    @unique
+  mode                  AgentMode @default(Explain)
+  canCreateContent      Boolean   @default(false)
+  canEditContent        Boolean   @default(false)
+  canRunDoubaoSampling  Boolean   @default(false)
+  canGenerateReports    Boolean   @default(false)
+  canPublish            Boolean   @default(false)
+  canManageSources      Boolean   @default(false)
+  canManageResearch     Boolean   @default(false)
+  canModifySettings     Boolean   @default(false)
+  requireConfirmation   Boolean   @default(true)
+  workspace             Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model WorkflowStep {
+  id          String     @id @default(cuid())
+  workspaceId String
+  order       Int
+  key         String
+  title       String
+  status      StepStatus @default(Pending)
+  input       String
+  output      String
+  updatedAt   DateTime   @updatedAt
+}
+
+model BrandFact {
+  id          String    @id @default(cuid())
+  workspaceId String
+  title       String
+  body        String
+  evidenceUrl String?
+  confidence  Int       @default(70)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Competitor {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  domain      String?
+  notes       String?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model SourceAsset {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  type          String
+  kind          String    @default("brand")
+  title         String
+  url           String?
+  status        String    @default("queued")
+  summary       String?
+  processedText String?
+  mimeType      String?
+  routing       Json?
+  metadata      Json?
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+
+  @@index([workspaceId, kind])
+  @@index([workspaceId, status])
+}
+
+model WorkspaceApiToken {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  tokenPrefix String
+  tokenHash   String    @unique
+  scopes      Json
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([tokenPrefix])
+}
+
+model GeoLesson {
+  id                 String    @id @default(cuid())
+  workspaceId        String
+  title              String
+  tactic             String
+  scenario           String
+  outcome            String
+  verificationStatus String    @default("unverified")
+  confidence         Int       @default(60)
+  evidenceUrl        String?
+  reportId           String?
+  workedCount        Int       @default(0)
+  partialCount       Int       @default(0)
+  didNotWorkCount    Int       @default(0)
+  notes              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, verificationStatus])
+  @@index([workspaceId, createdAt])
+}
+
+model ResearchNote {
+  id          String    @id @default(cuid())
+  workspaceId String
+  slug        String
+  title       String
+  excerpt     String
+  body        String
+  type        String    @default("研究笔记")
+  tags        Json      @default("[]")
+  status      String    @default("draft")
+  sourceType  String?
+  sourceId    String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  outgoingLinks ResearchLink[] @relation("ResearchLinkFrom")
+  incomingLinks ResearchLink[] @relation("ResearchLinkTo")
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, status])
+  @@index([workspaceId, updatedAt])
+}
+
+model ResearchLink {
+  id         String   @id @default(cuid())
+  fromNoteId String
+  toNoteId   String
+  label      String   @default("相关")
+  strength   Int      @default(60)
+  createdAt  DateTime @default(now())
+
+  fromNote ResearchNote @relation("ResearchLinkFrom", fields: [fromNoteId], references: [id], onDelete: Cascade)
+  toNote   ResearchNote @relation("ResearchLinkTo", fields: [toNoteId], references: [id], onDelete: Cascade)
+
+  @@unique([fromNoteId, toNoteId, label])
+  @@index([toNoteId])
+}
+
+model QuestionSet {
+  id          String     @id @default(cuid())
+  workspaceId String
+  title       String
+  platform    Platform   @default(Doubao)
+  questions   Json
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+}
+
+model AnswerSample {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  platform       Platform  @default(Doubao)
+  question       String
+  answer         String
+  brandMentioned Boolean   @default(false)
+  brandRank      Int?
+  competitorHits Json?
+  factualIssues  Json?
+  sampledAt      DateTime  @default(now())
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model ContentAsset {
+  id          String    @id @default(cuid())
+  workspaceId String
+  type        String
+  title       String
+  status      String    @default("draft")
+  body        String
+  targetGap   String?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Report {
+  id          String    @id @default(cuid())
+  workspaceId String
+  title       String
+  type        String
+  status      String    @default("draft")
+  summary     String
+  verificationStatus  String @default("unchecked")
+  verificationSummary String?
+  verification        Json?
+  publicSlug  String?   @unique
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+}
+
+model SocialAccount {
+  id          String    @id @default(cuid())
+  workspaceId String
+  platform    String
+  handle      String?
+  url         String?
+  qrImageUrl  String?
+  isVisible   Boolean   @default(false)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AnalyticsConfig {
+  id          String    @id @default(cuid())
+  workspaceId String
+  provider    String
+  status      String    @default("missing")
+  propertyId  String?
+  guide       String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Lead {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  phone       String
+  company     String
+  industry    String
+  goal        String
+  source      String   @default("homepage")
+  status      String   @default("new")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AgentSession {
+  id          String   @id @default(cuid())
+  workspaceId String
+  title       String   @default("默认 Agent 会话")
+  leafEntryId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entries   AgentSessionEntry[]
+
+  @@index([workspaceId])
+}
+
+model AgentSessionEntry {
+  id        String   @id @default(cuid())
+  sessionId String
+  parentId  String?
+  type      String
+  role      String?
+  label     String?
+  payload   Json
+  createdAt DateTime @default(now())
+
+  session AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@index([parentId])
+}

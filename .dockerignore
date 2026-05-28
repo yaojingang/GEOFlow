@@ -4,6 +4,11 @@
 .vscode
 vendor
 node_modules
+.next
+.turbo
+.vercel
+.DS_Store
+.env.local
 .env
 .env.*
 !.env.example
@@ -12,6 +17,9 @@ node_modules
 bak
 docker-compose*.yml
 docker-data
+coverage
+playwright-report
+test-results
 storage/app/public/*
 storage/app/private/*
 storage/logs/*

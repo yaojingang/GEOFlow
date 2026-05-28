@@ -1,19 +1,19 @@
-name: geoflow-laravel
+name: geo-youngtuo-win
 
 services:
   postgres:
-    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
-    container_name: geoflow-postgres
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16}
+    container_name: geo-youngtuo-postgres
     environment:
-      POSTGRES_DB: ${DB_DATABASE:-geo_flow}
-      POSTGRES_USER: ${DB_USERNAME:-geo_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-geo_password}
+      POSTGRES_DB: ${POSTGRES_DB:-geo_youngtuo}
+      POSTGRES_USER: ${POSTGRES_USER:-geo_youngtuo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-geo_youngtuo_password}
     ports:
-      - "127.0.0.1:${DB_EXPOSE_PORT:-15432}:5432"
+      - "127.0.0.1:${POSTGRES_EXPOSE_PORT:-15432}:5432"
     volumes:
-      - ${POSTGRES_DATA_DIR:-./docker-data/dev/postgres}:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_DIR:-./docker-data/next/geo-youngtuo-postgres}:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-geo_user} -d ${DB_DATABASE:-geo_flow}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-geo_youngtuo} -d ${POSTGRES_DB:-geo_youngtuo}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -21,117 +21,82 @@ services:
 
   redis:
     image: ${REDIS_IMAGE:-redis:7-alpine}
-    container_name: geoflow-redis
+    container_name: geo-youngtuo-redis
     ports:
       - "127.0.0.1:${REDIS_EXPOSE_PORT:-16379}:6379"
     restart: unless-stopped
 
-  init:
-    image: geoflow-app:latest
+  web:
+    image: geo-youngtuo-win:latest
     build:
       context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
-    container_name: geoflow-init
-    working_dir: /var/www/html
-    env_file:
-      - ./.env
-    # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / seed）
-    command: ["php", "artisan", "about"]
+      dockerfile: docker/next/Dockerfile
+    container_name: geo-youngtuo-web
     environment:
-      AUTO_GENERATE_APP_KEY: "true"
-      AUTO_INIT_ONCE: "true"
-    volumes:
-      - ./:/var/www/html
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://geo.youngtuo.win}
+      ADMIN_CONTROL_KEY: ${ADMIN_CONTROL_KEY:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+      MONITOR_START_DATE: ${MONITOR_START_DATE:-2026-05-27T00:00:00Z}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://geo_youngtuo:geo_youngtuo_password@postgres:5432/geo_youngtuo?schema=public}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      DOUBAO_MODEL: ${DOUBAO_MODEL:-doubao-seed-2-0-pro-260215}
+      AGENT_PLANNER_API_KEY: ${AGENT_PLANNER_API_KEY:-}
+      AGENT_PLANNER_BASE_URL: ${AGENT_PLANNER_BASE_URL:-}
+      AGENT_PLANNER_MODEL: ${AGENT_PLANNER_MODEL:-}
+      GETNOTE_AI_API_KEY: ${GETNOTE_AI_API_KEY:-}
+      GETNOTE_AI_BASE_URL: ${GETNOTE_AI_BASE_URL:-https://api.yundongyl.cn/v1}
+      GETNOTE_AI_MODEL: ${GETNOTE_AI_MODEL:-gpt-5.4-mini}
+      GETNOTE_NOTEBOOKLM_ENABLED: ${GETNOTE_NOTEBOOKLM_ENABLED:-}
+      GETNOTE_NOTEBOOKLM_TIMEOUT_MS: ${GETNOTE_NOTEBOOKLM_TIMEOUT_MS:-150000}
+      GETNOTE_NOTEBOOKLM_STORAGE: ${GETNOTE_NOTEBOOKLM_STORAGE:-}
+      GETNOTE_NOTEBOOKLM_KEEP_NOTEBOOK: ${GETNOTE_NOTEBOOKLM_KEEP_NOTEBOOK:-false}
+      NOTEBOOKLM_AUTH_JSON: ${NOTEBOOKLM_AUTH_JSON:-}
+    ports:
+      - "${APP_PORT:-18080}:3000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
-    restart: "no"
-
-  app:
-    image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
-    container_name: geoflow-app
-    working_dir: /var/www/html
-    env_file:
-      - ./.env
-    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
-    ports:
-      - "${APP_PORT:-18080}:8080"
-    volumes:
-      - ./:/var/www/html
-    depends_on:
-      init:
-        condition: service_completed_successfully
     restart: unless-stopped
 
-  queue:
-    image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
-    container_name: geoflow-queue
-    working_dir: /var/www/html
-    env_file:
-      - ./.env
-    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,default", "--sleep=1", "--tries=1", "--timeout=300"]
-    volumes:
-      - ./:/var/www/html
+  worker:
+    image: geo-youngtuo-win:latest
+    container_name: geo-youngtuo-worker
+    command:
+      [
+        "node",
+        "-e",
+        "console.log('geo.youngtuo.win worker placeholder: queue processors are not enabled in this release.'); setInterval(() => {}, 2147483647);",
+      ]
+    environment:
+      NODE_ENV: production
+      ADMIN_CONTROL_KEY: ${ADMIN_CONTROL_KEY:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+      MONITOR_START_DATE: ${MONITOR_START_DATE:-2026-05-27T00:00:00Z}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://geo_youngtuo:geo_youngtuo_password@postgres:5432/geo_youngtuo?schema=public}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      DOUBAO_MODEL: ${DOUBAO_MODEL:-doubao-seed-2-0-pro-260215}
+      AGENT_PLANNER_API_KEY: ${AGENT_PLANNER_API_KEY:-}
+      AGENT_PLANNER_BASE_URL: ${AGENT_PLANNER_BASE_URL:-}
+      AGENT_PLANNER_MODEL: ${AGENT_PLANNER_MODEL:-}
+      GETNOTE_AI_API_KEY: ${GETNOTE_AI_API_KEY:-}
+      GETNOTE_AI_BASE_URL: ${GETNOTE_AI_BASE_URL:-https://api.yundongyl.cn/v1}
+      GETNOTE_AI_MODEL: ${GETNOTE_AI_MODEL:-gpt-5.4-mini}
+      GETNOTE_NOTEBOOKLM_ENABLED: ${GETNOTE_NOTEBOOKLM_ENABLED:-}
+      GETNOTE_NOTEBOOKLM_TIMEOUT_MS: ${GETNOTE_NOTEBOOKLM_TIMEOUT_MS:-150000}
+      GETNOTE_NOTEBOOKLM_STORAGE: ${GETNOTE_NOTEBOOKLM_STORAGE:-}
+      GETNOTE_NOTEBOOKLM_KEEP_NOTEBOOK: ${GETNOTE_NOTEBOOKLM_KEEP_NOTEBOOK:-false}
+      NOTEBOOKLM_AUTH_JSON: ${NOTEBOOKLM_AUTH_JSON:-}
     depends_on:
-      init:
-        condition: service_completed_successfully
-    restart: unless-stopped
-
-  scheduler:
-    image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
-    container_name: geoflow-scheduler
-    working_dir: /var/www/html
-    env_file:
-      - ./.env
-    command: ["php", "artisan", "schedule:work"]
-    volumes:
-      - ./:/var/www/html
-    depends_on:
-      init:
-        condition: service_completed_successfully
-    restart: unless-stopped
-
-  reverb:
-    image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
-    container_name: geoflow-reverb
-    working_dir: /var/www/html
-    env_file:
-      - ./.env
-    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
-    ports:
-      - "${REVERB_EXPOSE_PORT:-18081}:8080"
-    volumes:
-      - ./:/var/www/html
-    depends_on:
-      init:
-        condition: service_completed_successfully
+      web:
+        condition: service_started
+      redis:
+        condition: service_started
     restart: unless-stopped

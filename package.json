@@ -1,20 +1,44 @@
 {
-    "$schema": "https://www.schemastore.org/package.json",
-    "private": true,
-    "license": "Apache-2.0",
-    "type": "module",
-    "scripts": {
-        "build": "vite build",
-        "dev": "vite"
-    },
-    "devDependencies": {
-        "@tailwindcss/vite": "^4.0.0",
-        "axios": "^1.11.0",
-        "concurrently": "^9.0.1",
-        "laravel-echo": "^2.3.4",
-        "laravel-vite-plugin": "^2.0.0",
-        "pusher-js": "^8.5.0",
-        "tailwindcss": "^4.0.0",
-        "vite": "^7.0.7"
-    }
+  "name": "geo-youngtuo-win",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "worker": "tsx src/workers/index.ts"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.0",
+    "@prisma/client": "^6.19.3",
+    "bullmq": "^5.77.4",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "ioredis": "^5.8.2",
+    "lucide-react": "^0.555.0",
+    "mammoth": "^1.11.0",
+    "next": "^16.2.6",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "youtube-transcript": "^1.2.1",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/node": "^25.0.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "^16.2.6",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
 }
