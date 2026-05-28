@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin\Analytics;
 
+use App\Support\Analytics\TrafficClassifier;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -9,40 +10,12 @@ use Illuminate\Support\Facades\Schema;
 
 class AnalyticsLogQueryService
 {
-    private const AI_BOT_PATTERNS = [
-        'chatgpt',
-        'gptbot',
-        'openai',
-        'claudebot',
-        'anthropic',
-        'perplexity',
-        'ccbot',
-        'google-extended',
-    ];
-
-    private const SEARCH_BOT_PATTERNS = [
-        'googlebot',
-        'bingbot',
-        'baiduspider',
-        'bytespider',
-        'yandexbot',
-        'duckduckbot',
-        'sogou',
-        'slurp',
-    ];
-
-    private const GENERIC_BOT_PATTERNS = [
-        'bot',
-        'spider',
-        'crawler',
-    ];
-
     /**
      * @return array<string, mixed>
      */
     public function summary(AnalyticsFilter $filter): array
     {
-        if (! in_array($filter->logSource, ['all', 'local'], true) || ! Schema::hasTable('view_logs')) {
+        if (! Schema::hasTable('view_logs')) {
             return $this->emptySummary();
         }
 
@@ -91,6 +64,14 @@ class AnalyticsLogQueryService
         $query = DB::table('view_logs')
             ->leftJoin('articles as a', 'view_logs.article_id', '=', 'a.id')
             ->whereBetween('view_logs.created_at', [$filter->start(), $filter->end()]);
+
+        if (Schema::hasColumn('view_logs', 'method')) {
+            $query->where('view_logs.method', 'GET');
+        }
+
+        if (Schema::hasColumn('view_logs', 'source') && $filter->logSource !== 'all') {
+            $query->where('view_logs.source', $filter->logSource);
+        }
 
         if ($filter->articleId !== null) {
             $query->where('view_logs.article_id', $filter->articleId);
@@ -147,6 +128,7 @@ class AnalyticsLogQueryService
     {
         $query = $this->baseLocalQuery($filter)
             ->whereNotNull('view_logs.article_id')
+            ->whereNull('a.deleted_at')
             ->select('view_logs.article_id', 'a.title', 'a.slug')
             ->selectRaw('COUNT(*) as views')
             ->selectRaw('COUNT(DISTINCT view_logs.ip_address) as unique_ip')
@@ -221,11 +203,11 @@ class AnalyticsLogQueryService
     private function applyTrafficFilter(Builder $query, string $trafficType): void
     {
         match ($trafficType) {
-            'human' => $this->whereHuman($query),
-            'search_bot' => $this->whereAnyPattern($query, self::SEARCH_BOT_PATTERNS),
-            'ai_bot' => $this->whereAnyPattern($query, self::AI_BOT_PATTERNS),
-            'other_bot' => $this->whereOtherBot($query),
-            'unknown' => $query->whereRaw("TRIM(COALESCE(view_logs.user_agent, '')) = ''"),
+            TrafficClassifier::HUMAN => $this->whereHuman($query),
+            TrafficClassifier::SEARCH_BOT => $this->whereAnyPattern($query, TrafficClassifier::searchBotPatterns()),
+            TrafficClassifier::AI_BOT => $this->whereAnyPattern($query, TrafficClassifier::aiBotPatterns()),
+            TrafficClassifier::OTHER_BOT => $this->whereOtherBot($query),
+            TrafficClassifier::UNKNOWN => $query->whereRaw("TRIM(COALESCE(view_logs.user_agent, '')) = ''"),
             default => null,
         };
     }
@@ -255,19 +237,15 @@ class AnalyticsLogQueryService
     private function whereHuman(Builder $query): void
     {
         $query->whereRaw("TRIM(COALESCE(view_logs.user_agent, '')) != ''");
-        $this->whereNoPattern($query, [
-            ...self::AI_BOT_PATTERNS,
-            ...self::SEARCH_BOT_PATTERNS,
-            ...self::GENERIC_BOT_PATTERNS,
-        ]);
+        $this->whereNoPattern($query, TrafficClassifier::nonHumanPatterns());
     }
 
     private function whereOtherBot(Builder $query): void
     {
-        $this->whereAnyPattern($query, self::GENERIC_BOT_PATTERNS);
+        $this->whereAnyPattern($query, TrafficClassifier::otherBotPatterns());
         $this->whereNoPattern($query, [
-            ...self::AI_BOT_PATTERNS,
-            ...self::SEARCH_BOT_PATTERNS,
+            ...TrafficClassifier::aiBotPatterns(),
+            ...TrafficClassifier::searchBotPatterns(),
         ]);
     }
 

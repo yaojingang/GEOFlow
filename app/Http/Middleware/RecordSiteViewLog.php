@@ -21,7 +21,7 @@ class RecordSiteViewLog
     {
         $response = $next($request);
 
-        if (! in_array(strtoupper((string) $request->method()), ['GET', 'HEAD'], true)) {
+        if (strtoupper((string) $request->method()) !== 'GET') {
             return $response;
         }
 

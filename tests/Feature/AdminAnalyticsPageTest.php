@@ -11,6 +11,10 @@ use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\Task;
 use App\Models\TaskRun;
+use App\Services\Admin\Analytics\AnalyticsFilter;
+use App\Services\Admin\Analytics\AnalyticsLogQueryService;
+use App\Services\Admin\Analytics\AnalyticsOverviewService;
+use App\Support\Analytics\TrafficClassifier;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -115,7 +119,7 @@ class AdminAnalyticsPageTest extends TestCase
             ->assertSee('1')
             ->assertSee('失败任务')
             ->assertSee('1')
-            ->assertSee('AI/API 调用')
+            ->assertSee('今日 AI/API 调用')
             ->assertSee('9')
             ->assertSee('分发失败')
             ->assertSee('1')
@@ -303,6 +307,229 @@ class AdminAnalyticsPageTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_analytics_uses_event_dates_and_view_logs_for_range_metrics(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+        $this->ensureViewLogsTable();
+        $fixtures = $this->contentFixtures();
+        $author = Author::query()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+
+        Article::query()->create([
+            'title' => '早创建今天发布文章',
+            'slug' => 'delayed-published-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'task_id' => (int) $fixtures['task']->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'view_count' => 500,
+            'is_ai_generated' => 1,
+            'published_at' => Carbon::parse('2026-05-21 10:00:00'),
+            'created_at' => Carbon::parse('2026-05-01 09:00:00'),
+        ]);
+        $oldViewed = Article::query()->create([
+            'title' => '范围内访问最多的老文章',
+            'slug' => 'old-most-viewed-in-range',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'task_id' => (int) $fixtures['task']->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'view_count' => 999,
+            'is_ai_generated' => 1,
+            'published_at' => Carbon::parse('2026-05-01 10:00:00'),
+            'created_at' => Carbon::parse('2026-05-01 09:00:00'),
+        ]);
+
+        DB::table('view_logs')->insert([
+            ...$this->viewLogRows((int) $fixtures['article']->id, '/article/analytics-hot-article', 2, '2026-05-20 10:00:00'),
+            ...$this->viewLogRows((int) $oldViewed->id, '/article/old-most-viewed-in-range', 4, '2026-05-21 10:00:00'),
+            [
+                'article_id' => null,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => '/',
+                'route_name' => 'site.home',
+                'status_code' => 200,
+                'ip_address' => '10.0.1.200',
+                'user_agent' => 'Mozilla/5.0',
+                'created_at' => Carbon::parse('2026-05-21 11:00:00'),
+            ],
+        ]);
+
+        $filter = AnalyticsFilter::fromRequest([
+            'preset' => 'custom',
+            'date_from' => '2026-05-20',
+            'date_to' => '2026-05-21',
+        ]);
+        $overview = app(AnalyticsOverviewService::class);
+
+        $this->assertSame(2, $overview->kpis($filter)['published']);
+        $this->assertSame(7, $overview->kpis($filter)['total_views']);
+
+        $trend = collect($overview->publicationTrend($filter))->keyBy('date');
+        $this->assertSame(1, $trend['2026-05-21']['published']);
+
+        $topContent = $overview->topContent($filter, 2);
+        $this->assertSame('范围内访问最多的老文章', $topContent[0]->title);
+        $this->assertSame(4, (int) $topContent[0]->view_count);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_distribution_metrics_respect_task_and_category_filters(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+        $fixtures = $this->contentFixtures();
+        $otherCategory = Category::query()->create([
+            'name' => '其它分析分类',
+            'slug' => 'other-analytics-category',
+            'status' => 'active',
+        ]);
+        $otherTask = Task::query()->create([
+            'name' => '其它分析任务',
+            'status' => 'active',
+        ]);
+        $otherArticle = Article::query()->create([
+            'title' => '其它任务文章',
+            'slug' => 'other-task-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => (int) $otherCategory->id,
+            'author_id' => (int) Author::query()->firstOrFail()->id,
+            'task_id' => (int) $otherTask->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'created_at' => Carbon::parse('2026-05-21 09:00:00'),
+        ]);
+        ArticleDistribution::query()->create([
+            'article_id' => (int) $otherArticle->id,
+            'distribution_channel_id' => (int) $fixtures['channel']->id,
+            'action' => 'publish',
+            'status' => 'failed',
+            'idempotency_key' => 'analytics-other-failed',
+            'created_at' => Carbon::parse('2026-05-21 12:00:00'),
+        ]);
+
+        $filter = AnalyticsFilter::fromRequest([
+            'preset' => 'custom',
+            'date_from' => '2026-05-20',
+            'date_to' => '2026-05-21',
+            'task_id' => (int) $fixtures['task']->id,
+            'category_id' => (int) Category::query()->where('slug', 'analytics-category')->value('id'),
+        ]);
+        $overview = app(AnalyticsOverviewService::class);
+
+        $this->assertSame(1, $overview->distributionSummary($filter)['failed']);
+        $this->assertSame(1, $overview->kpis($filter)['distribution_failed']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_log_analytics_filters_source_method_and_classifies_traffic(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+        $this->ensureViewLogsTable();
+
+        $this->assertSame('ai_bot', TrafficClassifier::classify('OAI-SearchBot/1.0'));
+        $this->assertSame('ai_bot', TrafficClassifier::classify('Claude-SearchBot/1.0'));
+        $this->assertSame('other_bot', TrafficClassifier::classify('curl/8.0.1'));
+        $this->assertSame('human', TrafficClassifier::classify('Mozilla/5.0 Safari/537.36'));
+        $this->assertSame('unknown', TrafficClassifier::classify(''));
+
+        DB::table('view_logs')->insert([
+            [
+                'article_id' => null,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => '/',
+                'route_name' => 'site.home',
+                'status_code' => 200,
+                'ip_address' => '10.0.0.1',
+                'user_agent' => 'Mozilla/5.0 Safari/537.36',
+                'created_at' => Carbon::parse('2026-05-21 09:00:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'channel',
+                'method' => 'GET',
+                'path' => '/',
+                'route_name' => 'site.home',
+                'status_code' => 200,
+                'ip_address' => '10.0.0.2',
+                'user_agent' => 'Mozilla/5.0 Safari/537.36',
+                'created_at' => Carbon::parse('2026-05-21 09:10:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => '/robots.txt',
+                'route_name' => null,
+                'status_code' => 200,
+                'ip_address' => '10.0.0.3',
+                'user_agent' => 'curl/8.0.1',
+                'created_at' => Carbon::parse('2026-05-21 09:20:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => '/article/ai',
+                'route_name' => 'site.article',
+                'status_code' => 200,
+                'ip_address' => '10.0.0.4',
+                'user_agent' => 'OAI-SearchBot/1.0',
+                'created_at' => Carbon::parse('2026-05-21 09:30:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'local',
+                'method' => 'HEAD',
+                'path' => '/article/head',
+                'route_name' => 'site.article',
+                'status_code' => 200,
+                'ip_address' => '10.0.0.5',
+                'user_agent' => 'ChatGPT-User/1.0',
+                'created_at' => Carbon::parse('2026-05-21 09:40:00'),
+            ],
+        ]);
+
+        $summary = app(AnalyticsLogQueryService::class)->summary(AnalyticsFilter::fromRequest([
+            'preset' => 'custom',
+            'date_from' => '2026-05-21',
+            'date_to' => '2026-05-21',
+            'log_source' => 'local',
+            'traffic_type' => 'all',
+        ]));
+        $breakdown = collect($summary['bot_breakdown'])->keyBy('key');
+
+        $this->assertSame(3, $summary['kpis']['pv']);
+        $this->assertSame(1, $summary['kpis']['ai_bot_pv']);
+        $this->assertSame(1, $breakdown['human']['count']);
+        $this->assertSame(1, $breakdown['ai_bot']['count']);
+        $this->assertSame(1, $breakdown['other_bot']['count']);
+
+        $humanSummary = app(AnalyticsLogQueryService::class)->summary(AnalyticsFilter::fromRequest([
+            'preset' => 'custom',
+            'date_from' => '2026-05-21',
+            'date_to' => '2026-05-21',
+            'log_source' => 'local',
+            'traffic_type' => 'human',
+        ]));
+        $this->assertSame(1, $humanSummary['kpis']['pv']);
+
+        Carbon::setTestNow();
+    }
+
     private function admin(): Admin
     {
         return Admin::query()->create([
@@ -443,6 +670,7 @@ class AdminAnalyticsPageTest extends TestCase
         Schema::create('view_logs', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('article_id')->nullable();
+            $table->string('source', 32)->default('local');
             $table->string('method', 16)->default('GET');
             $table->string('path', 2048)->default('');
             $table->string('route_name', 128)->nullable();
@@ -451,5 +679,29 @@ class AdminAnalyticsPageTest extends TestCase
             $table->text('user_agent')->nullable();
             $table->timestamp('created_at')->nullable();
         });
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function viewLogRows(int $articleId, string $path, int $count, string $createdAt): array
+    {
+        $rows = [];
+
+        for ($i = 1; $i <= $count; $i++) {
+            $rows[] = [
+                'article_id' => $articleId,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => $path,
+                'route_name' => 'site.article',
+                'status_code' => 200,
+                'ip_address' => '10.0.1.'.$articleId.'.'.$i,
+                'user_agent' => 'Mozilla/5.0',
+                'created_at' => Carbon::parse($createdAt)->copy()->addMinutes($i),
+            ];
+        }
+
+        return $rows;
     }
 }

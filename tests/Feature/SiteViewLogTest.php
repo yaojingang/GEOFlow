@@ -63,6 +63,22 @@ class SiteViewLogTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_head_requests_are_not_saved_as_page_views(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:20:00'));
+
+        $article = $this->publishedArticle();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])
+            ->withHeader('User-Agent', 'ChatGPT-User/1.0')
+            ->head('/article/'.$article->slug)
+            ->assertOk();
+
+        $this->assertDatabaseCount('view_logs', 0);
+
+        Carbon::setTestNow();
+    }
+
     private function publishedArticle(): Article
     {
         $author = Author::query()->create([
