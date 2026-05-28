@@ -10,6 +10,7 @@
  * /doubao-research. Community posts remain signals until sampled and reviewed.
  */
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, chmodSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -54,6 +55,23 @@ type ResponsesPayload = {
   }>;
   usage?: { num_sources_used?: number };
 };
+
+function runSlug() {
+  const iso = new Date().toISOString();
+  const time = iso.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const hash = createHash("sha1")
+    .update(QUERY_ARG ?? "doubao-ai-search")
+    .digest("hex")
+    .slice(0, 8);
+  const querySlug =
+    (QUERY_ARG ?? "doubao-ai-search")
+      .toLowerCase()
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 42) || "doubao-query";
+  return `${time}-${querySlug}-${hash}`;
+}
 
 function readOAuthFile(): OAuthTokens | null {
   if (!existsSync(OAUTH_TOKEN_FILE)) return null;
@@ -200,7 +218,7 @@ function renderMarkdown(query: string, items: SignalItem[], sourcesUsed?: number
     `| URL | Author | Tier | Type | Confidence | Why it matters | Doubao sampling question |`,
     `|---|---|---|---|---:|---|---|`,
     ...items.map((item) =>
-      [
+      `| ${[
         item.tweet_url,
         item.author,
         item.evidence_tier,
@@ -208,7 +226,7 @@ function renderMarkdown(query: string, items: SignalItem[], sourcesUsed?: number
         String(item.confidence ?? 0),
         item.why_it_matters.replaceAll("|", "/"),
         item.doubao_sampling_question.replaceAll("|", "/"),
-      ].join(" | "),
+      ].join(" | ")} |`,
     ),
     ``,
     `## Source Excerpts`,
@@ -249,7 +267,7 @@ async function main() {
         publishable: false,
       },
     ];
-    const outFile = join(OUT_DIR, `${new Date().toISOString().slice(0, 10)}-x-signals.md`);
+    const outFile = join(OUT_DIR, `${runSlug()}-x-signals.md`);
     writeFileSync(outFile, renderMarkdown(query, mock, 0), "utf-8");
     console.log(outFile);
     return;
@@ -263,7 +281,7 @@ async function main() {
   if (!finalText) throw new Error("No output_text returned from xAI Responses API.");
 
   const items = parseItems(finalText);
-  const outFile = join(OUT_DIR, `${new Date().toISOString().slice(0, 10)}-x-signals.md`);
+  const outFile = join(OUT_DIR, `${runSlug()}-x-signals.md`);
   writeFileSync(outFile, renderMarkdown(query, items, resp.usage?.num_sources_used), "utf-8");
   console.log(outFile);
 }
