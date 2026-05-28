@@ -12,7 +12,7 @@ function dateLabel(value?: string | null) {
 
 export default async function DoubaoResearchPage() {
   const index = await getResearchIndex();
-  const featured = index.notes.find((note) => note.slug === "doubao-chinese-community-signal-report") ?? index.notes[0];
+  const featured = index.notes.find((note) => note.slug === "doubao-public-opinion-argument-map") ?? index.notes[0];
   const noteTypes = Array.from(new Set(index.notes.map((note) => note.type)));
 
   return (
