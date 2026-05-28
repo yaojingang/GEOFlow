@@ -24,6 +24,7 @@ export function GET() {
 - AI 收录信号: 首页、公开报告、sitemap.xml、llms.txt、Search Console、FAQ/对比/案例内容
 
 研究主题:
+- 豆包中文社区信号研究报告: ${siteUrl}/doubao-research/doubao-chinese-community-signal-report
 - 豆包搜索生成研究报告: ${siteUrl}/doubao-research/doubao-search-generation-research-report
 - 豆包来源引用采样协议: ${siteUrl}/doubao-research/doubao-source-grounding-sampling
 - 豆包答案可见度

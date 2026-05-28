@@ -98,6 +98,115 @@ K-Dense 的 scientific-agent-skills 对本项目有启发，但价值在方法�
 `,
   },
   {
+    slug: "doubao-chinese-community-signal-report",
+    title: "豆包中文社区信号研究报告",
+    excerpt: "不再以官方资料作为结论依据，改用 X/Twitter、中文论坛、知乎、小红书、微博等公开社区线索，抓不到正文的链接走 GetNote 转内容流程，全部沉淀为社区信号和待采样问题。",
+    type: "研究报告",
+    tags: ["豆包", "中文社区", "X", "AI搜索", "用户反馈", "GetNote", "研究报告"],
+    body: `# 豆包中文社区信号研究报告
+
+生成日期：2026-05-28
+
+## 研究边界
+
+这份报告不把官方文档作为结论依据。官方资料只能作为背景索引，不能替代社区反馈、真实采样和可复核链接。
+
+本轮目标是建立“中文社区信号 → GetNote 链接转内容 → 豆包采样问题 → 研究节点”的管线。论坛、X、微博、知乎、小红书里的内容先作为线索，不直接发布为事实；只有经过抓取、去重、人工复核和豆包采样后，才升级为公开研究结论。
+
+这份报告连接 [[豆包来源引用采样协议]]、[[豆包答案可见度]] 和 [[Agent 对话内核]]。
+
+## 抓取方法
+
+### 1. 直接可读页面
+
+能被公开访问的网页进入 direct_fetch 流程：
+
+- 抓取 URL、标题、正文、发布时间和作者信息。
+- 清洗导航、广告、重复楼层和无关推荐。
+- 生成正文 hash 与标题相似度，用于去重。
+- 只抽取“用户真实体验、产品对比、搜索生成、来源引用、总结质量、失败案例”相关段落。
+
+### 2. 抓不到正文页面
+
+登录墙、动态渲染、反爬、搜索结果页和平台限制页面进入 GetNote fallback：
+
+- 保存 URL、平台、搜索词、抓取时间、失败原因。
+- 使用 GetNote 链接转报告，把链接转成可读摘要、关键摘录和待验证问题。
+- 标记为 link_only、getnote_fallback 或 needs_sampling。
+- publishable 默认为 false，直到人工复核或豆包采样完成。
+
+### 3. X / Twitter
+
+优先复用本机既有 X 采集路径。当前在 /Users/qiuxuanmai/SynologyDrive/ai 中检索到的明确线索是 media operation/x-insights 下的 X brief 产物，还没有在 GEOFlow 内确认可直接复用的 X API 客户端。因此第一版把 X 搜索入口标成 api_pending：有 token/client 时走 API，没有时只保留公开搜索链接并进入 GetNote/人工摘录队列。
+
+### 4. 研究升级规则
+
+- discussion_signal：社区讨论出现，但没有可验证样本。
+- needs_sampling：讨论指出问题，需要豆包实测。
+- sampled_observation：已经用豆包采样验证，但仍需复核来源。
+- publishable_note：能公开展示，且不包含私密对话、密钥、客户隐私或未授权全文。
+
+## 社区来源台账
+
+| URL | 平台 | 来源类型 | 抓取状态 | 用途 |
+|---|---|---|---|---|
+| https://linux.do/t/topic/2223608 | LINUX DO | community_thread | needs_extraction | 论坛讨论线索，待提取正文和楼层观点 |
+| https://meta.appinn.net/t/topic/83381 | 小众软件社区 | community_thread | getnote_fallback | 用户对 AI 总结/搜索使用习惯的讨论线索 |
+| https://www.zhihu.com/search?type=content&q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | 知乎 | community_search | link_only | 搜索页入口，待 GetNote 或人工摘录具体问答 |
+| https://s.weibo.com/weibo?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | 微博 | community_search | link_only | 热点和抱怨入口，不能直接当事实 |
+| https://www.xiaohongshu.com/search_result?keyword=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | 小红书 | community_search | link_only | 真实用户场景入口，需防营销号污染 |
+| https://x.com/search?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2&src=typed_query&f=live | X / Twitter | social_search | api_pending | 实时讨论入口，优先等 API 客户端复用 |
+| https://www.reddit.com/search/?q=Doubao%20AI%20search | Reddit | social_search | link_only | 海外讨论入口，作为跨语境对照 |
+
+## 研究信号表
+
+| 信号 | 类别 | 证据等级 | 验证状态 | 下一步 |
+|---|---|---|---|---|
+| 社区讨论更关心“好不好用、能不能总结、有没有幻觉”，而不是模型架构。 | usage_pattern | discussion_signal | needs_sampling | 用豆包真实问题采样体验差异 |
+| AI 搜索、链接总结、网页摘要和资料整理场景经常与豆包一起被讨论。 | content_workflow | discussion_signal | needs_sampling | 建立链接转摘要与来源引用采样集 |
+| 用户是否信任答案，关键不只在是否回答，而在是否给可复核来源。 | source_grounding | discussion_signal | needs_sampling | 每个样本记录 hasSource、sourceUrl、sourceOpenable |
+| 论坛、小红书、微博、知乎搜索页多数存在动态渲染、登录和反爬限制。 | collection_constraint | confirmed_constraint | observed | 抓不到正文时统一走 GetNote fallback |
+| X 适合捕捉实时吐槽和产品变化，但 API 客户端需要在现有项目中确认。 | social_signal | api_pending | needs_setup | 找到 token/client 后进入批量搜索 |
+| 社区信号不能直接变成公开结论，必须先转成采样问题。 | safety_rule | internal_policy | active | 公开节点只发布整理后的结论 |
+
+## GetNote fallback 队列
+
+| 平台 | URL | extractionMode | publishable | 处理说明 |
+|---|---|---|---|---|
+| LINUX DO | https://linux.do/t/topic/2223608 | direct_fetch 或 getnote_link | false | 先提取楼层观点，再标注是否涉及豆包搜索生成 |
+| 小众软件社区 | https://meta.appinn.net/t/topic/83381 | getnote_link | false | 转成“AI 总结信息习惯”线索，不直接归因豆包 |
+| 知乎 | https://www.zhihu.com/search?type=content&q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | manual_clip | false | 只保存具体问答链接，不保存搜索页全文 |
+| 微博 | https://s.weibo.com/weibo?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | manual_clip | false | 保存时间窗口和原帖链接，避免热搜漂移 |
+| 小红书 | https://www.xiaohongshu.com/search_result?keyword=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | manual_clip | false | 标记营销风险，优先抽用户真实使用场景 |
+| X / Twitter | https://x.com/search?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2&src=typed_query&f=live | x_api_pending | false | 等 API 复用后再批量抓取 |
+
+## 豆包采样问题
+
+- 豆包回答“豆包和 Kimi 哪个更适合搜索资料”时，是否展示来源链接？
+- 豆包总结一条社区争议帖时，会不会区分事实、观点和猜测？
+- 豆包处理“给我总结这个链接”时，会不会保留原文关键证据？
+- 豆包回答“AI 搜索结果为什么不可信”时，会不会主动给出处？
+- 豆包对“最近大家怎么评价豆包 AI 搜索”这类问题，会不会生成无法复核的热度判断？
+- 豆包是否能识别微博、小红书、知乎搜索页本身不是稳定证据？
+- 同一个社区问题重复采样 5 次，答案结构和来源引用是否稳定？
+- 当用户要求“只引用中文社区讨论”时，豆包是否仍混入官方宣传或媒体通稿？
+
+## 去重与污染控制
+
+- URL canonical：去掉追踪参数、排序参数和平台推荐参数。
+- 正文 hash：正文相同或近似相同的转载只保留最早或最高可信来源。
+- 标题相似：同一事件不同标题先合并为 topic cluster。
+- 同源优先级：真实用户长帖优先于营销号，原帖优先于搬运，含链接证据优先于无来源观点。
+- 社媒污染：抽样时保留正负面，不只抓高赞或情绪化内容。
+
+## 结论
+
+豆包研究中心下一阶段不应从官方资料推结论，而应从中文社区信号中生成采样问题。抓得到的页面直接清洗入库；抓不到的页面用 GetNote 链接转报告；X 等实时平台先复用既有 API，找不到客户端时只保留 link-only 线索。
+
+最终公开报告只发布“社区信号经过采样后的稳定观察”。原始链接、动态搜索页和未复核讨论都留在来源台账与内部工作台里。
+`,
+  },
+  {
     slug: "doubao-source-grounding-sampling",
     title: "豆包来源引用采样协议",
     excerpt: "把联网搜索和来源引用拆成可采样的问题、字段和判断标准，避免把讨论信号误写成事实。",
@@ -231,6 +340,30 @@ export async function ensureResearchStarterNotes(workspaceId: string) {
       toNoteId: bySlug.get("doubao-source-grounding-sampling")!.id,
       label: "需要采样",
       strength: 90,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-chinese-community-signal-report")!.id,
+      toNoteId: bySlug.get("doubao-source-grounding-sampling")!.id,
+      label: "社区信号转采样",
+      strength: 94,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-chinese-community-signal-report")!.id,
+      toNoteId: bySlug.get("doubao-answer-visibility")!.id,
+      label: "体验反馈",
+      strength: 88,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-chinese-community-signal-report")!.id,
+      toNoteId: bySlug.get("agent-conversation-kernel")!.id,
+      label: "GetNote 转内容",
+      strength: 82,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-search-generation-research-report")!.id,
+      toNoteId: bySlug.get("doubao-chinese-community-signal-report")!.id,
+      label: "补社区证据",
+      strength: 78,
     }),
     linkResearchNotes({
       fromNoteId: bySlug.get("doubao-source-grounding-sampling")!.id,
