@@ -137,7 +137,9 @@ K-Dense 的 scientific-agent-skills 对本项目有启发，但价值在方法�
 
 ### 3. X / Twitter
 
-优先复用本机既有 X 采集路径。当前在 /Users/qiuxuanmai/SynologyDrive/ai 中检索到的明确线索是 media operation/x-insights 下的 X brief 产物，还没有在 GEOFlow 内确认可直接复用的 X API 客户端。因此第一版把 X 搜索入口标成 api_pending：有 token/client 时走 API，没有时只保留公开搜索链接并进入 GetNote/人工摘录队列。
+优先复用本机既有 Hermes / Grok 反推采集路径。已确认 \`/Users/qiuxuanmai/dev/yao-media-station/scripts/x-insights/\` 里有可用实现：通过 Hermes Agent 参考的 xAI OAuth PKCE 客户端获取 token，调用 xAI Responses API 的内置 \`x_search\` 工具，让 Grok 自己检索 X 并输出结构化线索。OAuth token 存在 \`~/.config/yao-x-insights/xai-oauth.json\`，GEOFlow 已新增 \`scripts/doubao-research/fetch-x-community-signals.ts\` 复用这条链路。
+
+注意：这条链路解决“能抓到 X 社区线索”的问题，但不改变证据等级。X 内容仍然只能进入 discussion_signal / needs_sampling，必须转成豆包采样问题后再升级为公开结论。
 
 ### 4. 研究升级规则
 
@@ -155,7 +157,7 @@ K-Dense 的 scientific-agent-skills 对本项目有启发，但价值在方法�
 | https://www.zhihu.com/search?type=content&q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | 知乎 | community_search | link_only | 搜索页入口，待 GetNote 或人工摘录具体问答 |
 | https://s.weibo.com/weibo?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | 微博 | community_search | link_only | 热点和抱怨入口，不能直接当事实 |
 | https://www.xiaohongshu.com/search_result?keyword=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | 小红书 | community_search | link_only | 真实用户场景入口，需防营销号污染 |
-| https://x.com/search?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2&src=typed_query&f=live | X / Twitter | social_search | api_pending | 实时讨论入口，优先等 API 客户端复用 |
+| https://x.com/search?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2&src=typed_query&f=live | X / Twitter | social_search | hermes_x_search_ready | 通过 Hermes-derived xAI OAuth + Grok x_search 抓取 |
 | https://www.reddit.com/search/?q=Doubao%20AI%20search | Reddit | social_search | link_only | 海外讨论入口，作为跨语境对照 |
 
 ## 研究信号表
@@ -166,8 +168,23 @@ K-Dense 的 scientific-agent-skills 对本项目有启发，但价值在方法�
 | AI 搜索、链接总结、网页摘要和资料整理场景经常与豆包一起被讨论。 | content_workflow | discussion_signal | needs_sampling | 建立链接转摘要与来源引用采样集 |
 | 用户是否信任答案，关键不只在是否回答，而在是否给可复核来源。 | source_grounding | discussion_signal | needs_sampling | 每个样本记录 hasSource、sourceUrl、sourceOpenable |
 | 论坛、小红书、微博、知乎搜索页多数存在动态渲染、登录和反爬限制。 | collection_constraint | confirmed_constraint | observed | 抓不到正文时统一走 GetNote fallback |
-| X 适合捕捉实时吐槽和产品变化，但 API 客户端需要在现有项目中确认。 | social_signal | api_pending | needs_setup | 找到 token/client 后进入批量搜索 |
+| X 适合捕捉实时吐槽和产品变化，已找到 Hermes / Grok x_search 采集路径。 | social_signal | discussion_signal | ready_for_crawl | 跑 \`scripts/doubao-research/fetch-x-community-signals.ts\` 生成社区信号台账 |
 | 社区信号不能直接变成公开结论，必须先转成采样问题。 | safety_rule | internal_policy | active | 公开节点只发布整理后的结论 |
+
+## 首轮 Hermes / Grok X 抓取结果
+
+运行记录：\`research-runs/doubao-x-signals/2026-05-28-x-signals.md\`
+
+抓取方式：Hermes-derived xAI OAuth + Responses API \`x_search\`。这轮返回 6 条 X 线索，全部保持 \`publishable=false\`，只进入采样队列。
+
+| X 线索 | 信号 | 证据等级 | 采样问题 |
+|---|---|---|---|
+| https://x.com/fmdx266979/status/2059955750605291894 | 用户认为豆包处理信息/题目搜索时会被追问态度影响答案。 | discussion_signal | 搜索一个有争议问题，看豆包是否因追问改变答案，并检查来源引用。 |
+| https://x.com/rawLux_/status/2059608016878792889 | 用户描述豆包会积极使用工具和联网搜索，甚至搜索大量网页。 | discussion_signal | 让豆包总结一个新闻/资料问题，记录搜索网页数量、来源展示和引用质量。 |
+| https://x.com/Mzeeshan4554/status/2051987842562203789 | 用户把豆包归类为中国搜索分层里的 AI 搜索层。 | discussion_signal | 比较豆包与百度/小红书在同一问题上的搜索结果结构。 |
+| https://x.com/MomoXCrypto/status/2051564073314349303 | 用户称豆包搜索命中来源与最终答案矛盾，追问后会翻转。 | discussion_signal | 询问有官方来源的争议事件，检查豆包是否引用来源并保持答案一致。 |
+| https://x.com/didxga/status/2059867612121870624 | 用户认为大众把豆包当高级搜索引擎，而不是关心底层 LLM。 | discussion_signal | 用日常生活问题测试豆包是否像搜索引擎一样给出链接总结。 |
+| https://x.com/xuxin_AI/status/2051309564906385899 | 用户讨论豆包搜索等能力的免费可用性。 | discussion_signal | 持续测试免费版豆包搜索/链接总结/来源引用是否稳定。 |
 
 ## GetNote fallback 队列
 
@@ -178,7 +195,7 @@ K-Dense 的 scientific-agent-skills 对本项目有启发，但价值在方法�
 | 知乎 | https://www.zhihu.com/search?type=content&q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | manual_clip | false | 只保存具体问答链接，不保存搜索页全文 |
 | 微博 | https://s.weibo.com/weibo?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | manual_clip | false | 保存时间窗口和原帖链接，避免热搜漂移 |
 | 小红书 | https://www.xiaohongshu.com/search_result?keyword=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2 | manual_clip | false | 标记营销风险，优先抽用户真实使用场景 |
-| X / Twitter | https://x.com/search?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2&src=typed_query&f=live | x_api_pending | false | 等 API 复用后再批量抓取 |
+| X / Twitter | https://x.com/search?q=%E8%B1%86%E5%8C%85%20AI%E6%90%9C%E7%B4%A2&src=typed_query&f=live | hermes_x_search | false | 用 xAI OAuth + Responses API x_search 批量抓取，仍需采样复核 |
 
 ## 豆包采样问题
 
@@ -201,7 +218,7 @@ K-Dense 的 scientific-agent-skills 对本项目有启发，但价值在方法�
 
 ## 结论
 
-豆包研究中心下一阶段不应从官方资料推结论，而应从中文社区信号中生成采样问题。抓得到的页面直接清洗入库；抓不到的页面用 GetNote 链接转报告；X 等实时平台先复用既有 API，找不到客户端时只保留 link-only 线索。
+豆包研究中心下一阶段不应从官方资料推结论，而应从中文社区信号中生成采样问题。抓得到的页面直接清洗入库；抓不到的页面用 GetNote 链接转报告；X 等实时平台复用 Hermes / Grok x_search 管线抓取，但所有社媒内容仍按 discussion_signal 处理。
 
 最终公开报告只发布“社区信号经过采样后的稳定观察”。原始链接、动态搜索页和未复核讨论都留在来源台账与内部工作台里。
 `,
