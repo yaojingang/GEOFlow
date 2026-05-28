@@ -98,7 +98,7 @@ a {
 .research-prose p,
 .research-prose ul,
 .research-prose blockquote,
-.research-prose table,
+.research-prose .research-table-scroll,
 .research-prose pre {
   margin: 1em 0 0;
 }
@@ -147,11 +147,26 @@ a {
 }
 
 .research-prose table {
-  width: 100%;
+  width: max(720px, 100%);
   border-collapse: collapse;
-  overflow: hidden;
-  border-radius: 8px;
   font-size: 14px;
+}
+
+.research-prose .research-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid #d9def2;
+  border-radius: 8px;
+  background: #fff;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #aeb7df #eef2ff;
+}
+
+.research-prose .research-table-scroll table {
+  margin: 0;
+  border: 0;
 }
 
 .research-prose th,
@@ -165,6 +180,52 @@ a {
 .research-prose th {
   background: #eef2ff;
   color: #161824;
+}
+
+.research-prose th:first-child,
+.research-prose td:first-child {
+  min-width: 220px;
+}
+
+.research-prose th:not(:first-child),
+.research-prose td:not(:first-child) {
+  min-width: 160px;
+}
+
+@media (max-width: 640px) {
+  .research-prose {
+    font-size: 15px;
+    line-height: 1.78;
+  }
+
+  .research-prose h2 {
+    font-size: 24px;
+  }
+
+  .research-prose h3,
+  .research-prose h4 {
+    font-size: 19px;
+    line-height: 1.28;
+  }
+
+  .research-prose .research-table-scroll {
+    margin-right: -0.75rem;
+    margin-left: -0.75rem;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .research-prose table {
+    width: max(760px, 100%);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .research-prose th,
+  .research-prose td {
+    padding: 0.6rem 0.65rem;
+  }
 }
 
 @keyframes rise {

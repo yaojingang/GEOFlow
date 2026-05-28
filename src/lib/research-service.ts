@@ -796,7 +796,7 @@ export function renderResearchMarkdown(markdown: string) {
           .join("");
         return `<tr>${cells}</tr>`;
       });
-      blocks.push(`<table>${htmlRows.join("")}</table>`);
+      blocks.push(`<div class="research-table-scroll"><table>${htmlRows.join("")}</table></div>`);
       table = [];
     }
   }
