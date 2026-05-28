@@ -502,6 +502,137 @@ GEO 不只是让品牌被提到，而是让可信资料进入答案链。如果�
 `,
   },
   {
+    slug: "doubao-github-ecosystem-signal-map",
+    title: "豆包 GitHub 生态信号地图",
+    excerpt: "把 GitHub 上的豆包相关仓库、topic、README 和逆向项目当作开发者生态线索，拆出 prompt、工具集成、语音输入、知识库、联网搜索复刻和风险边界。",
+    type: "研究报告",
+    tags: ["豆包", "GitHub", "开源生态", "开发者信号", "Obsidian", "联网搜索", "逆向API"],
+    body: `# 豆包 GitHub 生态信号地图
+
+生成日期：2026-05-28
+
+## 这轮继续挖什么
+
+前两轮主要看 X 中文社区里的使用感受、吐槽和论点。这一轮补 GitHub：不是为了找“官方事实”，而是看开发者把豆包放进了哪些工作流。
+
+GitHub 的价值不在于 star 能证明产品强弱。它只能证明开发者生态里出现了什么集成需求、什么绕路方案、什么风险边界。这里的仓库全部按 \`github_ecosystem_signal\` 处理，不直接升级为豆包能力结论。
+
+这篇文章连接 [[豆包社区深挖：幻觉、来源和字节场景]]、[[豆包来源引用采样协议]] 和 [[Agent 对话内核]]。
+
+## 一句话判断
+
+GitHub 上的豆包信号说明，开发者并不只把豆包当聊天 App 看。更常见的心智是：把豆包接成一个可替换模型供应商、中文 prompt 对象、语音/输入法组件、Obsidian 知识库生成器、联网搜索复刻对象，甚至逆向 API 入口。
+
+这对 GEOFlow 的意义是：豆包研究不能只盯“答案好不好”。还要盯它如何被嵌入工具链，以及这些工具链会怎样改变用户提问、引用、采样和知识沉淀。
+
+## GitHub 来源台账
+
+本轮运行记录：\`research-runs/doubao-github-signals/20260528T-github-ecosystem-signals.md\`
+
+| 来源 | 当前信号 | 证据等级 | 研究用途 |
+|---|---|---|---|
+| https://github.com/topics/doubao | GitHub topic 页显示 110 个公开仓库匹配 \`doubao\` topic，语言横跨 Python、TypeScript、JavaScript、Rust、Kotlin、Go 等。 | github_ecosystem_signal | 证明开发者生态面存在，不证明真实使用量 |
+| https://github.com/langgptai/LangGPT | 结构化提示词框架把 Doubao 放在多模型 prompt 生态里。 | github_ecosystem_signal | 观察 prompt 工作流如何吸收豆包 |
+| https://github.com/ripperhe/Bob | 翻译/OCR 工具把 Doubao 与其他供应商并列。 | github_ecosystem_signal | 观察工具型场景里的供应商切换 |
+| https://github.com/BryceWG/BiBi-Keyboard | Android 语音输入法项目强调 ASR、多引擎和 LLM 后处理，topic 包含 Doubao。 | github_ecosystem_signal | 观察语音输入如何改变豆包使用场景 |
+| https://github.com/TarsLab/obsidian-tars | Obsidian 插件支持基于标签建议做文本生成，供应商包括 Doubao。 | github_ecosystem_signal | 直接连接豆包研究中心的 Obsidian 式知识库方向 |
+| https://github.com/LLM-Red-Team/doubao-free-api | 逆向 API 项目把豆包卖点写成“超强联网搜索”，同时声明仅供测试、商用走官方。 | risk_signal | 观察非官方接入需求与合规边界 |
+| https://github.com/YuhaoYeSteve/Doubao-VolcEngine | 豆包 App 火山方舟版项目 changelog 提到 Web Search、正在搜索状态和流式响应解析。 | implementation_signal | 观察搜索透明度和 App-like UI 复刻 |
+| https://github.com/Ayush0Chaudhary/blurr | Android operator / mobile-use 项目 topic 包含 Doubao/open-doubao。 | github_ecosystem_signal | 观察移动端 Agent 和豆包的潜在结合 |
+| https://github.com/volcengine/OpenViking | Volcengine 上下文数据库项目出现在 Doubao / Volcengine 搜索结果里。 | infrastructure_context | 作为 Agent memory / context 基础设施背景 |
+
+## 论点一：豆包在 GitHub 上更像“供应商组件”，不是单一产品
+
+很多仓库不是“豆包专用项目”，而是把 Doubao 放进多模型、多供应商列表：prompt、翻译、OCR、网关、Obsidian、创作工具、语音输入、TTS。
+
+这说明一个重要心智：开发者面对豆包时，常常不是问“豆包 App 怎么用”，而是问“我能不能把豆包接进已有工具链”。这和普通用户社区的心智不同。普通用户关心陪伴、搜索、免费、语音；开发者关心 provider、endpoint、流式输出、上下文、成本和替换性。
+
+GEOFlow 后续研究要分清两类样本：
+
+| 样本类型 | 关注问题 | 不能混淆的点 |
+|---|---|---|
+| C 端豆包 App | 用户是否信任、是否会追来源、是否被幻觉影响。 | App 体验不等于 API 能力。 |
+| 开发者集成 | 接入是否稳定、是否兼容 OpenAI 格式、是否适合工具链。 | GitHub 集成不等于真实终端用户满意。 |
+
+## 论点二：逆向 API 是需求信号，也是风险信号
+
+\`doubao-free-api\` 这类项目的存在说明，社区对豆包 App-like 能力、联网搜索体验、低门槛调用有需求。但它同样说明官方 API、C 端能力和开发者调用之间存在落差。
+
+这个信号不能被 GEOFlow 当成推荐路径。逆向 API 的研究价值只在三个方面：
+
+- 证明“有人想把豆包搜索能力工具化”。
+- 暴露开发者真正想要的接口形态：OpenAI-compatible、流式、低配置、多 token、App-like 搜索。
+- 提醒研究中心必须把非官方链路标成 \`risk_signal\`，不能写成安全可用方案。
+
+## 论点三：Obsidian 插件是研究中心最相关的 GitHub 线索
+
+\`obsidian-tars\` 这类项目直接说明，开发者已经在尝试把多模型文本生成嵌入 Obsidian。它和 GEOFlow 豆包研究中心的方向高度相关：左侧知识库、正文节点、标签、双链、反向链接、图谱，最终都不是装饰，而是让研究对话沉淀成可复用知识。
+
+这里产生一个新的采样问题：豆包是否适合做知识库型写作助手？
+
+不能只测“总结一篇文章”。应该测：
+
+| 测试点 | 问题 | 判断字段 |
+|---|---|---|
+| 来源保真 | 豆包总结笔记时是否保留原链接和引用关系？ | source_preserved |
+| 双链生成 | 豆包是否能把正文概念转成稳定的 \`[[双链]]\`？ | wikilink_quality |
+| 反向链接 | 豆包是否能识别已有节点并建议连接？ | backlink_relevance |
+| 结论强度 | 豆包是否区分事实、观点、猜想和待采样问题？ | claim_type |
+
+## 论点四：语音输入会改变豆包问题形态
+
+GitHub 上的 BiBi Keyboard、TTS、Android agent 等项目说明，豆包生态不只是“文字问答”。语音输入、移动端 operator、TTS 和陪伴场景会改变用户的问题结构。
+
+用户语音提问通常更长、更口语、更含糊，也更像真实生活任务。这会影响豆包答案：
+
+- 更容易触发“搜索型总结”，但不一定要求来源。
+- 更容易把多个意图混在一起，增加幻觉空间。
+- 更接近日常决策链路，因此高风险幻觉更严重。
+
+所以后续采样不能只用标准化文字 prompt。必须加入语音转文字后的自然问题。
+
+## 论点五：搜索透明度可能比搜索能力更影响信任
+
+\`Doubao-VolcEngine\` 这类 App-like 项目在 changelog 里强调“正在搜索”“思考中”和流式响应解析。这是一个重要产品信号：用户不只需要搜索结果，也需要知道模型什么时候在搜索、搜了什么、结果是否来自外部来源。
+
+这和前两轮社区吐槽能对上。用户不信任豆包时，常见原因不是“它没回答”，而是：
+
+- 它回答得像确定事实，但没有可复核来源。
+- 它引用低质来源，却压缩成权威口吻。
+- 用户追问后它改口，让人怀疑前一轮答案只是编造。
+
+因此研究中心要新增一个字段：\`search_transparency\`。不仅记录 \`hasSource\`，还要记录豆包是否显示搜索过程、来源是否可打开、是否区分检索信息和模型推断。
+
+## GitHub 生态信号表
+
+| 信号 | 类别 | 结论强度 | 下一步 |
+|---|---|---|---|
+| 豆包出现在 prompt、翻译、OCR、Obsidian、语音、网关、创作工具等多类仓库里。 | ecosystem_presence | GitHub snapshot | 建立开发者生态来源台账 |
+| 逆向 API 项目把联网搜索作为卖点。 | unmet_integration_demand | risk_signal | 只作为需求信号，不作为接入建议 |
+| Obsidian 插件支持 Doubao，说明知识库文本生成是自然场景。 | knowledge_workflow | likely | 测豆包是否能保留来源与双链 |
+| 语音输入法和移动 agent 说明豆包可能进入更自然、更模糊的提问场景。 | input_shift | hypothesis | 做语音问题采样 |
+| App-like 复刻强调正在搜索和流式解析，说明透明状态本身影响信任。 | trust_interface | likely | 增加 search_transparency 字段 |
+
+## 新采样问题
+
+- 同一问题分别用短文字、长口语、语音转文字三种方式问豆包，答案来源和幻觉率是否变化？
+- 让豆包总结一篇带链接的长文，它是否保留原链接、作者、日期和关键证据？
+- 让豆包把一段研究笔记转成 Obsidian 风格节点，它是否能生成稳定的 \`[[双链]]\` 和反向链接建议？
+- 询问一个最新事件时，豆包是否显示“正在搜索”、是否列来源、来源是否可打开？
+- 对同一问题要求“只使用官方来源”和“只使用中文社区来源”，豆包是否能遵守来源边界？
+- 对一个已知错误网页做干扰源，豆包是否引用它，还是主动交叉验证？
+- 如果开发者把豆包接进多供应商工具链，豆包相比 DeepSeek、Qwen、Kimi 的优势是搜索、中文、速度、成本，还是 App 心智？
+
+## 结论
+
+GitHub 给豆包研究提供的是“开发者心智图”，不是能力证明。
+
+它补上了 X 社区看不到的一面：豆包正在被开发者放进工具链、知识库、语音输入、移动 agent、联网搜索复刻和逆向 API 里。这说明豆包的研究对象应从 C 端 App 扩展到“豆包如何成为工作流组件”。
+
+下一步不应写成“GitHub 证明豆包强”。正确写法是：GitHub 暴露了开发者想怎样使用豆包；这些使用方式会生成新的采样问题，尤其是来源保真、搜索透明度、Obsidian 双链、语音问题和非官方接入风险。
+`,
+  },
+  {
     slug: "doubao-source-grounding-sampling",
     title: "豆包来源引用采样协议",
     excerpt: "把联网搜索和来源引用拆成可采样的问题、字段和判断标准，避免把讨论信号误写成事实。",
@@ -701,6 +832,30 @@ export async function ensureResearchStarterNotes(workspaceId: string) {
       toNoteId: bySlug.get("doubao-answer-visibility")!.id,
       label: "入口心智",
       strength: 86,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-github-ecosystem-signal-map")!.id,
+      toNoteId: bySlug.get("doubao-community-deep-dive-2026-05-28")!.id,
+      label: "补开发者生态",
+      strength: 90,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-github-ecosystem-signal-map")!.id,
+      toNoteId: bySlug.get("doubao-source-grounding-sampling")!.id,
+      label: "生成采样问题",
+      strength: 88,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-github-ecosystem-signal-map")!.id,
+      toNoteId: bySlug.get("agent-conversation-kernel")!.id,
+      label: "知识库工作流",
+      strength: 84,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-community-deep-dive-2026-05-28")!.id,
+      toNoteId: bySlug.get("doubao-github-ecosystem-signal-map")!.id,
+      label: "第三轮 GitHub",
+      strength: 82,
     }),
     linkResearchNotes({
       fromNoteId: bySlug.get("doubao-search-generation-research-report")!.id,
