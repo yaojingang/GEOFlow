@@ -30,6 +30,7 @@ export function GET() {
 - AI 收录信号: 首页、公开报告、sitemap.xml、llms.txt、Search Console、FAQ/对比/案例内容
 
 研究主题:
+- 豆包 GEO 信号地图：品牌如何进入答案: ${siteUrl}/doubao-research/doubao-geo-signal-map
 - 豆包社区深挖：幻觉、来源和字节场景: ${siteUrl}/doubao-research/doubao-community-deep-dive-2026-05-28
 - 豆包 GitHub 生态信号地图: ${siteUrl}/doubao-research/doubao-github-ecosystem-signal-map
 - 豆包民间想法与论点集: ${siteUrl}/doubao-research/doubao-public-opinion-argument-map

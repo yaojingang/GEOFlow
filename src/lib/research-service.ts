@@ -633,6 +633,167 @@ GitHub 给豆包研究提供的是“开发者心智图”，不是能力证明�
 `,
   },
   {
+    slug: "doubao-geo-signal-map",
+    title: "豆包 GEO 信号地图：品牌如何进入答案",
+    excerpt: "把豆包 GEO 从泛 AI 搜索话题里拆出来：品牌提及、答案排序、来源引用、可信证据、内容资产和监测字段，形成可执行的豆包采样框架。",
+    type: "研究报告",
+    tags: ["豆包", "GEO", "AI搜索", "品牌可见度", "来源引用", "采样", "llms.txt"],
+    body: `# 豆包 GEO 信号地图：品牌如何进入答案
+
+生成日期：2026-05-28
+
+## 这轮只看豆包 GEO
+
+上一轮 GitHub 生态报告证明了一个事实：开源社区里“豆包”相关项目很多，但“豆包 GEO”直接工具很少。也就是说，豆包 GEO 现在不是一个成熟开源工具链，而是一个正在形成的方法问题：如何让品牌、证据和内容资产进入豆包答案。
+
+这篇文章把范围收窄到 GEO：品牌是否被豆包提到、被怎样排序、引用了什么来源、来源是否可信、答案是否稳定、内容资产是否能被采纳。
+
+这篇文章连接 [[豆包答案可见度]]、[[豆包来源引用采样协议]]、[[证据链与资料路由]] 和 [[豆包 GitHub 生态信号地图]]。
+
+## 一句话判断
+
+豆包 GEO 不能按传统 SEO 写法做。核心不是堆关键词，而是把品牌事实、可信证据、FAQ、对比页、案例页、第三方资料和可抓取页面组织成豆包能压缩进答案的证据链，然后用重复采样验证是否真的进入答案。
+
+现阶段最有价值的产品不是“承诺排名”，而是“豆包答案采样器 + 证据路由 + 内容资产建议”。
+
+## 本轮来源台账
+
+运行记录：\`research-runs/doubao-geo-signals/20260528T-doubao-geo-signals.md\`
+
+| 来源 | 当前信号 | 证据等级 | 用法 |
+|---|---|---|---|
+| https://www.bosougeo.com/ | 服务商页面声称能做豆包 GEO 排名和品类案例。 | vendor_claim | 只当市场需求信号，不当能力证明 |
+| https://anymorph.ai/guide/china-ai-search-optimization-for-doubao-deepseek-kimi-ernie | 指南把中国 AI 搜索优化拆成豆包、DeepSeek、Kimi、文心等模型差异。 | vendor_method_claim | 抽方法假设，需豆包实测 |
+| https://arxiv.org/abs/2311.09735 | GEO 论文把生成式引擎可见度定义为黑盒优化问题。 | academic_reference | 作为可见度指标和实验框架参考 |
+| https://github.com/webappski/aeo-platform | AEO/GEO CLI 追踪品牌在 AI 答案中的提及、位置、情感、引用和行动建议。 | technical_reference | 借鉴监测字段，适配豆包 |
+| https://github.com/jiguang9/geo-audit | 小型 GEO audit skill 仓库。 | weak_oss_signal | 说明 audit-skill 方向存在，但不成熟 |
+| https://github.com/KnightMafiaLau/agent-ready-skill | 检查站点 agent-readiness 和 LLM bot 权限。 | technical_reference | 可转成豆包来源可读性检查 |
+| GitHub 搜索 \`doubao geo\` | 直接命中弱且噪声高，没有发现成熟豆包专用 GEO tracker。 | negative_signal | 说明 GEOFlow 可做豆包专用采样器 |
+
+## 论点一：豆包 GEO 的对象是“答案”，不是网页排名
+
+传统 SEO 看网页在搜索结果里的排名。豆包 GEO 看的是豆包答案里的位置。
+
+最少要记录这些字段：
+
+| 字段 | 含义 | 为什么重要 |
+|---|---|---|
+| brand_mentioned | 是否提到品牌 | 第一层可见度 |
+| mention_rank | 第几个提到 | 判断是不是首选推荐 |
+| competitor_mentions | 同时出现哪些竞品 | 判断品类竞争格局 |
+| answer_position | 答案里出现的位置 | 开头、正文、补充推荐意义不同 |
+| sentiment | 正向、中性、负向 | 只被提到不等于有利 |
+| source_visible | 是否展示来源 | 判断可复核性 |
+| source_urls | 来源链接 | 判断证据来自哪里 |
+| factual_issues | 是否有错误事实 | 防止“被提到但说错” |
+
+所以豆包 GEO 的第一步不是写文章，而是建立问题集和答案采样。没有采样，就无法判断内容资产是否真的被豆包吸收。
+
+## 论点二：服务商 claim 只能证明市场需求，不能证明效果
+
+检索里能看到很多“豆包 GEO 排名”“AI 搜索优化”“品牌进入 AI 答案”的服务页。这些页面有市场价值：它们说明客户已经开始把豆包当成获客入口。
+
+但它们不能直接作为研究结论。
+
+需要降级处理：
+
+| claim 类型 | 可用性 | 处理方式 |
+|---|---|---|
+| 案例排名截图 | 弱证据 | 只记录 claim，不当作可复现结果 |
+| “提升曝光”承诺 | 营销话术 | 必须要求采样前后对比 |
+| 平台覆盖列表 | 市场背景 | 记录涉及豆包、Kimi、DeepSeek 等 |
+| 方法论文章 | 方法假设 | 转成采样字段，不直接发布结论 |
+
+GEOFlow 的优势应该是反过来做：不先承诺排名，而是先交付可复核采样结果。
+
+## 论点三：豆包 GEO 的内容资产要按“来源类型”路由
+
+豆包是否提品牌，取决于它能看到、相信并压缩什么资料。GEO 内容不能只生成泛文章，必须拆成不同来源资产：
+
+| 资产 | 目标 | 豆包采样问题 |
+|---|---|---|
+| 品牌事实页 | 让豆包知道品牌是谁、做什么、适合谁 | 豆包是否能正确描述品牌定位？ |
+| FAQ | 承接具体问题意图 | 豆包是否引用 FAQ 里的答案结构？ |
+| 对比页 | 进入“谁更适合”类推荐问题 | 豆包是否把品牌放进竞品对比？ |
+| 案例页 | 提供可信业务证据 | 豆包是否引用案例里的行业和结果？ |
+| 第三方报道 | 提升外部可信度 | 豆包是否更信第三方而非自述？ |
+| llms.txt / sitemap | 提高 AI 可发现性 | 豆包是否能读取公开入口？ |
+
+这里的重点是证据链。豆包如果引用的是低质聚合页、营销号或内容农场，短期可见度可能提升，但长期会伤害答案可信度。
+
+## 论点四：豆包 GEO 必须加入“来源质量”维度
+
+前面社区深挖已经看到，用户会质疑豆包引用百家号、营销号、SEO 假数据和内容农场。对 GEO 来说，这不是边缘问题，而是核心风险。
+
+因此采样结果不能只看品牌是否出现，还要看来源质量：
+
+| source_quality | 判断 |
+|---|---|
+| official_owned | 官网、官方文档、品牌自己的公开页面 |
+| first_party_evidence | 案例、FAQ、白皮书、产品文档 |
+| third_party_credible | 媒体报道、行业榜单、评测、可信社区长帖 |
+| aggregator | 聚合页、导航站、百科搬运 |
+| content_farm | 内容农场、营销号、SEO 拼接页 |
+| social_discussion | 社区讨论，只能作为信号 |
+| unknown | 豆包未给来源或来源不可打开 |
+
+没有这个字段，GEO 容易变成“只要被提到就行”。这会把研究带偏。
+
+## 论点五：豆包 GEO 的最小闭环
+
+真正能落地的闭环应该是：
+
+1. 建立品类问题集：购买、对比、品牌、证据、风险、价格、场景。
+2. 跑豆包重复采样：每题至少 3-5 次，记录答案和来源。
+3. 识别缺口：未提品牌、竞品领先、来源错误、事实错误、没有引用。
+4. 生成内容资产：FAQ、对比页、案例页、品牌事实页、第三方证据页。
+5. 发布并可发现：sitemap、llms.txt、结构化页面、内部链接。
+6. 复测：Day 7 / 14 / 30 看豆包答案是否变化。
+
+这个闭环比“写一批 GEO 文章”更可控。因为它能证明变化发生在哪里，也能解释为什么没发生。
+
+## 豆包 GEO 采样字段 v1
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| question | string | 采样问题 |
+| intent_type | enum | purchase / comparison / brand / evidence / risk / local / howto |
+| brand_mentioned | boolean | 是否提到目标品牌 |
+| mention_rank | number | 在推荐列表中的位置 |
+| competitor_mentions | string[] | 同时出现的竞品 |
+| answer_position | enum | lead / body / footnote / absent |
+| sentiment | enum | positive / neutral / negative / mixed |
+| source_visible | boolean | 是否展示来源 |
+| source_urls | string[] | 可见来源链接 |
+| source_type | enum | official / third_party / social / aggregator / unknown |
+| source_quality | enum | official_owned / first_party_evidence / third_party_credible / aggregator / content_farm / social_discussion / unknown |
+| source_openable | boolean | 来源是否能打开 |
+| factual_issues | string[] | 错误事实 |
+| hallucination_risk | enum | low / medium / high |
+| search_transparency | enum | none / implied / visible_search / cited_sources |
+| recommended_content_asset | enum | brand_fact / faq / comparison / case / report / social_proof |
+
+## 新采样问题
+
+- 豆包推荐“做 GEO 服务的公司”时，会不会提到目标品牌？
+- 豆包回答“哪家公司适合做豆包 GEO 优化”时，会引用哪些来源？
+- 豆包是否把 GEO、AEO、AI 搜索优化、SEO 混为一谈？
+- 豆包是否能区分“官网自述”“第三方报道”“社区讨论”和“营销号”？
+- 给豆包一个品牌官网和 FAQ 后，7 天后它是否更容易正确描述品牌？
+- 同一品类问题里，目标品牌和竞品的排序是否稳定？
+- 如果页面提供 llms.txt 和 sitemap，豆包答案是否更容易引用该页面？
+- 豆包是否会引用低质聚合页来描述品牌？如果会，如何用更可信内容替代？
+
+## 结论
+
+豆包 GEO 相关研究应该直接围绕“答案可见度”和“证据进入路径”展开。
+
+当前公开资料里，服务商页面能证明市场开始关心豆包 GEO，但不能证明方法有效；GitHub 上直接的豆包 GEO 工具很少，说明这个方向还没有成熟开源标准；GEO 论文和 AEO 工具可以提供测量框架，但必须适配豆包的中文生态、来源展示和采样限制。
+
+所以 GEOFlow 应该把豆包 GEO 做成一个采样驱动的研究系统：先测答案，再补证据，再发布资产，再复测变化。只要这个闭环成立，豆包研究中心就不只是文章库，而是能持续生成 GEO 方法和产品能力的内核。
+`,
+  },
+  {
     slug: "doubao-source-grounding-sampling",
     title: "豆包来源引用采样协议",
     excerpt: "把联网搜索和来源引用拆成可采样的问题、字段和判断标准，避免把讨论信号误写成事实。",
@@ -856,6 +1017,36 @@ export async function ensureResearchStarterNotes(workspaceId: string) {
       toNoteId: bySlug.get("doubao-github-ecosystem-signal-map")!.id,
       label: "第三轮 GitHub",
       strength: 82,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+      toNoteId: bySlug.get("doubao-answer-visibility")!.id,
+      label: "品牌可见度",
+      strength: 96,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+      toNoteId: bySlug.get("doubao-source-grounding-sampling")!.id,
+      label: "采样字段",
+      strength: 94,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+      toNoteId: bySlug.get("evidence-routing")!.id,
+      label: "证据路由",
+      strength: 92,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+      toNoteId: bySlug.get("doubao-github-ecosystem-signal-map")!.id,
+      label: "工具缺口",
+      strength: 86,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-github-ecosystem-signal-map")!.id,
+      toNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+      label: "收窄到 GEO",
+      strength: 84,
     }),
     linkResearchNotes({
       fromNoteId: bySlug.get("doubao-search-generation-research-report")!.id,
