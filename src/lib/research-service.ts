@@ -58,7 +58,7 @@ const rankGapCompanyResearchIndexNote = {
 
 | 对象 | 研究节点 |
 |---|---|
-${rankGapCompanyResearchNotes.map((note) => `| ${note.tags[0]} | [[${note.title}]] |`).join("\n")}
+${rankGapCompanyResearchNotes.map((note) => `| ${note.tags[0]} | [${note.title}](/doubao-research/${note.slug}) |`).join("\n")}
 
 ## 统一判断框架
 
