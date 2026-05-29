@@ -9,6 +9,7 @@ export function GET() {
 - 首页: ${siteUrl}
 - Get Note 子站: ${siteUrl}/getnote
 - 豆包研究中心: ${siteUrl}/doubao-research
+- X 账号研究: ${siteUrl}/x-research/aleabitoreddit
 - 工作台: ${siteUrl}/workspace
 - GetNote API: ${siteUrl}/api/v1/getnote/generate
 - GetNote OpenAPI: ${siteUrl}/api/v1/getnote/openapi.json
@@ -24,12 +25,15 @@ export function GET() {
 - 对照平台: DeepSeek, Kimi, 通义千问, 元宝, ChatGPT, Gemini
 - 工作流: 创建项目 -> 上传资料 -> 品牌事实库 -> 豆包问题集 -> 豆包诊断 -> 差距报告 -> 内容生成 -> 发布分发 -> 持续监测
 - 豆包研究中心: 公开展示整理后的研究节点、资料证据、反向链接和轻量知识图谱；不直接暴露原始私密对话
+- X 账号研究: 追踪 @aleabitoreddit 的公开 X 内容，每天生成日报，并维护最近七天周报、最近三十天月报和全部可取回内容总报
 - Get Note 子站: 把文本、网页、小红书/抖音/YouTube 链接和文件统一转成 Markdown 笔记；正式 API 需要 Workspace API Token scope \`getnote:generate\`
 - 公开内容库: 展示已发布的 FAQ、品牌事实页、对比页、案例页和社媒内容包
 - 关键词策略: 品牌词、服务词、问题词、证据词、竞品对比词
 - AI 收录信号: 首页、公开报告、sitemap.xml、llms.txt、Search Console、FAQ/对比/案例内容
 
 研究主题:
+- @aleabitoreddit X 账号订阅内容研究: ${siteUrl}/x-research/aleabitoreddit
+- 豆包排名差公司研究总表: ${siteUrl}/doubao-research/rank-gap-company-assessment-map
 - 钛动科技 GEOFlow 评估：为什么豆包把它排前？: ${siteUrl}/doubao-research/tecdo-geo-flow-assessment-report
 - 豆包靠前但网页靠后的产品差异报告: ${siteUrl}/doubao-research/doubao-api-vs-web-search-rank-gap-report
 - 豆包 GEO 与传统 SEO 差异最大的产品清单: ${siteUrl}/doubao-research/doubao-geo-vs-seo-product-gap-report

@@ -1,5 +1,6 @@
 import type { Prisma, ResearchLink, ResearchNote } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { rankGapCompanyResearchNotes } from "@/lib/generated-rank-gap-company-research";
 import { getOrCreateWorkspace } from "@/lib/workspace-service";
 
 export const researchTypes = ["研究笔记", "研究报告", "豆包机制", "案例观察", "证据卡", "实验记录"] as const;
@@ -26,6 +27,54 @@ export type ResearchLinkInput = {
   toNoteId: string;
   label?: string | null;
   strength?: number | null;
+};
+
+const rankGapCompanyResearchIndexNote = {
+  slug: "rank-gap-company-assessment-map",
+  title: "豆包排名差公司研究总表",
+  excerpt: "把上一篇排名差报告里出现的真实公司和产品逐一拆成独立研究节点，区分官网证据、搜索信号、豆包联想和幻觉风险。",
+  type: "研究报告",
+  tags: ["豆包", "排名差", "公司研究", "GEO", "竞品分析", "证据分级"],
+  body: `# 豆包排名差公司研究总表
+
+生成日期：2026-05-29
+
+## 一句话结论
+
+这批文章把 [[豆包靠前但网页靠后的产品差异报告]] 里出现的真实公司和产品逐一拆开复核。
+
+本轮重点不是证明这些公司都在做 GEO，而是判断：豆包为什么会把它们放进 GEO / AI 搜索 / 答案监测语境，以及公开网页证据能不能支撑这个判断。
+
+## 本轮边界
+
+| 项目 | 说明 |
+|---|---|
+| 研究对象 | 真实公司、真实产品或真实开源项目。 |
+| 不作为独立公司研究 | “llms.txt 官方生成器”“Sitemap 转 llms.txt 转换工具”等工具需求名，以及明显像模型组合出的服务名。 |
+| 豆包二次采样 | 生产豆包 API 本轮批量采样超时，已在各节点标为 \`needs_check\`，不当作豆包结论。 |
+| 主要证据 | 官网/文档抓取、robots/sitemap/llms 检查、Bing 搜索结果、上一篇 rank gap 的原始豆包排名理由。 |
+
+## 公司研究节点
+
+| 对象 | 研究节点 |
+|---|---|
+${rankGapCompanyResearchNotes.map((note) => `| ${note.tags[0]} | [[${note.title}]] |`).join("\n")}
+
+## 统一判断框架
+
+| 判断项 | 说明 |
+|---|---|
+| official_confirmed | 官网或官方文档明确写出。 |
+| needs_check | 只有搜索结果、豆包联想或语义迁移，不能当事实。 |
+| hallucination_risk | 真实品牌 + 新概念组合出看似正式的产品名，但没有页面证据。 |
+| indirect_competitor | 对方不是豆包 GEO 专项工具，但会抢营销预算或 AI 优化心智。 |
+
+## 对 GEOFlow 的意义
+
+这批节点说明，豆包 GEO 的竞争对象不只来自明确写着 GEO 的公司。云厂商、SEO 工具、内容优化工具、数据平台、guardrails/observability 工具、国内营销服务商都会被豆包迁移进“AI 搜索优化”语境。
+
+GEOFlow 要避开泛泛的“AI 营销”说法，继续把产品定义压实到：豆包答案采样、品牌提及率、rank gap、来源质量审计、事实纠错和证据链发布。
+`,
 };
 
 const starterNotes = [
@@ -1512,6 +1561,8 @@ GEOFlow 已经有 Agent 会话树、分支、压缩摘要和工具执行记录�
 - 公开页面展示的是可复核知识，不是聊天记录。
 `,
   },
+  rankGapCompanyResearchIndexNote,
+  ...rankGapCompanyResearchNotes,
 ];
 
 export async function ensureResearchStarterNotes(workspaceId: string) {
@@ -1765,6 +1816,56 @@ export async function ensureResearchStarterNotes(workspaceId: string) {
       label: "深挖钛动",
       strength: 90,
     }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("rank-gap-company-assessment-map")!.id,
+      toNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      label: "拆分实体研究",
+      strength: 96,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("rank-gap-company-assessment-map")!.id,
+      toNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+      label: "迁移路径",
+      strength: 92,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      toNoteId: bySlug.get("rank-gap-company-assessment-map")!.id,
+      label: "批量复核",
+      strength: 94,
+    }),
+    ...rankGapCompanyResearchNotes.flatMap((note) => [
+      linkResearchNotes({
+        fromNoteId: bySlug.get("rank-gap-company-assessment-map")!.id,
+        toNoteId: bySlug.get(note.slug)!.id,
+        label: "公司节点",
+        strength: 78,
+      }),
+      linkResearchNotes({
+        fromNoteId: bySlug.get(note.slug)!.id,
+        toNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+        label: "排名差复核",
+        strength: 88,
+      }),
+      linkResearchNotes({
+        fromNoteId: bySlug.get(note.slug)!.id,
+        toNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+        label: "GEO 迁移路径",
+        strength: 84,
+      }),
+      linkResearchNotes({
+        fromNoteId: bySlug.get(note.slug)!.id,
+        toNoteId: bySlug.get("evidence-routing")!.id,
+        label: "证据分级",
+        strength: 82,
+      }),
+      linkResearchNotes({
+        fromNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+        toNoteId: bySlug.get(note.slug)!.id,
+        label: "实体复核",
+        strength: 72,
+      }),
+    ]),
     linkResearchNotes({
       fromNoteId: bySlug.get("doubao-search-generation-research-report")!.id,
       toNoteId: bySlug.get("doubao-chinese-community-signal-report")!.id,
