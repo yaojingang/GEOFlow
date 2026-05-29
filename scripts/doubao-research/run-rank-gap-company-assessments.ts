@@ -24,6 +24,9 @@ type PageLedger = {
   excerpt: string;
   evidenceTier: "official_confirmed" | "media_claim" | "discussion_signal" | "not_found";
   keywordHits: string[];
+  headings: string[];
+  metaDescription: string;
+  sitemapUrls: string[];
 };
 
 type SearchResult = {
@@ -33,6 +36,7 @@ type SearchResult = {
   snippet: string;
   url: string;
   keywordHits: string[];
+  sourceKind: "official" | "media" | "report" | "community" | "search_tool" | "unknown";
 };
 
 type DoubaoClaim = {
@@ -56,6 +60,9 @@ type EntityAssessment = {
   searchResults: SearchResult[];
   doubao: DoubaoAnswer[];
   conclusions: {
+    whatCompanySays: string[];
+    whatItDoes: string[];
+    onlineMaterials: string[];
     geoEvidence: "confirmed" | "partial" | "not_found";
     competitor: "direct" | "indirect" | "not_direct";
     hallucinationRisk: "high" | "medium" | "low";
@@ -347,6 +354,75 @@ function pageTitle(html: string, fallback: string) {
   return stripTags(title ?? fallback).slice(0, 140);
 }
 
+function metaDescription(html: string) {
+  const match =
+    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i) ??
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["'][^>]*>/i) ??
+    html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["'][^>]*>/i);
+  return stripTags(match?.[1] ?? "").slice(0, 260);
+}
+
+function pageHeadings(html: string) {
+  return [...html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi)]
+    .map((match) => stripTags(match[1]))
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function extractSitemapUrls(text: string, officialHosts: string[]) {
+  const urls = [...text.matchAll(/<loc>\s*([^<]+)\s*<\/loc>/gi)]
+    .map((match) => decodeEntities(match[1].trim()))
+    .filter((url) => {
+      try {
+        return officialHosts.some((host) => new URL(url).hostname.endsWith(host));
+      } catch {
+        return false;
+      }
+    });
+  const scored = urls
+    .map((url) => {
+      const lower = url.toLowerCase();
+      const score = [
+        "product",
+        "solution",
+        "solutions",
+        "case",
+        "cases",
+        "blog",
+        "news",
+        "feature",
+        "features",
+        "seo",
+        "ai",
+        "marketing",
+        "about",
+        "docs",
+      ].reduce((total, token) => total + (lower.includes(token) ? 1 : 0), 0);
+      return { url, score };
+    })
+    .sort((a, b) => b.score - a.score);
+  return Array.from(new Set(scored.filter((item) => item.score > 0).map((item) => item.url))).slice(0, 5);
+}
+
+function sourceKind(url: string, title: string, snippet: string, officialHosts: string[]): SearchResult["sourceKind"] {
+  const host = hostOf(url);
+  if (officialHosts.some((officialHost) => host.endsWith(officialHost))) return "official";
+  const text = `${host} ${title} ${snippet}`.toLowerCase();
+  if (/github|tool\.chinaz|5118|semrush|ahrefs|similarweb/.test(text)) return "search_tool";
+  if (/研报|证券|research|report|pdf|券商|招股|公告|年报/.test(text)) return "report";
+  if (/知乎|小红书|微博|reddit|linux.do|v2ex|twitter|x\.com|社区|论坛/.test(text)) return "community";
+  if (/36kr|虎嗅|钛媒体|搜狐|网易|腾讯|新浪|财联社|亿欧|媒体|news|press|prnewswire/.test(text)) return "media";
+  return "unknown";
+}
+
+function hostOf(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
 function slugify(value: string) {
   const known: Record<string, string> = {
     百度智能云: "baidu-ai-cloud",
@@ -403,7 +479,7 @@ async function retry<T>(label: string, task: () => Promise<T>) {
   throw lastError;
 }
 
-async function fetchPageLedger(url: string): Promise<PageLedger> {
+async function fetchPageLedger(url: string, officialHosts: string[] = []): Promise<PageLedger> {
   try {
     const response = await fetchWithTimeout(
       url,
@@ -417,6 +493,8 @@ async function fetchPageLedger(url: string): Promise<PageLedger> {
     );
     const text = await response.text();
     const plain = stripTags(text);
+    const headings = pageHeadings(text);
+    const description = metaDescription(text);
     return {
       url,
       sourceType: url.endsWith("sitemap.xml") || url.endsWith("robots.txt") || url.endsWith("llms.txt") ? "official_meta" : "official",
@@ -425,6 +503,9 @@ async function fetchPageLedger(url: string): Promise<PageLedger> {
       excerpt: plain.slice(0, 520),
       evidenceTier: response.ok ? "official_confirmed" : "not_found",
       keywordHits: keywordHits(plain),
+      headings,
+      metaDescription: description,
+      sitemapUrls: url.endsWith("sitemap.xml") ? extractSitemapUrls(text, officialHosts) : [],
     };
   } catch (error) {
     return {
@@ -435,11 +516,14 @@ async function fetchPageLedger(url: string): Promise<PageLedger> {
       excerpt: error instanceof Error ? error.message : String(error),
       evidenceTier: "not_found",
       keywordHits: [],
+      headings: [],
+      metaDescription: "",
+      sitemapUrls: [],
     };
   }
 }
 
-async function fetchBingResults(query: string): Promise<SearchResult[]> {
+async function fetchBingResults(query: string, entity: EntityConfig): Promise<SearchResult[]> {
   const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&cc=cn&setlang=zh-CN&count=10`;
   const response = await fetchWithTimeout(
     url,
@@ -453,6 +537,7 @@ async function fetchBingResults(query: string): Promise<SearchResult[]> {
   );
   const html = await response.text();
   const blocks = html.match(/<li class="b_algo"[\s\S]*?<\/li>/gi) ?? [];
+  const officialHosts = entity.officialUrls.map((url) => new URL(url).hostname.replace(/^www\./, ""));
   return blocks.slice(0, 10).map((block, index) => {
     const anchor = block.match(/<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
     const snippet = block.match(/<p[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? "";
@@ -465,6 +550,7 @@ async function fetchBingResults(query: string): Promise<SearchResult[]> {
       snippet: plainSnippet.slice(0, 320),
       url: decodeEntities(anchor?.[1] ?? ""),
       keywordHits: keywordHits(`${title} ${plainSnippet}`),
+      sourceKind: sourceKind(decodeEntities(anchor?.[1] ?? ""), title, plainSnippet, officialHosts),
     };
   });
 }
@@ -472,6 +558,12 @@ async function fetchBingResults(query: string): Promise<SearchResult[]> {
 function getSearchQueries(entity: EntityConfig) {
   const [primary] = entity.aliases;
   return [
+    `${primary} 是什么`,
+    `${primary} 做什么`,
+    `${primary} 官网 产品`,
+    `${primary} 新闻 资料`,
+    `${primary} 研报`,
+    `${primary} 招聘 SEO AI`,
     `${primary} GEO`,
     `${primary} 生成式引擎优化`,
     `${primary} AI 搜索优化`,
@@ -606,6 +698,68 @@ function hasAny(items: Array<PageLedger | SearchResult>, words: string[]) {
   return words.some((word) => haystack.includes(word.toLowerCase()));
 }
 
+function topUnique(items: string[], limit: number) {
+  return Array.from(new Set(items.map((item) => item.replace(/\s+/g, " ").trim()).filter(Boolean))).slice(0, limit);
+}
+
+function summarizeOfficialPromotion(pages: PageLedger[]) {
+  const okPages = pages.filter((page) => page.evidenceTier === "official_confirmed" && page.sourceType === "official");
+  const statements = okPages.flatMap((page) => {
+    const base = page.metaDescription || page.excerpt;
+    return [
+      page.title ? `官网标题：${page.title}` : "",
+      base ? `官网描述：${base.slice(0, 180)}` : "",
+      ...page.headings.slice(0, 4).map((heading) => `官网栏目/标题：${heading}`),
+    ];
+  });
+  return topUnique(statements, 8);
+}
+
+function inferWhatItDoes(entity: EntityConfig, pages: PageLedger[], searchResults: SearchResult[]) {
+  const officialText = pages
+    .filter((page) => page.evidenceTier === "official_confirmed")
+    .map((page) => `${page.title} ${page.metaDescription} ${page.excerpt} ${page.headings.join(" ")}`)
+    .join(" ");
+  const searchText = searchResults.map((result) => `${result.title} ${result.snippet}`).join(" ");
+  const text = `${officialText} ${searchText}`.toLowerCase();
+  const items = [
+    entity.category === "cloud_vendor" && /大模型|model|云|智能体|agent|api/.test(text)
+      ? "大模型、云服务、开发平台或企业 AI 基础设施。"
+      : "",
+    entity.category === "overseas_tool" && /seo|content|keyword|traffic|rank|search/.test(text)
+      ? "SEO、内容优化、关键词/流量分析或搜索营销工具。"
+      : "",
+    entity.category === "china_vendor" && /营销|seo|内容|舆情|广告|投放|品牌|站长/.test(text)
+      ? "国内营销、内容、舆情、站长工具或企业数字化服务。"
+      : "",
+    entity.category === "data_tool" && /数据|分析|洞察|竞品|流量|企业信息|用户行为/.test(text)
+      ? "数据分析、竞品洞察、流量分析、企业信息或用户行为分析。"
+      : "",
+    entity.category === "guardrails" && /guardrail|observability|monitor|eval|安全|风险|llm|agent/.test(text)
+      ? "LLM 应用治理、监控、评测、guardrails 或 AI 风险控制。"
+      : "",
+    /ai|大模型|智能体|agent|chatgpt|deepseek|豆包/.test(text) ? "公开资料里存在 AI / 大模型 / 智能体叙事，可被豆包迁移进 GEO 语境。" : "",
+    /geo|生成式引擎优化|ai search|ai visibility|答案可见度|品牌可见度/.test(text)
+      ? "公开资料里出现 GEO / AI 搜索 / 答案可见度相关词，需要继续做来源级确认。"
+      : "",
+  ].filter(Boolean);
+  return topUnique(items, 6);
+}
+
+function summarizeOnlineMaterials(searchResults: SearchResult[]) {
+  const groups = new Map<SearchResult["sourceKind"], SearchResult[]>();
+  for (const result of searchResults) {
+    groups.set(result.sourceKind, [...(groups.get(result.sourceKind) ?? []), result]);
+  }
+  return (["official", "report", "media", "community", "search_tool", "unknown"] as const)
+    .map((kind) => {
+      const items = (groups.get(kind) ?? []).slice(0, 3);
+      if (!items.length) return "";
+      return `${kind}: ${items.map((item) => `${item.title}（${hostOf(item.url) || "unknown"}）`).join("；")}`;
+    })
+    .filter(Boolean);
+}
+
 function assessEntity(entity: EntityConfig, pages: PageLedger[], searchResults: SearchResult[], doubao: DoubaoAnswer[]) {
   const officialOk = pages.filter((page) => page.evidenceTier === "official_confirmed");
   const geoOfficial = hasAny(officialOk, ["生成式引擎优化", "GEO", "AI search", "AI visibility", "LLM visibility", "answer engine", "答案可见度", "品牌可见度"]);
@@ -624,6 +778,9 @@ function assessEntity(entity: EntityConfig, pages: PageLedger[], searchResults: 
   ].filter(Boolean);
 
   return {
+    whatCompanySays: summarizeOfficialPromotion(pages),
+    whatItDoes: inferWhatItDoes(entity, pages, searchResults),
+    onlineMaterials: summarizeOnlineMaterials(searchResults),
     geoEvidence: geoOfficial ? "confirmed" : geoSearch ? "partial" : "not_found",
     competitor,
     hallucinationRisk,
@@ -650,10 +807,10 @@ function tableRows<T>(items: T[], mapper: (item: T) => string) {
 function makeBody(assessment: Omit<EntityAssessment, "note">, timestamp: string) {
   const { entity, pages, searchResults, doubao, conclusions } = assessment;
   const officialRows = tableRows(pages, (page) =>
-    `| ${safeCell(page.url)} | ${safeCell(page.status)} | ${safeCell(page.evidenceTier)} | ${safeCell(page.keywordHits.slice(0, 10).join("、") || "未命中")} | ${safeCell(page.title)} |`,
+    `| ${safeCell(page.url)} | ${safeCell(page.status)} | ${safeCell(page.evidenceTier)} | ${safeCell(page.keywordHits.slice(0, 10).join("、") || "未命中")} | ${safeCell(page.title)} | ${safeCell((page.metaDescription || page.excerpt).slice(0, 160))} |`,
   );
   const searchRows = tableRows(searchResults.slice(0, 12), (result) =>
-    `| ${safeCell(result.query)} | ${result.rank} | ${safeCell(result.title)} | ${safeCell(result.keywordHits.slice(0, 8).join("、") || "未命中")} | ${safeCell(result.url)} |`,
+    `| ${safeCell(result.query)} | ${result.rank} | ${safeCell(result.sourceKind)} | ${safeCell(result.title)} | ${safeCell(result.snippet.slice(0, 180))} | ${safeCell(result.url)} |`,
   );
   const doubaoRows = tableRows(doubao, (answer) =>
     `| ${safeCell(answer.question)} | ${answer.saysHasGeo ? "是" : "否/不确定"} | ${answer.saysDirectCompetitor ? "是" : "否/不确定"} | ${safeCell(answer.answer.slice(0, 220))} | ${safeCell(answer.recommendedReason || "未给出")} |`,
@@ -677,11 +834,23 @@ function makeBody(assessment: Omit<EntityAssessment, "note">, timestamp: string)
 
 ## 一句话结论
 
-${entity.name} 在上一篇 [[豆包靠前但网页靠后的产品差异报告]] 中属于“豆包靠前、网页证据弱或需要复核”的对象。
+${entity.name} 在上一篇 [[豆包靠前但网页靠后的产品差异报告]] 中属于“豆包靠前、网页证据弱或需要复核”的对象。本轮先重新爬它自己的官网宣传，再看网上公开资料，最后判断它和 GEOFlow 的关系。
 
 ${geoConclusion}
 
 对 GEOFlow 来说，${entity.name} ${conclusions.competitor === "indirect" ? "是间接竞品或心智竞争对象" : "暂不是直接竞品"}。重点不是判断它好坏，而是判断豆包为什么会把它放入 GEO / AI 搜索 / 答案监测语境，以及这个说法能不能被公开证据证明。
+
+## 它自己怎么宣传
+
+${conclusions.whatCompanySays.map((item) => `- ${item}`).join("\n") || "- 官网可抓取内容不足，需要后续人工补抓动态页面、PDF 或案例页。"}
+
+## 它到底做什么
+
+${conclusions.whatItDoes.map((item) => `- ${item}`).join("\n") || "- 公开资料不足以稳定归纳主营业务，只能先按上一篇 rank gap 的实体类别处理。"}
+
+## 网上公开资料怎么说
+
+${conclusions.onlineMaterials.map((item) => `- ${item}`).join("\n") || "- 搜索结果可用资料不足，后续应扩展到更多搜索引擎和行业库。"}
 
 ## 原始异常信号
 
@@ -694,16 +863,16 @@ ${geoConclusion}
 | 幻觉风险 | ${safeCell(conclusions.hallucinationRisk)} |
 | 与 GEOFlow 关系 | ${safeCell(conclusions.competitor)} |
 
-## GPT 爬虫资料台账
+## 官网与公开页面爬虫台账
 
-| 来源 | 状态 | 证据等级 | 命中信号 | 标题 |
-|---|---:|---|---|---|
+| 来源 | 状态 | 证据等级 | 命中信号 | 标题 | 摘要 |
+|---|---:|---|---|---|---|
 ${officialRows}
 
 ## 公开搜索结果
 
-| 查询 | 排名 | 标题 | 命中信号 | URL |
-|---|---:|---|---|---|
+| 查询 | 排名 | 来源类型 | 标题 | 摘要 | URL |
+|---|---:|---|---|---|---|
 ${searchRows}
 
 ## 豆包 API 怎么描述它
@@ -758,7 +927,7 @@ GEOFlow 的处理原则是：可以把它放入监测池，但不能把豆包的
 
 async function assessOne(entity: EntityConfig, timestamp: string): Promise<EntityAssessment> {
   console.error(`[entity] ${entity.name}`);
-  const urls = Array.from(
+  const initialUrls = Array.from(
     new Set([
       ...entity.officialUrls,
       ...entity.officialUrls.flatMap((url) => {
@@ -767,9 +936,20 @@ async function assessOne(entity: EntityConfig, timestamp: string): Promise<Entit
       }),
     ]),
   );
-  const pages = await Promise.all(urls.map((url) => retry(`page ${entity.name} ${url}`, () => fetchPageLedger(url))));
+  const officialHosts = entity.officialUrls.map((url) => new URL(url).hostname.replace(/^www\./, ""));
+  const initialPages = await Promise.all(
+    initialUrls.map((url) => retry(`page ${entity.name} ${url}`, () => fetchPageLedger(url, officialHosts))),
+  );
+  const sitemapPages = initialPages.filter((page) => page.url.endsWith("sitemap.xml") && page.status === 200);
+  const discoveredUrls = Array.from(
+    new Set(sitemapPages.flatMap((page) => page.sitemapUrls)),
+  ).slice(0, 8);
+  const discoveredPages = await Promise.all(
+    discoveredUrls.map((url) => retry(`discovered page ${entity.name} ${url}`, () => fetchPageLedger(url, officialHosts))),
+  );
+  const pages = [...initialPages, ...discoveredPages];
   const searchResults = (
-    await Promise.all(getSearchQueries(entity).map((query) => retry(`bing ${entity.name} ${query}`, () => fetchBingResults(query))))
+    await Promise.all(getSearchQueries(entity).map((query) => retry(`bing ${entity.name} ${query}`, () => fetchBingResults(query, entity))))
   ).flat();
   const doubao = [];
   for (const question of getDoubaoQuestions(entity)) {

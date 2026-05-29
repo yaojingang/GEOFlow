@@ -2355,7 +2355,12 @@ function inlineMarkdown(value: string) {
   });
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  html = html.replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^)]+)\)/g, (_match, label: string, href: string) => {
+    const safeHref = escapeHtml(String(href));
+    const safeLabel = escapeHtml(String(label));
+    const external = /^https?:\/\//i.test(safeHref) ? ' target="_blank" rel="noreferrer"' : "";
+    return `<a href="${safeHref}"${external}>${safeLabel}</a>`;
+  });
   return html;
 }
 
