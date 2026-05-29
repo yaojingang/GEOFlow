@@ -319,7 +319,14 @@ async function callDoubao(question: string): Promise<DoubaoAnswer> {
 }
 
 function hasAny(items: Array<PageLedger | SearchResult>, words: string[]) {
-  const haystack = items.map((item) => `${item.title} ${item.excerpt ?? ""} ${"snippet" in item ? item.snippet : ""} ${item.keywordHits.join(" ")}`).join("\n").toLowerCase();
+  const haystack = items
+    .map((item) => {
+      const excerpt = "excerpt" in item ? item.excerpt : "";
+      const snippet = "snippet" in item ? item.snippet : "";
+      return `${item.title} ${excerpt} ${snippet} ${item.keywordHits.join(" ")}`;
+    })
+    .join("\n")
+    .toLowerCase();
   return words.some((word) => haystack.includes(word.toLowerCase()));
 }
 
