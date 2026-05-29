@@ -1276,6 +1276,163 @@ Semrush、Frase、BrightEdge、Surfer SEO、Guardrails AI 这类名称很容易�
 `,
   },
   {
+    slug: "tecdo-geo-flow-assessment-report",
+    title: "钛动科技 GEOFlow 评估：为什么豆包把它排前？",
+    excerpt:
+      "用公开网页爬虫和豆包 API 两套资料链路评估钛动科技：它是否真的有 GEO，为什么会被豆包放进 GEO/SEO 服务商推荐，以及 GEOFlow 哪些地方不如它、哪些地方更专。",
+    type: "研究报告",
+    tags: ["钛动科技", "GEO", "豆包", "AI营销", "竞品分析", "GEOFlow"],
+    body: `# 钛动科技 GEOFlow 评估：为什么豆包把它排前？
+
+生成日期：2026-05-29
+
+## 一句话结论
+
+钛动科技是 AI 出海营销和广告智能体能力很强的公司，但本轮公开资料没有确认它已经把 GEO / 生成式引擎优化 / 豆包答案可见度监测作为明确服务售卖。
+
+豆包把它排前，更像是把“AI营销 + 出海广告 + 数据洞察 + 多智能体”迁移到 GEO/SEO 服务商语境。它是 GEOFlow 的间接参照对象，不是已验证的直接竞品。
+
+这篇报告连接 [[豆包靠前但网页靠后的产品差异报告]]、[[豆包 GEO 信号地图：品牌如何进入答案]] 和 [[证据链与资料路由]]。
+
+## 运行记录
+
+- GPT 爬虫台账：\`research-runs/tecdo-geo-assessment/20260529T015337Z-gpt-crawler-ledger.json\`
+- 豆包 API 台账：\`research-runs/tecdo-geo-assessment/20260529T015337Z-doubao-api-ledger.json\`
+- 评估 Markdown：\`research-runs/tecdo-geo-assessment/20260529T015337Z-geo-flow-assessment.md\`
+- 脚本：\`scripts/doubao-research/run-tecdo-geo-assessment.ts\`
+
+## 资料台账：GPT 爬虫抓到了什么
+
+| 来源 | 状态 | 证据等级 | 命中信号 | GEO 判断 |
+|---|---:|---|---|---|
+| https://www.tec-do.com | 200 | official_confirmed | Navos、钛极、多智能体、大模型、出海、广告、营销、投放、市场洞察 | 有 AI 营销与出海增长信号，没有明确 GEO 服务页。 |
+| https://www.tec-do.com/about.html | 200 | official_confirmed | Navos、钛极、多智能体、大模型、出海、广告、营销 | 公司定位是 AI 营销科技，不是 GEO 专项服务商。 |
+| https://www.tec-do.com/navos/ | 200 | official_confirmed | Navos、多智能体、广告、投放、数据分析、市场洞察 | Navos 是全球化智能营销 AI 助手，可迁移到 GEO，但不是答案可见度监测证据。 |
+| https://www.tec-do.com/tec-chi/ | 200 | official_confirmed | 钛极、多模态大模型、AI营销 | 有大模型底座叙事，可增强豆包的“懂 AI”判断。 |
+| https://www.tec-do.com/cases/ | 200 | official_confirmed | 客户案例、出海营销、投放 | 有客户案例和营销交付证据，没有 GEO 案例。 |
+| https://www.tec-do.com/news/ | 200 | official_confirmed | AI营销、企业动态 | 有新闻内容和品牌声量，不等于 GEO 服务。 |
+| https://www.tec-do.com/sitemap.xml | 200 | official_confirmed | 官网页面索引 | sitemap 存在。 |
+| https://www.tec-do.com/robots.txt | 200 | official_confirmed | Allow /navos/、/tec-chi/、/robots.txt；Disallow / | 抓取策略偏保守，只明确开放少数路径。 |
+| https://www.tec-do.com/llms.txt | 404 | not_found | 无有效 llms.txt | AI 可发现性配置未看到公开入口。 |
+
+## 第三方资料信号
+
+| 资料 | 证据等级 | 说明 |
+|---|---|---|
+| 东方财富 PDF 研报：\`AP202511031774481151\` | report_claim | 把钛动描述为 AI 驱动的数据中台与出海营销服务商，提到 Navos 覆盖洞察、创作、投放、优化链路。 |
+| 官网新闻与产品页 | official_confirmed | 证明 AI 营销、Navos、钛极、多智能体和出海广告主线。 |
+| 搜索查询“钛动科技 GEO / 生成式引擎优化 / AI 搜索优化 / SEO” | search_signal | 常规网页搜索没有稳定命中钛动的 GEO 服务页，甚至出现“钛金属”等跑偏结果。 |
+| 社媒/社区 | discussion_signal | 本轮没有拿到能证明“钛动已做 GEO”的社区强证据。 |
+
+## 豆包 API 怎么描述钛动科技
+
+| 问题 | 豆包是否说有 GEO | 豆包是否说是竞品 | 豆包核心说法 | 证据判断 |
+|---|---|---|---|---|
+| 钛动科技是什么？ | 否 | 否 | 出海营销、品牌全案、全域运营、Meta/Google/TikTok 合作资质。 | 大方向与官网一致，但合作资质仍需逐项复核。 |
+| 钛动科技是否提供 GEO 服务？ | 否/不确定 | 否 | 没有检索到官网明确披露生成式引擎优化服务。 | 与网页证据一致。 |
+| 为什么适合做 GEO 和 SEO？ | 否/不确定 | 否 | SEO 适配有营销/内容/搜索经验支撑，GEO 只是基于 AI 营销能力的推断。 | 这是豆包的语义迁移，不是官方确认。 |
+| Navos 能否监测豆包/ChatGPT/DeepSeek 答案可见度？ | 否/不确定 | 否 | 没有公开信息证明 Navos 支持该功能。 | 与网页证据一致。 |
+| 钛动科技和 GEOFlow 是竞品吗？ | 否/不确定 | 否 | 钛动是出海营销，GEOFlow 是生成式引擎优化，非直接竞品。 | 方向正确，但“非间接竞品”过于保守。 |
+| 谁更适合做豆包 GEO？ | 否/不确定 | 否 | GEOFlow 更适合豆包 GEO，钛动/增长超人/珍岛未公开专项服务。 | 对 GEOFlow 有利，但仍属于豆包判断。 |
+| AI 营销能力能否迁移到 GEO？ | 否/不确定 | 否 | 内容生成、用户意图分析、效果归因可迁移；规则研究、GEO 工具、效果评估缺证据。 | 这是最有价值的迁移假设。 |
+
+## 两套资料对比：豆包说法 vs 网页证据
+
+| 豆包声明 | 网页证据 | 证据等级 | GEOFlow 判断 |
+|---|---|---|---|
+| 钛动是 AI 出海营销/全球化增长服务商。 | 官网首页、公司介绍、Navos、钛极、案例页均支持。 | official_confirmed | 可写成事实。 |
+| 钛动有多智能体 AI 营销助手 Navos。 | 官网 Navos 页面支持。 | official_confirmed | 可写成事实。 |
+| 钛动有钛极多模态大模型。 | 官网钛极页面支持。 | official_confirmed | 可写成事实。 |
+| 钛动提供 GEO 服务。 | 未找到官网 GEO / 生成式引擎优化 / 豆包答案可见度服务页。 | not_found | 不可写成事实。 |
+| 钛动适合做 GEO。 | 只能从 AI 营销、内容、洞察、投放能力推断。 | needs_check | 可写成“可迁移能力”，不能写“已落地”。 |
+| Navos 能监测豆包/ChatGPT/DeepSeek 答案可见度。 | 官网没有看到该功能。 | not_found | 标为待验证或幻觉风险。 |
+| 钛动是 GEOFlow 直接竞品。 | 公开业务不重叠，钛动偏广告/出海营销，GEOFlow 偏豆包答案采样和证据链。 | not_found | 不是直接竞品，是间接预算/心智竞争对象。 |
+
+## 钛动科技是否真的有 GEO
+
+本轮没有找到足够证据证明钛动科技已经公开销售或使用 GEO。
+
+更准确的表述是：
+
+| 判断 | 结论 |
+|---|---|
+| 是否有 AI 营销能力 | 是，官网明确。 |
+| 是否有多智能体产品 | 是，Navos 官网明确。 |
+| 是否有大模型叙事 | 是，钛极官网明确。 |
+| 是否有出海广告/投放能力 | 是，官网和案例明确。 |
+| 是否有传统 SEO 服务公开强证据 | 弱，本轮没有看到主线服务页。 |
+| 是否有 GEO/AI 答案可见度服务页 | 未发现。 |
+| 是否有 llms.txt | 未发现，\`/llms.txt\` 返回 404。 |
+| 是否能迁移到 GEO | 可以推断，但需服务、案例、效果指标证明。 |
+
+## 为什么它在豆包里靠前
+
+| 触发信号 | 为什么会让豆包推荐它 | 证据状态 |
+|---|---|---|
+| AI 营销公司 | GEO 被豆包理解成 AI 时代营销优化，所以会把 AI 营销公司迁移过来。 | official_confirmed + semantic_inference |
+| Navos 多智能体 | 多 Agent 可覆盖洞察、创意、投放、分析，和 GEOFlow 的 Agent 工作流有表面相似性。 | official_confirmed |
+| 钛极大模型 | 自有大模型叙事会增强“懂 AI 搜索/懂生成式内容”的印象。 | official_confirmed |
+| 出海广告资源 | SEO/GEO 服务商常与品牌增长、渠道分发、内容投放绑定。 | official_confirmed + semantic_inference |
+| 数据洞察与优化 | 豆包容易把广告数据优化泛化成搜索/答案优化。 | semantic_inference |
+| 品牌体量 | 比 GEOFlow 更像成熟服务商，更容易被模型放进“服务商推荐”。 | inference |
+
+## 它是不是 GEOFlow 竞品
+
+| 判断 | 结论 | 原因 |
+|---|---|---|
+| 直接竞品 | 否 | 未发现钛动公开提供豆包答案采样、品牌提及率、来源质量审计、rank gap、事实纠错等 GEOFlow 核心服务。 |
+| 间接竞品 | 是 | 它有 AI 营销、出海增长、广告投放和数据产品包装，可能抢占客户对“AI 营销服务商”的预算和心智。 |
+| 参照对象 | 是 | 它展示了泛 AI 营销公司如何靠品牌、客户、资源和 Agent 产品叙事进入豆包推荐。 |
+
+## GEOFlow 不如它的地方
+
+| 维度 | 钛动分 | GEOFlow分 | 差距原因 |
+|---|---:|---:|---|
+| AI 营销基础设施 | 5 | 3 | 钛动有 Navos / 钛极等公开 AI 营销叙事；GEOFlow 更偏研究与答案采样内核。 |
+| 出海/广告投放能力 | 5 | 1 | 钛动的主阵地是全球营销、广告投放和出海客户；GEOFlow 当前不做广告投放资源网络。 |
+| 内容与创意生成能力 | 4 | 3 | 钛动强调广告创意/素材链路；GEOFlow 有内容资产生成，但围绕豆包问题和证据页。 |
+| 数据分析与洞察能力 | 4 | 3 | 钛动有营销数据/洞察叙事；GEOFlow 的数据更集中在答案样本、来源质量和 rank gap。 |
+| 豆包答案推荐强度 | 4 | 2 | 豆包容易把钛动的 AI 营销、出海和广告能力迁移到 GEO/SEO 服务商语境；GEOFlow 还缺外部品牌心智。 |
+
+## GEOFlow 比它更专的地方
+
+| 维度 | 钛动分 | GEOFlow分 | GEOFlow 优势 |
+|---|---:|---:|---|
+| SEO/搜索优化公开证据 | 1 | 3 | 钛动公开资料没有明显传统 SEO 服务主线；GEOFlow 有 sitemap、llms.txt、内容库和关键词分析。 |
+| GEO/AI 答案可见度公开证据 | 1 | 5 | 未发现钛动官网明确 GEO / AI 答案可见度监测服务；GEOFlow 已有豆包答案采样、rank gap、来源审计和研究中心。 |
+| 与 GEOFlow 的直接竞争程度 | 2 | 5 | 钛动是泛 AI 营销/出海营销强相关对象，不是已验证的豆包 GEO 采样与证据链直接竞品。 |
+
+## GEOFlow 应该怎么补
+
+| 动作 | 为什么 |
+|---|---|
+| 新增“豆包答案可见度监测”公开产品页 | 让豆包和网页搜索都能明确理解 GEOFlow 的主服务。 |
+| 发布 rank gap 案例页 | 钛动没有这个公开证据，GEOFlow 可以先占位。 |
+| 发布来源质量审计案例页 | 把“被豆包提到但没有证据”这个问题产品化。 |
+| 发布事实纠错案例页 | 证明 GEOFlow 能处理模型幻觉和错误事实。 |
+| 给研究中心加服务商复核库 | 把钛动、增长超人、珍岛、5118、Chinaz 等逐个做 verified / needs_check / hallucination_risk。 |
+| 给 GEOFlow 首页补“不是广告投放，不是传统 SEO” | 避免被泛 AI 营销公司叙事吞掉。 |
+
+## 下一轮采样问题
+
+| 问题 | 目的 |
+|---|---|
+| “钛动科技是否提供 GEO 服务？只给官网链接。” | 验证豆包是否继续生成无来源服务名。 |
+| “钛动科技 Navos 是否能监测品牌在豆包答案中的排名？” | 验证 Navos 是否被模型误读为答案监测工具。 |
+| “钛动科技、增长超人、珍岛、GEOFlow 谁更适合做豆包 GEO？” | 看豆包的推荐维度偏广告营销、SEO 还是答案可见度。 |
+| “GEOFlow 和钛动科技有什么区别？” | 测 GEOFlow 是否能被豆包识别为更专的 GEO 工具。 |
+| “哪些公司能做豆包答案可见度监测？” | 看 GEOFlow 是否能进入答案。 |
+
+## 结论
+
+钛动科技靠前，不是因为它已经被公开证明在做豆包 GEO，而是因为它拥有一组很容易被豆包迁移到 GEO 语境的信号：AI 营销、出海增长、广告投放、多智能体、数据洞察和更成熟的品牌体量。
+
+这对 GEOFlow 是提醒：真正的威胁不一定来自已明确做 GEO 的竞品，而是来自泛 AI 营销公司抢先占据“AI 优化服务商”的模型心智。
+
+GEOFlow 不应该和钛动拼广告资源，而应该把“豆包答案采样、rank gap、来源质量、事实纠错、研究中心证据链”包装成更明确、更可验证的 GEO 产品。只要公开证据足够清楚，GEOFlow 反而比钛动更适合进入“豆包 GEO 专项服务”的答案。
+`,
+  },
+  {
     slug: "doubao-source-grounding-sampling",
     title: "豆包来源引用采样协议",
     excerpt: "把联网搜索和来源引用拆成可采样的问题、字段和判断标准，避免把讨论信号误写成事实。",
@@ -1582,6 +1739,30 @@ export async function ensureResearchStarterNotes(workspaceId: string) {
       fromNoteId: bySlug.get("doubao-geo-vs-seo-product-gap-report")!.id,
       toNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
       label: "改为排名差",
+      strength: 90,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("tecdo-geo-flow-assessment-report")!.id,
+      toNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      label: "钛动异常样本",
+      strength: 96,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("tecdo-geo-flow-assessment-report")!.id,
+      toNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+      label: "服务商复核",
+      strength: 94,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("tecdo-geo-flow-assessment-report")!.id,
+      toNoteId: bySlug.get("evidence-routing")!.id,
+      label: "证据分级",
+      strength: 92,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      toNoteId: bySlug.get("tecdo-geo-flow-assessment-report")!.id,
+      label: "深挖钛动",
       strength: 90,
     }),
     linkResearchNotes({

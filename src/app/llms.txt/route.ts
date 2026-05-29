@@ -26,6 +26,7 @@ export function GET() {
 - AI 收录信号: 首页、公开报告、sitemap.xml、llms.txt、Search Console、FAQ/对比/案例内容
 
 研究主题:
+- 钛动科技 GEOFlow 评估：为什么豆包把它排前？: ${siteUrl}/doubao-research/tecdo-geo-flow-assessment-report
 - 豆包靠前但网页靠后的产品差异报告: ${siteUrl}/doubao-research/doubao-api-vs-web-search-rank-gap-report
 - 豆包 GEO 与传统 SEO 差异最大的产品清单: ${siteUrl}/doubao-research/doubao-geo-vs-seo-product-gap-report
 - 豆包 GEO 信号地图：品牌如何进入答案: ${siteUrl}/doubao-research/doubao-geo-signal-map
