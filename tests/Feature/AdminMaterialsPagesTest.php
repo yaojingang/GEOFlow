@@ -12,6 +12,7 @@ use App\Models\Prompt;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
+use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -92,6 +93,15 @@ class AdminMaterialsPagesTest extends TestCase
             ->get(route('admin.materials.index'))
             ->assertOk()
             ->assertSee(__('admin.materials.page_title'))
+            ->assertSee(__('admin.materials.knowledge_hub_label'))
+            ->assertSee(__('admin.materials.knowledge_hub_vector_progress'))
+            ->assertSeeInOrder([
+                __('admin.materials.knowledge_hub_create'),
+                __('admin.materials.manage_knowledge_bases'),
+                __('admin.materials.knowledge_hub_vector_config'),
+            ])
+            ->assertSee(__('admin.materials.foundation_title'))
+            ->assertSee(__('admin.materials.author_manage_title'))
             ->assertSee(__('admin.materials.url_import'));
 
         $this->actingAs($admin, 'admin')
@@ -117,7 +127,27 @@ class AdminMaterialsPagesTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.knowledge-bases.create'))
             ->assertOk()
-            ->assertSee(__('admin.knowledge_bases.page_title'));
+            ->assertSee(__('admin.knowledge_bases.page_title'))
+            ->assertSeeInOrder([
+                __('admin.knowledge_bases.source_files_title'),
+                __('admin.knowledge_bases.source_text_title'),
+            ])
+            ->assertSee('data-knowledge-name-input', false)
+            ->assertSee('data-knowledge-description-input', false)
+            ->assertSee('data-import-client-error', false)
+            ->assertSee(__('admin.knowledge_bases.import_error_title'))
+            ->assertSee('name="knowledge_files[]"', false)
+            ->assertSee('multiple', false)
+            ->assertSee('data-knowledge-upload-dropzone', false)
+            ->assertSeeInOrder([
+                __('admin.button.cancel'),
+                __('admin.knowledge_bases.import_submit_only'),
+                __('admin.knowledge_bases.import_submit'),
+            ])
+            ->assertSee('name="import_action" value="save"', false)
+            ->assertSee('name="import_action" value="save_and_chunk"', false)
+            ->assertSee('50MB')
+            ->assertSee('10');
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.url-import'))
@@ -155,6 +185,312 @@ class AdminMaterialsPagesTest extends TestCase
             'file_type' => 'markdown',
         ]);
         $this->assertGreaterThan(0, KnowledgeBase::query()->count());
+    }
+
+    public function test_admin_can_create_knowledge_base_from_multiple_uploaded_files(): void
+    {
+        Storage::fake('local');
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_multi_upload_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-multi-upload-admin@example.com',
+            'display_name' => 'Knowledge Multi Upload Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.knowledge-bases.store'), [
+                'name' => '批量合并知识库',
+                'description' => '多文件合并测试',
+                'file_type' => 'markdown',
+                'content' => "手动输入的 GEO 背景。\n\n第二段。",
+                'knowledge_files' => [
+                    UploadedFile::fake()->createWithContent('alpha.md', "# Alpha\nMarkdown 内容"),
+                    UploadedFile::fake()->createWithContent('beta.txt', "Beta 文本内容"),
+                ],
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.index'));
+
+        $knowledgeBase = KnowledgeBase::query()->where('name', '批量合并知识库')->firstOrFail();
+        $this->assertSame('markdown', (string) $knowledgeBase->file_type);
+        $this->assertStringContainsString('# 手动输入内容', (string) $knowledgeBase->content);
+        $this->assertStringContainsString('# 文件：alpha.md', (string) $knowledgeBase->content);
+        $this->assertStringContainsString('# 文件：beta.txt', (string) $knowledgeBase->content);
+
+        $storedPaths = json_decode((string) $knowledgeBase->file_path, true);
+        $this->assertIsArray($storedPaths);
+        $this->assertCount(2, $storedPaths);
+        foreach ($storedPaths as $storedPath) {
+            Storage::disk('local')->assertExists((string) $storedPath);
+        }
+    }
+
+    public function test_admin_can_create_text_only_knowledge_base_without_manual_name(): void
+    {
+        Storage::fake('local');
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_text_auto_name_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-text-auto-name-admin@example.com',
+            'display_name' => 'Knowledge Text Auto Name Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.knowledge-bases.store'), [
+                'name' => '',
+                'description' => '',
+                'file_type' => 'markdown',
+                'content' => "# GEO 白皮书\n\n这是一段直接粘贴的知识库内容。",
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.index'));
+
+        $this->assertDatabaseHas('knowledge_bases', [
+            'name' => 'GEO 白皮书',
+            'file_type' => 'markdown',
+        ]);
+    }
+
+    public function test_admin_can_submit_knowledge_base_without_generating_chunks(): void
+    {
+        Storage::fake('local');
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_submit_only_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-submit-only-admin@example.com',
+            'display_name' => 'Knowledge Submit Only Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->mock(KnowledgeChunkSyncService::class, function ($mock): void {
+            $mock->shouldNotReceive('sync');
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.knowledge-bases.store'), [
+                'name' => '仅提交知识库',
+                'description' => '',
+                'file_type' => 'markdown',
+                'content' => "# 仅保存\n\n稍后再生成切片。",
+                'import_action' => 'save',
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.index'))
+            ->assertSessionHas('message', __('admin.knowledge_bases.message.create_saved'));
+
+        $knowledgeBase = KnowledgeBase::query()->where('name', '仅提交知识库')->firstOrFail();
+        $this->assertSame(0, $knowledgeBase->chunks()->count());
+    }
+
+    public function test_create_keeps_knowledge_base_when_chunk_sync_fails(): void
+    {
+        Storage::fake('local');
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_chunk_failure_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-chunk-failure-admin@example.com',
+            'display_name' => 'Knowledge Chunk Failure Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->mock(KnowledgeChunkSyncService::class, function ($mock): void {
+            $mock->shouldReceive('sync')
+                ->once()
+                ->andThrow(new \RuntimeException('embedding timeout'));
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.knowledge-bases.store'), [
+                'name' => '已保存但切片失败',
+                'description' => '',
+                'file_type' => 'markdown',
+                'content' => "第一段内容。\n\n第二段内容。",
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.index'))
+            ->assertSessionHasErrors('chunk_sync');
+
+        $this->assertDatabaseHas('knowledge_bases', [
+            'name' => '已保存但切片失败',
+            'content' => "第一段内容。\n\n第二段内容。",
+        ]);
+        $this->assertSame(0, KnowledgeBase::query()->where('name', '已保存但切片失败')->firstOrFail()->chunks()->count());
+    }
+
+    public function test_detail_update_keeps_changes_when_chunk_sync_fails(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_detail_chunk_failure_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-detail-chunk-failure-admin@example.com',
+            'display_name' => 'Knowledge Detail Chunk Failure Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '原始知识库',
+            'description' => '',
+            'content' => '原始内容',
+            'character_count' => 4,
+            'file_type' => 'markdown',
+            'word_count' => 4,
+        ]);
+
+        $this->mock(KnowledgeChunkSyncService::class, function ($mock): void {
+            $mock->shouldReceive('sync')
+                ->once()
+                ->andThrow(new \RuntimeException('semantic planner timeout'));
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.knowledge-bases.detail.update', ['knowledgeBaseId' => (int) $knowledgeBase->id]), [
+                'name' => '更新后的知识库',
+                'description' => '更新说明',
+                'file_type' => 'markdown',
+                'content' => '更新后的正文内容',
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
+            ->assertSessionHasErrors('chunk_sync');
+
+        $this->assertDatabaseHas('knowledge_bases', [
+            'id' => (int) $knowledgeBase->id,
+            'name' => '更新后的知识库',
+            'description' => '更新说明',
+            'content' => '更新后的正文内容',
+        ]);
+    }
+
+    public function test_admin_cannot_upload_more_than_ten_knowledge_files(): void
+    {
+        Storage::fake('local');
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_file_limit_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-file-limit-admin@example.com',
+            'display_name' => 'Knowledge File Limit Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $files = [];
+        for ($index = 1; $index <= 11; $index++) {
+            $files[] = UploadedFile::fake()->createWithContent("source-{$index}.md", "第 {$index} 份资料");
+        }
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.knowledge-bases.create'))
+            ->post(route('admin.knowledge-bases.store'), [
+                'name' => '超量知识库',
+                'description' => '',
+                'file_type' => 'markdown',
+                'content' => '',
+                'knowledge_files' => $files,
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.create'))
+            ->assertSessionHasErrors('knowledge_files');
+
+        $this->assertDatabaseMissing('knowledge_bases', [
+            'name' => '超量知识库',
+        ]);
+    }
+
+    public function test_admin_cannot_upload_knowledge_file_larger_than_fifty_mb(): void
+    {
+        Storage::fake('local');
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_file_size_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-file-size-admin@example.com',
+            'display_name' => 'Knowledge File Size Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.knowledge-bases.create'))
+            ->post(route('admin.knowledge-bases.store'), [
+                'name' => '超大知识库',
+                'description' => '',
+                'file_type' => 'markdown',
+                'content' => '',
+                'knowledge_files' => [
+                    UploadedFile::fake()->create('large.md', 50 * 1024 + 1, 'text/markdown'),
+                ],
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.create'))
+            ->assertSessionHasErrors('knowledge_files.0');
+
+        $this->assertDatabaseMissing('knowledge_bases', [
+            'name' => '超大知识库',
+        ]);
+    }
+
+    public function test_knowledge_base_index_uses_unified_import_page(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_unified_import_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-unified-import-admin@example.com',
+            'display_name' => 'Knowledge Unified Import Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.knowledge-bases.index'))
+            ->assertOk()
+            ->assertSee(route('admin.knowledge-bases.create', ['mode' => 'upload']), false)
+            ->assertDontSee('upload-modal', false)
+            ->assertDontSee('showUploadModal', false);
+    }
+
+    public function test_deleting_multi_file_knowledge_base_cleans_all_stored_files(): void
+    {
+        Storage::fake('local');
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_delete_files_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-delete-files-admin@example.com',
+            'display_name' => 'Knowledge Delete Files Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        Storage::disk('local')->put('knowledge-bases/2026/alpha.md', '# Alpha');
+        Storage::disk('local')->put('knowledge-bases/2026/beta.md', '# Beta');
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '待删除多文件知识库',
+            'description' => '',
+            'content' => "# Alpha\n\n# Beta",
+            'character_count' => 16,
+            'file_type' => 'markdown',
+            'word_count' => 16,
+            'file_path' => json_encode([
+                'knowledge-bases/2026/alpha.md',
+                'knowledge-bases/2026/beta.md',
+            ], JSON_UNESCAPED_SLASHES),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.knowledge-bases.delete', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
+            ->assertRedirect(route('admin.knowledge-bases.index'));
+
+        Storage::disk('local')->assertMissing('knowledge-bases/2026/alpha.md');
+        Storage::disk('local')->assertMissing('knowledge-bases/2026/beta.md');
+        $this->assertDatabaseMissing('knowledge_bases', [
+            'id' => (int) $knowledgeBase->id,
+        ]);
     }
 
     public function test_admin_can_refresh_knowledge_chunks_with_real_embedding_model(): void
