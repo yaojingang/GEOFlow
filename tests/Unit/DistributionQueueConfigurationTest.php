@@ -30,4 +30,30 @@ class DistributionQueueConfigurationTest extends TestCase
             $horizon['defaults']['supervisor-1']['queue'] ?? null
         );
     }
+
+    public function test_documented_production_compose_commands_use_env_file(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $docs = array_merge(
+            [$root.'/README.md', $root.'/docs/deployment/DEPLOYMENT.md'],
+            glob($root.'/docs/readme/README_*.md') ?: []
+        );
+
+        foreach ($docs as $doc) {
+            $contents = file_get_contents($doc);
+            $this->assertIsString($contents);
+
+            foreach (preg_split('/\R/', $contents) ?: [] as $lineNumber => $line) {
+                if (! str_contains($line, 'docker compose') || ! str_contains($line, 'docker-compose.prod.yml')) {
+                    continue;
+                }
+
+                $this->assertStringContainsString(
+                    '--env-file .env.prod',
+                    $line,
+                    sprintf('%s:%d production compose command must load .env.prod', basename($doc), $lineNumber + 1)
+                );
+            }
+        }
+    }
 }
