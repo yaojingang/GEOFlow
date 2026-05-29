@@ -1,5 +1,6 @@
 import type { Prisma, ResearchLink, ResearchNote } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { doubaoRankPollutionScanNote } from "@/lib/generated-doubao-rank-pollution-scan";
 import { rankGapCompanyResearchNotes } from "@/lib/generated-rank-gap-company-research";
 import { getOrCreateWorkspace } from "@/lib/workspace-service";
 
@@ -78,6 +79,7 @@ GEOFlow 要避开泛泛的“AI 营销”说法，继续把产品定义压实到
 };
 
 const starterNotes = [
+  doubaoRankPollutionScanNote,
   {
     slug: "doubao-search-generation-research-report",
     title: "豆包搜索生成研究报告",
@@ -1833,6 +1835,30 @@ export async function ensureResearchStarterNotes(workspaceId: string) {
       toNoteId: bySlug.get("rank-gap-company-assessment-map")!.id,
       label: "批量复核",
       strength: 94,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-rank-pollution-signal-scan")!.id,
+      toNoteId: bySlug.get("rank-gap-company-assessment-map")!.id,
+      label: "污染信号来源池",
+      strength: 96,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-rank-pollution-signal-scan")!.id,
+      toNoteId: bySlug.get("doubao-api-vs-web-search-rank-gap-report")!.id,
+      label: "排名差异常",
+      strength: 94,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("doubao-rank-pollution-signal-scan")!.id,
+      toNoteId: bySlug.get("doubao-geo-signal-map")!.id,
+      label: "AI 搜索语义",
+      strength: 92,
+    }),
+    linkResearchNotes({
+      fromNoteId: bySlug.get("rank-gap-company-assessment-map")!.id,
+      toNoteId: bySlug.get("doubao-rank-pollution-signal-scan")!.id,
+      label: "污染信号扫描",
+      strength: 90,
     }),
     ...rankGapCompanyResearchNotes.flatMap((note) => [
       linkResearchNotes({

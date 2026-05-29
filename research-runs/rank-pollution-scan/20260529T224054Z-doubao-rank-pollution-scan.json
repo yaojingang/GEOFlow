@@ -1,0 +1,1462 @@
+{
+  "sourceLedger": "/work/research-runs/rank-gap-company-assessments/20260529T195239Z-rank-gap-company-assessments.json",
+  "results": [
+    {
+      "entity": "Ahrefs",
+      "category": "overseas_tool",
+      "level": "strong_intent_signal",
+      "score": 122,
+      "officialSignals": [
+        {
+          "source": "https://ahrefs.com",
+          "title": "Ahrefs—AI Marketing Platform Powered by Big Data",
+          "snippet": "We help marketers drive visibility across AI search, SEO, content, and social – with the largest AI and search databases online. Ahrefs—AI Marketing Platform Powered by Big Data Add a top 1% marketer to your team Meet Agent A, the AI agent with unrestricted access to your Ahrefs data. Built to do the marketing work you’d rather not. Watch demo Learn more → Ahrefs Product Search marketing Site Explorer Study your competitors’ websites. Keywords Explorer Learn what your customers are searching for. Rank Tracker Monitor your rankings in search engines. GSC Insights Monitor your rankings in Google Search Console. Brand Radar Track your brand’s v AEO AI visibility AI search LLM visibility SEO ChatGPT AI",
+          "score": 10,
+          "reasons": [
+            "AI/GEO 词命中：AI search、AI visibility、LLM visibility、AEO、ChatGPT"
+          ]
+        },
+        {
+          "source": "https://ahrefs.com/features/llms.txt",
+          "title": "404 - Page not found",
+          "snippet": "Oops, this page doesn&apos;t exist 404 - Page not found Add a top 1% marketer to your team Ahrefs Oops, this page doesn&apos;t exist The link that led you here is called a “broken link.” You can check how many of such links your website has with our free broken link checker tool. Broken Link Checker → Core tools Brand Radar Custom Prompts Dashboard Site Explorer Keywords Explorer Site Audit Rank Tracker GSC Insights Content Explorer Web Analytics Bot Analytics GBP Monitor Social Media Manager AI Content Helper Report Builder Use cases → Competitive  AEO AI visibility SEO AI",
+          "score": 8,
+          "reasons": [
+            "AI/GEO 词命中：AI visibility、AEO、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://ahrefs.com/features",
+          "title": "404 - Page not found",
+          "snippet": "Oops, this page doesn&apos;t exist 404 - Page not found Add a top 1% marketer to your team Ahrefs Oops, this page doesn&apos;t exist The link that led you here is called a “broken link.” You can check how many of such links your website has with our free broken link checker tool. Broken Link Checker → Core tools Brand Radar Custom Prompts Dashboard Site Explorer Keywords Explorer Site Audit Rank Tracker GSC Insights Content Explorer Web Analytics Bot Analytics GBP Monitor Social Media Manager AI Content Helper Report Builder Use cases → Competitive  AEO AI visibility SEO AI",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：AI visibility、AEO"
+          ]
+        },
+        {
+          "source": "https://ahrefs.com/llms.txt",
+          "title": "404 Not Found",
+          "snippet": " 404 Not Found 404 Not Found nginx ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://ahrefs.com/features/robots.txt",
+          "title": "404 - Page not found",
+          "snippet": "Oops, this page doesn&apos;t exist 404 - Page not found Add a top 1% marketer to your team Ahrefs Oops, this page doesn&apos;t exist The link that led you here is called a “broken link.” You can check how many of such links your website has with our free broken link checker tool. Broken Link Checker → Core tools Brand Radar Custom Prompts Dashboard Site Explorer Keywords Explorer Site Audit Rank Tracker GSC Insights Content Explorer Web Analytics Bot Analytics GBP Monitor Social Media Manager AI Content Helper Report Builder Use cases → Competitive  AEO AI visibility SEO AI",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：AI visibility、AEO"
+          ]
+        },
+        {
+          "source": "https://ahrefs.com/features/sitemap.xml",
+          "title": "404 - Page not found",
+          "snippet": "Oops, this page doesn&apos;t exist 404 - Page not found Add a top 1% marketer to your team Ahrefs Oops, this page doesn&apos;t exist The link that led you here is called a “broken link.” You can check how many of such links your website has with our free broken link checker tool. Broken Link Checker → Core tools Brand Radar Custom Prompts Dashboard Site Explorer Keywords Explorer Site Audit Rank Tracker GSC Insights Content Explorer Web Analytics Bot Analytics GBP Monitor Social Media Manager AI Content Helper Report Builder Use cases → Competitive  AEO AI visibility SEO AI",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：AI visibility、AEO"
+          ]
+        }
+      ],
+      "searchSignals": [
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买渠道及丰富的教程资源，借助Ahrefs提升您的在 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买渠道及丰富的教程资源，借助Ahrefs提升您的在 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买渠道及丰富的教程资源，借助Ahrefs提升您的在 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买渠道及丰富的教程资源，借助Ahrefs提升您的在 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买渠道及丰富的教程资源，借助Ahrefs提升您的在 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买渠道及丰富的教程资源，借助Ahrefs提升您的在 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买渠道及丰富的教程资源，借助Ahrefs提升您的在 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买渠道及丰富的教程资源，借助Ahrefs提升您的在 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.ahrefscn.com/",
+          "title": "ahrefscn.com https://www. ahrefs cn.com",
+          "snippet": "2025年12月15日&ensp;·&ensp;欢迎访问Ahrefs中文网站，这里提供专业的SEO工具和网站分析平台，帮助您优化网站排名、分析竞争对手和提升流量。 了解正版购买渠道及丰富的教程资源，借助Ahrefs提升您的在 …",
+          "score": 7,
+          "reasons": [
+            "排名/优化意图词命中：排名、优化",
+            "非官方或代理域名含品牌词"
+          ]
+        }
+      ],
+      "hostSpread": [
+        {
+          "host": "ahrefscn.com",
+          "count": 12,
+          "reason": "同一非官方域名多次命中，可能是代理/镜像/铺量。"
+        }
+      ],
+      "interpretation": "公开资料显示该对象主动把自己放进 AI 搜索 / GEO / 答案可见度语境，属于需要重点监测的强意图信号。"
+    },
+    {
+      "entity": "Similarweb",
+      "category": "data_tool",
+      "level": "strong_intent_signal",
+      "score": 108,
+      "officialSignals": [
+        {
+          "source": "https://www.similarweb.com/llms.txt",
+          "title": "https://www.similarweb.com/llms.txt",
+          "snippet": " # Similarweb > Similarweb is a digital intelligence platform providing competitive data and AI search optimization tools for marketers, SEOs, researchers, and business strategists. Similarweb's AI Search Intelligence suite helps brands track, measure, and improve their visibility and traffic across generative AI platforms including ChatGPT, Perplexity, Gemini, Claude, Grok, and Deepseek. Similarweb also provides free web analytics tools, keyword research, and comprehensive competitive intelligence for websites, app GEO AEO answer engine AI visibility AI search SEO DeepSeek ChatGPT llms.txt AI",
+          "score": 18,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、answer engine、AEO、ChatGPT",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.similarweb.com",
+          "title": "Similarweb: AI-Powered Digital Data Intelligence Solutions",
+          "snippet": "Similarweb is an AI-powered digital data company providing real-time market intelligence, competitive insights, and consumer trends to accelerate business growth. Similarweb: AI-Powered Digital Data Intelligence Solutions Products Solutions Resources Enterprise Pricing Explore API Login Get a demo Get started Login Website Traffic Checker Free App Analytics Free Keyword Tool UTM Builder SERP Seismograph AI Traffic Checker Company Profile Checker Technology Checker Verify Your Website Browser Extension Top Websites Trending Websites Top Android Apps Top iOS Apps Top Amazon Products & Brands Mobile vs. Desktop Digital 100 Contact sales Start free trial Similarweb AI Search Int GEO AEO answer engine AI search SEO DeepSeek ChatGPT AI",
+          "score": 12,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、answer engine、AEO、ChatGPT、DeepSeek"
+          ]
+        },
+        {
+          "source": "https://www.similarweb.com/sitemap.xml",
+          "title": "We Have No Data For This Page - Try again! | Similarweb",
+          "snippet": "Whoops, the page you were looking for can't be found in any of our datasets. This means it doesn't exist. Please use the site search to try again We Have No Data For This Page - Try again! | Similarweb Products Solutions Resources Enterprise Pricing Explore API Login Get a demo Get started Login Website Traffic Checker Free App Analytics Free Keyword Tool UTM Builder SERP Seismograph AI Traffic Checker Company Profile Checker Technology Checker Verify Your Website Browser Extension Top Websites Trending Websites Top Android Apps Top iOS Apps Top Amazon Products & Brands Mobile vs. Desktop Digital 100 Contact sales Start free trial Similarweb AI Search Intell GEO AEO AI search SEO DeepSeek ChatGPT AI",
+          "score": 10,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AEO、ChatGPT、DeepSeek"
+          ]
+        },
+        {
+          "source": "https://www.similarweb.com/robots.txt",
+          "title": "https://www.similarweb.com/robots.txt",
+          "snippet": " User-agent: * Allow: /corp/search* Allow: /corp/*/search* Disallow: */search/* Disallow: */adult/* Disallow: /corp/*.pdf$ Disallow: /corp/solution/ Disallow: /corp/lps/ Disallow: /corp/get-data/ Disallow: /corp/unlock-growth/ Disallow: /silent-login/ Disallow: /signin-oidc/ Disallow: /signout-oidc/ #LLMs-txt: https://www.similarweb.com/llms.txt Sitemap: https://www.similarweb.com/corp/sitemap_index.xml Sitemap: https://www.similarweb.com/blog/sitemap_index.xml Sitemap: https://www.similarweb.com/sitemaps/sitemap_in llms.txt",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://similarwebcn.com/about.html",
+          "title": "similarwebcn.com https:// similarweb cn.com › about.html",
+          "snippet": "2025年11月11日&ensp;·&ensp;SimilarWeb 的服务主要帮助公司理解他们的数字市场份额，监控竞争对手的表现，以及优化市场营销策略。 产品与服务 SimilarWeb 提供的产品主要包括： 网站分析：通过分析网站的 …",
+          "score": 5,
+          "reasons": [
+            "排名/优化意图词命中：优化",
+            "非官方或代理域名含品牌词"
+          ]
+        }
+      ],
+      "hostSpread": [
+        {
+          "host": "similarwebcn.com",
+          "count": 12,
+          "reason": "同一非官方域名多次命中，可能是代理/镜像/铺量。"
+        }
+      ],
+      "interpretation": "公开资料显示该对象主动把自己放进 AI 搜索 / GEO / 答案可见度语境，属于需要重点监测的强意图信号。"
+    },
+    {
+      "entity": "Frase",
+      "category": "overseas_tool",
+      "level": "strong_intent_signal",
+      "score": 96,
+      "officialSignals": [
+        {
+          "source": "https://www.frase.io/blog/the-questions-in-your-support-queue-are-showing-up-in-ai-search-here-s-what-to-do-about-it",
+          "title": "Your Support Queue Is an AI Search Content Gap Map | Frase.io",
+          "snippet": "The questions in your support queue are the same ones people ask AI engines. Here's how customer signals can close the AI visibility gap Your Support Queue Is an AI Search Content Gap Map | Frase.io Skip to content Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies Pricing Resources Blog SEO + GEO Guide Free SEO Tools AI Visibility Checker Compare Start Free Trial → Log in Start Free Trial → Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Mar GEO AEO answer engine AI visibility AI search SEO ChatGPT llms.txt AI",
+          "score": 16,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、answer engine、AEO、ChatGPT",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.frase.io/llms.txt",
+          "title": "https://www.frase.io/llms.txt",
+          "snippet": " # Frase > Frase is the agentic SEO and GEO platform that researches your market, creates optimized content, tracks visibility across Google and AI search engines, and shows you exactly what to do next. Frase handles the full content workflow — research, strategy, writing, optimization, publishing, and performance tracking — so your content ranks on Google and gets cited by AI search engines like ChatGPT, Perplexity, Claude, and Google AI Overviews. Over 50,000 content and marketing teams trust Frase. Frase is the o GEO AI visibility AI search SEO ChatGPT AI",
+          "score": 14,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、ChatGPT、AI Overviews、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.frase.io/features/ai-tracking",
+          "title": "AI Search Tracking: Monitor Your Brand Across ChatGPT, Claude & More | Frase | Frase.io",
+          "snippet": "Track your brand's visibility across ChatGPT, Claude, Gemini, Perplexity, and 4 more AI platforms with daily updates. Discover prompts, benchmark competitors, and grow your AI search presence. Skip to content Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies Pricing Resources Blog SEO + GEO Guide Free SEO Tools AI Visibility Checker Compare Start Free Trial → Log in Start Free Trial → Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies GEO AI visibility AI search SEO DeepSeek ChatGPT llms.txt AI",
+          "score": 14,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、ChatGPT、DeepSeek、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.frase.io",
+          "title": "Frase — The Agentic SEO & GEO Platform | Rank on Google. Get Cited by AI.",
+          "snippet": "Frase researches your market, creates optimized content, and tracks your visibility across Google, ChatGPT, and Perplexity. The agentic SEO & GEO platform trusted by thousands of teams. Skip to content Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies Pricing Resources Blog SEO + GEO Guide Free SEO Tools AI Visibility Checker Compare Start Free Trial → Log in Start Free Trial → Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies GEO AI visibility AI search SEO ChatGPT llms.txt AI",
+          "score": 12,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、ChatGPT、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.frase.io/features/seo-content-optimization",
+          "title": "SEO Content Optimization: Write Content That Ranks | Frase",
+          "snippet": "Create content that ranks on Google and gets cited by AI. Research, write, and optimize in one workflow with Frase's AI-powered content optimization. Skip to content Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies Pricing Resources Blog SEO + GEO Guide Free SEO Tools AI Visibility Checker Compare Start Free Trial → Log in Start Free Trial → Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies GEO AI visibility AI search SEO ChatGPT llms.txt AI",
+          "score": 12,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、ChatGPT、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.frase.io/solutions/seo-teams",
+          "title": "Frase for SEO Teams | Content Optimization for SEO Professionals | Frase.io",
+          "snippet": "SEO tools for professionals optimizing content at scale. Analyze competitors, research keywords, optimize on-page content for Google and AI platforms (ChatGPT, Perplexity, Claude), and track results. Built for SEO teams and consultants. Skip to content Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies Pricing Resources Blog SEO + GEO Guide Free SEO Tools AI Visibility Checker Compare Start Free Trial → Log in Start Free Trial → Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies GEO AI visibility AI search SEO ChatGPT llms.txt AI",
+          "score": 12,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、ChatGPT、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.frase.io/features/seo-research",
+          "title": "From Query to Ready-to-Write Brief in Minutes | Frase Research Agent",
+          "snippet": "Frase Research Agent turns a single query into a guided AI discovery flow: SERP analysis, PAA, competitor breakdown, keyword intelligence, and a ContentPlan outline you can hand straight to the writer. Skip to content Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies Pricing Resources Blog SEO + GEO Guide Free SEO Tools AI Visibility Checker Compare Start Free Trial → Log in Start Free Trial → Product Platform Overview AI Agent AI Search Tracking Content Guard Content Monitoring Integrations Solutions For Content Marketers For SEO Teams For Agencies For Enterprises Case Studies GEO AI visibility AI search SEO llms.txt AI",
+          "score": 10,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.frase.io/sitemap.xml",
+          "title": "https://www.frase.io/sitemap.xml",
+          "snippet": " https://www.frase.io 2026-05-29T19:29:36.748Z weekly 1 https://www.frase.io/features 2026-05-29T19:29:36.748Z weekly 0.9 https://www.frase.io/pricing 2026-05-29T19:29:36.748Z weekly 0.9 https://www.frase.io/features/agent 2026-05-29T19:29:36.748Z weekly 0.9 https://www.frase.io/features/ai-tracking 2026-05-29T19:29:36.748Z weekly 0.9 https://www.frase.io/features/geo-content-optimization 2026-05-29T19:29:36.748Z weekly 0.8 https://www.frase.io/features/seo-content-optimization 2026-05-29T19:29:36.748Z weekly 0.8 ht GEO AEO SEO ChatGPT AI",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AEO、ChatGPT"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "公开资料显示该对象主动把自己放进 AI 搜索 / GEO / 答案可见度语境，属于需要重点监测的强意图信号。"
+    },
+    {
+      "entity": "OpenAI",
+      "category": "ai_platform",
+      "level": "strong_intent_signal",
+      "score": 74,
+      "officialSignals": [
+        {
+          "source": "https://platform.openai.com/docs/llms.txt",
+          "title": "https://platform.openai.com/docs/llms.txt",
+          "snippet": " # OpenAI API docs > Guides and conceptual documentation for building with the OpenAI API. Each entry has a Markdown twin at `/api/docs/ .md`. ## Documentation sets - [Combined API docs](https://developers.openai.com/api/docs/llms-full.txt): Single-file Markdown export of API guides and docs. ## Actions - [Data retrieval with GPT Actions](https://developers.openai.com/api/docs/actions/data-retrieval.md): Learn about performing data retrieval using APIs, relational databases, and vector databases with GPT Actions. -  ChatGPT AI guardrails observability",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://openai.com/llms.txt",
+          "title": "https://openai.com/llms.txt",
+          "snippet": " Enable JavaScript and cookies to continue ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开发安全、有益的通用人工智能（AGI）。 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开发安全、有益的通用人工智能（AGI）。 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开发安全、有益的通用人工智能（AGI）。 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开发安全、有益的通用人工智能（AGI）。 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开发安全、有益的通用人工智能（AGI）。 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开发安全、有益的通用人工智能（AGI）。 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开发安全、有益的通用人工智能（AGI）。 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开发安全、有益的通用人工智能（AGI）。 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/openai-chinese-guide.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "2025年11月11日&ensp;·&ensp;什么是 OpenAI？ 为什么选择 OpenAI ChatGPT？ OpenAI 是全球领先的人工智能研究机构，由硅谷科技精英于 2015 年创立，致力于开发安全、有益的通用人工智能（AGI）。 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        },
+        {
+          "source": "https://www.chatgpt-chinese.com/blog/guides/chatgpt/chatgpt-chinese-official.html",
+          "title": "chatgpt-chinese.com https://www.chatgpt-chinese.com › blog › guides › chatgpt › ...",
+          "snippet": "5 天之前&ensp;·&ensp;ChatGPT 官网地址： https://chat.openai.com OpenAI 官网首页： https://openai.com 请认准上述是ChatGPT官网唯一渠道 …",
+          "score": 5,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT",
+            "非官方或代理域名含品牌词"
+          ]
+        }
+      ],
+      "hostSpread": [
+        {
+          "host": "chatgpt-chinese.com",
+          "count": 12,
+          "reason": "同一非官方域名多次命中，可能是代理/镜像/铺量。"
+        }
+      ],
+      "interpretation": "公开资料显示该对象主动把自己放进 AI 搜索 / GEO / 答案可见度语境，属于需要重点监测的强意图信号。"
+    },
+    {
+      "entity": "Chinaz 站长之家",
+      "category": "china_vendor",
+      "level": "strong_intent_signal",
+      "score": 54,
+      "officialSignals": [
+        {
+          "source": "https://www.chinaz.com",
+          "title": "站长之家 - 站长资讯-我们致力于为中文网站提供动力！",
+          "snippet": "站长之家(中国站长站)为个人站长与企业网络提供全面的站长资讯、源代码程序下载、海量建站素材、强大的搜索优化辅助工具、网络产品设计与运营理念以及一站式网络解决方案，十年来我们一直致力为中文网站提供动力。 站长之家 - 站长资讯-我们致力于为中文网站提供动力！ --> 网站赚不到钱？立刻加入参与变现 字体超市--好字体用得起，买得起！ 共建未成年人“清朗”网络空间承诺书 站长之家 站长工具 星网大数据 提供行业词库、每日热点、关键词分析等 APPPC排名查询 网站、APP排名查询、流量查询访问量查询页面浏览量查询服务。 百度权重查询 根据关键词指数与排名估算网站的百度流量 SEO综合查询 查询网站在各大搜索引擎上的SEO数据 友情链接查询 查询网站的友情链接数据及识别对方是否骗链 Whois信息查询 查询域名的详细whois信息及验证域名是否过期 网站备案查询 查询网站的ICP备案、网安备案及备案历史记录 站长API接口 提供专业稳定的网站数据查询接口服务 站长传媒 --> 站长素材 字体下载 分享PS字体、免费字体、商业字体库 音频素材 正版音频素材库-涵盖丰富的音乐类型和使用场景 简历模板 提供各类个人简历模板下载，包括中英文简历. 高清图片 提供高清图片下载，包括背景图片、欧美图片等 矢量素材 打造高精矢量素材下载，包括矢量花纹、图标等 PPT模板下载 提供各类PPT模板下载，包括企业、商务等模板 PSD素材 提供广告海 GEO AI搜索 AI 搜索 SEO 豆包 DeepSeek ChatGPT 大模型 智能体 AI 营销",
+          "score": 16,
+          "reasons": [
+            "AI/GEO 词命中：豆包、GEO、AI 搜索、AI搜索、ChatGPT、DeepSeek",
+            "排名/优化意图词命中：排名、优化"
+          ]
+        },
+        {
+          "source": "https://tool.chinaz.com",
+          "title": "站长工具 - 站长之家",
+          "snippet": "站长工具是站长的必备工具。经常上站长工具可以了解SEO数据变化。还可以检测网站死链接、蜘蛛访问、HTML格式检测、网站速度测试、友情链接检查、网站域名IP查询、PR、权重查询、alexa、whois查询等等。 站长工具 - 站长之家 站长之家产品 ▲ 站长之家 站长素材 源码下载 网站排行 星网词库 站长团购 字体下载 AI工具推荐 手机版 ▲ 消息通知 ▲ 系统消息 0 查看更多 更新日志 查看更多 首页 SEO优化 SEO综合查询 HOT 网站的SEO相关信息 GEO排名查询 NEW 查询品牌在AI回答中的曝光 站长权重 HOT SEO竞争对手分析关键词和流量 Robots.txt检测 检测网站Robots状态和内容 AI曝光度 NEW 域名在AI大模型的曝光查询 关键词排名 自定义关键词排名及流量跟踪 友链检测 网站的友情链接信息 关键词排名实时批量查询 NEW 大批量查网站关键词实时排名 死链查询 网站的死链排查 竞品分析 HOT 对比您和竞争对手关键词工具 竞争网站分析 HOT 竞争对手网站的权重关键词信息 关键词优化分析 HOT 关键词优化难度及排名权重信息 关键词挖掘 HOT 挖掘更多流量关键词 关键词密度检测 网站的关键词密度检测 收录查询 网站的收录信息 收录实时批量查询 NEW 大批量查网址收录实时信息 同IP网站查询 同一IP下的网站SEO信息 SEO历史数据 网站的SEO历史信息 全网下拉词 NEW 覆盖多 GEO SEO 豆包 DeepSeek 大模型 智能体 AI 竞品",
+          "score": 16,
+          "reasons": [
+            "AI/GEO 词命中：豆包、GEO、DeepSeek",
+            "排名/优化意图词命中：排名、推荐、收录、曝光、优化"
+          ]
+        },
+        {
+          "source": "https://tool.chinaz.com/llms.txt",
+          "title": "404 - 站长工具",
+          "snippet": " 404 - 站长工具 站长之家 站长工具 ALEXA排名查询 百度权重查询 SEO概况查询 友情链接查询 Google PR查询 Whois信息查询 站长素材 字体下载 高清壁纸 简历模板 高清图片 矢量素材 PPT模板 PSD素材 源码下载 网站排行 行业网站排名 地区网站排名 全球网站排名 移动网站排名 公司排行榜 直播排行榜 手机版 SEO中介 seo插件 首页 站长数据API SEO优化中介 CDN云观测 星网大数据 域名/IP类 域名到期查询 过期域名查询 WHOIS查询 IP 查询 IP反查域名 DNS查询 网站信息查询 Alexa排名 网页检测 HTTP状态查询 查看网页源代码 机器人模拟抓取 robots.txt生成 端口扫描 网站速度测试 ping测试 ip whois查询 nslookup查询 SEO查询 SEO综合查询 关键词密度检测 友情链接检测 反链查询 收录查询 META信息挖掘 PR查询 关键词排名查询 关键词挖掘 关键词优化分析 网站安全检测 死链接检测 权重查询 百度PC权重 百度移动权重 360PC权重 360移动权重 神马权重 数据分析 网站SEO报告 数据内参 关键词指数 辅助工具 加 SEO",
+          "score": 10,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "排名/优化意图词命中：排名、收录、优化",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.chinaz.com/llms.txt",
+          "title": "404页面-站长之家",
+          "snippet": "没有发现你要找的页面,经砖家仔细研究结果如下:贵玉手输入地址时可能存在键入错误;小蜗牛把页面落家里忘记带了;电信网通那头接口生锈了 404页面-站长之家 网站赚不到钱？立刻加入参与变现 字体超市--好字体用得起，买得起！ 共建未成年人“清朗”网络空间承诺书 站长之家 站长工具 星网大数据 提供行业词库、每日热点、关键词分析等 Alexa排名查询 根据 Alexa 排名统计数据估算网站 IP、PV 值. 百度权重查询 根据关键词指数与排名估算网站的百度流量 SEO综合查询 查询网站在各大搜索引擎上的SEO数据 友情链接查询 查询网站的友情链接数据及识别对方是否骗链 Whois信息查询 查询域名的详细whois信息及验证域名是否过期 网站备案查询 查询网站的ICP备案、网安备案及备案历史记录 站长API接口 提供专业稳定的网站数据查询接口服务 站长传媒 --> 站长素材 字体下载 分享PS字体、免费字体、商业字体库 简历模板 提供各类个人简历模板下载，包括中英文简历. 高清图片 提供高清图片下载，包括背景图片、欧美图片等 矢量素材 打造高精矢量素材下载，包括矢量花纹、图标等 PPT模板下载 提供各类PPT模板下载，包括企业、商务等模板 PSD素材 提供广告海报、科技金融、文化美食等PSD素材 源码下载 网站排行 行业排行榜 提供休息娱乐、购物、服务等行业网站 SEO",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "排名/优化意图词命中：排名",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://tool.chinaz.com/sitemap.xml",
+          "title": "404 - 站长工具",
+          "snippet": " 404 - 站长工具 站长之家 站长工具 ALEXA排名查询 百度权重查询 SEO概况查询 友情链接查询 Google PR查询 Whois信息查询 站长素材 字体下载 高清壁纸 简历模板 高清图片 矢量素材 PPT模板 PSD素材 源码下载 网站排行 行业网站排名 地区网站排名 全球网站排名 移动网站排名 公司排行榜 直播排行榜 手机版 SEO中介 seo插件 首页 站长数据API SEO优化中介 CDN云观测 星网大数据 域名/IP类 域名到期查询 过期域名查询 WHOIS查询 IP 查询 IP反查域名 DNS查询 网站信息查询 Alexa排名 网页检测 HTTP状态查询 查看网页源代码 机器人模拟抓取 robots.txt生成 端口扫描 网站速度测试 ping测试 ip whois查询 nslookup查询 SEO查询 SEO综合查询 关键词密度检测 友情链接检测 反链查询 收录查询 META信息挖掘 PR查询 关键词排名查询 关键词挖掘 关键词优化分析 网站安全检测 死链接检测 权重查询 百度PC权重 百度移动权重 360PC权重 360移动权重 神马权重 数据分析 网站SEO报告 数据内参 关键词指数 辅助工具 加 SEO",
+          "score": 6,
+          "reasons": [
+            "排名/优化意图词命中：排名、收录、优化"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "公开资料显示该对象主动把自己放进 AI 搜索 / GEO / 答案可见度语境，属于需要重点监测的强意图信号。"
+    },
+    {
+      "entity": "增长超人",
+      "category": "china_vendor",
+      "level": "strong_intent_signal",
+      "score": 54,
+      "officialSignals": [
+        {
+          "source": "http://www.growthman.cn/service/service-geo-solutions",
+          "title": "全意图GEO（AI搜索营销）- 增长超人GrowthMan | 数字化策略与营销专家",
+          "snippet": "增长超人(GrowthMan)是一家综合性的营销数字化服务提供商，我们的业务范围涵盖了品牌数字化、网站/APP/小程序定制开发、SEM/SEO、新媒体营销以及企业全链营销等。我们的团队由一批优秀的营销专家、设计师、产品经理和工程师组成，我们已经帮助超过1000家全球企业成功实现了&ldquo;访客转化客户&rdquo;的目标，其中不乏许多500强、独角兽以及行业龙头企业。 全意图GEO（AI搜索营销）- 增长超人GrowthMan | 数字化策略与营销专家 服务 服务 \"> 我们的服务 我们的服务融合了运营、技术、媒体、内容等多个领域的专业力量，为企业提供专业的数字营销解决方案，助力企业实现可持续增长。 一分钟了解我们做什么？ \"> 诉 服务投诉与建议 \"> 高级定制开发 企业网站 \"> \"> AI行业应用 \"> \"> 巧觅-网站AI助理 \"> \"> 数字营销服务 全意图GEO --> HOT \"> \"> SEM效果提升 \"> \"> SEO排名优化 \"> \"> 新媒体营销 \"> \"> 特色专项解决方案 藤链数字全案 --> HOT \"> \"> 新质生产力营销专题 \"> \"> 中国企业出海 \"> \"> 传统企业营销数字化 \"> \"> 案例 案例 \"> 案例分享 我们保持惊人的效率提供始终如一的卓越结果，1500+客户验证，增长效果真实可观。 进入案例中心 \"> 案例分类 企业官网 \"> \"> 数字营销 \"> \"> 拒绝出海同质化，官网如何3秒内抓住访客？ 进一步了解 \"> \"> 传统企业线上营销破局的核心方法！ 进一步了解 \"> \"> 观点 观点 \"> 我们的原创观点 我们高度崇尚创新和团队合作 GEO AI搜索 SEO AI 营销 监测",
+          "score": 10,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI搜索",
+            "排名/优化意图词命中：排名、优化、监测"
+          ]
+        },
+        {
+          "source": "https://www.growthman.cn",
+          "title": "「增长超人GrowthMan」 以增长为导向的数字营销服务商",
+          "snippet": "增长超人(GrowthMan)是一家综合性的营销数字化服务提供商，我们的业务范围涵盖了品牌数字化、网站/APP/小程序定制开发、SEM/SEO、新媒体营销以及企业全链营销等。我们的团队由一批优秀的营销专家、设计师、产品经理和工程师组成，我们已经帮助超过1000家全球企业成功实现了&ldquo;访客转化客户&rdquo;的目标，其中不乏许多500强、独角兽以及行业龙头企业。 「增长超人GrowthMan」 以增长为导向的数字营销服务商 服务 服务 \"> 我们的服务 我们的服务融合了运营、技术、媒体、内容等多个领域的专业力量，为企业提供专业的数字营销解决方案，助力企业实现可持续增长。 一分钟了解我们做什么？ \"> 诉 服务投诉与建议 \"> 高级定制开发 企业网站 \"> \"> AI行业应用 \"> \"> 巧觅-网站AI助理 \"> \"> 数字营销服务 全意图GEO --> HOT \"> \"> SEM效果提升 \"> \"> SEO排名优化 \"> \"> 新媒体营销 \"> \"> 特色专项解决方案 藤链数字全案 --> HOT \"> \"> 新质生产力营销专题 \"> \"> 中国企业出海 \"> \"> 传统企业营销数字化 \"> \"> 案例 案例 \"> 案例分享 我们保持惊人的效率提供始终如一的卓越结果，1500+客户验证，增长效果真实可观。 进入案例中心 \"> 案例分类 企业官网 \"> \"> 数字营销 \"> \"> 拒绝出海同质化，官网如何3秒内抓住访客？ 进一步了解 \"> \"> 传统企业线上营销破局的核心方法！ 进一步了解 \"> \"> 观点 观点 \"> 我们的原创观点 我们高度崇尚创新和团队合作精神，热衷思想的碰撞并保 GEO AI搜索 SEO AI 营销",
+          "score": 8,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI搜索",
+            "排名/优化意图词命中：排名、优化"
+          ]
+        },
+        {
+          "source": "https://www.growthman.cn/llms.txt",
+          "title": "https://www.growthman.cn/llms.txt",
+          "snippet": " # 增长超人GrowthMan - 网站概览 > 基于[LLMs.txt规范](https://llmstxt.org)生成，提供网站关键页面与内容摘要，供大型语言模型理解网站结构。 > 最后更新：2026-05-22 ## 网站基本信息 - 标题：增长超人GrowthMan | 以增长为导向的数字营销服务商 - 描述：综合性营销数字化服务商，业务涵盖品牌数字化、网站/APP/小程序定制开发、SEM/SEO、新媒体营销及企业全链营销。已帮助1500+家企业实现“访客转化客户”，包括500强、独角兽及行业龙头。 - 关键词：数字营销服务商，高楼建设营销法则，增长黑客，高端网站建设，SEM营销，新媒体营销，APP开发，小程序开发，GEO，AI搜索营销 - 默认语言：zh-CN ## 主要页面 ### 首页 - URL: https://www.growthman.cn/ - 描述：以AI重构增长为核心，展示客户案例、全链路服务（地基构建/低层建筑/高层建设）、客户口碑、CEO寄语、原创观点及合作品牌。 ### 服务 - URL: https://www.growthman.cn/service - 描述：基于“高楼营销法则”提供 GEO AI搜索 SEO llms.txt AI 营销",
+          "score": 8,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI搜索、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "http://www.growthman.cn/service/service-ai-solutions",
+          "title": "AI行业应用开发 - 增长超人GrowthMan | 数字化策略与营销专家",
+          "snippet": "我们的目标是协助全球以客户为中心的企业优化网站用户体验，以实现转化率的增长。我们为企业提供高端网站建设/设计/开发/制作服务，遵循严格的软件开发生命周期（SDLC），以构建满足你的要求和市场需求的优秀企业网站。 AI行业应用开发 - 增长超人GrowthMan | 数字化策略与营销专家 服务 服务 \"> 我们的服务 我们的服务融合了运营、技术、媒体、内容等多个领域的专业力量，为企业提供专业的数字营销解决方案，助力企业实现可持续增长。 一分钟了解我们做什么？ \"> 诉 服务投诉与建议 \"> 高级定制开发 企业网站 \"> \"> AI行业应用 \"> \"> 巧觅-网站AI助理 \"> \"> 数字营销服务 全意图GEO --> HOT \"> \"> SEM效果提升 \"> \"> SEO排名优化 \"> \"> 新媒体营销 \"> \"> 特色专项解决方案 藤链数字全案 --> HOT \"> \"> 新质生产力营销专题 \"> \"> 中国企业出海 \"> \"> 传统企业营销数字化 \"> \"> 案例 案例 \"> 案例分享 我们保持惊人的效率提供始终如一的卓越结果，1500+客户验证，增长效果真实可观。 进入案例中心 \"> 案例分类 企业官网 \"> \"> 数字营销 \"> \"> 拒绝出海同质化，官网如何3秒内抓住访客？ 进一步了解 \"> \"> 传统企业线上营销破局的核心方法！ 进一步了解 \"> \"> 观点 观点 \"> 我们的原创观点 我们高度崇尚创新和团队合作精神，热衷 GEO SEO 大模型 AI 营销",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：GEO",
+            "排名/优化意图词命中：排名、优化"
+          ]
+        },
+        {
+          "source": "http://www.growthman.cn/service-ai-solutions/34.html",
+          "title": "AI行业应用开发 - 增长超人GrowthMan | 数字化策略与营销专家",
+          "snippet": "我们的目标是协助全球以客户为中心的企业优化网站用户体验，以实现转化率的增长。我们为企业提供高端网站建设/设计/开发/制作服务，遵循严格的软件开发生命周期（SDLC），以构建满足你的要求和市场需求的优秀企业网站。 AI行业应用开发 - 增长超人GrowthMan | 数字化策略与营销专家 服务 服务 \"> 我们的服务 我们的服务融合了运营、技术、媒体、内容等多个领域的专业力量，为企业提供专业的数字营销解决方案，助力企业实现可持续增长。 一分钟了解我们做什么？ \"> 诉 服务投诉与建议 \"> 高级定制开发 企业网站 \"> \"> AI行业应用 \"> \"> 巧觅-网站AI助理 \"> \"> 数字营销服务 全意图GEO --> HOT \"> \"> SEM效果提升 \"> \"> SEO排名优化 \"> \"> 新媒体营销 \"> \"> 特色专项解决方案 藤链数字全案 --> HOT \"> \"> 新质生产力营销专题 \"> \"> 中国企业出海 \"> \"> 传统企业营销数字化 \"> \"> 案例 案例 \"> 案例分享 我们保持惊人的效率提供始终如一的卓越结果，1500+客户验证，增长效果真实可观。 进入案例中心 \"> 案例分类 企业官网 \"> \"> 数字营销 \"> \"> 拒绝出海同质化，官网如何3秒内抓住访客？ 进一步了解 \"> \"> 传统企业线上营销破局的核心方法！ 进一步了解 \"> \"> 观点 观点 \"> 我们的原创观点 我们高度崇尚创新和团队合作精神，热衷 GEO SEO 大模型 AI 营销",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：GEO",
+            "排名/优化意图词命中：排名、优化"
+          ]
+        },
+        {
+          "source": "http://www.growthman.cn/service-ai-solutions/35.html",
+          "title": "AI行业应用开发 - 增长超人GrowthMan | 数字化策略与营销专家",
+          "snippet": "我们的目标是协助全球以客户为中心的企业优化网站用户体验，以实现转化率的增长。我们为企业提供高端网站建设/设计/开发/制作服务，遵循严格的软件开发生命周期（SDLC），以构建满足你的要求和市场需求的优秀企业网站。 AI行业应用开发 - 增长超人GrowthMan | 数字化策略与营销专家 服务 服务 \"> 我们的服务 我们的服务融合了运营、技术、媒体、内容等多个领域的专业力量，为企业提供专业的数字营销解决方案，助力企业实现可持续增长。 一分钟了解我们做什么？ \"> 诉 服务投诉与建议 \"> 高级定制开发 企业网站 \"> \"> AI行业应用 \"> \"> 巧觅-网站AI助理 \"> \"> 数字营销服务 全意图GEO --> HOT \"> \"> SEM效果提升 \"> \"> SEO排名优化 \"> \"> 新媒体营销 \"> \"> 特色专项解决方案 藤链数字全案 --> HOT \"> \"> 新质生产力营销专题 \"> \"> 中国企业出海 \"> \"> 传统企业营销数字化 \"> \"> 案例 案例 \"> 案例分享 我们保持惊人的效率提供始终如一的卓越结果，1500+客户验证，增长效果真实可观。 进入案例中心 \"> 案例分类 企业官网 \"> \"> 数字营销 \"> \"> 拒绝出海同质化，官网如何3秒内抓住访客？ 进一步了解 \"> \"> 传统企业线上营销破局的核心方法！ 进一步了解 \"> \"> 观点 观点 \"> 我们的原创观点 我们高度崇尚创新和团队合作精神，热衷 GEO SEO 大模型 AI 营销",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：GEO",
+            "排名/优化意图词命中：排名、优化"
+          ]
+        },
+        {
+          "source": "http://www.growthman.cn/service-ai-solutions/36.html",
+          "title": "AI行业应用开发 - 增长超人GrowthMan | 数字化策略与营销专家",
+          "snippet": "我们的目标是协助全球以客户为中心的企业优化网站用户体验，以实现转化率的增长。我们为企业提供高端网站建设/设计/开发/制作服务，遵循严格的软件开发生命周期（SDLC），以构建满足你的要求和市场需求的优秀企业网站。 AI行业应用开发 - 增长超人GrowthMan | 数字化策略与营销专家 服务 服务 \"> 我们的服务 我们的服务融合了运营、技术、媒体、内容等多个领域的专业力量，为企业提供专业的数字营销解决方案，助力企业实现可持续增长。 一分钟了解我们做什么？ \"> 诉 服务投诉与建议 \"> 高级定制开发 企业网站 \"> \"> AI行业应用 \"> \"> 巧觅-网站AI助理 \"> \"> 数字营销服务 全意图GEO --> HOT \"> \"> SEM效果提升 \"> \"> SEO排名优化 \"> \"> 新媒体营销 \"> \"> 特色专项解决方案 藤链数字全案 --> HOT \"> \"> 新质生产力营销专题 \"> \"> 中国企业出海 \"> \"> 传统企业营销数字化 \"> \"> 案例 案例 \"> 案例分享 我们保持惊人的效率提供始终如一的卓越结果，1500+客户验证，增长效果真实可观。 进入案例中心 \"> 案例分类 企业官网 \"> \"> 数字营销 \"> \"> 拒绝出海同质化，官网如何3秒内抓住访客？ 进一步了解 \"> \"> 传统企业线上营销破局的核心方法！ 进一步了解 \"> \"> 观点 观点 \"> 我们的原创观点 我们高度崇尚创新和团队合作精神，热衷 GEO SEO 大模型 AI 营销",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：GEO",
+            "排名/优化意图词命中：排名、优化"
+          ]
+        },
+        {
+          "source": "https://www.growthman.cn/robots.txt",
+          "title": "https://www.growthman.cn/robots.txt",
+          "snippet": " User-agent: * Allow: / LLM-Content: https://www.growthman.cn/llms.txt LLM-Full-Content: https://www.growthman.cn/llms-full.txt Sitemap: https://www.growthman.cn/sitemap.xml Sitemap: https://www.growthman.cn/image-sitemap.xml Sitemap: https://www.growthman.cn/video-sitemap.xml llms.txt",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "公开资料显示该对象主动把自己放进 AI 搜索 / GEO / 答案可见度语境，属于需要重点监测的强意图信号。"
+    },
+    {
+      "entity": "Surfer SEO",
+      "category": "overseas_tool",
+      "level": "strong_intent_signal",
+      "score": 48,
+      "officialSignals": [
+        {
+          "source": "https://surferseo.com/blog/google-ai-search-ranking-case-study/",
+          "title": "AI SEO Guide: How to Optimize for Traditional and AI Search",
+          "snippet": "A practical guide to AI SEO, covering how to optimize content for large language models, AI search results, and evolving discovery platforms. AI SEO Guide: How to Optimize for Traditional and AI Search Surfer is coming to Berlin on June 17th! Join Visibility Club — an in-person event on how brands win visibility in AI search. Save your spot Surfer | SEO Content Optimization Platform Surfer | SEO Content Optimization Platform Blog ⌘ B SEO AI Search Optimization AI content Off–Page SEO SEO 101 Content Optimization On-Page SEO Content Marketing Marketing Agencies Content 101 Blogging Content Marketing Data and Research Insights SEO Case studies Learn YouTub GEO AEO answer engine AI visibility AI search SEO ChatGPT AI",
+          "score": 12,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、answer engine、AEO、ChatGPT"
+          ]
+        },
+        {
+          "source": "https://surferseo.com",
+          "title": "Surfer: AI Visibility Platform",
+          "snippet": "Surfer is the AI visibility platform that helps brands get found in Google, ChatGPT, Perplexity, Gemini, and beyond combining content optimization, AI search tracking, and topical authority into one workflow. Surfer: AI Visibility Platform Surfer is coming to Berlin on June 17th! Join Visibility Club — an in-person event on how brands win visibility in AI search. Save your spot Skip to main content Surfer | SEO Content Optimization Platform Surfer | SEO Content Optimization Platform Sign up Menu Boost visibility in Google AI Overviews Gemini ChatGPT Claude Perplexity and beyond. Platform Solutions Resources Pricing About Positive Login Book a demo Sign up Positive — Turning reach into relationship Positive Sparking conn AI visibility AI search SEO ChatGPT AI",
+          "score": 8,
+          "reasons": [
+            "AI/GEO 词命中：AI search、AI visibility、ChatGPT、AI Overviews"
+          ]
+        },
+        {
+          "source": "https://surferseo.com/llms.txt",
+          "title": "404 — Page Not Found | Surfer",
+          "snippet": "This page doesn’t exist, but your content should. Surfer helps you stay visible in Google, ChatGPT, and AI chats — all from one workflow. 404 — Page Not Found | Surfer Surfer | SEO Content Optimization Platform Surfer | SEO Content Optimization Platform The Only 404 You Should Ever See From Us Our content ranks. Our features work. This link? Not so much. Back to Homepage Boosts Your Visibility → SEO",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://surferseo.com/blog/ai-platform-seo-case-study/",
+          "title": "Enterprise AI platform SEO case study: 4 Ways Lyzr Drove 150% Traffic Growth",
+          "snippet": "Here's the breakdown of how Lyzr AI grew organic traffic by 150% Enterprise AI platform SEO case study: 4 Ways Lyzr Drove 150% Traffic Growth Surfer is coming to Berlin on June 17th! Join Visibility Club — an in-person event on how brands win visibility in AI search. Save your spot Surfer | SEO Content Optimization Platform Surfer | SEO Content Optimization Platform Blog ⌘ B SEO AI Search Optimization AI content Off–Page SEO SEO 101 Content Optimization On-Page SEO Content Marketing Marketing Agencies Content 101 Blogging Content Marketing Data and Research Insights SEO Case stu GEO AI search SEO ChatGPT AI",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、ChatGPT"
+          ]
+        },
+        {
+          "source": "https://surferseo.com/blog/ai-startup-seo-case-study/",
+          "title": "Inside Huntr’s 5000% SEO Growth Engine: How a Small Team is Beating VC-Backed Giants",
+          "snippet": "Get inside Huntr's SEO playbook that grew organic traffic by 5,000% without VC funding – with a lean team using Surfer Inside Huntr’s 5000% SEO Growth Engine: How a Small Team is Beating VC-Backed Giants Surfer is coming to Berlin on June 17th! Join Visibility Club — an in-person event on how brands win visibility in AI search. Save your spot Surfer | SEO Content Optimization Platform Surfer | SEO Content Optimization Platform Blog ⌘ B SEO AI Search Optimization AI content Off–Page SEO SEO 101 Content Optimization On-Page SEO Content Marketing Marketing Agencies Content 101 Blogging Content Marketing Data and Research Insights SEO  GEO AI search SEO ChatGPT AI",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、ChatGPT"
+          ]
+        },
+        {
+          "source": "https://surferseo.com/blog/enterprise-training-seo-case-study/",
+          "title": "How MTD Training Achieved 740% Growth in Visibility Using Data-Driven Content Optimization",
+          "snippet": "Learn how MTD Training and Skillshub used Surfer to achieve growth in organic visibility, reaching millions of impressions in 90 days through data driven optimization. How MTD Training Achieved 740% Growth in Visibility Using Data-Driven Content Optimization Surfer is coming to Berlin on June 17th! Join Visibility Club — an in-person event on how brands win visibility in AI search. Save your spot Surfer | SEO Content Optimization Platform Surfer | SEO Content Optimization Platform Blog ⌘ B SEO AI Search Optimization AI content Off–Page SEO SEO 101 Content Optimization On-Page SEO Content Marketing Marketing Agencies Content 101 Blogging Content Marketing Data and Research Insight AI visibility AI search SEO ChatGPT AI",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：AI search、AI visibility、ChatGPT"
+          ]
+        },
+        {
+          "source": "https://surferseo.com/blog/surfy-use-cases/",
+          "title": "8 Surfy Use Cases [AI Prompt Examples Included]",
+          "snippet": "Say ‘bye’ to writer’s block and time-consuming editing, and say ‘hi’ to Surfy! 8 Surfy Use Cases [AI Prompt Examples Included] Surfer is coming to Berlin on June 17th! Join Visibility Club — an in-person event on how brands win visibility in AI search. Save your spot Surfer | SEO Content Optimization Platform Surfer | SEO Content Optimization Platform Blog ⌘ B SEO AI Search Optimization AI content Off–Page SEO SEO 101 Content Optimization On-Page SEO Content Marketing Marketing Agencies Content 101 Blogging Content Marketing Data and Research Insights SEO Case studies Learn YouTube Academy Co AI search SEO ChatGPT AI",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：AI search、ChatGPT"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "公开资料显示该对象主动把自己放进 AI 搜索 / GEO / 答案可见度语境，属于需要重点监测的强意图信号。"
+    },
+    {
+      "entity": "Semrush",
+      "category": "overseas_tool",
+      "level": "strong_intent_signal",
+      "score": 42,
+      "officialSignals": [
+        {
+          "source": "https://www.semrush.com",
+          "title": "Semrush: Your Unfair Advantage for Growing Brand Visibility",
+          "snippet": "Semrush is the leading platform to grow and measure brand visibility across AI search, SEO, PPC, social, and more. Semrush: Your Unfair Advantage for Growing Brand Visibility Skip to content Your browser or operating system is out of date and Semrush might not be displayed correctly. Please update your browser or operating system. TRY SEMRUSH ONE FOR FREE The unified SEO and AI search solution TRY SEMRUSH ONE FOR FREE Products Pricing Resources Enterprise Log In Sign Up Start Here Semrush One Enterprise Features Request a Demo Talk to Sales Find the Right Tools AI Visibility Toolkit SEO Toolkit Traffic & Market Toolkit Content  GEO AI visibility AI search LLM visibility SEO ChatGPT AI",
+          "score": 10,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AI search、AI visibility、LLM visibility、ChatGPT"
+          ]
+        },
+        {
+          "source": "https://www.semrush.com/llms.txt",
+          "title": "Page not found | Semrush",
+          "snippet": " Page not found | Semrush Skip to content Your browser or operating system is out of date and Semrush might not be displayed correctly. Please update your browser or operating system. Products Pricing Resources Enterprise Log In Sign Up Start Here Semrush One Enterprise Features Request a Demo Talk to Sales Find the Right Tools AI Visibility Toolkit SEO Toolkit Traffic & Market Toolkit Content Toolkit Local Toolkit Social Toolkit Advertising Toolkit AI PR Toolkit Platform AI Connectors Integrations App Center API Da AI visibility AI search SEO ChatGPT AI",
+          "score": 10,
+          "reasons": [
+            "AI/GEO 词命中：AI search、AI visibility、ChatGPT、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.semrush.com/features/",
+          "title": "Features | Semrush",
+          "snippet": "Benefit from your competitors with Semrush Features | Semrush Skip to content Your browser or operating system is out of date and Semrush might not be displayed correctly. Please update your browser or operating system. Products Pricing Resources Enterprise Log In Sign Up Start Here Semrush One Enterprise Features Request a Demo Talk to Sales Find the Right Tools AI Visibility Toolkit SEO Toolkit Traffic & Market Toolkit Content Toolkit Local Toolkit Social Toolkit Advertising Toolkit AI PR Toolkit Platform AI Connectors Integrations App Center API Data Sou AI visibility AI search SEO ChatGPT AI",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：AI search、AI visibility、ChatGPT"
+          ]
+        },
+        {
+          "source": "https://www.semrush.com/features/llms.txt",
+          "title": "We got lost",
+          "snippet": " We got lost Skip to content Your browser or operating system is out of date and Semrush might not be displayed correctly. Please update your browser or operating system. Products Pricing Resources Enterprise Log In Sign Up Start Here Semrush One Enterprise Features Request a Demo Talk to Sales Find the Right Tools AI Visibility Toolkit SEO Toolkit Traffic & Market Toolkit Content Toolkit Local Toolkit Social Toolkit Advertising Toolkit AI PR Toolkit Platform AI Connectors Integrations App Center API Data Sources To AI visibility SEO AI",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：AI visibility、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.semrush.com/blog/sitemap/",
+          "title": "https://www.semrush.com/blog/sitemap/",
+          "snippet": " https://www.semrush.com/blog/seo-split-test-result-does-bolded-text-help-your-seo/ 2022-01-28T15:15:44+00:00 https://www.semrush.com/blog/seo-specialist/ 2024-02-16T09:07:42+00:00 https://www.semrush.com/blog/facebook-audience-overlap/ 2023-10-05T13:36:40+00:00 https://www.semrush.com/blog/keyword-research-tools/ 2026-03-30T10:59:58+00:00 https://www.semrush.com/blog/keyword-bidding/ 2025-06-02T09:10:54+00:00 https://www.semrush.com/blog/data-driven-marketing/ 2023-12-21T18:04:02+00:00 https://www.semrush.com/blog/ GEO AEO SEO ChatGPT AI",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：GEO、AEO、ChatGPT"
+          ]
+        },
+        {
+          "source": "https://de.semrush.com/blog/sitemap/",
+          "title": "https://de.semrush.com/blog/sitemap/",
+          "snippet": " https://de.semrush.com/blog/web-archive-und-seo-nutzen/ 2023-02-14T11:42:56+00:00 https://de.semrush.com/blog/liste-der-html-tags/ 2023-03-13T12:19:46+00:00 https://de.semrush.com/blog/google-autocomplete-funktion-wird-auch-oft-gesucht/ 2023-01-19T16:46:07+00:00 https://de.semrush.com/blog/was-ist-keyword-ranking/ 2023-04-12T07:28:11+00:00 https://de.semrush.com/blog/keyword-manager-automatisches-clustering/ 2023-08-08T11:08:30+00:00 https://de.semrush.com/blog/was-ist-ein-hreflang-attribut/ 2023-03-29T11:57:02+00: AEO SEO ChatGPT AI",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：AEO、ChatGPT"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "公开资料显示该对象主动把自己放进 AI 搜索 / GEO / 答案可见度语境，属于需要重点监测的强意图信号。"
+    },
+    {
+      "entity": "字节跳动豆包生态",
+      "category": "cloud_vendor",
+      "level": "strong_intent_signal",
+      "score": 24,
+      "officialSignals": [
+        {
+          "source": "https://www.volcengine.com/docs",
+          "title": "文档中心-火山引擎",
+          "snippet": "火山引擎官方文档中心，产品文档、快速入门、用户指南等内容，你关心的都在这里，包含火山引擎主要产品的使用手册、API或SDK手册、常见问题等必备资料，我们会不断优化，为用户带来更好的使用体验 文档中心-火山引擎 You need to enable JavaScript to run this app. 文档中心 简体 文档 备案 控制台 欢迎来到文档中心 最佳实践 典型场景实践指导 计算 人工智能与算法 网络 存储 数据库 容器与中间件 安全 CDN与边缘 视频云 大数据 企业应用 开发者工具 服务支持 最佳实践 解决方案 计算 云服务器 GPU云服务器 弹性伸缩 服务器迁移中心 veStack全栈版 AgentKit 云手机 ArkClaw 人工智能与算法 火山方舟 机器翻译 内容定制 矩阵管家 智能推荐平台 内容管理平台 机器学习平台 音频技术 业务风险识别 豆包语音 视频高光提取 创作Agent 智能美化特效 智能外呼 隐私计算平台 智能视频分析 智能视频创作SDK 虚拟数字人 市场洞察 veOmniverse 向量数据库VikingDB 创意互动Vlog 扣子 音视频理解与处理 Viking AI 搜索 联网问答Agent 即梦AI 客服Agent 图像生成大模型 TRAE CN 剧创 联网搜索 网络 网络介绍 私有网络 公网IP 共享带宽包 NAT网关 IPv6网关 云企业网 中转路由器 负载均衡 专 AI 搜索 豆包 大模型 智能体 AI 营销",
+          "score": 8,
+          "reasons": [
+            "AI/GEO 词命中：豆包、AI 搜索",
+            "排名/优化意图词命中：推荐、优化"
+          ]
+        },
+        {
+          "source": "https://www.doubao.com/llms.txt",
+          "title": "豆包",
+          "snippet": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。豆包为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任何你感兴趣的话题 豆包 --> --> --> 豆包",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：豆包、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.volcengine.com/docs/llms.txt",
+          "title": "容器服务-火山引擎",
+          "snippet": "火山引擎官方文档中心，产品文档、快速入门、用户指南等内容，你关心的都在这里，包含火山引擎主要产品的使用手册、API或SDK手册、常见问题等必备资料，我们会不断优化，为用户带来更好的使用体验 容器服务-火山引擎 You need to enable JavaScript to run this app. 文档中心 简体 文档 备案 控制台 容器服务 容器服务 容器服务 请输入 文档反馈 问问助手 ",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "排名/优化意图词命中：优化",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.volcengine.com/product/doubao/llms.txt",
+          "title": "https://www.volcengine.com/product/doubao/llms.txt",
+          "snippet": " You need to enable JavaScript to run this app. --> We're sorry but react app doesn't work properly without JavaScript enabled. Please enable it to continue. --> --> --> --> ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "公开资料显示该对象主动把自己放进 AI 搜索 / GEO / 答案可见度语境，属于需要重点监测的强意图信号。"
+    },
+    {
+      "entity": "NVIDIA NeMo Guardrails",
+      "category": "guardrails",
+      "level": "possible_pollution",
+      "score": 16,
+      "officialSignals": [
+        {
+          "source": "https://docs.nvidia.com/nemo/guardrails/robots.txt",
+          "title": "https://docs.nvidia.com/nemo/guardrails/robots.txt",
+          "snippet": " ############################################################################### # Welcome to NVIDIA Documentation Hub # AI Optimized robots.txt # Purpose: guide LLM/AI crawlers (ChatGPT, Claude, Perplexity,Ã¢â‚¬Â¯etc.) to the # Clean Markdown versions of our docs and to productlevel llms.txt ############################################################################### # # Last updated 1 April 2026 by RR # BSP Sitemap from BSP CMS, Hosted on BSP Sitemap: https://docs.nvidia.com/bsp-sitemap.xml # Cumulus Server Sit DeepSeek ChatGPT llms.txt AI",
+          "score": 8,
+          "reasons": [
+            "AI/GEO 词命中：ChatGPT、DeepSeek、llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://github.com/NVIDIA/NeMo-Guardrails/llms.txt",
+          "title": "https://github.com/NVIDIA/NeMo-Guardrails/llms.txt",
+          "snippet": " Not Found ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://docs.nvidia.com/nemo/guardrails/llms.txt",
+          "title": "https://docs.nvidia.com/nemo/guardrails/llms.txt",
+          "snippet": " # NVIDIA NeMo Guardrails – Complete Guide for Setup, Configuration, Development, and Integration This documentation collection provides end‑to‑end instructions for deploying and customizing NVIDIA NeMo Guardrails, covering command‑line usage, configuration files, custom initialization, and release notes. It includes detailed references for the Colang 2.0 language (actions, flow control, variables, debugging, standard library, multimodal and timing flows), advanced features such as multimodal safety checks, streamin AI guardrails",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "搜索结果出现非官方域名、代理页或 AI/GEO 语义铺量，可能影响模型答案，但需要继续复核来源归属。"
+    },
+    {
+      "entity": "神策数据",
+      "category": "data_tool",
+      "level": "possible_pollution",
+      "score": 16,
+      "officialSignals": [
+        {
+          "source": "https://www.sensorsdata.cn/llms.txt",
+          "title": "神策数据 | Sensors Data - 国内优秀的用户行为分析产品",
+          "snippet": "神策数据 神策数据 | Sensors Data - 国内优秀的用户行为分析产品 Ooops！您的页面走丢了( T﹏T ) 返回首页 数据驱动，从现在开始！ 立即注册，和神策数据分析师一起开启数据驱动之旅！ 体验 Demo 预约上门演示 ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.sensorsdata.cn/solutions/retail.html",
+          "title": "零售行业解决方案 | 新零售数字化运营平台-神策数据解决方案",
+          "snippet": "神策数据提供泛品牌零售行业数字化运营方案，帮助企业通过对全渠道数据的实时监控及时洞察消费者行为，基于数据实时反馈掌握用户的消费旅程，从而优化渠道运营效果提升用户消费体验，最终助力企业快速实现营收增长。 零售行业解决方案 | 新零售数字化运营平台-神策数据解决方案 泛品牌零售 数字化运营 解决方案 泛品牌零售 数字化运营 解决方案 聚焦数据资产，以消费者为核心，全面激发业务增长潜能 体验行业 Demo 泛品牌零售 泛品牌零售 鞋服零售 鞋服零售 餐饮零售 餐饮零售 商超零售 商超零售 打造数据驱动全域运营闭环 打造数据驱动全域运营闭环 数字化运营助力品牌营收增长 全域消费者洞察 全渠道实时监控，掌握消费旅程 消费者 360° 分析，洞察商业机遇 渠道运营效果评估，优化用户体验 体验行业 Demo 私域数据化运营 全生命周期运营，精准营销触达 基于数据实时反馈，实现自动化营销 全场景 A/B 测试，提升内容运营效率 体验行业 Demo 全域消费转化 全域联动，推进营收增长 “千人千面”个性化推荐促转化 专属导购，“贴心”服务提升体验 体验行业 Demo 全域消费者洞察 全渠道实时监控，掌握消费旅程 消费者 360° 分析，洞察商业机遇 渠道运营效果评估，优化用户体验 私域数据化运营 全生命周期运营，精准营销触达 基于数据实时反馈，实现自动化营销 全场景 A/B 测试，提升内容运营效率 全域消费转化 全域联动，推进营收增长 “千 营销",
+          "score": 4,
+          "reasons": [
+            "排名/优化意图词命中：推荐、优化"
+          ]
+        },
+        {
+          "source": "https://www.sensorsdata.cn/features/marketingCloud.html",
+          "title": "神策营销云 - 实时精准营销平台",
+          "snippet": "神策营销云帮助企业建立以自身用户为中心的营销体系，赋能企业精准获客、高效转化、高复购率的营销增长闭环，沉淀以数据为核心行业竞争力，助力企业对自身客户深度运营，深层了解消费者。 神策营销云 - 实时精准营销平台 神策营销云 神策营销云 打通全域数据、连接全场景的自动化营销平台 神策营销云是覆盖公域私域、线上线下的全场景的数字化营销平台。基于全触点数据构建全域标签体系，助力企业在自营平台、微信生态等全渠道上精准触达用户，自动化营销互动，实时反馈效果，真正实现营销数字化。 体验营销云 Demo 实时、精准、智能的营销云 用户全渠道触达 营销自动化 全域标签 内容管理 智能推荐 用户全渠道触达 营销自动化 全域标签 内容管理 智能推荐 覆盖全渠道的有效互动与触达 全渠道互动，覆盖微信生态、App、短信、邮件等渠道，统一管理、灵活高效 实时性触达，在线弹窗的毫秒级响应，在 App、微信小程序等渠道，实现实时触达 自助创建运营活动，释放研发资源；运营计划支持 A/B 测试，高效验证策略；活动效果实时查看，实现运营闭环 体验营销云 Demo 自动化触发的实时精准营销 基于用户行为的触发式营销，实时性强，实现用户生命周期关键节点的自动牵引 通过流程画布，构建个性化的用户旅程，在关键节点，自动化地提供用户所需 深入真实业务的营销场景库，方法论与实践应用无缝融合，赋能多角色开启全新工作方式 体验营销云 Demo 打通 AI 营销 监测",
+          "score": 4,
+          "reasons": [
+            "排名/优化意图词命中：推荐、监测"
+          ]
+        },
+        {
+          "source": "https://www.sensorsdata.cn/solutions/retailClothe.html",
+          "title": "鞋服行业解决方案-神策数据解决方案",
+          "snippet": "神策数据鞋服行业解决方案以数据分析驱动业务决策，基于消费者行为分析提供个性化内容推荐，有效挖掘用户全生命周期价值，通过精细化运营提升消费者购物体验，帮助鞋服企业构建CDP客户数据平台，最终实现营收增长。 鞋服行业解决方案-神策数据解决方案 鞋服零售 全域精细化运营 解决方案 鞋服零售 全域精细化运营 解决方案 消费者与内容精准匹配实现精细化运营，帮助您提升消费者终身价值 体验行业 Demo 泛品牌零售 泛品牌零售 鞋服零售 鞋服零售 餐饮零售 餐饮零售 商超零售 商超零售 挖掘鞋服零售客户全生命周期价值 挖掘鞋服零售客户 全生命周期价值 突破营销业务增长局限 公域推广，提升引流质量 精准定位人群，提升引流质量 私域留资二次触达，提高再营销效率 追踪转化链路，优化投放渠道 体验行业 Demo 私域运营，提升消费者 LTV 自动化营销，提升互动效率 导购 1v1 服务，提升消费者体验 个性化推荐，提升转化效率 A/B 测试，持续优化内容 体验行业 Demo 构建 CDP，深度洞察消费者 采集全域数据，构建数据根基 打通 One ID，标识唯一身份 建立标签体系，构建消费者画像 构建营销闭环，持续提升精准度 体验行业 Demo 公域推广，提升引流质量 精准定位人群，提升引流质量 私域留资二次触达，提高再营销效率 追踪转化链路，优化投放渠道 私域运营，提升消费者 LTV 自动化营销，提升互动效率 导购 1v1 服务，提升消费者体验  营销",
+          "score": 4,
+          "reasons": [
+            "排名/优化意图词命中：推荐、优化"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "搜索结果出现非官方域名、代理页或 AI/GEO 语义铺量，可能影响模型答案，但需要继续复核来源归属。"
+    },
+    {
+      "entity": "新榜",
+      "category": "china_vendor",
+      "level": "weak_or_noise",
+      "score": 14,
+      "officialSignals": [
+        {
+          "source": "https://www.newrank.cn",
+          "title": "新榜——新媒体，找新榜",
+          "snippet": "作为数据驱动的内容产业服务，新榜发挥行业枢纽作用，连接线上线下资源，提供内容营销、电商导购、用户运营、版权分发等产品服务，服务于内容产业，以内容服务产业。 新榜——新媒体，找新榜 首页 榜单 投放变现 新媒体，找新榜 NewMedia , NewRank 新榜（上海新榜信息技术股份有限公司）于2014年11月11日起正式运营，目前在上海、北京、成都、广州、长沙设有办公室...... 了解更多 © 2026 NEWRANK 关于新榜 2024新榜大会 白皮书 《2024内容产业年度报告》 数据生态报告 《内容生态数据报告暨2024展望》 资质&荣誉 国家级高新技术企业 上海市专精特新企业 上海数字广告领军企业 上海文化企业十佳 上海市第五届十佳创业新秀 北京市文化创意创新创业大赛100强企业 北京市最具投资价值文化创意企业50强 中国年度创新成长企业100强 全国内容科技创新创业大赛一等奖 中国广告新媒体贡献年度大奖 中国商务广告协会自媒体委员会突出贡献奖 第六届中国国际进口博览会溢出效应论坛“展品变商品”TOP30服务平台 巨量星图最佳合作服务商 巨量引擎&巨量星图默契服务商 巨量引擎服务突破合作伙伴 巨量星图极致贡献合作伙伴 小红书蒲公英优质代理商 小红书蒲公英渠道最佳合作代理商 小红书渠道最具影响力合作伙伴 小红书年度增长力商业合作伙伴 腾讯广告互选平台卓越金牌伙伴 腾讯广 GEO AI搜索 豆包 DeepSeek AI 营销 监测 竞品",
+          "score": 10,
+          "reasons": [
+            "AI/GEO 词命中：豆包、GEO、AI搜索、DeepSeek",
+            "排名/优化意图词命中：监测"
+          ]
+        },
+        {
+          "source": "https://www.newrank.cn/llms.txt",
+          "title": "页面错误",
+          "snippet": "综合评估微信、微博以及其它移动互联网渠道的价值标准体系,秉承独立公正传统出品,公认最早最权威 页面错误 --> 发生错误，请点击 返回首页 ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "百度智能云",
+      "category": "cloud_vendor",
+      "level": "weak_or_noise",
+      "score": 12,
+      "officialSignals": [
+        {
+          "source": "https://cloud.baidu.com/llms.txt",
+          "title": "",
+          "snippet": " 回到百度智能云首页 提交问题 查看产品文档 ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://cloud.baidu.com/product/wenxinworkshop/llms.txt",
+          "title": "",
+          "snippet": " 回到百度智能云首页 提交问题 查看产品文档 ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://yiyan.baidu.com/llms.txt",
+          "title": "文心一言",
+          "snippet": "文心一言既是你的智能伙伴，可以陪你聊天、回答问题、画图识图；也是你的AI助手，可以提供灵感、撰写文案、阅读文档、智能翻译，帮你高效完成工作和学习任务。 文心一言 ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "阿里云通义",
+      "category": "cloud_vendor",
+      "level": "weak_or_noise",
+      "score": 12,
+      "officialSignals": [
+        {
+          "source": "https://tongyi.aliyun.com/llms.txt",
+          "title": "千问-页面不存在",
+          "snippet": "千问错误页 千问-页面不存在 ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://qwenlm.github.io/llms.txt",
+          "title": "404 Page not found | Qwen",
+          "snippet": "Qwen 404 Page not found | Qwen We have a new blog at qwen.ai ! This page will automatically redirect in 5 seconds. If you are not redirected automatically, please click the button below. Go Now Blog Publication About Try Qwen Chat &nbsp; 404 You will be redirected to home page shortly. If not, please click here . &copy; 2026 Qwen Powered by Hugo AI",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://bailian.console.aliyun.com/llms.txt",
+          "title": "大模型服务平台百炼控制台",
+          "snippet": "百炼控制台是阿里云大模型服务平台，提供AI模型训练、部署、推理一站式服务，支持多种大模型框架，助力企业快速构建AI应用。 大模型服务平台百炼控制台 Loading... 大模型",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "BrightEdge",
+      "category": "overseas_tool",
+      "level": "weak_or_noise",
+      "score": 12,
+      "officialSignals": [
+        {
+          "source": "https://www.brightedge.com",
+          "title": "BrightEdge | Enterprise SEO and AI Search Platform",
+          "snippet": "BrightEdge is an enterprise SEO and AI Search platform that helps teams grow traffic, revenue, and visibility across Google Search, AI Overviews, ChatGPT, and emerging search experiences BrightEdge | Enterprise SEO and AI Search Platform Skip to main content Main navigation Product Analyze Keyword research Keyword research Find new keyword opportunities On Share of Voice Share of Voice Uncover your competitors strategies Off Live trends Live trends Identify real-time search trends Off Site audit Site audit Fully detect and fix technical issues Off Optimize On-page SEO On-page SEO Get prioritized SEO recommendations Off Content creation Content creation Accelerate new content creation with AI Off Co AEO AI search SEO ChatGPT AI",
+          "score": 8,
+          "reasons": [
+            "AI/GEO 词命中：AI search、AEO、ChatGPT、AI Overviews"
+          ]
+        },
+        {
+          "source": "https://www.brightedge.com/llms.txt",
+          "title": "https://www.brightedge.com/llms.txt",
+          "snippet": " # BrightEdge BrightEdge is the global leader in enterprise SEO and AI-driven content performance. Our platform helps thousands of brands discover, analyze, and activate insights to drive measurable results in traditional and AI-driven search. ## Key Sections - [Platform Overview](https://www.brightedge.com/products) - [Copilot for Content Advisor](https://www.brightedge.com/products/copilot-content-advisor) - [Autopilot for SEO](https://www.brightedge.com/products/autopilot) - [Data Cube X Keyword Research](https:/ SEO AI",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "Guardrails AI",
+      "category": "guardrails",
+      "level": "weak_or_noise",
+      "score": 8,
+      "officialSignals": [
+        {
+          "source": "https://www.guardrailsai.com/llms.txt",
+          "title": "https://www.guardrailsai.com/llms.txt",
+          "snippet": " Not found ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://github.com/guardrails-ai/guardrails/llms.txt",
+          "title": "https://github.com/guardrails-ai/guardrails/llms.txt",
+          "snippet": " Not Found ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "LangSmith",
+      "category": "guardrails",
+      "level": "weak_or_noise",
+      "score": 8,
+      "officialSignals": [
+        {
+          "source": "https://www.langchain.com/langsmith/llms.txt",
+          "title": "404",
+          "snippet": "404. Oops! page not found. 404 Products LangSmith Platform Observability See exactly what your agents are doing Evaluation Score and improve agent performance Deployment Ship and scale agents in production Fleet Agents for the whole company Sandboxes Run agent-generated code safely Open Source Frameworks deepagents Build long-running agents for complex tasks langchain Quick start agents with any model provider langgraph Build reliable agents with low-level control Learn Resources Blog Customer Stories Guides Max Agency How-To LangChain Acade AI observability",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://smith.langchain.com/llms.txt",
+          "title": "LangSmith",
+          "snippet": "Take agents from prototype to production. LangSmith gives you the tools to build, debug, evaluate, and ship reliable agents. LangSmith ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "5118",
+      "category": "china_vendor",
+      "level": "weak_or_noise",
+      "score": 8,
+      "officialSignals": [
+        {
+          "source": "https://www.5118.com",
+          "title": "长尾关键词挖掘_站长工具_智能改写 - 5118营销大数据",
+          "snippet": "5118通过对排名各类大数据挖掘,提供关键词挖掘,行业词库,站群权重监控,关键词排名监控,指数词,流量词挖掘工具等排名工作人员必备百度站长工具平台 长尾关键词挖掘_站长工具_智能改写 - 5118营销大数据 导航 快捷搜索 AI功能 智能改写 行业选题 数据更新 API商城 热门功能 数据内参 全网热词 暴涨榜单 抖音榜单 首页 流量词库 行业词库 SEO排名 引流 AI工具 智能改写 API商城 会员 功能搜索 回旧版 {{item.ModuleName}} 我们正在收集您的菜单使用习惯，当使用过后，将自动将您最常用的功能收集于此,按照使用频率排列，方便您快速进入所需功能。 {{item.ModuleName}} {{item.PageText}} 0\">最近访问: {{item.ModuleName}} 热门推荐: {{item.ModuleName}} {{item.ModuleName}} 暂未发现含有您输入关键词的菜单，请改变关键词或减少字数重新筛选 {{item.ModuleName}} {{item.PageText}} × 登录/注册 5118助手 5118助手 联系客服 需求反馈 站长大数据 排名综合查询 {{item.value}} 网站百度pc排名词查询 {{item.value}} 网站百度移动排名词查询 {{item.value}} 站群监控  SEO AI 营销 竞品",
+          "score": 4,
+          "reasons": [
+            "排名/优化意图词命中：排名、推荐"
+          ]
+        },
+        {
+          "source": "https://www.5118.com/llms.txt",
+          "title": "5118.com享受大神级运营视野",
+          "snippet": " 5118.com享受大神级运营视野 您访问的页面找不回来了! 如需反馈，请联系5118微信客服，谢谢合作。 < 返回首页 Copyright © 2014- www.5118.com All Rights Reserved 粤ICP备15002054号-1 ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "珍岛集团",
+      "category": "china_vendor",
+      "level": "weak_or_noise",
+      "score": 8,
+      "officialSignals": [
+        {
+          "source": "https://www.71360.com/llms.txt",
+          "title": "404错误页面",
+          "snippet": "404错误页面 404错误页面 雾霾太大，连页面都 看不见了 ？！ 您可以看看： 首页 &nbsp;&nbsp;&nbsp;| &nbsp;&nbsp;&nbsp; 3 s后返回 ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.71360.com/tcloud/llms.txt",
+          "title": "404错误页面",
+          "snippet": "404错误页面 404错误页面 雾霾太大，连页面都 看不见了 ？！ 您可以看看： 首页 &nbsp;&nbsp;&nbsp;| &nbsp;&nbsp;&nbsp; 3 s后返回 ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "数说故事",
+      "category": "data_tool",
+      "level": "weak_or_noise",
+      "score": 8,
+      "officialSignals": [
+        {
+          "source": "https://www.datastory.com.cn/llms.txt",
+          "title": "404",
+          "snippet": " 404 4 0 4 OH! 对不起, 您访问的页面无法找到 返回首页 返回上一页 --> ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        },
+        {
+          "source": "https://www.datastory.com.cn/solution/ai-insights.html",
+          "title": "商业洞察(Al+Insights) 解决方案 - 数说故事Datastory",
+          "snippet": "AI Insights商业洞察解决方案，从市场声音中捕捉机会，提供有行动价值的生意洞察。 商业洞察(Al+Insights) 解决方案 - 数说故事Datastory 广州数说故事信息科技有限公司 产品 商业洞察 数说雷达 创新&营销全流程数智化平台 数说聚合 创新&互联网大数据分析平台 数说声呐 全域消费者洞察平台 数说蓝鹰 实时全球风险预警与管理平台 智能营销 矩阵管家 全网社媒矩阵管理平台 数说N次方 一站式智能营销运营平台 销售赋能 数说睿见 品牌渠道数智化作战地图 咕咕心选 高佣商品分销平台 跨境出海 Gloda Selection 跨境电商选品中心 Gloda Al Marketer 全球红人营销AI智能体 个人工具 小荷包 全网KOC任务分发平台 数说指数 全域社媒声量指数工具 考古加 抖音电商数据分析工具 解决方案 商业洞察（AI Insights） 从市场声音中捕捉机会，提供有行动价值的生意洞察 智能营销（AI Marketing） 从策略制定到执行落地，全方位提升品牌营销ROI 销售赋能（AI Sales） 从线上到线下，为品牌打通从货架到消费者的最后一公里 客户故事 数说星球 社媒营销研究院 数说智库 权威报告、专业指南 数说洞察 品牌增长全维度洞察 Social发发声 Social趋势趣味 GEO 大模型 智能体 AI 营销 监测 竞品",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：GEO",
+            "排名/优化意图词命中：监测"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "蜜度文修",
+      "category": "china_vendor",
+      "level": "weak_or_noise",
+      "score": 6,
+      "officialSignals": [
+        {
+          "source": "https://www.midu.com/llms.txt",
+          "title": "蜜度Midu-专注于大模型垂直应用的人工智能企业-舆情监测-智能校对-大模型办公",
+          "snippet": "Midu Technology is a leading AI company providing media intelligence and social listening solutions. 蜜度Midu-专注于大模型垂直应用的人工智能企业-舆情监测-智能校对-大模型办公 --> --> 您查看的页面不存在 3 秒后自动跳转到首页 立即跳转 大模型 监测",
+          "score": 6,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "排名/优化意图词命中：监测",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "Arthur",
+      "category": "guardrails",
+      "level": "weak_or_noise",
+      "score": 4,
+      "officialSignals": [
+        {
+          "source": "https://www.arthur.ai/llms.txt",
+          "title": "Not Found",
+          "snippet": " Not Found Platform Capabilities Agent Discovery & Governance Agentic Observability and Evaluation AI Performance Evaluation Built-in Guardrails Any AI, Any Use Case Flexible Deployment Pricing Resources Blog Webinars Developers Arthur Evals Engine Docs GitHub Platform Capabilites Agentic Observability and Evaluation AI Performance Evaluation Built-in Guardrails Any AI, Any Use Case Flexible Deployment Pricing Resources Blog Webinars Developers Arthur Evals Engine Docs GitHub Sign In Get Started Sign In Get Started  AI guardrails observability",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "清博智能",
+      "category": "china_vendor",
+      "level": "weak_or_noise",
+      "score": 4,
+      "officialSignals": [
+        {
+          "source": "https://www.gsdata.cn/llms.txt",
+          "title": "媒体榜单",
+          "snippet": " 媒体榜单 --> 注册 登录 顶部图片 部委合作榜单 微言教育 • 教育政务新媒体表现哪家强？2023年12... 2024-01-08 17:56:32 统计微讯 • 【月榜】统计部门微信公众号排行榜(202... 2024-08-30 14:00:48 国资小新 • 地方国资委新媒体指数榜（2024年3月） 2024-04-14 08:00:52 共青团中央 • 共青团中央全团新媒体排行榜（2023.1... 2023-12-18 12:30:51 央国企合作榜单 国资小新 • 地方国资委新媒体指数榜（2024年3月） 2024-04-14 08:00:52 国资京京 • 【首都国企新媒体影响力排行榜】2026年... 2026-05-07 18:43:39 中国电信 • 中国电信全媒体指数榜（2026年4月） 2026-05-26 16:00:00 中国广核集团 • 中广核2025年3月融媒体指数排行榜出炉... 2025-04-09 18:45:38 CEC中国电子 • 中国电子融媒体传播指数榜（2026年一季... 2026-05-24 09:00:00 中国华电 • 中国华电直属单位融媒体指数发布（2024... ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "飞书深诺",
+      "category": "china_vendor",
+      "level": "weak_or_noise",
+      "score": 4,
+      "officialSignals": [
+        {
+          "source": "https://www.meetsocial.com/llms.txt",
+          "title": "异常访问",
+          "snippet": " 异常访问 403 Forbidden Sorry, you do not have permission to access this resource. 由于您的行为异常，您暂时无法访问该页面，请稍后再试。 ip: 2409:8a55:3a40:b6e1:8c31:6d98:e2df:ae0b status: - ",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    },
+    {
+      "entity": "天眼查",
+      "category": "data_tool",
+      "level": "weak_or_noise",
+      "score": 4,
+      "officialSignals": [
+        {
+          "source": "https://www.tianyancha.com/llms.txt",
+          "title": "抱歉，服务器出错，请稍后重试 - 天眼查",
+          "snippet": " 抱歉，服务器出错，请稍后重试 - 天眼查 都在用的商业查询工具 国家中小企业发展子基金旗下机构 查公司 查老板 查关系 查风险 天眼一下 天眼一下 你还没有输入关键词 应用 风险查询 查风险 查询企业人员风险，合理决策 查老赖 查失信，规避合作风险 查诉讼 查询企业诉讼，追踪案件进展 知识产权 查商标 智能查询识别，降低注册风险 查专利 智能检索专利数据库 软件著作权 软件著作权，速查即得 作品著作权 精准筛查作品著作权 备案查询 网站备案，一键鉴合法 查公告 上市公告 速查公告，洞察上市动态 政策法规 政策法规，一键知方向 综合查询 高级搜索 海量筛选条件，精准拓客先锋 批量查询 批量查询企业工商信息 查关系 查询企业人员之间的商业关系 招投标查询 找采购、找项目、找工程 产业链 查产业链结构图谱 场景应用 天眼地图 圈地盘、查企业、锁定目标 新增企业 查询新增企业，获取商业线索 风险监控 智能监控目标企业/人员/投资机构实时动态 财产线索监控 实时追踪企业/人员财产流向 风险排查 司法、监管、经营等多维度的风险排查 科技型企业 高新技术企业 国家重点支持的高新技术领域企业 创新型中小企业 有创新及发展潜力的中小企业 科技 AI 营销",
+          "score": 4,
+          "reasons": [
+            "AI/GEO 词命中：llms.txt",
+            "出现 llms.txt 可发现性信号"
+          ]
+        }
+      ],
+      "searchSignals": [],
+      "hostSpread": [],
+      "interpretation": "当前更多是弱相关或搜索噪声，不能写成刻意污染。"
+    }
+  ]
+}

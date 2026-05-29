@@ -34,6 +34,7 @@ export function GET() {
 研究主题:
 - @aleabitoreddit X 账号订阅内容研究: ${siteUrl}/x-research/aleabitoreddit
 - 豆包排名差公司研究总表: ${siteUrl}/doubao-research/rank-gap-company-assessment-map
+- 豆包提前污染信号扫描: ${siteUrl}/doubao-research/doubao-rank-pollution-signal-scan
 - 钛动科技 GEOFlow 评估：为什么豆包把它排前？: ${siteUrl}/doubao-research/tecdo-geo-flow-assessment-report
 - 豆包靠前但网页靠后的产品差异报告: ${siteUrl}/doubao-research/doubao-api-vs-web-search-rank-gap-report
 - 豆包 GEO 与传统 SEO 差异最大的产品清单: ${siteUrl}/doubao-research/doubao-geo-vs-seo-product-gap-report
