@@ -131,10 +131,24 @@
     @if($stickyAd)
         <div id="stickyAd" class="fixed bottom-4 right-4 z-50 max-w-xs rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
             <button type="button" class="absolute right-2 top-2 text-gray-400 hover:text-gray-700" onclick="document.getElementById('stickyAd')?.remove()" aria-label="Close">×</button>
-            @if($stickyAd->title)
-                <div class="mb-2 pr-5 text-sm font-bold text-gray-900">{{ $stickyAd->title }}</div>
+            @php
+                $stickyAdTitle = is_array($stickyAd) ? trim((string) ($stickyAd['title'] ?? '')) : trim((string) ($stickyAd->title ?? ''));
+            @endphp
+            @if($stickyAdTitle !== '')
+                <div class="mb-2 pr-5 text-sm font-bold text-gray-900">{{ $stickyAdTitle }}</div>
             @endif
-            {!! $stickyAd->content_html !!}
+            @if(is_array($stickyAd))
+                @if(trim((string) ($stickyAd['badge'] ?? '')) !== '')
+                    <div class="mb-2 inline-flex rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-600">{{ $stickyAd['badge'] }}</div>
+                @endif
+                <p class="text-sm leading-6 text-gray-600">{{ $stickyAd['copy'] ?? '' }}</p>
+                <a href="{{ $stickyAd['button_url'] ?? '#' }}" class="mt-3 inline-flex items-center text-sm font-semibold text-blue-600">
+                    {{ $stickyAd['button_text'] ?? '' }}
+                    <i data-lucide="arrow-right" class="ml-1 w-4 h-4"></i>
+                </a>
+            @else
+                {!! $stickyAd->content_html !!}
+            @endif
         </div>
     @endif
 @endsection

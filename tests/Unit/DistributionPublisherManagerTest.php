@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\DistributionChannel;
 use App\Services\GeoFlow\DistributionPublisherManager;
+use App\Services\GeoFlow\GenericHttpApiPublisher;
 use App\Services\GeoFlow\GeoFlowAgentPublisher;
 use App\Services\GeoFlow\WordPressRestPublisher;
 use Tests\TestCase;
@@ -24,5 +25,13 @@ class DistributionPublisherManagerTest extends TestCase
         $manager = app(DistributionPublisherManager::class);
 
         $this->assertInstanceOf(WordPressRestPublisher::class, $manager->forChannel($channel));
+    }
+
+    public function test_it_resolves_generic_http_api_publisher(): void
+    {
+        $channel = new DistributionChannel(['channel_type' => 'generic_http_api']);
+        $manager = app(DistributionPublisherManager::class);
+
+        $this->assertInstanceOf(GenericHttpApiPublisher::class, $manager->forChannel($channel));
     }
 }

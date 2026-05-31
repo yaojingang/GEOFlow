@@ -2,6 +2,18 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-05-30
+
+### Distribution Management
+
+- Added Generic HTTP API distribution channels:
+  - Supports no auth, Bearer Token, Basic Auth, custom Header Key, and HMAC signatures.
+  - Supports per-action HTTP methods and paths for health checks, publish, update, delete, and site-settings sync.
+  - Supports `remote_id` / `remote_url` response mapping, success-status configuration, payload wrapping, and request timeout settings.
+  - Generic API channels reuse the existing distribution queue, retries, logs, remote article edit/delete actions, and site-settings sync flow.
+- Distribution channel detail pages now show Generic API onboarding, response-mapping summaries, and a sample payload for third-party receivers.
+- README and localized READMEs now describe the Generic HTTP API channel capability.
+
 ## 2026-05-28
 
 ### v2.0.2

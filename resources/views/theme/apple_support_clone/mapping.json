@@ -1,0 +1,62 @@
+{
+  "header": {
+    "source": "apple.com global nav",
+    "implementation": "Restyle existing site.layout header to a compact translucent global navigation while preserving navCategories from the site composer."
+  },
+  "footer": {
+    "source": "Apple Support footer",
+    "implementation": "Restyle existing footer as a quiet legal footer, preserving GEOFlow copyright text."
+  },
+  "home.hero": {
+    "source": "apple.com first viewport hero",
+    "implementation": "Centered oversized site title, subtitle, search, and two primary text actions mapped to home and archive routes."
+  },
+  "home.featured_list": {
+    "source": "apple.com product tiles",
+    "implementation": "Featured articles render as large product-like editorial tiles with badges and blue text actions."
+  },
+  "home.article_card": {
+    "source": "apple.com lower promo grid",
+    "implementation": "Latest articles use a responsive two-column tile grid and the shared theme article card partial."
+  },
+  "category.article_card": {
+    "source": "support.apple.com/mac support link groups",
+    "implementation": "Category pages show a support-center header, quick topic chips, and compact article rows."
+  },
+  "article.hero": {
+    "source": "support.apple.com/en-us/102655",
+    "implementation": "Narrow support document header with category breadcrumb, title, summary, and published date."
+  },
+  "article.prose_shell": {
+    "source": "Apple Support article body",
+    "implementation": "Rendered article HTML remains untouched and is styled for headings, lists, tables, code, images, and blockquotes."
+  },
+  "article.related_articles": {
+    "source": "Apple Support related topics",
+    "implementation": "Related items are presented as simple numbered support links."
+  },
+  "article.sticky_ad": {
+    "source": "Apple Support help CTA",
+    "implementation": "Existing sticky ad data is rendered as a floating help card with dismiss behavior preserved."
+  },
+  "archive.overview_row": {
+    "source": "Apple Support topic list",
+    "implementation": "Archive months render as quiet list rows with counts."
+  },
+  "archive.article_card": {
+    "source": "Apple Support article links",
+    "implementation": "Archive article rows use the same compact support card partial."
+  },
+  "unchanged_contracts": [
+    "routes",
+    "controllers",
+    "SEO meta and canonical tags",
+    "rendered article HTML",
+    "pagination",
+    "sticky ad close behavior",
+    "admin activation flow"
+  ],
+  "edited_files": [
+    "resources/views/theme/apple_support_clone/*"
+  ]
+}

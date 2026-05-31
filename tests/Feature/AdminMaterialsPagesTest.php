@@ -132,6 +132,7 @@ class AdminMaterialsPagesTest extends TestCase
                 __('admin.knowledge_bases.source_files_title'),
                 __('admin.knowledge_bases.source_text_title'),
             ])
+            ->assertSee(__('admin.knowledge_bases.evidence_metadata_title'))
             ->assertSee('data-knowledge-name-input', false)
             ->assertSee('data-knowledge-description-input', false)
             ->assertSee('data-import-client-error', false)
@@ -177,12 +178,26 @@ class AdminMaterialsPagesTest extends TestCase
                 'description' => '测试描述',
                 'file_type' => 'markdown',
                 'content' => "第一段内容。\n\n第二段内容。",
+                'source_name' => 'GEOFlow 官方文档',
+                'source_url' => 'https://example.com/geoflow',
+                'source_type' => 'document',
+                'business_line' => 'GEO 内容工程',
+                'effective_date' => '2026-05-01',
+                'risk_level' => 'low',
+                'review_status' => 'reviewed',
             ]);
 
         $response->assertRedirect(route('admin.knowledge-bases.index'));
         $this->assertDatabaseHas('knowledge_bases', [
             'name' => '测试知识库',
             'file_type' => 'markdown',
+            'source_name' => 'GEOFlow 官方文档',
+            'source_url' => 'https://example.com/geoflow',
+            'source_type' => 'document',
+            'business_line' => 'GEO 内容工程',
+            'effective_date' => '2026-05-01 00:00:00',
+            'risk_level' => 'low',
+            'review_status' => 'reviewed',
         ]);
         $this->assertGreaterThan(0, KnowledgeBase::query()->count());
     }

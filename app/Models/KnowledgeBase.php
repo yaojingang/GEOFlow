@@ -19,6 +19,13 @@ class KnowledgeBase extends Model
         'file_path',
         'word_count',
         'usage_count',
+        'source_name',
+        'source_url',
+        'source_type',
+        'business_line',
+        'effective_date',
+        'risk_level',
+        'review_status',
     ];
 
     protected function casts(): array
@@ -28,6 +35,7 @@ class KnowledgeBase extends Model
             'used_task_count' => 'integer',
             'word_count' => 'integer',
             'usage_count' => 'integer',
+            'effective_date' => 'date',
         ];
     }
 

@@ -99,7 +99,7 @@ class DistributionChannel extends Model
     {
         $type = (string) ($this->channel_type ?? 'geoflow_agent');
 
-        return in_array($type, ['geoflow_agent', 'wordpress_rest'], true) ? $type : 'geoflow_agent';
+        return in_array($type, ['geoflow_agent', 'wordpress_rest', 'generic_http_api'], true) ? $type : 'geoflow_agent';
     }
 
     public function isGeoFlowAgent(): bool
@@ -110,6 +110,11 @@ class DistributionChannel extends Model
     public function isWordPressRest(): bool
     {
         return $this->channelType() === 'wordpress_rest';
+    }
+
+    public function isGenericHttpApi(): bool
+    {
+        return $this->channelType() === 'generic_http_api';
     }
 
     /**
@@ -140,6 +145,104 @@ class DistributionChannel extends Model
             'wordpress_image_strategy' => in_array($imageStrategy, ['upload_to_media', 'keep_original'], true) ? $imageStrategy : 'upload_to_media',
             'wordpress_content_format' => 'html',
         ];
+    }
+
+    /**
+     * @return array{
+     *   generic_auth_type:string,
+     *   generic_basic_username:string,
+     *   generic_header_name:string,
+     *   generic_hmac_key_id_header:string,
+     *   generic_hmac_signature_header:string,
+     *   generic_hmac_timestamp_header:string,
+     *   generic_hmac_nonce_header:string,
+     *   generic_hmac_body_hash_header:string,
+     *   generic_timeout_seconds:int,
+     *   generic_success_statuses:list<int>,
+     *   generic_health_method:string,
+     *   generic_health_path:string,
+     *   generic_publish_method:string,
+     *   generic_publish_path:string,
+     *   generic_update_method:string,
+     *   generic_update_path:string,
+     *   generic_delete_method:string,
+     *   generic_delete_path:string,
+     *   generic_settings_method:string,
+     *   generic_settings_path:string,
+     *   generic_remote_id_path:string,
+     *   generic_remote_url_path:string,
+     *   generic_payload_wrapper:string
+     * }
+     */
+    public function resolvedGenericHttpConfig(): array
+    {
+        $stored = is_array($this->channel_config) ? $this->channel_config : [];
+        $authType = (string) ($stored['generic_auth_type'] ?? 'bearer');
+        $payloadWrapper = (string) ($stored['generic_payload_wrapper'] ?? 'none');
+
+        return [
+            'generic_auth_type' => in_array($authType, ['none', 'bearer', 'basic', 'header_key', 'hmac'], true) ? $authType : 'bearer',
+            'generic_basic_username' => trim((string) ($stored['generic_basic_username'] ?? '')),
+            'generic_header_name' => trim((string) ($stored['generic_header_name'] ?? 'X-API-Key')) ?: 'X-API-Key',
+            'generic_hmac_key_id_header' => trim((string) ($stored['generic_hmac_key_id_header'] ?? 'X-GEOFlow-Key-Id')) ?: 'X-GEOFlow-Key-Id',
+            'generic_hmac_signature_header' => trim((string) ($stored['generic_hmac_signature_header'] ?? 'X-GEOFlow-Signature')) ?: 'X-GEOFlow-Signature',
+            'generic_hmac_timestamp_header' => trim((string) ($stored['generic_hmac_timestamp_header'] ?? 'X-GEOFlow-Timestamp')) ?: 'X-GEOFlow-Timestamp',
+            'generic_hmac_nonce_header' => trim((string) ($stored['generic_hmac_nonce_header'] ?? 'X-GEOFlow-Nonce')) ?: 'X-GEOFlow-Nonce',
+            'generic_hmac_body_hash_header' => trim((string) ($stored['generic_hmac_body_hash_header'] ?? 'X-GEOFlow-Body-SHA256')) ?: 'X-GEOFlow-Body-SHA256',
+            'generic_timeout_seconds' => min(120, max(5, (int) ($stored['generic_timeout_seconds'] ?? 30))),
+            'generic_success_statuses' => $this->genericSuccessStatuses($stored['generic_success_statuses'] ?? [200, 201, 202, 204]),
+            'generic_health_method' => $this->genericHttpMethod($stored['generic_health_method'] ?? 'GET', ['GET', 'POST'], 'GET'),
+            'generic_health_path' => $this->genericPath($stored['generic_health_path'] ?? '/health'),
+            'generic_publish_method' => $this->genericHttpMethod($stored['generic_publish_method'] ?? 'POST', ['POST', 'PUT', 'PATCH'], 'POST'),
+            'generic_publish_path' => $this->genericPath($stored['generic_publish_path'] ?? '/articles'),
+            'generic_update_method' => $this->genericHttpMethod($stored['generic_update_method'] ?? 'POST', ['POST', 'PUT', 'PATCH'], 'POST'),
+            'generic_update_path' => $this->genericPath($stored['generic_update_path'] ?? '/articles/{remote_id}'),
+            'generic_delete_method' => $this->genericHttpMethod($stored['generic_delete_method'] ?? 'DELETE', ['DELETE', 'POST'], 'DELETE'),
+            'generic_delete_path' => $this->genericPath($stored['generic_delete_path'] ?? '/articles/{remote_id}'),
+            'generic_settings_method' => $this->genericHttpMethod($stored['generic_settings_method'] ?? 'POST', ['POST', 'PUT', 'PATCH'], 'POST'),
+            'generic_settings_path' => $this->genericPath($stored['generic_settings_path'] ?? ''),
+            'generic_remote_id_path' => trim((string) ($stored['generic_remote_id_path'] ?? 'id')),
+            'generic_remote_url_path' => trim((string) ($stored['generic_remote_url_path'] ?? 'url')),
+            'generic_payload_wrapper' => in_array($payloadWrapper, ['none', 'data'], true) ? $payloadWrapper : 'none',
+        ];
+    }
+
+    /**
+     * @param  mixed  $value
+     * @return list<int>
+     */
+    private function genericSuccessStatuses(mixed $value): array
+    {
+        $items = is_array($value) ? $value : explode(',', (string) $value);
+        $statuses = [];
+        foreach ($items as $item) {
+            $status = (int) $item;
+            if ($status >= 100 && $status <= 599 && ! in_array($status, $statuses, true)) {
+                $statuses[] = $status;
+            }
+        }
+
+        return $statuses !== [] ? $statuses : [200, 201, 202, 204];
+    }
+
+    /**
+     * @param  list<string>  $allowed
+     */
+    private function genericHttpMethod(mixed $method, array $allowed, string $default): string
+    {
+        $method = strtoupper(trim((string) $method));
+
+        return in_array($method, $allowed, true) ? $method : $default;
+    }
+
+    private function genericPath(mixed $path): string
+    {
+        $path = trim((string) $path);
+        if ($path === '') {
+            return '';
+        }
+
+        return str_starts_with($path, '/') ? $path : '/'.$path;
     }
 
     public function wordpressRestBaseUrl(): string

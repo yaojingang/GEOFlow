@@ -105,6 +105,16 @@ class DistributionController extends Controller
                 ->with('message', __('admin.distribution.message.created'));
         }
 
+        if ($channel->isGenericHttpApi()) {
+            if ($channel->resolvedGenericHttpConfig()['generic_auth_type'] !== 'none') {
+                $this->createGenericHttpSecret($channel, (string) $payload['generic_secret']);
+            }
+
+            return redirect()
+                ->route('admin.distribution.show', ['channelId' => (int) $channel->id])
+                ->with('message', __('admin.distribution.message.created'));
+        }
+
         $secret = $this->createChannelSecret($channel);
 
         return redirect()
@@ -145,6 +155,20 @@ class DistributionController extends Controller
         }
 
         $payload = $this->validateChannel($request);
+        $payload['channel_type'] = $channel->channelType();
+        if (($payload['channel_type'] ?? 'geoflow_agent') === 'generic_http_api') {
+            $genericAuthType = (string) ($payload['generic_auth_type'] ?? 'bearer');
+            $hasActiveSecret = DistributionChannelSecret::query()
+                ->where('distribution_channel_id', (int) $channel->id)
+                ->where('status', 'active')
+                ->exists();
+            if ($genericAuthType !== 'none' && ! $hasActiveSecret && ! filled($payload['generic_secret'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'generic_secret' => __('admin.distribution.validation.generic_secret'),
+                ]);
+            }
+        }
+
         $channel->forceFill([
             'name' => (string) $payload['name'],
             'domain' => $this->normalizeDomain((string) $payload['domain']),
@@ -165,10 +189,25 @@ class DistributionController extends Controller
                 ->update(['status' => 'revoked']);
             $this->createWordPressSecret($channel, (string) $payload['wordpress_application_password']);
         }
+        if ($channel->isGenericHttpApi()) {
+            $genericAuthType = $channel->resolvedGenericHttpConfig()['generic_auth_type'];
+            if ($genericAuthType === 'none') {
+                DistributionChannelSecret::query()
+                    ->where('distribution_channel_id', (int) $channel->id)
+                    ->where('status', 'active')
+                    ->update(['status' => 'revoked']);
+            } elseif (filled($payload['generic_secret'] ?? null)) {
+                DistributionChannelSecret::query()
+                    ->where('distribution_channel_id', (int) $channel->id)
+                    ->where('status', 'active')
+                    ->update(['status' => 'revoked']);
+                $this->createGenericHttpSecret($channel, (string) $payload['generic_secret']);
+            }
+        }
 
         $message = __('admin.distribution.message.updated');
         $channel->load('activeSecret');
-        if ($channel->activeSecret) {
+        if ($channel->activeSecret || ($channel->isGenericHttpApi() && $channel->resolvedGenericHttpConfig()['generic_auth_type'] === 'none')) {
             try {
                 $this->syncChannelSiteSettings($channel);
                 $message = __('admin.distribution.message.updated_and_settings_synced');
@@ -273,8 +312,8 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
-        if ($channel->isWordPressRest()) {
-            return back()->withErrors(__('admin.distribution.message.wordpress_secret_rotation_hint'));
+        if (! $channel->isGeoFlowAgent()) {
+            return back()->withErrors(__('admin.distribution.message.secret_rotation_not_available'));
         }
 
         DistributionChannelSecret::query()
@@ -358,8 +397,8 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
-        if ($channel->isWordPressRest()) {
-            return back()->withErrors(__('admin.distribution.message.package_not_available_for_wordpress'));
+        if (! $channel->isGeoFlowAgent()) {
+            return back()->withErrors(__('admin.distribution.message.package_not_available_for_channel_type'));
         }
 
         /** @var Admin|null $admin */
@@ -690,7 +729,7 @@ class DistributionController extends Controller
             'name' => ['required', 'string', 'max:120'],
             'domain' => ['required', 'string', 'max:255'],
             'endpoint_url' => ['required', 'string', 'max:500'],
-            'channel_type' => ['nullable', 'string', 'in:geoflow_agent,wordpress_rest'],
+            'channel_type' => ['nullable', 'string', 'in:geoflow_agent,wordpress_rest,generic_http_api'],
             'front_mode' => ['nullable', 'string', 'in:static,rewrite'],
             'template_key' => ['nullable', 'string', 'max:120'],
             'status' => ['required', 'string', 'in:active,paused'],
@@ -702,6 +741,30 @@ class DistributionController extends Controller
             'wordpress_fixed_category' => ['nullable', 'string', 'max:120'],
             'wordpress_tag_strategy' => ['nullable', 'string', 'in:keywords_to_tags,disabled'],
             'wordpress_image_strategy' => ['nullable', 'string', 'in:upload_to_media,keep_original'],
+            'generic_auth_type' => ['nullable', 'string', 'in:none,bearer,basic,header_key,hmac'],
+            'generic_basic_username' => ['nullable', 'string', 'max:120'],
+            'generic_secret' => ['nullable', 'string', 'max:1000'],
+            'generic_header_name' => ['nullable', 'string', 'max:120'],
+            'generic_hmac_key_id_header' => ['nullable', 'string', 'max:120'],
+            'generic_hmac_signature_header' => ['nullable', 'string', 'max:120'],
+            'generic_hmac_timestamp_header' => ['nullable', 'string', 'max:120'],
+            'generic_hmac_nonce_header' => ['nullable', 'string', 'max:120'],
+            'generic_hmac_body_hash_header' => ['nullable', 'string', 'max:120'],
+            'generic_timeout_seconds' => ['nullable', 'integer', 'min:5', 'max:120'],
+            'generic_success_statuses' => ['nullable', 'string', 'max:120'],
+            'generic_health_method' => ['nullable', 'string', 'in:GET,POST,PUT,PATCH,DELETE'],
+            'generic_health_path' => ['nullable', 'string', 'max:255'],
+            'generic_publish_method' => ['nullable', 'string', 'in:GET,POST,PUT,PATCH,DELETE'],
+            'generic_publish_path' => ['nullable', 'string', 'max:255'],
+            'generic_update_method' => ['nullable', 'string', 'in:GET,POST,PUT,PATCH,DELETE'],
+            'generic_update_path' => ['nullable', 'string', 'max:255'],
+            'generic_delete_method' => ['nullable', 'string', 'in:GET,POST,PUT,PATCH,DELETE'],
+            'generic_delete_path' => ['nullable', 'string', 'max:255'],
+            'generic_settings_method' => ['nullable', 'string', 'in:GET,POST,PUT,PATCH,DELETE'],
+            'generic_settings_path' => ['nullable', 'string', 'max:255'],
+            'generic_remote_id_path' => ['nullable', 'string', 'max:120'],
+            'generic_remote_url_path' => ['nullable', 'string', 'max:120'],
+            'generic_payload_wrapper' => ['nullable', 'string', 'in:none,data'],
             'site_name' => ['nullable', 'string', 'max:120'],
             'site_subtitle' => ['nullable', 'string', 'max:255'],
             'site_description' => ['nullable', 'string'],
@@ -733,6 +796,58 @@ class DistributionController extends Controller
                 throw ValidationException::withMessages([
                     'wordpress_application_password' => __('admin.distribution.validation.wordpress_application_password'),
                 ]);
+            }
+        }
+        if ($payload['channel_type'] === 'generic_http_api') {
+            $authType = (string) ($payload['generic_auth_type'] ?? 'bearer');
+            if ($authType === 'basic' && ! filled($payload['generic_basic_username'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'generic_basic_username' => __('admin.distribution.validation.generic_basic_username'),
+                ]);
+            }
+            if ($request->isMethod('post') && $authType !== 'none' && ! filled($payload['generic_secret'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'generic_secret' => __('admin.distribution.validation.generic_secret'),
+                ]);
+            }
+            $successStatuses = $this->normalizeGenericSuccessStatuses($payload['generic_success_statuses'] ?? '200,201,202,204');
+            if ($successStatuses === []) {
+                throw ValidationException::withMessages([
+                    'generic_success_statuses' => __('admin.distribution.validation.generic_success_statuses'),
+                ]);
+            }
+            $payload['generic_success_statuses'] = implode(',', $successStatuses);
+            foreach ($this->genericMethodRules() as $field => $rule) {
+                [$allowedMethods, $defaultMethod] = $rule;
+                $method = strtoupper(trim((string) ($payload[$field] ?? $defaultMethod)));
+                if (! in_array($method, $allowedMethods, true)) {
+                    throw ValidationException::withMessages([
+                        $field => __('admin.distribution.validation.generic_method', ['methods' => implode(', ', $allowedMethods)]),
+                    ]);
+                }
+                $payload[$field] = $method;
+            }
+            foreach ($this->genericHeaderNameFields() as $field) {
+                $headerName = trim((string) ($payload[$field] ?? ''));
+                if ($headerName !== '' && ! $this->isValidHttpHeaderName($headerName)) {
+                    throw ValidationException::withMessages([
+                        $field => __('admin.distribution.validation.generic_header_name'),
+                    ]);
+                }
+            }
+            foreach ($this->genericPathFields() as $field => $required) {
+                $path = trim((string) ($payload[$field] ?? ''));
+                if ($required && $path === '') {
+                    throw ValidationException::withMessages([
+                        $field => __('admin.distribution.validation.generic_path_required'),
+                    ]);
+                }
+                if ($path !== '' && (! $this->isValidGenericPath($path))) {
+                    throw ValidationException::withMessages([
+                        $field => __('admin.distribution.validation.generic_path'),
+                    ]);
+                }
+                $payload[$field] = $path;
             }
         }
 
@@ -781,7 +896,39 @@ class DistributionController extends Controller
      */
     private function normalizeChannelConfig(array $payload, ?DistributionChannel $channel = null): array
     {
-        if ((string) ($payload['channel_type'] ?? 'geoflow_agent') !== 'wordpress_rest') {
+        $channelType = (string) ($payload['channel_type'] ?? 'geoflow_agent');
+
+        if ($channelType === 'generic_http_api') {
+            $defaults = $channel?->resolvedGenericHttpConfig() ?? (new DistributionChannel)->resolvedGenericHttpConfig();
+
+            return [
+                'generic_auth_type' => (string) ($payload['generic_auth_type'] ?? $defaults['generic_auth_type']),
+                'generic_basic_username' => trim((string) ($payload['generic_basic_username'] ?? $defaults['generic_basic_username'])),
+                'generic_header_name' => trim((string) ($payload['generic_header_name'] ?? $defaults['generic_header_name'])),
+                'generic_hmac_key_id_header' => trim((string) ($payload['generic_hmac_key_id_header'] ?? $defaults['generic_hmac_key_id_header'])),
+                'generic_hmac_signature_header' => trim((string) ($payload['generic_hmac_signature_header'] ?? $defaults['generic_hmac_signature_header'])),
+                'generic_hmac_timestamp_header' => trim((string) ($payload['generic_hmac_timestamp_header'] ?? $defaults['generic_hmac_timestamp_header'])),
+                'generic_hmac_nonce_header' => trim((string) ($payload['generic_hmac_nonce_header'] ?? $defaults['generic_hmac_nonce_header'])),
+                'generic_hmac_body_hash_header' => trim((string) ($payload['generic_hmac_body_hash_header'] ?? $defaults['generic_hmac_body_hash_header'])),
+                'generic_timeout_seconds' => min(120, max(5, (int) ($payload['generic_timeout_seconds'] ?? $defaults['generic_timeout_seconds']))),
+                'generic_success_statuses' => $this->normalizeGenericSuccessStatuses($payload['generic_success_statuses'] ?? $defaults['generic_success_statuses']),
+                'generic_health_method' => strtoupper((string) ($payload['generic_health_method'] ?? $defaults['generic_health_method'])),
+                'generic_health_path' => $this->normalizeGenericPath($payload['generic_health_path'] ?? $defaults['generic_health_path']),
+                'generic_publish_method' => strtoupper((string) ($payload['generic_publish_method'] ?? $defaults['generic_publish_method'])),
+                'generic_publish_path' => $this->normalizeGenericPath($payload['generic_publish_path'] ?? $defaults['generic_publish_path']),
+                'generic_update_method' => strtoupper((string) ($payload['generic_update_method'] ?? $defaults['generic_update_method'])),
+                'generic_update_path' => $this->normalizeGenericPath($payload['generic_update_path'] ?? $defaults['generic_update_path']),
+                'generic_delete_method' => strtoupper((string) ($payload['generic_delete_method'] ?? $defaults['generic_delete_method'])),
+                'generic_delete_path' => $this->normalizeGenericPath($payload['generic_delete_path'] ?? $defaults['generic_delete_path']),
+                'generic_settings_method' => strtoupper((string) ($payload['generic_settings_method'] ?? $defaults['generic_settings_method'])),
+                'generic_settings_path' => $this->normalizeGenericPath($payload['generic_settings_path'] ?? $defaults['generic_settings_path']),
+                'generic_remote_id_path' => trim((string) ($payload['generic_remote_id_path'] ?? $defaults['generic_remote_id_path'])),
+                'generic_remote_url_path' => trim((string) ($payload['generic_remote_url_path'] ?? $defaults['generic_remote_url_path'])),
+                'generic_payload_wrapper' => (string) ($payload['generic_payload_wrapper'] ?? $defaults['generic_payload_wrapper']),
+            ];
+        }
+
+        if ($channelType !== 'wordpress_rest') {
             return [];
         }
 
@@ -837,6 +984,98 @@ class DistributionController extends Controller
             'status' => 'active',
             'scopes' => ['wordpress.rest'],
         ]);
+    }
+
+    private function createGenericHttpSecret(DistributionChannel $channel, string $secret): void
+    {
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'gapi_'.Str::lower(Str::random(18)),
+            'secret_ciphertext' => $this->apiKeyCrypto->encrypt($secret),
+            'status' => 'active',
+            'scopes' => ['generic.http'],
+        ]);
+    }
+
+    /**
+     * @param  mixed  $value
+     * @return list<int>
+     */
+    private function normalizeGenericSuccessStatuses(mixed $value): array
+    {
+        $items = is_array($value) ? $value : explode(',', (string) $value);
+        $statuses = [];
+        foreach ($items as $item) {
+            $status = (int) trim((string) $item);
+            if ($status >= 100 && $status <= 599 && ! in_array($status, $statuses, true)) {
+                $statuses[] = $status;
+            }
+        }
+
+        return $statuses;
+    }
+
+    private function normalizeGenericPath(mixed $path): string
+    {
+        $path = trim((string) $path);
+        if ($path === '') {
+            return '';
+        }
+
+        return str_starts_with($path, '/') ? $path : '/'.$path;
+    }
+
+    /**
+     * @return array<string,array{0:list<string>,1:string}>
+     */
+    private function genericMethodRules(): array
+    {
+        return [
+            'generic_health_method' => [['GET', 'POST'], 'GET'],
+            'generic_publish_method' => [['POST', 'PUT', 'PATCH'], 'POST'],
+            'generic_update_method' => [['POST', 'PUT', 'PATCH'], 'POST'],
+            'generic_delete_method' => [['DELETE', 'POST'], 'DELETE'],
+            'generic_settings_method' => [['POST', 'PUT', 'PATCH'], 'POST'],
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function genericHeaderNameFields(): array
+    {
+        return [
+            'generic_header_name',
+            'generic_hmac_key_id_header',
+            'generic_hmac_signature_header',
+            'generic_hmac_timestamp_header',
+            'generic_hmac_nonce_header',
+            'generic_hmac_body_hash_header',
+        ];
+    }
+
+    private function isValidHttpHeaderName(string $headerName): bool
+    {
+        return preg_match('/^[A-Za-z0-9!#$%&\'*+\-.^_`|~]+$/', $headerName) === 1;
+    }
+
+    /**
+     * @return array<string,bool>
+     */
+    private function genericPathFields(): array
+    {
+        return [
+            'generic_health_path' => true,
+            'generic_publish_path' => true,
+            'generic_update_path' => true,
+            'generic_delete_path' => true,
+            'generic_settings_path' => false,
+        ];
+    }
+
+    private function isValidGenericPath(string $path): bool
+    {
+        return ! str_contains($path, '://') && preg_match('/\s/', $path) !== 1;
     }
 
     private function setStatus(int $channelId, string $status, string $message): RedirectResponse

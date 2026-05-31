@@ -55,6 +55,21 @@ class WorkerExecutionServicePromptTest extends TestCase
         $this->assertStringContainsString('Please output only the final article body in Markdown.', $prompt);
     }
 
+    public function test_prompt_with_knowledge_context_adds_evidence_citation_rule(): void
+    {
+        $prompt = $this->renderContentPrompt(
+            'GEO 诊断怎么做？',
+            'GEO 诊断',
+            '请写一篇基于事实证据的文章。',
+            "【知识库证据】\n【证据 K1】\n来源：GEOFlow 官方文档\n内容：GEO 诊断需要先定位问题。"
+        );
+
+        $this->assertStringContainsString('【证据 K1】', $prompt);
+        $this->assertStringContainsString('知识库引用要求', $prompt);
+        $this->assertStringContainsString('[K1]', $prompt);
+        $this->assertStringContainsString('证据不足时不要编造来源或结论', $prompt);
+    }
+
     public function test_unknown_template_blocks_are_preserved_for_future_extensions(): void
     {
         $prompt = $this->renderContentPrompt(

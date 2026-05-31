@@ -33,6 +33,7 @@ class WorkerExecutionService
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
+        private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
         private readonly DistributionOrchestrator $distributionOrchestrator
     ) {}
 
@@ -494,7 +495,12 @@ class WorkerExecutionService
             $renderedPrompt = $this->appendSmartPromptContext($renderedPrompt, $title, $keyword, $knowledgeContext);
         }
 
-        return trim($renderedPrompt)."\n\n".$this->finalPromptInstruction($renderedPrompt);
+        $finalInstructions = array_values(array_filter([
+            $this->knowledgeCitationInstruction($renderedPrompt, $knowledgeContext),
+            $this->finalPromptInstruction($renderedPrompt),
+        ], static fn (string $instruction): bool => trim($instruction) !== ''));
+
+        return trim($renderedPrompt)."\n\n".implode("\n", $finalInstructions);
     }
 
     private function promptHasKnownContextVariables(string $prompt): bool
@@ -589,6 +595,19 @@ class WorkerExecutionService
         return '请直接输出最终文章正文（Markdown），不要重复提示词、不要输出占位符。';
     }
 
+    private function knowledgeCitationInstruction(string $prompt, string $knowledgeContext): string
+    {
+        if (trim($knowledgeContext) === '') {
+            return '';
+        }
+
+        if ($this->isLikelyEnglishPrompt($prompt)) {
+            return 'Knowledge citation rule: when using facts, data, or business judgments from the reference knowledge, cite the evidence ID such as [K1] in the relevant sentence. If the evidence is insufficient, use cautious wording and do not invent sources or conclusions.';
+        }
+
+        return '知识库引用要求：涉及事实、数据或业务判断时，优先依据参考知识中的 [K1] 等证据编号，并在相关句子后标注证据编号；证据不足时不要编造来源或结论。';
+    }
+
     private function isLikelyEnglishPrompt(string $prompt): bool
     {
         preg_match_all('/\p{Han}/u', $prompt, $cjkMatches);
@@ -625,9 +644,14 @@ class WorkerExecutionService
         }
 
         $query = trim($title."\n".$keyword);
-        $context = $this->fetchKnowledgeContextFromChunks($knowledgeBaseId, $query, 4, 2400);
+        $context = $this->knowledgeRetrievalService->retrieveContext($knowledgeBaseId, $query, 5, 3200);
         if ($context !== '') {
             return $context;
+        }
+
+        $chunkCount = KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->count();
+        if ($chunkCount > 0) {
+            return '';
         }
 
         return mb_strlen($content, 'UTF-8') > 2400 ? mb_substr($content, 0, 2400, 'UTF-8') : $content;

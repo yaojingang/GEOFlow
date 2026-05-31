@@ -87,10 +87,24 @@
 
                 @if($stickyAd)
                     <section class="ne-ad-slot">
-                        @if($stickyAd->title)
-                            <h2>{{ $stickyAd->title }}</h2>
+                        @php
+                            $stickyAdTitle = is_array($stickyAd) ? trim((string) ($stickyAd['title'] ?? '')) : trim((string) ($stickyAd->title ?? ''));
+                        @endphp
+                        @if($stickyAdTitle !== '')
+                            <h2>{{ $stickyAdTitle }}</h2>
                         @endif
-                        {!! $stickyAd->content_html !!}
+                        @if(is_array($stickyAd))
+                            @if(trim((string) ($stickyAd['badge'] ?? '')) !== '')
+                                <div class="ne-card-kicker">{{ $stickyAd['badge'] }}</div>
+                            @endif
+                            <p>{{ $stickyAd['copy'] ?? '' }}</p>
+                            <a href="{{ $stickyAd['button_url'] ?? '#' }}" class="ne-card-action">
+                                {{ $stickyAd['button_text'] ?? '' }}
+                                <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                            </a>
+                        @else
+                            {!! $stickyAd->content_html !!}
+                        @endif
                     </section>
                 @endif
             </article>

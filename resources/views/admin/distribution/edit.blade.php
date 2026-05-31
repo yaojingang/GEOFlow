@@ -1,11 +1,21 @@
 @extends('admin.layouts.app')
 
-@php($remoteSettings = $remoteSiteSettings ?? $channel->resolvedSiteSettings())
-@php($themes = $availableThemes ?? [])
-@php($selectedTheme = old('template_key', (string) ($channel->template_key ?? '')))
-@php($frontMode = old('front_mode', method_exists($channel, 'frontMode') ? $channel->frontMode() : ((string) ($channel->front_mode ?? 'static'))))
-@php($channelType = old('channel_type', $channel->channelType()))
-@php($channelConfig = $channel->resolvedChannelConfig())
+@php
+    $remoteSettings = $remoteSiteSettings ?? $channel->resolvedSiteSettings();
+    $themes = $availableThemes ?? [];
+    $selectedTheme = old('template_key', (string) ($channel->template_key ?? ''));
+    $frontMode = old('front_mode', method_exists($channel, 'frontMode') ? $channel->frontMode() : ((string) ($channel->front_mode ?? 'static')));
+    $channelType = $channel->channelType();
+    $channelConfig = $channel->resolvedChannelConfig();
+    $genericConfig = $channel->resolvedGenericHttpConfig();
+    $genericEndpointMethods = [
+        'health' => ['GET', 'POST'],
+        'publish' => ['POST', 'PUT', 'PATCH'],
+        'update' => ['POST', 'PUT', 'PATCH'],
+        'delete' => ['DELETE', 'POST'],
+        'settings' => ['POST', 'PUT', 'PATCH'],
+    ];
+@endphp
 
 @section('content')
     <div class="px-4 sm:px-0">
@@ -133,7 +143,96 @@
                                 </div>
                             </div>
                         </div>
-                    @else
+                    @elseif ($channel->isGenericHttpApi())
+                        <div class="rounded-lg border border-indigo-100 bg-indigo-50 p-5">
+                            <div class="mb-5">
+                                <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.generic.section_title') }}</h2>
+                                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.distribution.generic.edit_section_desc') }}</p>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+                                <div>
+                                    <label for="generic_auth_type" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.generic.auth_type') }}</label>
+                                    <select id="generic_auth_type" name="generic_auth_type" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        @foreach (['bearer', 'none', 'basic', 'header_key', 'hmac'] as $authType)
+                                            <option value="{{ $authType }}" @selected(old('generic_auth_type', $genericConfig['generic_auth_type']) === $authType)>{{ __('admin.distribution.generic.auth_'.$authType) }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div data-generic-auth-row="basic">
+                                    <label for="generic_basic_username" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.generic.basic_username') }}</label>
+                                    <input id="generic_basic_username" name="generic_basic_username" type="text" value="{{ old('generic_basic_username', $genericConfig['generic_basic_username']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="api-user">
+                                </div>
+                                <div data-generic-auth-secret>
+                                    <label for="generic_secret" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.generic.secret') }}</label>
+                                    <input id="generic_secret" name="generic_secret" type="password" value="{{ old('generic_secret') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" autocomplete="new-password" placeholder="{{ __('admin.distribution.generic.secret_placeholder') }}">
+                                    <p class="mt-1 text-xs text-gray-500">{{ __('admin.distribution.generic.secret_update_help') }}</p>
+                                </div>
+                            </div>
+
+                            <div class="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
+                                <div data-generic-auth-row="header_key">
+                                    <label for="generic_header_name" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.generic.header_name') }}</label>
+                                    <input id="generic_header_name" name="generic_header_name" type="text" value="{{ old('generic_header_name', $genericConfig['generic_header_name']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="generic_timeout_seconds" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.generic.timeout_seconds') }}</label>
+                                    <input id="generic_timeout_seconds" name="generic_timeout_seconds" type="number" min="5" max="120" value="{{ old('generic_timeout_seconds', $genericConfig['generic_timeout_seconds']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="generic_success_statuses" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.generic.success_statuses') }}</label>
+                                    <input id="generic_success_statuses" name="generic_success_statuses" type="text" value="{{ old('generic_success_statuses', implode(',', $genericConfig['generic_success_statuses'])) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                            </div>
+
+                            <div class="mt-6 rounded-lg border border-indigo-100 bg-white p-4">
+                                <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.distribution.generic.endpoint_section') }}</h3>
+                                <p class="mt-1 text-xs leading-5 text-gray-500">{{ __('admin.distribution.generic.endpoint_help') }}</p>
+                                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    @foreach ([
+                                        ['generic_health_method', 'generic_health_path', 'health'],
+                                        ['generic_publish_method', 'generic_publish_path', 'publish'],
+                                        ['generic_update_method', 'generic_update_path', 'update'],
+                                        ['generic_delete_method', 'generic_delete_path', 'delete'],
+                                        ['generic_settings_method', 'generic_settings_path', 'settings'],
+                                    ] as [$methodName, $pathName, $labelKey])
+                                        <div class="grid grid-cols-3 gap-3">
+                                            <div>
+                                                <label for="{{ $methodName }}" class="block text-xs font-medium text-gray-600">{{ __('admin.distribution.generic.endpoint_'.$labelKey) }}</label>
+                                                <select id="{{ $methodName }}" name="{{ $methodName }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                @foreach ($genericEndpointMethods[$labelKey] as $method)
+                                                    <option value="{{ $method }}" @selected(old($methodName, $genericConfig[$methodName]) === $method)>{{ $method }}</option>
+                                                @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="col-span-2">
+                                                <label for="{{ $pathName }}" class="block text-xs font-medium text-gray-600">{{ __('admin.distribution.generic.path') }}</label>
+                                                <input id="{{ $pathName }}" name="{{ $pathName }}" type="text" value="{{ old($pathName, $genericConfig[$pathName]) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+
+                            <div class="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
+                                <div>
+                                    <label for="generic_payload_wrapper" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.generic.payload_wrapper') }}</label>
+                                    <select id="generic_payload_wrapper" name="generic_payload_wrapper" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option value="none" @selected(old('generic_payload_wrapper', $genericConfig['generic_payload_wrapper']) === 'none')>{{ __('admin.distribution.generic.wrapper_none') }}</option>
+                                        <option value="data" @selected(old('generic_payload_wrapper', $genericConfig['generic_payload_wrapper']) === 'data')>{{ __('admin.distribution.generic.wrapper_data') }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="generic_remote_id_path" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.generic.remote_id_path') }}</label>
+                                    <input id="generic_remote_id_path" name="generic_remote_id_path" type="text" value="{{ old('generic_remote_id_path', $genericConfig['generic_remote_id_path']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="data.id">
+                                </div>
+                                <div>
+                                    <label for="generic_remote_url_path" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.generic.remote_url_path') }}</label>
+                                    <input id="generic_remote_url_path" name="generic_remote_url_path" type="text" value="{{ old('generic_remote_url_path', $genericConfig['generic_remote_url_path']) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="data.url">
+                                </div>
+                            </div>
+                        </div>
+                    @elseif ($channel->isGeoFlowAgent())
                         <fieldset class="rounded-lg border border-gray-200 bg-gray-50 p-4">
                             <legend class="text-sm font-medium text-gray-900">{{ __('admin.distribution.field.front_mode') }}</legend>
                             <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.help.front_mode') }}</p>
@@ -277,4 +376,25 @@
             </div>
         </div>
     </div>
+    <script>
+        function toggleGenericAuthFields() {
+            var select = document.getElementById('generic_auth_type');
+            if (!select) {
+                return;
+            }
+            var authType = select.value;
+            document.querySelectorAll('[data-generic-auth-row]').forEach(function (field) {
+                field.classList.toggle('hidden', field.dataset.genericAuthRow !== authType);
+            });
+            document.querySelectorAll('[data-generic-auth-secret]').forEach(function (field) {
+                field.classList.toggle('hidden', authType === 'none');
+            });
+        }
+        document.addEventListener('change', function (event) {
+            if (event.target.matches('#generic_auth_type')) {
+                toggleGenericAuthFields();
+            }
+        });
+        toggleGenericAuthFields();
+    </script>
 @endsection

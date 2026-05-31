@@ -878,6 +878,27 @@ html body div.prose-lg blockquote,
     white-space: nowrap;
 }
 
+.article-prose .task-list-item,
+.prose .task-list-item {
+    list-style: none;
+    margin-left: -1.4rem;
+}
+
+.article-prose .task-list-item input[type="checkbox"],
+.prose .task-list-item input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    margin-right: 0.55rem;
+    vertical-align: -0.12em;
+    accent-color: #111827;
+}
+
+.article-prose del,
+.prose del {
+    color: #64748b;
+    text-decoration-thickness: 0.08em;
+}
+
 /* 引用块样式 - 灰色主题 - 强制覆盖 */
 .prose blockquote,
 .prose-lg blockquote,

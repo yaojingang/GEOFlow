@@ -2,7 +2,7 @@
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
-> GEOFlow is an open-source GEO (Generative Engine Optimization) content engineering and multi-site distribution system. It connects knowledge bases, material libraries, prompts, AI generation tasks, review and publishing, analytics, GEOFlow Agent target-site packages, WordPress REST channels, and remote static-page distribution into one maintainable workflow for turning trustworthy source material into trackable, publishable, multi-channel GEO content assets.
+> GEOFlow is an open-source GEO (Generative Engine Optimization) content engineering and multi-site distribution system. It connects knowledge bases, material libraries, prompts, AI generation tasks, review and publishing, analytics, GEOFlow Agent target-site packages, WordPress REST channels, Generic HTTP API channels, and remote static-page distribution into one maintainable workflow for turning trustworthy source material into trackable, publishable, multi-channel GEO content assets.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
@@ -25,7 +25,7 @@ GEOFlow is released under the [Apache License 2.0](../../LICENSE). You may use, 
 | 🗂 Materials and prompts | Title libraries, keyword libraries, image libraries, authors, knowledge bases, body prompts, and special prompts |
 | 📦 Task automation | Generation limits, draft pools, review toggles, publishing cadence, queues, retries, publication-scope control, and task-scoped article filtering |
 | 📋 Review and article management | Drafts, review, publishing, trash, authors, categories, SEO fields, and task source tracking |
-| 📡 Multi-site distribution | GEOFlow Agent and WordPress REST channels, secrets, target-site packages, static mode, rewrite rules, remote article editing/deletion, queues, and logs |
+| 📡 Multi-site distribution | GEOFlow Agent, WordPress REST, and Generic HTTP API channels, secrets, target-site packages, static mode, rewrite rules, remote article editing/deletion, queues, and logs |
 | 🧾 Target-site packages | Per-channel PHP Agent packages with homepage, article pages, static assets, sitemap, `llms.txt` / TXT maps, and Schema output |
 | 📊 Analytics | System overview, single-site operations, multi-site distribution, access logs, top content, AI crawler recognition, and trend charts |
 | 🔍 SEO and LLM-friendly output | SEO metadata, Open Graph, Schema, GFM Markdown, standalone CSS, image sync, sitemap, and TXT maps |
@@ -65,7 +65,7 @@ GEOFlow 2.0 highlights include:
 - **Gemini and OpenAI-compatible providers are both first-class**: model setup covers OpenAI-style providers and native Gemini chat / embedding routes.
 - **Knowledge bases support semantic chunk planning**: choose structured rule chunking, automatic strategy, or optional LLM semantic planning; the LLM plans boundaries while final chunks are rebuilt from the source text.
 - **Standalone Analytics page**: system overview, content operations, task health, material health, distribution status, access logs, and AI crawler trends live under `/admin/analytics`.
-- **Distribution Management is usable end to end**: GEOFlow Agent and WordPress REST channels, secrets, connection tests, target-site package downloads, static/rewrite modes, remote settings sync, queues, logs, remote editing, and remote deletion.
+- **Distribution Management is usable end to end**: GEOFlow Agent, WordPress REST, and Generic HTTP API channels, secrets, connection tests, target-site package downloads, static/rewrite modes, remote settings sync, queues, logs, remote editing, and remote deletion.
 - **Publication scope is explicit**: tasks can publish locally and to channels, publish only to selected channels, or publish only to the local GEOFlow site. Local-only mode disables channel selection and never enters the remote distribution queue.
 - **Target sites can run as static sites**: distribution can regenerate remote homepages, article pages, sitemap, TXT maps, `llms.txt`, images, and standalone CSS.
 - **Materials and RAG are more complete**: knowledge chunks, vectorization status, title libraries, keyword libraries, image libraries, authors, and prompts form the task input layer.

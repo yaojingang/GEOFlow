@@ -251,6 +251,254 @@ class AdminDistributionPageTest extends TestCase
             ->assertSessionHasErrors('wordpress_application_password');
     }
 
+    public function test_generic_api_distribution_channel_form_shows_generic_fields(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.create'))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.channel_type.generic_http_api'))
+            ->assertSee(__('admin.distribution.generic.section_title'))
+            ->assertSee('name="generic_auth_type"', false)
+            ->assertSee('name="generic_secret"', false)
+            ->assertSee('name="generic_publish_path"', false)
+            ->assertSee('name="generic_remote_id_path"', false);
+    }
+
+    public function test_admin_can_create_generic_api_distribution_channel(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.store'), [
+                'name' => '通用 API',
+                'domain' => 'api.example.com',
+                'endpoint_url' => 'https://api.example.com',
+                'channel_type' => 'generic_http_api',
+                'generic_auth_type' => 'bearer',
+                'generic_secret' => 'api-token',
+                'generic_success_statuses' => '200,201,202',
+                'generic_health_method' => 'GET',
+                'generic_health_path' => '/health',
+                'generic_publish_method' => 'POST',
+                'generic_publish_path' => '/articles',
+                'generic_update_method' => 'POST',
+                'generic_update_path' => '/articles/{remote_id}',
+                'generic_delete_method' => 'DELETE',
+                'generic_delete_path' => '/articles/{remote_id}',
+                'generic_settings_method' => 'POST',
+                'generic_settings_path' => '/site-settings',
+                'generic_remote_id_path' => 'data.id',
+                'generic_remote_url_path' => 'data.url',
+                'generic_payload_wrapper' => 'none',
+                'status' => 'active',
+            ])
+            ->assertRedirect()
+            ->assertSessionMissing('distribution_secret');
+
+        $channel = DistributionChannel::query()->where('name', '通用 API')->firstOrFail();
+        $this->assertSame('generic_http_api', $channel->channelType());
+        $this->assertSame('data.id', $channel->resolvedGenericHttpConfig()['generic_remote_id_path']);
+        $this->assertSame([200, 201, 202], $channel->resolvedGenericHttpConfig()['generic_success_statuses']);
+
+        $secret = DistributionChannelSecret::query()
+            ->where('distribution_channel_id', (int) $channel->id)
+            ->where('status', 'active')
+            ->firstOrFail();
+        $this->assertStringStartsWith('gapi_', (string) $secret->key_id);
+        $this->assertSame(['generic.http'], $secret->scopes);
+        $this->assertSame('api-token', app(ApiKeyCrypto::class)->decrypt((string) $secret->secret_ciphertext));
+    }
+
+    public function test_admin_can_create_generic_api_distribution_channel_without_auth(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.store'), [
+                'name' => '公开 API',
+                'domain' => 'api.example.com',
+                'endpoint_url' => 'https://api.example.com',
+                'channel_type' => 'generic_http_api',
+                'generic_auth_type' => 'none',
+                'generic_success_statuses' => '200,204',
+                'generic_health_method' => 'GET',
+                'generic_health_path' => '/health',
+                'generic_publish_method' => 'POST',
+                'generic_publish_path' => '/articles',
+                'generic_update_method' => 'POST',
+                'generic_update_path' => '/articles/{slug}',
+                'generic_delete_method' => 'DELETE',
+                'generic_delete_path' => '/articles/{slug}',
+                'status' => 'active',
+            ])
+            ->assertRedirect()
+            ->assertSessionMissing('distribution_secret');
+
+        $channel = DistributionChannel::query()->where('name', '公开 API')->firstOrFail();
+        $this->assertSame('generic_http_api', $channel->channelType());
+        $this->assertSame('none', $channel->resolvedGenericHttpConfig()['generic_auth_type']);
+        $this->assertSame('', $channel->resolvedGenericHttpConfig()['generic_settings_path']);
+        $this->assertFalse(DistributionChannelSecret::query()
+            ->where('distribution_channel_id', (int) $channel->id)
+            ->where('status', 'active')
+            ->exists());
+    }
+
+    public function test_generic_api_distribution_rejects_methods_that_cannot_send_article_payloads(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.store'), [
+                'name' => '错误 API',
+                'domain' => 'api.example.com',
+                'endpoint_url' => 'https://api.example.com',
+                'channel_type' => 'generic_http_api',
+                'generic_auth_type' => 'bearer',
+                'generic_secret' => 'api-token',
+                'generic_success_statuses' => '200,201',
+                'generic_health_method' => 'GET',
+                'generic_health_path' => '/health',
+                'generic_publish_method' => 'GET',
+                'generic_publish_path' => '/articles',
+                'generic_update_method' => 'POST',
+                'generic_update_path' => '/articles/{remote_id}',
+                'generic_delete_method' => 'DELETE',
+                'generic_delete_path' => '/articles/{remote_id}',
+                'status' => 'active',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('generic_publish_method');
+    }
+
+    public function test_generic_api_distribution_rejects_invalid_header_names(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.store'), [
+                'name' => 'Header API',
+                'domain' => 'api.example.com',
+                'endpoint_url' => 'https://api.example.com',
+                'channel_type' => 'generic_http_api',
+                'generic_auth_type' => 'header_key',
+                'generic_secret' => 'api-token',
+                'generic_header_name' => 'Bad Header',
+                'generic_success_statuses' => '200,201',
+                'generic_health_method' => 'GET',
+                'generic_health_path' => '/health',
+                'generic_publish_method' => 'POST',
+                'generic_publish_path' => '/articles',
+                'generic_update_method' => 'POST',
+                'generic_update_path' => '/articles/{remote_id}',
+                'generic_delete_method' => 'DELETE',
+                'generic_delete_path' => '/articles/{remote_id}',
+                'status' => 'active',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('generic_header_name');
+    }
+
+    public function test_generic_api_distribution_rejects_blank_required_paths(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.store'), [
+                'name' => '路径错误 API',
+                'domain' => 'api.example.com',
+                'endpoint_url' => 'https://api.example.com',
+                'channel_type' => 'generic_http_api',
+                'generic_auth_type' => 'bearer',
+                'generic_secret' => 'api-token',
+                'generic_success_statuses' => '200,201',
+                'generic_health_method' => 'GET',
+                'generic_health_path' => '',
+                'generic_publish_method' => 'POST',
+                'generic_publish_path' => '/articles',
+                'generic_update_method' => 'POST',
+                'generic_update_path' => '/articles/{remote_id}',
+                'generic_delete_method' => 'DELETE',
+                'generic_delete_path' => '/articles/{remote_id}',
+                'status' => 'active',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('generic_health_path');
+    }
+
+    public function test_generic_api_distribution_rejects_full_url_paths(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.store'), [
+                'name' => '完整 URL API',
+                'domain' => 'api.example.com',
+                'endpoint_url' => 'https://api.example.com',
+                'channel_type' => 'generic_http_api',
+                'generic_auth_type' => 'bearer',
+                'generic_secret' => 'api-token',
+                'generic_success_statuses' => '200,201',
+                'generic_health_method' => 'GET',
+                'generic_health_path' => '/health',
+                'generic_publish_method' => 'POST',
+                'generic_publish_path' => 'https://api.example.com/articles',
+                'generic_update_method' => 'POST',
+                'generic_update_path' => '/articles/{remote_id}',
+                'generic_delete_method' => 'DELETE',
+                'generic_delete_path' => '/articles/{remote_id}',
+                'status' => 'active',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('generic_publish_path');
+    }
+
+    public function test_generic_api_distribution_detail_hides_target_site_package_and_shows_generic_guide(): void
+    {
+        $channel = DistributionChannel::query()->create([
+            'name' => '通用 API',
+            'domain' => 'api.example.com',
+            'endpoint_url' => 'https://api.example.com',
+            'channel_type' => 'generic_http_api',
+            'channel_config' => [
+                'generic_auth_type' => 'none',
+                'generic_health_path' => '/channels/{channel_id}/health',
+                'generic_publish_method' => 'POST',
+                'generic_publish_path' => '/articles',
+            ],
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.show', ['channelId' => (int) $channel->id]))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.channel_type.generic_http_api'))
+            ->assertSee(__('admin.distribution.generic.guide_title'))
+            ->assertSee(__('admin.distribution.generic.sample_payload_title'))
+            ->assertSee(__('admin.distribution.generic.response_mapping_title'))
+            ->assertSee('/channels/'.(int) $channel->id.'/health')
+            ->assertDontSee(__('admin.distribution.detail.target_package_files'))
+            ->assertDontSee(__('admin.distribution.wordpress.guide_title'))
+            ->assertDontSee(__('admin.distribution.button.download_package'))
+            ->assertDontSee(__('admin.distribution.rewrite.copy_nginx'))
+            ->assertDontSee(__('admin.distribution.button.rotate_secret'));
+    }
+
+    public function test_generic_api_distribution_edit_shows_generic_settings_without_agent_rewrite_controls(): void
+    {
+        $channel = DistributionChannel::query()->create([
+            'name' => '通用 API',
+            'domain' => 'api.example.com',
+            'endpoint_url' => 'https://api.example.com',
+            'channel_type' => 'generic_http_api',
+            'channel_config' => [
+                'generic_auth_type' => 'bearer',
+                'generic_publish_path' => '/articles',
+            ],
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.edit', ['channelId' => (int) $channel->id]))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.channel_type.generic_http_api'))
+            ->assertSee(__('admin.distribution.generic.section_title'))
+            ->assertSee('name="channel_type" value="generic_http_api"', false)
+            ->assertSee('name="generic_auth_type"', false)
+            ->assertSee('name="generic_publish_path"', false)
+            ->assertDontSee(__('admin.distribution.front_mode.static'))
+            ->assertDontSee(__('admin.distribution.rewrite.title'))
+            ->assertDontSee(__('admin.site_settings.theme.section_title'));
+    }
+
     public function test_wordpress_distribution_detail_hides_target_site_package_and_shows_connection_guide(): void
     {
         $channel = DistributionChannel::query()->create([

@@ -11,6 +11,7 @@ use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Ai\Embeddings;
 use Throwable;
 
@@ -49,6 +50,7 @@ class KnowledgeChunkSyncService
             static fn (array $chunk): string => (string) ($chunk['content'] ?? ''),
             $plannedChunks
         ));
+        $knowledgeMetadata = $this->resolveKnowledgeBaseMetadata($knowledgeBaseId);
         $embeddingMetadata = $this->resolveEmbeddingMetadata();
         $embeddingDocumentTitle = $this->resolveEmbeddingDocumentTitle($knowledgeBaseId);
         $generatedEmbeddings = $this->generateEmbeddingsForChunks($chunks, $embeddingMetadata, $requireRealEmbedding, $embeddingDocumentTitle);
@@ -57,7 +59,7 @@ class KnowledgeChunkSyncService
             throw new \RuntimeException(__('admin.knowledge_bases.error.embedding_sync_failed'));
         }
 
-        DB::transaction(function () use ($knowledgeBaseId, $plannedChunks, $generatedEmbeddings): void {
+        DB::transaction(function () use ($knowledgeBaseId, $plannedChunks, $generatedEmbeddings, $knowledgeMetadata): void {
             KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->delete();
 
             foreach ($plannedChunks as $index => $chunk) {
@@ -77,7 +79,7 @@ class KnowledgeChunkSyncService
                     'chunk_title' => mb_substr((string) ($chunk['title'] ?? ''), 0, 255, 'UTF-8'),
                     'section_path' => mb_substr((string) ($chunk['section_path'] ?? ''), 0, 500, 'UTF-8'),
                     'chunk_strategy' => mb_substr((string) ($chunk['strategy'] ?? 'structured_rule'), 0, 50, 'UTF-8'),
-                    'metadata_json' => json_encode($chunk['metadata'] ?? [], JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION),
+                    'metadata_json' => json_encode($this->mergeChunkMetadata($chunk['metadata'] ?? [], $knowledgeMetadata), JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION),
                     'source_hash' => hash('sha256', (string) ($chunk['section_path'] ?? '').'|'.$chunkContent),
                     'token_count' => $this->estimateTokenCount($chunkContent),
                     'embedding_json' => $embeddingJson ?: '[]',
@@ -90,6 +92,60 @@ class KnowledgeChunkSyncService
         });
 
         return count($chunks);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function resolveKnowledgeBaseMetadata(int $knowledgeBaseId): array
+    {
+        /** @var KnowledgeBase|null $knowledgeBase */
+        $knowledgeBase = KnowledgeBase::query()
+            ->whereKey($knowledgeBaseId)
+            ->first($this->knowledgeBaseMetadataSelectColumns());
+
+        if (! $knowledgeBase) {
+            return [];
+        }
+
+        return array_filter([
+            'knowledge_base_id' => (int) $knowledgeBase->id,
+            'knowledge_base_name' => (string) $knowledgeBase->name,
+            'knowledge_base_description' => trim((string) ($knowledgeBase->description ?? '')),
+            'file_type' => (string) ($knowledgeBase->file_type ?? 'markdown'),
+            'source_name' => trim((string) ($knowledgeBase->source_name ?? '')),
+            'source_url' => trim((string) ($knowledgeBase->source_url ?? '')),
+            'source_type' => trim((string) ($knowledgeBase->source_type ?? 'document')),
+            'business_line' => trim((string) ($knowledgeBase->business_line ?? '')),
+            'effective_date' => $knowledgeBase->effective_date?->toDateString(),
+            'risk_level' => trim((string) ($knowledgeBase->risk_level ?? 'medium')),
+            'review_status' => trim((string) ($knowledgeBase->review_status ?? 'unreviewed')),
+        ], static fn ($value): bool => $value !== null && $value !== '');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function knowledgeBaseMetadataSelectColumns(): array
+    {
+        $columns = ['id', 'name', 'description', 'file_type'];
+        foreach (['source_name', 'source_url', 'source_type', 'business_line', 'effective_date', 'risk_level', 'review_status'] as $column) {
+            if (Schema::hasColumn('knowledge_bases', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        return $columns;
+    }
+
+    /**
+     * @param  array<string,mixed>  $chunkMetadata
+     * @param  array<string,mixed>  $knowledgeMetadata
+     * @return array<string,mixed>
+     */
+    private function mergeChunkMetadata(array $chunkMetadata, array $knowledgeMetadata): array
+    {
+        return array_replace($knowledgeMetadata, $chunkMetadata);
     }
 
     /**

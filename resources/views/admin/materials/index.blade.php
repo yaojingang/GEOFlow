@@ -176,6 +176,22 @@
                             <dd class="text-right font-semibold text-gray-900">{{ $strategyLabels[(string) ($stats['chunk_strategy'] ?? 'rule')] ?? $strategyLabels['rule'] }}</dd>
                         </div>
                         <div class="flex items-start justify-between gap-4">
+                            <dt class="text-gray-500">{{ __('admin.materials.knowledge_hub_retrieval_mode') }}</dt>
+                            <dd class="text-right font-semibold text-gray-900">{{ __('admin.materials.knowledge_hub_retrieval_hybrid') }}</dd>
+                        </div>
+                        <div class="flex items-start justify-between gap-4">
+                            <dt class="text-gray-500">{{ __('admin.materials.knowledge_hub_metadata_ready') }}</dt>
+                            <dd class="text-right font-semibold text-gray-900">{{ (int) ($stats['metadata_ready_count'] ?? 0) }} / {{ $knowledgeBases }}</dd>
+                        </div>
+                        <div class="flex items-start justify-between gap-4">
+                            <dt class="text-gray-500">{{ __('admin.materials.knowledge_hub_reviewed') }}</dt>
+                            <dd class="text-right font-semibold text-gray-900">{{ (int) ($stats['reviewed_knowledge_bases'] ?? 0) }}</dd>
+                        </div>
+                        <div class="flex items-start justify-between gap-4">
+                            <dt class="text-gray-500">{{ __('admin.materials.knowledge_hub_high_risk_pending') }}</dt>
+                            <dd class="text-right font-semibold {{ (int) ($stats['high_risk_pending_count'] ?? 0) > 0 ? 'text-red-700' : 'text-gray-900' }}">{{ (int) ($stats['high_risk_pending_count'] ?? 0) }}</dd>
+                        </div>
+                        <div class="flex items-start justify-between gap-4">
                             <dt class="text-gray-500">{{ __('admin.materials.knowledge_hub_unvectorized') }}</dt>
                             <dd class="text-right font-semibold {{ $unvectorizedChunks > 0 ? 'text-amber-700' : 'text-gray-900' }}">{{ $unvectorizedChunks }}</dd>
                         </div>

@@ -34,6 +34,25 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
     }
 
+    public function test_apple_support_theme_is_listed_without_becoming_active_theme(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'site_theme_admin',
+            'password' => 'secret-123',
+            'email' => 'site-theme-admin@example.com',
+            'display_name' => 'Site Theme Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.index'))
+            ->assertOk()
+            ->assertSee('Apple Support Inspired')
+            ->assertSee('value="apple_support_clone"', false)
+            ->assertDontSee('value="apple_support_clone" class="mt-1 text-blue-600 focus:ring-blue-500" checked', false);
+    }
+
     public function test_standard_admin_cannot_update_analytics_code(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);

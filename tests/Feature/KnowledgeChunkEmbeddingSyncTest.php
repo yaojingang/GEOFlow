@@ -83,6 +83,45 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_sync_writes_knowledge_base_evidence_metadata_to_chunks(): void
+    {
+        Http::fake();
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '证据化知识库',
+            'description' => '用于验证来源和治理元数据',
+            'content' => 'GEOFlow 知识库需要保留来源、业务线和审核状态。',
+            'character_count' => 28,
+            'file_type' => 'markdown',
+            'word_count' => 28,
+            'source_name' => 'GEOFlow 官方文档',
+            'source_url' => 'https://example.com/geoflow',
+            'source_type' => 'document',
+            'business_line' => 'GEO 内容工程',
+            'effective_date' => '2026-05-01',
+            'risk_level' => 'low',
+            'review_status' => 'reviewed',
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            "# 证据化知识库\n\nGEOFlow 知识库需要保留来源、业务线和审核状态。"
+        );
+
+        $chunk = $knowledgeBase->chunks()->firstOrFail();
+        $metadata = json_decode((string) $chunk->metadata_json, true);
+
+        $this->assertSame((int) $knowledgeBase->id, (int) ($metadata['knowledge_base_id'] ?? 0));
+        $this->assertSame('证据化知识库', (string) ($metadata['knowledge_base_name'] ?? ''));
+        $this->assertSame('GEOFlow 官方文档', (string) ($metadata['source_name'] ?? ''));
+        $this->assertSame('https://example.com/geoflow', (string) ($metadata['source_url'] ?? ''));
+        $this->assertSame('GEO 内容工程', (string) ($metadata['business_line'] ?? ''));
+        $this->assertSame('2026-05-01', (string) ($metadata['effective_date'] ?? ''));
+        $this->assertSame('low', (string) ($metadata['risk_level'] ?? ''));
+        $this->assertSame('reviewed', (string) ($metadata['review_status'] ?? ''));
+        Http::assertNothingSent();
+    }
+
     public function test_structured_rule_chunking_keeps_markdown_sections_separate(): void
     {
         Http::fake();

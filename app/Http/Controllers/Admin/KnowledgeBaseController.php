@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rules\File;
@@ -145,6 +146,13 @@ class KnowledgeBaseController extends Controller
                 'description' => (string) ($knowledgeBase->description ?? ''),
                 'content' => (string) ($knowledgeBase->content ?? ''),
                 'file_type' => (string) ($knowledgeBase->file_type ?? 'markdown'),
+                'source_name' => (string) ($knowledgeBase->source_name ?? ''),
+                'source_url' => (string) ($knowledgeBase->source_url ?? ''),
+                'source_type' => (string) ($knowledgeBase->source_type ?? 'document'),
+                'business_line' => (string) ($knowledgeBase->business_line ?? ''),
+                'effective_date' => $knowledgeBase->effective_date?->toDateString() ?? '',
+                'risk_level' => (string) ($knowledgeBase->risk_level ?? 'medium'),
+                'review_status' => (string) ($knowledgeBase->review_status ?? 'unreviewed'),
             ],
             'chunkCount' => (int) $knowledgeBase->chunks()->count(),
         ]);
@@ -167,7 +175,7 @@ class KnowledgeBaseController extends Controller
             'file_type' => (string) $payload['file_type'],
             'character_count' => mb_strlen($content, 'UTF-8'),
             'word_count' => mb_strlen(strip_tags($content), 'UTF-8'),
-        ]);
+        ] + $this->knowledgeMetadataPayload($payload));
 
         return $this->redirectAfterChunkSync(
             $knowledgeBase,
@@ -297,7 +305,7 @@ class KnowledgeBaseController extends Controller
     /**
      * 校验知识库表单。
      *
-     * @return array{name:string,description:?string,content:string,file_type:string}
+     * @return array{name:string,description:?string,content:string,file_type:string,source_name:?string,source_url:?string,source_type:?string,business_line:?string,effective_date:?string,risk_level:?string,review_status:?string}
      */
     private function validateKnowledgeForm(Request $request): array
     {
@@ -306,6 +314,13 @@ class KnowledgeBaseController extends Controller
             'description' => ['nullable', 'string'],
             'content' => ['required', 'string'],
             'file_type' => ['required', 'in:markdown,word,text'],
+            'source_name' => ['nullable', 'string', 'max:150'],
+            'source_url' => ['nullable', 'string', 'max:500'],
+            'source_type' => ['nullable', 'in:document,website,business,faq,other'],
+            'business_line' => ['nullable', 'string', 'max:100'],
+            'effective_date' => ['nullable', 'date'],
+            'risk_level' => ['nullable', 'in:low,medium,high'],
+            'review_status' => ['nullable', 'in:unreviewed,reviewed'],
         ], [
             'name.required' => __('admin.knowledge_bases.error.name_required'),
             'content.required' => __('admin.knowledge_bases.error.content_required'),
@@ -315,7 +330,7 @@ class KnowledgeBaseController extends Controller
     /**
      * 校验统一导入表单。
      *
-     * @return array{name:?string,description:?string,content:?string,file_type:?string}
+     * @return array{name:?string,description:?string,content:?string,file_type:?string,source_name:?string,source_url:?string,source_type:?string,business_line:?string,effective_date:?string,risk_level:?string,review_status:?string}
      */
     private function validateKnowledgeImportForm(Request $request): array
     {
@@ -324,6 +339,13 @@ class KnowledgeBaseController extends Controller
             'description' => ['nullable', 'string'],
             'content' => ['nullable', 'string'],
             'file_type' => ['nullable', 'in:markdown,word,text'],
+            'source_name' => ['nullable', 'string', 'max:150'],
+            'source_url' => ['nullable', 'string', 'max:500'],
+            'source_type' => ['nullable', 'in:document,website,business,faq,other'],
+            'business_line' => ['nullable', 'string', 'max:100'],
+            'effective_date' => ['nullable', 'date'],
+            'risk_level' => ['nullable', 'in:low,medium,high'],
+            'review_status' => ['nullable', 'in:unreviewed,reviewed'],
             'import_action' => ['nullable', 'in:save,save_and_chunk'],
             'knowledge_file' => ['nullable', File::types(['txt', 'md', 'docx'])->max(50 * 1024)],
             'knowledge_files' => ['nullable', 'array', 'max:10'],
@@ -347,7 +369,41 @@ class KnowledgeBaseController extends Controller
             'description' => '',
             'content' => '',
             'file_type' => 'markdown',
+            'source_name' => '',
+            'source_url' => '',
+            'source_type' => 'document',
+            'business_line' => '',
+            'effective_date' => '',
+            'risk_level' => 'medium',
+            'review_status' => 'unreviewed',
         ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @return array{source_name:string,source_url:string,source_type:string,business_line:string,effective_date:?string,risk_level:string,review_status:string}
+     */
+    private function knowledgeMetadataPayload(array $payload): array
+    {
+        $sourceType = (string) ($payload['source_type'] ?? 'document');
+        $riskLevel = (string) ($payload['risk_level'] ?? 'medium');
+        $reviewStatus = (string) ($payload['review_status'] ?? 'unreviewed');
+
+        $metadata = [
+            'source_name' => trim((string) ($payload['source_name'] ?? '')),
+            'source_url' => trim((string) ($payload['source_url'] ?? '')),
+            'source_type' => in_array($sourceType, ['document', 'website', 'business', 'faq', 'other'], true) ? $sourceType : 'document',
+            'business_line' => trim((string) ($payload['business_line'] ?? '')),
+            'effective_date' => filled($payload['effective_date'] ?? null) ? (string) $payload['effective_date'] : null,
+            'risk_level' => in_array($riskLevel, ['low', 'medium', 'high'], true) ? $riskLevel : 'medium',
+            'review_status' => in_array($reviewStatus, ['unreviewed', 'reviewed'], true) ? $reviewStatus : 'unreviewed',
+        ];
+
+        return array_filter(
+            $metadata,
+            static fn (mixed $value, string $column): bool => Schema::hasColumn('knowledge_bases', $column),
+            ARRAY_FILTER_USE_BOTH
+        );
     }
 
     private function createKnowledgeBaseFromRequest(Request $request, string $successMessageKey, string $errorMessageKey): RedirectResponse
@@ -411,7 +467,7 @@ class KnowledgeBaseController extends Controller
                     'usage_count' => 0,
                     'used_task_count' => 0,
                     'file_path' => $encodedFilePath,
-                ]);
+                ] + $this->knowledgeMetadataPayload($payload));
             });
 
             if (($payload['import_action'] ?? 'save_and_chunk') === 'save') {

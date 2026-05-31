@@ -17,6 +17,7 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Support\AdminWeb;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 /**
@@ -56,6 +57,9 @@ class MaterialsController extends Controller
      *     default_embedding_model:string,
      *     chunk_strategy:string,
      *     latest_knowledge_updated_at:string,
+     *     metadata_ready_count:int,
+     *     reviewed_knowledge_bases:int,
+     *     high_risk_pending_count:int,
      *     authors:int
      * }
      */
@@ -100,8 +104,55 @@ class MaterialsController extends Controller
             'default_embedding_model' => $defaultEmbeddingModel,
             'chunk_strategy' => in_array($chunkStrategy, ['rule', 'auto', 'semantic_llm'], true) ? $chunkStrategy : 'rule',
             'latest_knowledge_updated_at' => $latestKnowledgeUpdatedAt,
+            'metadata_ready_count' => $this->knowledgeMetadataReadyCount(),
+            'reviewed_knowledge_bases' => $this->reviewedKnowledgeBaseCount(),
+            'high_risk_pending_count' => $this->highRiskPendingKnowledgeBaseCount(),
             'authors' => Author::query()->count(),
         ];
+    }
+
+    private function knowledgeMetadataReadyCount(): int
+    {
+        $columns = array_values(array_filter(
+            ['source_name', 'source_url', 'business_line'],
+            static fn (string $column): bool => Schema::hasColumn('knowledge_bases', $column)
+        ));
+        if ($columns === []) {
+            return 0;
+        }
+
+        return KnowledgeBase::query()
+            ->where(function ($query) use ($columns): void {
+                foreach ($columns as $column) {
+                    $query->orWhere(function ($inner) use ($column): void {
+                        $inner->whereNotNull($column)->where($column, '<>', '');
+                    });
+                }
+            })
+            ->count();
+    }
+
+    private function reviewedKnowledgeBaseCount(): int
+    {
+        if (! Schema::hasColumn('knowledge_bases', 'review_status')) {
+            return 0;
+        }
+
+        return KnowledgeBase::query()
+            ->where('review_status', 'reviewed')
+            ->count();
+    }
+
+    private function highRiskPendingKnowledgeBaseCount(): int
+    {
+        if (! Schema::hasColumn('knowledge_bases', 'risk_level') || ! Schema::hasColumn('knowledge_bases', 'review_status')) {
+            return 0;
+        }
+
+        return KnowledgeBase::query()
+            ->where('risk_level', 'high')
+            ->where('review_status', '<>', 'reviewed')
+            ->count();
     }
 
     private function latestKnowledgeUpdatedAt(): string

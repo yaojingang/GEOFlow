@@ -1,17 +1,42 @@
 @extends('admin.layouts.app')
 
-@php($channelStatusKey = 'admin.distribution.status.'.(string) $channel->status)
-@php($channelStatusLabel = trans()->has($channelStatusKey) ? __($channelStatusKey) : (string) $channel->status)
-@php($healthStatus = (string) ($channel->last_health_status ?? ''))
-@php($healthStatusKey = 'admin.distribution.health_status.'.$healthStatus)
-@php($healthStatusLabel = $healthStatus !== '' && trans()->has($healthStatusKey) ? __($healthStatusKey) : ($healthStatus !== '' ? $healthStatus : __('admin.common.none')))
-@php($canRevealSecret = auth('admin')->user() instanceof \App\Models\Admin && auth('admin')->user()->isSuperAdmin())
-@php($channelType = $channel->channelType())
-@php($channelTypeLabel = __('admin.distribution.channel_type.'.$channelType))
-@php($channelConfig = $channel->resolvedChannelConfig())
-@php($healthCheckUrl = $channel->isWordPressRest() ? $channel->wordpressRestBaseUrl().'/wp/v2/users/me?context=edit' : rtrim((string) $channel->endpoint_url, '/').'/geoflow-agent/v1/health')
-@php($indexAgentBaseUrl = str_ends_with(rtrim((string) $channel->endpoint_url, '/'), '/index.php') ? rtrim((string) $channel->endpoint_url, '/') : rtrim((string) $channel->endpoint_url, '/').'/index.php')
-@php($indexHealthCheckUrl = $indexAgentBaseUrl.'/geoflow-agent/v1/health')
+@php
+    $channelStatusKey = 'admin.distribution.status.'.(string) $channel->status;
+    $channelStatusLabel = trans()->has($channelStatusKey) ? __($channelStatusKey) : (string) $channel->status;
+    $healthStatus = (string) ($channel->last_health_status ?? '');
+    $healthStatusKey = 'admin.distribution.health_status.'.$healthStatus;
+    $healthStatusLabel = $healthStatus !== '' && trans()->has($healthStatusKey) ? __($healthStatusKey) : ($healthStatus !== '' ? $healthStatus : __('admin.common.none'));
+    $canRevealSecret = auth('admin')->user() instanceof \App\Models\Admin && auth('admin')->user()->isSuperAdmin();
+    $channelType = $channel->channelType();
+    $channelTypeLabel = __('admin.distribution.channel_type.'.$channelType);
+    $channelConfig = $channel->resolvedChannelConfig();
+    $genericConfig = $channel->resolvedGenericHttpConfig();
+    $genericSamplePayload = [
+        'version' => '1.0',
+        'source' => 'geoflow',
+        'event' => 'article.publish',
+        'article' => [
+            'id' => 123,
+            'title' => 'Article title',
+            'slug' => 'article-slug',
+            'content_format' => 'markdown',
+            'content' => 'Markdown content',
+            'content_html' => '<p>HTML content</p>',
+            'category' => ['name' => 'Category', 'slug' => 'category'],
+            'author' => ['name' => 'Author'],
+        ],
+        'assets' => ['images' => []],
+    ];
+    $healthCheckUrl = rtrim((string) $channel->endpoint_url, '/').'/geoflow-agent/v1/health';
+    if ($channel->isWordPressRest()) {
+        $healthCheckUrl = $channel->wordpressRestBaseUrl().'/wp/v2/users/me?context=edit';
+    } elseif ($channel->isGenericHttpApi()) {
+        $genericHealthPath = strtr((string) $genericConfig['generic_health_path'], ['{channel_id}' => (string) $channel->id]);
+        $healthCheckUrl = rtrim((string) $channel->endpoint_url, '/').(str_starts_with($genericHealthPath, '/') ? $genericHealthPath : '/'.$genericHealthPath);
+    }
+    $indexAgentBaseUrl = str_ends_with(rtrim((string) $channel->endpoint_url, '/'), '/index.php') ? rtrim((string) $channel->endpoint_url, '/') : rtrim((string) $channel->endpoint_url, '/').'/index.php';
+    $indexHealthCheckUrl = $indexAgentBaseUrl.'/geoflow-agent/v1/health';
+@endphp
 
 @section('content')
     <div class="space-y-8 px-4 sm:px-0">
@@ -106,7 +131,7 @@
                             <dt class="text-gray-500">{{ __('admin.distribution.field.template_key') }}</dt>
                             <dd class="mt-1 font-medium text-gray-900">{{ $channel->template_key ?: __('admin.common.none') }}</dd>
                         </div>
-                    @else
+                    @elseif ($channel->isWordPressRest())
                         <div>
                             <dt class="text-gray-500">{{ __('admin.distribution.wordpress.username') }}</dt>
                             <dd class="mt-1 font-medium text-gray-900">{{ $channelConfig['wordpress_username'] ?: __('admin.common.none') }}</dd>
@@ -114,6 +139,15 @@
                         <div>
                             <dt class="text-gray-500">{{ __('admin.distribution.wordpress.post_status') }}</dt>
                             <dd class="mt-1 font-medium text-gray-900">{{ __('admin.distribution.wordpress.post_status_'.$channelConfig['wordpress_post_status']) }}</dd>
+                        </div>
+                    @elseif ($channel->isGenericHttpApi())
+                        <div>
+                            <dt class="text-gray-500">{{ __('admin.distribution.generic.auth_type') }}</dt>
+                            <dd class="mt-1 font-medium text-gray-900">{{ __('admin.distribution.generic.auth_'.$genericConfig['generic_auth_type']) }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('admin.distribution.generic.publish_endpoint') }}</dt>
+                            <dd class="mt-1 break-all font-mono text-sm text-gray-900">{{ $genericConfig['generic_publish_method'] }} {{ $genericConfig['generic_publish_path'] }}</dd>
                         </div>
                     @endif
                     <div>
@@ -271,7 +305,7 @@
                     </li>
                 </ol>
             </div>
-        @else
+        @elseif ($channel->isWordPressRest())
             <div class="rounded-lg bg-white p-6 shadow">
                 <div class="max-w-3xl">
                     <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.wordpress.guide_title') }}</h2>
@@ -295,6 +329,60 @@
                         <span>{{ __('admin.distribution.wordpress.guide_step_draft') }}</span>
                     </li>
                 </ol>
+            </div>
+        @elseif ($channel->isGenericHttpApi())
+            <div class="rounded-lg bg-white p-6 shadow">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="max-w-3xl">
+                        <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.generic.guide_title') }}</h2>
+                        <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.distribution.generic.guide_desc') }}</p>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        <span class="font-medium">{{ __('admin.distribution.generic.payload_contract') }}：</span>
+                        <code class="break-all text-gray-900">GEOFlow article JSON v1</code>
+                    </div>
+                </div>
+                <div class="mt-6 grid grid-cols-1 gap-4 text-sm text-gray-700 md:grid-cols-2 xl:grid-cols-4">
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <div class="font-medium text-gray-900">{{ __('admin.distribution.generic.guide_endpoint_title') }}</div>
+                        <code class="mt-2 block break-all text-xs text-gray-600">{{ $genericConfig['generic_publish_method'] }} {{ $genericConfig['generic_publish_path'] }}</code>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <div class="font-medium text-gray-900">{{ __('admin.distribution.generic.guide_auth_title') }}</div>
+                        <p class="mt-2 text-xs leading-5 text-gray-600">{{ __('admin.distribution.generic.auth_'.$genericConfig['generic_auth_type']) }}</p>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <div class="font-medium text-gray-900">{{ __('admin.distribution.generic.guide_response_title') }}</div>
+                        <p class="mt-2 text-xs leading-5 text-gray-600">{{ __('admin.distribution.generic.response_contract') }}</p>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <div class="font-medium text-gray-900">{{ __('admin.distribution.generic.guide_settings_title') }}</div>
+                        <code class="mt-2 block break-all text-xs text-gray-600">{{ $genericConfig['generic_settings_method'] }} {{ $genericConfig['generic_settings_path'] ?: __('admin.common.none') }}</code>
+                    </div>
+                </div>
+                <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <div class="text-sm font-medium text-gray-900">{{ __('admin.distribution.generic.response_mapping_title') }}</div>
+                        <dl class="mt-3 space-y-2 text-xs text-gray-600">
+                            <div class="flex items-center justify-between gap-3">
+                                <dt>{{ __('admin.distribution.generic.remote_id_path') }}</dt>
+                                <dd class="break-all font-mono text-gray-900">{{ $genericConfig['generic_remote_id_path'] ?: __('admin.common.none') }}</dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-3">
+                                <dt>{{ __('admin.distribution.generic.remote_url_path') }}</dt>
+                                <dd class="break-all font-mono text-gray-900">{{ $genericConfig['generic_remote_url_path'] ?: __('admin.common.none') }}</dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-3">
+                                <dt>{{ __('admin.distribution.generic.success_statuses') }}</dt>
+                                <dd class="break-all font-mono text-gray-900">{{ implode(',', $genericConfig['generic_success_statuses']) }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                        <div class="text-sm font-medium text-gray-900">{{ __('admin.distribution.generic.sample_payload_title') }}</div>
+                        <pre class="mt-3 max-h-72 overflow-auto rounded-md bg-gray-950 p-3 text-xs leading-5 text-gray-100"><code>{{ json_encode($genericSamplePayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</code></pre>
+                    </div>
+                </div>
             </div>
         @endif
 
