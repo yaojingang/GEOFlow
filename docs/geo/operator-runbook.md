@@ -16,6 +16,8 @@
 
 选择机会词和 AI 平台，创建搜索批次后执行运行。完成后检查 AI 回答中是否抽取到了引用 URL。没有来源时，换更具体的问题词，或补充品牌资料再重跑。
 
+搜索批次会按 `points_cost` 扣减组织点数，并写入 `point_logs.action=geo_search_run`。余额不足时，批次保持 `pending`，不会进入运行态，也不会产生回答记录。引用 URL 会同时写入去重后的来源库和逐回答归因表，后续同一个 URL 被多轮检视引用时，仍能追溯到各自的搜索批次。
+
 ## 5. 批量采集引用来源
 
 进入引用来源库，勾选来源，点击“批量采集”。采集失败时先看状态和错误信息：登录、验证码、反爬、404、超时都属于正常阻塞，不要绕过平台限制。
@@ -31,6 +33,8 @@
 ## 8. 审核、转文章、发布
 
 在草稿编辑页查看“发布准备”。发布前至少检查禁用词、参考来源覆盖、本地意图覆盖和品牌出现。转为正式文章后进入文章管理继续审核和发布。
+
+独立引用来源草稿如需走微信公众号草稿链路，查看 `docs/geo/wxmp-yixiaoer-publish-chain.md`。该链路只提交微信公众号草稿，不群发，也不提交到小红书、抖音、视频号或 B 站。
 
 ## 9. 发布后复测
 
@@ -49,6 +53,12 @@ GEOFLOW_GEO_ASYNC_JOBS=false
 ```env
 QUEUE_CONNECTION=redis
 GEOFLOW_GEO_ASYNC_JOBS=true
+GEOFLOW_AI_WEB_WORKBENCH_COMMAND=/absolute/path/to/ai-web-workbench
+GEOFLOW_AI_WEB_WORKBENCH_TIMEOUT=420
+GEOFLOW_AI_WEB_WORKBENCH_LOGIN_CHECK_TIMEOUT=90
+GEOFLOW_AI_WEB_WORKBENCH_DATA_DIR=/absolute/path/to/workbench-data
+YIXIAOER_API_KEY=...
+YIXIAOER_API_URL=https://www.yixiaoer.cn/api
 ```
 
 并确保 queue worker 或 Horizon 常驻运行。

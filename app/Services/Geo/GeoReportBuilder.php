@@ -87,6 +87,7 @@ class GeoReportBuilder
     private function platformNames(array $platformCodes): array
     {
         $names = [
+            GeoWebWorkbenchClient::PLATFORM_CODE => GeoWebWorkbenchClient::PLATFORM_NAME,
             'deepseek_mock' => 'DeepSeek 模拟',
             'kimi_mock' => 'Kimi 模拟',
             'qwen_mock' => '通义千问模拟',

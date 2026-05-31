@@ -47,6 +47,11 @@ class GeoCitationPageSnapshot extends Model
         return $this->hasMany(GeoReferenceContentScore::class, 'geo_citation_page_snapshot_id');
     }
 
+    public function analyses(): HasMany
+    {
+        return $this->hasMany(GeoReferenceContentAnalysis::class, 'geo_citation_page_snapshot_id');
+    }
+
     public function latestScore(): HasOne
     {
         return $this->hasOne(GeoReferenceContentScore::class, 'geo_citation_page_snapshot_id')->latestOfMany();

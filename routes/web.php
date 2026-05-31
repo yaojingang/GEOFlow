@@ -16,6 +16,8 @@ use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\GeoArticleDraftDistributionController;
+use App\Http\Controllers\Admin\GeoTopicPipelineController;
 use App\Http\Controllers\Admin\GeoWorkspaceController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
@@ -27,6 +29,7 @@ use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\UrlImportController;
+use App\Http\Controllers\Admin\WebWorkbenchController;
 use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
@@ -68,6 +71,17 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('operation-guide', fn () => view('admin.operation-guide.index', [
+            'activeMenu' => 'operation_guide',
+            'pageTitle' => '操作说明',
+        ]))->name('operation-guide');
+
+        Route::prefix('web-workbench')->name('web-workbench.')->group(function () {
+            Route::get('/', [WebWorkbenchController::class, 'index'])->name('index');
+            Route::post('open', [WebWorkbenchController::class, 'open'])->name('open');
+            Route::post('run', [WebWorkbenchController::class, 'run'])->name('run');
+            Route::post('export', [WebWorkbenchController::class, 'export'])->name('export');
+        });
 
         // GEO 智能优化工作台
         Route::prefix('geo')->name('geo.')->group(function () {
@@ -76,9 +90,20 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('keywords', [GeoWorkspaceController::class, 'storeKeyword'])->name('keywords.store');
             Route::post('opportunities/generate', [GeoWorkspaceController::class, 'generateOpportunities'])->name('opportunities.generate');
             Route::post('opportunities/expand', [GeoWorkspaceController::class, 'expandOpportunities'])->name('opportunities.expand');
+            Route::post('web-workbench/open', [GeoWorkspaceController::class, 'openWebWorkbench'])->name('web-workbench.open');
+            Route::post('web-workbench/check-logins', [GeoWorkspaceController::class, 'checkWebWorkbenchLogins'])->name('web-workbench.check-logins');
+            Route::get('web-workbench/platform-statuses', [GeoWorkspaceController::class, 'webWorkbenchPlatformStatuses'])->name('web-workbench.platform-statuses');
+            Route::post('topic-pipeline/run', [GeoTopicPipelineController::class, 'run'])->name('topic-pipeline.run');
+            Route::post('external-inspections', [GeoWorkspaceController::class, 'storeExternalInspection'])->name('external-inspections.store');
             Route::post('search-runs', [GeoWorkspaceController::class, 'storeSearchRun'])->name('search-runs.store');
             Route::post('search-runs/{runId}/run', [GeoWorkspaceController::class, 'runSearchRun'])
                 ->name('search-runs.run')
+                ->whereNumber('runId');
+            Route::post('search-runs/{runId}/delete', [GeoWorkspaceController::class, 'destroySearchRun'])
+                ->name('search-runs.delete')
+                ->whereNumber('runId');
+            Route::get('search-runs/{runId}', [GeoWorkspaceController::class, 'showSearchRun'])
+                ->name('search-runs.show')
                 ->whereNumber('runId');
             Route::get('citation-sources', [GeoWorkspaceController::class, 'citationSources'])->name('citation-sources.index');
             Route::post('citation-sources/batch-crawl', [GeoWorkspaceController::class, 'batchCrawlCitationSources'])
@@ -99,10 +124,46 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('citation-sources/{sourceId}/score', [GeoWorkspaceController::class, 'scoreCitationSource'])
                 ->name('citation-sources.score')
                 ->whereNumber('sourceId');
+            Route::post('citation-sources/{sourceId}/analyze', [GeoWorkspaceController::class, 'analyzeCitationSource'])
+                ->name('citation-sources.analyze')
+                ->whereNumber('sourceId');
+            Route::post('citation-sources/{sourceId}/imitation-draft', [GeoWorkspaceController::class, 'generateCitationSourceImitationDraft'])
+                ->name('citation-sources.imitation-draft.store')
+                ->whereNumber('sourceId');
+            Route::post('citation-sources/{sourceId}/publishable-draft', [GeoWorkspaceController::class, 'generateCitationSourcePublishableDraft'])
+                ->name('citation-sources.publishable-draft.store')
+                ->whereNumber('sourceId');
             Route::post('diagnosis', [GeoWorkspaceController::class, 'storeDiagnosis'])->name('diagnosis.store');
             Route::post('diagnosis/{taskId}/run', [GeoWorkspaceController::class, 'runDiagnosis'])
                 ->name('diagnosis.run')
                 ->whereNumber('taskId');
+            Route::get('article-drafts/{draftId}/edit', [GeoWorkspaceController::class, 'editStandaloneArticleDraft'])
+                ->name('article-drafts.edit')
+                ->whereNumber('draftId');
+            Route::put('article-drafts/{draftId}', [GeoWorkspaceController::class, 'updateStandaloneArticleDraft'])
+                ->name('article-drafts.update')
+                ->whereNumber('draftId');
+            Route::post('article-drafts/{draftId}/convert', [GeoWorkspaceController::class, 'convertStandaloneArticleDraft'])
+                ->name('article-drafts.convert')
+                ->whereNumber('draftId');
+            Route::post('article-drafts/{draftId}/publishable', [GeoWorkspaceController::class, 'polishStandaloneArticleDraft'])
+                ->name('article-drafts.publishable')
+                ->whereNumber('draftId');
+            Route::post('article-drafts/{draftId}/layout', [GeoWorkspaceController::class, 'layoutStandaloneArticleDraft'])
+                ->name('article-drafts.layout')
+                ->whereNumber('draftId');
+            Route::post('article-drafts/{draftId}/visual-pack', [GeoWorkspaceController::class, 'generateStandaloneArticleVisualPack'])
+                ->name('article-drafts.visual-pack')
+                ->whereNumber('draftId');
+            Route::post('article-drafts/{draftId}/visual-pack/insert-images', [GeoWorkspaceController::class, 'insertStandaloneArticleVisualImages'])
+                ->name('article-drafts.visual-pack.insert-images')
+                ->whereNumber('draftId');
+            Route::post('article-drafts/{draftId}/publish-package', [GeoWorkspaceController::class, 'exportStandaloneArticlePublishPackage'])
+                ->name('article-drafts.publish-package')
+                ->whereNumber('draftId');
+            Route::post('article-drafts/{draftId}/yixiaoer-distribute', [GeoArticleDraftDistributionController::class, 'submitToYixiaoer'])
+                ->name('article-drafts.yixiaoer-distribute')
+                ->whereNumber('draftId');
             Route::get('reports/{taskId}', [GeoWorkspaceController::class, 'showReport'])
                 ->name('reports.show')
                 ->whereNumber('taskId');
@@ -267,6 +328,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::post('{modelId}/test', [AiModelController::class, 'testConnection'])->name('test');
                 Route::post('{modelId}/delete', [AiModelController::class, 'destroy'])->name('delete');
                 Route::post('default-embedding', [AiModelController::class, 'updateDefaultEmbedding'])->name('default-embedding');
+                Route::post('chunking-config', [AiModelController::class, 'updateChunkingConfig'])->name('chunking-config');
             });
             Route::get('ai-prompts', [AiPromptController::class, 'index'])->name('ai-prompts');
             Route::post('ai-prompts/create', [AiPromptController::class, 'store'])->name('ai-prompts.store');

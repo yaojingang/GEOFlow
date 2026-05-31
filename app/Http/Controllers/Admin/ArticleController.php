@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\Task;
+use App\Services\Admin\GeoOperationsOverviewService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Illuminate\Database\QueryException;
@@ -25,6 +26,8 @@ use Throwable;
  */
 class ArticleController extends Controller
 {
+    public function __construct(private readonly GeoOperationsOverviewService $geoOperationsOverviewService) {}
+
     /**
      * 文章管理首页：渲染筛选与列表。
      */
@@ -49,6 +52,7 @@ class ArticleController extends Controller
             'isTrashView' => $isTrashView,
             'trashI18n' => $this->trashI18n(),
             'articleBatchRoutes' => $this->articleBatchRoutes($isTrashView),
+            'geoOpsPanel' => $this->geoOperationsOverviewService->forModule('articles'),
         ]);
     }
 
@@ -379,6 +383,7 @@ class ArticleController extends Controller
             'task:id,name,need_review',
             'author:id,name',
             'category:id,name',
+            'geoArticleDrafts:id,article_id,status',
         ]);
 
         if ($filters['trashed'] ?? false) {

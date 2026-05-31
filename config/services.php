@@ -39,4 +39,9 @@ return [
         ],
     ],
 
+    'yixiaoer' => [
+        'api_key' => env('YIXIAOER_API_KEY'),
+        'api_url' => env('YIXIAOER_API_URL', 'https://www.yixiaoer.cn/api'),
+    ],
+
 ];

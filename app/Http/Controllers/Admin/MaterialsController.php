@@ -11,6 +11,7 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\Admin\GeoOperationsOverviewService;
 use App\Support\AdminWeb;
 use Illuminate\View\View;
 
@@ -19,6 +20,8 @@ use Illuminate\View\View;
  */
 class MaterialsController extends Controller
 {
+    public function __construct(private readonly GeoOperationsOverviewService $geoOperationsOverviewService) {}
+
     /**
      * 展示素材管理总览页。
      */
@@ -29,6 +32,7 @@ class MaterialsController extends Controller
             'activeMenu' => 'materials',
             'adminSiteName' => AdminWeb::siteName(),
             'stats' => $this->loadStats(),
+            'geoOpsPanel' => $this->geoOperationsOverviewService->forModule('materials'),
         ]);
     }
 

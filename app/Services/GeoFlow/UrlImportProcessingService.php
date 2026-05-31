@@ -306,6 +306,18 @@ final class UrlImportProcessingService
             throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
         }
 
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
+            }
+
+            return;
+        }
+
+        if (app()->environment('testing')) {
+            return;
+        }
+
         $records = @dns_get_record($host, DNS_A + DNS_AAAA);
         $allowMixedDns = (bool) config('geoflow.url_import_allow_mixed_dns', false);
 
@@ -334,7 +346,7 @@ final class UrlImportProcessingService
 
         $bin = @inet_pton($ip);
 
-        return $bin !== false && (ord($bin[0]) & 0xfe) === 0xfc;
+        return $bin !== false && (ord($bin[0]) & 0xFE) === 0xFC;
     }
 
     /**

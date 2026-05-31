@@ -47,13 +47,28 @@ class GeoCitationSource extends Model
         return $this->belongsTo(GeoAiSearchAnswer::class, 'geo_ai_search_answer_id');
     }
 
+    public function occurrences(): HasMany
+    {
+        return $this->hasMany(GeoCitationOccurrence::class, 'geo_citation_source_id');
+    }
+
     public function pageSnapshots(): HasMany
     {
         return $this->hasMany(GeoCitationPageSnapshot::class, 'geo_citation_source_id');
     }
 
+    public function referenceAnalyses(): HasMany
+    {
+        return $this->hasMany(GeoReferenceContentAnalysis::class, 'geo_citation_source_id');
+    }
+
     public function latestPageSnapshot(): HasOne
     {
         return $this->hasOne(GeoCitationPageSnapshot::class, 'geo_citation_source_id')->latestOfMany();
+    }
+
+    public function latestReferenceAnalysis(): HasOne
+    {
+        return $this->hasOne(GeoReferenceContentAnalysis::class, 'geo_citation_source_id')->latestOfMany();
     }
 }

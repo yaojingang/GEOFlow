@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class GeoAiSearchAnswer extends Model
 {
@@ -56,5 +57,10 @@ class GeoAiSearchAnswer extends Model
     public function opportunity(): BelongsTo
     {
         return $this->belongsTo(GeoKeywordOpportunity::class, 'geo_keyword_opportunity_id');
+    }
+
+    public function citationOccurrences(): HasMany
+    {
+        return $this->hasMany(GeoCitationOccurrence::class, 'geo_ai_search_answer_id');
     }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AiModel;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Services\Admin\GeoOperationsOverviewService;
 use App\Support\AdminWeb;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -17,6 +18,8 @@ use Illuminate\View\View;
  */
 class LegacyController extends Controller
 {
+    public function __construct(private readonly GeoOperationsOverviewService $geoOperationsOverviewService) {}
+
     private function stub(string $pageTitleKey, string $activeMenu, ?string $stubHint = null): View
     {
         return view('admin.stub', [
@@ -138,6 +141,7 @@ class LegacyController extends Controller
             'activeMenu' => 'ai_config',
             'adminSiteName' => AdminWeb::siteName(),
             'stats' => $this->loadAiConfiguratorStats(),
+            'geoOpsPanel' => $this->geoOperationsOverviewService->forModule('ai_config'),
         ]);
     }
 

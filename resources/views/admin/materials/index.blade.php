@@ -13,6 +13,8 @@
             </a>
         </div>
 
+        @include('admin.partials.geo-operations-panel', ['panel' => $geoOpsPanel ?? null])
+
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div class="bg-white shadow rounded-lg p-5">
                 <div class="flex items-center">

@@ -66,6 +66,8 @@
             </div>
         </div>
 
+        @include('admin.partials.geo-operations-panel', ['panel' => $geoOpsPanel ?? null])
+
         @if($isTrashView)
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow rounded-lg md:col-span-1">
@@ -355,6 +357,16 @@
                                     'rejected' => 'bg-red-100 text-red-800 border border-red-200',
                                     default => 'bg-yellow-100 text-yellow-800 border border-yellow-200'
                                 };
+                                $articleMetadata = is_array($article->metadata ?? null) ? $article->metadata : [];
+                                $geoSource = (string) ($articleMetadata['source'] ?? '');
+                                $geoSourceLabel = match ($geoSource) {
+                                    'geo_reference_imitation' => 'GEO 引用仿写',
+                                    'geo_reference_content' => 'GEO 引用资料',
+                                    'geo_report' => 'GEO 诊断报告',
+                                    default => str_starts_with($geoSource, 'geo_') ? 'GEO 生成内容' : '',
+                                };
+                                $geoTargetQuestion = trim((string) ($articleMetadata['target_question'] ?? ''));
+                                $geoDraft = $article->relationLoaded('geoArticleDrafts') ? $article->geoArticleDrafts->first() : null;
                             @endphp
                             <tr class="hover:bg-gray-50">
                                 <td class="batch-checkbox hidden px-6 py-4">
@@ -374,6 +386,23 @@
                                     @endif
                                     @if((string) ($article->keywords ?? '') !== '')
                                         <div class="text-xs text-blue-600 mt-1">{{ __('admin.articles.keywords') }}: {{ $article->keywords }}</div>
+                                    @endif
+                                    @if(!$isTrashView && $geoSourceLabel !== '')
+                                        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                                            <span class="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 font-medium text-cyan-700">
+                                                <i data-lucide="radar" class="mr-1 h-3 w-3"></i>
+                                                {{ $geoSourceLabel }}
+                                            </span>
+                                            @if($geoTargetQuestion !== '')
+                                                <span class="max-w-xl truncate text-gray-500">{{ \Illuminate\Support\Str::limit($geoTargetQuestion, 48) }}</span>
+                                            @endif
+                                            @if($geoDraft)
+                                                <a href="{{ route('admin.geo.article-drafts.edit', ['draftId' => (int) $geoDraft->id]) }}" class="inline-flex items-center font-medium text-cyan-700 hover:text-cyan-900">
+                                                    <i data-lucide="external-link" class="mr-1 h-3 w-3"></i>
+                                                    回到 GEO 草稿
+                                                </a>
+                                            @endif
+                                        </div>
                                     @endif
                                     @if(!$isTrashView && (!empty($article->is_hot) || !empty($article->is_featured)))
                                         <div class="mt-2 flex flex-wrap gap-1.5">

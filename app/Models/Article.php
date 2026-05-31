@@ -70,6 +70,11 @@ class Article extends Model
         return $this->hasMany(ArticleImage::class, 'article_id');
     }
 
+    public function geoArticleDrafts(): HasMany
+    {
+        return $this->hasMany(GeoArticleDraft::class, 'article_id');
+    }
+
     public function reviews(): HasMany
     {
         return $this->hasMany(ArticleReview::class, 'article_id');

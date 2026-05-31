@@ -41,6 +41,48 @@ class AdminTasksPageTest extends TestCase
             ->assertViewHas('taskI18n');
     }
 
+    public function test_tasks_page_does_not_load_realtime_client_by_default(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_realtime_default_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-realtime-default-admin@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertDontSee('https://js.pusher.com/8.4.0/pusher.min.js', false)
+            ->assertViewHas('taskRealtime', static fn (array $config): bool => $config['enabled'] === false);
+    }
+
+    public function test_tasks_page_loads_realtime_client_when_enabled(): void
+    {
+        config([
+            'broadcasting.default' => 'reverb',
+            'geoflow.task_realtime_enabled' => true,
+            'reverb.apps.apps.0.key' => 'test-reverb-key',
+        ]);
+
+        $admin = Admin::query()->create([
+            'username' => 'tasks_realtime_enabled_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-realtime-enabled-admin@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('https://js.pusher.com/8.4.0/pusher.min.js', false)
+            ->assertViewHas('taskRealtime', static fn (array $config): bool => $config['enabled'] === true);
+    }
+
     public function test_authenticated_admin_can_open_task_create_page(): void
     {
         $admin = Admin::query()->create([

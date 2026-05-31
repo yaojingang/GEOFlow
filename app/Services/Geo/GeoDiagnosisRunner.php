@@ -138,6 +138,7 @@ class GeoDiagnosisRunner
     private function platformName(string $code): string
     {
         return match ($code) {
+            GeoWebWorkbenchClient::PLATFORM_CODE => GeoWebWorkbenchClient::PLATFORM_NAME,
             'deepseek_mock' => 'DeepSeek 模拟',
             'kimi_mock' => 'Kimi 模拟',
             'qwen_mock' => '通义千问模拟',

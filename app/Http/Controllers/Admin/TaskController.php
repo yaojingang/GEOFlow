@@ -10,6 +10,7 @@ use App\Models\ImageLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\TitleLibrary;
+use App\Services\Admin\GeoOperationsOverviewService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Support\AdminWeb;
@@ -33,6 +34,7 @@ class TaskController extends Controller
     public function __construct(
         private readonly TaskLifecycleService $taskLifecycleService,
         private readonly TaskMonitoringQueryService $taskMonitoringQueryService,
+        private readonly GeoOperationsOverviewService $geoOperationsOverviewService,
     ) {}
 
     /**
@@ -66,6 +68,7 @@ class TaskController extends Controller
             'legacyError' => $error,
             'taskI18n' => $this->taskI18n(),
             'taskRealtime' => $this->taskRealtimeConfig(),
+            'geoOpsPanel' => $this->geoOperationsOverviewService->forModule('tasks'),
         ]);
     }
 
@@ -376,12 +379,16 @@ class TaskController extends Controller
     private function taskRealtimeConfig(): array
     {
         $reverbApp = config('reverb.apps.apps.0', []);
+        $reverbKey = (string) ($reverbApp['key'] ?? '');
         $host = (string) (config('reverb.servers.reverb.hostname') ?: config('app.url'));
         $parsedHost = parse_url($host, PHP_URL_HOST);
+        $isEnabled = (bool) config('geoflow.task_realtime_enabled')
+            && (string) config('broadcasting.default') === 'reverb'
+            && $reverbKey !== '';
 
         return [
-            'enabled' => (string) config('broadcasting.default') === 'reverb',
-            'key' => (string) ($reverbApp['key'] ?? ''),
+            'enabled' => $isEnabled,
+            'key' => $reverbKey,
             'host' => $parsedHost ? (string) $parsedHost : (string) $host,
             'port' => (int) (config('reverb.apps.apps.0.options.port') ?: 443),
             'scheme' => (string) (config('reverb.apps.apps.0.options.scheme') ?: 'https'),

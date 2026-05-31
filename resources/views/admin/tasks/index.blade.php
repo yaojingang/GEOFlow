@@ -80,6 +80,8 @@
             </div>
         @endif
 
+        @include('admin.partials.geo-operations-panel', ['panel' => $geoOpsPanel ?? null])
+
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">{{ __('admin.tasks.list_title') }}</h3>
@@ -358,7 +360,9 @@
 @endsection
 
 @push('scripts')
-<script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+@if (($taskRealtime['enabled'] ?? false) === true)
+    <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+@endif
 @php
     $taskInitialOverview = [
         'tasks' => $tasks,

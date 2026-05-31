@@ -27,11 +27,14 @@ class GeoSchemaTest extends TestCase
             'geo_article_drafts',
             'geo_publish_targets',
             'geo_publish_records',
+            'geo_citation_occurrences',
             'point_logs',
         ];
 
         foreach ($tables as $table) {
             $this->assertTrue(Schema::hasTable($table), "{$table} table is missing");
         }
+
+        $this->assertTrue(Schema::hasColumn('geo_publish_records', 'submitted_at'), 'geo_publish_records.submitted_at column is missing');
     }
 }

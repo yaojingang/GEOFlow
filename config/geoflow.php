@@ -51,8 +51,21 @@ return [
     'url_import_allow_mixed_dns' => filter_var(env('URL_IMPORT_ALLOW_MIXED_DNS', false), FILTER_VALIDATE_BOOLEAN),
     // 为 true 时记录知识库「查询向量」是否由默认 embedding 接口生成（便于对照 bak 验证；默认关闭）
     'debug_knowledge_query_embedding' => filter_var(env('GEOFLOW_DEBUG_KNOWLEDGE_QUERY_EMBEDDING', false), FILTER_VALIDATE_BOOLEAN),
+    // 语义切片规划 prompt 最大字符数；超过后直接走结构化规则回退，避免长知识库拖慢或超上下文。
+    'semantic_chunking_max_chars' => max(1, (int) env('GEOFLOW_SEMANTIC_CHUNKING_MAX_CHARS', 20000)),
+    // Embedding 文档向量化单次请求切片数；部分供应商限制 batch 较小，默认保守拆分。
+    'embedding_batch_size' => max(1, min(64, (int) env('GEOFLOW_EMBEDDING_BATCH_SIZE', 1))),
     // GEO 生产链路是否使用 Laravel 队列执行批量采集、批量评分和发布后复测；默认同步执行，便于本地调试。
     'geo_async_jobs' => filter_var(env('GEOFLOW_GEO_ASYNC_JOBS', false), FILTER_VALIDATE_BOOLEAN),
+    // 任务页实时推送开关；未启动 Reverb 时保持关闭，避免后台出现 WebSocket 连接噪音。
+    'task_realtime_enabled' => filter_var(env('GEOFLOW_TASK_REALTIME_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    // 本机多平台 AI 网页对话工作台 CLI；留空时优先使用 ~/.local/bin/ai-web-workbench，再回退到 PATH。
+    'ai_web_workbench' => [
+        'command' => env('GEOFLOW_AI_WEB_WORKBENCH_COMMAND', ''),
+        'timeout_seconds' => (int) env('GEOFLOW_AI_WEB_WORKBENCH_TIMEOUT', 420),
+        'login_check_timeout_seconds' => (int) env('GEOFLOW_AI_WEB_WORKBENCH_LOGIN_CHECK_TIMEOUT', 90),
+        'data_dir' => env('GEOFLOW_AI_WEB_WORKBENCH_DATA_DIR', ''),
+    ],
 
     // 本地上传根目录（绝对路径）
     'upload_path' => env('GEOFLOW_UPLOAD_PATH', public_path('assets/images')),

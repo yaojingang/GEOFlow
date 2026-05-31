@@ -48,7 +48,9 @@ class AiModelController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'models' => $this->loadModels(),
             'embeddingModels' => $this->loadActiveEmbeddingModels(),
+            'chatModels' => $this->loadActiveChatModels(),
             'defaultEmbeddingModelId' => $this->getDefaultEmbeddingModelId(),
+            'chunkingConfig' => $this->getChunkingConfig(),
             'pgvectorEnabled' => $this->isPgvectorEnabled(),
         ]);
     }
@@ -180,6 +182,7 @@ class AiModelController extends Controller
             $endpoint = $this->resolveTestEndpoint($model, $modelType);
             $apiKey = $this->decryptApiKey((string) ($model->getRawOriginal('api_key') ?? ''));
             $modelName = trim((string) ($model->model_id ?? ''));
+            $isGemini = OpenAiRuntimeProvider::isGeminiProviderUrl($endpoint);
 
             if ($endpoint === '') {
                 return $this->modelTestResponse(false, __('admin.ai_models.test_error_api_url_missing'), $startedAt, $modelType);
@@ -193,13 +196,19 @@ class AiModelController extends Controller
 
             $request = Http::acceptJson()
                 ->asJson()
-                ->withToken($apiKey)
                 ->timeout(45);
-            if ($this->usesAnthropicMessages($model, $modelType)) {
-                $request = $request->withHeaders(AnthropicRuntimeProvider::headers());
+
+            if ($isGemini) {
+                $request = $request->withHeaders(['x-goog-api-key' => $apiKey]);
+            } elseif ($this->usesAnthropicMessages($model, $modelType)) {
+                $request = $request
+                    ->withToken($apiKey)
+                    ->withHeaders(AnthropicRuntimeProvider::headers());
+            } else {
+                $request = $request->withToken($apiKey);
             }
 
-            $response = $request->post($endpoint, $this->buildTestPayload($model, $modelName, $modelType));
+            $response = $request->post($endpoint, $this->buildTestPayload($model, $modelName, $modelType, $isGemini));
 
             $json = $response->json();
             if (! $response->successful()) {
@@ -216,7 +225,7 @@ class AiModelController extends Controller
                 );
             }
 
-            if (! $this->isValidTestResponse($json, $modelType, $model)) {
+            if (! $this->isValidTestResponse($json, $modelType, $model, $isGemini)) {
                 return $this->modelTestResponse(
                     false,
                     __('admin.ai_models.test_invalid_response', [
@@ -273,6 +282,51 @@ class AiModelController extends Controller
         $this->setDefaultEmbeddingModelId($modelId);
 
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.embedding_default_updated'));
+    }
+
+    /**
+     * 更新知识库切片策略。
+     */
+    public function updateChunkingConfig(Request $request): RedirectResponse
+    {
+        $payload = $request->validate([
+            'knowledge_chunk_strategy' => ['required', 'in:rule,auto,semantic_llm'],
+            'knowledge_chunking_model_id' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $strategy = (string) $payload['knowledge_chunk_strategy'];
+        $modelId = max(0, (int) ($payload['knowledge_chunking_model_id'] ?? 0));
+
+        if ($modelId > 0) {
+            $available = AiModel::query()
+                ->whereKey($modelId)
+                ->where('status', 'active')
+                ->where(function ($query): void {
+                    $query->whereNull('model_type')
+                        ->orWhere('model_type', '')
+                        ->orWhere('model_type', 'chat');
+                })
+                ->exists();
+
+            if (! $available) {
+                return back()->withErrors(__('admin.ai_models.error.chunking_model_unavailable'));
+            }
+        }
+
+        if ($strategy === 'semantic_llm' && $modelId <= 0) {
+            return back()->withErrors(__('admin.ai_models.error.chunking_model_required'));
+        }
+
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'knowledge_chunk_strategy'],
+            ['setting_value' => $strategy]
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'knowledge_chunking_model_id'],
+            ['setting_value' => (string) $modelId]
+        );
+
+        return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.chunking_config_updated'));
     }
 
     /**
@@ -355,6 +409,32 @@ class AiModelController extends Controller
     }
 
     /**
+     * 可用于知识库语义切片规划的聊天模型列表。
+     *
+     * @return array<int, array{id:int,name:string,model_id:string}>
+     */
+    private function loadActiveChatModels(): array
+    {
+        return AiModel::query()
+            ->select(['id', 'name', 'model_id'])
+            ->where('status', 'active')
+            ->where(function ($query): void {
+                $query->whereNull('model_type')
+                    ->orWhere('model_type', '')
+                    ->orWhere('model_type', 'chat');
+            })
+            ->orderBy('failover_priority')
+            ->orderBy('name')
+            ->get()
+            ->map(static fn (AiModel $model): array => [
+                'id' => (int) $model->id,
+                'name' => (string) $model->name,
+                'model_id' => (string) ($model->model_id ?? ''),
+            ])
+            ->all();
+    }
+
+    /**
      * 校验模型表单字段。
      *
      * @param  bool  $isUpdate  true 表示编辑模式（允许 api_key 为空）
@@ -397,6 +477,22 @@ class AiModelController extends Controller
         return (int) (SiteSetting::query()
             ->where('setting_key', 'default_embedding_model_id')
             ->value('setting_value') ?? 0);
+    }
+
+    /**
+     * @return array{strategy:string,model_id:int}
+     */
+    private function getChunkingConfig(): array
+    {
+        $settings = SiteSetting::query()
+            ->whereIn('setting_key', ['knowledge_chunk_strategy', 'knowledge_chunking_model_id'])
+            ->pluck('setting_value', 'setting_key');
+        $strategy = (string) ($settings['knowledge_chunk_strategy'] ?? 'rule');
+
+        return [
+            'strategy' => in_array($strategy, ['rule', 'auto', 'semantic_llm'], true) ? $strategy : 'rule',
+            'model_id' => max(0, (int) ($settings['knowledge_chunking_model_id'] ?? 0)),
+        ];
     }
 
     /**
@@ -471,14 +567,62 @@ class AiModelController extends Controller
             return '';
         }
 
+        if (OpenAiRuntimeProvider::isGeminiProviderUrl($providerBaseUrl)) {
+            $modelName = $this->normalizeGeminiModelName((string) ($model->model_id ?? ''));
+
+            return rtrim($providerBaseUrl, '/').'/models/'.$modelName.($modelType === 'embedding' ? ':batchEmbedContents' : ':generateContent');
+        }
+
         return rtrim($providerBaseUrl, '/').($modelType === 'embedding' ? '/embeddings' : '/chat/completions');
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function buildTestPayload(AiModel $model, string $modelName, string $modelType): array
+    private function buildTestPayload(AiModel $model, string $modelName, string $modelType, bool $isGemini = false): array
     {
+        if ($isGemini) {
+            if ($modelType === 'embedding') {
+                return [
+                    'requests' => [
+                        [
+                            'model' => 'models/'.$this->normalizeGeminiModelName($modelName),
+                            'content' => [
+                                'parts' => [
+                                    ['text' => $this->formatGeminiRetrievalQuery('GEOFlow embedding connection test')],
+                                ],
+                            ],
+                            'output_dimensionality' => 3072,
+                        ],
+                    ],
+                ];
+            }
+
+            $generationConfig = [
+                'temperature' => 0,
+                'maxOutputTokens' => 64,
+            ];
+
+            $thinkingLevel = $this->resolveGeminiTestThinkingLevel($modelName);
+            if ($thinkingLevel !== null) {
+                $generationConfig['thinkingConfig'] = [
+                    'thinkingLevel' => $thinkingLevel,
+                ];
+            }
+
+            return [
+                'contents' => [
+                    [
+                        'role' => 'user',
+                        'parts' => [
+                            ['text' => 'Reply with OK.'],
+                        ],
+                    ],
+                ],
+                'generationConfig' => $generationConfig,
+            ];
+        }
+
         if ($modelType === 'embedding') {
             return [
                 'model' => $modelName,
@@ -506,9 +650,29 @@ class AiModelController extends Controller
         ];
     }
 
-    private function isValidTestResponse(mixed $json, string $modelType, AiModel $model): bool
+    private function isValidTestResponse(mixed $json, string $modelType, AiModel $model, bool $isGemini = false): bool
     {
         if (! is_array($json)) {
+            return false;
+        }
+
+        if ($isGemini) {
+            if ($modelType === 'embedding') {
+                return isset($json['embeddings'][0]['values']) && is_array($json['embeddings'][0]['values']);
+            }
+
+            foreach (($json['candidates'] ?? []) as $candidate) {
+                if (! is_array($candidate)) {
+                    continue;
+                }
+
+                foreach (($candidate['content']['parts'] ?? []) as $part) {
+                    if (is_array($part) && trim((string) ($part['text'] ?? '')) !== '') {
+                        return true;
+                    }
+                }
+            }
+
             return false;
         }
 
@@ -528,6 +692,33 @@ class AiModelController extends Controller
     private function usesAnthropicMessages(AiModel $model, string $modelType): bool
     {
         return $modelType === 'chat' && AnthropicRuntimeProvider::isAnthropicCompatible($model);
+    }
+
+    private function normalizeGeminiModelName(string $modelName): string
+    {
+        $modelName = trim($modelName);
+
+        return preg_replace('#^models/#', '', $modelName) ?: $modelName;
+    }
+
+    private function formatGeminiRetrievalQuery(string $query): string
+    {
+        return 'task: search result | query: '.trim($query);
+    }
+
+    private function resolveGeminiTestThinkingLevel(string $modelName): ?string
+    {
+        $modelName = strtolower($this->normalizeGeminiModelName($modelName));
+
+        if (str_starts_with($modelName, 'gemini-3-flash')) {
+            return 'minimal';
+        }
+
+        if (str_starts_with($modelName, 'gemini-3-')) {
+            return 'low';
+        }
+
+        return null;
     }
 
     private function modelTestResponse(

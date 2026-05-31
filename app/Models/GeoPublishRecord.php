@@ -17,6 +17,7 @@ class GeoPublishRecord extends Model
         'status',
         'target_url',
         'error_message',
+        'submitted_at',
         'published_at',
     ];
 
@@ -27,6 +28,7 @@ class GeoPublishRecord extends Model
             'geo_publish_target_id' => 'integer',
             'platform_codes' => 'array',
             'handoff_payload' => 'array',
+            'submitted_at' => 'datetime',
             'published_at' => 'datetime',
         ];
     }

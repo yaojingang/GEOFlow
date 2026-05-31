@@ -105,6 +105,7 @@
                             @php
                                 $snapshot = $source->latestPageSnapshot;
                                 $score = $snapshot?->latestScore;
+                                $analysis = $source->latestReferenceAnalysis;
                             @endphp
                             <tr>
                                 <td class="px-5 py-4">
@@ -132,6 +133,12 @@
                                     @if ($score)
                                         <div class="text-sm font-semibold text-emerald-700">{{ (int) $score->total_score }} 分</div>
                                         <div class="mt-1 text-xs text-gray-500">{{ $score->suggested_usage }}</div>
+                                        @if ($analysis)
+                                            <div class="mt-1 inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                                                <i data-lucide="file-search" class="h-3 w-3"></i>
+                                                已分析
+                                            </div>
+                                        @endif
                                     @else
                                         <span class="text-sm text-gray-400">未评分</span>
                                     @endif
@@ -147,6 +154,13 @@
                                             <button type="submit" class="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
                                                 <i data-lucide="download-cloud" class="h-3.5 w-3.5"></i>
                                                 采集
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="{{ route('admin.geo.citation-sources.analyze', ['sourceId' => (int) $source->id]) }}">
+                                            @csrf
+                                            <button type="submit" @disabled(! $score) class="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                                                <i data-lucide="file-search" class="h-3.5 w-3.5"></i>
+                                                本地分析
                                             </button>
                                         </form>
                                     </div>

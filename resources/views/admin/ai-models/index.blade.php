@@ -18,7 +18,7 @@
             </button>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
                     <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.vector_title') }}</h3>
@@ -65,6 +65,44 @@
                     <p>{{ __('admin.ai_models.type_embedding') }}</p>
                     <p>{{ __('admin.ai_models.type_rerank') }}</p>
                     <p>{{ __('admin.ai_models.type_fallback') }}</p>
+                </div>
+            </div>
+
+            <div class="bg-white shadow rounded-lg">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.chunking_title') }}</h3>
+                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_models.chunking_desc') }}</p>
+                </div>
+                <div class="px-6 py-5">
+                    <form method="POST" action="{{ route('admin.ai-models.chunking-config') }}" class="space-y-4">
+                        @csrf
+                        <div>
+                            <label for="knowledge_chunk_strategy" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.chunk_strategy') }}</label>
+                            <select name="knowledge_chunk_strategy" id="knowledge_chunk_strategy" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="rule" @selected(($chunkingConfig['strategy'] ?? 'rule') === 'rule')>{{ __('admin.ai_models.chunk_strategy_rule') }}</option>
+                                <option value="auto" @selected(($chunkingConfig['strategy'] ?? 'rule') === 'auto')>{{ __('admin.ai_models.chunk_strategy_auto') }}</option>
+                                <option value="semantic_llm" @selected(($chunkingConfig['strategy'] ?? 'rule') === 'semantic_llm')>{{ __('admin.ai_models.chunk_strategy_semantic') }}</option>
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.chunk_strategy_help') }}</p>
+                        </div>
+                        <div>
+                            <label for="knowledge_chunking_model_id" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.chunking_model') }}</label>
+                            <select name="knowledge_chunking_model_id" id="knowledge_chunking_model_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="0">{{ __('admin.ai_models.chunking_model_none') }}</option>
+                                @foreach ($chatModels as $chatModel)
+                                    <option value="{{ (int) $chatModel['id'] }}" @selected((int) ($chunkingConfig['model_id'] ?? 0) === (int) $chatModel['id'])>
+                                        {{ $chatModel['name'].' ('.$chatModel['model_id'].')' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.chunking_model_help') }}</p>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-800 hover:bg-slate-900">
+                                {{ __('admin.ai_models.save_chunking') }}
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -189,6 +227,7 @@
                             <button type="button" onclick="fillPreset('minimax_highspeed')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">MiniMax Highspeed</button>
                             <button type="button" onclick="fillPreset('openai')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">OpenAI</button>
                             <button type="button" onclick="fillPreset('anthropic_gpt55')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">GPT-5.5 Anthropic</button>
+                            <button type="button" onclick="fillPreset('gemini')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Gemini</button>
                             <button type="button" onclick="fillPreset('deepseek')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">DeepSeek</button>
                             <button type="button" onclick="fillPreset('zhipu')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Zhipu GLM</button>
                             <button type="button" onclick="fillPreset('volcengine_ark')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Volcengine Ark</button>
@@ -196,9 +235,11 @@
                         <label class="block text-sm font-medium text-gray-700 mt-4 mb-2">{{ __('admin.ai_models.quick_embedding') }}</label>
                         <div class="flex flex-wrap gap-2">
                             <button type="button" onclick="fillPreset('openai_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">OpenAI Embedding</button>
+                            <button type="button" onclick="fillPreset('gemini_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Gemini Embedding</button>
                             <button type="button" onclick="fillPreset('zhipu_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Zhipu Embedding</button>
                         </div>
                         <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.quick_help') }}</p>
+                        <p class="mt-2 text-xs text-amber-700">{{ __('admin.ai_models.gemini_embedding_notice') }}</p>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -297,10 +338,12 @@
             minimax_highspeed: {name: 'MiniMax M2.7 Highspeed', version: 'M2.7', model_id: 'MiniMax-M2.7-highspeed', api_url: 'https://api.minimax.io', model_type: 'chat'},
             openai: {name: 'GPT-4o', version: '', model_id: 'gpt-4o', api_url: 'https://api.openai.com', model_type: 'chat'},
             anthropic_gpt55: {name: 'GPT-5.5 Anthropic 兼容', version: 'anthropic-compatible', model_id: 'gpt-5.5', api_url: 'http://43.165.185.203:8080/v1', model_type: 'chat'},
+            gemini: {name: 'Gemini 3 Flash Preview', version: 'v1beta', model_id: 'gemini-3-flash-preview', api_url: 'https://generativelanguage.googleapis.com/v1beta', model_type: 'chat'},
             deepseek: {name: 'DeepSeek Chat', version: '', model_id: 'deepseek-chat', api_url: 'https://api.deepseek.com', model_type: 'chat'},
             zhipu: {name: '智谱 GLM-4.6', version: 'v4', model_id: 'glm-4.6', api_url: 'https://open.bigmodel.cn/api/paas/v4', model_type: 'chat'},
             volcengine_ark: {name: '火山方舟 Chat', version: 'v3', model_id: '', api_url: 'https://ark.cn-beijing.volces.com/api/v3', model_type: 'chat'},
             openai_embedding: {name: 'OpenAI Embedding 3 Small', version: '', model_id: 'text-embedding-3-small', api_url: 'https://api.openai.com', model_type: 'embedding'},
+            gemini_embedding: {name: 'Gemini Embedding 2', version: 'v1beta', model_id: 'gemini-embedding-2', api_url: 'https://generativelanguage.googleapis.com/v1beta', model_type: 'embedding'},
             zhipu_embedding: {name: '智谱 Embedding-3', version: 'v4', model_id: 'embedding-3', api_url: 'https://open.bigmodel.cn/api/paas/v4', model_type: 'embedding'},
         };
 

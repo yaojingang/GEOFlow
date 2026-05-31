@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
+use App\Services\Admin\GeoOperationsOverviewService;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
 use App\Support\Site\SiteSettingsBag;
@@ -22,6 +23,8 @@ use Illuminate\View\View;
  */
 class SiteSettingsController extends Controller
 {
+    public function __construct(private readonly GeoOperationsOverviewService $geoOperationsOverviewService) {}
+
     /**
      * 网站设置页面。
      */
@@ -38,6 +41,7 @@ class SiteSettingsController extends Controller
             'availableThemes' => $this->discoverThemes(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
+            'geoOpsPanel' => $this->geoOperationsOverviewService->forModule('site_settings'),
         ]);
     }
 

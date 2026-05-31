@@ -47,6 +47,13 @@ class UrlImportProcessingServiceTest extends TestCase
         $this->service->normalizeInputUrl('http://0.0.0.0');
     }
 
+    public function test_it_rejects_private_network_ip(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->service->normalizeInputUrl('http://192.168.1.20/status');
+    }
+
     public function test_it_rejects_local_hostname(): void
     {
         $this->expectException(InvalidArgumentException::class);

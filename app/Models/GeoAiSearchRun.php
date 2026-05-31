@@ -22,6 +22,14 @@ class GeoAiSearchRun extends Model
         'completed_questions',
         'failed_questions',
         'average_score',
+        'target_keyword_hit_rate',
+        'keyword_hit_rate',
+        'previous_keyword_hit_rate',
+        'baseline_keyword_hit_rate',
+        'keyword_hit_rate_delta',
+        'keyword_hit_count',
+        'keyword_check_count',
+        'optimization_directions',
         'started_at',
         'finished_at',
         'error_message',
@@ -39,6 +47,14 @@ class GeoAiSearchRun extends Model
             'completed_questions' => 'integer',
             'failed_questions' => 'integer',
             'average_score' => 'integer',
+            'target_keyword_hit_rate' => 'integer',
+            'keyword_hit_rate' => 'integer',
+            'previous_keyword_hit_rate' => 'integer',
+            'baseline_keyword_hit_rate' => 'integer',
+            'keyword_hit_rate_delta' => 'integer',
+            'keyword_hit_count' => 'integer',
+            'keyword_check_count' => 'integer',
+            'optimization_directions' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
         ];
@@ -62,5 +78,10 @@ class GeoAiSearchRun extends Model
     public function answers(): HasMany
     {
         return $this->hasMany(GeoAiSearchAnswer::class);
+    }
+
+    public function citationOccurrences(): HasMany
+    {
+        return $this->hasMany(GeoCitationOccurrence::class, 'geo_ai_search_run_id');
     }
 }

@@ -25,22 +25,64 @@
     @endphp
 
     <div class="px-4 sm:px-0">
-        <div class="mb-8">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-900">{{ __('admin.dashboard.heading') }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.dashboard.subtitle', ['site' => e($adminSiteName)]) }}</p>
+        <section data-admin-home-command-center class="mb-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div class="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div class="px-5 py-6 sm:px-6 lg:px-7">
+                    <p class="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                        <i data-lucide="radar" class="h-3.5 w-3.5"></i>
+                        GEO 获客中控台
+                    </p>
+                    <h1 class="mt-4 text-2xl font-semibold text-slate-950">{{ __('admin.dashboard.heading') }}</h1>
+                    <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{{ __('admin.dashboard.subtitle', ['site' => e($adminSiteName)]) }}</p>
+                    <div class="mt-5 flex flex-wrap gap-2">
+                        <a href="{{ route('admin.geo.workspace') }}" class="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                            <i data-lucide="route" class="h-4 w-4"></i>
+                            进入 GEO 工作台
+                        </a>
+                        <a href="{{ route('admin.web-workbench.index') }}" class="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            <i data-lucide="messages-square" class="h-4 w-4"></i>
+                            AI检视
+                        </a>
+                        <a href="{{ route('admin.articles.index') }}" class="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            <i data-lucide="newspaper" class="h-4 w-4"></i>
+                            内容资产
+                        </a>
+                    </div>
                 </div>
-                <div class="flex items-center space-x-3">
-                    <span class="text-sm text-gray-500">{{ __('admin.dashboard.last_updated', ['time' => now()->format('Y-m-d H:i:s')]) }}</span>
-                    <button type="button" onclick="location.reload()" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                        <i data-lucide="refresh-cw" class="w-4 h-4 mr-1"></i>
-                        {{ __('admin.dashboard.refresh') }}
-                    </button>
+                <div class="grid grid-cols-2 border-t border-slate-100 bg-slate-50 lg:border-l lg:border-t-0">
+                    <div class="border-b border-r border-slate-100 p-5">
+                        <div class="text-xs text-slate-500">{{ __('admin.dashboard.published') }}</div>
+                        <div class="mt-2 text-2xl font-semibold text-slate-950">{{ number_format($stats['published_articles'] ?? 0) }}</div>
+                        <div class="mt-1 text-xs text-slate-500">{{ __('admin.dashboard.publish_rate', ['rate' => $publishRate]) }}</div>
+                    </div>
+                    <div class="border-b border-slate-100 p-5">
+                        <div class="text-xs text-slate-500">{{ __('admin.dashboard.ai_generated') }}</div>
+                        <div class="mt-2 text-2xl font-semibold text-slate-950">{{ number_format($stats['ai_generated_articles'] ?? 0) }}</div>
+                        <div class="mt-1 text-xs text-slate-500">{{ __('admin.dashboard.ai_generated_ratio', ['rate' => $aiRatio]) }}</div>
+                    </div>
+                    <div class="border-r border-slate-100 p-5">
+                        <div class="text-xs text-slate-500">{{ __('admin.dashboard.active_tasks') }}</div>
+                        <div class="mt-2 text-2xl font-semibold text-slate-950">{{ ($stats['running_jobs'] ?? 0) + ($stats['pending_jobs'] ?? 0) }}</div>
+                        <div class="mt-1 text-xs text-slate-500">{{ __('admin.dashboard.active_tasks_detail', ['running' => $stats['running_jobs'] ?? 0, 'pending' => $stats['pending_jobs'] ?? 0]) }}</div>
+                    </div>
+                    <div class="p-5">
+                        <div class="text-xs text-slate-500">{{ __('admin.dashboard.material_total') }}</div>
+                        <div class="mt-2 text-2xl font-semibold text-slate-950">{{ number_format($materialTotal) }}</div>
+                        <div class="mt-1 text-xs text-slate-500">关键词、标题、图片、知识库</div>
+                    </div>
                 </div>
             </div>
-        </div>
+        </section>
 
+        <details data-admin-dashboard-detail-stack class="group rounded-lg border border-slate-200 bg-white shadow-sm">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+                <span class="inline-flex items-center gap-2">
+                    <i data-lucide="panel-bottom-open" class="h-4 w-4 text-slate-500"></i>
+                    展开查看详细数据和历史面板
+                </span>
+                <i data-lucide="chevron-down" class="h-4 w-4 text-slate-400 transition group-open:rotate-180"></i>
+            </summary>
+            <div class="border-t border-slate-100 px-5 py-5">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow-lg rounded-lg">
                 <div class="p-5">
@@ -684,5 +726,7 @@
             </section>
         </div>
 
+            </div>
+        </details>
     </div>
 @endsection

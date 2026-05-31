@@ -87,6 +87,24 @@ class OpenAiRuntimeProviderTest extends TestCase
         );
     }
 
+    public function test_it_resolves_gemini_native_base_urls_and_drivers(): void
+    {
+        $this->assertSame(
+            'https://generativelanguage.googleapis.com/v1beta',
+            OpenAiRuntimeProvider::resolveChatBaseUrl('https://generativelanguage.googleapis.com/v1beta/openai')
+        );
+
+        $this->assertSame(
+            'https://generativelanguage.googleapis.com/v1beta',
+            OpenAiRuntimeProvider::resolveEmbeddingBaseUrl('https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent')
+        );
+
+        $this->assertTrue(OpenAiRuntimeProvider::isGeminiProviderUrl('https://generativelanguage.googleapis.com/v1beta'));
+        $this->assertSame('gemini', OpenAiRuntimeProvider::resolveChatDriver('https://generativelanguage.googleapis.com/v1beta', 'gemini-3-flash-preview'));
+        $this->assertSame('gemini', OpenAiRuntimeProvider::resolveEmbeddingDriver('https://generativelanguage.googleapis.com/v1beta', 'gemini-embedding-2'));
+        $this->assertSame('openai', OpenAiRuntimeProvider::resolveEmbeddingDriver('https://api.openai.com/v1', 'text-embedding-3-small'));
+    }
+
     public function test_it_resolves_chat_driver_for_openai(): void
     {
         $this->assertSame('openai', OpenAiRuntimeProvider::resolveChatDriver('https://api.openai.com/v1', 'gpt-4'));

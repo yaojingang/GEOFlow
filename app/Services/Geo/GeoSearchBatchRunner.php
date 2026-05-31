@@ -6,15 +6,19 @@ use App\Models\BrandProfile;
 use App\Models\GeoAiSearchAnswer;
 use App\Models\GeoAiSearchQuestion;
 use App\Models\GeoAiSearchRun;
+use App\Models\GeoCitationOccurrence;
 use App\Models\GeoCitationSource;
+use App\Models\PointLog;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Throwable;
 
 class GeoSearchBatchRunner
 {
     public function __construct(
         private readonly GeoAIPlatformClient $client,
-        private readonly GeoAIAnswerAnalyzer $analyzer
+        private readonly GeoAIAnswerAnalyzer $analyzer,
+        private readonly GeoExternalQaOptimizationPlanner $optimizationPlanner
     ) {}
 
     public function run(GeoAiSearchRun $run): GeoAiSearchRun
@@ -23,6 +27,8 @@ class GeoSearchBatchRunner
         if ($run->status === 'completed') {
             return $run;
         }
+
+        $this->assertEnoughPoints($run);
 
         $run->forceFill([
             'status' => 'running',
@@ -34,21 +40,129 @@ class GeoSearchBatchRunner
         $platformCodes = $run->platform_codes ?: ['deepseek_mock'];
         foreach ($run->questions as $question) {
             $this->runQuestion($run, $question, $run->brandProfile, $platformCodes);
+            $this->updateRunProgress($run, false);
         }
 
+        $this->updateRunProgress($run, true);
+        $this->recordPointCost($run->refresh());
+
+        return $run->fresh(['questions', 'answers']);
+    }
+
+    public function assertEnoughPoints(GeoAiSearchRun $run): void
+    {
+        $run->loadMissing('organization');
+        $pointsCost = max(0, (int) $run->points_cost);
+        if ($pointsCost <= 0 || $this->hasPointCharge($run)) {
+            return;
+        }
+
+        $availablePoints = (int) ($run->organization?->points ?? 0);
+        if ($availablePoints < $pointsCost) {
+            throw new InvalidArgumentException('组织剩余点数不足：当前 '.$availablePoints.' 点，本次需要 '.$pointsCost.' 点');
+        }
+    }
+
+    private function updateRunProgress(GeoAiSearchRun $run, bool $isFinished): void
+    {
         $completedQuestions = (int) $run->questions()->where('status', 'completed')->count();
         $failedQuestions = (int) $run->questions()->where('status', 'failed')->count();
         $averageScore = (int) round((float) $run->answers()->where('status', 'succeeded')->avg('visibility_score'));
 
-        $run->forceFill([
-            'status' => $failedQuestions > 0 ? 'partial_failed' : 'completed',
+        $status = 'running';
+        if ($isFinished) {
+            $status = match (true) {
+                $failedQuestions === 0 => 'completed',
+                $completedQuestions > 0 => 'partial_failed',
+                default => 'failed',
+            };
+        }
+
+        $payload = [
+            'status' => $status,
             'completed_questions' => $completedQuestions,
             'failed_questions' => $failedQuestions,
             'average_score' => $averageScore,
-            'finished_at' => now(),
-        ])->save();
+        ];
 
-        return $run->fresh(['questions', 'answers']);
+        if ($isFinished) {
+            $payload['finished_at'] = now();
+            $keywordMetrics = $this->optimizationPlanner->summarizeRun($run);
+            $previousKeywordHitRate = $run->previous_keyword_hit_rate;
+
+            if ($previousKeywordHitRate === null && $this->isExternalInspectionRun($run)) {
+                $run->loadMissing(['organization', 'brandProfile']);
+                if ($run->organization !== null && $run->brandProfile !== null) {
+                    $previousKeywordHitRate = $this->optimizationPlanner->latestCompletedKeywordHitRate(
+                        $run->organization,
+                        $run->brandProfile,
+                        (int) $run->id
+                    );
+                }
+            }
+
+            $payload['previous_keyword_hit_rate'] = $previousKeywordHitRate;
+            $payload['baseline_keyword_hit_rate'] = $run->baseline_keyword_hit_rate ?? $previousKeywordHitRate;
+            $payload['keyword_hit_rate'] = $keywordMetrics['keyword_hit_rate'];
+            $payload['keyword_hit_count'] = $keywordMetrics['keyword_hit_count'];
+            $payload['keyword_check_count'] = $keywordMetrics['keyword_check_count'];
+            $payload['keyword_hit_rate_delta'] = $previousKeywordHitRate === null
+                ? null
+                : $keywordMetrics['keyword_hit_rate'] - (int) $previousKeywordHitRate;
+        }
+
+        $run->forceFill($payload)->save();
+    }
+
+    private function isExternalInspectionRun(GeoAiSearchRun $run): bool
+    {
+        return $run->questions()
+            ->whereHas('opportunity', fn ($query) => $query->where('generation_source', 'external_qa_inspection'))
+            ->exists();
+    }
+
+    private function recordPointCost(GeoAiSearchRun $run): void
+    {
+        $pointsCost = max(0, (int) $run->points_cost);
+        if ($pointsCost <= 0 || $this->hasPointCharge($run) || ! in_array($run->status, ['completed', 'partial_failed'], true)) {
+            return;
+        }
+
+        DB::transaction(function () use ($run, $pointsCost): void {
+            $run = GeoAiSearchRun::query()
+                ->whereKey($run->id)
+                ->lockForUpdate()
+                ->with('organization')
+                ->firstOrFail();
+
+            if ($this->hasPointCharge($run)) {
+                return;
+            }
+
+            $run->organization()->decrement('points', $pointsCost);
+            PointLog::query()->create([
+                'organization_id' => $run->organization_id,
+                'admin_id' => $run->created_by_admin_id,
+                'action' => 'geo_search_run',
+                'points_delta' => -$pointsCost,
+                'ref_type' => GeoAiSearchRun::class,
+                'ref_id' => $run->id,
+                'remark' => 'GEO AI 搜索批次消耗',
+            ]);
+        });
+    }
+
+    private function hasPointCharge(GeoAiSearchRun $run): bool
+    {
+        if (! $run->exists) {
+            return false;
+        }
+
+        return PointLog::query()
+            ->where('action', 'geo_search_run')
+            ->where('ref_type', GeoAiSearchRun::class)
+            ->where('ref_id', $run->id)
+            ->exists();
     }
 
     /**
@@ -169,6 +283,26 @@ class GeoSearchBatchRunner
                     ],
                 ]);
                 $source->save();
+
+                GeoCitationOccurrence::query()->updateOrCreate(
+                    [
+                        'geo_ai_search_answer_id' => $answer->id,
+                        'geo_citation_source_id' => $source->id,
+                    ],
+                    [
+                        'organization_id' => $run->organization_id,
+                        'geo_ai_search_run_id' => $run->id,
+                        'geo_ai_search_question_id' => $answer->geo_ai_search_question_id,
+                        'geo_keyword_opportunity_id' => $answer->geo_keyword_opportunity_id,
+                        'platform_code' => (string) $answer->platform_code,
+                        'url' => $sourceUrl,
+                        'domain' => $domain,
+                        'cited_at' => $answer->answered_at ?? now(),
+                        'metadata' => [
+                            'visibility_score' => (int) $answer->visibility_score,
+                        ],
+                    ]
+                );
             });
         }
     }

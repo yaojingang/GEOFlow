@@ -18,11 +18,16 @@ class GeoAIPlatformClient implements AIPlatformClient
 {
     public function __construct(
         private readonly MockAIPlatformClient $mockClient,
+        private readonly GeoWebWorkbenchClient $webWorkbenchClient,
         private readonly ApiKeyCrypto $apiKeyCrypto
     ) {}
 
     public function ask(GeoAiPlatform $platform, BrandProfile $brandProfile, GeoTaskQuestion $question, string $prompt): string
     {
+        if ($this->isWebWorkbenchPlatformCode((string) $platform->code)) {
+            return $this->webWorkbenchClient->ask($brandProfile, (string) $question->question, $prompt, $this->webWorkbenchPlatformIds((string) $platform->code));
+        }
+
         if (! $this->isConfiguredAiModelCode((string) $platform->code)) {
             return $this->mockClient->ask($platform, $brandProfile, $question, $prompt);
         }
@@ -32,6 +37,10 @@ class GeoAIPlatformClient implements AIPlatformClient
 
     public function askPrompt(string $platformCode, BrandProfile $brandProfile, string $prompt): string
     {
+        if ($this->isWebWorkbenchPlatformCode($platformCode)) {
+            return $this->webWorkbenchClient->ask($brandProfile, $this->questionFromPrompt($prompt), $prompt, $this->webWorkbenchPlatformIds($platformCode));
+        }
+
         if ($this->isConfiguredAiModelCode($platformCode)) {
             return $this->askConfiguredAiModel($platformCode, $prompt);
         }
@@ -245,6 +254,29 @@ class GeoAIPlatformClient implements AIPlatformClient
         return $this->configuredAiModelId($platformCode) > 0;
     }
 
+    private function isWebWorkbenchPlatformCode(string $platformCode): bool
+    {
+        return $platformCode === GeoWebWorkbenchClient::PLATFORM_CODE
+            || str_starts_with($platformCode, GeoWebWorkbenchClient::PLATFORM_CODE.':');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function webWorkbenchPlatformIds(string $platformCode): array
+    {
+        if (! str_starts_with($platformCode, GeoWebWorkbenchClient::PLATFORM_CODE.':')) {
+            return [];
+        }
+
+        return collect(explode(',', substr($platformCode, strlen(GeoWebWorkbenchClient::PLATFORM_CODE.':'))))
+            ->map(static fn (string $platformId): string => trim($platformId))
+            ->filter(static fn (string $platformId): bool => $platformId !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     private function configuredAiModelId(string $platformCode): int
     {
         if (preg_match('/^ai_model:(\d+)$/', $platformCode, $matches) !== 1) {
@@ -257,6 +289,7 @@ class GeoAIPlatformClient implements AIPlatformClient
     private function mockPlatformName(string $code): string
     {
         return match ($code) {
+            GeoWebWorkbenchClient::PLATFORM_CODE => GeoWebWorkbenchClient::PLATFORM_NAME,
             'deepseek_mock' => 'DeepSeek 模拟',
             'kimi_mock' => 'Kimi 模拟',
             'qwen_mock' => '通义千问模拟',

@@ -105,7 +105,11 @@ class GeoArticlePublisher
             ->map(static fn (mixed $reference): array => (array) $reference);
 
         $metadata = [
-            'source' => $briefSource === 'reference_content' ? 'geo_reference_content' : $briefSource,
+            'source' => match ($briefSource) {
+                'reference_content' => 'geo_reference_content',
+                'reference_imitation' => 'geo_reference_imitation',
+                default => $briefSource,
+            },
             'geo_writing_task_id' => (int) $draft->geo_writing_task_id,
             'target_question' => $question,
             'reference_urls' => $references

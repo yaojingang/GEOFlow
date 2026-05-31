@@ -7,6 +7,8 @@
             <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.page_subtitle') }}</p>
         </div>
 
+        @include('admin.partials.geo-operations-panel', ['panel' => $geoOpsPanel ?? null])
+
         <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
             <a href="{{ route('admin.site-settings.sensitive-words') }}" class="group rounded-lg border border-gray-200 bg-white p-5 shadow hover:border-blue-200 hover:bg-blue-50/40">
                 <div class="flex items-start gap-3">
