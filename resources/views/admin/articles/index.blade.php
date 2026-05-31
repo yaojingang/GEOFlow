@@ -528,7 +528,7 @@
         const ARTICLES_I18N = @json($articlesI18n);
         const TRASH_I18N = @json($trashI18n);
         const IS_TRASH_VIEW = @json($isTrashView);
-        const EMPTY_TRASH_URL = @json(route('admin.articles.trash.empty'));
+        const EMPTY_TRASH_URL = @json(route('admin.articles.trash.empty', [], false));
 
         function toggleBatchActions() {
             const batchActions = document.getElementById('batch-actions');
