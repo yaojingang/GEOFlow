@@ -1,7 +1,7 @@
 <?php
 
 /**
- * GEOFlow REST API 路由（Laravel 默认挂载在 /api 前缀下，本文件内为 v1 子路径）。
+ * GEOAmplify REST API 路由（Laravel 默认挂载在 /api 前缀下，本文件内为 v1 子路径）。
  *
  * 中间件：api.request_id 注入/透传 X-Request-Id；api.auth 校验 Bearer；
  * api.scope:* 校验 Sanctum token abilities。幂等写操作在控制器内按 route_key 处理。

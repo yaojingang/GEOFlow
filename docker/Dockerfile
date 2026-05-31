@@ -52,8 +52,8 @@ RUN composer dump-autoload --optimize --no-interaction --no-scripts
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/99-opcache.ini
 COPY docker/php/php-docker-overrides.ini /usr/local/etc/php/conf.d/99-overrides.ini
 
-RUN cp docker/entrypoint.sh /usr/local/bin/geoflow-entrypoint \
-    && chmod +x /usr/local/bin/geoflow-entrypoint
+RUN cp docker/entrypoint.sh /usr/local/bin/geoamplify-entrypoint \
+    && chmod +x /usr/local/bin/geoamplify-entrypoint
 
-ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/geoamplify-entrypoint"]
 CMD ["php", "artisan", "about"]

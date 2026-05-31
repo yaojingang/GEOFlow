@@ -3,7 +3,7 @@
 /**
  * Laravel 应用核心配置（名称、环境、时区、Locale、密钥等）。
  *
- * GEOFlow 业务专用项见 config/geoflow.php。
+ * GEOAmplify 业务专用项见 config/geoflow.php。
  */
 
 return [
@@ -19,7 +19,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Laravel'),
+    'name' => env('APP_NAME', 'GEOAmplify'),
 
     /*
     |--------------------------------------------------------------------------

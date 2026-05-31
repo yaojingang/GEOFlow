@@ -188,7 +188,7 @@ return array_replace_recursive($base, [
         'view_count_short' => ':count 回',
         'quick_start' => [
             'eyebrow' => 'クイックスタート',
-            'title' => '3ステップでGEOFlowの自動コンテンツ生成を開始',
+            'title' => '3ステップでGEOAmplifyの自動コンテンツ生成を開始',
             'subtitle' => '利用可能なモデルを接続し、知識・タイトル・キーワード・画像素材を準備してからタスクを作成すると、下書き生成と予約公開を自動化できます。',
             'api_title' => 'APIを設定',
             'api_desc' => '少なくとも1つのチャットモデルを追加します。知識ベースのRAG検索を使う場合は、embeddingモデルも設定してください。',

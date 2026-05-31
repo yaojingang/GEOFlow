@@ -50,7 +50,7 @@ class GeoOneShotCliTest extends TestCase
             'report_mode' => 'with_recommendations',
         ];
 
-        $exitCode = Artisan::call('geoflow:geo-run', [
+        $exitCode = Artisan::call('geoamplify:geo-run', [
             '--json' => json_encode($payload, JSON_UNESCAPED_UNICODE),
             '--pretty' => true,
         ]);
@@ -96,7 +96,7 @@ class GeoOneShotCliTest extends TestCase
         ], JSON_UNESCAPED_UNICODE));
 
         try {
-            $exitCode = Artisan::call('geoflow:geo-run', [
+            $exitCode = Artisan::call('geoamplify:geo-run', [
                 '--file' => $path,
                 '--no-run' => true,
             ]);

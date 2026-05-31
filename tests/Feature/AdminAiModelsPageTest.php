@@ -110,7 +110,7 @@ class AdminAiModelsPageTest extends TestCase
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/embeddings'
             && $request['model'] === 'test-embedding-model'
-            && $request['input'] === 'GEOFlow embedding connection test');
+            && $request['input'] === 'GEOAmplify embedding connection test');
     }
 
     public function test_admin_can_test_gemini_chat_model_connection(): void
@@ -177,7 +177,7 @@ class AdminAiModelsPageTest extends TestCase
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents'
             && $request->hasHeader('x-goog-api-key', 'test-api-key')
-            && ($request['requests'][0]['content']['parts'][0]['text'] ?? '') === 'task: search result | query: GEOFlow embedding connection test'
+            && ($request['requests'][0]['content']['parts'][0]['text'] ?? '') === 'task: search result | query: GEOAmplify embedding connection test'
             && ! isset($request['requests'][0]['taskType'])
             && ! isset($request['taskType']));
     }

@@ -4,7 +4,7 @@ This folder keeps human-readable agent instructions in one place so the reposito
 
 ## Files
 
-- `AGENTS.md` - General agent instructions for GEOFlow.
+- `AGENTS.md` - General agent instructions for GEOAmplify.
 - `CODEX.md` - Codex / GPT-oriented instructions.
 - `CLAUDE.md` - Claude-oriented instructions.
 - `GEMINI.md` - Gemini-oriented instructions.

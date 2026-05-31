@@ -10,11 +10,11 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * GeoFlow 任务调度服务（基于 Laravel Queue + Redis）。
+ * GEOAmplify 任务调度服务（基于 Laravel Queue + Redis）。
  *
  * 职责边界：
  * 1. 管理任务执行记录（`task_runs`）的状态流转：pending -> running -> completed/failed/cancelled。
- * 2. 负责把可执行任务投递到 Laravel 队列（`geoflow` queue），并在失败时按重试策略再次投递。
+ * 2. 负责把可执行任务投递到 Laravel 队列（`geoamplify` queue），并在失败时按重试策略再次投递。
  * 3. 同步回写 `tasks` 的运行态字段（最近成功/失败时间、错误信息等），供后台面板展示。
  *
  * 设计说明：
@@ -391,7 +391,7 @@ class JobQueueService
      */
     private function dispatchLaravelQueueJob(int $taskRunId, mixed $availableAt = null): void
     {
-        $dispatch = ProcessGeoFlowTaskJob::dispatch($taskRunId)->onQueue('geoflow');
+        $dispatch = ProcessGeoFlowTaskJob::dispatch($taskRunId)->onQueue('geoamplify');
 
         if ($availableAt instanceof Carbon) {
             $dispatch->delay($availableAt);
@@ -411,7 +411,7 @@ class JobQueueService
     /**
      * 草稿生成成功后立即串行补投下一轮生成，使“生成草稿”和“按间隔发布”解耦。
      *
-     * 发布动作不在这里补投：发布节奏由 next_publish_at + geoflow:schedule-tasks 控制。
+     * 发布动作不在这里补投：发布节奏由 next_publish_at + geoamplify:schedule-tasks 控制。
      *
      * @param  array<string,mixed>  $meta
      */

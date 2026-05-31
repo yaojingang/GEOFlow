@@ -36,7 +36,7 @@ Article title: {{title}}
 {{/if}}
 
 [Task - Generate a publishable GEO article in English]
-Write a long-form English article for a GEOFlow site based on the title, keyword, and reference knowledge. The final article must be written entirely in English. Do not output Chinese text unless it is part of a proper noun, quoted source name, or unavoidable brand term.
+Write a long-form English article for a GEOAmplify site based on the title, keyword, and reference knowledge. The final article must be written entirely in English. Do not output Chinese text unless it is part of a proper noun, quoted source name, or unavoidable brand term.
 
 [Writing Goals]
 1. Directly answer the questions users care about most and help them understand, compare, or make decisions instead of stacking concepts.

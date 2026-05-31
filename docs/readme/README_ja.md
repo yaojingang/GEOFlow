@@ -1,22 +1,22 @@
-# GEOFlow
+# GEOAmplify
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
-> GEOFlow は GEO（Generative Engine Optimization）に特化して設計されたオープンソースのインテリジェント・コンテンツエンジニアリングシステムです。GEO シナリオを中心に体系的に設計された、世界でも最も早いデータ・コンテンツ・配信インフラの一つであり、データ資産、ナレッジベース、素材管理、AI 生成、レビュー、公開、フロント表示、将来的なマルチチャネル配信までを継続的に進化する一つのパイプラインとして結びます。
+> GEOAmplify は GEO（Generative Engine Optimization）に特化して設計されたオープンソースのインテリジェント・コンテンツエンジニアリングシステムです。GEO シナリオを中心に体系的に設計された、世界でも最も早いデータ・コンテンツ・配信インフラの一つであり、データ資産、ナレッジベース、素材管理、AI 生成、レビュー、公開、フロント表示、将来的なマルチチャネル配信までを継続的に進化する一つのパイプラインとして結びます。
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
+[![GitHub stars](https://img.shields.io/github/stars/rjh121069192-cmd/GEOAmplify?style=social)](https://github.com/rjh121069192-cmd/GEOAmplify/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/rjh121069192-cmd/GEOAmplify?style=social)](https://github.com/rjh121069192-cmd/GEOAmplify/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/rjh121069192-cmd/GEOAmplify)](https://github.com/rjh121069192-cmd/GEOAmplify/issues)
 
-GEOFlow は [Apache License 2.0](../../LICENSE) の下で公開されています。著作権表示とライセンス表示を保持し、Apache-2.0 の特許、商標、保証免責に関する条件を遵守する限り、商用利用を含む利用、複製、変更、再配布が可能です。
+GEOAmplify は [Apache License 2.0](../../LICENSE) の下で公開されています。著作権表示とライセンス表示を保持し、Apache-2.0 の特許、商標、保証免責に関する条件を遵守する限り、商用利用を含む利用、複製、変更、再配布が可能です。
 
 ---
 
-## ✨ GEOFlow でできること
+## ✨ GEOAmplify でできること
 
 | 機能 | 説明 |
 |------|------|
@@ -37,12 +37,12 @@ GEOFlow は [Apache License 2.0](../../LICENSE) の下で公開されていま�
 ## 🖼 画面プレビュー
 
 <p>
-  <img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOFlow ダッシュボード" width="48%" />
-  <img src="../../docs/images/screenshots/tasks-en.png" alt="GEOFlow タスク管理" width="48%" />
+  <img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOAmplify ダッシュボード" width="48%" />
+  <img src="../../docs/images/screenshots/tasks-en.png" alt="GEOAmplify タスク管理" width="48%" />
 </p>
 <p>
-  <img src="../../docs/images/screenshots/materials-en.png" alt="GEOFlow 素材管理" width="48%" />
-  <img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI 設定" width="48%" />
+  <img src="../../docs/images/screenshots/materials-en.png" alt="GEOAmplify 素材管理" width="48%" />
+  <img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOAmplify AI 設定" width="48%" />
 </p>
 
 ホーム、タスク、記事フロー、モデル設定の主要導線をカバーします。画像パスが未配置の場合はローカルで補完してください。
@@ -53,7 +53,7 @@ GEOFlow は [Apache License 2.0](../../LICENSE) の下で公開されていま�
 
 新バージョンの主な変更点は次のとおりです。
 
-- 管理画面は GEOFlow ブランド固定、多言語切替、管理者編集・削除、初回歓迎ページ、GitHub 更新通知に対応しています。
+- 管理画面は GEOAmplify ブランド固定、多言語切替、管理者編集・削除、初回歓迎ページ、GitHub 更新通知に対応しています。
 - タスクは固定モデルとスマートフェイルオーバーを選択でき、生成と公開を別ステップとして扱います。
 - 素材はナレッジ、タイトル、キーワード、画像、作者を管理対象に含みます。
 - ナレッジは分割され、embedding モデル設定時にベクトル化して RAG に利用できます。
@@ -102,7 +102,7 @@ Worker が AI 生成
 
 ## 🎯 想定シーンと得られる価値
 
-GEOFlow は次のような実務シーンに向いています。
+GEOAmplify は次のような実務シーンに向いています。
 
 - **独立した GEO 公式サイト**  
   製品説明、FAQ、事例、ブランド知識を継続的に整理・公開するサイトとして運用できます。目的は AI 検索での可視性や信頼性を高めることであり、低品質ページを量産することではありません。
@@ -144,7 +144,7 @@ GEOFlow は次のような実務シーンに向いています。
 3. 内容の正確性と継続保守性を確保する  
 4. その上で自動化によって効率を高める  
 
-ナレッジベースが弱いまま自動化を強めると、ノイズだけが増えます。GEOFlow では **ナレッジベースの品質を最優先**にすべきです。
+ナレッジベースが弱いまま自動化を強めると、ノイズだけが増えます。GEOAmplify では **ナレッジベースの品質を最優先**にすべきです。
 
 ---
 
@@ -153,8 +153,8 @@ GEOFlow は次のような実務シーンに向いています。
 ### 方法 1：Docker（開発／デモ）
 
 ```bash
-git clone https://github.com/yaojingang/GEOFlow.git
-cd GEOFlow
+git clone https://github.com/rjh121069192-cmd/GEOAmplify.git
+cd GEOAmplify
 cp .env.example .env
 vi .env
 
@@ -190,8 +190,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 **前提:** PHP **8.2+**（`pdo_pgsql`、`redis` 等）、**PostgreSQL**、**Redis**、**Composer 2.x**。
 
 ```bash
-git clone https://github.com/yaojingang/GEOFlow.git
-cd GEOFlow
+git clone https://github.com/rjh121069192-cmd/GEOAmplify.git
+cd GEOAmplify
 cp .env.example .env
 composer install --no-interaction --prefer-dist
 php artisan key:generate
@@ -206,7 +206,7 @@ php artisan serve --host=127.0.0.1 --port=8080
 別ターミナル:
 
 ```bash
-php artisan queue:work redis --queue=geoflow,default --sleep=1 --tries=1 --timeout=300
+php artisan queue:work redis --queue=geoamplify,default --sleep=1 --tries=1 --timeout=300
 php artisan schedule:work
 php artisan reverb:start
 ```
@@ -229,8 +229,8 @@ php artisan reverb:start
 
 | 項目 | 値 |
 |------|-----|
-| ユーザー名 | `GEOFLOW_ADMIN_USERNAME`、既定は `admin` |
-| パスワード | ローカル開発では既定 `password`。本番では `GEOFLOW_ADMIN_PASSWORD` を設定してください。未設定でアカウントがまだ存在しない場合、seeder は一回限りのランダムパスワードを init / `db:seed` ログに出力します。 |
+| ユーザー名 | `GEOAMPLIFY_ADMIN_USERNAME`、既定は `admin` |
+| パスワード | ローカル開発では既定 `password`。本番では `GEOAMPLIFY_ADMIN_PASSWORD` を設定してください。未設定でアカウントがまだ存在しない場合、seeder は一回限りのランダムパスワードを init / `db:seed` ログに出力します。 |
 
 Seeder は対象ユーザー名が存在しない場合のみ作成します。再実行しても既存のユーザー名、メール、パスワードは上書きされません。
 
@@ -241,13 +241,13 @@ Seeder は対象ユーザー名が存在しない場合のみ作成します。�
 - 解除コマンド:
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoamplify:admin-unlock <username>
 ```
 
 例:
 
 ```bash
-php artisan geoflow:admin-unlock admin
+php artisan geoamplify:admin-unlock admin
 ```
 
 ---
@@ -280,10 +280,10 @@ composer test
 
 ## 📄 ライセンス
 
-GEOFlow は [Apache License 2.0](../../LICENSE) の下で提供されます。このライセンスは、ライセンス表示、著作権表示、変更通知、特許条項、保証免責を遵守する限り、個人利用、商用利用、変更、再配布、非公開デプロイを許可します。
+GEOAmplify は [Apache License 2.0](../../LICENSE) の下で提供されます。このライセンスは、ライセンス表示、著作権表示、変更通知、特許条項、保証免責を遵守する限り、個人利用、商用利用、変更、再配布、非公開デプロイを許可します。
 
 ---
 
 ## ⭐ スター推移
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.com/#yaojingang/GEOFlow&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=rjh121069192-cmd/GEOAmplify&type=Date)](https://star-history.com/#rjh121069192-cmd/GEOAmplify&Date)

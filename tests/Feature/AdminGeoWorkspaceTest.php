@@ -240,7 +240,7 @@ class AdminGeoWorkspaceTest extends TestCase
             'slug' => 'geo-content',
         ]);
         $author = Author::query()->create([
-            'name' => 'GEOFlow',
+            'name' => 'GEOAmplify',
         ]);
         $article = Article::query()->create([
             'title' => '恒森全屋定制 GEO 引用文章',
@@ -412,7 +412,7 @@ class AdminGeoWorkspaceTest extends TestCase
             'slug' => 'geo-chain-content',
         ]);
         $author = Author::query()->create([
-            'name' => 'GEOFlow',
+            'name' => 'GEOAmplify',
         ]);
         $article = Article::query()->create([
             'title' => '恒森全屋定制 GEO 文章',
@@ -1991,7 +1991,7 @@ class AdminGeoWorkspaceTest extends TestCase
         $this->assertSame(1, (int) $article->is_ai_generated);
         $this->assertSame('涪陵全屋定制哪家好', $article->original_keyword);
         $this->assertDatabaseHas('categories', ['name' => 'GEO内容']);
-        $this->assertDatabaseHas('authors', ['name' => 'GEOFlow']);
+        $this->assertDatabaseHas('authors', ['name' => 'GEOAmplify']);
         $this->assertTrue(Category::query()->whereKey($article->category_id)->exists());
         $this->assertTrue(Author::query()->whereKey($article->author_id)->exists());
 

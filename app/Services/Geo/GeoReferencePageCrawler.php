@@ -21,7 +21,7 @@ class GeoReferencePageCrawler
 
         try {
             $response = Http::timeout(10)
-                ->withHeaders(['User-Agent' => 'GeoFlowReferenceCrawler/1.0'])
+                ->withHeaders(['User-Agent' => 'GEOAmplifyReferenceCrawler/1.0'])
                 ->get($url);
 
             $status = $response->status();

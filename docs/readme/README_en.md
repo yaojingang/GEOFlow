@@ -1,18 +1,18 @@
-# GEOFlow
+# GEOAmplify
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
-> GEOFlow is an open-source intelligent content engineering system designed specifically for GEO (Generative Engine Optimization). It is one of the world's earliest data, content, and distribution infrastructures systematically designed around GEO workflows, connecting data assets, knowledge bases, material management, AI generation, review and publishing, front-end presentation, and future multi-channel distribution into one evolving pipeline.
+> GEOAmplify is an open-source intelligent content engineering system designed specifically for GEO (Generative Engine Optimization). It is one of the world's earliest data, content, and distribution infrastructures systematically designed around GEO workflows, connecting data assets, knowledge bases, material management, AI generation, review and publishing, front-end presentation, and future multi-channel distribution into one evolving pipeline.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
+[![GitHub stars](https://img.shields.io/github/stars/rjh121069192-cmd/GEOAmplify?style=social)](https://github.com/rjh121069192-cmd/GEOAmplify/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/rjh121069192-cmd/GEOAmplify?style=social)](https://github.com/rjh121069192-cmd/GEOAmplify/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/rjh121069192-cmd/GEOAmplify)](https://github.com/rjh121069192-cmd/GEOAmplify/issues)
 
-GEOFlow is released under the [Apache License 2.0](../../LICENSE). You may use, copy, modify, and distribute it, including for commercial purposes, provided that you retain copyright and license notices and comply with the patent, trademark, and warranty-disclaimer terms of Apache-2.0.
+GEOAmplify is released under the [Apache License 2.0](../../LICENSE). You may use, copy, modify, and distribute it, including for commercial purposes, provided that you retain copyright and license notices and comply with the patent, trademark, and warranty-disclaimer terms of Apache-2.0.
 
 ---
 
@@ -26,7 +26,7 @@ GEOFlow is released under the [Apache License 2.0](../../LICENSE). You may use, 
 | 🧠 Knowledge-base RAG | Upload documents, generate chunks, write vectors when an embedding model is configured, and retrieve relevant context during generation |
 | 📋 Review & publishing workflow | Draft, review, and publish states, optional auto-publish, plus article filters by status, author, and task |
 | 🔍 Search-oriented output | SEO metadata, Open Graph, structured data, and GFM Markdown rendering for headings, tables, lists, and images |
-| 🎨 Front-end & themes | Default theme, theme packages, preview routes, admin theme switching, and a fixed GEOFlow admin brand |
+| 🎨 Front-end & themes | Default theme, theme packages, preview routes, admin theme switching, and a fixed GEOAmplify admin brand |
 | 🌍 Admin i18n | Admin UI supports Chinese, English, Japanese, Spanish, Russian, and Portuguese (Brazil) |
 | 🔔 Version updates | Admin can check GitHub `version.json` and notify admins when a newer version is available |
 | 🐳 Ready to deploy | **Docker Compose**: PostgreSQL (pgvector), Redis, app, queue, scheduler, Reverb |
@@ -37,12 +37,12 @@ GEOFlow is released under the [Apache License 2.0](../../LICENSE). You may use, 
 ## 🖼 UI Preview
 
 <p>
-  <img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOFlow dashboard preview" width="48%" />
-  <img src="../../docs/images/screenshots/tasks-en.png" alt="GEOFlow task management preview" width="48%" />
+  <img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOAmplify dashboard preview" width="48%" />
+  <img src="../../docs/images/screenshots/tasks-en.png" alt="GEOAmplify task management preview" width="48%" />
 </p>
 <p>
-  <img src="../../docs/images/screenshots/materials-en.png" alt="GEOFlow materials preview" width="48%" />
-  <img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI configuration preview" width="48%" />
+  <img src="../../docs/images/screenshots/materials-en.png" alt="GEOAmplify materials preview" width="48%" />
+  <img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOAmplify AI configuration preview" width="48%" />
 </p>
 
 These screens cover the home page, task scheduling, article workflow, and model configuration. More admin documentation lives under `../../docs/` (add or replace screenshots locally if paths are missing).
@@ -53,7 +53,7 @@ These screens cover the home page, task scheduling, article workflow, and model 
 
 New version highlights include:
 
-- **Admin experience**: fixed GEOFlow admin brand, multi-language switching, admin account editing/deletion, first-login welcome letter, GitHub version update reminders, and a dashboard quick-start block.
+- **Admin experience**: fixed GEOAmplify admin brand, multi-language switching, admin account editing/deletion, first-login welcome letter, GitHub version update reminders, and a dashboard quick-start block.
 - **Task pipeline**: fixed model and smart failover modes; generation and publishing are separated; task article links open task-scoped article lists.
 - **Asset system**: knowledge bases, title libraries, keyword libraries, image libraries, and authors are all first-class admin entries.
 - **RAG readiness**: knowledge bases are chunked after upload; embedding models enable vector writes and retrieval; missing embedding setup has explicit guidance.
@@ -112,7 +112,7 @@ After signing in, use the dashboard quick-start path for the first validation cy
 
 ## 🎯 Use Cases and Expected Outcomes
 
-GEOFlow fits these practical scenarios:
+GEOAmplify fits these practical scenarios:
 
 - **Independent GEO website**
   Organize product content, FAQs, cases, and brand knowledge into a maintainable system—aim for AI-search visibility and operational efficiency, not thin pages at scale.
@@ -128,7 +128,7 @@ GEOFlow fits these practical scenarios:
   Engineer knowledge bases, topical updates, and distribution—help valuable information stay structured and retrievable.
 
 Value should rest on a **real, high-quality, maintained knowledge base**.
-GEOFlow is not for fabricating noise, mass pollution, or false claims—it helps teams produce and distribute **trustworthy** content and improve GEO operating efficiency.
+GEOAmplify is not for fabricating noise, mass pollution, or false claims—it helps teams produce and distribute **trustworthy** content and improve GEO operating efficiency.
 
 ---
 
@@ -154,7 +154,7 @@ Suggested order of work:
 3. Keep content accurate, verifiable, and maintainable
 4. Then scale with models, tasks, and templates
 
-Weak knowledge bases plus strong automation only scale noise. In GEOFlow, **knowledge-base quality comes first**.
+Weak knowledge bases plus strong automation only scale noise. In GEOAmplify, **knowledge-base quality comes first**.
 
 ---
 
@@ -163,8 +163,8 @@ Weak knowledge bases plus strong automation only scale noise. In GEOFlow, **know
 ### Option 1: Docker (development / demo)
 
 ```bash
-git clone https://github.com/yaojingang/GEOFlow.git
-cd GEOFlow
+git clone https://github.com/rjh121069192-cmd/GEOAmplify.git
+cd GEOAmplify
 cp .env.example .env
 vi .env   # DB, Redis, APP_URL, ADMIN_BASE_PATH, REVERB_*, etc.
 
@@ -184,8 +184,8 @@ For production, use **`docker-compose.prod.yml`** with **Nginx + php-fpm** inste
 For common cloud servers, you can use the reference deployment script to run host checks, prepare `.env.prod`, deploy containers, and run post-deployment health checks:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
-bash geoflow-docker-deploy.sh
+curl -fsSL https://raw.githubusercontent.com/rjh121069192-cmd/GEOAmplify/main/deploy-scripts/geoamplify-docker-deploy.sh -o geoamplify-docker-deploy.sh
+bash geoamplify-docker-deploy.sh
 ```
 
 See [`../../deploy-scripts/README.md`](../../deploy-scripts/README.md).
@@ -210,8 +210,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 **Prerequisites:** PHP **8.2+** with `pdo_pgsql`, `redis`, and other typical Laravel extensions; local **PostgreSQL** and **Redis**; **Composer 2.x**.
 
 ```bash
-git clone https://github.com/yaojingang/GEOFlow.git
-cd GEOFlow
+git clone https://github.com/rjh121069192-cmd/GEOAmplify.git
+cd GEOAmplify
 cp .env.example .env
 # Edit .env: DB_* → Postgres, REDIS_* → Redis, QUEUE_CONNECTION=redis, etc.
 
@@ -228,7 +228,7 @@ php artisan serve --host=127.0.0.1 --port=8080
 In separate terminals:
 
 ```bash
-php artisan queue:work redis --queue=geoflow,default --sleep=1 --tries=1 --timeout=300
+php artisan queue:work redis --queue=geoamplify,default --sleep=1 --tries=1 --timeout=300
 php artisan schedule:work
 php artisan reverb:start
 ```
@@ -260,8 +260,8 @@ chmod -R ug+rwx storage bootstrap/cache
 
 | Field | Value |
 |-------|--------|
-| Username | `GEOFLOW_ADMIN_USERNAME`, default `admin` |
-| Password | Local/dev default `password`; in production set `GEOFLOW_ADMIN_PASSWORD`. If it is empty and the account does not exist yet, the seeder generates a one-time random password in the init / `db:seed` logs. |
+| Username | `GEOAMPLIFY_ADMIN_USERNAME`, default `admin` |
+| Password | Local/dev default `password`; in production set `GEOAMPLIFY_ADMIN_PASSWORD`. If it is empty and the account does not exist yet, the seeder generates a one-time random password in the init / `db:seed` logs. |
 
 The seeder only creates the account when the target username does not exist. Repeated runs never overwrite an existing username, email, or password.
 
@@ -272,13 +272,13 @@ The seeder only creates the account when the target username does not exist. Rep
 - Unlock command:
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoamplify:admin-unlock <username>
 ```
 
 Example:
 
 ```bash
-php artisan geoflow:admin-unlock admin
+php artisan geoamplify:admin-unlock admin
 ```
 
 **Production HTTP:** Nginx/Apache + **PHP-FPM**, document root **`public/`**—do not expose the project root as the web root.
@@ -338,10 +338,10 @@ composer test
 
 ## 📄 License
 
-GEOFlow is licensed under the [Apache License 2.0](../../LICENSE). It allows personal and commercial use, modification, redistribution, and private deployment, as long as the license, copyright notices, modification notices, patent terms, and warranty disclaimers are respected.
+GEOAmplify is licensed under the [Apache License 2.0](../../LICENSE). It allows personal and commercial use, modification, redistribution, and private deployment, as long as the license, copyright notices, modification notices, patent terms, and warranty disclaimers are respected.
 
 ---
 
 ## ⭐ Star history
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.com/#yaojingang/GEOFlow&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=rjh121069192-cmd/GEOAmplify&type=Date)](https://star-history.com/#rjh121069192-cmd/GEOAmplify&Date)

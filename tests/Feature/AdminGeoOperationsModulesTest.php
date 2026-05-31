@@ -59,7 +59,7 @@ class AdminGeoOperationsModulesTest extends TestCase
             'slug' => 'geo-content',
         ]);
         $author = Author::query()->create([
-            'name' => 'GEOFlow',
+            'name' => 'GEOAmplify',
         ]);
         $article = Article::query()->create([
             'title' => 'GEO 来源识别文章',

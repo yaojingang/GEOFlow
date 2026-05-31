@@ -134,7 +134,7 @@ class GeoYixiaoerHandoffService
                     ->values()
                     ->all(),
             ],
-            'handoff_note' => 'GEOFlow 只生成发布交接 payload，实际素材上传和平台发布默认由蚁小二执行。',
+            'handoff_note' => 'GEOAmplify 只生成发布交接 payload，实际素材上传和平台发布默认由蚁小二执行。',
             'generated_at' => now()->toDateTimeString(),
         ];
     }

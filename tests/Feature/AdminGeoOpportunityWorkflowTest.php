@@ -777,7 +777,7 @@ class AdminGeoOpportunityWorkflowTest extends TestCase
 
             return str_contains($command, 'geo:search-run')
                 && str_contains($command, (string) $run->id)
-                && str_starts_with((string) ($env['GEOFLOW_AI_WEB_WORKBENCH_COMMAND'] ?? ''), '/')
+                && str_starts_with((string) ($env['GEOAMPLIFY_AI_WEB_WORKBENCH_COMMAND'] ?? ''), '/')
                 && ($env['APP_ENV'] ?? null) === 'testing'
                 && ($env['DB_CONNECTION'] ?? null) === 'sqlite'
                 && ($env['DB_DATABASE'] ?? null) === ':memory:'

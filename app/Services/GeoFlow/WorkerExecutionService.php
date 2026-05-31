@@ -452,8 +452,8 @@ class WorkerExecutionService
         }
 
         return Author::query()->firstOrCreate(
-            ['name' => 'GEOFlow'],
-            ['bio' => 'Default GEOFlow author for automated content generation.']
+            ['name' => 'GEOAmplify'],
+            ['bio' => 'Default GEOAmplify author for automated content generation.']
         );
     }
 

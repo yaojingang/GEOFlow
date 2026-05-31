@@ -7,9 +7,10 @@ use App\Models\TaskRun;
 use App\Services\GeoFlow\JobQueueService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
- * GeoFlow 任务调度命令（对齐 bak/bin/cron.php 的入队判定）。
+ * GEOAmplify 任务调度命令（对齐 bak/bin/cron.php 的入队判定）。
  *
  * 目标：
  * 1. 按任务状态与时间窗口筛选“应执行任务”；
@@ -18,9 +19,11 @@ use Illuminate\Support\Carbon;
  */
 class GeoFlowScheduleTasksCommand extends Command
 {
-    protected $signature = 'geoflow:schedule-tasks';
+    protected $signature = 'geoamplify:schedule-tasks';
 
-    protected $description = 'Scan active GeoFlow tasks and enqueue due jobs';
+    protected $description = 'Scan active GEOAmplify tasks and enqueue due jobs';
+
+    protected $aliases = ['geoflow:schedule-tasks'];
 
     public function __construct(
         private readonly JobQueueService $jobQueueService
@@ -63,7 +66,7 @@ class GeoFlowScheduleTasksCommand extends Command
 
         $articleStats = empty($taskIds)
             ? collect()
-            : \Illuminate\Support\Facades\DB::table('articles')
+            : DB::table('articles')
                 ->selectRaw("
                     task_id,
                     SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_articles,
@@ -147,7 +150,7 @@ class GeoFlowScheduleTasksCommand extends Command
         }
 
         $this->info(sprintf(
-            'GeoFlow scheduler done: queued=%d, skipped=%d, recovered=%d',
+            'GEOAmplify scheduler done: queued=%d, skipped=%d, recovered=%d',
             $queuedCount,
             $skippedCount,
             $recoveredCount

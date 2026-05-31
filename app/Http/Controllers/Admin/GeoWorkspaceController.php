@@ -2219,7 +2219,7 @@ class GeoWorkspaceController extends Controller
 
     private function launchSearchRunWorker(GeoAiSearchRun $run): void
     {
-        $logPath = '/tmp/geoflow-search-run-'.$run->id.'.log';
+        $logPath = '/tmp/geoamplify-search-run-'.$run->id.'.log';
         $command = 'nohup '.escapeshellarg(PHP_BINARY).' '.escapeshellarg(base_path('artisan')).' geo:search-run '.(int) $run->id
             .' >'.escapeshellarg($logPath).' 2>&1 &';
 
@@ -2257,7 +2257,7 @@ class GeoWorkspaceController extends Controller
                 '/usr/sbin',
                 '/sbin',
             ])->filter()->unique()->implode(PATH_SEPARATOR),
-            'GEOFLOW_AI_WEB_WORKBENCH_COMMAND' => $commandPath,
+            'GEOAMPLIFY_AI_WEB_WORKBENCH_COMMAND' => $commandPath,
         ];
     }
 
@@ -2279,6 +2279,7 @@ class GeoWorkspaceController extends Controller
             'CACHE_',
             'DB_',
             'DEEPSEEK_',
+            'GEOAMPLIFY_',
             'GEOFLOW_',
             'LOG_',
             'OPENAI_',

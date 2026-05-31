@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
 /**
- * GEOFlow 遗留业务表结构（PostgreSQL 原生 SQL）。
+ * GEOAmplify 遗留业务表结构（PostgreSQL 原生 SQL）。
  *
  * 对齐 {@see bak/includes/database_admin.php}：createTables + ensureTaskQueueSchema +
  * ensureApiSchema + ensureCompatibilitySchema 合并；向量列见 {@see 2026_04_18_120001_geoflow_knowledge_chunks_embedding_vector}。
@@ -71,7 +71,7 @@ return new class extends Migration
     private function pgsqlSchema(): string
     {
         return <<<'SQL'
--- ========== 以下为 GEOFlow 业务表；字段行末 -- 为中文说明 ==========
+-- ========== 以下为 GEOAmplify 业务表；字段行末 -- 为中文说明 ==========
 
 -- 表 ai_models：第三方 LLM 接入配置（密钥、限额、模型标识、类型）
 CREATE TABLE IF NOT EXISTS ai_models (

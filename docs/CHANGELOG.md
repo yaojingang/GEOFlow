@@ -1,4 +1,4 @@
-# GEOFlow 更新日志
+# GEOAmplify 更新日志
 
 该文档记录公开仓库可见功能的持续更新。后续每次推送到 GitHub 时，同步更新本文件和英文版 `CHANGELOG_en.md`。
 
@@ -44,7 +44,7 @@
 - 新增网易新闻风格前台主题：
   - 新增 `netease-news-20260429` 前台主题
   - 首页、分类页与详情页采用更接近资讯站的两栏阅读布局
-  - 保留 GEOFlow 文章、分类、作者、SEO 与 Schema 数据调用规则
+  - 保留 GEOAmplify 文章、分类、作者、SEO 与 Schema 数据调用规则
 - 新增 TDWH 英文主题分支：
   - 新增 `tdwh-english-20260501` 英文主题样板
   - 面向英文内容站点提供更清晰的国际化首页、列表页和详情页结构
@@ -56,7 +56,7 @@
 - 修复任务生成文章时的作者兜底逻辑：
   - 任务未配置作者时，自动使用系统中已有作者
   - 任务配置的作者已不存在时，自动回退到可用作者
-  - 系统没有任何作者时，自动创建默认作者 `GEOFlow`
+  - 系统没有任何作者时，自动创建默认作者 `GEOAmplify`
   - 避免向 `articles.author_id` 写入 `null` 导致 PostgreSQL `NOT NULL` 约束错误
 - 优化 `URL 智能采集` 的 AI 解析兼容性：
   - 当某个 AI 模型失败时，继续尝试下一个可用模型
@@ -99,11 +99,11 @@
   - footer 新增 `项目说明` 入口，可重新打开欢迎页
   - 新增实现说明文档 `project/ADMIN_WELCOME.md`
 - 新增 `geoflow-template` 配套 skill 入口：
-  - 用于把参考网址映射为 GEOFlow 兼容主题包
+  - 用于把参考网址映射为 GEOAmplify 兼容主题包
   - 支持输出 `tokens.json`、`mapping.json` 和 preview-first 模板规划
 - 升级默认 GEO 提示词：
   - 正文、榜单、关键词、描述提示词更新为长版模板
-  - 对齐 GeoFlow 变量规则
+  - 对齐 GEOAmplify 变量规则
 - 修复若干后台可用性问题：
   - 数据库时区偏差
   - 文章图片路径缺少前导 `/`

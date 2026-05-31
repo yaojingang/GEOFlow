@@ -1,10 +1,10 @@
 @php
-    $projectGithubUrl = 'https://github.com/yaojingang/GEOFlow';
+    $projectGithubUrl = 'https://github.com/rjh121069192-cmd/GEOAmplify';
     $xProfileUrl = 'https://x.com/yaojingang';
     $appVersion = (string) config('geoflow.app_version', '1.2.0');
     $changelogUrl = app()->getLocale() === 'en'
-        ? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md'
-        : 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md';
+        ? 'https://github.com/rjh121069192-cmd/GEOAmplify/blob/main/docs/CHANGELOG_en.md'
+        : 'https://github.com/rjh121069192-cmd/GEOAmplify/blob/main/docs/CHANGELOG.md';
 @endphp
 <footer class="bg-white border-t border-gray-200 mt-12">
     <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">

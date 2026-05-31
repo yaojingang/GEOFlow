@@ -1,10 +1,10 @@
 # postgres 凭据由 DB_* 插值映射为官方镜像的 POSTGRES_*；redis 使用 REDIS_PASSWORD。推荐 docker compose --env-file .env.prod …
-name: geoflow-laravel-prod
+name: geoamplify-laravel-prod
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: geoflow-postgres-prod
+    container_name: geoamplify-postgres-prod
     environment:
       POSTGRES_DB: "${DB_DATABASE:-geo_flow}"
       POSTGRES_USER: "${DB_USERNAME:-geo_user}"
@@ -20,7 +20,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: geoflow-redis-prod
+    container_name: geoamplify-redis-prod
     environment:
       REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
     command:
@@ -43,11 +43,11 @@ services:
     restart: unless-stopped
 
   init:
-    image: geoflow-app-prod:latest
+    image: geoamplify-app-prod:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-    container_name: geoflow-init-prod
+    container_name: geoamplify-init-prod
     working_dir: /var/www/html
     env_file:
       - ./.env.prod
@@ -67,11 +67,11 @@ services:
     restart: "no"
 
   app:
-    image: geoflow-app-prod:latest
+    image: geoamplify-app-prod:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-    container_name: geoflow-app-prod
+    container_name: geoamplify-app-prod
     working_dir: /var/www/html
     env_file:
       - ./.env.prod
@@ -89,11 +89,11 @@ services:
     restart: unless-stopped
 
   web:
-    image: geoflow-web-prod:latest
+    image: geoamplify-web-prod:latest
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile.prod
-    container_name: geoflow-web-prod
+    container_name: geoamplify-web-prod
     ports:
       - "${WEB_PORT:-18080}:80"
     volumes:
@@ -109,15 +109,15 @@ services:
     restart: unless-stopped
 
   queue:
-    image: geoflow-app-prod:latest
+    image: geoamplify-app-prod:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-    container_name: geoflow-queue-prod
+    container_name: geoamplify-queue-prod
     working_dir: /var/www/html
     env_file:
       - ./.env.prod
-    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,default", "--sleep=1", "--tries=1", "--timeout=300"]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoamplify,default", "--sleep=1", "--tries=1", "--timeout=300"]
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -129,11 +129,11 @@ services:
     restart: unless-stopped
 
   scheduler:
-    image: geoflow-app-prod:latest
+    image: geoamplify-app-prod:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-    container_name: geoflow-scheduler-prod
+    container_name: geoamplify-scheduler-prod
     working_dir: /var/www/html
     env_file:
       - ./.env.prod
@@ -147,11 +147,11 @@ services:
     restart: unless-stopped
 
   reverb:
-    image: geoflow-app-prod:latest
+    image: geoamplify-app-prod:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-    container_name: geoflow-reverb-prod
+    container_name: geoamplify-reverb-prod
     working_dir: /var/www/html
     env_file:
       - ./.env.prod

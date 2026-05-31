@@ -15,24 +15,25 @@ class AdminUserSeeder extends Seeder
 {
     public function run(): void
     {
-        $username = trim((string) env('GEOFLOW_ADMIN_USERNAME', 'admin')) ?: 'admin';
-        $email = trim((string) env('GEOFLOW_ADMIN_EMAIL', 'admin@example.com')) ?: 'admin@example.com';
+        $geoEnv = static fn (string $key, mixed $default = null): mixed => env('GEOAMPLIFY_'.$key, env('GEOFLOW_'.$key, $default));
+        $username = trim((string) $geoEnv('ADMIN_USERNAME', 'admin')) ?: 'admin';
+        $email = trim((string) $geoEnv('ADMIN_EMAIL', 'admin@example.com')) ?: 'admin@example.com';
         $exists = Admin::query()->where('username', $username)->exists();
 
         if ($exists) {
-            $this->command?->info('GEOFlow default admin already exists; seeding skipped without overwriting credentials.');
+            $this->command?->info('GEOAmplify default admin already exists; seeding skipped without overwriting credentials.');
 
             return;
         }
 
-        $password = (string) env('GEOFLOW_ADMIN_PASSWORD', '');
+        $password = (string) $geoEnv('ADMIN_PASSWORD', '');
 
         if ($password === '') {
             if (app()->environment('production')) {
                 $password = Str::password(24);
-                $this->command?->warn('GEOFlow created default admin ['.$username.'] with a one-time generated password: '.$password);
-                $this->command?->warn('Set GEOFLOW_ADMIN_PASSWORD before production deployment, or change this password immediately after first login.');
-                Log::warning('GEOFLOW_ADMIN_PASSWORD is empty in production. A random password was generated for a newly seeded default admin.');
+                $this->command?->warn('GEOAmplify created default admin ['.$username.'] with a one-time generated password: '.$password);
+                $this->command?->warn('Set GEOAMPLIFY_ADMIN_PASSWORD before production deployment, or change this password immediately after first login.');
+                Log::warning('GEOAMPLIFY_ADMIN_PASSWORD is empty in production. A random password was generated for a newly seeded default admin.');
             } else {
                 $password = 'password';
             }

@@ -193,7 +193,7 @@ class AdminMaterialsPagesTest extends TestCase
         $knowledgeBase = KnowledgeBase::query()->create([
             'name' => '待向量化知识库',
             'description' => 'desc',
-            'content' => 'GEOFlow 支持知识库切片和向量化检索。',
+            'content' => 'GEOAmplify 支持知识库切片和向量化检索。',
             'character_count' => 22,
             'file_type' => 'markdown',
             'word_count' => 22,

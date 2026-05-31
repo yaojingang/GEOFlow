@@ -1,4 +1,4 @@
-# GEOFlow Gemini Instructions
+# GEOAmplify Gemini Instructions
 
 Laravel Boost support is installed for this repository.
 

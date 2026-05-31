@@ -3,7 +3,7 @@
 /**
  * 数据库连接、迁移记录表名、Redis 客户端配置。
  *
- * GEOFlow 生产环境使用 `pgsql`；单元测试默认 `sqlite`（见 phpunit.xml）。
+ * GEOAmplify 生产环境使用 `pgsql`；单元测试默认 `sqlite`（见 phpunit.xml）。
  * 连接参数来自 .env：DB_*、REDIS_*。
  */
 

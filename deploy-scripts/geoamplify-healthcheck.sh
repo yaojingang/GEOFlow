@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# GEOFlow production Docker healthcheck helper.
-# Run from the repository root or set GEOFLOW_APP_DIR=/path/to/GEOFlow.
+# GEOAmplify production Docker healthcheck helper.
+# Run from the repository root or set GEOAMPLIFY_APP_DIR=/path/to/GEOAmplify.
 
-APP_DIR="${GEOFLOW_APP_DIR:-$(pwd)}"
+APP_DIR="${GEOAMPLIFY_APP_DIR:-${GEOFLOW_APP_DIR:-$(pwd)}}"
 
 log() {
-  printf '\033[1;34m[geoflow-check]\033[0m %s\n' "$*"
+  printf '\033[1;34m[geoamplify-check]\033[0m %s\n' "$*"
 }
 
 warn() {

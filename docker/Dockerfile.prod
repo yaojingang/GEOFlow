@@ -57,12 +57,12 @@ RUN apt-get update \
 
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/99-opcache.ini
 COPY docker/php/php-docker-overrides.ini /usr/local/etc/php/conf.d/99-overrides.ini
-COPY docker/php-fpm/www.conf /usr/local/etc/php-fpm.d/zz-geoflow.conf
-COPY docker/entrypoint.prod.sh /usr/local/bin/geoflow-entrypoint-prod
+COPY docker/php-fpm/www.conf /usr/local/etc/php-fpm.d/zz-geoamplify.conf
+COPY docker/entrypoint.prod.sh /usr/local/bin/geoamplify-entrypoint-prod
 
-RUN chmod +x /usr/local/bin/geoflow-entrypoint-prod
+RUN chmod +x /usr/local/bin/geoamplify-entrypoint-prod
 
 COPY --from=vendor /app /var/www/html
 
-ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint-prod"]
+ENTRYPOINT ["/usr/local/bin/geoamplify-entrypoint-prod"]
 CMD ["php-fpm", "-F"]

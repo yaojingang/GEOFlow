@@ -24,7 +24,7 @@ use Throwable;
 
 class GeoFlowCliCommand extends Command
 {
-    protected $signature = 'geoflow:cli
+    protected $signature = 'geoamplify:cli
         {action=status : status|diagnosis|topic-pipeline|submit-wxmp-draft|web-workbench-status|schema}
         {--json= : JSON payload string}
         {--file= : JSON payload file path}
@@ -33,7 +33,9 @@ class GeoFlowCliCommand extends Command
         {--dry-run : Create records without running/submitting when supported}
         {--pretty : Pretty-print JSON output}';
 
-    protected $description = 'Unified machine-readable CLI for external GEOFlow callers.';
+    protected $description = 'Unified machine-readable CLI for external GEOAmplify callers.';
+
+    protected $aliases = ['geoflow:cli'];
 
     public function handle(
         GeoTopicToPublishPackagePipeline $topicPipeline,
@@ -89,7 +91,8 @@ class GeoFlowCliCommand extends Command
             'ok' => true,
             'action' => 'status',
             'app' => [
-                'name' => (string) config('app.name'),
+                'name' => 'GEOAmplify',
+                'site_name' => (string) config('geoflow.site_name', config('app.name')),
                 'env' => (string) config('app.env'),
                 'url' => (string) config('app.url'),
             ],
@@ -120,7 +123,7 @@ class GeoFlowCliCommand extends Command
         return [
             'ok' => true,
             'action' => 'schema',
-            'command' => 'php artisan geoflow:cli <action> --json=\'{...}\' --pretty',
+            'command' => 'php artisan geoamplify:cli <action> --json=\'{...}\' --pretty',
             'actions' => $this->actions(),
             'payloads' => [
                 'diagnosis' => ['brand_name', 'products', 'advantages', 'service_area', 'keywords|questions|keywords_text', 'platform_codes', 'no_run'],
@@ -153,7 +156,7 @@ class GeoFlowCliCommand extends Command
         }
 
         $output = new BufferedOutput;
-        $exitCode = Artisan::call('geoflow:geo-run', $params, $output);
+        $exitCode = Artisan::call('geoamplify:geo-run', $params, $output);
         $rawOutput = $output->fetch();
         $child = json_decode($rawOutput, true);
 

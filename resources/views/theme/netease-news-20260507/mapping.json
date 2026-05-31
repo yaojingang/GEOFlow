@@ -16,12 +16,12 @@
     "public routes",
     "SEO title/description/keywords/canonical",
     "JSON-LD schema output",
-    "GEOFlow category/article variables",
+    "GEOAmplify category/article variables",
     "rendered article HTML",
     "optional article detail ad data"
   ],
   "modules": {
-    "header": "NetEase-style global strip and channel navigation using site name, categories, and GEOFlow search. Archive route is intentionally omitted from navigation.",
+    "header": "NetEase-style global strip and channel navigation using site name, categories, and GEOAmplify search. Archive route is intentionally omitted from navigation.",
     "footer": "Minimal public copyright footer.",
     "home.hero": "Portal lead headline built from featured/latest article data.",
     "home.featured_list": "Text-first news rows using existing article summaries.",
@@ -31,8 +31,8 @@
     "article.prose_shell": "Readable article body styling for rendered markdown HTML, images, tables, lists, and blockquotes.",
     "article.related_articles": "Right rail plus bottom related article list.",
     "article.sticky_ad": "Converted from floating sticky ad to a single inline optional ad slot.",
-    "archive.overview_row": "Falls back to built-in GEOFlow archive templates.",
-    "archive.article_card": "Falls back to built-in GEOFlow archive templates."
+    "archive.overview_row": "Falls back to built-in GEOAmplify archive templates.",
+    "archive.article_card": "Falls back to built-in GEOAmplify archive templates."
   },
   "edited_files": [
     "layout.blade.php",

@@ -50,7 +50,7 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
         $taskId = (int) ($run?->task_id ?? 0);
 
         return array_values(array_filter([
-            'geoflow',
+            'geoamplify',
             'task_run:'.$this->taskRunId,
             $taskId > 0 ? 'task:'.$taskId : null,
         ]));

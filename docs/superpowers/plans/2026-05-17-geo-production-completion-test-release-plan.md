@@ -4,7 +4,7 @@
 
 **Goal:** Complete the GEO system from the current MVP into a usable production loop: discover opportunities, run AI search, collect and score references, generate reference-grounded drafts, audit, publish, retest, and release safely.
 
-**Architecture:** Keep the current Laravel GEOFlow admin as the core. Reuse the existing GEO services, models, and Blade pages; add focused service classes only where a new boundary is needed. Use test-first implementation for every user-facing workflow, then run full regression before release.
+**Architecture:** Keep the current Laravel GEOAmplify admin as the core. Reuse the existing GEO services, models, and Blade pages; add focused service classes only where a new boundary is needed. Use test-first implementation for every user-facing workflow, then run full regression before release.
 
 **Tech Stack:** Laravel 12, PHP 8.4+, Blade/Tailwind admin UI, existing `AiModel` OpenAI-compatible / Anthropic-compatible clients, Laravel HTTP fake for tests, existing article management and GEO publishing services.
 

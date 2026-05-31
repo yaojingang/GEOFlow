@@ -1,5 +1,6 @@
 {
     "$schema": "https://www.schemastore.org/package.json",
+    "name": "geoamplify",
     "private": true,
     "license": "Apache-2.0",
     "type": "module",

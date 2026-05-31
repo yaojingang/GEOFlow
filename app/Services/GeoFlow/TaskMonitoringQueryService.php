@@ -37,7 +37,7 @@ class TaskMonitoringQueryService
 
         return [
             'tasks' => $tasks,
-            'queue_overview' => $this->horizonMetrics->queueOverview('geoflow'),
+            'queue_overview' => $this->horizonMetrics->queueOverview('geoamplify'),
             'worker_overview' => $this->workerOverview(),
             'recent_runs' => $this->recentRuns(),
         ];

@@ -27,9 +27,9 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
 
         $model = $this->createEmbeddingModel();
         $knowledgeBase = KnowledgeBase::query()->create([
-            'name' => 'GEOFlow 知识库',
+            'name' => 'GEOAmplify 知识库',
             'description' => '',
-            'content' => 'GEOFlow 是面向 GEO 内容工程的系统。',
+            'content' => 'GEOAmplify 是面向 GEO 内容工程的系统。',
             'character_count' => 24,
             'file_type' => 'markdown',
             'word_count' => 24,
@@ -37,7 +37,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
 
         app(KnowledgeChunkSyncService::class)->sync(
             (int) $knowledgeBase->id,
-            'GEOFlow 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
+            'GEOAmplify 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
         );
 
         $chunk = $knowledgeBase->chunks()->firstOrFail();
@@ -98,18 +98,18 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
 
         app(KnowledgeChunkSyncService::class)->sync(
             (int) $knowledgeBase->id,
-            "# GEOFlow 总览\n\nGEOFlow 是面向 GEO 内容工程的系统。\n\n## 多站分发\n\n分发管理负责把文章同步到多个目标站点。\n\n## 素材库\n\n素材库负责沉淀知识、关键词、标题和图片。"
+            "# GEOAmplify 总览\n\nGEOAmplify 是面向 GEO 内容工程的系统。\n\n## 多站分发\n\n分发管理负责把文章同步到多个目标站点。\n\n## 素材库\n\n素材库负责沉淀知识、关键词、标题和图片。"
         );
 
         $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
 
         $this->assertCount(3, $chunks);
-        $this->assertStringContainsString('# GEOFlow 总览', (string) $chunks[0]->content);
+        $this->assertStringContainsString('# GEOAmplify 总览', (string) $chunks[0]->content);
         $this->assertStringContainsString('## 多站分发', (string) $chunks[1]->content);
         $this->assertStringContainsString('## 素材库', (string) $chunks[2]->content);
         $this->assertSame('structured_rule', (string) $chunks[0]->getAttribute('chunk_strategy'));
-        $this->assertSame('GEOFlow 总览', (string) $chunks[0]->getAttribute('chunk_title'));
-        $this->assertSame('GEOFlow 总览 > 多站分发', (string) $chunks[1]->getAttribute('section_path'));
+        $this->assertSame('GEOAmplify 总览', (string) $chunks[0]->getAttribute('chunk_title'));
+        $this->assertSame('GEOAmplify 总览 > 多站分发', (string) $chunks[1]->getAttribute('section_path'));
         $this->assertNotSame('', (string) $chunks[0]->getAttribute('source_hash'));
         $this->assertSame([0, 1], json_decode((string) $chunks[0]->getAttribute('metadata_json'), true)['block_indexes'] ?? []);
         Http::assertNothingSent();
@@ -153,13 +153,13 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
 
         app(KnowledgeChunkSyncService::class)->sync(
             (int) $knowledgeBase->id,
-            "# 平台定位\n\nGEOFlow 负责内容工程后台。\n\n## 分发能力\n\n分发管理同步文章到渠道站点。\n\n## 素材能力\n\n素材库沉淀业务事实。"
+            "# 平台定位\n\nGEOAmplify 负责内容工程后台。\n\n## 分发能力\n\n分发管理同步文章到渠道站点。\n\n## 素材能力\n\n素材库沉淀业务事实。"
         );
 
         $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
 
         $this->assertCount(2, $chunks);
-        $this->assertSame("# 平台定位\n\nGEOFlow 负责内容工程后台。", (string) $chunks[0]->content);
+        $this->assertSame("# 平台定位\n\nGEOAmplify 负责内容工程后台。", (string) $chunks[0]->content);
         $this->assertStringContainsString('## 分发能力', (string) $chunks[1]->content);
         $this->assertStringContainsString('## 素材能力', (string) $chunks[1]->content);
         $this->assertSame('semantic_llm', (string) $chunks[0]->getAttribute('chunk_strategy'));
@@ -184,9 +184,9 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'api_url' => 'https://generativelanguage.googleapis.com/v1beta',
         ]);
         $knowledgeBase = KnowledgeBase::query()->create([
-            'name' => 'GEOFlow Guide',
+            'name' => 'GEOAmplify Guide',
             'description' => '',
-            'content' => 'GEOFlow 是面向 GEO 内容工程的系统。',
+            'content' => 'GEOAmplify 是面向 GEO 内容工程的系统。',
             'character_count' => 24,
             'file_type' => 'markdown',
             'word_count' => 24,
@@ -194,7 +194,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
 
         app(KnowledgeChunkSyncService::class)->sync(
             (int) $knowledgeBase->id,
-            'GEOFlow 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
+            'GEOAmplify 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
         );
 
         $chunk = $knowledgeBase->chunks()->firstOrFail();
@@ -204,7 +204,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents'
             && $request->hasHeader('x-goog-api-key', 'test-api-key')
-            && ($request['requests'][0]['content']['parts'][0]['text'] ?? '') === 'title: GEOFlow Guide | text: GEOFlow 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
+            && ($request['requests'][0]['content']['parts'][0]['text'] ?? '') === 'title: GEOAmplify Guide | text: GEOAmplify 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
             && ! isset($request['requests'][0]['taskType'])
             && ! isset($request['taskType']));
     }

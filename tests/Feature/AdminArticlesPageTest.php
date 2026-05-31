@@ -74,7 +74,7 @@ class AdminArticlesPageTest extends TestCase
             'slug' => 'tech',
         ]);
         $author = Author::query()->create([
-            'name' => 'GEOFlow',
+            'name' => 'GEOAmplify',
         ]);
 
         $this->actingAs($admin, 'admin')
@@ -114,7 +114,7 @@ class AdminArticlesPageTest extends TestCase
             'slug' => 'tech',
         ]);
         $author = Author::query()->create([
-            'name' => 'GEOFlow',
+            'name' => 'GEOAmplify',
         ]);
         Article::query()->create([
             'title' => '后台标签展示文章',
@@ -137,7 +137,7 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee(__('admin.articles.badge.featured'));
     }
 
-    public function test_admin_brand_stays_geoflow_when_public_site_name_changes(): void
+    public function test_admin_brand_stays_geoamplify_when_public_site_name_changes(): void
     {
         $admin = Admin::query()->create([
             'username' => 'admin_brand_admin',
@@ -156,7 +156,7 @@ class AdminArticlesPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertSee('GEOFlow')
+            ->assertSee('GEOAmplify')
             ->assertDontSee('Public Frontend Name');
     }
 }

@@ -2,7 +2,7 @@
 
 /**
  * Laravel 队列连接（database/redis/sqs 等）。
- * GEOFlow 当前默认使用 Redis 队列驱动，业务执行记录写入 task_runs。
+ * GEOAmplify 当前默认使用 Redis 队列驱动，业务执行记录写入 task_runs。
  */
 
 return [
@@ -73,7 +73,7 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            // 必须大于最长队列任务的 timeout（GeoFlow 文章任务为 300 秒），否则 Redis 会提前释放保留导致重复领取与 claim 失败
+            // 必须大于最长队列任务的 timeout（GEOAmplify 文章任务为 300 秒），否则 Redis 会提前释放保留导致重复领取与 claim 失败
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 360),
             'block_for' => null,
             'after_commit' => false,

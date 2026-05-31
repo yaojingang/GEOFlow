@@ -11,7 +11,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * GEOFlow 常驻 worker（Laravel 版）：
+ * GEOAmplify 常驻 worker（Laravel 版）：
  * - 领取 pending job
  * - 生成文章并回写任务统计
  * - 写入 worker 心跳供后台展示
@@ -21,12 +21,14 @@ class GeoFlowWorkerCommand extends Command
     /**
      * @var string
      */
-    protected $signature = 'geoflow:worker {--once : 仅执行一个循环} {--sleep=5 : 空闲时休眠秒数}';
+    protected $signature = 'geoamplify:worker {--once : 仅执行一个循环} {--sleep=5 : 空闲时休眠秒数}';
 
     /**
      * @var string
      */
-    protected $description = 'Run GEOFlow queue worker loop';
+    protected $description = 'Run GEOAmplify queue worker loop';
+
+    protected $aliases = ['geoflow:worker'];
 
     public function __construct(
         private readonly JobQueueService $queueService,
@@ -37,7 +39,7 @@ class GeoFlowWorkerCommand extends Command
 
     public function handle(): int
     {
-        $this->warn('geoflow:worker 已弃用。请使用 Laravel 队列: php artisan queue:work redis --queue=geoflow');
+        $this->warn('geoamplify:worker 已弃用。请使用 Laravel 队列: php artisan queue:work redis --queue=geoamplify');
 
         return self::SUCCESS;
     }

@@ -1,4 +1,4 @@
-# GEOFlow Codex / GPT Instructions
+# GEOAmplify Codex / GPT Instructions
 
 Laravel Boost support is installed for this repository.
 

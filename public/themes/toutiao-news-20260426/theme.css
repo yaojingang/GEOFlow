@@ -922,7 +922,7 @@
     /*
      * Kami editorial refinement:
      * warm paper surface, ink-blue focus, fewer decorative red blocks, and
-     * text-first feed rows when GEOFlow has no real cover image available.
+     * text-first feed rows when GEOAmplify has no real cover image available.
      */
     :root {
         --tt-red: #1B365D;

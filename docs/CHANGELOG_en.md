@@ -1,4 +1,4 @@
-# GEOFlow Changelog
+# GEOAmplify Changelog
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
@@ -44,7 +44,7 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Added a NetEase News-inspired frontend theme:
   - Added the `netease-news-20260429` frontend theme
   - Homepage, category, and article pages now support a cleaner two-column news-style reading layout
-  - Preserves GEOFlow article, category, author, SEO, and Schema data contracts
+  - Preserves GEOAmplify article, category, author, SEO, and Schema data contracts
 - Added a TDWH English theme fork:
   - Added the `tdwh-english-20260501` English theme sample
   - Provides a clearer internationalized homepage, listing page, and article page structure for English content sites
@@ -54,12 +54,12 @@ This document tracks user-facing updates in the public repository. For future Gi
 ### v1.2.x
 
 - Fixed the author fallback logic during task-based article generation:
-  - If a task has no author configured, GEOFlow now uses an existing author automatically
-  - If the configured author no longer exists, GEOFlow falls back to an available author
-  - If no author exists in the system, GEOFlow creates a default `GEOFlow` author
+  - If a task has no author configured, GEOAmplify now uses an existing author automatically
+  - If the configured author no longer exists, GEOAmplify falls back to an available author
+  - If no author exists in the system, GEOAmplify creates a default `GEOAmplify` author
   - This prevents PostgreSQL `NOT NULL` failures caused by writing `null` into `articles.author_id`
 - Improved AI parsing compatibility for `URL Smart Import`:
-  - When one AI model fails, GEOFlow continues with the next available model
+  - When one AI model fails, GEOAmplify continues with the next available model
   - Keyword and title stages can now parse plain-text AI lists, reducing failures caused by non-standard JSON responses
   - Error messages keep the model name and concrete failure reason for easier API key, response format, and provider debugging
 - Upgraded the admin dashboard:
@@ -80,7 +80,7 @@ This document tracks user-facing updates in the public repository. For future Gi
   - The frontend shell follows the admin language selection
 - Added `Smart Model Failover` for tasks:
   - Tasks can now use `Fixed Model` or `Smart Failover`
-  - When the primary model fails, GEOFlow automatically tries the next available chat model by priority
+  - When the primary model fails, GEOAmplify automatically tries the next available chat model by priority
 - Improved provider endpoint handling:
   - Supports versioned chat and embedding endpoints for OpenAI, DeepSeek, MiniMax, Zhipu GLM, and Volcengine Ark
   - Model settings now accept either a base URL or a full endpoint
@@ -100,11 +100,11 @@ This document tracks user-facing updates in the public repository. For future Gi
   - footer now includes a `Project Intro` entry that reopens the panel
   - implementation notes are documented in `project/ADMIN_WELCOME_en.md`
 - Added the companion `geoflow-template` skill entry:
-  - maps reference URLs into GEOFlow-compatible theme packages
+  - maps reference URLs into GEOAmplify-compatible theme packages
   - outputs `tokens.json`, `mapping.json`, and preview-first theme plans
 - Upgraded default GEO prompt templates:
   - Long-form templates now cover article generation, ranking articles, keywords, and descriptions
-  - Templates are aligned with GeoFlow's variable rules
+  - Templates are aligned with GEOAmplify's variable rules
 - Fixed multiple admin usability issues:
   - PostgreSQL timezone drift
   - Missing leading `/` in generated image paths

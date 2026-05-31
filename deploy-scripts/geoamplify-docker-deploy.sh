@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# GEOFlow production Docker one-click deployment helper.
+# GEOAmplify production Docker one-click deployment helper.
 # It performs host preflight checks, prepares .env.prod, deploys the
 # docker-compose.prod.yml stack, seeds the default admin, and runs a healthcheck.
 
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-REPO_URL="${GEOFLOW_REPO_URL:-https://github.com/yaojingang/GEOFlow.git}"
-BRANCH="${GEOFLOW_BRANCH:-main}"
-APP_DIR="${GEOFLOW_APP_DIR:-/opt/geoflow}"
-NONINTERACTIVE="${GEOFLOW_NONINTERACTIVE:-0}"
-YES="${GEOFLOW_YES:-0}"
-INSTALL_DOCKER="${GEOFLOW_INSTALL_DOCKER:-auto}"
-SELF_DELETE="${GEOFLOW_SELF_DELETE:-0}"
+REPO_URL="${GEOAMPLIFY_REPO_URL:-${GEOFLOW_REPO_URL:-https://github.com/rjh121069192-cmd/GEOAmplify.git}}"
+BRANCH="${GEOAMPLIFY_BRANCH:-${GEOFLOW_BRANCH:-main}}"
+APP_DIR="${GEOAMPLIFY_APP_DIR:-${GEOFLOW_APP_DIR:-/opt/geoamplify}}"
+NONINTERACTIVE="${GEOAMPLIFY_NONINTERACTIVE:-${GEOFLOW_NONINTERACTIVE:-0}}"
+YES="${GEOAMPLIFY_YES:-${GEOFLOW_YES:-0}}"
+INSTALL_DOCKER="${GEOAMPLIFY_INSTALL_DOCKER:-${GEOFLOW_INSTALL_DOCKER:-auto}}"
+SELF_DELETE="${GEOAMPLIFY_SELF_DELETE:-${GEOFLOW_SELF_DELETE:-0}}"
 
 log() {
-  printf '\033[1;34m[geoflow]\033[0m %s\n' "$*"
+  printf '\033[1;34m[geoamplify]\033[0m %s\n' "$*"
 }
 
 warn() {
@@ -73,6 +73,10 @@ prompt_value() {
   local prompt="$2"
   local default="$3"
   local current="${!var_name:-}"
+  local legacy_var_name="${var_name/GEOAMPLIFY_/GEOFLOW_}"
+  if [ -z "$current" ] && [ "$legacy_var_name" != "$var_name" ]; then
+    current="${!legacy_var_name:-}"
+  fi
 
   if [ -n "$current" ]; then
     printf '%s' "$current"
@@ -183,22 +187,22 @@ check_ports() {
 
   if command_exists ss; then
     if ss -ltn | awk '{print $4}' | grep -Eq "[:.]${web_port}$"; then
-      warn "Port ${web_port} already appears to be in use. Change GEOFLOW_WEB_PORT if deployment fails."
+      warn "Port ${web_port} already appears to be in use. Change GEOAMPLIFY_WEB_PORT if deployment fails."
     fi
     if ss -ltn | awk '{print $4}' | grep -Eq "[:.]${reverb_port}$"; then
-      warn "Port ${reverb_port} already appears to be in use. Change GEOFLOW_REVERB_PORT if deployment fails."
+      warn "Port ${reverb_port} already appears to be in use. Change GEOAMPLIFY_REVERB_PORT if deployment fails."
     fi
   fi
 }
 
 clone_or_update_repo() {
-  log "Preparing GEOFlow source at ${APP_DIR}."
+  log "Preparing GEOAmplify source at ${APP_DIR}."
   if [ -d "${APP_DIR}/.git" ]; then
     git -C "$APP_DIR" fetch origin "$BRANCH"
     git -C "$APP_DIR" checkout "$BRANCH"
     git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
   elif [ -e "$APP_DIR" ] && [ "$(find "$APP_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')" != "0" ]; then
-    fail "${APP_DIR} exists and is not an empty Git checkout. Set GEOFLOW_APP_DIR to another path."
+    fail "${APP_DIR} exists and is not an empty Git checkout. Set GEOAMPLIFY_APP_DIR to another path."
   else
     as_root mkdir -p "$(dirname "$APP_DIR")"
     if [ -w "$(dirname "$APP_DIR")" ]; then
@@ -260,14 +264,14 @@ prepare_env() {
   current_app_url="$(get_env_value .env.prod APP_URL)"
   current_admin_path="$(get_env_value .env.prod ADMIN_BASE_PATH)"
 
-  web_port="$(prompt_value GEOFLOW_WEB_PORT "Public web port" "${current_web_port:-18080}")"
-  reverb_port="$(prompt_value GEOFLOW_REVERB_PORT "Public Reverb port" "${current_reverb_port:-18081}")"
-  app_url="$(prompt_value GEOFLOW_APP_URL "Public APP_URL, including protocol and optional subdirectory" "${current_app_url:-http://${default_ip}:${web_port}}")"
-  admin_path="$(prompt_value GEOFLOW_ADMIN_BASE_PATH "Admin base path without leading slash" "${current_admin_path:-geo_admin}")"
+  web_port="$(prompt_value GEOAMPLIFY_WEB_PORT "Public web port" "${current_web_port:-18080}")"
+  reverb_port="$(prompt_value GEOAMPLIFY_REVERB_PORT "Public Reverb port" "${current_reverb_port:-18081}")"
+  app_url="$(prompt_value GEOAMPLIFY_APP_URL "Public APP_URL, including protocol and optional subdirectory" "${current_app_url:-http://${default_ip}:${web_port}}")"
+  admin_path="$(prompt_value GEOAMPLIFY_ADMIN_BASE_PATH "Admin base path without leading slash" "${current_admin_path:-geo_admin}")"
 
-  db_password="${GEOFLOW_DB_PASSWORD:-$(get_env_value .env.prod DB_PASSWORD)}"
-  redis_password="${GEOFLOW_REDIS_PASSWORD:-$(get_env_value .env.prod REDIS_PASSWORD)}"
-  reverb_secret="${GEOFLOW_REVERB_SECRET:-$(get_env_value .env.prod REVERB_APP_SECRET)}"
+  db_password="${GEOAMPLIFY_DB_PASSWORD:-${GEOFLOW_DB_PASSWORD:-$(get_env_value .env.prod DB_PASSWORD)}}"
+  redis_password="${GEOAMPLIFY_REDIS_PASSWORD:-${GEOFLOW_REDIS_PASSWORD:-$(get_env_value .env.prod REDIS_PASSWORD)}}"
+  reverb_secret="${GEOAMPLIFY_REVERB_SECRET:-${GEOFLOW_REVERB_SECRET:-$(get_env_value .env.prod REVERB_APP_SECRET)}}"
   db_password="${db_password:-$(random_secret)}"
   redis_password="${redis_password:-$(random_secret)}"
   reverb_secret="${reverb_secret:-$(random_secret)}"
@@ -277,14 +281,14 @@ prepare_env() {
   set_env_value .env.prod APP_ENV production
   set_env_value .env.prod APP_DEBUG false
   set_env_value .env.prod APP_URL "$app_url"
-  set_env_value .env.prod TRUSTED_PROXIES "${GEOFLOW_TRUSTED_PROXIES:-*}"
+  set_env_value .env.prod TRUSTED_PROXIES "${GEOAMPLIFY_TRUSTED_PROXIES:-${GEOFLOW_TRUSTED_PROXIES:-*}}"
   set_env_value .env.prod BOOST_BROWSER_LOGS_WATCHER false
   set_env_value .env.prod ADMIN_BASE_PATH "$admin_path"
   set_env_value .env.prod DB_CONNECTION pgsql
   set_env_value .env.prod DB_HOST postgres
   set_env_value .env.prod DB_PORT 5432
-  set_env_value .env.prod DB_DATABASE "${GEOFLOW_DB_DATABASE:-geo_flow}"
-  set_env_value .env.prod DB_USERNAME "${GEOFLOW_DB_USERNAME:-geo_user}"
+  set_env_value .env.prod DB_DATABASE "${GEOAMPLIFY_DB_DATABASE:-${GEOFLOW_DB_DATABASE:-geo_flow}}"
+  set_env_value .env.prod DB_USERNAME "${GEOAMPLIFY_DB_USERNAME:-${GEOFLOW_DB_USERNAME:-geo_user}}"
   set_env_value .env.prod DB_PASSWORD "$db_password"
   set_env_value .env.prod REDIS_HOST redis
   set_env_value .env.prod REDIS_PASSWORD "$redis_password"
@@ -292,7 +296,7 @@ prepare_env() {
   set_env_value .env.prod REVERB_EXPOSE_PORT "$reverb_port"
   set_env_value .env.prod REVERB_APP_SECRET "$reverb_secret"
   set_env_value .env.prod SESSION_LIFETIME 43200
-  set_env_value .env.prod GEOFLOW_SESSION_TIMEOUT 2592000
+  set_env_value .env.prod GEOAMPLIFY_SESSION_TIMEOUT 2592000
   set_env_value .env.prod AUTO_MIGRATE false
   set_env_value .env.prod AUTO_OPTIMIZE true
 
@@ -312,7 +316,7 @@ deploy_stack() {
   log "Running initialization and database migrations."
   "${COMPOSE[@]}" up init
 
-  log "Starting GEOFlow services."
+  log "Starting GEOAmplify services."
   "${COMPOSE[@]}" up -d app web queue scheduler reverb
 
   log "Seeding default admin account if it does not exist."
@@ -325,8 +329,8 @@ deploy_stack() {
 
 run_healthcheck() {
   cd "$APP_DIR"
-  if [ -x deploy-scripts/geoflow-healthcheck.sh ]; then
-    GEOFLOW_APP_DIR="$APP_DIR" bash deploy-scripts/geoflow-healthcheck.sh
+  if [ -x deploy-scripts/geoamplify-healthcheck.sh ]; then
+    GEOAMPLIFY_APP_DIR="$APP_DIR" bash deploy-scripts/geoamplify-healthcheck.sh
   else
     warn "Healthcheck script is missing; skipping."
   fi

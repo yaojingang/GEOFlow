@@ -14,20 +14,20 @@ return [
             'changelog_link' => '更新日志',
         ],
         'letter' => [
-            'title' => '欢迎使用 GEOFlow',
-            'subtitle' => '你好，欢迎来到 GEOFlow。',
+            'title' => '欢迎使用 GEOAmplify',
+            'subtitle' => '你好，欢迎来到 GEOAmplify。',
             'blocks' => [
                 [
                     'type' => 'paragraph',
-                    'content' => '如果你现在正在看这个页面，说明你已经进入了 GEOFlow 的管理后台。先不用急着点功能，我想先用一封简短的见面信，告诉你这套系统是做什么的，它适合什么样的工作，以及我接下来还会把它继续往哪里推进。',
+                    'content' => '如果你现在正在看这个页面，说明你已经进入了 GEOAmplify 的管理后台。先不用急着点功能，我想先用一封简短的见面信，告诉你这套系统是做什么的，它适合什么样的工作，以及我接下来还会把它继续往哪里推进。',
                 ],
                 [
                     'type' => 'paragraph',
-                    'content' => 'GEOFlow 不是一个简单的 CMS，也不只是一个 AI 写作工具。它更像一套围绕 GEO 工程设计构建的内容操作系统：把模型配置、素材管理、任务调度、内容生成、审核发布、前台展示，以及 Skill、CLI、API 协作能力，串成一条完整的工作链路。',
+                    'content' => 'GEOAmplify 不是一个简单的 CMS，也不只是一个 AI 写作工具。它更像一套围绕 GEO 工程设计构建的内容操作系统：把模型配置、素材管理、任务调度、内容生成、审核发布、前台展示，以及 Skill、CLI、API 协作能力，串成一条完整的工作链路。',
                 ],
                 [
                     'type' => 'heading',
-                    'content' => '你可以用 GEOFlow 做什么',
+                    'content' => '你可以用 GEOAmplify 做什么',
                 ],
                 [
                     'type' => 'list',
@@ -60,7 +60,7 @@ return [
                 ],
                 [
                     'type' => 'paragraph',
-                    'content' => 'GEOFlow 的出发点不是页面管理，而是内容工程。我更关注的是：一套系统能不能把任务、素材、模型、提示词、审核、发布和前台展示统一起来，并且真正适配 AI 搜索和生成式引擎的内容需求。',
+                    'content' => 'GEOAmplify 的出发点不是页面管理，而是内容工程。我更关注的是：一套系统能不能把任务、素材、模型、提示词、审核、发布和前台展示统一起来，并且真正适配 AI 搜索和生成式引擎的内容需求。',
                 ],
                 [
                     'type' => 'paragraph',
@@ -111,20 +111,20 @@ return [
             'changelog_link' => 'Changelog',
         ],
         'letter' => [
-            'title' => 'Welcome to GEOFlow',
-            'subtitle' => 'Hi, welcome to GEOFlow.',
+            'title' => 'Welcome to GEOAmplify',
+            'subtitle' => 'Hi, welcome to GEOAmplify.',
             'blocks' => [
                 [
                     'type' => 'paragraph',
-                    'content' => 'If you are seeing this page, you have already entered the GEOFlow admin. Before you start clicking around, I want to use a short welcome letter to explain what this system is for, what kinds of work it fits, and where I am taking it next.',
+                    'content' => 'If you are seeing this page, you have already entered the GEOAmplify admin. Before you start clicking around, I want to use a short welcome letter to explain what this system is for, what kinds of work it fits, and where I am taking it next.',
                 ],
                 [
                     'type' => 'paragraph',
-                    'content' => 'GEOFlow is not just a CMS, and it is not just an AI writing tool. It is closer to a content operating system built around GEO engineering: model setup, asset management, task scheduling, content generation, review, publishing, frontend delivery, and Skill / CLI / API collaboration in one workflow.',
+                    'content' => 'GEOAmplify is not just a CMS, and it is not just an AI writing tool. It is closer to a content operating system built around GEO engineering: model setup, asset management, task scheduling, content generation, review, publishing, frontend delivery, and Skill / CLI / API collaboration in one workflow.',
                 ],
                 [
                     'type' => 'heading',
-                    'content' => 'What you can do with GEOFlow',
+                    'content' => 'What you can do with GEOAmplify',
                 ],
                 [
                     'type' => 'list',
@@ -157,7 +157,7 @@ return [
                 ],
                 [
                     'type' => 'paragraph',
-                    'content' => 'GEOFlow starts from content engineering rather than page management. The goal is to make tasks, assets, models, prompts, review, publishing, and frontend delivery work together in one system, and to align that system with the real needs of AI search and generative engines.',
+                    'content' => 'GEOAmplify starts from content engineering rather than page management. The goal is to make tasks, assets, models, prompts, review, publishing, and frontend delivery work together in one system, and to align that system with the real needs of AI search and generative engines.',
                 ],
                 [
                     'type' => 'paragraph',

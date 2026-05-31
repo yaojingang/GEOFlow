@@ -5,7 +5,7 @@
 - 已确认目标服务器、域名、数据库、队列驱动和回滚负责人。
 - 已完成数据库备份，并确认备份文件可恢复。
 - `.env` 已设置 `APP_URL`、`ADMIN_BASE_PATH`、数据库、Redis、`QUEUE_CONNECTION`。
-- 生产环境如需异步执行批量采集、批量评分、发布后复测，设置 `GEOFLOW_GEO_ASYNC_JOBS=true` 并启动 queue worker。
+- 生产环境如需异步执行批量采集、批量评分、发布后复测，设置 `GEOAMPLIFY_GEO_ASYNC_JOBS=true` 并启动 queue worker。
 - 后台至少有一个可用管理员账号。
 - 后台 AI 模型配置中至少有一个真实模型或保留 Mock 模型用于低风险验收。
 

@@ -1,4 +1,4 @@
-# GEOFlow Agent Instructions
+# GEOAmplify Agent Instructions
 
 Laravel Boost support is installed for this repository.
 

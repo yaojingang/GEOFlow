@@ -1,18 +1,18 @@
-# GEOFlow
+# GEOAmplify
 
 > Languages: [简体中文](README.md) | [English](docs/readme/README_en.md) | [日本語](docs/readme/README_ja.md) | [Español](docs/readme/README_es.md) | [Русский](docs/readme/README_ru.md) | [Português (BR)](docs/readme/README_pt_BR.md)
 
-> GEOFlow 是一套专门面向 GEO（生成式引擎优化）的开源智能内容工程系统，是全球最早围绕 GEO 场景系统化设计的数据、内容与分发基础设施之一。它把数据沉淀、知识库、素材管理、AI 生成、审核发布、前台展示与后续多端分发串联为一条可持续迭代的工作链路，目标是逐步演进为一套强大的“从数据到内容、从内容到多端发布”的 GEO 优化系统。
+> GEOAmplify 是一套专门面向 GEO（生成式引擎优化）的开源智能内容工程系统，是全球最早围绕 GEO 场景系统化设计的数据、内容与分发基础设施之一。它把数据沉淀、知识库、素材管理、AI 生成、审核发布、前台展示与后续多端分发串联为一条可持续迭代的工作链路，目标是逐步演进为一套强大的“从数据到内容、从内容到多端发布”的 GEO 优化系统。
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
+[![GitHub stars](https://img.shields.io/github/stars/rjh121069192-cmd/GEOAmplify?style=social)](https://github.com/rjh121069192-cmd/GEOAmplify/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/rjh121069192-cmd/GEOAmplify?style=social)](https://github.com/rjh121069192-cmd/GEOAmplify/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/rjh121069192-cmd/GEOAmplify)](https://github.com/rjh121069192-cmd/GEOAmplify/issues)
 
-GEOFlow 以 [Apache License 2.0](LICENSE) 开源发布。你可以自由使用、复制、修改和分发本项目，包括商业使用；请保留版权声明和许可证文本，并遵守 Apache-2.0 的专利授权、商标与免责声明条款。
+GEOAmplify 以 [Apache License 2.0](LICENSE) 开源发布。你可以自由使用、复制、修改和分发本项目，包括商业使用；请保留版权声明和许可证文本，并遵守 Apache-2.0 的专利授权、商标与免责声明条款。
 
 ---
 
@@ -26,7 +26,7 @@ GEOFlow 以 [Apache License 2.0](LICENSE) 开源发布。你可以自由使用�
 | 🧠 知识库 RAG | 知识库上传后自动切片；配置 embedding 模型后可写入向量并在生成时召回相关片段 |
 | 📋 审核与发布工作流 | 草稿、审核、发布流程，可配置自动发布；文章管理支持状态、作者、任务等筛选 |
 | 🔍 面向搜索展示优化 | 文章 SEO 元信息、Open Graph、结构化数据；前台 Markdown 支持标题、表格、列表、图片等渲染 |
-| 🎨 前台与主题 | 默认主题、主题包、预览路径、后台主题切换；站点名称仅影响前台，后台品牌固定为 GEOFlow |
+| 🎨 前台与主题 | 默认主题、主题包、预览路径、后台主题切换；站点名称仅影响前台，后台品牌固定为 GEOAmplify |
 | 🌍 后台多语言 | 后台支持中文、英文、日语、西班牙语、俄语、葡萄牙语（巴西）切换 |
 | 🔔 版本提醒 | 后台可按 `version.json` 检查 GitHub 新版本，并在有新版本时提醒管理员 |
 | 🐳 可直接部署 | **Docker Compose** 一键拉起 PostgreSQL（pgvector）、Redis、应用、队列、调度与 Reverb |
@@ -37,12 +37,12 @@ GEOFlow 以 [Apache License 2.0](LICENSE) 开源发布。你可以自由使用�
 ## 🖼 界面预览
 
 <p>
-  <img src="docs/images/screenshots/home.png" alt="GEOFlow 首页预览" width="48%" />
-  <img src="docs/images/screenshots/task-management.png" alt="GEOFlow 任务管理预览" width="48%" />
+  <img src="docs/images/screenshots/home.png" alt="GEOAmplify 首页预览" width="48%" />
+  <img src="docs/images/screenshots/task-management.png" alt="GEOAmplify 任务管理预览" width="48%" />
 </p>
 <p>
-  <img src="docs/images/screenshots/article-management.png" alt="GEOFlow 文章管理预览" width="48%" />
-  <img src="docs/images/screenshots/ai-config.png" alt="GEOFlow AI 配置器预览" width="48%" />
+  <img src="docs/images/screenshots/article-management.png" alt="GEOAmplify 文章管理预览" width="48%" />
+  <img src="docs/images/screenshots/ai-config.png" alt="GEOAmplify AI 配置器预览" width="48%" />
 </p>
 
 上述页面覆盖站点首页、任务调度、文章流程与模型配置等主链路；更多后台说明见 `docs/`（若目录中暂无截图资源，请本地补全或替换为你的截图路径）。
@@ -53,7 +53,7 @@ GEOFlow 以 [Apache License 2.0](LICENSE) 开源发布。你可以自由使用�
 
 新版本重点变化包括：
 
-- **后台体验**：固定后台品牌为 GEOFlow，支持多语言切换、管理员编辑/删除、首次欢迎页、版本更新提醒和仪表盘快速开始。
+- **后台体验**：固定后台品牌为 GEOAmplify，支持多语言切换、管理员编辑/删除、首次欢迎页、版本更新提醒和仪表盘快速开始。
 - **任务链路**：任务支持固定模型与智能模型切换；生成与发布分离，任务文章可从任务列表跳转到对应筛选结果。
 - **素材体系**：素材库入口覆盖知识库、标题库、关键词库、图片库和作者库；知识库提供切片与向量化状态预览。
 - **模型接入**：Provider URL 规则更清晰，兼容 OpenAI 风格接口以及智谱、火山方舟等非 `/v1` 路径；embedding 未配置时提供明确引导。
@@ -111,7 +111,7 @@ Worker 执行 AI 生成
 
 ## 🎯 适用场景与目标收益
 
-GEOFlow 适合这些真实且可落地的场景：
+GEOAmplify 适合这些真实且可落地的场景：
 
 - **独立 GEO 官网**
   把官网内容、产品资料、FAQ、案例和品牌知识组织成一个可持续更新的内容系统。目标是提升 AI 搜索可见度、品牌信源覆盖和内容运营效率，而不是堆砌低质量页面。
@@ -127,18 +127,18 @@ GEOFlow 适合这些真实且可落地的场景：
   对知识库、专题内容、资讯更新和内容分发流程进行工程化管理。目标是让真正有价值的信息更稳定地被用户和 AI 理解、引用和检索。
 
 这套系统的收益，应该建立在**真实、优质、持续维护的知识库**之上。
-我们不鼓励利用系统制造信息噪音、批量污染互联网或堆积虚假内容。GEOFlow 的本质是帮助团队更高效地管理、生产和分发可信内容，提升 AI 营销效率和 GEO 运营效率，而不是替代事实、替代判断或替代内容质量本身。
+我们不鼓励利用系统制造信息噪音、批量污染互联网或堆积虚假内容。GEOAmplify 的本质是帮助团队更高效地管理、生产和分发可信内容，提升 AI 营销效率和 GEO 运营效率，而不是替代事实、替代判断或替代内容质量本身。
 
 ---
 
 ## 🧭 场景对应的部署与使用方式
 
-不同场景下，建议这样使用 GEOFlow：
+不同场景下，建议这样使用 GEOAmplify：
 
 - **作为独立 GEO 官网运行**
   直接部署完整前台与后台，围绕官网栏目、产品页延展内容、FAQ、案例和专题进行运营。适合希望把官网做成 AI 搜索友好型内容资产的团队。
 - **作为官网中的 GEO 子频道运行**
-  将 GEOFlow 作为一个相对独立的内容频道部署，再通过导航、子域名或目录与主站打通。适合不想重构主站、但需要快速上线内容频道的团队。
+  将 GEOAmplify 作为一个相对独立的内容频道部署，再通过导航、子域名或目录与主站打通。适合不想重构主站、但需要快速上线内容频道的团队。
 - **作为 GEO 信源站运行**
   单独维护一个面向特定主题的内容站点，把知识库和资料建设放在首位，再通过任务系统做稳定更新。适合想做行业型、专题型或问题导向型内容资产的团队。
 - **作为内部 GEO 内容管理后台运行**
@@ -156,7 +156,7 @@ GEOFlow 适合这些真实且可落地的场景：
 4. 再用模型、任务和模板能力去提效
 
 如果知识库本身不真实、不完整、不稳定，再强的自动化也只会放大噪音。
-所以在 GEOFlow 里，**知识库建设应该始终排在最前面**。
+所以在 GEOAmplify 里，**知识库建设应该始终排在最前面**。
 
 ---
 
@@ -166,8 +166,8 @@ GEOFlow 适合这些真实且可落地的场景：
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/yaojingang/GEOFlow.git
-cd GEOFlow
+git clone https://github.com/rjh121069192-cmd/GEOAmplify.git
+cd GEOAmplify
 
 # 2. 复制环境变量
 cp .env.example .env
@@ -192,8 +192,8 @@ docker compose up -d
 如果希望在常见云服务器上自动完成环境自检、Docker 检测、`.env.prod` 生成、容器部署和部署后健康检查，可以使用参考部署脚本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
-bash geoflow-docker-deploy.sh
+curl -fsSL https://raw.githubusercontent.com/rjh121069192-cmd/GEOAmplify/main/deploy-scripts/geoamplify-docker-deploy.sh -o geoamplify-docker-deploy.sh
+bash geoamplify-docker-deploy.sh
 ```
 
 脚本说明见 [`deploy-scripts/README.md`](deploy-scripts/README.md)。
@@ -219,8 +219,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/yaojingang/GEOFlow.git
-cd GEOFlow
+git clone https://github.com/rjh121069192-cmd/GEOAmplify.git
+cd GEOAmplify
 
 # 2. 环境与依赖
 cp .env.example .env
@@ -241,7 +241,7 @@ php artisan serve --host=127.0.0.1 --port=8080
 另开终端启动常驻进程（与 Docker 中 `queue` / `scheduler` / `reverb` 对应）：
 
 ```bash
-php artisan queue:work redis --queue=geoflow,default --sleep=1 --tries=1 --timeout=300
+php artisan queue:work redis --queue=geoamplify,default --sleep=1 --tries=1 --timeout=300
 php artisan schedule:work
 php artisan reverb:start
 ```
@@ -275,10 +275,10 @@ chmod -R ug+rwx storage bootstrap/cache
 
 | 字段 | 值 |
 |------|-----|
-| 用户名 | `GEOFLOW_ADMIN_USERNAME`，默认 `admin` |
-| 密码 | 本地开发默认 `password`；生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`。若生产环境留空且账号尚不存在，seed 会生成一次性随机密码并输出到初始化日志 |
+| 用户名 | `GEOAMPLIFY_ADMIN_USERNAME`，默认 `admin` |
+| 密码 | 本地开发默认 `password`；生产环境请设置 `GEOAMPLIFY_ADMIN_PASSWORD`。若生产环境留空且账号尚不存在，seed 会生成一次性随机密码并输出到初始化日志 |
 
-补充规则：`AdminUserSeeder` 只在目标用户名不存在时创建账号；重复执行不会覆盖已有用户名、邮箱或密码。若账号已存在，即使生产环境 `GEOFLOW_ADMIN_PASSWORD` 为空，也不会重新生成或打印密码。
+补充规则：`AdminUserSeeder` 只在目标用户名不存在时创建账号；重复执行不会覆盖已有用户名、邮箱或密码。若账号已存在，即使生产环境 `GEOAMPLIFY_ADMIN_PASSWORD` 为空，也不会重新生成或打印密码。
 
 ### 管理员登录失败锁定与手动解锁
 
@@ -287,13 +287,13 @@ chmod -R ug+rwx storage bootstrap/cache
 - 解锁命令：
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoamplify:admin-unlock <username>
 ```
 
 例如：
 
 ```bash
-php artisan geoflow:admin-unlock admin
+php artisan geoamplify:admin-unlock admin
 ```
 
 **生产环境 Web：** 使用 Nginx / Apache + **PHP-FPM**，网站根目录指向项目 **`public/`**，勿将仓库根目录直接暴露为文档根。
@@ -352,10 +352,10 @@ composer test
 
 ## 📄 开源协议
 
-本项目采用 [Apache License 2.0](LICENSE)。该协议允许个人和企业在遵守许可证声明、版权保留、修改说明、专利授权和免责声明等条款的前提下使用、修改、分发和商用 GEOFlow。
+本项目采用 [Apache License 2.0](LICENSE)。该协议允许个人和企业在遵守许可证声明、版权保留、修改说明、专利授权和免责声明等条款的前提下使用、修改、分发和商用 GEOAmplify。
 
 ---
 
 ## ⭐ Star 趋势
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.com/#yaojingang/GEOFlow&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=rjh121069192-cmd/GEOAmplify&type=Date)](https://star-history.com/#rjh121069192-cmd/GEOAmplify&Date)

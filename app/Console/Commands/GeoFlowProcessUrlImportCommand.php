@@ -8,9 +8,11 @@ use Illuminate\Console\Command;
 
 class GeoFlowProcessUrlImportCommand extends Command
 {
-    protected $signature = 'geoflow:process-url-import {jobId : URL import job ID}';
+    protected $signature = 'geoamplify:process-url-import {jobId : URL import job ID}';
 
-    protected $description = 'Process a GEOFlow URL smart import job in the background';
+    protected $description = 'Process a GEOAmplify URL smart import job in the background';
+
+    protected $aliases = ['geoflow:process-url-import'];
 
     public function handle(UrlImportProcessingService $service): int
     {

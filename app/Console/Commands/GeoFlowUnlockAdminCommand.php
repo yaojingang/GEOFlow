@@ -14,12 +14,14 @@ class GeoFlowUnlockAdminCommand extends Command
     /**
      * @var string
      */
-    protected $signature = 'geoflow:admin-unlock {username : 管理员登录用户名}';
+    protected $signature = 'geoamplify:admin-unlock {username : 管理员登录用户名}';
 
     /**
      * @var string
      */
     protected $description = 'Unlock a locked admin account and clear failed login attempts';
+
+    protected $aliases = ['geoflow:admin-unlock'];
 
     public function __construct(
         private readonly AdminLoginLockService $adminLoginLockService

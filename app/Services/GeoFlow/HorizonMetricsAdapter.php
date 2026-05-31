@@ -26,7 +26,7 @@ class HorizonMetricsAdapter
      *
      * @return array{pending:int,running:int,failed:int,completed:int}
      */
-    public function queueOverview(string $queueName = 'geoflow'): array
+    public function queueOverview(string $queueName = 'geoamplify'): array
     {
         $overview = [
             'pending' => 0,

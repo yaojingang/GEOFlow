@@ -5,7 +5,7 @@ namespace App\Services\Admin;
 use App\Models\Admin;
 
 /**
- * 后台「欢迎使用 GEOFlow」弹窗：负责版本态判断、自动打开一次、以及关闭落库所需的数据。
+ * 后台「欢迎使用 GEOAmplify」弹窗：负责版本态判断、自动打开一次、以及关闭落库所需的数据。
  */
 class AdminWelcomeModalService
 {
@@ -37,10 +37,10 @@ class AdminWelcomeModalService
                 'csrfToken' => csrf_token(),
                 'links' => [
                     'x' => 'https://x.com/yaojingang',
-                    'github' => 'https://github.com/yaojingang/GEOFlow',
+                    'github' => 'https://github.com/rjh121069192-cmd/GEOAmplify',
                     'changelog' => [
-                        'zh-CN' => 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md',
-                        'en' => 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md',
+                        'zh-CN' => 'https://github.com/rjh121069192-cmd/GEOAmplify/blob/main/docs/CHANGELOG.md',
+                        'en' => 'https://github.com/rjh121069192-cmd/GEOAmplify/blob/main/docs/CHANGELOG_en.md',
                     ],
                 ],
             ],

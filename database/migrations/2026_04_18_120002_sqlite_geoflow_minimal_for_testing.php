@@ -1,7 +1,7 @@
 <?php
 
 /**
- * 仅在 PHPUnit（APP_ENV=testing）且 SQLite 内存库下创建 GEOFlow 最小表结构，
+ * 仅在 PHPUnit（APP_ENV=testing）且 SQLite 内存库下创建 GEOAmplify 最小表结构，
  * 供 API 契约测试使用。生产/开发 PostgreSQL 仍以 120000 全量 SQL 为准，勿依赖本迁移。
  */
 

@@ -1,9 +1,9 @@
-name: geoflow-laravel
+name: geoamplify-laravel
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: geoflow-postgres
+    container_name: geoamplify-postgres
     environment:
       POSTGRES_DB: ${DB_DATABASE:-geo_flow}
       POSTGRES_USER: ${DB_USERNAME:-geo_user}
@@ -21,17 +21,17 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: geoflow-redis
+    container_name: geoamplify-redis
     ports:
       - "127.0.0.1:${REDIS_EXPOSE_PORT:-16379}:6379"
     restart: unless-stopped
 
   init:
-    image: geoflow-app:latest
+    image: geoamplify-app:latest
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: geoflow-init
+    container_name: geoamplify-init
     working_dir: /var/www/html
     env_file:
       - ./.env
@@ -50,11 +50,11 @@ services:
     restart: "no"
 
   app:
-    image: geoflow-app:latest
+    image: geoamplify-app:latest
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: geoflow-app
+    container_name: geoamplify-app
     working_dir: /var/www/html
     env_file:
       - ./.env
@@ -69,15 +69,15 @@ services:
     restart: unless-stopped
 
   queue:
-    image: geoflow-app:latest
+    image: geoamplify-app:latest
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: geoflow-queue
+    container_name: geoamplify-queue
     working_dir: /var/www/html
     env_file:
       - ./.env
-    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,default", "--sleep=1", "--tries=1", "--timeout=300"]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoamplify,default", "--sleep=1", "--tries=1", "--timeout=300"]
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -86,11 +86,11 @@ services:
     restart: unless-stopped
 
   scheduler:
-    image: geoflow-app:latest
+    image: geoamplify-app:latest
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: geoflow-scheduler
+    container_name: geoamplify-scheduler
     working_dir: /var/www/html
     env_file:
       - ./.env
@@ -103,11 +103,11 @@ services:
     restart: unless-stopped
 
   reverb:
-    image: geoflow-app:latest
+    image: geoamplify-app:latest
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: geoflow-reverb
+    container_name: geoamplify-reverb
     working_dir: /var/www/html
     env_file:
       - ./.env

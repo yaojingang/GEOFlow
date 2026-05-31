@@ -4,13 +4,13 @@
         ? $articles->getCollection()->take(6)
         : collect($articles ?? [])->take(6);
     $sidebarArticles = $sidebarHotArticles->isNotEmpty() ? $sidebarHotArticles : $latestArticles;
-    $feedTitle = trim((string) (($siteSubtitle ?? '') !== '' ? $siteSubtitle : ($siteTitle ?? 'GEOFlow')));
+    $feedTitle = trim((string) (($siteSubtitle ?? '') !== '' ? $siteSubtitle : ($siteTitle ?? 'GEOAmplify')));
     $feedDescription = trim((string) ($siteDescription ?? ''));
 @endphp
 <aside class="tt-sidebar">
     @if(!empty($showFeedPanel))
         <section class="tt-panel tt-feed-panel">
-            <div class="tt-page-kicker">GEOFlow Feed</div>
+            <div class="tt-page-kicker">GEOAmplify Feed</div>
             <h2 class="tt-feed-panel-title">{{ $feedTitle }}</h2>
             @if($feedDescription !== '')
                 <p class="tt-feed-panel-desc">{{ $feedDescription }}</p>

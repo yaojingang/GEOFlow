@@ -19,7 +19,7 @@ use Throwable;
 
 class GeoFlowOneShotDiagnosisCommand extends Command
 {
-    protected $signature = 'geoflow:geo-run
+    protected $signature = 'geoamplify:geo-run
         {--json= : 一次性诊断 JSON 内容}
         {--file= : 一次性诊断 JSON 文件路径}
         {--admin= : 管理员用户名或 ID，未传时使用第一个 active 管理员}
@@ -28,6 +28,8 @@ class GeoFlowOneShotDiagnosisCommand extends Command
         {--pretty : 格式化 JSON 输出}';
 
     protected $description = 'Import GEO brand/keywords from one JSON payload, create a diagnosis task, and optionally run it immediately';
+
+    protected $aliases = ['geoflow:geo-run'];
 
     public function handle(GeoDiagnosisRunner $runner): int
     {

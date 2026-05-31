@@ -248,11 +248,11 @@ class SiteSettingsController extends Controller
     private function loadSettings(): array
     {
         $defaults = [
-            'site_name' => 'GEOFlow',
+            'site_name' => 'GEOAmplify',
             'site_subtitle' => '',
             'site_description' => '基于AI的智能内容生成与发布平台',
             'site_keywords' => 'AI内容生成,GEO优化,智能发布,内容管理',
-            'copyright_info' => '© 2026 GEOFlow. All rights reserved.',
+            'copyright_info' => '© 2026 GEOAmplify. All rights reserved.',
             'site_logo' => '',
             'site_favicon' => '',
             'analytics_code' => '',

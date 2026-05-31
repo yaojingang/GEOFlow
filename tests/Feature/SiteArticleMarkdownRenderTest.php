@@ -46,7 +46,7 @@ MD);
             'slug' => 'tech',
         ]);
         $author = Author::query()->create([
-            'name' => 'GEOFlow',
+            'name' => 'GEOAmplify',
         ]);
         $article = Article::query()->create([
             'title' => 'Markdown 渲染测试',
@@ -75,7 +75,7 @@ MD);
             'slug' => 'tech',
         ]);
         $author = Author::query()->create([
-            'name' => 'GEOFlow',
+            'name' => 'GEOAmplify',
         ]);
         Article::query()->create([
             'title' => '首页热门文章',
@@ -129,7 +129,7 @@ MD);
     {
         SiteSetting::query()->updateOrCreate(
             ['setting_key' => 'site_name'],
-            ['setting_value' => 'GEOFlow Demo']
+            ['setting_value' => 'GEOAmplify Demo']
         );
         SiteSetting::query()->updateOrCreate(
             ['setting_key' => 'site_description'],
@@ -153,8 +153,8 @@ MD);
             ->assertSee('data-home-poster-carousel', false)
             ->assertSee('https://example.com/banner-one.jpg', false)
             ->assertSee('Banner One')
-            ->assertSee('GEOFlow Feed')
-            ->assertSee('GEOFlow Demo')
+            ->assertSee('GEOAmplify Feed')
+            ->assertSee('GEOAmplify Demo')
             ->assertSee('Demo homepage description');
     }
 }

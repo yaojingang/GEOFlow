@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "rjh121069192-cmd/geoamplify",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "GEOAmplify content engineering and AI visibility workflow system.",
+    "keywords": ["geo", "aeo", "ai-visibility", "content-engineering"],
     "license": "Apache-2.0",
     "require": {
         "php": "^8.2",

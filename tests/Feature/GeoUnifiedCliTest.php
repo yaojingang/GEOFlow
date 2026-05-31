@@ -191,7 +191,7 @@ class GeoUnifiedCliTest extends TestCase
     private function callCli(array $parameters): array
     {
         $output = new BufferedOutput;
-        $exitCode = Artisan::call('geoflow:cli', $parameters, $output);
+        $exitCode = Artisan::call('geoamplify:cli', $parameters, $output);
         $decoded = json_decode($output->fetch(), true);
         $this->assertIsArray($decoded);
 

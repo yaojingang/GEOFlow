@@ -1,15 +1,15 @@
-# GEOFlow 统一 CLI 调用说明
+# GEOAmplify 统一 CLI 调用说明
 
-GEOFlow 对外统一入口：
+GEOAmplify 对外统一入口：
 
 ```bash
-php artisan geoflow:cli <action> --json='{}' --pretty
+php artisan geoamplify:cli <action> --json='{}' --pretty
 ```
 
 也可以使用项目内包装脚本：
 
 ```bash
-bin/geoflow-cli <action> --json='{}' --pretty
+bin/geoamplify-cli <action> --json='{}' --pretty
 ```
 
 所有 action 都输出 JSON，外部程序只需要判断：
@@ -25,13 +25,13 @@ bin/geoflow-cli <action> --json='{}' --pretty
 探活、读取当前数据概况和可用动作。
 
 ```bash
-bin/geoflow-cli status --pretty
+bin/geoamplify-cli status --pretty
 ```
 
 可指定管理员：
 
 ```bash
-bin/geoflow-cli status --admin=admin --pretty
+bin/geoamplify-cli status --admin=admin --pretty
 ```
 
 ### schema
@@ -39,15 +39,15 @@ bin/geoflow-cli status --admin=admin --pretty
 查看可用 action 和 payload 字段。
 
 ```bash
-bin/geoflow-cli schema --pretty
+bin/geoamplify-cli schema --pretty
 ```
 
 ### diagnosis
 
-兼容已有一次性诊断链路，内部调用 `geoflow:geo-run`。
+兼容已有一次性诊断链路，内部调用 `geoamplify:geo-run`。
 
 ```bash
-bin/geoflow-cli diagnosis --json='{
+bin/geoamplify-cli diagnosis --json='{
   "admin": "admin",
   "organization_name": "恒森全屋定制",
   "brand_name": "恒森全屋定制",
@@ -65,7 +65,7 @@ bin/geoflow-cli diagnosis --json='{
 从选题直接跑到文章草稿、配图占位、发布包。
 
 ```bash
-bin/geoflow-cli topic-pipeline --admin=admin --json='{
+bin/geoamplify-cli topic-pipeline --admin=admin --json='{
   "topic": "重庆涪陵全屋定制板材环保等级怎么选",
   "platform_codes": ["ai_web_workbench:chatgpt", "ai_web_workbench:yuanbao"],
   "max_references": 2
@@ -86,7 +86,7 @@ bin/geoflow-cli topic-pipeline --admin=admin --json='{
 把已生成发布包的独立草稿提交到蚁小二微信公众号草稿箱。
 
 ```bash
-bin/geoflow-cli submit-wxmp-draft --json='{
+bin/geoamplify-cli submit-wxmp-draft --json='{
   "draft_id": 19,
   "platform_codes": ["weixingongzhonghao"]
 }' --pretty
@@ -100,7 +100,7 @@ bin/geoflow-cli submit-wxmp-draft --json='{
 如需只验证入参不提交：
 
 ```bash
-bin/geoflow-cli submit-wxmp-draft --json='{"draft_id":19}' --dry-run --pretty
+bin/geoamplify-cli submit-wxmp-draft --json='{"draft_id":19}' --dry-run --pretty
 ```
 
 ### web-workbench-status
@@ -108,7 +108,7 @@ bin/geoflow-cli submit-wxmp-draft --json='{"draft_id":19}' --dry-run --pretty
 读取本机多平台 AI 网页工作台状态。
 
 ```bash
-bin/geoflow-cli web-workbench-status --json='{"limit": 5}' --pretty
+bin/geoamplify-cli web-workbench-status --json='{"limit": 5}' --pretty
 ```
 
 ## 退出码
@@ -128,4 +128,4 @@ bin/geoflow-cli web-workbench-status --json='{"limit": 5}' --pretty
 
 完整提交说明和 GUI 截图见：
 
-- [2026-05-31 GEOFlow CLI 与 GUI 验收说明](release-notes/2026-05-31-geoflow-cli-and-gui-release.md)
+- [2026-05-31 GEOAmplify CLI 与 GUI 验收说明](release-notes/2026-05-31-geoamplify-cli-and-gui-release.md)

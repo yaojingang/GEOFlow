@@ -1,4 +1,4 @@
-# GEOFlow Laravel 生产 Docker 部署
+# GEOAmplify Laravel 生产 Docker 部署
 
 本文对应仓库中的生产编排文件：
 
@@ -31,23 +31,23 @@
 如果希望在常见云服务器、VPS 或面板服务器上先做环境自检，再自动完成生产 Docker 部署，可以使用仓库中的参考脚本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
-bash geoflow-docker-deploy.sh
+curl -fsSL https://raw.githubusercontent.com/rjh121069192-cmd/GEOAmplify/main/deploy-scripts/geoamplify-docker-deploy.sh -o geoamplify-docker-deploy.sh
+bash geoamplify-docker-deploy.sh
 ```
 
 脚本会完成：
 
 - 检查 CPU、内存、磁盘、Docker、Docker Compose 与端口占用
-- 克隆或更新 GEOFlow 源码
+- 克隆或更新 GEOAmplify 源码
 - 生成 `.env.prod` 并写入生产默认配置
 - 启动 PostgreSQL、Redis、Nginx、PHP-FPM、队列、调度和 Reverb
 - 执行迁移、写入默认管理员、清理并重建 Laravel 缓存
-- 调用 `deploy-scripts/geoflow-healthcheck.sh` 做部署后自检
+- 调用 `deploy-scripts/geoamplify-healthcheck.sh` 做部署后自检
 
 如需部署成功后删除临时脚本，可使用：
 
 ```bash
-GEOFLOW_SELF_DELETE=1 bash geoflow-docker-deploy.sh
+GEOAMPLIFY_SELF_DELETE=1 bash geoamplify-docker-deploy.sh
 ```
 
 完整变量说明见 `deploy-scripts/README.md`。
@@ -130,8 +130,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php 
 
 | 项目 | 值 |
 |------|-----|
-| 用户名 | `GEOFLOW_ADMIN_USERNAME`，默认 `admin` |
-| 密码 | 生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`；若留空且账号尚不存在，seed 会生成一次性随机密码并输出到初始化日志 |
+| 用户名 | `GEOAMPLIFY_ADMIN_USERNAME`，默认 `admin` |
+| 密码 | 生产环境请设置 `GEOAMPLIFY_ADMIN_PASSWORD`；若留空且账号尚不存在，seed 会生成一次性随机密码并输出到初始化日志 |
 
 登录地址：站点根 URL + `/geo_admin/login`（默认；若改过 `ADMIN_BASE_PATH` 则把 `geo_admin` 换成你的前缀）。账号已存在时，重复 seed 不会重新生成或打印密码。**上线后请立即修改默认或初始化生成的密码。**
 

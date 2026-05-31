@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Checks upstream GEOFlow release metadata for admin update notifications.
+ * Checks upstream GEOAmplify release metadata for admin update notifications.
  */
 class AdminUpdateMetadataService
 {
@@ -96,12 +96,12 @@ class AdminUpdateMetadataService
         return [
             'state' => $state,
             'links' => [
-                'github' => 'https://github.com/yaojingang/GEOFlow',
+                'github' => 'https://github.com/rjh121069192-cmd/GEOAmplify',
                 'changelog' => [
-                    'zh-CN' => (string) ($payload['changelog_url_zh'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md'),
-                    'en' => (string) ($payload['changelog_url_en'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md'),
+                    'zh-CN' => (string) ($payload['changelog_url_zh'] ?? 'https://github.com/rjh121069192-cmd/GEOAmplify/blob/main/docs/CHANGELOG.md'),
+                    'en' => (string) ($payload['changelog_url_en'] ?? 'https://github.com/rjh121069192-cmd/GEOAmplify/blob/main/docs/CHANGELOG_en.md'),
                 ],
-                'release' => (string) ($payload['release_url'] ?? 'https://github.com/yaojingang/GEOFlow'),
+                'release' => (string) ($payload['release_url'] ?? 'https://github.com/rjh121069192-cmd/GEOAmplify'),
             ],
         ];
     }
@@ -126,7 +126,7 @@ class AdminUpdateMetadataService
      */
     private function fetchRemoteMetadata(string $url): array
     {
-        $cacheKey = 'geoflow:update_metadata:'.sha1($url);
+        $cacheKey = 'geoamplify:update_metadata:'.sha1($url);
         $ttl = max(60, (int) config('geoflow.update_metadata_cache_ttl_seconds', 86400));
 
         return Cache::remember($cacheKey, $ttl, function () use ($url): array {

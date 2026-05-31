@@ -4,7 +4,7 @@
         ? $articles->getCollection()->take(6)
         : collect($articles ?? [])->take(6);
     $sidebarArticles = $sidebarHotArticles->isNotEmpty() ? $sidebarHotArticles : $latestArticles;
-    $feedTitle = trim((string) (($siteSubtitle ?? '') !== '' ? $siteSubtitle : ($siteTitle ?? 'GEOFlow')));
+    $feedTitle = trim((string) (($siteSubtitle ?? '') !== '' ? $siteSubtitle : ($siteTitle ?? 'GEOAmplify')));
     $feedDescription = trim((string) ($siteDescription ?? ''));
 @endphp
 <aside class="ne-sidebar">

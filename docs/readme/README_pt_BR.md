@@ -1,18 +1,18 @@
-# GEOFlow
+# GEOAmplify
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | **Português (BR)**
 
-> GEOFlow é um sistema de engenharia de conteúdo inteligente de código aberto, projetado especificamente para GEO (Otimização de Motor de Geração). É uma das primeiras infraestruturas de dados, conteúdo e distribuição do mundo projetadas sistematicamente em torno de fluxos de trabalho GEO, conectando ativos de dados, bases de conhecimento, gerenciamento de materiais, geração de IA, revisão e publicação, apresentação frontend e distribuição futura de múltiplos canais em um pipeline em evolução.
+> GEOAmplify é um sistema de engenharia de conteúdo inteligente de código aberto, projetado especificamente para GEO (Otimização de Motor de Geração). É uma das primeiras infraestruturas de dados, conteúdo e distribuição do mundo projetadas sistematicamente em torno de fluxos de trabalho GEO, conectando ativos de dados, bases de conhecimento, gerenciamento de materiais, geração de IA, revisão e publicação, apresentação frontend e distribuição futura de múltiplos canais em um pipeline em evolução.
 
 [![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
+[![GitHub stars](https://img.shields.io/github/stars/rjh121069192-cmd/GEOAmplify?style=social)](https://github.com/rjh121069192-cmd/GEOAmplify/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/rjh121069192-cmd/GEOAmplify?style=social)](https://github.com/rjh121069192-cmd/GEOAmplify/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/rjh121069192-cmd/GEOAmplify)](https://github.com/rjh121069192-cmd/GEOAmplify/issues)
 
-O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usar, copiar, modificar e distribuir, inclusive para fins comerciais, desde que mantenha os avisos de direitos autorais e licença e cumpra os termos de patente, marca registrada e exoneração de garantia da Apache-2.0.
+O GEOAmplify é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usar, copiar, modificar e distribuir, inclusive para fins comerciais, desde que mantenha os avisos de direitos autorais e licença e cumpra os termos de patente, marca registrada e exoneração de garantia da Apache-2.0.
 
 ---
 
@@ -26,7 +26,7 @@ O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usa
 | 🧠 RAG de base de conhecimento | Faça upload de documentos, gere chunks, escreva vetores quando um modelo de embedding está configurado e recupere contexto relevante durante a geração |
 | 📋 Fluxo de revisão e publicação | Estados rascunho, revisão e publicação, auto-publicação opcional, mais filtros de artigos por status, autor e tarefa |
 | 🔍 Saída orientada para busca | Metadados SEO, Open Graph, dados estruturados e renderização GFM Markdown para títulos, tabelas, listas e imagens |
-| 🎨 Frontend e temas | Tema padrão, pacotes de tema, rotas de preview, troca de tema admin e marca fixa do admin GEOFlow |
+| 🎨 Frontend e temas | Tema padrão, pacotes de tema, rotas de preview, troca de tema admin e marca fixa do admin GEOAmplify |
 | 🌍 I18n do admin | O admin suporta chinês, inglês, japonês, espanhol, russo e português |
 | 🔔 Atualizações de versão | O admin pode verificar o `version.json` do GitHub e notificar quando uma versão mais recente está disponível |
 | 🐳 Pronto para deploy | **Docker Compose**: PostgreSQL (pgvector), Redis, app, fila, scheduler e Reverb |
@@ -37,12 +37,12 @@ O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usa
 ## 🖼 Preview da Interface
 
 <p>
-  <img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOFlow dashboard preview" width="48%" />
-  <img src="../../docs/images/screenshots/tasks-en.png" alt="GEOFlow task management preview" width="48%" />
+  <img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOAmplify dashboard preview" width="48%" />
+  <img src="../../docs/images/screenshots/tasks-en.png" alt="GEOAmplify task management preview" width="48%" />
 </p>
 <p>
-  <img src="../../docs/images/screenshots/materials-en.png" alt="GEOFlow materials preview" width="48%" />
-  <img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI configuration preview" width="48%" />
+  <img src="../../docs/images/screenshots/materials-en.png" alt="GEOAmplify materials preview" width="48%" />
+  <img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOAmplify AI configuration preview" width="48%" />
 </p>
 
 Essas telas cobrem a home page, agendamento de tarefas, fluxo de trabalho de artigos e configuração de modelo. Mais documentação do admin está em `../../docs/` (adicione ou substitua screenshots localmente se os caminhos estiverem faltando).
@@ -53,7 +53,7 @@ Essas telas cobrem a home page, agendamento de tarefas, fluxo de trabalho de art
 
 Destaques da nova versão incluem:
 
-- **Experiência do admin**: marca fixa do admin GEOFlow, troca multi-idioma, edição/deleção de conta admin, carta de boas-vindas no primeiro login, lembretes de atualização de versão do GitHub e bloco de início rápido do dashboard.
+- **Experiência do admin**: marca fixa do admin GEOAmplify, troca multi-idioma, edição/deleção de conta admin, carta de boas-vindas no primeiro login, lembretes de atualização de versão do GitHub e bloco de início rápido do dashboard.
 - **Pipeline de tarefas**: modos fixo e smart failover; geração e publicação são separados; links de artigos da tarefa abrem listas de artigos com escopo da tarefa.
 - **Sistema de materiais**: bases de conhecimento, bibliotecas de títulos, bibliotecas de palavras-chave, bibliotecas de imagens e autores são todas entradas de admin de primeira classe.
 - **Preparação para RAG**: bases de conhecimento são divididas em chunks após upload; modelos de embedding permitem writes vetoriais e recuperação; falta de setup de embedding tem orientação explícita.
@@ -103,7 +103,7 @@ Fluxo principal: configuração de modelos e prompts → preparação de base de
 
 ## 🎯 Casos de Uso e Resultados Esperados
 
-O GEOFlow é adequado para estes cenários práticos:
+O GEOAmplify é adequado para estes cenários práticos:
 
 - **Site GEO independente**
   Organize conteúdo de produto, FAQs, casos e conhecimento de marca em um sistema sustentável. O objetivo é melhorar visibilidade em buscas com IA e eficiência operacional, não criar páginas fracas em massa.
@@ -119,7 +119,7 @@ O GEOFlow é adequado para estes cenários práticos:
   Estruture bases de conhecimento, atualizações temáticas e distribuição para manter informação valiosa recuperável.
 
 O valor deve partir de uma **base de conhecimento real, confiável e mantida continuamente**.
-O GEOFlow não deve ser usado para fabricar ruído, poluir a internet ou publicar afirmações falsas. Ele existe para ajudar equipes a produzir e distribuir conteúdo **confiável** e melhorar a eficiência operacional de GEO.
+O GEOAmplify não deve ser usado para fabricar ruído, poluir a internet ou publicar afirmações falsas. Ele existe para ajudar equipes a produzir e distribuir conteúdo **confiável** e melhorar a eficiência operacional de GEO.
 
 ---
 
@@ -145,7 +145,7 @@ Ordem recomendada:
 3. Mantenha o conteúdo correto, verificável e sustentável
 4. Só depois escale com modelos, tarefas e templates
 
-Uma base de conhecimento fraca com automação forte apenas escala ruído. No GEOFlow, **a qualidade da base de conhecimento vem primeiro**.
+Uma base de conhecimento fraca com automação forte apenas escala ruído. No GEOAmplify, **a qualidade da base de conhecimento vem primeiro**.
 
 ---
 
@@ -155,8 +155,8 @@ Uma base de conhecimento fraca com automação forte apenas escala ruído. No GE
 
 1. Clone o projeto:
 ```bash
-git clone https://github.com/yaojingang/GEOFlow.git
-cd GEOFlow
+git clone https://github.com/rjh121069192-cmd/GEOAmplify.git
+cd GEOAmplify
 ```
 
 2. Copie o arquivo de ambiente:
@@ -195,8 +195,8 @@ chmod -R ug+rwx storage bootstrap/cache
 
 | Campo | Valor |
 |-------|-------|
-| Usuário | `GEOFLOW_ADMIN_USERNAME`, padrão `admin` |
-| Senha | Em desenvolvimento local, o padrão é `password`; em produção defina `GEOFLOW_ADMIN_PASSWORD`. Se ficar vazio e a conta ainda não existir, o seeder gera uma senha aleatória de uso único nos logs de init / `db:seed`. |
+| Usuário | `GEOAMPLIFY_ADMIN_USERNAME`, padrão `admin` |
+| Senha | Em desenvolvimento local, o padrão é `password`; em produção defina `GEOAMPLIFY_ADMIN_PASSWORD`. Se ficar vazio e a conta ainda não existir, o seeder gera uma senha aleatória de uso único nos logs de init / `db:seed`. |
 
 O seeder só cria a conta quando o usuário alvo não existe. Execuções repetidas nunca sobrescrevem usuário, email ou senha existentes.
 
@@ -207,7 +207,7 @@ O seeder só cria a conta quando o usuário alvo não existe. Execuções repeti
 - Comando de desbloqueio:
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoamplify:admin-unlock <username>
 ```
 
 **HTTP em produção:** use Nginx/Apache + **PHP-FPM**, com document root em **`public/`**. Não exponha a raiz do projeto como web root.
@@ -262,7 +262,7 @@ composer test
 
 ## 📄 Licença
 
-GEOFlow é software livre sob a [Licença Apache 2.0](../../LICENSE).
+GEOAmplify é software livre sob a [Licença Apache 2.0](../../LICENSE).
 
 ---
 
@@ -277,17 +277,17 @@ GEOFlow é software livre sob a [Licença Apache 2.0](../../LICENSE).
 ---
 
 <p align="center">
-  <a href="https://github.com/yaojingang/GEOFlow">
-    <img src="https://img.shields.io/github/stars/yaojingang/GEOFlow?style=flat" alt="GitHub Stars" />
+  <a href="https://github.com/rjh121069192-cmd/GEOAmplify">
+    <img src="https://img.shields.io/github/stars/rjh121069192-cmd/GEOAmplify?style=flat" alt="GitHub Stars" />
   </a>
-  <a href="https://github.com/yaojingang/GEOFlow">
-    <img src="https://img.shields.io/github/forks/yaojingang/GEOFlow?style=flat" alt="GitHub Forks" />
+  <a href="https://github.com/rjh121069192-cmd/GEOAmplify">
+    <img src="https://img.shields.io/github/forks/rjh121069192-cmd/GEOAmplify?style=flat" alt="GitHub Forks" />
   </a>
-  <a href="https://github.com/yaojingang/GEOFlow/issues">
-    <img src="https://img.shields.io/github/issues/yaojingang/GEOFlow?style=flat" alt="GitHub Issues" />
+  <a href="https://github.com/rjh121069192-cmd/GEOAmplify/issues">
+    <img src="https://img.shields.io/github/issues/rjh121069192-cmd/GEOAmplify?style=flat" alt="GitHub Issues" />
   </a>
 </p>
 
 ## ⭐ Histórico de Stars
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.com/#yaojingang/GEOFlow&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=rjh121069192-cmd/GEOAmplify&type=Date)](https://star-history.com/#rjh121069192-cmd/GEOAmplify&Date)

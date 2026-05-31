@@ -1,6 +1,6 @@
-# GEOFlow 部署脚本 / Deployment Scripts
+# GEOAmplify 部署脚本 / Deployment Scripts
 
-这个目录用于存放 GEOFlow 的参考部署脚本，方便技术人员在常见云服务器、VPS、Docker 主机或面板服务器上快速完成环境自检和生产部署。
+这个目录用于存放 GEOAmplify 的参考部署脚本，方便技术人员在常见云服务器、VPS、Docker 主机或面板服务器上快速完成环境自检和生产部署。
 
 脚本默认走仓库现有的 `docker-compose.prod.yml` 生产链路，不绕开项目标准部署方式。
 
@@ -8,8 +8,8 @@
 
 | 脚本 | 用途 |
 | --- | --- |
-| `geoflow-docker-deploy.sh` | 生产 Docker 一键部署脚本。会自检服务器、准备 `.env.prod`、部署 PostgreSQL、Redis、Web、App、队列、调度和 Reverb，并在最后执行健康检查。 |
-| `geoflow-healthcheck.sh` | 部署后健康检查脚本。可单独检查容器状态、Laravel 健康端点和数据库连接。 |
+| `geoamplify-docker-deploy.sh` | 生产 Docker 一键部署脚本。会自检服务器、准备 `.env.prod`、部署 PostgreSQL、Redis、Web、App、队列、调度和 Reverb，并在最后执行健康检查。 |
+| `geoamplify-healthcheck.sh` | 部署后健康检查脚本。可单独检查容器状态、Laravel 健康端点和数据库连接。 |
 
 ## 推荐服务器配置
 
@@ -34,8 +34,8 @@
 在新服务器执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
-bash geoflow-docker-deploy.sh
+curl -fsSL https://raw.githubusercontent.com/rjh121069192-cmd/GEOAmplify/main/deploy-scripts/geoamplify-docker-deploy.sh -o geoamplify-docker-deploy.sh
+bash geoamplify-docker-deploy.sh
 ```
 
 脚本会要求确认：
@@ -59,45 +59,45 @@ bash geoflow-docker-deploy.sh
 适合云服务器初始化脚本、镜像模板或 CI：
 
 ```bash
-GEOFLOW_NONINTERACTIVE=1 \
-GEOFLOW_APP_URL=https://example.com \
-GEOFLOW_APP_DIR=/opt/geoflow \
-GEOFLOW_WEB_PORT=18080 \
-GEOFLOW_REVERB_PORT=18081 \
-GEOFLOW_ADMIN_BASE_PATH=geo_admin \
-bash geoflow-docker-deploy.sh
+GEOAMPLIFY_NONINTERACTIVE=1 \
+GEOAMPLIFY_APP_URL=https://example.com \
+GEOAMPLIFY_APP_DIR=/opt/geoamplify \
+GEOAMPLIFY_WEB_PORT=18080 \
+GEOAMPLIFY_REVERB_PORT=18081 \
+GEOAMPLIFY_ADMIN_BASE_PATH=geo_admin \
+bash geoamplify-docker-deploy.sh
 ```
 
 常用变量：
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `GEOFLOW_REPO_URL` | `https://github.com/yaojingang/GEOFlow.git` | 源码仓库地址 |
-| `GEOFLOW_BRANCH` | `main` | 部署分支 |
-| `GEOFLOW_APP_DIR` | `/opt/geoflow` | 服务器部署目录 |
-| `GEOFLOW_INSTALL_DOCKER` | `auto` | `1` 自动安装 Docker；`0` 缺少 Docker 时直接失败 |
-| `GEOFLOW_DB_PASSWORD` | 随机生成 | PostgreSQL 密码 |
-| `GEOFLOW_REDIS_PASSWORD` | 随机生成 | Redis 密码 |
-| `GEOFLOW_TRUSTED_PROXIES` | `*` | 反向代理、CDN、二级目录部署时的可信代理设置 |
-| `GEOFLOW_SELF_DELETE` | `0` | 设置为 `1` 时，部署成功后删除当前执行的部署脚本 |
+| `GEOAMPLIFY_REPO_URL` | `https://github.com/rjh121069192-cmd/GEOAmplify.git` | 源码仓库地址 |
+| `GEOAMPLIFY_BRANCH` | `main` | 部署分支 |
+| `GEOAMPLIFY_APP_DIR` | `/opt/geoamplify` | 服务器部署目录 |
+| `GEOAMPLIFY_INSTALL_DOCKER` | `auto` | `1` 自动安装 Docker；`0` 缺少 Docker 时直接失败 |
+| `GEOAMPLIFY_DB_PASSWORD` | 随机生成 | PostgreSQL 密码 |
+| `GEOAMPLIFY_REDIS_PASSWORD` | 随机生成 | Redis 密码 |
+| `GEOAMPLIFY_TRUSTED_PROXIES` | `*` | 反向代理、CDN、二级目录部署时的可信代理设置 |
+| `GEOAMPLIFY_SELF_DELETE` | `0` | 设置为 `1` 时，部署成功后删除当前执行的部署脚本 |
 
 ## 执行后自删除
 
 如果你把部署脚本下载到临时目录，部署成功后希望自动删除它：
 
 ```bash
-GEOFLOW_SELF_DELETE=1 bash geoflow-docker-deploy.sh
+GEOAMPLIFY_SELF_DELETE=1 bash geoamplify-docker-deploy.sh
 ```
 
-这个动作只会删除当前执行的脚本文件，不会删除已部署的 GEOFlow 源码目录。
+这个动作只会删除当前执行的脚本文件，不会删除已部署的 GEOAmplify 源码目录。
 
 ## 手动健康检查
 
 部署后、改域名、改 HTTPS 或改反向代理后，可以执行：
 
 ```bash
-cd /opt/geoflow
-bash deploy-scripts/geoflow-healthcheck.sh
+cd /opt/geoamplify
+bash deploy-scripts/geoamplify-healthcheck.sh
 ```
 
 ## 一级目录部署
@@ -133,14 +133,14 @@ proxy_set_header X-Forwarded-Host $host;
 
 ---
 
-This folder contains reference scripts for technical operators who want a faster, repeatable GEOFlow deployment path.
+This folder contains reference scripts for technical operators who want a faster, repeatable GEOAmplify deployment path.
 
 ## Scripts
 
 | Script | Purpose |
 | --- | --- |
-| `geoflow-docker-deploy.sh` | Production Docker one-click deployment. It checks the server, prepares `.env.prod`, deploys PostgreSQL, Redis, web, app, queue, scheduler and Reverb, then runs a healthcheck. |
-| `geoflow-healthcheck.sh` | Post-deployment healthcheck. It validates Docker Compose services, the Laravel health endpoint and database connectivity. |
+| `geoamplify-docker-deploy.sh` | Production Docker one-click deployment. It checks the server, prepares `.env.prod`, deploys PostgreSQL, Redis, web, app, queue, scheduler and Reverb, then runs a healthcheck. |
+| `geoamplify-healthcheck.sh` | Post-deployment healthcheck. It validates Docker Compose services, the Laravel health endpoint and database connectivity. |
 
 ## Recommended Server Profile
 
@@ -165,8 +165,8 @@ Recommended for production:
 On a fresh server, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
-bash geoflow-docker-deploy.sh
+curl -fsSL https://raw.githubusercontent.com/rjh121069192-cmd/GEOAmplify/main/deploy-scripts/geoamplify-docker-deploy.sh -o geoamplify-docker-deploy.sh
+bash geoamplify-docker-deploy.sh
 ```
 
 The script will ask for:
@@ -190,45 +190,45 @@ Change the default admin password immediately after first login.
 For CI, image templates or scripted server initialization:
 
 ```bash
-GEOFLOW_NONINTERACTIVE=1 \
-GEOFLOW_APP_URL=https://example.com \
-GEOFLOW_APP_DIR=/opt/geoflow \
-GEOFLOW_WEB_PORT=18080 \
-GEOFLOW_REVERB_PORT=18081 \
-GEOFLOW_ADMIN_BASE_PATH=geo_admin \
-bash geoflow-docker-deploy.sh
+GEOAMPLIFY_NONINTERACTIVE=1 \
+GEOAMPLIFY_APP_URL=https://example.com \
+GEOAMPLIFY_APP_DIR=/opt/geoamplify \
+GEOAMPLIFY_WEB_PORT=18080 \
+GEOAMPLIFY_REVERB_PORT=18081 \
+GEOAMPLIFY_ADMIN_BASE_PATH=geo_admin \
+bash geoamplify-docker-deploy.sh
 ```
 
 Optional variables:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `GEOFLOW_REPO_URL` | `https://github.com/yaojingang/GEOFlow.git` | Source repository URL |
-| `GEOFLOW_BRANCH` | `main` | Branch to deploy |
-| `GEOFLOW_APP_DIR` | `/opt/geoflow` | Server installation directory |
-| `GEOFLOW_INSTALL_DOCKER` | `auto` | `1` to install Docker automatically, `0` to fail if Docker is missing |
-| `GEOFLOW_DB_PASSWORD` | random | PostgreSQL password |
-| `GEOFLOW_REDIS_PASSWORD` | random | Redis password |
-| `GEOFLOW_TRUSTED_PROXIES` | `*` | Trusted proxy setting for reverse proxy/CDN/subdirectory deployments |
-| `GEOFLOW_SELF_DELETE` | `0` | Set to `1` to remove the deployment script after a successful deployment |
+| `GEOAMPLIFY_REPO_URL` | `https://github.com/rjh121069192-cmd/GEOAmplify.git` | Source repository URL |
+| `GEOAMPLIFY_BRANCH` | `main` | Branch to deploy |
+| `GEOAMPLIFY_APP_DIR` | `/opt/geoamplify` | Server installation directory |
+| `GEOAMPLIFY_INSTALL_DOCKER` | `auto` | `1` to install Docker automatically, `0` to fail if Docker is missing |
+| `GEOAMPLIFY_DB_PASSWORD` | random | PostgreSQL password |
+| `GEOAMPLIFY_REDIS_PASSWORD` | random | Redis password |
+| `GEOAMPLIFY_TRUSTED_PROXIES` | `*` | Trusted proxy setting for reverse proxy/CDN/subdirectory deployments |
+| `GEOAMPLIFY_SELF_DELETE` | `0` | Set to `1` to remove the deployment script after a successful deployment |
 
 ## Self-Delete Mode
 
 If you download the script to a temporary location and want it removed after deployment:
 
 ```bash
-GEOFLOW_SELF_DELETE=1 bash geoflow-docker-deploy.sh
+GEOAMPLIFY_SELF_DELETE=1 bash geoamplify-docker-deploy.sh
 ```
 
-This only removes the executed script file. It does not remove the deployed GEOFlow source code.
+This only removes the executed script file. It does not remove the deployed GEOAmplify source code.
 
 ## Manual Healthcheck
 
 Run after DNS, HTTPS or reverse proxy changes:
 
 ```bash
-cd /opt/geoflow
-bash deploy-scripts/geoflow-healthcheck.sh
+cd /opt/geoamplify
+bash deploy-scripts/geoamplify-healthcheck.sh
 ```
 
 ## Subdirectory Deployment

@@ -257,7 +257,7 @@ class GeoOperationsOverviewService
     {
         $siteName = (string) (SiteSetting::query()
             ->where('setting_key', 'site_name')
-            ->value('setting_value') ?: 'GEOFlow');
+            ->value('setting_value') ?: 'GEOAmplify');
         $seoTitleTemplate = trim((string) (SiteSetting::query()
             ->where('setting_key', 'seo_title_template')
             ->value('setting_value') ?? ''));

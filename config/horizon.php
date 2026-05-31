@@ -97,7 +97,7 @@ return [
     */
 
     'waits' => [
-        'redis:geoflow' => 60,
+        'redis:geoamplify' => 60,
     ],
 
     /*
@@ -199,7 +199,7 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['geoflow'],
+            'queue' => ['geoamplify'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,

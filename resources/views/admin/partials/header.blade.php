@@ -13,8 +13,8 @@
         ? ($updatePayload['summary_en'] ?? '')
         : ($updatePayload['summary_zh'] ?? ''));
     $changelogLinks = is_array($updateLinks['changelog'] ?? null) ? $updateLinks['changelog'] : [];
-    $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
-    $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
+    $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/rjh121069192-cmd/GEOAmplify/blob/main/docs/CHANGELOG.md');
+    $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/rjh121069192-cmd/GEOAmplify');
     $notificationStatus = (string) ($updateState['status'] ?? 'disabled');
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard'), 'short' => __('admin.nav_short.dashboard'), 'hint' => __('admin.nav_hint.dashboard'), 'icon' => 'layout-dashboard'],
@@ -116,7 +116,7 @@
         <div class="flex min-h-16 items-center gap-3 py-2 lg:gap-4">
             <a href="{{ route('admin.dashboard') }}" class="shrink-0">
                 <span class="block text-base font-semibold leading-5 text-slate-950 sm:text-lg">{{ $adminBrandName }}</span>
-                <span class="hidden text-xs text-slate-500 lg:block">GEOFlow Admin</span>
+                <span class="hidden text-xs text-slate-500 lg:block">GEOAmplify Admin</span>
             </a>
             <nav data-admin-primary-nav class="hidden flex-1 min-w-0 items-center md:flex" aria-label="后台一级导航">
                 <div data-admin-nav-scroll class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1">

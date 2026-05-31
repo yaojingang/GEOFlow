@@ -21,7 +21,7 @@ class DatabaseSeeder extends Seeder
         //     'email' => 'test@example.com',
         // ]);
 
-        // 后台默认管理员（账号与密码由 GEOFLOW_ADMIN_* 环境变量控制，见 AdminUserSeeder）
+        // 后台默认管理员（账号与密码由 GEOAMPLIFY_ADMIN_* 环境变量控制，见 AdminUserSeeder）
         $this->call(AdminUserSeeder::class);
     }
 }
