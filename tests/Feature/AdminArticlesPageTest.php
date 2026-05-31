@@ -187,6 +187,78 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee(__('admin.distribution.article_status.synced'));
     }
 
+    public function test_article_batch_urls_are_relative_when_app_url_differs_from_origin(): void
+    {
+        config(['app.url' => 'https://configured.example']);
+
+        $admin = Admin::query()->create([
+            'username' => 'articles_relative_batch_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-relative-batch@example.com',
+            'display_name' => 'Articles Relative Batch Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '批量操作分类',
+            'slug' => 'batch-actions-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => '批量操作相对路径文章',
+            'slug' => 'relative-batch-actions-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+
+        $listHtml = $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.index'))
+            ->assertOk()
+            ->getContent();
+
+        foreach ([
+            route('admin.articles.batch.update-status', [], false),
+            route('admin.articles.batch.update-review', [], false),
+            route('admin.articles.batch.delete', [], false),
+        ] as $path) {
+            $escapedPath = str_replace('/', '\\/', $path);
+
+            $this->assertStringContainsString($escapedPath, $listHtml);
+            $this->assertStringNotContainsString('https://configured.example'.$path, $listHtml);
+            $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedPath, $listHtml);
+        }
+        $this->assertStringContainsString(
+            'action="'.route('admin.articles.batch.update-status', [], false).'"',
+            $listHtml
+        );
+
+        $article->delete();
+
+        $trashHtml = $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.index', ['trashed' => 1]))
+            ->assertOk()
+            ->getContent();
+
+        foreach ([
+            route('admin.articles.batch.restore', [], false),
+            route('admin.articles.batch.force-delete', [], false),
+            route('admin.articles.trash.empty', [], false),
+        ] as $path) {
+            $escapedPath = str_replace('/', '\\/', $path);
+
+            $this->assertStringContainsString($escapedPath, $trashHtml);
+            $this->assertStringNotContainsString('https://configured.example'.$path, $trashHtml);
+            $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedPath, $trashHtml);
+        }
+    }
+
     public function test_admin_brand_stays_geoflow_when_public_site_name_changes(): void
     {
         $admin = Admin::query()->create([
