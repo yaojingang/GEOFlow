@@ -35,7 +35,7 @@ return [
     // 当前系统版本（底部展示、GitHub 更新检查对比）
     'app_version' => env('GEOFLOW_APP_VERSION', '2.0.2'),
     // 欢迎弹窗「介绍」文案版本：变更后所有管理员会再次看到介绍弹窗
-    'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '2.0'),
+    'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '2.1'),
     // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
     'update_check_enabled' => filter_var(env('GEOFLOW_UPDATE_CHECK_ENABLED', env('APP_ENV') !== 'testing'), FILTER_VALIDATE_BOOLEAN),
     'update_metadata_url' => $updateMetadataUrl,

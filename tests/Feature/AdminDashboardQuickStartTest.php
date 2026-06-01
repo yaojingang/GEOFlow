@@ -131,4 +131,37 @@ class AdminDashboardQuickStartTest extends TestCase
         $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedDismissPath, $html);
         $this->assertStringNotContainsString('https://configured.example'.$dismissPath, $html);
     }
+
+    public function test_project_intro_auto_opens_once_and_footer_link_remains_available(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'dashboard_project_intro_admin',
+            'password' => 'secret-123',
+            'email' => 'dashboard-project-intro@example.com',
+            'display_name' => 'Project Intro Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $firstResponse = $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk();
+
+        $firstHtml = $firstResponse->getContent();
+        $this->assertStringContainsString('data-open-admin-welcome', $firstHtml);
+        $this->assertStringContainsString('"shouldAutoOpen":true', $firstHtml);
+        $this->assertSame(
+            'intro:'.config('geoflow.welcome_intro_version'),
+            (string) $admin->fresh()?->welcome_seen_version
+        );
+
+        $secondHtml = $this->actingAs($admin->fresh(), 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-open-admin-welcome', $secondHtml);
+        $this->assertStringContainsString('"shouldAutoOpen":false', $secondHtml);
+        $this->assertStringContainsString(__('admin.footer.project_intro_link'), $secondHtml);
+    }
 }

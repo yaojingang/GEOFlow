@@ -6,18 +6,21 @@ use Tests\TestCase;
 
 class AdminWelcomeIntroCopyTest extends TestCase
 {
-    public function test_intro_copy_is_updated_for_version_2_first_deployment_guide(): void
+    public function test_intro_copy_reads_as_project_letter_with_geo_basics(): void
     {
         /** @var array<string, array<string, mixed>> $copy */
         $copy = require app_path('Support/AdminWelcome/intro_copy.php');
 
-        $this->assertSame('GEOFlow 2.0 首次部署说明', $copy['zh-CN']['letter']['title']);
-        $this->assertSame('GEOFlow 2.0 First Deployment Guide', $copy['en']['letter']['title']);
-        $this->assertStringContainsString('分发管理', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
+        $this->assertSame('写给 GEOFlow 使用者的一封信', $copy['zh-CN']['letter']['title']);
+        $this->assertSame('A Letter to GEOFlow Users', $copy['en']['letter']['title']);
+        $this->assertStringContainsString('提高被理解、引用和推荐的概率', $copy['zh-CN']['letter']['subtitle']);
+        $this->assertStringContainsString('不承诺排名', $copy['zh-CN']['letter']['subtitle']);
+        $this->assertStringContainsString('GEO 优化的是答案引擎采纳事实、观点和页面的概率', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
         $this->assertStringContainsString('数据分析', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
-        $this->assertStringContainsString('Distribution management', $this->flattenCopy($copy['en']['letter']['blocks']));
-        $this->assertStringContainsString('Analytics', $this->flattenCopy($copy['en']['letter']['blocks']));
-        $this->assertStringContainsString('首次部署说明', $copy['zh-CN']['meta']['badge']);
+        $this->assertStringContainsString('WordPress', $this->flattenCopy($copy['en']['letter']['blocks']));
+        $this->assertStringContainsString('GEO optimizes the probability', $this->flattenCopy($copy['en']['letter']['blocks']));
+        $this->assertStringContainsString('Project Intro', $copy['en']['meta']['badge']);
+        $this->assertStringContainsString('项目说明', $copy['zh-CN']['meta']['badge']);
     }
 
     public function test_welcome_modal_uses_compact_white_kami_document_layout(): void
@@ -46,6 +49,14 @@ class AdminWelcomeIntroCopyTest extends TestCase
         $this->assertStringNotContainsString('text-[15px]', $html);
         $this->assertStringNotContainsString('bg-[#f5f4ed]', $html);
         $this->assertStringNotContainsString('bg-[#faf9f5]', $html);
+    }
+
+    public function test_deployment_env_examples_use_current_intro_version(): void
+    {
+        $expected = 'GEOFLOW_WELCOME_INTRO_VERSION=2.1';
+
+        $this->assertStringContainsString($expected, file_get_contents(base_path('.env.example')));
+        $this->assertStringContainsString($expected, file_get_contents(base_path('.env.prod.example')));
     }
 
     /**
