@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
+use App\Http\Controllers\Admin\SystemUpdateController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\UrlImportController;
@@ -70,6 +71,13 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics');
+
+        Route::prefix('system-updates')->name('system-updates.')->group(function () {
+            Route::get('/', [SystemUpdateController::class, 'index'])->name('index');
+            Route::post('check', [SystemUpdateController::class, 'check'])->name('check');
+            Route::post('plan', [SystemUpdateController::class, 'plan'])->name('plan');
+            Route::post('backup', [SystemUpdateController::class, 'backup'])->name('backup');
+        });
 
         // 任务管理（Blade 新路径）
         Route::prefix('tasks')->name('tasks.')->group(function () {

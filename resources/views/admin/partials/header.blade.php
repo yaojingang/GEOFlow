@@ -7,6 +7,7 @@
     $updateState = is_array($updateNotification['state'] ?? null) ? $updateNotification['state'] : [];
     $updateLinks = is_array($updateNotification['links'] ?? null) ? $updateNotification['links'] : [];
     $hasVersionUpdate = !empty($updateState['is_update_available']);
+    $isUpdateCenterEnabled = (bool) config('geoflow.update_center_enabled', true);
     $localeForChangelog = app()->getLocale() === 'en' ? 'en' : 'zh-CN';
     $updatePayload = is_array($updateState['payload'] ?? null) ? $updateState['payload'] : [];
     $updateSummary = (string) ($localeForChangelog === 'en'
@@ -15,6 +16,7 @@
     $changelogLinks = is_array($updateLinks['changelog'] ?? null) ? $updateLinks['changelog'] : [];
     $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
+    $notificationUpdateCenterUrl = $isUpdateCenterEnabled && $isSuperAdmin ? route('admin.system-updates.index', [], false) : '';
     $notificationStatus = (string) ($updateState['status'] ?? 'disabled');
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],
@@ -31,6 +33,10 @@
     }
     $subMap = [
         'admin.analytics' => 'analytics',
+        'admin.system-updates.index' => 'dashboard',
+        'admin.system-updates.check' => 'dashboard',
+        'admin.system-updates.plan' => 'dashboard',
+        'admin.system-updates.backup' => 'dashboard',
         'admin.tasks.create' => 'tasks',
         'admin.tasks.edit' => 'tasks',
         'admin.distribution.index' => 'distribution',
@@ -168,6 +174,11 @@
                             </div>
 
                             <div class="mt-4 flex flex-wrap gap-2">
+                                @if($isUpdateCenterEnabled && $isSuperAdmin)
+                                    <a href="{{ $notificationUpdateCenterUrl }}" class="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
+                                        {{ __('admin.header.notifications.open_update_center') }}
+                                    </a>
+                                @endif
                                 <a href="{{ $notificationChangelogUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
                                     {{ __('admin.header.notifications.view_changelog') }}
                                 </a>

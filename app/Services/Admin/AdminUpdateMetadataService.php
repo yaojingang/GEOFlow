@@ -14,6 +14,12 @@ class AdminUpdateMetadataService
      * @return array{
      *   current_version: string,
      *   latest_version: string,
+     *   latest_commit?: string,
+     *   tag?: string,
+     *   archive_url?: string,
+     *   archive_sha256?: string,
+     *   release_date?: string,
+     *   release_type?: string,
      *   payload: array<string, mixed>,
      *   is_update_available: bool,
      *   is_ignored: bool,
@@ -76,6 +82,12 @@ class AdminUpdateMetadataService
         return [
             'current_version' => $currentVersion,
             'latest_version' => $latest,
+            'latest_commit' => trim((string) ($json['commit'] ?? '')),
+            'tag' => trim((string) ($json['tag'] ?? '')),
+            'archive_url' => trim((string) ($json['archive_url'] ?? '')),
+            'archive_sha256' => trim((string) ($json['archive_sha256'] ?? '')),
+            'release_date' => trim((string) ($json['release_date'] ?? '')),
+            'release_type' => trim((string) ($json['release_type'] ?? '')),
             'payload' => $payload,
             'is_update_available' => $isUpdateAvailable,
             'is_ignored' => ! $isUpdateAvailable,
@@ -121,15 +133,24 @@ class AdminUpdateMetadataService
         return (bool) config('geoflow.update_check_enabled', true) && $this->metadataUrl() !== '';
     }
 
+    public function forgetCachedMetadata(): void
+    {
+        $url = $this->metadataUrl();
+        if ($url === '') {
+            return;
+        }
+
+        Cache::forget($this->cacheKey($url));
+    }
+
     /**
      * @return array{status: string, json?: array<string, mixed>, checked_at: string}
      */
     private function fetchRemoteMetadata(string $url): array
     {
-        $cacheKey = 'geoflow:update_metadata:'.sha1($url);
         $ttl = max(60, (int) config('geoflow.update_metadata_cache_ttl_seconds', 86400));
 
-        return Cache::remember($cacheKey, $ttl, function () use ($url): array {
+        return Cache::remember($this->cacheKey($url), $ttl, function () use ($url): array {
             $checkedAt = now()->toDateTimeString();
 
             try {
@@ -162,5 +183,10 @@ class AdminUpdateMetadataService
                 'checked_at' => $checkedAt,
             ];
         });
+    }
+
+    private function cacheKey(string $url): string
+    {
+        return 'geoflow:update_metadata:'.sha1($url);
     }
 }

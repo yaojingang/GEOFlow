@@ -40,6 +40,21 @@ return [
     'update_check_enabled' => filter_var(env('GEOFLOW_UPDATE_CHECK_ENABLED', env('APP_ENV') !== 'testing'), FILTER_VALIDATE_BOOLEAN),
     'update_metadata_url' => $updateMetadataUrl,
     'update_metadata_cache_ttl_seconds' => (int) env('GEOFLOW_UPDATE_METADATA_CACHE_TTL', 86400),
+    // 后台系统更新中心：默认可查看和备份，真正执行代码更新默认关闭。
+    'update_center_enabled' => filter_var(env('GEOFLOW_UPDATE_CENTER_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+    'update_execution_enabled' => filter_var(env('GEOFLOW_UPDATE_EXECUTION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    'update_backup_keep' => max(1, (int) env('GEOFLOW_UPDATE_BACKUP_KEEP', 10)),
+    'update_backup_path' => trim((string) env('GEOFLOW_UPDATE_BACKUP_PATH', 'geoflow-updates'), '/'),
+    'update_allowed_repository' => trim((string) env('GEOFLOW_UPDATE_ALLOWED_REPOSITORY', 'https://github.com/yaojingang/GEOFlow'), '/'),
+    'update_archive_max_bytes' => max(1, (int) env('GEOFLOW_UPDATE_ARCHIVE_MAX_BYTES', 50 * 1024 * 1024)),
+    'update_archive_max_files' => max(1, (int) env('GEOFLOW_UPDATE_ARCHIVE_MAX_FILES', 2000)),
+    'update_archive_max_file_bytes' => max(1, (int) env('GEOFLOW_UPDATE_ARCHIVE_MAX_FILE_BYTES', 50 * 1024 * 1024)),
+    'update_archive_max_uncompressed_bytes' => max(1, (int) env('GEOFLOW_UPDATE_ARCHIVE_MAX_UNCOMPRESSED_BYTES', 150 * 1024 * 1024)),
+    'update_min_free_disk_bytes' => max(1, (int) env('GEOFLOW_UPDATE_MIN_FREE_DISK_BYTES', 200 * 1024 * 1024)),
+    'update_preflight_check_git_dirty' => filter_var(env('GEOFLOW_UPDATE_PREFLIGHT_CHECK_GIT_DIRTY', true), FILTER_VALIDATE_BOOLEAN),
+    'update_require_admin_password' => filter_var(env('GEOFLOW_UPDATE_REQUIRE_ADMIN_PASSWORD', true), FILTER_VALIDATE_BOOLEAN),
+    'update_archive_apply_enabled' => filter_var(env('GEOFLOW_UPDATE_ALLOW_ARCHIVE_APPLY', false), FILTER_VALIDATE_BOOLEAN),
+    'update_database_backup_enabled' => filter_var(env('GEOFLOW_UPDATE_DATABASE_BACKUP_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
 
     // 前台列表每页条数
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),
