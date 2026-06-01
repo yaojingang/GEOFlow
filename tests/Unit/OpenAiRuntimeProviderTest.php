@@ -163,7 +163,7 @@ class OpenAiRuntimeProviderTest extends TestCase
 
     public function test_it_resolves_chat_driver_for_minimax(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimaxi.com/v1', 'MiniMax-M2.7'));
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimaxi.com/v1', 'MiniMax-M3'));
     }
 
     public function test_it_resolves_chat_driver_for_siliconflow(): void
