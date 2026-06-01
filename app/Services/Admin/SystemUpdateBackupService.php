@@ -13,6 +13,10 @@ use ZipArchive;
 
 class SystemUpdateBackupService
 {
+    public function __construct(
+        private readonly SystemUpdatePathGuard $pathGuard,
+    ) {}
+
     public function createFromPlan(SystemUpdateRun $run, Admin $admin): SystemUpdateBackup
     {
         $plan = is_array($run->plan_json) ? $run->plan_json : [];
@@ -34,8 +38,26 @@ class SystemUpdateBackupService
 
         foreach ($changes as $change) {
             $action = (string) ($change['action'] ?? '');
-            $relativePath = ltrim(str_replace('\\', '/', (string) ($change['path'] ?? '')), '/');
-            if ($relativePath === '' || ! in_array($action, ['modified', 'deleted'], true)) {
+            if (! in_array($action, ['added', 'modified', 'deleted'], true)) {
+                continue;
+            }
+
+            try {
+                $relativePath = $this->pathGuard->assertAllowedPath((string) ($change['path'] ?? ''));
+            } catch (RuntimeException) {
+                continue;
+            }
+
+            if ($action === 'added') {
+                $manifestFiles[] = [
+                    'path' => $relativePath,
+                    'action' => $action,
+                    'old_sha256' => '',
+                    'new_sha256' => (string) ($change['new_sha256'] ?? ''),
+                    'sha256' => '',
+                    'bytes' => 0,
+                    'backed_up' => false,
+                ];
                 continue;
             }
 
@@ -45,12 +67,16 @@ class SystemUpdateBackupService
             }
 
             $bytes = (int) filesize($localPath);
+            $currentSha256 = hash_file('sha256', $localPath);
             $candidates[] = [
                 'local_path' => $localPath,
                 'path' => $relativePath,
                 'action' => $action,
-                'sha256' => hash_file('sha256', $localPath),
+                'old_sha256' => (string) ($change['old_sha256'] ?? $currentSha256),
+                'new_sha256' => (string) ($change['new_sha256'] ?? ''),
+                'sha256' => $currentSha256,
                 'bytes' => $bytes,
+                'backed_up' => true,
             ];
         }
 
@@ -75,8 +101,11 @@ class SystemUpdateBackupService
                 $manifestFiles[] = [
                     'path' => $candidate['path'],
                     'action' => $candidate['action'],
+                    'old_sha256' => $candidate['old_sha256'],
+                    'new_sha256' => $candidate['new_sha256'],
                     'sha256' => $candidate['sha256'],
                     'bytes' => $candidate['bytes'],
+                    'backed_up' => $candidate['backed_up'],
                 ];
 
                 $bytes = (int) $candidate['bytes'];

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -205,9 +206,78 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->assertOk()
             ->assertSee('composer.lock')
             ->assertSee('2099_01_01_000000_create_demo_table.php')
+            ->assertSee('composer install --no-dev --optimize-autoloader')
+            ->assertSee('php artisan migrate --force')
             ->assertSee(__('admin.system_updates.risk.high'))
             ->assertSee(__('admin.system_updates.preflight.manual_steps_warn', ['count' => 2]))
             ->assertSee(__('admin.system_updates.preflight.backup_warn'));
+    }
+
+    public function test_update_plan_commands_can_be_marked_as_executed(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $archive = $this->buildReleaseArchive([
+            'composer.lock' => '{"packages":[]}',
+        ]);
+
+        config([
+            'geoflow.app_version' => '2.0.2',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => 'https://example.test/version.json',
+            'geoflow.update_archive_apply_enabled' => true,
+        ]);
+
+        Http::fake([
+            'https://example.test/version.json' => Http::response([
+                'version' => '2.0.3',
+                'commit' => 'abc123',
+                'archive_url' => 'https://example.test/geoflow.zip',
+                'archive_sha256' => hash_file('sha256', $archive),
+            ]),
+            'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
+                'Content-Type' => 'application/zip',
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.plan'))
+            ->assertRedirect(route('admin.system-updates.index'));
+
+        $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+        $plan = is_array($run->plan_json) ? $run->plan_json : [];
+
+        $this->assertSame('recommended', $plan['manual_commands'][0]['level'] ?? null);
+        $this->assertTrue(collect($plan['manual_commands'] ?? [])->contains(fn (array $command): bool => ($command['level'] ?? null) === 'required'));
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.button.copy_script'))
+            ->assertSee(__('admin.system_updates.button.copy_command'))
+            ->assertSee(__('admin.system_updates.commands.level_required'))
+            ->assertSee(__('admin.system_updates.commands.pending_execution'));
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.commands.executed', [
+                'runUuid' => $run->run_uuid,
+                'commandIndex' => 0,
+            ]))
+            ->assertRedirect(route('admin.system-updates.index'));
+
+        $run->refresh();
+        $plan = is_array($run->plan_json) ? $run->plan_json : [];
+        $status = $plan['manual_command_statuses']['0'] ?? null;
+
+        $this->assertIsArray($status);
+        $this->assertSame($admin->id, $status['admin_id'] ?? null);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.commands.executed_at', ['time' => (string) ($status['executed_at'] ?? '')]));
     }
 
     public function test_super_admin_can_create_backup_from_update_plan(): void
@@ -329,6 +399,45 @@ class AdminSystemUpdatesPageTest extends TestCase
 
         $admin = $this->createAdmin();
         $archive = $this->buildUnsafeReleaseArchive();
+
+        config([
+            'geoflow.app_version' => '2.0.2',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => 'https://example.test/version.json',
+            'geoflow.update_archive_apply_enabled' => true,
+        ]);
+
+        Http::fake([
+            'https://example.test/version.json' => Http::response([
+                'version' => '2.0.3',
+                'commit' => 'abc123',
+                'archive_url' => 'https://example.test/geoflow.zip',
+                'archive_sha256' => hash_file('sha256', $archive),
+            ]),
+            'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
+                'Content-Type' => 'application/zip',
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.plan'))
+            ->assertRedirect(route('admin.system-updates.index'))
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseMissing('system_update_runs', [
+            'action' => 'plan',
+            'status' => 'succeeded',
+            'target_version' => '2.0.3',
+        ]);
+    }
+
+    public function test_update_plan_rejects_duplicate_archive_path_separators(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $archive = $this->buildDuplicateSeparatorReleaseArchive();
 
         config([
             'geoflow.app_version' => '2.0.2',
@@ -637,6 +746,514 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_update_apply_requires_execution_switch(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $relativePath = 'app/SystemUpdateApplyDisabledFixture.php';
+        $localPath = base_path($relativePath);
+
+        try {
+            File::put($localPath, "<?php\nreturn 'old';\n");
+            $archive = $this->buildReleaseArchive([
+                $relativePath => "<?php\nreturn 'new';\n",
+            ]);
+
+            config([
+                'geoflow.app_version' => '2.0.2',
+                'geoflow.update_check_enabled' => true,
+                'geoflow.update_metadata_url' => 'https://example.test/version.json',
+                'geoflow.update_archive_apply_enabled' => true,
+                'geoflow.update_execution_enabled' => false,
+            ]);
+
+            Http::fake([
+                'https://example.test/version.json' => Http::response([
+                    'version' => '2.0.3',
+                    'commit' => 'abc123',
+                    'archive_url' => 'https://example.test/geoflow.zip',
+                    'archive_sha256' => hash_file('sha256', $archive),
+                ]),
+                'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
+                    'Content-Type' => 'application/zip',
+                ]),
+            ]);
+
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
+            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
+                'run_uuid' => $run->run_uuid,
+            ]);
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.apply'), [
+                    'run_uuid' => $run->run_uuid,
+                    'current_admin_password' => 'secret-123',
+                ])
+                ->assertRedirect(route('admin.system-updates.index'))
+                ->assertSessionHasErrors();
+
+            $this->assertSame("<?php\nreturn 'old';\n", File::get($localPath));
+            $this->assertDatabaseMissing('system_update_runs', [
+                'action' => 'apply',
+                'status' => 'succeeded',
+            ]);
+        } finally {
+            File::delete($localPath);
+        }
+    }
+
+    public function test_super_admin_can_apply_update_and_rollback_backup_when_switches_are_enabled(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $relativePath = 'app/SystemUpdateApplyFixture.php';
+        $localPath = base_path($relativePath);
+        $oldContents = "<?php\nreturn 'old';\n";
+        $newContents = "<?php\nreturn 'new';\n";
+
+        try {
+            File::put($localPath, $oldContents);
+            $archive = $this->buildReleaseArchive([
+                $relativePath => $newContents,
+            ]);
+
+            config([
+                'geoflow.app_version' => '2.0.2',
+                'geoflow.update_check_enabled' => true,
+                'geoflow.update_metadata_url' => 'https://example.test/version.json',
+                'geoflow.update_archive_apply_enabled' => true,
+                'geoflow.update_execution_enabled' => true,
+                'geoflow.update_rollback_enabled' => true,
+            ]);
+
+            Http::fake([
+                'https://example.test/version.json' => Http::response([
+                    'version' => '2.0.3',
+                    'commit' => 'abc123',
+                    'archive_url' => 'https://example.test/geoflow.zip',
+                    'archive_sha256' => hash_file('sha256', $archive),
+                ]),
+                'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
+                    'Content-Type' => 'application/zip',
+                ]),
+            ]);
+
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
+            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
+                'run_uuid' => $run->run_uuid,
+            ]);
+
+            $backup = \App\Models\SystemUpdateBackup::query()->firstOrFail();
+
+            $this->actingAs($admin, 'admin')
+                ->get(route('admin.system-updates.index'))
+                ->assertOk()
+                ->assertSee(__('admin.system_updates.confirm.apply_update'))
+                ->assertSee(__('admin.system_updates.confirm.rollback_backup'));
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.apply'), [
+                    'run_uuid' => $run->run_uuid,
+                    'current_admin_password' => 'secret-123',
+                ])
+                ->assertRedirect(route('admin.system-updates.index'));
+
+            $this->assertSame($newContents, File::get($localPath));
+            $this->assertDatabaseHas('system_update_runs', [
+                'action' => 'apply',
+                'status' => 'succeeded',
+            ]);
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.rollback', ['backupUuid' => $backup->backup_uuid]), [
+                    'current_admin_password' => 'secret-123',
+                ])
+                ->assertRedirect(route('admin.system-updates.index'));
+
+            $this->assertSame($oldContents, File::get($localPath));
+            $this->assertDatabaseHas('system_update_runs', [
+                'action' => 'rollback',
+                'status' => 'succeeded',
+            ]);
+        } finally {
+            File::delete($localPath);
+        }
+    }
+
+    public function test_backup_detail_shows_preflight_and_restores_single_file(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $relativePath = 'app/SystemUpdateSingleFileRollback.php';
+        $localPath = base_path($relativePath);
+        $oldContents = "<?php\nreturn 'old-single';\n";
+        $newContents = "<?php\nreturn 'new-single';\n";
+
+        try {
+            File::put($localPath, $oldContents);
+            $archive = $this->buildReleaseArchive([
+                $relativePath => $newContents,
+            ]);
+
+            config([
+                'geoflow.app_version' => '2.0.2',
+                'geoflow.update_check_enabled' => true,
+                'geoflow.update_metadata_url' => 'https://example.test/version.json',
+                'geoflow.update_archive_apply_enabled' => true,
+                'geoflow.update_execution_enabled' => true,
+                'geoflow.update_rollback_enabled' => true,
+                'geoflow.update_require_admin_password' => false,
+            ]);
+
+            Http::fake([
+                'https://example.test/version.json' => Http::response([
+                    'version' => '2.0.3',
+                    'commit' => 'abc123',
+                    'archive_url' => 'https://example.test/geoflow.zip',
+                    'archive_sha256' => hash_file('sha256', $archive),
+                ]),
+                'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
+                    'Content-Type' => 'application/zip',
+                ]),
+            ]);
+
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
+            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
+                'run_uuid' => $run->run_uuid,
+            ]);
+            $backup = \App\Models\SystemUpdateBackup::query()->firstOrFail();
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.apply'), [
+                    'run_uuid' => $run->run_uuid,
+                ])
+                ->assertRedirect(route('admin.system-updates.index'));
+
+            $this->assertSame($newContents, File::get($localPath));
+
+            $this->actingAs($admin, 'admin')
+                ->get(route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]))
+                ->assertOk()
+                ->assertSee(__('admin.system_updates.section.backup_detail'))
+                ->assertSee($relativePath)
+                ->assertSee(__('admin.system_updates.rollback_preflight.ready_restore'))
+                ->assertSee(__('admin.system_updates.button.restore_file'));
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.rollback-file', ['backupUuid' => $backup->backup_uuid]), [
+                    'path' => $relativePath,
+                ])
+                ->assertRedirect(route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]));
+
+            $this->assertSame($oldContents, File::get($localPath));
+            $this->assertDatabaseHas('system_update_runs', [
+                'action' => 'rollback_file',
+                'status' => 'succeeded',
+            ]);
+        } finally {
+            File::delete($localPath);
+        }
+    }
+
+    public function test_single_file_restore_is_blocked_when_target_changed_after_update(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $relativePath = 'app/SystemUpdateChangedRollbackTarget.php';
+        $localPath = base_path($relativePath);
+        $oldContents = "<?php\nreturn 'old-target';\n";
+        $newContents = "<?php\nreturn 'new-target';\n";
+        $localEditContents = "<?php\nreturn 'local-edit';\n";
+
+        try {
+            File::put($localPath, $oldContents);
+            $archive = $this->buildReleaseArchive([
+                $relativePath => $newContents,
+            ]);
+
+            config([
+                'geoflow.app_version' => '2.0.2',
+                'geoflow.update_check_enabled' => true,
+                'geoflow.update_metadata_url' => 'https://example.test/version.json',
+                'geoflow.update_archive_apply_enabled' => true,
+                'geoflow.update_execution_enabled' => true,
+                'geoflow.update_rollback_enabled' => true,
+                'geoflow.update_require_admin_password' => false,
+            ]);
+
+            Http::fake([
+                'https://example.test/version.json' => Http::response([
+                    'version' => '2.0.3',
+                    'commit' => 'abc123',
+                    'archive_url' => 'https://example.test/geoflow.zip',
+                    'archive_sha256' => hash_file('sha256', $archive),
+                ]),
+                'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
+                    'Content-Type' => 'application/zip',
+                ]),
+            ]);
+
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
+            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
+                'run_uuid' => $run->run_uuid,
+            ]);
+            $backup = \App\Models\SystemUpdateBackup::query()->firstOrFail();
+
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.apply'), [
+                'run_uuid' => $run->run_uuid,
+            ]);
+            File::put($localPath, $localEditContents);
+
+            $this->actingAs($admin, 'admin')
+                ->get(route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]))
+                ->assertOk()
+                ->assertSee(__('admin.system_updates.rollback_preflight.target_changed'));
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.rollback-file', ['backupUuid' => $backup->backup_uuid]), [
+                    'path' => $relativePath,
+                ])
+                ->assertRedirect(route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]))
+                ->assertSessionHasErrors();
+
+            $this->assertSame($localEditContents, File::get($localPath));
+            $this->assertDatabaseHas('system_update_runs', [
+                'action' => 'rollback_file',
+                'status' => 'failed',
+            ]);
+        } finally {
+            File::delete($localPath);
+        }
+    }
+
+    public function test_single_file_restore_rejects_unsupported_manifest_action(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $relativePath = 'app/SystemUpdateUnsupportedRollbackAction.php';
+        $manifestPath = 'geoflow-updates/backups/unsupported-action/manifest.json';
+
+        config([
+            'geoflow.update_execution_enabled' => true,
+            'geoflow.update_rollback_enabled' => true,
+            'geoflow.update_require_admin_password' => false,
+        ]);
+
+        Storage::disk('local')->put($manifestPath, json_encode([
+            'files' => [
+                [
+                    'path' => $relativePath,
+                    'action' => 'unknown',
+                    'old_sha256' => '',
+                    'new_sha256' => '',
+                    'bytes' => 0,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR));
+
+        $run = \App\Models\SystemUpdateRun::query()->create([
+            'run_uuid' => 'unsupported-action-plan',
+            'action' => 'plan',
+            'status' => 'succeeded',
+            'current_version' => '2.0.2',
+            'target_version' => '2.0.3',
+            'started_by_admin_id' => $admin->id,
+            'started_at' => now(),
+            'finished_at' => now(),
+        ]);
+
+        $backup = \App\Models\SystemUpdateBackup::query()->create([
+            'backup_uuid' => 'unsupported-action-backup',
+            'run_id' => $run->id,
+            'from_version' => '2.0.2',
+            'to_version' => '2.0.3',
+            'backup_path' => 'geoflow-updates/backups/unsupported-action',
+            'manifest_path' => $manifestPath,
+            'files_archive_path' => null,
+            'file_count' => 1,
+            'total_bytes' => 0,
+            'status' => 'available',
+            'created_by_admin_id' => $admin->id,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]))
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.rollback_preflight.unknown_action'))
+            ->assertSee('unknown');
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.rollback-file', ['backupUuid' => $backup->backup_uuid]), [
+                'path' => $relativePath,
+            ])
+            ->assertRedirect(route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]))
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseHas('system_update_runs', [
+            'action' => 'rollback_file',
+            'status' => 'failed',
+            'error_message' => __('admin.system_updates.error.backup_file_not_restorable'),
+        ]);
+    }
+
+    public function test_full_rollback_skips_added_file_that_is_already_missing(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $relativePath = 'app/SystemUpdateAddedAlreadyMissing.php';
+        $localPath = base_path($relativePath);
+        $newContents = "<?php\nreturn 'added';\n";
+        $manifestPath = 'geoflow-updates/backups/added-missing/manifest.json';
+
+        File::delete($localPath);
+
+        config([
+            'geoflow.update_execution_enabled' => true,
+            'geoflow.update_rollback_enabled' => true,
+            'geoflow.update_require_admin_password' => false,
+        ]);
+
+        Storage::disk('local')->put($manifestPath, json_encode([
+            'files' => [
+                [
+                    'path' => $relativePath,
+                    'action' => 'added',
+                    'old_sha256' => '',
+                    'new_sha256' => hash('sha256', $newContents),
+                    'bytes' => strlen($newContents),
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR));
+
+        $run = \App\Models\SystemUpdateRun::query()->create([
+            'run_uuid' => 'added-missing-plan',
+            'action' => 'plan',
+            'status' => 'succeeded',
+            'current_version' => '2.0.2',
+            'target_version' => '2.0.3',
+            'started_by_admin_id' => $admin->id,
+            'started_at' => now(),
+            'finished_at' => now(),
+        ]);
+
+        $backup = \App\Models\SystemUpdateBackup::query()->create([
+            'backup_uuid' => 'added-missing-backup',
+            'run_id' => $run->id,
+            'from_version' => '2.0.2',
+            'to_version' => '2.0.3',
+            'backup_path' => 'geoflow-updates/backups/added-missing',
+            'manifest_path' => $manifestPath,
+            'files_archive_path' => null,
+            'file_count' => 1,
+            'total_bytes' => strlen($newContents),
+            'status' => 'available',
+            'created_by_admin_id' => $admin->id,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.rollback', ['backupUuid' => $backup->backup_uuid]))
+            ->assertRedirect(route('admin.system-updates.index'));
+
+        $rollback = \App\Models\SystemUpdateRun::query()
+            ->where('action', 'rollback')
+            ->where('status', 'succeeded')
+            ->firstOrFail();
+        $report = $rollback->plan_json['rollback_report'] ?? [];
+
+        $this->assertSame(0, (int) ($report['removed'] ?? -1));
+        $this->assertSame(1, (int) ($report['skipped'] ?? 0));
+        $this->assertSame('added_file_already_missing', $report['files'][0]['action'] ?? null);
+    }
+
+    public function test_update_apply_preflight_prevents_partial_file_replacement(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $firstPath = 'app/SystemUpdateApplyPreflightA.php';
+        $secondPath = 'app/SystemUpdateApplyPreflightB.php';
+        $firstLocalPath = base_path($firstPath);
+        $secondLocalPath = base_path($secondPath);
+        $oldFirst = "<?php\nreturn 'old-a';\n";
+        $oldSecond = "<?php\nreturn 'old-b';\n";
+
+        try {
+            File::put($firstLocalPath, $oldFirst);
+            File::put($secondLocalPath, $oldSecond);
+
+            $archive = $this->buildReleaseArchive([
+                $firstPath => "<?php\nreturn 'new-a';\n",
+                $secondPath => "<?php\nreturn 'new-b';\n",
+            ]);
+
+            config([
+                'geoflow.app_version' => '2.0.2',
+                'geoflow.update_check_enabled' => true,
+                'geoflow.update_metadata_url' => 'https://example.test/version.json',
+                'geoflow.update_archive_apply_enabled' => true,
+                'geoflow.update_execution_enabled' => true,
+                'geoflow.update_rollback_enabled' => true,
+            ]);
+
+            Http::fake([
+                'https://example.test/version.json' => Http::response([
+                    'version' => '2.0.3',
+                    'commit' => 'abc123',
+                    'archive_url' => 'https://example.test/geoflow.zip',
+                    'archive_sha256' => hash_file('sha256', $archive),
+                ]),
+                'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
+                    'Content-Type' => 'application/zip',
+                ]),
+            ]);
+
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
+            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
+                'run_uuid' => $run->run_uuid,
+            ]);
+
+            $plan = is_array($run->plan_json) ? $run->plan_json : [];
+            $sourceRootPath = (string) ($plan['source_root_path'] ?? '');
+            File::delete(Storage::disk('local')->path($sourceRootPath.'/'.$secondPath));
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.apply'), [
+                    'run_uuid' => $run->run_uuid,
+                    'current_admin_password' => 'secret-123',
+                ])
+                ->assertRedirect(route('admin.system-updates.index'))
+                ->assertSessionHasErrors();
+
+            $this->assertSame($oldFirst, File::get($firstLocalPath));
+            $this->assertSame($oldSecond, File::get($secondLocalPath));
+            $this->assertDatabaseHas('system_update_runs', [
+                'action' => 'apply',
+                'status' => 'failed',
+            ]);
+        } finally {
+            File::delete($firstLocalPath);
+            File::delete($secondLocalPath);
+        }
+    }
+
     private function createAdmin(string $username = 'system_update_admin', string $role = 'super_admin'): Admin
     {
         return Admin::query()->create([
@@ -677,6 +1294,20 @@ class AdminSystemUpdatesPageTest extends TestCase
         $zip = new ZipArchive();
         $zip->open($zipPath, ZipArchive::CREATE);
         $zip->addFromString('GEOFlow-main/../../outside.php', "<?php\nreturn 'unsafe';\n");
+        $zip->close();
+
+        return $zipPath;
+    }
+
+    private function buildDuplicateSeparatorReleaseArchive(): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'geoflow-unsafe-release-');
+        @unlink($path);
+        $zipPath = $path.'.zip';
+
+        $zip = new ZipArchive();
+        $zip->open($zipPath, ZipArchive::CREATE);
+        $zip->addFromString('GEOFlow-main/app//UnsafePath.php', "<?php\nreturn 'unsafe';\n");
         $zip->close();
 
         return $zipPath;

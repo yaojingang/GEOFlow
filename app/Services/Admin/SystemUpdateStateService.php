@@ -37,6 +37,9 @@ class SystemUpdateStateService
             'can_backup' => $latestPlan !== null,
             'execution_enabled' => (bool) config('geoflow.update_execution_enabled', false),
             'archive_apply_enabled' => (bool) config('geoflow.update_archive_apply_enabled', false),
+            'rollback_enabled' => (bool) config('geoflow.update_execution_enabled', false)
+                && (bool) config('geoflow.update_rollback_enabled', false),
+            'admin_password_required' => (bool) config('geoflow.update_require_admin_password', true),
             'backup_keep' => max(1, (int) config('geoflow.update_backup_keep', 10)),
         ];
     }

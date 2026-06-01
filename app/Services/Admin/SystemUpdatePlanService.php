@@ -13,63 +13,11 @@ use ZipArchive;
 
 class SystemUpdatePlanService
 {
-    /**
-     * Directories that must never be overwritten by the in-app updater.
-     *
-     * @var array<int, string>
-     */
-    private array $blockedPrefixes = [
-        '.git/',
-        '.longtask/',
-        'docker-data/',
-        'node_modules/',
-        'public/assets/images/',
-        'public/storage/',
-        'storage/',
-        'uploads/',
-        'vendor/',
-    ];
-
-    /**
-     * @var array<int, string>
-     */
-    private array $allowedPrefixes = [
-        'app/',
-        'bootstrap/',
-        'config/',
-        'database/',
-        'docker/',
-        'docs/',
-        'lang/',
-        'public/',
-        'resources/',
-        'routes/',
-        'tests/',
-    ];
-
-    /**
-     * @var array<int, string>
-     */
-    private array $allowedRootFiles = [
-        '.env.example',
-        '.env.prod.example',
-        'artisan',
-        'composer.json',
-        'composer.lock',
-        'docker-compose.prod.yml',
-        'docker-compose.yml',
-        'package-lock.json',
-        'package.json',
-        'phpunit.xml',
-        'README.md',
-        'vite.config.js',
-        'version.json',
-    ];
-
     public function __construct(
         private readonly AdminUpdateMetadataService $metadataService,
         private readonly SystemUpdateDeploymentDetector $deploymentDetector,
         private readonly SystemUpdateArchiveValidator $archiveValidator,
+        private readonly SystemUpdatePathGuard $pathGuard,
     ) {}
 
     public function createPlan(Admin $admin): SystemUpdateRun
@@ -198,9 +146,11 @@ class SystemUpdatePlanService
 
             if (
                 str_starts_with($normalized, '/')
+                || str_contains($normalized, '//')
                 || str_contains($normalized, "\0")
                 || preg_match('/^[A-Za-z]:\//', $normalized) === 1
                 || in_array('..', $segments, true)
+                || in_array('.', $segments, true)
             ) {
                 throw new RuntimeException(__('admin.system_updates.error.archive_unsafe'));
             }
@@ -265,9 +215,10 @@ class SystemUpdatePlanService
 
         foreach ($this->releaseFiles($sourceRoot) as $item) {
             $relativePath = $item['relative_path'];
-            if (! $this->isAllowedPath($relativePath)) {
+            if (! $this->pathGuard->isAllowedPath($relativePath)) {
                 continue;
             }
+            $relativePath = $this->pathGuard->normalize($relativePath);
             $releasePaths[$relativePath] = true;
 
             $localPath = base_path($relativePath);
@@ -316,6 +267,7 @@ class SystemUpdatePlanService
             'deployment_mode' => (string) ($deployment['mode'] ?? ''),
             'release_archive_path' => $downloadPath,
             'extracted_path' => $extractPath,
+            'source_root_path' => $this->sourceRootStoragePath($sourceRoot),
             'summary' => [
                 'added' => $this->countAction($changes, 'added'),
                 'modified' => $this->countAction($changes, 'modified'),
@@ -323,6 +275,8 @@ class SystemUpdatePlanService
                 'total' => count($changes),
             ],
             'flags' => $flags,
+            'manual_commands' => $this->manualCommands($flags, $deployment),
+            'update_script' => $this->updateScript($flags, $deployment),
             'risk_level' => $this->riskLevel($flags, $changes),
             'changes' => $changes,
         ];
@@ -354,34 +308,6 @@ class SystemUpdatePlanService
         usort($files, fn (array $a, array $b): int => strcmp($a['relative_path'], $b['relative_path']));
 
         return $files;
-    }
-
-    private function isAllowedPath(string $relativePath): bool
-    {
-        $relativePath = ltrim(str_replace('\\', '/', $relativePath), '/');
-        $basename = basename($relativePath);
-
-        if (str_starts_with($basename, '.env') && ! str_ends_with($basename, '.example')) {
-            return false;
-        }
-
-        foreach ($this->blockedPrefixes as $prefix) {
-            if (str_starts_with($relativePath, $prefix)) {
-                return false;
-            }
-        }
-
-        if (! str_contains($relativePath, '/')) {
-            return in_array($relativePath, $this->allowedRootFiles, true);
-        }
-
-        foreach ($this->allowedPrefixes as $prefix) {
-            if (str_starts_with($relativePath, $prefix)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -424,9 +350,11 @@ class SystemUpdatePlanService
         $files = [];
         foreach ($output as $relativePath) {
             $relativePath = ltrim(str_replace('\\', '/', $relativePath), '/');
-            if ($relativePath === '' || ! $this->isAllowedPath($relativePath)) {
+            if ($relativePath === '' || ! $this->pathGuard->isAllowedPath($relativePath)) {
                 continue;
             }
+
+            $relativePath = $this->pathGuard->normalize($relativePath);
 
             $path = base_path($relativePath);
             if (is_file($path)) {
@@ -453,6 +381,77 @@ class SystemUpdatePlanService
             'touches_config' => $this->touchesAny($changes, ['config/']),
             'touches_routes' => $this->touchesAny($changes, ['routes/']),
         ];
+    }
+
+    /**
+     * @param  array<string, bool>  $flags
+     * @param  array<string, mixed>  $deployment
+     * @return array<int, array{key: string, command: string, level: string}>
+     */
+    private function manualCommands(array $flags, array $deployment): array
+    {
+        $commands = [
+            ['key' => 'maintenance_down', 'command' => 'php artisan down || true', 'level' => 'recommended'],
+        ];
+
+        if (! empty($flags['requires_composer'])) {
+            $commands[] = ['key' => 'composer_install', 'command' => 'composer install --no-dev --optimize-autoloader', 'level' => 'required'];
+        }
+
+        if (! empty($flags['requires_npm_build'])) {
+            $commands[] = ['key' => 'frontend_build', 'command' => 'npm ci && npm run build', 'level' => 'required'];
+        }
+
+        if (! empty($flags['requires_migration'])) {
+            $commands[] = ['key' => 'migrate', 'command' => 'php artisan migrate --force', 'level' => 'required'];
+        }
+
+        if (! empty($flags['touches_docker'])) {
+            $commands[] = ['key' => 'docker_rebuild', 'command' => $this->dockerRebuildCommand($deployment), 'level' => 'deployment'];
+        }
+
+        $commands[] = ['key' => 'clear_cache', 'command' => 'php artisan optimize:clear', 'level' => 'recommended'];
+        $commands[] = ['key' => 'restart_queue', 'command' => 'php artisan queue:restart', 'level' => 'recommended'];
+        $commands[] = ['key' => 'maintenance_up', 'command' => 'php artisan up', 'level' => 'recommended'];
+
+        return $commands;
+    }
+
+    /**
+     * @param  array<string, bool>  $flags
+     * @param  array<string, mixed>  $deployment
+     */
+    private function updateScript(array $flags, array $deployment): string
+    {
+        return implode("\n", array_map(
+            static fn (array $item): string => (string) $item['command'],
+            $this->manualCommands($flags, $deployment)
+        ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $deployment
+     */
+    private function dockerRebuildCommand(array $deployment): string
+    {
+        $mode = (string) ($deployment['mode'] ?? '');
+        if (($mode === 'docker_image' || app()->environment('production')) && is_file(base_path('docker-compose.prod.yml'))) {
+            return 'docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build';
+        }
+
+        return 'docker compose up -d --build';
+    }
+
+    private function sourceRootStoragePath(string $sourceRoot): string
+    {
+        $storageRoot = rtrim(str_replace('\\', '/', Storage::disk('local')->path('')), '/').'/';
+        $sourceRoot = str_replace('\\', '/', $sourceRoot);
+
+        if (str_starts_with($sourceRoot, $storageRoot)) {
+            return ltrim(substr($sourceRoot, strlen($storageRoot)), '/');
+        }
+
+        return '';
     }
 
     /**

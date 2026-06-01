@@ -77,6 +77,13 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('check', [SystemUpdateController::class, 'check'])->name('check');
             Route::post('plan', [SystemUpdateController::class, 'plan'])->name('plan');
             Route::post('backup', [SystemUpdateController::class, 'backup'])->name('backup');
+            Route::post('apply', [SystemUpdateController::class, 'apply'])->name('apply');
+            Route::post('plans/{runUuid}/commands/{commandIndex}/executed', [SystemUpdateController::class, 'markCommandExecuted'])
+                ->whereNumber('commandIndex')
+                ->name('commands.executed');
+            Route::get('backups/{backupUuid}', [SystemUpdateController::class, 'backupShow'])->name('backups.show');
+            Route::post('backups/{backupUuid}/files/rollback', [SystemUpdateController::class, 'rollbackFile'])->name('rollback-file');
+            Route::post('backups/{backupUuid}/rollback', [SystemUpdateController::class, 'rollback'])->name('rollback');
         });
 
         // 任务管理（Blade 新路径）

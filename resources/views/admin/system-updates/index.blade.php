@@ -13,7 +13,13 @@
         $planCounts = is_array($planJson['summary'] ?? null) ? $planJson['summary'] : [];
         $planFlags = is_array($planJson['flags'] ?? null) ? $planJson['flags'] : [];
         $changes = is_array($planJson['changes'] ?? null) ? $planJson['changes'] : [];
+        $manualCommands = is_array($planJson['manual_commands'] ?? null) ? $planJson['manual_commands'] : [];
+        $updateScript = (string) ($planJson['update_script'] ?? '');
+        $commandStatuses = is_array($planJson['manual_command_statuses'] ?? null) ? $planJson['manual_command_statuses'] : [];
         $payload = is_array($state['payload'] ?? null) ? $state['payload'] : [];
+        $executionReady = !empty($summary['execution_enabled']) && !empty($summary['archive_apply_enabled']);
+        $rollbackReady = !empty($summary['rollback_enabled']);
+        $passwordRequired = !empty($summary['admin_password_required']);
         $localeForChangelog = app()->getLocale() === 'en' ? 'en' : 'zh-CN';
         $summaryText = (string) ($localeForChangelog === 'en'
             ? ($payload['summary_en'] ?? '')
@@ -43,6 +49,11 @@
             'warn' => 'border-amber-100 bg-amber-50 text-amber-700',
             'fail' => 'border-red-100 bg-red-50 text-red-700',
             'info' => 'border-slate-100 bg-slate-50 text-slate-600',
+        ];
+        $commandLevelClasses = [
+            'required' => 'border-red-200 bg-red-50 text-red-700',
+            'deployment' => 'border-blue-200 bg-blue-50 text-blue-700',
+            'recommended' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
         ];
         $githubUrl = (string) ($links['github'] ?? 'https://github.com/yaojingang/GEOFlow');
         $changelogLinks = is_array($links['changelog'] ?? null) ? $links['changelog'] : [];
@@ -265,6 +276,106 @@
                                 @endif
                             @endforeach
                         </div>
+
+                        <div class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.section.commands') }}</h3>
+                                    <p class="mt-1 text-xs leading-5 text-gray-600">{{ __('admin.system_updates.section.commands_desc') }}</p>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-600">
+                                        {{ __('admin.system_updates.commands.count', ['count' => count($manualCommands)]) }}
+                                    </span>
+                                    @if($updateScript !== '')
+                                        <button type="button" data-system-update-copy data-copy-text="{{ $updateScript }}" data-default-label="{{ __('admin.system_updates.button.copy_script') }}" data-copied-label="{{ __('admin.system_updates.commands.copied') }}" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50">
+                                            <i data-lucide="copy" class="mr-1.5 h-3.5 w-3.5"></i>
+                                            <span>{{ __('admin.system_updates.button.copy_script') }}</span>
+                                        </button>
+                                    @endif
+                                </div>
+                            </div>
+                            <div class="mt-4 space-y-2">
+                                @forelse($manualCommands as $index => $command)
+                                    @php($commandKey = (string) ($command['key'] ?? 'custom'))
+                                    @php($commandLevel = (string) ($command['level'] ?? 'recommended'))
+                                    @php($commandStatus = is_array($commandStatuses[(string) $index] ?? null) ? $commandStatuses[(string) $index] : null)
+                                    @php($levelClass = $commandLevelClasses[$commandLevel] ?? $commandLevelClasses['recommended'])
+                                    <div class="rounded-md border border-white bg-white p-3 text-xs">
+                                        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                            <div class="min-w-0 flex-1">
+                                                <div class="mb-2 flex flex-wrap items-center gap-2">
+                                                    <span class="font-semibold text-gray-700">{{ __('admin.system_updates.commands.'.$commandKey) }}</span>
+                                                    <span class="inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold {{ $levelClass }}">
+                                                        {{ __('admin.system_updates.commands.level_'.$commandLevel) }}
+                                                    </span>
+                                                    @if($commandStatus)
+                                                        <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                                            {{ __('admin.system_updates.commands.executed_at', ['time' => (string) ($commandStatus['executed_at'] ?? '')]) }}
+                                                        </span>
+                                                    @else
+                                                        <span class="inline-flex rounded-full bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-500">
+                                                            {{ __('admin.system_updates.commands.pending_execution') }}
+                                                        </span>
+                                                    @endif
+                                                </div>
+                                                <code class="block break-all rounded-md bg-slate-50 px-3 py-2 font-mono text-gray-900">{{ (string) ($command['command'] ?? '') }}</code>
+                                            </div>
+                                            <div class="flex shrink-0 flex-wrap gap-2">
+                                                <button type="button" data-system-update-copy data-copy-text="{{ (string) ($command['command'] ?? '') }}" data-default-label="{{ __('admin.system_updates.button.copy_command') }}" data-copied-label="{{ __('admin.system_updates.commands.copied') }}" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50">
+                                                    <i data-lucide="copy" class="mr-1.5 h-3.5 w-3.5"></i>
+                                                    <span>{{ __('admin.system_updates.button.copy_command') }}</span>
+                                                </button>
+                                                <form method="POST" action="{{ route('admin.system-updates.commands.executed', ['runUuid' => $latestPlan->run_uuid, 'commandIndex' => $index]) }}">
+                                                    @csrf
+                                                    <button type="submit" class="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+                                                        <i data-lucide="check" class="mr-1.5 h-3.5 w-3.5"></i>
+                                                        {{ __('admin.system_updates.button.mark_command_executed') }}
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <div class="rounded-md bg-white p-3 text-sm text-gray-500">{{ __('admin.system_updates.empty.no_commands') }}</div>
+                                @endforelse
+                            </div>
+                            @if($updateScript !== '')
+                                <pre class="mt-4 overflow-auto rounded-md bg-gray-950 p-4 text-xs leading-6 text-gray-100">{{ $updateScript }}</pre>
+                            @endif
+                        </div>
+
+                        <div class="mt-5 rounded-lg border {{ $executionReady ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50' }} p-4">
+                            <div class="flex flex-wrap items-start justify-between gap-4">
+                                <div>
+                                    <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.section.execution') }}</h3>
+                                    <p class="mt-1 text-xs leading-5 text-gray-600">
+                                        {{ $executionReady ? __('admin.system_updates.execution.enabled_desc') : __('admin.system_updates.execution.disabled_desc') }}
+                                    </p>
+                                </div>
+                                @if($executionReady)
+                                    <form method="POST" action="{{ route('admin.system-updates.apply') }}" class="flex flex-wrap items-end gap-2" data-confirm-message="{{ __('admin.system_updates.confirm.apply_update') }}" onsubmit="return confirm(this.dataset.confirmMessage)">
+                                        @csrf
+                                        <input type="hidden" name="run_uuid" value="{{ $latestPlan->run_uuid }}">
+                                        @if($passwordRequired)
+                                            <label class="block">
+                                                <span class="sr-only">{{ __('admin.system_updates.label.current_admin_password') }}</span>
+                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            </label>
+                                        @endif
+                                        <button type="submit" class="inline-flex items-center rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700">
+                                            <i data-lucide="rocket" class="mr-2 h-4 w-4"></i>
+                                            {{ __('admin.system_updates.button.apply_update') }}
+                                        </button>
+                                    </form>
+                                @else
+                                    <button type="button" disabled class="inline-flex cursor-not-allowed items-center rounded-md bg-gray-300 px-4 py-2 text-sm font-medium text-white">
+                                        <i data-lucide="lock" class="mr-2 h-4 w-4"></i>
+                                        {{ __('admin.system_updates.button.apply_update') }}
+                                    </button>
+                                @endif
+                            </div>
+                        </div>
                     </div>
 
                     <div class="max-h-[460px] overflow-auto">
@@ -326,6 +437,37 @@
                             <div class="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-500">
                                 <div>{{ __('admin.system_updates.backup.file_count', ['count' => $backup->file_count]) }}</div>
                                 <div>{{ __('admin.system_updates.backup.created_at', ['time' => optional($backup->created_at)->format('Y-m-d H:i')]) }}</div>
+                                <div class="col-span-2">
+                                    {{ __('admin.system_updates.label.created_by') }}：
+                                    <span class="text-gray-700">{{ optional($backup->createdBy)->display_name ?: optional($backup->createdBy)->username ?: __('admin.common.none') }}</span>
+                                </div>
+                            </div>
+                            <div class="mt-4 flex flex-wrap items-end gap-2">
+                                <a href="{{ route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]) }}" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                                    <i data-lucide="file-search" class="mr-2 h-4 w-4"></i>
+                                    {{ __('admin.system_updates.button.view_backup_detail') }}
+                                </a>
+                                @if($rollbackReady)
+                                    <form method="POST" action="{{ route('admin.system-updates.rollback', ['backupUuid' => $backup->backup_uuid]) }}" class="flex flex-wrap items-end gap-2" data-confirm-message="{{ __('admin.system_updates.confirm.rollback_backup') }}" onsubmit="return confirm(this.dataset.confirmMessage)">
+                                        @csrf
+                                        @if($passwordRequired)
+                                            <label class="block">
+                                                <span class="sr-only">{{ __('admin.system_updates.label.current_admin_password') }}</span>
+                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            </label>
+                                        @endif
+                                        <button type="submit" class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100">
+                                            <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
+                                            {{ __('admin.system_updates.button.rollback_backup') }}
+                                        </button>
+                                    </form>
+                                @else
+                                    <button type="button" disabled class="inline-flex cursor-not-allowed items-center rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-400">
+                                        <i data-lucide="lock" class="mr-2 h-4 w-4"></i>
+                                        {{ __('admin.system_updates.button.rollback_backup') }}
+                                    </button>
+                                    <p class="mt-2 text-xs leading-5 text-gray-500">{{ __('admin.system_updates.execution.rollback_disabled_desc') }}</p>
+                                @endif
                             </div>
                         </div>
                     @empty
@@ -338,3 +480,46 @@
         </div>
     </div>
 @endsection
+
+@push('scripts')
+    <script>
+        document.querySelectorAll('[data-system-update-copy]').forEach((button) => {
+            button.addEventListener('click', async () => {
+                const text = button.dataset.copyText || '';
+                const label = button.querySelector('span');
+                const defaultLabel = button.dataset.defaultLabel || (label ? label.textContent : '');
+                const copiedLabel = button.dataset.copiedLabel || defaultLabel;
+
+                try {
+                    await navigator.clipboard.writeText(text);
+                    if (label) {
+                        label.textContent = copiedLabel;
+                    }
+                    setTimeout(() => {
+                        if (label) {
+                            label.textContent = defaultLabel;
+                        }
+                    }, 1400);
+                } catch (error) {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.setAttribute('readonly', 'readonly');
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    if (label) {
+                        label.textContent = copiedLabel;
+                    }
+                    setTimeout(() => {
+                        if (label) {
+                            label.textContent = defaultLabel;
+                        }
+                    }, 1400);
+                }
+            });
+        });
+    </script>
+@endpush
