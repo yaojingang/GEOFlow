@@ -15,6 +15,8 @@ class SystemUpdateRollbackService
 {
     public function __construct(
         private readonly SystemUpdatePathGuard $pathGuard,
+        private readonly SystemUpdateRunProgressService $progressService,
+        private readonly SystemUpdateVerificationService $verificationService,
     ) {}
 
     public function rollback(SystemUpdateBackup $backup, Admin $admin): SystemUpdateRun
@@ -40,18 +42,30 @@ class SystemUpdateRollbackService
         ]);
 
         try {
+            $this->progressService->record($run, 'rollback_preflight', 20);
             $manifest = $this->readManifest($backup);
             $restoreRoot = $this->extractBackupArchive($backup, $run->run_uuid);
+            $this->progressService->record($run, 'rollback_prepare', 45);
             $report = $this->restoreFiles($manifest, $restoreRoot);
+            $this->progressService->record($run, 'rollback_files', 72);
+            $verification = $this->verificationService->verify($run);
+            $this->progressService->record($run, 'verify', 92, $verification['status'] === 'fail' ? 'warning' : 'running');
             $logPath = $this->writeLog($run->run_uuid, $report);
+            $this->progressService->record($run, 'complete', 100, 'succeeded');
+
+            $payload = is_array($run->plan_json) ? $run->plan_json : [];
+            $payload['rollback_report'] = $report;
+            $payload['verification'] = $verification;
 
             $run->forceFill([
                 'status' => 'succeeded',
-                'plan_json' => ['rollback_report' => $report],
+                'plan_json' => $payload,
                 'log_path' => $logPath,
                 'finished_at' => now(),
             ])->save();
         } catch (\Throwable $e) {
+            $this->progressService->record($run, 'failed', 100, 'failed');
+
             $run->forceFill([
                 'status' => 'failed',
                 'error_message' => $e->getMessage(),
@@ -88,21 +102,31 @@ class SystemUpdateRollbackService
         ]);
 
         try {
+            $this->progressService->record($run, 'rollback_preflight', 20);
             $manifest = $this->readManifest($backup);
             $restoreRoot = $this->extractBackupArchive($backup, $run->run_uuid);
+            $this->progressService->record($run, 'rollback_prepare', 45);
             $report = $this->restoreFiles($manifest, $restoreRoot, [$relativePath]);
+            $this->progressService->record($run, 'rollback_files', 72);
+            $verification = $this->verificationService->verify($run);
+            $this->progressService->record($run, 'verify', 92, $verification['status'] === 'fail' ? 'warning' : 'running');
             $logPath = $this->writeLog($run->run_uuid, $report);
+            $this->progressService->record($run, 'complete', 100, 'succeeded');
+
+            $payload = is_array($run->plan_json) ? $run->plan_json : [];
+            $payload['file_path'] = $relativePath;
+            $payload['rollback_report'] = $report;
+            $payload['verification'] = $verification;
 
             $run->forceFill([
                 'status' => 'succeeded',
-                'plan_json' => [
-                    'file_path' => $relativePath,
-                    'rollback_report' => $report,
-                ],
+                'plan_json' => $payload,
                 'log_path' => $logPath,
                 'finished_at' => now(),
             ])->save();
         } catch (\Throwable $e) {
+            $this->progressService->record($run, 'failed', 100, 'failed');
+
             $run->forceFill([
                 'status' => 'failed',
                 'error_message' => $e->getMessage(),

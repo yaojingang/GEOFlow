@@ -14,6 +14,8 @@ class SystemUpdateApplyService
 {
     public function __construct(
         private readonly SystemUpdatePathGuard $pathGuard,
+        private readonly SystemUpdateRunProgressService $progressService,
+        private readonly SystemUpdateVerificationService $verificationService,
     ) {}
 
     public function apply(SystemUpdateRun $planRun, Admin $admin): SystemUpdateRun
@@ -35,19 +37,28 @@ class SystemUpdateApplyService
         $run = $this->createRun($planRun, $admin);
 
         try {
+            $this->progressService->record($run, 'apply_preflight', 20);
             $report = $this->applyPlan($planRun);
+            $this->progressService->record($run, 'apply_files', 72);
+            $verification = $this->verificationService->verify($run);
+            $this->progressService->record($run, 'verify', 92, $verification['status'] === 'fail' ? 'warning' : 'running');
             $logPath = $this->writeLog($run->run_uuid, $report);
+            $this->progressService->record($run, 'complete', 100, 'succeeded');
+
+            $payload = is_array($run->plan_json) ? $run->plan_json : [];
+            $payload['apply_report'] = $report;
+            $payload['verification'] = $verification;
 
             $run->forceFill([
                 'status' => 'succeeded',
-                'plan_json' => array_merge(is_array($planRun->plan_json) ? $planRun->plan_json : [], [
-                    'apply_report' => $report,
-                ]),
+                'plan_json' => $payload,
                 'backup_path' => $backup->backup_path,
                 'log_path' => $logPath,
                 'finished_at' => now(),
             ])->save();
         } catch (\Throwable $e) {
+            $this->progressService->record($run, 'failed', 100, 'failed');
+
             $run->forceFill([
                 'status' => 'failed',
                 'error_message' => $e->getMessage(),

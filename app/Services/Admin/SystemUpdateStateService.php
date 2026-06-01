@@ -32,6 +32,7 @@ class SystemUpdateStateService
             'latest_plan' => $latestPlan,
             'preflight' => $this->preflightService->build($state, $deployment, $latestPlan),
             'recent_backups' => $this->recentBackups(),
+            'recent_runs' => $this->recentRuns(),
             'can_plan' => (bool) ($state['is_update_available'] ?? false)
                 && trim((string) ($state['archive_url'] ?? '')) !== '',
             'can_backup' => $latestPlan !== null,
@@ -87,6 +88,23 @@ class SystemUpdateStateService
             ->with('createdBy')
             ->latest('id')
             ->limit(10)
+            ->get();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, SystemUpdateRun>
+     */
+    private function recentRuns()
+    {
+        if (! Schema::hasTable('system_update_runs')) {
+            return collect();
+        }
+
+        return SystemUpdateRun::query()
+            ->with('startedBy')
+            ->whereIn('action', ['apply', 'rollback', 'rollback_file'])
+            ->latest('id')
+            ->limit(5)
             ->get();
     }
 }

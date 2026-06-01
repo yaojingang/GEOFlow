@@ -9,6 +9,7 @@ use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\SystemUpdateApplyService;
 use App\Services\Admin\SystemUpdateBackupInspectionService;
 use App\Services\Admin\SystemUpdateBackupService;
+use App\Services\Admin\SystemUpdateOperationGuard;
 use App\Services\Admin\SystemUpdatePlanService;
 use App\Services\Admin\SystemUpdateRollbackService;
 use App\Services\Admin\SystemUpdateStateService;
@@ -45,13 +46,13 @@ class SystemUpdateController extends Controller
             ->with('message', __('admin.system_updates.message.checked'));
     }
 
-    public function plan(SystemUpdatePlanService $planService): RedirectResponse
+    public function plan(SystemUpdatePlanService $planService, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
 
         try {
-            $planService->createPlan(request()->user('admin'));
+            $operationGuard->run(fn () => $planService->createPlan(request()->user('admin')));
         } catch (\Throwable $e) {
             return redirect()
                 ->route('admin.system-updates.index')
@@ -63,7 +64,7 @@ class SystemUpdateController extends Controller
             ->with('message', __('admin.system_updates.message.plan_created'));
     }
 
-    public function backup(Request $request, SystemUpdateBackupService $backupService): RedirectResponse
+    public function backup(Request $request, SystemUpdateBackupService $backupService, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
@@ -79,7 +80,7 @@ class SystemUpdateController extends Controller
             ->firstOrFail();
 
         try {
-            $backupService->createFromPlan($run, $request->user('admin'));
+            $operationGuard->run(fn () => $backupService->createFromPlan($run, $request->user('admin')));
         } catch (\Throwable $e) {
             return redirect()
                 ->route('admin.system-updates.index')
@@ -126,7 +127,7 @@ class SystemUpdateController extends Controller
             ->with('message', __('admin.system_updates.message.command_marked'));
     }
 
-    public function apply(Request $request, SystemUpdateApplyService $applyService): RedirectResponse
+    public function apply(Request $request, SystemUpdateApplyService $applyService, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
@@ -143,7 +144,7 @@ class SystemUpdateController extends Controller
             ->firstOrFail();
 
         try {
-            $applyService->apply($run, $request->user('admin'));
+            $operationGuard->run(fn () => $applyService->apply($run, $request->user('admin')));
         } catch (\Throwable $e) {
             return redirect()
                 ->route('admin.system-updates.index')
@@ -179,7 +180,7 @@ class SystemUpdateController extends Controller
         ]);
     }
 
-    public function rollback(Request $request, string $backupUuid, SystemUpdateRollbackService $rollbackService): RedirectResponse
+    public function rollback(Request $request, string $backupUuid, SystemUpdateRollbackService $rollbackService, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
@@ -190,7 +191,7 @@ class SystemUpdateController extends Controller
             ->firstOrFail();
 
         try {
-            $rollbackService->rollback($backup, $request->user('admin'));
+            $operationGuard->run(fn () => $rollbackService->rollback($backup, $request->user('admin')));
         } catch (\Throwable $e) {
             return redirect()
                 ->route('admin.system-updates.index')
@@ -202,7 +203,7 @@ class SystemUpdateController extends Controller
             ->with('message', __('admin.system_updates.message.rollback_created'));
     }
 
-    public function rollbackFile(Request $request, string $backupUuid, SystemUpdateRollbackService $rollbackService): RedirectResponse
+    public function rollbackFile(Request $request, string $backupUuid, SystemUpdateRollbackService $rollbackService, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
@@ -217,7 +218,7 @@ class SystemUpdateController extends Controller
             ->firstOrFail();
 
         try {
-            $rollbackService->rollbackFile($backup, (string) $validated['path'], $request->user('admin'));
+            $operationGuard->run(fn () => $rollbackService->rollbackFile($backup, (string) $validated['path'], $request->user('admin')));
         } catch (\Throwable $e) {
             return redirect()
                 ->route('admin.system-updates.backups.show', ['backupUuid' => $backupUuid])

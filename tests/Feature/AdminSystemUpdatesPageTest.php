@@ -550,6 +550,45 @@ class AdminSystemUpdatesPageTest extends TestCase
         ]);
     }
 
+    public function test_update_operation_lock_blocks_concurrent_plan_creation(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $lock = Cache::lock('geoflow:system-update:operation', 900);
+        $this->assertTrue($lock->get());
+
+        try {
+            config([
+                'geoflow.app_version' => '2.0.2',
+                'geoflow.update_check_enabled' => true,
+                'geoflow.update_metadata_url' => 'https://example.test/version.json',
+                'geoflow.update_archive_apply_enabled' => true,
+            ]);
+
+            Http::fake([
+                'https://example.test/version.json' => Http::response([
+                    'version' => '2.0.3',
+                    'commit' => 'abc123',
+                    'archive_url' => 'https://example.test/geoflow.zip',
+                ]),
+            ]);
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.plan'))
+                ->assertRedirect(route('admin.system-updates.index'))
+                ->assertSessionHasErrors();
+
+            $this->assertDatabaseMissing('system_update_runs', [
+                'action' => 'plan',
+                'status' => 'succeeded',
+            ]);
+        } finally {
+            $lock->release();
+        }
+    }
+
     public function test_backup_for_add_only_plan_is_marked_not_required(): void
     {
         Storage::fake('local');
@@ -869,6 +908,23 @@ class AdminSystemUpdatesPageTest extends TestCase
                 'action' => 'apply',
                 'status' => 'succeeded',
             ]);
+            $applyRun = \App\Models\SystemUpdateRun::query()
+                ->where('action', 'apply')
+                ->where('status', 'succeeded')
+                ->firstOrFail();
+            $applyPayload = is_array($applyRun->plan_json) ? $applyRun->plan_json : [];
+
+            $this->assertSame(100, (int) ($applyPayload['progress_percent'] ?? 0));
+            $this->assertSame('succeeded', $applyPayload['progress_status'] ?? null);
+            $this->assertIsArray($applyPayload['verification'] ?? null);
+            $this->assertContains('system_updates_route', collect($applyPayload['verification']['items'] ?? [])->pluck('key')->all());
+
+            $this->actingAs($admin, 'admin')
+                ->get(route('admin.system-updates.index'))
+                ->assertOk()
+                ->assertSee(__('admin.system_updates.section.recent_runs'))
+                ->assertSee(__('admin.system_updates.progress.complete'))
+                ->assertSee(__('admin.system_updates.verification.system_updates_route'));
 
             $this->actingAs($admin, 'admin')
                 ->post(route('admin.system-updates.rollback', ['backupUuid' => $backup->backup_uuid]), [
@@ -881,6 +937,15 @@ class AdminSystemUpdatesPageTest extends TestCase
                 'action' => 'rollback',
                 'status' => 'succeeded',
             ]);
+            $rollbackRun = \App\Models\SystemUpdateRun::query()
+                ->where('action', 'rollback')
+                ->where('status', 'succeeded')
+                ->firstOrFail();
+            $rollbackPayload = is_array($rollbackRun->plan_json) ? $rollbackRun->plan_json : [];
+
+            $this->assertSame(100, (int) ($rollbackPayload['progress_percent'] ?? 0));
+            $this->assertSame('succeeded', $rollbackPayload['progress_status'] ?? null);
+            $this->assertIsArray($rollbackPayload['verification'] ?? null);
         } finally {
             File::delete($localPath);
         }
