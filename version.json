@@ -1,14 +1,14 @@
 {
-  "version": "2.0.2",
-  "release_date": "2026-05-28",
+  "version": "2.0.3",
+  "release_date": "2026-06-02",
   "release_type": "patch",
   "payload": {
-    "title_zh": "GEOFlow v2.0.2",
-    "title_en": "GEOFlow v2.0.2",
-    "summary_zh": "GEOFlow 2.0.2 优化后台自动化工作流首页、提升数据分析统计真实性，统一 AI/搜索蜘蛛识别规则，修复访问日志与分发数据筛选边界，并改善 Docker 开发环境代码缓存行为。",
-    "summary_en": "GEOFlow 2.0.2 improves the admin automation workflow dashboard, makes Analytics metrics more faithful to event and access-log data, unifies AI/search crawler classification, fixes log and distribution filtering edges, and improves Docker development cache behavior.",
-    "upgrade_tip_zh": "升级前请备份数据库、.env、uploads、storage 和目标渠道站点包；升级后请重新清理配置/视图缓存，并按分发管理页面提示重新下载目标站点包。",
-    "upgrade_tip_en": "Before upgrading, back up your database, .env, uploads, storage, and target-site packages. After upgrading, clear config/view caches and download the refreshed target-site package from Distribution Management.",
+    "title_zh": "GEOFlow v2.0.3",
+    "title_en": "GEOFlow v2.0.3",
+    "summary_zh": "GEOFlow 2.0.3 新增系统更新中心，支持版本检查、更新计划、备份、回滚、队列执行、预检与部署诊断，并补充 Ubuntu 24.04 LTS + Docker 生产部署排障说明。",
+    "summary_en": "GEOFlow 2.0.3 adds the System Update Center with version checks, update plans, backups, rollback, queued execution, preflight checks, and deployment diagnostics, plus Ubuntu 24.04 LTS + Docker production troubleshooting guidance.",
+    "upgrade_tip_zh": "升级前请备份数据库、.env、uploads、storage 和目标渠道站点包；升级后可在后台右上角通知进入系统更新中心，先查看预检和部署诊断，再按需生成更新计划。",
+    "upgrade_tip_en": "Before upgrading, back up your database, .env, uploads, storage, and target-site packages. After upgrading, open System Update Center from the admin notification area and review preflight and deployment diagnostics before generating update plans.",
     "release_url": "https://github.com/yaojingang/GEOFlow",
     "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md",
     "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md"
