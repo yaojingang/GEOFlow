@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessSystemUpdateApplyJob;
+use App\Jobs\ProcessSystemUpdateRollbackJob;
 use App\Models\SystemUpdateBackup;
 use App\Models\SystemUpdateRun;
 use App\Services\Admin\AdminUpdateMetadataService;
@@ -13,6 +15,7 @@ use App\Services\Admin\SystemUpdateOperationGuard;
 use App\Services\Admin\SystemUpdatePlanService;
 use App\Services\Admin\SystemUpdateRollbackService;
 use App\Services\Admin\SystemUpdateStateService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -46,13 +49,32 @@ class SystemUpdateController extends Controller
             ->with('message', __('admin.system_updates.message.checked'));
     }
 
+    public function runsStatus(SystemUpdateStateService $stateService): JsonResponse
+    {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+
+        $summary = $stateService->summary();
+
+        return response()->json([
+            'html' => view('admin.system-updates.partials.recent-runs', [
+                'recentRuns' => $summary['recent_runs'] ?? collect(),
+            ])->render(),
+            'has_active_run' => (bool) ($summary['has_active_run'] ?? false),
+            'updated_at' => now()->toDateTimeString(),
+        ]);
+    }
+
     public function plan(SystemUpdatePlanService $planService, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
 
         try {
-            $operationGuard->run(fn () => $planService->createPlan(request()->user('admin')));
+            $operationGuard->run(function () use ($operationGuard, $planService): void {
+                $operationGuard->assertNoActiveExecution();
+                $planService->createPlan(request()->user('admin'));
+            });
         } catch (\Throwable $e) {
             return redirect()
                 ->route('admin.system-updates.index')
@@ -80,7 +102,10 @@ class SystemUpdateController extends Controller
             ->firstOrFail();
 
         try {
-            $operationGuard->run(fn () => $backupService->createFromPlan($run, $request->user('admin')));
+            $operationGuard->run(function () use ($operationGuard, $backupService, $run, $request): void {
+                $operationGuard->assertNoActiveExecution();
+                $backupService->createFromPlan($run, $request->user('admin'));
+            });
         } catch (\Throwable $e) {
             return redirect()
                 ->route('admin.system-updates.index')
@@ -144,8 +169,22 @@ class SystemUpdateController extends Controller
             ->firstOrFail();
 
         try {
-            $operationGuard->run(fn () => $applyService->apply($run, $request->user('admin')));
+            $queuedRun = $operationGuard->run(function () use ($operationGuard, $applyService, $run, $request): SystemUpdateRun {
+                $operationGuard->assertNoActiveExecution();
+
+                return $applyService->queueApply($run, $request->user('admin'));
+            });
         } catch (\Throwable $e) {
+            return redirect()
+                ->route('admin.system-updates.index')
+                ->withErrors([__('admin.system_updates.message.apply_failed', ['message' => $e->getMessage()])]);
+        }
+
+        try {
+            ProcessSystemUpdateApplyJob::dispatch((int) $queuedRun->id)->onQueue('system-updates');
+        } catch (\Throwable $e) {
+            $this->markDispatchFailed($queuedRun, $e);
+
             return redirect()
                 ->route('admin.system-updates.index')
                 ->withErrors([__('admin.system_updates.message.apply_failed', ['message' => $e->getMessage()])]);
@@ -191,8 +230,22 @@ class SystemUpdateController extends Controller
             ->firstOrFail();
 
         try {
-            $operationGuard->run(fn () => $rollbackService->rollback($backup, $request->user('admin')));
+            $queuedRun = $operationGuard->run(function () use ($operationGuard, $rollbackService, $backup, $request): SystemUpdateRun {
+                $operationGuard->assertNoActiveExecution();
+
+                return $rollbackService->queueRollback($backup, $request->user('admin'));
+            });
         } catch (\Throwable $e) {
+            return redirect()
+                ->route('admin.system-updates.index')
+                ->withErrors([__('admin.system_updates.message.rollback_failed', ['message' => $e->getMessage()])]);
+        }
+
+        try {
+            ProcessSystemUpdateRollbackJob::dispatch((int) $queuedRun->id)->onQueue('system-updates');
+        } catch (\Throwable $e) {
+            $this->markDispatchFailed($queuedRun, $e);
+
             return redirect()
                 ->route('admin.system-updates.index')
                 ->withErrors([__('admin.system_updates.message.rollback_failed', ['message' => $e->getMessage()])]);
@@ -218,8 +271,22 @@ class SystemUpdateController extends Controller
             ->firstOrFail();
 
         try {
-            $operationGuard->run(fn () => $rollbackService->rollbackFile($backup, (string) $validated['path'], $request->user('admin')));
+            $queuedRun = $operationGuard->run(function () use ($operationGuard, $rollbackService, $backup, $validated, $request): SystemUpdateRun {
+                $operationGuard->assertNoActiveExecution();
+
+                return $rollbackService->queueRollbackFile($backup, (string) $validated['path'], $request->user('admin'));
+            });
         } catch (\Throwable $e) {
+            return redirect()
+                ->route('admin.system-updates.backups.show', ['backupUuid' => $backupUuid])
+                ->withErrors([__('admin.system_updates.message.rollback_failed', ['message' => $e->getMessage()])]);
+        }
+
+        try {
+            ProcessSystemUpdateRollbackJob::dispatch((int) $queuedRun->id)->onQueue('system-updates');
+        } catch (\Throwable $e) {
+            $this->markDispatchFailed($queuedRun, $e);
+
             return redirect()
                 ->route('admin.system-updates.backups.show', ['backupUuid' => $backupUuid])
                 ->withErrors([__('admin.system_updates.message.rollback_failed', ['message' => $e->getMessage()])]);
@@ -259,5 +326,25 @@ class SystemUpdateController extends Controller
                 'current_admin_password' => __('admin.system_updates.error.admin_password_invalid'),
             ]);
         }
+    }
+
+    private function markDispatchFailed(SystemUpdateRun $run, \Throwable $e): void
+    {
+        $payload = is_array($run->plan_json) ? $run->plan_json : [];
+        $payload['progress'] = array_merge(is_array($payload['progress'] ?? null) ? $payload['progress'] : [], [[
+            'key' => 'failed',
+            'percent' => 100,
+            'status' => 'failed',
+            'at' => now()->toDateTimeString(),
+        ]]);
+        $payload['progress_percent'] = 100;
+        $payload['progress_status'] = 'failed';
+
+        $run->forceFill([
+            'status' => 'failed',
+            'plan_json' => $payload,
+            'error_message' => $e->getMessage(),
+            'finished_at' => now(),
+        ])->save();
     }
 }

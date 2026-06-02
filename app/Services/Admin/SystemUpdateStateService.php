@@ -33,6 +33,7 @@ class SystemUpdateStateService
             'preflight' => $this->preflightService->build($state, $deployment, $latestPlan),
             'recent_backups' => $this->recentBackups(),
             'recent_runs' => $this->recentRuns(),
+            'has_active_run' => $this->hasActiveRun(),
             'can_plan' => (bool) ($state['is_update_available'] ?? false)
                 && trim((string) ($state['archive_url'] ?? '')) !== '',
             'can_backup' => $latestPlan !== null,
@@ -106,5 +107,17 @@ class SystemUpdateStateService
             ->latest('id')
             ->limit(5)
             ->get();
+    }
+
+    private function hasActiveRun(): bool
+    {
+        if (! Schema::hasTable('system_update_runs')) {
+            return false;
+        }
+
+        return SystemUpdateRun::query()
+            ->whereIn('action', ['apply', 'rollback', 'rollback_file'])
+            ->whereIn('status', ['queued', 'running'])
+            ->exists();
     }
 }

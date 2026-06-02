@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Jobs\ProcessSystemUpdateApplyJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 use ZipArchive;
@@ -839,6 +841,139 @@ class AdminSystemUpdatesPageTest extends TestCase
                 'action' => 'apply',
                 'status' => 'succeeded',
             ]);
+        } finally {
+            File::delete($localPath);
+        }
+    }
+
+    public function test_update_apply_can_be_queued_and_exposed_through_status_endpoint(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+        Queue::fake();
+
+        $admin = $this->createAdmin();
+        $relativePath = 'app/SystemUpdateQueuedApplyFixture.php';
+        $localPath = base_path($relativePath);
+        $oldContents = "<?php\nreturn 'old-queued';\n";
+        $newContents = "<?php\nreturn 'new-queued';\n";
+
+        try {
+            File::put($localPath, $oldContents);
+            $archive = $this->buildReleaseArchive([
+                $relativePath => $newContents,
+            ]);
+
+            config([
+                'geoflow.app_version' => '2.0.2',
+                'geoflow.update_check_enabled' => true,
+                'geoflow.update_metadata_url' => 'https://example.test/version.json',
+                'geoflow.update_archive_apply_enabled' => true,
+                'geoflow.update_execution_enabled' => true,
+            ]);
+
+            Http::fake([
+                'https://example.test/version.json' => Http::response([
+                    'version' => '2.0.3',
+                    'commit' => 'abc123',
+                    'archive_url' => 'https://example.test/geoflow.zip',
+                    'archive_sha256' => hash_file('sha256', $archive),
+                ]),
+                'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
+                    'Content-Type' => 'application/zip',
+                ]),
+            ]);
+
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
+            $planRun = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
+                'run_uuid' => $planRun->run_uuid,
+            ]);
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.apply'), [
+                    'run_uuid' => $planRun->run_uuid,
+                    'current_admin_password' => 'secret-123',
+                ])
+                ->assertRedirect(route('admin.system-updates.index'));
+
+            Queue::assertPushed(ProcessSystemUpdateApplyJob::class);
+            $this->assertSame($oldContents, File::get($localPath));
+            $this->assertDatabaseHas('system_update_runs', [
+                'action' => 'apply',
+                'status' => 'queued',
+            ]);
+
+            $response = $this->actingAs($admin, 'admin')
+                ->getJson(route('admin.system-updates.runs.status'))
+                ->assertOk()
+                ->assertJsonPath('has_active_run', true);
+
+            $this->assertStringContainsString(__('admin.system_updates.progress.queued'), (string) $response->json('html'));
+            $this->assertStringContainsString(__('admin.system_updates.run.status_queued'), (string) $response->json('html'));
+        } finally {
+            File::delete($localPath);
+        }
+    }
+
+    public function test_active_update_run_blocks_duplicate_apply_queueing(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+        Queue::fake();
+
+        $admin = $this->createAdmin();
+        $relativePath = 'app/SystemUpdateDuplicateApplyFixture.php';
+        $localPath = base_path($relativePath);
+
+        try {
+            File::put($localPath, "<?php\nreturn 'old-duplicate';\n");
+            $archive = $this->buildReleaseArchive([
+                $relativePath => "<?php\nreturn 'new-duplicate';\n",
+            ]);
+
+            config([
+                'geoflow.app_version' => '2.0.2',
+                'geoflow.update_check_enabled' => true,
+                'geoflow.update_metadata_url' => 'https://example.test/version.json',
+                'geoflow.update_archive_apply_enabled' => true,
+                'geoflow.update_execution_enabled' => true,
+            ]);
+
+            Http::fake([
+                'https://example.test/version.json' => Http::response([
+                    'version' => '2.0.3',
+                    'commit' => 'abc123',
+                    'archive_url' => 'https://example.test/geoflow.zip',
+                    'archive_sha256' => hash_file('sha256', $archive),
+                ]),
+                'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
+                    'Content-Type' => 'application/zip',
+                ]),
+            ]);
+
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
+            $planRun = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
+                'run_uuid' => $planRun->run_uuid,
+            ]);
+
+            $payload = [
+                'run_uuid' => $planRun->run_uuid,
+                'current_admin_password' => 'secret-123',
+            ];
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.apply'), $payload)
+                ->assertRedirect(route('admin.system-updates.index'));
+
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.system-updates.apply'), $payload)
+                ->assertRedirect(route('admin.system-updates.index'))
+                ->assertSessionHasErrors();
+
+            Queue::assertPushed(ProcessSystemUpdateApplyJob::class, 1);
+            $this->assertSame(1, \App\Models\SystemUpdateRun::query()->where('action', 'apply')->count());
         } finally {
             File::delete($localPath);
         }

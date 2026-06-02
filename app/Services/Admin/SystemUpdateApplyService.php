@@ -20,6 +20,13 @@ class SystemUpdateApplyService
 
     public function apply(SystemUpdateRun $planRun, Admin $admin): SystemUpdateRun
     {
+        $run = $this->queueApply($planRun, $admin);
+
+        return $this->executeQueued($run);
+    }
+
+    public function queueApply(SystemUpdateRun $planRun, Admin $admin): SystemUpdateRun
+    {
         if (! (bool) config('geoflow.update_execution_enabled', false)
             || ! (bool) config('geoflow.update_archive_apply_enabled', false)) {
             throw new RuntimeException(__('admin.system_updates.error.execution_disabled'));
@@ -34,11 +41,32 @@ class SystemUpdateApplyService
             throw new RuntimeException(__('admin.system_updates.error.backup_required'));
         }
 
-        $run = $this->createRun($planRun, $admin);
+        $run = $this->createRun($planRun, $admin, $backup);
+        $this->progressService->record($run, 'queued', 5, 'queued');
+
+        return $run;
+    }
+
+    public function executeQueued(SystemUpdateRun $run): SystemUpdateRun
+    {
+        $run->refresh();
+        if (in_array((string) $run->status, ['succeeded', 'failed'], true)) {
+            return $run;
+        }
+
+        if (! in_array((string) $run->status, ['queued', 'running'], true)) {
+            throw new RuntimeException(__('admin.system_updates.error.run_not_executable'));
+        }
+
+        $run->forceFill([
+            'status' => 'running',
+            'error_message' => null,
+            'started_at' => $run->started_at ?: now(),
+        ])->save();
 
         try {
             $this->progressService->record($run, 'apply_preflight', 20);
-            $report = $this->applyPlan($planRun);
+            $report = $this->applyPlan($run);
             $this->progressService->record($run, 'apply_files', 72);
             $verification = $this->verificationService->verify($run);
             $this->progressService->record($run, 'verify', 92, $verification['status'] === 'fail' ? 'warning' : 'running');
@@ -52,7 +80,6 @@ class SystemUpdateApplyService
             $run->forceFill([
                 'status' => 'succeeded',
                 'plan_json' => $payload,
-                'backup_path' => $backup->backup_path,
                 'log_path' => $logPath,
                 'finished_at' => now(),
             ])->save();
@@ -71,22 +98,27 @@ class SystemUpdateApplyService
         return $run;
     }
 
-    private function createRun(SystemUpdateRun $planRun, Admin $admin): SystemUpdateRun
+    private function createRun(SystemUpdateRun $planRun, Admin $admin, SystemUpdateBackup $backup): SystemUpdateRun
     {
+        $payload = is_array($planRun->plan_json) ? $planRun->plan_json : [];
+        $payload['source_plan_run_id'] = (int) $planRun->id;
+        $payload['source_plan_run_uuid'] = (string) $planRun->run_uuid;
+        $payload['backup_uuid'] = (string) $backup->backup_uuid;
+
         return SystemUpdateRun::query()->create([
             'run_uuid' => (string) Str::uuid(),
             'action' => 'apply',
-            'status' => 'running',
+            'status' => 'queued',
             'current_version' => $planRun->current_version,
             'target_version' => $planRun->target_version,
             'current_commit' => $planRun->current_commit,
             'target_commit' => $planRun->target_commit,
             'deployment_mode' => $planRun->deployment_mode,
             'risk_level' => $planRun->risk_level,
-            'plan_json' => $planRun->plan_json,
+            'plan_json' => $payload,
             'plan_path' => $planRun->plan_path,
+            'backup_path' => $backup->backup_path,
             'started_by_admin_id' => $admin->id,
-            'started_at' => now(),
         ]);
     }
 

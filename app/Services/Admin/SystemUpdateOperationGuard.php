@@ -2,8 +2,10 @@
 
 namespace App\Services\Admin;
 
+use App\Models\SystemUpdateRun;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class SystemUpdateOperationGuard
@@ -24,6 +26,25 @@ class SystemUpdateOperationGuard
             return $callback();
         } finally {
             $lock->release();
+        }
+    }
+
+    public function assertNoActiveExecution(?SystemUpdateRun $except = null): void
+    {
+        if (! Schema::hasTable('system_update_runs')) {
+            return;
+        }
+
+        $query = SystemUpdateRun::query()
+            ->whereIn('action', ['apply', 'rollback', 'rollback_file'])
+            ->whereIn('status', ['queued', 'running']);
+
+        if ($except) {
+            $query->where($except->getKeyName(), '!=', $except->getKey());
+        }
+
+        if ($query->exists()) {
+            throw new RuntimeException(__('admin.system_updates.error.operation_in_progress'));
         }
     }
 

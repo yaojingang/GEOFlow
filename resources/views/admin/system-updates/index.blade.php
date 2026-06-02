@@ -10,6 +10,7 @@
         $preflightItems = is_array($preflight['items'] ?? null) ? $preflight['items'] : [];
         $recentBackups = $summary['recent_backups'] ?? collect();
         $recentRuns = $summary['recent_runs'] ?? collect();
+        $hasActiveUpdateRun = !empty($summary['has_active_run']);
         $planJson = $latestPlan && is_array($latestPlan->plan_json) ? $latestPlan->plan_json : [];
         $planCounts = is_array($planJson['summary'] ?? null) ? $planJson['summary'] : [];
         $planFlags = is_array($planJson['flags'] ?? null) ? $planJson['flags'] : [];
@@ -55,22 +56,6 @@
             'required' => 'border-red-200 bg-red-50 text-red-700',
             'deployment' => 'border-blue-200 bg-blue-50 text-blue-700',
             'recommended' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
-        ];
-        $runStatusClasses = [
-            'running' => 'border-blue-200 bg-blue-50 text-blue-700',
-            'succeeded' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
-            'failed' => 'border-red-200 bg-red-50 text-red-700',
-            'queued' => 'border-slate-200 bg-slate-50 text-slate-600',
-        ];
-        $verificationStatusClasses = [
-            'pass' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
-            'warn' => 'border-amber-200 bg-amber-50 text-amber-700',
-            'fail' => 'border-red-200 bg-red-50 text-red-700',
-        ];
-        $verificationItemClasses = [
-            'pass' => 'bg-emerald-50 text-emerald-700',
-            'warn' => 'bg-amber-50 text-amber-700',
-            'fail' => 'bg-red-50 text-red-700',
         ];
         $githubUrl = (string) ($links['github'] ?? 'https://github.com/yaojingang/GEOFlow');
         $changelogLinks = is_array($links['changelog'] ?? null) ? $links['changelog'] : [];
@@ -242,101 +227,8 @@
                     </span>
                 </div>
             </div>
-            <div class="divide-y divide-gray-100">
-                @forelse($recentRuns as $run)
-                    @php($runPayload = is_array($run->plan_json) ? $run->plan_json : [])
-                    @php($progress = is_array($runPayload['progress'] ?? null) ? $runPayload['progress'] : [])
-                    @php($latestProgress = $progress !== [] ? end($progress) : null)
-                    @php($progressPercent = (int) ($runPayload['progress_percent'] ?? ($latestProgress['percent'] ?? 0)))
-                    @php($runStatus = (string) ($run->status ?? 'queued'))
-                    @php($runStatusClass = $runStatusClasses[$runStatus] ?? $runStatusClasses['queued'])
-                    @php($verification = is_array($runPayload['verification'] ?? null) ? $runPayload['verification'] : [])
-                    @php($verificationStatus = (string) ($verification['status'] ?? 'warn'))
-                    @php($verificationClass = $verificationStatusClasses[$verificationStatus] ?? $verificationStatusClasses['warn'])
-                    @php($verificationItems = is_array($verification['items'] ?? null) ? $verification['items'] : [])
-                    <div class="px-6 py-5">
-                        <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                            <div class="min-w-0 flex-1">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="font-semibold text-gray-900">{{ __('admin.system_updates.run.action_'.$run->action) }}</span>
-                                    <span class="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold {{ $runStatusClass }}">
-                                        {{ __('admin.system_updates.run.status_'.$runStatus) }}
-                                    </span>
-                                    @if($verification)
-                                        <span class="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold {{ $verificationClass }}">
-                                            {{ __('admin.system_updates.verification.status_'.$verificationStatus) }}
-                                        </span>
-                                    @endif
-                                </div>
-                                <div class="mt-2 grid gap-2 text-xs text-gray-500 sm:grid-cols-2 xl:grid-cols-4">
-                                    <div>
-                                        {{ __('admin.system_updates.label.target_version') }}：
-                                        <span class="font-semibold text-gray-700">{{ filled($run->target_version) ? 'v'.$run->target_version : __('admin.common.none') }}</span>
-                                    </div>
-                                    <div>
-                                        {{ __('admin.system_updates.label.started_at') }}：
-                                        <span class="text-gray-700">{{ optional($run->started_at)->format('Y-m-d H:i:s') ?: __('admin.common.none') }}</span>
-                                    </div>
-                                    <div>
-                                        {{ __('admin.system_updates.label.finished_at') }}：
-                                        <span class="text-gray-700">{{ optional($run->finished_at)->format('Y-m-d H:i:s') ?: __('admin.common.none') }}</span>
-                                    </div>
-                                    <div>
-                                        {{ __('admin.system_updates.label.created_by') }}：
-                                        <span class="text-gray-700">{{ optional($run->startedBy)->display_name ?: optional($run->startedBy)->username ?: __('admin.common.none') }}</span>
-                                    </div>
-                                </div>
-                                <div class="mt-4">
-                                    <div class="mb-1 flex items-center justify-between text-xs text-gray-500">
-                                        <span>
-                                            {{ is_array($latestProgress) ? __('admin.system_updates.progress.'.(string) ($latestProgress['key'] ?? 'complete')) : __('admin.common.none') }}
-                                        </span>
-                                        <span class="font-semibold text-gray-700">{{ $progressPercent }}%</span>
-                                    </div>
-                                    <div class="h-2 overflow-hidden rounded-full bg-gray-100">
-                                        <div class="h-full rounded-full {{ $runStatus === 'failed' ? 'bg-red-500' : 'bg-blue-600' }}" style="width: {{ max(0, min(100, $progressPercent)) }}%"></div>
-                                    </div>
-                                    @if($run->error_message)
-                                        <p class="mt-2 text-xs leading-5 text-red-600">{{ $run->error_message }}</p>
-                                    @endif
-                                </div>
-                            </div>
-                            <div class="w-full rounded-lg border border-gray-100 bg-gray-50 p-4 xl:w-[360px]">
-                                <div class="flex items-center justify-between gap-3">
-                                    <div class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.verification.title') }}</div>
-                                    @if($verification)
-                                        <div class="flex gap-2 text-xs">
-                                            <span class="text-emerald-700">{{ __('admin.system_updates.preflight.pass') }} {{ (int) ($verification['pass'] ?? 0) }}</span>
-                                            <span class="text-amber-700">{{ __('admin.system_updates.preflight.warn') }} {{ (int) ($verification['warn'] ?? 0) }}</span>
-                                            <span class="text-red-700">{{ __('admin.system_updates.preflight.fail') }} {{ (int) ($verification['fail'] ?? 0) }}</span>
-                                        </div>
-                                    @endif
-                                </div>
-                                @if($verification)
-                                    <div class="mt-2 text-xs text-gray-500">
-                                        {{ __('admin.system_updates.label.verified_at') }}：
-                                        <span class="text-gray-700">{{ (string) ($verification['verified_at'] ?? __('admin.common.none')) }}</span>
-                                    </div>
-                                    <div class="mt-3 flex flex-wrap gap-2">
-                                        @foreach(array_slice($verificationItems, 0, 6) as $item)
-                                            @php($itemStatus = (string) ($item['status'] ?? 'warn'))
-                                            @php($itemClass = $verificationItemClasses[$itemStatus] ?? $verificationItemClasses['warn'])
-                                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium {{ $itemClass }}">
-                                                {{ __('admin.system_updates.verification.'.(string) ($item['key'] ?? 'database_available')) }}
-                                            </span>
-                                        @endforeach
-                                    </div>
-                                @else
-                                    <p class="mt-2 text-sm text-gray-500">{{ __('admin.common.none') }}</p>
-                                @endif
-                            </div>
-                        </div>
-                    </div>
-                @empty
-                    <div class="px-6 py-10 text-center text-sm text-gray-500">
-                        {{ __('admin.system_updates.empty.no_recent_runs') }}
-                    </div>
-                @endforelse
+            <div id="system-update-runs" data-status-url="{{ route('admin.system-updates.runs.status', [], false) }}" data-has-active-run="{{ $hasActiveUpdateRun ? '1' : '0' }}">
+                @include('admin.system-updates.partials.recent-runs', ['recentRuns' => $recentRuns])
             </div>
         </section>
 
@@ -350,7 +242,7 @@
                         </div>
                         <form method="POST" action="{{ route('admin.system-updates.plan') }}">
                             @csrf
-                            <button type="submit" @disabled(empty($summary['can_plan'])) class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                            <button type="submit" @disabled(empty($summary['can_plan']) || $hasActiveUpdateRun) class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
                                 <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
                                 {{ __('admin.system_updates.button.generate_plan') }}
                             </button>
@@ -481,16 +373,16 @@
                                     </p>
                                 </div>
                                 @if($executionReady)
-                                    <form method="POST" action="{{ route('admin.system-updates.apply') }}" class="flex flex-wrap items-end gap-2" data-confirm-message="{{ __('admin.system_updates.confirm.apply_update') }}" onsubmit="return confirm(this.dataset.confirmMessage)">
+                                    <form method="POST" action="{{ route('admin.system-updates.apply') }}" class="flex flex-wrap items-end gap-2" data-system-update-operation-form data-confirm-message="{{ __('admin.system_updates.confirm.apply_update') }}">
                                         @csrf
                                         <input type="hidden" name="run_uuid" value="{{ $latestPlan->run_uuid }}">
                                         @if($passwordRequired)
                                             <label class="block">
                                                 <span class="sr-only">{{ __('admin.system_updates.label.current_admin_password') }}</span>
-                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($hasActiveUpdateRun) class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
                                             </label>
                                         @endif
-                                        <button type="submit" class="inline-flex items-center rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700">
+                                        <button type="submit" @disabled($hasActiveUpdateRun) class="inline-flex items-center rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-gray-300">
                                             <i data-lucide="rocket" class="mr-2 h-4 w-4"></i>
                                             {{ __('admin.system_updates.button.apply_update') }}
                                         </button>
@@ -543,7 +435,7 @@
                             <form method="POST" action="{{ route('admin.system-updates.backup') }}">
                                 @csrf
                                 <input type="hidden" name="run_uuid" value="{{ $latestPlan->run_uuid }}">
-                                <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+                                <button type="submit" @disabled($hasActiveUpdateRun) class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
                                     <i data-lucide="archive" class="mr-2 h-4 w-4"></i>
                                     {{ __('admin.system_updates.button.create_backup') }}
                                 </button>
@@ -575,15 +467,15 @@
                                     {{ __('admin.system_updates.button.view_backup_detail') }}
                                 </a>
                                 @if($rollbackReady)
-                                    <form method="POST" action="{{ route('admin.system-updates.rollback', ['backupUuid' => $backup->backup_uuid]) }}" class="flex flex-wrap items-end gap-2" data-confirm-message="{{ __('admin.system_updates.confirm.rollback_backup') }}" onsubmit="return confirm(this.dataset.confirmMessage)">
+                                    <form method="POST" action="{{ route('admin.system-updates.rollback', ['backupUuid' => $backup->backup_uuid]) }}" class="flex flex-wrap items-end gap-2" data-system-update-operation-form data-confirm-message="{{ __('admin.system_updates.confirm.rollback_backup') }}">
                                         @csrf
                                         @if($passwordRequired)
                                             <label class="block">
                                                 <span class="sr-only">{{ __('admin.system_updates.label.current_admin_password') }}</span>
-                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($hasActiveUpdateRun) class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
                                             </label>
                                         @endif
-                                        <button type="submit" class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100">
+                                        <button type="submit" @disabled($hasActiveUpdateRun) class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400">
                                             <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
                                             {{ __('admin.system_updates.button.rollback_backup') }}
                                         </button>
@@ -648,5 +540,73 @@
                 }
             });
         });
+
+        document.querySelectorAll('[data-system-update-operation-form]').forEach((form) => {
+            form.addEventListener('submit', (event) => {
+                const message = form.dataset.confirmMessage || '';
+                if (message !== '' && !window.confirm(message)) {
+                    event.preventDefault();
+                    return;
+                }
+
+                window.setTimeout(() => {
+                    form.querySelectorAll('button').forEach((control) => {
+                        control.disabled = true;
+                    });
+                }, 0);
+            });
+        });
+
+        const runsContainer = document.getElementById('system-update-runs');
+        if (runsContainer) {
+            const statusUrl = runsContainer.dataset.statusUrl || '';
+            let pollTimer = null;
+            let idleRefreshes = 0;
+
+            const refreshRuns = async () => {
+                if (statusUrl === '') {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(statusUrl, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+
+                    if (!response.ok) {
+                        return;
+                    }
+
+                    const payload = await response.json();
+                    if (typeof payload.html === 'string') {
+                        runsContainer.innerHTML = payload.html;
+                    }
+
+                    if (payload.has_active_run) {
+                        idleRefreshes = 0;
+                        return;
+                    }
+
+                    idleRefreshes += 1;
+                    if (pollTimer && idleRefreshes >= 2) {
+                        window.clearInterval(pollTimer);
+                        pollTimer = null;
+                    }
+                } catch (error) {
+                    if (pollTimer) {
+                        window.clearInterval(pollTimer);
+                        pollTimer = null;
+                    }
+                }
+            };
+
+            if (runsContainer.dataset.hasActiveRun === '1') {
+                pollTimer = window.setInterval(refreshRuns, 3000);
+                window.setTimeout(refreshRuns, 600);
+            }
+        }
     </script>
 @endpush

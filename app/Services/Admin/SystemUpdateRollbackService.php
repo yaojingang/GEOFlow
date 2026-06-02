@@ -21,32 +21,78 @@ class SystemUpdateRollbackService
 
     public function rollback(SystemUpdateBackup $backup, Admin $admin): SystemUpdateRun
     {
+        $run = $this->queueRollback($backup, $admin);
+
+        return $this->executeQueued($run);
+    }
+
+    public function rollbackFile(SystemUpdateBackup $backup, string $relativePath, Admin $admin): SystemUpdateRun
+    {
+        $run = $this->queueRollbackFile($backup, $relativePath, $admin);
+
+        return $this->executeQueued($run);
+    }
+
+    public function queueRollback(SystemUpdateBackup $backup, Admin $admin): SystemUpdateRun
+    {
         if (! (bool) config('geoflow.update_execution_enabled', false)
             || ! (bool) config('geoflow.update_rollback_enabled', false)) {
             throw new RuntimeException(__('admin.system_updates.error.rollback_disabled'));
         }
 
-        $run = SystemUpdateRun::query()->create([
-            'run_uuid' => (string) Str::uuid(),
-            'action' => 'rollback',
+        $run = $this->createQueuedRun($backup, $admin, 'rollback');
+        $this->progressService->record($run, 'queued', 5, 'queued');
+
+        return $run;
+    }
+
+    public function queueRollbackFile(SystemUpdateBackup $backup, string $relativePath, Admin $admin): SystemUpdateRun
+    {
+        if (! (bool) config('geoflow.update_execution_enabled', false)
+            || ! (bool) config('geoflow.update_rollback_enabled', false)) {
+            throw new RuntimeException(__('admin.system_updates.error.rollback_disabled'));
+        }
+
+        $relativePath = $this->pathGuard->assertAllowedPath($relativePath);
+        $run = $this->createQueuedRun($backup, $admin, 'rollback_file', $relativePath);
+        $this->progressService->record($run, 'queued', 5, 'queued');
+
+        return $run;
+    }
+
+    public function executeQueued(SystemUpdateRun $run): SystemUpdateRun
+    {
+        $run->refresh();
+        if (in_array((string) $run->status, ['succeeded', 'failed'], true)) {
+            return $run;
+        }
+
+        if (! in_array((string) $run->status, ['queued', 'running'], true)) {
+            throw new RuntimeException(__('admin.system_updates.error.run_not_executable'));
+        }
+
+        $payload = is_array($run->plan_json) ? $run->plan_json : [];
+        $backupUuid = (string) ($payload['backup_uuid'] ?? '');
+        $backup = SystemUpdateBackup::query()->where('backup_uuid', $backupUuid)->first();
+        if (! $backup) {
+            throw new RuntimeException(__('admin.system_updates.error.backup_manifest_missing'));
+        }
+
+        $filePath = (string) ($payload['file_path'] ?? '');
+        $onlyPaths = $run->action === 'rollback_file' ? [$this->pathGuard->assertAllowedPath($filePath)] : null;
+
+        $run->forceFill([
             'status' => 'running',
-            'current_version' => $backup->to_version,
-            'target_version' => $backup->from_version,
-            'current_commit' => $backup->to_commit,
-            'target_commit' => $backup->from_commit,
-            'deployment_mode' => optional($backup->run)->deployment_mode,
-            'risk_level' => optional($backup->run)->risk_level,
-            'backup_path' => $backup->backup_path,
-            'started_by_admin_id' => $admin->id,
-            'started_at' => now(),
-        ]);
+            'error_message' => null,
+            'started_at' => $run->started_at ?: now(),
+        ])->save();
 
         try {
             $this->progressService->record($run, 'rollback_preflight', 20);
             $manifest = $this->readManifest($backup);
             $restoreRoot = $this->extractBackupArchive($backup, $run->run_uuid);
             $this->progressService->record($run, 'rollback_prepare', 45);
-            $report = $this->restoreFiles($manifest, $restoreRoot);
+            $report = $this->restoreFiles($manifest, $restoreRoot, $onlyPaths);
             $this->progressService->record($run, 'rollback_files', 72);
             $verification = $this->verificationService->verify($run);
             $this->progressService->record($run, 'verify', 92, $verification['status'] === 'fail' ? 'warning' : 'running');
@@ -65,7 +111,6 @@ class SystemUpdateRollbackService
             ])->save();
         } catch (\Throwable $e) {
             $this->progressService->record($run, 'failed', 100, 'failed');
-
             $run->forceFill([
                 'status' => 'failed',
                 'error_message' => $e->getMessage(),
@@ -78,65 +123,30 @@ class SystemUpdateRollbackService
         return $run;
     }
 
-    public function rollbackFile(SystemUpdateBackup $backup, string $relativePath, Admin $admin): SystemUpdateRun
+    private function createQueuedRun(SystemUpdateBackup $backup, Admin $admin, string $action, ?string $filePath = null): SystemUpdateRun
     {
-        if (! (bool) config('geoflow.update_execution_enabled', false)
-            || ! (bool) config('geoflow.update_rollback_enabled', false)) {
-            throw new RuntimeException(__('admin.system_updates.error.rollback_disabled'));
+        $payload = [
+            'backup_uuid' => (string) $backup->backup_uuid,
+        ];
+
+        if ($filePath !== null) {
+            $payload['file_path'] = $filePath;
         }
 
-        $relativePath = $this->pathGuard->assertAllowedPath($relativePath);
-        $run = SystemUpdateRun::query()->create([
+        return SystemUpdateRun::query()->create([
             'run_uuid' => (string) Str::uuid(),
-            'action' => 'rollback_file',
-            'status' => 'running',
+            'action' => $action,
+            'status' => 'queued',
             'current_version' => $backup->to_version,
             'target_version' => $backup->from_version,
             'current_commit' => $backup->to_commit,
             'target_commit' => $backup->from_commit,
             'deployment_mode' => optional($backup->run)->deployment_mode,
             'risk_level' => optional($backup->run)->risk_level,
+            'plan_json' => $payload,
             'backup_path' => $backup->backup_path,
             'started_by_admin_id' => $admin->id,
-            'started_at' => now(),
         ]);
-
-        try {
-            $this->progressService->record($run, 'rollback_preflight', 20);
-            $manifest = $this->readManifest($backup);
-            $restoreRoot = $this->extractBackupArchive($backup, $run->run_uuid);
-            $this->progressService->record($run, 'rollback_prepare', 45);
-            $report = $this->restoreFiles($manifest, $restoreRoot, [$relativePath]);
-            $this->progressService->record($run, 'rollback_files', 72);
-            $verification = $this->verificationService->verify($run);
-            $this->progressService->record($run, 'verify', 92, $verification['status'] === 'fail' ? 'warning' : 'running');
-            $logPath = $this->writeLog($run->run_uuid, $report);
-            $this->progressService->record($run, 'complete', 100, 'succeeded');
-
-            $payload = is_array($run->plan_json) ? $run->plan_json : [];
-            $payload['file_path'] = $relativePath;
-            $payload['rollback_report'] = $report;
-            $payload['verification'] = $verification;
-
-            $run->forceFill([
-                'status' => 'succeeded',
-                'plan_json' => $payload,
-                'log_path' => $logPath,
-                'finished_at' => now(),
-            ])->save();
-        } catch (\Throwable $e) {
-            $this->progressService->record($run, 'failed', 100, 'failed');
-
-            $run->forceFill([
-                'status' => 'failed',
-                'error_message' => $e->getMessage(),
-                'finished_at' => now(),
-            ])->save();
-
-            throw $e;
-        }
-
-        return $run;
     }
 
     /**
