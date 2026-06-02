@@ -218,6 +218,9 @@ class AdminAiModelsPageTest extends TestCase
             ->get(route('admin.ai-models.index'));
 
         $response->assertOk()
+            ->assertSee('MiniMax-M3', false)
+            ->assertSee('MiniMax M2.7', false)
+            ->assertSee('MiniMax-M2.7-highspeed', false)
             ->assertSee('Gemini', false)
             ->assertSee('Gemini Embedding', false)
             ->assertSee('Doubao Embedding', false)

@@ -57,6 +57,12 @@ class OutboundHttpProxyTest extends TestCase
         $this->assertSame([], OutboundHttpProxy::httpClientOptionsForUrl('https://example.com/geoflow-agent/v1/health'));
     }
 
+    public function test_default_proxy_hosts_include_current_minimax_domain(): void
+    {
+        $this->assertContains('api.minimax.io', config('geoflow.outbound_proxy_hosts'));
+        $this->assertContains('api.minimaxi.com', config('geoflow.outbound_proxy_hosts'));
+    }
+
     public function test_it_can_apply_proxy_to_all_hosts_when_configured(): void
     {
         config([
