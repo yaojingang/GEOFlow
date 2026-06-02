@@ -1032,7 +1032,7 @@ return [
         'modal_edit' => 'Edit AI Model',
         'quick_chat' => 'Quick Fill (Chat Models)',
         'quick_embedding' => 'Quick Fill (Embedding Models)',
-        'quick_help' => 'Click to auto-fill common provider settings. Gemini uses the native Google v1beta API; other chat models resolve chat endpoints by provider rules, and embedding models resolve /v1/embeddings or provider-specific /embeddings. Volcengine Ark chat models typically use an inference endpoint ID such as ep-xxxx as the model ID.',
+        'quick_help' => 'Click to auto-fill common provider settings. Gemini uses the native Google v1beta API; other chat models resolve chat endpoints by provider rules, and embedding models resolve /v1/embeddings or provider-specific /embeddings. Volcengine Ark can use a model name or inference endpoint ID such as ep-xxxx as the model ID.',
         'gemini_embedding_notice' => 'Gemini Embedding 2 automatically applies retrieval query/document prefixes; this system does not support gemini-embedding-001 task_type configuration.',
         'field_name' => 'Model Name *',
         'field_version' => 'Model Version',

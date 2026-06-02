@@ -235,6 +235,7 @@
                         <div class="flex flex-wrap gap-2">
                             <button type="button" onclick="fillPreset('openai_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">OpenAI Embedding</button>
                             <button type="button" onclick="fillPreset('gemini_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Gemini Embedding</button>
+                            <button type="button" onclick="fillPreset('volcengine_ark_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Doubao Embedding</button>
                             <button type="button" onclick="fillPreset('zhipu_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Zhipu Embedding</button>
                         </div>
                         <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.quick_help') }}</p>
@@ -342,6 +343,7 @@
             volcengine_ark: {name: '火山方舟 Chat', version: 'v3', model_id: '', api_url: 'https://ark.cn-beijing.volces.com/api/v3', model_type: 'chat'},
             openai_embedding: {name: 'OpenAI Embedding 3 Small', version: '', model_id: 'text-embedding-3-small', api_url: 'https://api.openai.com', model_type: 'embedding'},
             gemini_embedding: {name: 'Gemini Embedding 2', version: 'v1beta', model_id: 'gemini-embedding-2', api_url: 'https://generativelanguage.googleapis.com/v1beta', model_type: 'embedding'},
+            volcengine_ark_embedding: {name: 'Doubao Embedding', version: 'v3', model_id: 'doubao-embedding-text-240515', api_url: 'https://ark.cn-beijing.volces.com/api/v3', model_type: 'embedding'},
             zhipu_embedding: {name: '智谱 Embedding-3', version: 'v4', model_id: 'embedding-3', api_url: 'https://open.bigmodel.cn/api/paas/v4', model_type: 'embedding'},
         };
 

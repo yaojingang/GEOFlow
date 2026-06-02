@@ -650,6 +650,47 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             && ! isset($request['taskType']));
     }
 
+    public function test_sync_uses_volcengine_doubao_embedding_as_openai_compatible_provider(): void
+    {
+        Http::fake([
+            'https://ark.cn-beijing.volces.com/api/v3/embeddings' => Http::response([
+                'data' => [
+                    ['embedding' => [0.21, 0.32, 0.43]],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createEmbeddingModel([
+            'name' => 'Doubao Embedding',
+            'model_id' => 'doubao-embedding-text-240515',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '火山向量知识库',
+            'description' => '',
+            'content' => 'GEOFlow 支持火山方舟 Doubao Embedding。',
+            'character_count' => 35,
+            'file_type' => 'markdown',
+            'word_count' => 35,
+        ]);
+
+        app(KnowledgeChunkSyncService::class)->sync(
+            (int) $knowledgeBase->id,
+            'GEOFlow 支持火山方舟 Doubao Embedding，适合国内环境下的知识库向量化。'
+        );
+
+        $chunk = $knowledgeBase->chunks()->firstOrFail();
+
+        $this->assertSame((int) $model->id, (int) $chunk->embedding_model_id);
+        $this->assertSame('ark.cn-beijing.volces.com', (string) $chunk->embedding_provider);
+        $this->assertSame([0.21, 0.32, 0.43], json_decode((string) $chunk->embedding_json, true));
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ark.cn-beijing.volces.com/api/v3/embeddings'
+            && $request->hasHeader('Authorization', 'Bearer test-api-key')
+            && $request['model'] === 'doubao-embedding-text-240515'
+            && ($request['input'][0] ?? '') === 'GEOFlow 支持火山方舟 Doubao Embedding，适合国内环境下的知识库向量化。');
+    }
+
     public function test_sync_splits_embedding_requests_into_configured_batch_size(): void
     {
         config(['geoflow.embedding_batch_size' => 3]);

@@ -139,6 +139,11 @@ class OpenAiRuntimeProviderTest extends TestCase
             'openai',
             OpenAiRuntimeProvider::resolveEmbeddingDriver('https://open.bigmodel.cn/api/paas/v4', 'embedding-3')
         );
+
+        $this->assertSame(
+            'openai',
+            OpenAiRuntimeProvider::resolveEmbeddingDriver('https://ark.cn-beijing.volces.com/api/v3', 'doubao-embedding-text-240515')
+        );
     }
 
     public function test_it_resolves_chat_driver_for_deepseek(): void

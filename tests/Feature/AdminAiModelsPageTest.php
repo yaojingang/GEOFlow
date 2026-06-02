@@ -77,6 +77,37 @@ class AdminAiModelsPageTest extends TestCase
             && $request['input'] === 'GEOFlow embedding connection test');
     }
 
+    public function test_admin_can_test_volcengine_embedding_model_connection(): void
+    {
+        Http::fake([
+            'https://ark.cn-beijing.volces.com/api/v3/embeddings' => Http::response([
+                'data' => [
+                    ['embedding' => [0.11, 0.22, 0.33]],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createAiModel('embedding', [
+            'name' => 'Doubao Embedding',
+            'model_id' => 'doubao-embedding-text-240515',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.model_type', 'embedding')
+            ->assertJsonPath('meta.http_status', 200);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ark.cn-beijing.volces.com/api/v3/embeddings'
+            && $request->hasHeader('Authorization', 'Bearer test-api-key')
+            && $request['model'] === 'doubao-embedding-text-240515'
+            && $request['input'] === 'GEOFlow embedding connection test');
+    }
+
     public function test_admin_can_test_gemini_chat_model_connection(): void
     {
         Http::fake([
@@ -181,7 +212,7 @@ class AdminAiModelsPageTest extends TestCase
             && ($request['generationConfig']['maxOutputTokens'] ?? 0) >= 64);
     }
 
-    public function test_admin_models_page_shows_gemini_quick_fill_and_embedding_notice(): void
+    public function test_admin_models_page_shows_embedding_quick_fill_presets_and_notice(): void
     {
         $response = $this->actingAs($this->createAdmin(), 'admin')
             ->get(route('admin.ai-models.index'));
@@ -189,6 +220,8 @@ class AdminAiModelsPageTest extends TestCase
         $response->assertOk()
             ->assertSee('Gemini', false)
             ->assertSee('Gemini Embedding', false)
+            ->assertSee('Doubao Embedding', false)
+            ->assertSee('doubao-embedding-text-240515', false)
             ->assertSee(__('admin.ai_models.gemini_embedding_notice'));
     }
 

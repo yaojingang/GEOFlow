@@ -1032,7 +1032,7 @@ return [
         'modal_edit' => '编辑AI模型',
         'quick_chat' => '服务商快速填充（聊天模型）',
         'quick_embedding' => '服务商快速填充（Embedding 模型）',
-        'quick_help' => '点击自动填充常见服务商配置。Gemini 使用 Google 原生 v1beta 接口；其他聊天模型会按 provider 规则补全聊天接口，embedding 模型会补全 /v1/embeddings 或版本化 provider 的 /embeddings。火山方舟聊天通常使用推理接入点 ID（如 ep-xxxx）作为模型 ID。',
+        'quick_help' => '点击自动填充常见服务商配置。Gemini 使用 Google 原生 v1beta 接口；其他聊天模型会按 provider 规则补全聊天接口，embedding 模型会补全 /v1/embeddings 或版本化 provider 的 /embeddings。火山方舟可使用模型名或推理接入点 ID（如 ep-xxxx）作为模型 ID。',
         'gemini_embedding_notice' => 'Gemini Embedding 2 会按检索最佳实践自动加入 query/document 前缀；本系统不支持 gemini-embedding-001 的 task_type 配置。',
         'field_name' => '模型名称 *',
         'field_version' => '模型版本',
