@@ -11,6 +11,7 @@ class SystemUpdateStateService
     public function __construct(
         private readonly AdminUpdateMetadataService $metadataService,
         private readonly SystemUpdateDeploymentDetector $deploymentDetector,
+        private readonly SystemUpdateDeploymentDiagnosticsService $deploymentDiagnosticsService,
         private readonly SystemUpdatePreflightService $preflightService,
         private readonly SystemUpdateRunHealthService $runHealthService,
     ) {}
@@ -30,6 +31,7 @@ class SystemUpdateStateService
             'state' => $state,
             'links' => $links,
             'deployment' => $deployment,
+            'deployment_diagnostics' => $this->deploymentDiagnosticsService->build($deployment),
             'latest_plan' => $latestPlan,
             'preflight' => $this->preflightService->build($state, $deployment, $latestPlan),
             'recent_backups' => $this->recentBackups(),

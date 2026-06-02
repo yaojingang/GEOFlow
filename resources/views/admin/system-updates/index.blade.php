@@ -5,6 +5,12 @@
         $state = is_array($summary['state'] ?? null) ? $summary['state'] : [];
         $links = is_array($summary['links'] ?? null) ? $summary['links'] : [];
         $deployment = is_array($summary['deployment'] ?? null) ? $summary['deployment'] : [];
+        $deploymentDiagnostics = is_array($summary['deployment_diagnostics'] ?? null) ? $summary['deployment_diagnostics'] : [];
+        $diagnosticItems = is_array($deploymentDiagnostics['items'] ?? null) ? $deploymentDiagnostics['items'] : [];
+        $diagnosticFacts = is_array($deploymentDiagnostics['facts'] ?? null) ? $deploymentDiagnostics['facts'] : [];
+        $diagnosticCommands = is_array($deploymentDiagnostics['commands'] ?? null) ? $deploymentDiagnostics['commands'] : [];
+        $diagnosticLog = is_array($deploymentDiagnostics['log'] ?? null) ? $deploymentDiagnostics['log'] : [];
+        $diagnosticDocs = is_array($deploymentDiagnostics['docs'] ?? null) ? $deploymentDiagnostics['docs'] : [];
         $latestPlan = $summary['latest_plan'] ?? null;
         $preflight = is_array($summary['preflight'] ?? null) ? $summary['preflight'] : [];
         $preflightItems = is_array($preflight['items'] ?? null) ? $preflight['items'] : [];
@@ -47,6 +53,19 @@
             'warn' => 'bg-amber-50 text-amber-700 border-amber-200',
             'pass' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
             default => 'bg-slate-50 text-slate-600 border-slate-200',
+        };
+        $diagnosticStatus = (string) ($deploymentDiagnostics['status'] ?? 'info');
+        $diagnosticClass = match ($diagnosticStatus) {
+            'fail' => 'bg-red-50 text-red-700 border-red-200',
+            'warn' => 'bg-amber-50 text-amber-700 border-amber-200',
+            'pass' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            default => 'bg-slate-50 text-slate-600 border-slate-200',
+        };
+        $diagnosticLogStatus = (string) ($diagnosticLog['status'] ?? 'info');
+        $diagnosticLogClass = match ($diagnosticLogStatus) {
+            'warn' => 'bg-amber-50 text-amber-700',
+            'pass' => 'bg-emerald-50 text-emerald-700',
+            default => 'bg-slate-50 text-slate-600',
         };
         $preflightItemClasses = [
             'pass' => 'border-emerald-100 bg-emerald-50 text-emerald-700',
@@ -171,6 +190,117 @@
                 </div>
             </section>
         </div>
+
+        <section class="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div class="border-b border-gray-100 px-6 py-5">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.deployment_diagnostics') }}</h2>
+                        <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.deployment_diagnostics_desc') }}</p>
+                    </div>
+                    <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold {{ $diagnosticClass }}">
+                        {{ __('admin.system_updates.diagnostics.status_'.$diagnosticStatus) }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="grid gap-6 px-6 py-6 xl:grid-cols-[1fr_.95fr]">
+                <div class="space-y-5">
+                    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        @foreach($diagnosticItems as $item)
+                            @php($itemStatus = (string) ($item['status'] ?? 'info'))
+                            @php($itemClass = $preflightItemClasses[$itemStatus] ?? $preflightItemClasses['info'])
+                            <div class="rounded-lg border p-4 {{ $itemClass }}">
+                                <div class="flex items-start gap-3">
+                                    <i data-lucide="{{ $itemStatus === 'pass' ? 'check-circle-2' : ($itemStatus === 'fail' ? 'x-circle' : ($itemStatus === 'warn' ? 'alert-triangle' : 'info')) }}" class="mt-0.5 h-4 w-4 shrink-0"></i>
+                                    <div>
+                                        <div class="text-sm font-semibold">{{ (string) ($item['title'] ?? '') }}</div>
+                                        <p class="mt-1 text-xs leading-5 opacity-90">{{ (string) ($item['message'] ?? '') }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div class="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                        <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.diagnostics.facts_title') }}</h3>
+                        <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                            @foreach($diagnosticFacts as $fact)
+                                <div class="min-w-0 rounded-md bg-white px-3 py-2 text-sm">
+                                    <div class="text-xs font-medium text-gray-500">{{ (string) ($fact['label'] ?? '') }}</div>
+                                    <div class="mt-1 truncate font-semibold text-gray-900">{{ (string) ($fact['value'] ?? __('admin.common.none')) }}</div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.diagnostics.log_title') }}</h3>
+                                <p class="mt-1 text-xs leading-5 text-gray-500">{{ __('admin.system_updates.diagnostics.log_desc', ['path' => (string) ($diagnosticLog['path'] ?? '')]) }}</p>
+                            </div>
+                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $diagnosticLogClass }}">
+                                {{ __('admin.system_updates.diagnostics.log_status_'.$diagnosticLogStatus) }}
+                            </span>
+                        </div>
+                        @if(!empty($diagnosticLog['lines']) && is_array($diagnosticLog['lines']))
+                            <div class="mt-4 space-y-2">
+                                @foreach($diagnosticLog['lines'] as $line)
+                                    <div class="rounded-md bg-white px-3 py-2 font-mono text-xs leading-5 text-gray-700">{{ (string) $line }}</div>
+                                @endforeach
+                            </div>
+                        @else
+                            <div class="mt-4 rounded-md bg-white px-3 py-3 text-sm text-gray-500">{{ __('admin.system_updates.diagnostics.log_empty') }}</div>
+                        @endif
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-semibold text-blue-900">{{ __('admin.system_updates.diagnostics.docs_title') }}</h3>
+                                <p class="mt-1 text-xs leading-5 text-blue-700">{{ __('admin.system_updates.diagnostics.docs_desc') }}</p>
+                            </div>
+                            <a href="{{ (string) ($diagnosticDocs['url'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/deployment/DEPLOYMENT.md') }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">
+                                <i data-lucide="external-link" class="mr-1.5 h-3.5 w-3.5"></i>
+                                {{ __('admin.system_updates.diagnostics.open_docs') }}
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.diagnostics.commands_title') }}</h3>
+                        <p class="mt-1 text-xs leading-5 text-gray-600">{{ __('admin.system_updates.diagnostics.commands_desc') }}</p>
+                        <div class="mt-4 space-y-3">
+                            @foreach($diagnosticCommands as $commandGroup)
+                                @php($commands = is_array($commandGroup['commands'] ?? null) ? $commandGroup['commands'] : [])
+                                <div class="rounded-md bg-white p-3">
+                                    <div class="flex flex-wrap items-start justify-between gap-2">
+                                        <div>
+                                            <div class="text-sm font-semibold text-gray-900">{{ (string) ($commandGroup['title'] ?? '') }}</div>
+                                            <p class="mt-1 text-xs leading-5 text-gray-500">{{ (string) ($commandGroup['description'] ?? '') }}</p>
+                                        </div>
+                                        @if($commands !== [])
+                                            <button type="button" data-system-update-copy data-copy-text="{{ implode("\n", $commands) }}" data-default-label="{{ __('admin.system_updates.button.copy_command') }}" data-copied-label="{{ __('admin.system_updates.commands.copied') }}" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50">
+                                                <i data-lucide="copy" class="mr-1.5 h-3.5 w-3.5"></i>
+                                                <span>{{ __('admin.system_updates.button.copy_command') }}</span>
+                                            </button>
+                                        @endif
+                                    </div>
+                                    <div class="mt-3 space-y-2">
+                                        @foreach($commands as $command)
+                                            <code class="block break-all rounded-md bg-slate-50 px-3 py-2 font-mono text-xs text-gray-900">{{ (string) $command }}</code>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
 
         <section class="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
             <div class="border-b border-gray-100 px-6 py-5">

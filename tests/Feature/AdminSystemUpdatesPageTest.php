@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Jobs\ProcessSystemUpdateApplyJob;
+use App\Services\Admin\SystemUpdateDeploymentDiagnosticsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -66,6 +67,48 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->assertSee('2.0.2')
             ->assertSee('2.0.3')
             ->assertSee('测试更新中心摘要');
+    }
+
+    public function test_system_update_center_shows_deployment_diagnostics_panel(): void
+    {
+        $admin = $this->createAdmin();
+
+        config([
+            'geoflow.update_check_enabled' => false,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.section.deployment_diagnostics'))
+            ->assertSee(__('admin.system_updates.diagnostics.facts_title'))
+            ->assertSee(__('admin.system_updates.diagnostics.commands_title'))
+            ->assertSee(__('admin.system_updates.diagnostics.log_title'));
+    }
+
+    public function test_deployment_diagnostics_generates_docker_recovery_commands_and_flags_placeholder_url(): void
+    {
+        config([
+            'app.url' => 'https://your-domain.com',
+            'app.key' => '',
+        ]);
+
+        $diagnostics = app(SystemUpdateDeploymentDiagnosticsService::class)->build([
+            'mode' => 'docker_bind_mount',
+        ]);
+
+        $this->assertSame('fail', $diagnostics['status']);
+        $this->assertSame('fail', collect($diagnostics['items'])->firstWhere('key', 'app_url')['status'] ?? null);
+        $this->assertSame('fail', collect($diagnostics['items'])->firstWhere('key', 'app_key')['status'] ?? null);
+
+        $commands = collect($diagnostics['commands'])
+            ->flatMap(fn (array $group): array => $group['commands'] ?? [])
+            ->implode("\n");
+
+        $this->assertStringContainsString('docker compose --env-file .env.prod -f docker-compose.prod.yml', $commands);
+        $this->assertStringContainsString('$COMPOSE_PROD run --rm app php artisan key:generate --force', $commands);
+        $this->assertStringContainsString('$COMPOSE_PROD run --rm app php artisan migrate --force', $commands);
+        $this->assertStringContainsString('$COMPOSE_PROD logs --tail=200 app', $commands);
     }
 
     public function test_update_center_can_be_disabled_completely(): void
