@@ -8,6 +8,8 @@
         $latestPlan = $summary['latest_plan'] ?? null;
         $preflight = is_array($summary['preflight'] ?? null) ? $summary['preflight'] : [];
         $preflightItems = is_array($preflight['items'] ?? null) ? $preflight['items'] : [];
+        $queueHealth = is_array($summary['queue_health'] ?? null) ? $summary['queue_health'] : [];
+        $queueHealthItems = is_array($queueHealth['items'] ?? null) ? $queueHealth['items'] : [];
         $recentBackups = $summary['recent_backups'] ?? collect();
         $recentRuns = $summary['recent_runs'] ?? collect();
         $hasActiveUpdateRun = !empty($summary['has_active_run']);
@@ -52,6 +54,13 @@
             'fail' => 'border-red-100 bg-red-50 text-red-700',
             'info' => 'border-slate-100 bg-slate-50 text-slate-600',
         ];
+        $queueHealthStatus = (string) ($queueHealth['status'] ?? 'info');
+        $queueHealthClass = match ($queueHealthStatus) {
+            'fail' => 'bg-red-50 text-red-700 border-red-200',
+            'warn' => 'bg-amber-50 text-amber-700 border-amber-200',
+            'pass' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            default => 'bg-slate-50 text-slate-600 border-slate-200',
+        };
         $commandLevelClasses = [
             'required' => 'border-red-200 bg-red-50 text-red-700',
             'deployment' => 'border-blue-200 bg-blue-50 text-blue-700',
@@ -207,6 +216,59 @@
                                 <div>
                                     <div class="text-sm font-semibold">{{ (string) ($item['title'] ?? '') }}</div>
                                     <p class="mt-1 text-xs leading-5 opacity-90">{{ (string) ($item['message'] ?? '') }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </section>
+
+        <section class="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div class="border-b border-gray-100 px-6 py-5">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.queue_health') }}</h2>
+                        <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.queue_health_desc') }}</p>
+                    </div>
+                    <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold {{ $queueHealthClass }}">
+                        {{ __('admin.system_updates.queue_health.status_'.$queueHealthStatus) }}
+                    </span>
+                </div>
+            </div>
+            <div class="grid gap-4 px-6 py-6 lg:grid-cols-[.9fr_1.1fr]">
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-lg bg-gray-50 p-4">
+                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.queue_health.driver') }}</div>
+                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ (string) ($queueHealth['driver'] ?? __('admin.common.none')) }}</div>
+                        <div class="mt-1 text-xs text-gray-500">{{ __('admin.system_updates.queue_health.connection_driver') }}：{{ (string) ($queueHealth['connection_driver'] ?? __('admin.common.none')) }}</div>
+                    </div>
+                    <div class="rounded-lg bg-gray-50 p-4">
+                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.queue_health.stale_after') }}</div>
+                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ (int) ($queueHealth['stale_after_minutes'] ?? 15) }} {{ __('admin.common.minutes') }}</div>
+                        <div class="mt-1 text-xs text-gray-500">{{ __('admin.system_updates.queue_health.stale_after_desc') }}</div>
+                    </div>
+                    <div class="rounded-lg bg-gray-50 p-4">
+                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.queue_health.active_runs') }}</div>
+                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ (int) ($queueHealth['active_run_count'] ?? 0) }}</div>
+                    </div>
+                    <div class="rounded-lg bg-gray-50 p-4">
+                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.queue_health.stale_runs') }}</div>
+                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ (int) ($queueHealth['stale_run_count'] ?? 0) }}</div>
+                    </div>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                    @foreach($queueHealthItems as $item)
+                        @php($itemStatus = (string) ($item['status'] ?? 'info'))
+                        @php($itemClass = $preflightItemClasses[$itemStatus] ?? $preflightItemClasses['info'])
+                        @php($messageKey = (string) ($item['message_key'] ?? 'active_runs_clear'))
+                        @php($context = is_array($item['context'] ?? null) ? $item['context'] : [])
+                        <div class="rounded-lg border p-4 {{ $itemClass }}">
+                            <div class="flex items-start gap-3">
+                                <i data-lucide="{{ $itemStatus === 'pass' ? 'check-circle-2' : ($itemStatus === 'fail' ? 'x-circle' : ($itemStatus === 'warn' ? 'alert-triangle' : 'info')) }}" class="mt-0.5 h-4 w-4 shrink-0"></i>
+                                <div>
+                                    <div class="text-sm font-semibold">{{ __('admin.system_updates.queue_health.'.(string) ($item['key'] ?? 'active_runs')) }}</div>
+                                    <p class="mt-1 text-xs leading-5 opacity-90">{{ __('admin.system_updates.queue_health.'.$messageKey, $context) }}</p>
                                 </div>
                             </div>
                         </div>

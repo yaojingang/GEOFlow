@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessSystemUpdateApplyJob;
 use App\Jobs\ProcessSystemUpdateRollbackJob;
+use App\Models\Admin;
 use App\Models\SystemUpdateBackup;
 use App\Models\SystemUpdateRun;
 use App\Services\Admin\AdminUpdateMetadataService;
@@ -14,6 +15,7 @@ use App\Services\Admin\SystemUpdateBackupService;
 use App\Services\Admin\SystemUpdateOperationGuard;
 use App\Services\Admin\SystemUpdatePlanService;
 use App\Services\Admin\SystemUpdateRollbackService;
+use App\Services\Admin\SystemUpdateRunHealthService;
 use App\Services\Admin\SystemUpdateStateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -62,6 +64,28 @@ class SystemUpdateController extends Controller
             ])->render(),
             'has_active_run' => (bool) ($summary['has_active_run'] ?? false),
             'updated_at' => now()->toDateTimeString(),
+        ]);
+    }
+
+    public function runShow(string $runUuid, SystemUpdateRunHealthService $runHealthService): View
+    {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+
+        $run = SystemUpdateRun::query()
+            ->with(['startedBy', 'backups'])
+            ->where('run_uuid', $runUuid)
+            ->whereIn('action', ['apply', 'rollback', 'rollback_file'])
+            ->firstOrFail();
+
+        return view('admin.system-updates.run-show', [
+            'pageTitle' => __('admin.system_updates.section.run_detail'),
+            'activeMenu' => 'dashboard',
+            'run' => $run,
+            'isStale' => $runHealthService->isStale($run),
+            'canRetry' => $runHealthService->canRetry($run),
+            'canMarkFailed' => $runHealthService->canMarkFailed($run),
+            'passwordRequired' => (bool) config('geoflow.update_require_admin_password', true),
         ]);
     }
 
@@ -181,7 +205,7 @@ class SystemUpdateController extends Controller
         }
 
         try {
-            ProcessSystemUpdateApplyJob::dispatch((int) $queuedRun->id)->onQueue('system-updates');
+            $this->dispatchQueuedRun($queuedRun);
         } catch (\Throwable $e) {
             $this->markDispatchFailed($queuedRun, $e);
 
@@ -242,7 +266,7 @@ class SystemUpdateController extends Controller
         }
 
         try {
-            ProcessSystemUpdateRollbackJob::dispatch((int) $queuedRun->id)->onQueue('system-updates');
+            $this->dispatchQueuedRun($queuedRun);
         } catch (\Throwable $e) {
             $this->markDispatchFailed($queuedRun, $e);
 
@@ -283,7 +307,7 @@ class SystemUpdateController extends Controller
         }
 
         try {
-            ProcessSystemUpdateRollbackJob::dispatch((int) $queuedRun->id)->onQueue('system-updates');
+            $this->dispatchQueuedRun($queuedRun);
         } catch (\Throwable $e) {
             $this->markDispatchFailed($queuedRun, $e);
 
@@ -295,6 +319,78 @@ class SystemUpdateController extends Controller
         return redirect()
             ->route('admin.system-updates.backups.show', ['backupUuid' => $backupUuid])
             ->with('message', __('admin.system_updates.message.rollback_file_created'));
+    }
+
+    public function retryRun(
+        Request $request,
+        string $runUuid,
+        SystemUpdateApplyService $applyService,
+        SystemUpdateRollbackService $rollbackService,
+        SystemUpdateRunHealthService $runHealthService,
+        SystemUpdateOperationGuard $operationGuard
+    ): RedirectResponse {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+        $this->validateAdminPassword($request);
+
+        $run = SystemUpdateRun::query()
+            ->where('run_uuid', $runUuid)
+            ->whereIn('action', ['apply', 'rollback', 'rollback_file'])
+            ->firstOrFail();
+
+        try {
+            $queuedRun = $operationGuard->run(function () use ($operationGuard, $runHealthService, $run, $request, $applyService, $rollbackService): SystemUpdateRun {
+                $operationGuard->assertNoActiveExecution($run);
+
+                return $this->queueRetryRun($run, $request->user('admin'), $applyService, $rollbackService, $runHealthService);
+            });
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('admin.system-updates.runs.show', ['runUuid' => $runUuid])
+                ->withErrors([__('admin.system_updates.message.retry_failed', ['message' => $e->getMessage()])]);
+        }
+
+        try {
+            $this->dispatchQueuedRun($queuedRun);
+        } catch (\Throwable $e) {
+            $this->markDispatchFailed($queuedRun, $e);
+
+            return redirect()
+                ->route('admin.system-updates.runs.show', ['runUuid' => $runUuid])
+                ->withErrors([__('admin.system_updates.message.retry_failed', ['message' => $e->getMessage()])]);
+        }
+
+        return redirect()
+            ->route('admin.system-updates.runs.show', ['runUuid' => $queuedRun->run_uuid])
+            ->with('message', __('admin.system_updates.message.retry_created'));
+    }
+
+    public function markRunFailed(
+        Request $request,
+        string $runUuid,
+        SystemUpdateRunHealthService $runHealthService,
+        SystemUpdateOperationGuard $operationGuard
+    ): RedirectResponse {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+        $this->validateAdminPassword($request);
+
+        $run = SystemUpdateRun::query()
+            ->where('run_uuid', $runUuid)
+            ->whereIn('action', ['apply', 'rollback', 'rollback_file'])
+            ->firstOrFail();
+
+        try {
+            $operationGuard->run(fn () => $runHealthService->markStaleRunFailed($run, $request->user('admin')));
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('admin.system-updates.runs.show', ['runUuid' => $runUuid])
+                ->withErrors([__('admin.system_updates.message.mark_failed_failed', ['message' => $e->getMessage()])]);
+        }
+
+        return redirect()
+            ->route('admin.system-updates.runs.show', ['runUuid' => $runUuid])
+            ->with('message', __('admin.system_updates.message.run_marked_failed'));
     }
 
     private function ensureSuperAdmin(): void
@@ -326,6 +422,95 @@ class SystemUpdateController extends Controller
                 'current_admin_password' => __('admin.system_updates.error.admin_password_invalid'),
             ]);
         }
+    }
+
+    private function dispatchQueuedRun(SystemUpdateRun $run): void
+    {
+        if ((string) $run->action === 'apply') {
+            ProcessSystemUpdateApplyJob::dispatch((int) $run->id)->onQueue('system-updates');
+
+            return;
+        }
+
+        if (in_array((string) $run->action, ['rollback', 'rollback_file'], true)) {
+            ProcessSystemUpdateRollbackJob::dispatch((int) $run->id)->onQueue('system-updates');
+
+            return;
+        }
+
+        throw new \RuntimeException(__('admin.system_updates.error.run_not_executable'));
+    }
+
+    private function queueRetryRun(
+        SystemUpdateRun $run,
+        Admin $admin,
+        SystemUpdateApplyService $applyService,
+        SystemUpdateRollbackService $rollbackService,
+        SystemUpdateRunHealthService $runHealthService
+    ): SystemUpdateRun {
+        if (! $runHealthService->canRetry($run)) {
+            throw new \RuntimeException(__('admin.system_updates.error.run_not_retryable'));
+        }
+
+        if ($runHealthService->canMarkFailed($run)) {
+            $runHealthService->markStaleRunFailed($run, $admin);
+        }
+
+        $payload = is_array($run->plan_json) ? $run->plan_json : [];
+
+        if ((string) $run->action === 'apply') {
+            $planRun = $this->resolveSourcePlanRun($payload);
+            $queuedRun = $applyService->queueApply($planRun, $admin);
+        } else {
+            $backupUuid = trim((string) ($payload['backup_uuid'] ?? ''));
+            if ($backupUuid === '') {
+                throw new \RuntimeException(__('admin.system_updates.error.run_retry_source_missing'));
+            }
+
+            $backup = SystemUpdateBackup::query()->where('backup_uuid', $backupUuid)->first();
+            if (! $backup) {
+                throw new \RuntimeException(__('admin.system_updates.error.backup_manifest_missing'));
+            }
+
+            $queuedRun = (string) $run->action === 'rollback_file'
+                ? $rollbackService->queueRollbackFile($backup, (string) ($payload['file_path'] ?? ''), $admin)
+                : $rollbackService->queueRollback($backup, $admin);
+        }
+
+        $queuedPayload = is_array($queuedRun->plan_json) ? $queuedRun->plan_json : [];
+        $queuedPayload['retried_from_run_uuid'] = (string) $run->run_uuid;
+        $queuedRun->forceFill(['plan_json' => $queuedPayload])->save();
+
+        return $queuedRun;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveSourcePlanRun(array $payload): SystemUpdateRun
+    {
+        $sourcePlanRunId = (int) ($payload['source_plan_run_id'] ?? 0);
+        $sourcePlanRunUuid = trim((string) ($payload['source_plan_run_uuid'] ?? ''));
+
+        $query = SystemUpdateRun::query()
+            ->where('action', 'plan')
+            ->where('status', 'succeeded');
+
+        if ($sourcePlanRunId > 0) {
+            $planRun = (clone $query)->whereKey($sourcePlanRunId)->first();
+            if ($planRun) {
+                return $planRun;
+            }
+        }
+
+        if ($sourcePlanRunUuid !== '') {
+            $planRun = (clone $query)->where('run_uuid', $sourcePlanRunUuid)->first();
+            if ($planRun) {
+                return $planRun;
+            }
+        }
+
+        throw new \RuntimeException(__('admin.system_updates.error.run_retry_source_missing'));
     }
 
     private function markDispatchFailed(SystemUpdateRun $run, \Throwable $e): void

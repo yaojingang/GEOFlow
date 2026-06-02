@@ -76,6 +76,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('/', [SystemUpdateController::class, 'index'])->name('index');
             Route::post('check', [SystemUpdateController::class, 'check'])->name('check');
             Route::get('runs/status', [SystemUpdateController::class, 'runsStatus'])->name('runs.status');
+            Route::get('runs/{runUuid}', [SystemUpdateController::class, 'runShow'])->name('runs.show');
+            Route::post('runs/{runUuid}/retry', [SystemUpdateController::class, 'retryRun'])->name('runs.retry');
+            Route::post('runs/{runUuid}/mark-failed', [SystemUpdateController::class, 'markRunFailed'])->name('runs.mark-failed');
             Route::post('plan', [SystemUpdateController::class, 'plan'])->name('plan');
             Route::post('backup', [SystemUpdateController::class, 'backup'])->name('backup');
             Route::post('apply', [SystemUpdateController::class, 'apply'])->name('apply');

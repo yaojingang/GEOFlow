@@ -105,6 +105,12 @@
                     @else
                         <p class="mt-2 text-sm text-gray-500">{{ __('admin.common.none') }}</p>
                     @endif
+                    @if(in_array((string) $run->action, ['apply', 'rollback', 'rollback_file'], true))
+                        <a href="{{ route('admin.system-updates.runs.show', ['runUuid' => $run->run_uuid]) }}" class="mt-4 inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                            <i data-lucide="file-search" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.system_updates.button.view_run_detail') }}
+                        </a>
+                    @endif
                 </div>
             </div>
         </div>

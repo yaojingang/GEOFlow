@@ -12,6 +12,7 @@ class SystemUpdateStateService
         private readonly AdminUpdateMetadataService $metadataService,
         private readonly SystemUpdateDeploymentDetector $deploymentDetector,
         private readonly SystemUpdatePreflightService $preflightService,
+        private readonly SystemUpdateRunHealthService $runHealthService,
     ) {}
 
     /**
@@ -34,6 +35,7 @@ class SystemUpdateStateService
             'recent_backups' => $this->recentBackups(),
             'recent_runs' => $this->recentRuns(),
             'has_active_run' => $this->hasActiveRun(),
+            'queue_health' => $this->runHealthService->summary(),
             'can_plan' => (bool) ($state['is_update_available'] ?? false)
                 && trim((string) ($state['archive_url'] ?? '')) !== '',
             'can_backup' => $latestPlan !== null,

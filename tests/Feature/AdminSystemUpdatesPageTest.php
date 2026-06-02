@@ -1454,6 +1454,276 @@ class AdminSystemUpdatesPageTest extends TestCase
         }
     }
 
+    public function test_update_run_detail_shows_progress_and_recovery_state(): void
+    {
+        $admin = $this->createAdmin();
+
+        config([
+            'geoflow.update_require_admin_password' => false,
+        ]);
+
+        $run = \App\Models\SystemUpdateRun::query()->create([
+            'run_uuid' => 'failed-apply-detail-run',
+            'action' => 'apply',
+            'status' => 'failed',
+            'current_version' => '2.0.2',
+            'target_version' => '2.0.3',
+            'deployment_mode' => 'source',
+            'risk_level' => 'low',
+            'plan_json' => [
+                'backup_uuid' => 'backup-for-detail',
+                'source_plan_run_uuid' => 'source-plan-detail',
+                'progress' => [
+                    [
+                        'key' => 'queued',
+                        'percent' => 5,
+                        'status' => 'queued',
+                        'at' => now()->subMinute()->toDateTimeString(),
+                    ],
+                    [
+                        'key' => 'failed',
+                        'percent' => 100,
+                        'status' => 'failed',
+                        'at' => now()->toDateTimeString(),
+                    ],
+                ],
+                'verification' => [
+                    'status' => 'warn',
+                    'pass' => 1,
+                    'warn' => 1,
+                    'fail' => 0,
+                    'items' => [
+                        ['key' => 'system_updates_route', 'status' => 'pass'],
+                    ],
+                ],
+                'apply_report' => [
+                    'modified' => 1,
+                    'files' => [
+                        ['path' => 'app/Demo.php', 'action' => 'modified'],
+                    ],
+                ],
+            ],
+            'error_message' => 'fixture failure',
+            'started_by_admin_id' => $admin->id,
+            'started_at' => now()->subMinute(),
+            'finished_at' => now(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.runs.show', ['runUuid' => $run->run_uuid]))
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.section.run_detail'))
+            ->assertSee($run->run_uuid)
+            ->assertSee(__('admin.system_updates.progress.queued'))
+            ->assertSee(__('admin.system_updates.progress.failed'))
+            ->assertSee(__('admin.system_updates.button.retry_run'))
+            ->assertSee(__('admin.system_updates.verification.system_updates_route'))
+            ->assertSee('app/Demo.php');
+    }
+
+    public function test_update_center_queue_health_flags_stale_runs(): void
+    {
+        Cache::flush();
+        $admin = $this->createAdmin();
+
+        config([
+            'geoflow.update_check_enabled' => false,
+            'geoflow.update_run_stale_minutes' => 15,
+        ]);
+
+        $run = \App\Models\SystemUpdateRun::query()->create([
+            'run_uuid' => 'stale-queued-run',
+            'action' => 'apply',
+            'status' => 'queued',
+            'current_version' => '2.0.2',
+            'target_version' => '2.0.3',
+            'started_by_admin_id' => $admin->id,
+        ]);
+        $run->forceFill([
+            'created_at' => now()->subMinutes(30),
+            'updated_at' => now()->subMinutes(30),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.section.queue_health'))
+            ->assertSee(__('admin.system_updates.queue_health.status_fail'))
+            ->assertSee(__('admin.system_updates.queue_health.stale_runs_found', ['count' => 1, 'minutes' => 15]));
+    }
+
+    public function test_stale_update_run_can_be_marked_failed(): void
+    {
+        $admin = $this->createAdmin();
+
+        config([
+            'geoflow.update_require_admin_password' => false,
+            'geoflow.update_run_stale_minutes' => 15,
+        ]);
+
+        $run = \App\Models\SystemUpdateRun::query()->create([
+            'run_uuid' => 'stale-run-to-mark-failed',
+            'action' => 'apply',
+            'status' => 'queued',
+            'current_version' => '2.0.2',
+            'target_version' => '2.0.3',
+            'plan_json' => [
+                'progress' => [
+                    ['key' => 'queued', 'percent' => 5, 'status' => 'queued', 'at' => now()->subMinutes(30)->toDateTimeString()],
+                ],
+            ],
+            'started_by_admin_id' => $admin->id,
+        ]);
+        $run->forceFill([
+            'created_at' => now()->subMinutes(30),
+            'updated_at' => now()->subMinutes(30),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.runs.mark-failed', ['runUuid' => $run->run_uuid]))
+            ->assertRedirect(route('admin.system-updates.runs.show', ['runUuid' => $run->run_uuid]));
+
+        $run->refresh();
+        $payload = is_array($run->plan_json) ? $run->plan_json : [];
+
+        $this->assertSame('failed', $run->status);
+        $this->assertSame(__('admin.system_updates.error.run_marked_failed_stale'), $run->error_message);
+        $this->assertSame('failed', $payload['progress_status'] ?? null);
+        $this->assertSame('mark_failed', $payload['recovery'][0]['action'] ?? null);
+    }
+
+    public function test_failed_apply_run_can_be_retried_and_dispatches_job(): void
+    {
+        Storage::fake('local');
+        Queue::fake();
+
+        $admin = $this->createAdmin();
+
+        config([
+            'geoflow.update_execution_enabled' => true,
+            'geoflow.update_archive_apply_enabled' => true,
+            'geoflow.update_require_admin_password' => false,
+        ]);
+
+        $planRun = \App\Models\SystemUpdateRun::query()->create([
+            'run_uuid' => 'retry-source-plan-run',
+            'action' => 'plan',
+            'status' => 'succeeded',
+            'current_version' => '2.0.2',
+            'target_version' => '2.0.3',
+            'target_commit' => 'abc123',
+            'deployment_mode' => 'source',
+            'risk_level' => 'low',
+            'plan_json' => [
+                'summary' => ['added' => 1, 'modified' => 0, 'deleted' => 0, 'total' => 1],
+                'changes' => [
+                    ['path' => 'app/RetryFixture.php', 'action' => 'added', 'bytes' => 12],
+                ],
+            ],
+            'started_by_admin_id' => $admin->id,
+            'started_at' => now()->subMinutes(5),
+            'finished_at' => now()->subMinutes(4),
+        ]);
+
+        $backup = \App\Models\SystemUpdateBackup::query()->create([
+            'backup_uuid' => 'retry-source-backup',
+            'run_id' => $planRun->id,
+            'from_version' => '2.0.2',
+            'to_version' => '2.0.3',
+            'backup_path' => 'geoflow-updates/backups/retry-source-backup',
+            'manifest_path' => 'geoflow-updates/backups/retry-source-backup/manifest.json',
+            'file_count' => 0,
+            'total_bytes' => 0,
+            'status' => 'not_required',
+            'created_by_admin_id' => $admin->id,
+        ]);
+
+        $failedRun = \App\Models\SystemUpdateRun::query()->create([
+            'run_uuid' => 'failed-apply-run-to-retry',
+            'action' => 'apply',
+            'status' => 'failed',
+            'current_version' => '2.0.2',
+            'target_version' => '2.0.3',
+            'target_commit' => 'abc123',
+            'deployment_mode' => 'source',
+            'risk_level' => 'low',
+            'plan_json' => [
+                'source_plan_run_id' => $planRun->id,
+                'source_plan_run_uuid' => $planRun->run_uuid,
+                'backup_uuid' => $backup->backup_uuid,
+                'progress' => [
+                    ['key' => 'failed', 'percent' => 100, 'status' => 'failed', 'at' => now()->toDateTimeString()],
+                ],
+            ],
+            'error_message' => 'old failure',
+            'started_by_admin_id' => $admin->id,
+            'started_at' => now()->subMinutes(2),
+            'finished_at' => now()->subMinute(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.runs.retry', ['runUuid' => $failedRun->run_uuid]))
+            ->assertRedirect();
+
+        Queue::assertPushed(ProcessSystemUpdateApplyJob::class);
+
+        $queuedRun = \App\Models\SystemUpdateRun::query()
+            ->where('action', 'apply')
+            ->where('status', 'queued')
+            ->where('run_uuid', '!=', $failedRun->run_uuid)
+            ->firstOrFail();
+        $payload = is_array($queuedRun->plan_json) ? $queuedRun->plan_json : [];
+
+        $this->assertSame($failedRun->run_uuid, $payload['retried_from_run_uuid'] ?? null);
+        $this->assertSame($planRun->run_uuid, $payload['source_plan_run_uuid'] ?? null);
+        $this->assertSame($backup->backup_uuid, $payload['backup_uuid'] ?? null);
+    }
+
+    public function test_standard_admin_cannot_open_or_recover_update_runs(): void
+    {
+        $admin = $this->createAdmin('standard_update_run_admin', 'admin');
+
+        $run = \App\Models\SystemUpdateRun::query()->create([
+            'run_uuid' => 'standard-forbidden-run',
+            'action' => 'apply',
+            'status' => 'failed',
+            'current_version' => '2.0.2',
+            'target_version' => '2.0.3',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.runs.show', ['runUuid' => $run->run_uuid]))
+            ->assertForbidden();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.runs.retry', ['runUuid' => $run->run_uuid]))
+            ->assertForbidden();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.runs.mark-failed', ['runUuid' => $run->run_uuid]))
+            ->assertForbidden();
+    }
+
+    public function test_update_run_detail_rejects_plan_runs(): void
+    {
+        $admin = $this->createAdmin();
+
+        $run = \App\Models\SystemUpdateRun::query()->create([
+            'run_uuid' => 'plan-run-not-detail',
+            'action' => 'plan',
+            'status' => 'succeeded',
+            'current_version' => '2.0.2',
+            'target_version' => '2.0.3',
+            'started_by_admin_id' => $admin->id,
+            'started_at' => now(),
+            'finished_at' => now(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.runs.show', ['runUuid' => $run->run_uuid]))
+            ->assertNotFound();
+    }
+
     private function createAdmin(string $username = 'system_update_admin', string $role = 'super_admin'): Admin
     {
         return Admin::query()->create([
