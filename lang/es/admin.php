@@ -90,6 +90,7 @@ return array_replace_recursive($base, [
         'author_x_profile' => 'Perfil X del autor',
         'project_github_link' => 'GitHub del proyecto',
         'changelog_link' => 'Registro de cambios',
+        'help_docs_link' => 'Documentación',
         'project_intro_link' => 'Introducción del proyecto',
     ],
     'login' => [

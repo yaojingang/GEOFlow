@@ -566,6 +566,7 @@ return [
         'author_x_profile' => '作者X主页',
         'project_github_link' => '项目GitHub地址',
         'changelog_link' => '更新日志',
+        'help_docs_link' => '帮助文档',
         'project_intro_link' => '项目说明',
     ],
     'login' => [

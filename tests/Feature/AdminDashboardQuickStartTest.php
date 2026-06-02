@@ -164,4 +164,35 @@ class AdminDashboardQuickStartTest extends TestCase
         $this->assertStringContainsString('"shouldAutoOpen":false', $secondHtml);
         $this->assertStringContainsString(__('admin.footer.project_intro_link'), $secondHtml);
     }
+
+    public function test_admin_footer_links_to_locale_specific_help_docs(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'dashboard_help_docs_admin',
+            'password' => 'secret-123',
+            'email' => 'dashboard-help-docs@example.com',
+            'display_name' => 'Help Docs Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $zhHtml = $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString(__('admin.footer.help_docs_link'), $zhHtml);
+        $this->assertStringContainsString('https://github.com/yaojingang/GEOFlow/wiki', $zhHtml);
+        $this->assertStringNotContainsString('https://github.com/yaojingang/GEOFlow/wiki/Home-English', $zhHtml);
+
+        session(['locale' => 'en']);
+
+        $enHtml = $this->actingAs($admin->fresh(), 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Help docs', $enHtml);
+        $this->assertStringContainsString('https://github.com/yaojingang/GEOFlow/wiki/Home-English', $enHtml);
+    }
 }

@@ -566,6 +566,7 @@ return [
         'author_x_profile' => 'Author X Profile',
         'project_github_link' => 'Project GitHub',
         'changelog_link' => 'Changelog',
+        'help_docs_link' => 'Help docs',
         'project_intro_link' => 'Project intro',
     ],
     'login' => [

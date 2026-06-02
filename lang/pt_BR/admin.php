@@ -571,6 +571,7 @@ return array_replace_recursive($base, [
         'author_x_profile' => 'Perfil X do autor',
         'project_github_link' => 'GitHub do projeto',
         'changelog_link' => 'Registro de alterações',
+        'help_docs_link' => 'Documentação',
         'project_intro_link' => 'Introdução do projeto',
     ],
     'login' => [
