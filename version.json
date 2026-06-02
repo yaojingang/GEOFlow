@@ -1,14 +1,14 @@
 {
-  "version": "2.0.3",
+  "version": "2.0.4",
   "release_date": "2026-06-02",
   "release_type": "patch",
   "payload": {
-    "title_zh": "GEOFlow v2.0.3",
-    "title_en": "GEOFlow v2.0.3",
-    "summary_zh": "GEOFlow 2.0.3 新增系统更新中心，支持版本检查、更新计划、备份、回滚、队列执行、预检与部署诊断，并补充 Ubuntu 24.04 LTS + Docker 生产部署排障说明。",
-    "summary_en": "GEOFlow 2.0.3 adds the System Update Center with version checks, update plans, backups, rollback, queued execution, preflight checks, and deployment diagnostics, plus Ubuntu 24.04 LTS + Docker production troubleshooting guidance.",
-    "upgrade_tip_zh": "升级前请备份数据库、.env、uploads、storage 和目标渠道站点包；升级后可在后台右上角通知进入系统更新中心，先查看预检和部署诊断，再按需生成更新计划。",
-    "upgrade_tip_en": "Before upgrading, back up your database, .env, uploads, storage, and target-site packages. After upgrading, open System Update Center from the admin notification area and review preflight and deployment diagnostics before generating update plans.",
+    "title_zh": "GEOFlow v2.0.4",
+    "title_en": "GEOFlow v2.0.4",
+    "summary_zh": "GEOFlow 2.0.4 修复已部署环境中后台版本号被 .env 固定的问题，系统版本默认跟随本地 version.json，更新中心可正确对比本地与 GitHub 最新版本。",
+    "summary_en": "GEOFlow 2.0.4 fixes stale admin versions in deployed environments by reading the local version.json by default, allowing the Update Center to compare the local version with the latest GitHub version correctly.",
+    "upgrade_tip_zh": "升级后建议执行 php artisan optimize 重新生成配置缓存；如果旧 .env 中仍保留 GEOFLOW_APP_VERSION，可无需再维护该项，系统版本会以本地 version.json 为准。",
+    "upgrade_tip_en": "After upgrading, run php artisan optimize to rebuild cached configuration. If an old .env still contains GEOFLOW_APP_VERSION, it no longer needs to be maintained because the app version now follows local version.json.",
     "release_url": "https://github.com/yaojingang/GEOFlow",
     "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md",
     "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md"

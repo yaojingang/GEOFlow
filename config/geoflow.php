@@ -10,6 +10,12 @@ $adminBasePath = $adminBasePath !== '' ? $adminBasePath : 'geo_admin';
 $defaultUpdateMetadataUrl = 'https://raw.githubusercontent.com/yaojingang/GEOFlow/main/version.json';
 $updateMetadataUrl = trim((string) env('GEOFLOW_UPDATE_METADATA_URL', $defaultUpdateMetadataUrl));
 $updateMetadataUrl = $updateMetadataUrl !== '' ? $updateMetadataUrl : $defaultUpdateMetadataUrl;
+$versionManifestPath = __DIR__.'/../version.json';
+$versionManifest = is_file($versionManifestPath)
+    ? json_decode((string) file_get_contents($versionManifestPath), true)
+    : [];
+$appVersion = is_array($versionManifest) ? trim((string) ($versionManifest['version'] ?? '')) : '';
+$appVersion = $appVersion !== '' ? $appVersion : '2.0.4';
 
 return [
 
@@ -32,8 +38,8 @@ return [
     // 默认前台主题；后台未显式选择主题时使用
     'default_theme' => env('GEOFLOW_DEFAULT_THEME', 'toutiao-news-20260426'),
 
-    // 当前系统版本（底部展示、GitHub 更新检查对比）
-    'app_version' => env('GEOFLOW_APP_VERSION', '2.0.3'),
+    // 当前系统版本（底部展示、GitHub 更新检查对比）；默认跟随本地 version.json，避免已部署 .env 锁死版本号。
+    'app_version' => $appVersion,
     // 欢迎弹窗「介绍」文案版本：变更后所有管理员会再次看到介绍弹窗
     'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '2.1'),
     // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭

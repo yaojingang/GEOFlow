@@ -54,9 +54,21 @@ class AdminWelcomeIntroCopyTest extends TestCase
     public function test_deployment_env_examples_use_current_intro_version(): void
     {
         $expected = 'GEOFLOW_WELCOME_INTRO_VERSION=2.1';
+        $devEnv = file_get_contents(base_path('.env.example'));
+        $prodEnv = file_get_contents(base_path('.env.prod.example'));
 
-        $this->assertStringContainsString($expected, file_get_contents(base_path('.env.example')));
-        $this->assertStringContainsString($expected, file_get_contents(base_path('.env.prod.example')));
+        $this->assertStringContainsString($expected, $devEnv);
+        $this->assertStringContainsString($expected, $prodEnv);
+        $this->assertStringNotContainsString('GEOFLOW_APP_VERSION=', $devEnv);
+        $this->assertStringNotContainsString('GEOFLOW_APP_VERSION=', $prodEnv);
+    }
+
+    public function test_app_version_defaults_to_local_version_manifest(): void
+    {
+        $manifest = json_decode((string) file_get_contents(base_path('version.json')), true);
+
+        $this->assertIsArray($manifest);
+        $this->assertSame($manifest['version'], config('geoflow.app_version'));
     }
 
     /**

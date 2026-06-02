@@ -4,6 +4,11 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## 2026-06-02
 
+### v2.0.4
+
+- Fixed stale admin versions after code updates in deployed environments: the admin version now defaults to local `version.json`, and environment examples no longer write `GEOFLOW_APP_VERSION`.
+- Updated the admin version to `2.0.4`, including `version.json` and default admin version display values.
+
 ### v2.0.3
 
 - Added the System Update Center:
@@ -25,7 +30,7 @@ This document tracks user-facing updates in the public repository. For future Gi
   - System Update Center now checks APP_URL, APP_KEY, database connectivity, migrations table, and writable `storage/app` / `bootstrap/cache` paths.
   - Shows runtime configuration, Laravel log summaries, and deployment-mode-specific command guidance.
   - Added Ubuntu 24.04 LTS + Docker production troubleshooting docs for initialization commands, `.env.prod` checks, container logs, and 500 errors.
-- Updated the admin version to `2.0.3`, including `version.json`, environment examples, and default admin version display values.
+- Updated the admin version to `2.0.3`, including `version.json` and default admin version display values.
 
 ## 2026-05-30
 
