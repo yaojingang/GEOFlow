@@ -1114,7 +1114,7 @@ class KnowledgeChunkSyncService
      *
      * @param  list<string>  $inputs
      * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
-     * @return list<mixed>  与 $inputs 顺序对应的原始向量数组
+     * @return array<int,mixed>  与 $inputs 顺序对应的原始向量数组
      */
     private function requestEmbeddingVectors(array $inputs, array $embeddingMetadata, string $providerName): array
     {
@@ -1136,7 +1136,7 @@ class KnowledgeChunkSyncService
      *
      * @param  list<string>  $inputs
      * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
-     * @return list<mixed>
+     * @return array<int,mixed>
      */
     private function requestOpenAiCompatibleEmbeddings(array $inputs, array $embeddingMetadata): array
     {
@@ -1166,10 +1166,22 @@ class KnowledgeChunkSyncService
             return [];
         }
 
-        return array_values(array_map(
-            static fn ($row): mixed => is_array($row) ? ($row['embedding'] ?? null) : null,
-            $rows
-        ));
+        $embeddings = [];
+        foreach ($rows as $position => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $index = $position;
+            if (array_key_exists('index', $row) && is_numeric($row['index'])) {
+                $index = max(0, (int) $row['index']);
+            }
+
+            $embeddings[$index] = $row['embedding'] ?? null;
+        }
+        ksort($embeddings);
+
+        return $embeddings;
     }
 
     private function embeddingBatchSize(): int
