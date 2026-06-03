@@ -10,6 +10,7 @@ use App\Models\SiteSetting;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Ai\Embeddings;
@@ -876,10 +877,12 @@ class KnowledgeChunkSyncService
         );
 
         try {
-            $response = Embeddings::for([$this->formatEmbeddingQueryInput($query, $embeddingMetadata)])
-                ->timeout(45)
-                ->generate($providerName, (string) $embeddingMetadata['model_name']);
-            $rawVector = $this->normalizeEmbeddingVector($response->embeddings[0] ?? null);
+            $embeddings = $this->requestEmbeddingVectors(
+                [$this->formatEmbeddingQueryInput($query, $embeddingMetadata)],
+                $embeddingMetadata,
+                $providerName
+            );
+            $rawVector = $this->normalizeEmbeddingVector($embeddings[0] ?? null);
             if ($rawVector === null) {
                 return [];
             }
@@ -1069,12 +1072,9 @@ class KnowledgeChunkSyncService
     ): array {
         $batchKeys = array_keys($batch);
         $batchInputs = $this->formatEmbeddingDocumentInputs(array_values($batch), $embeddingMetadata, $documentTitle);
-        $response = Embeddings::for($batchInputs)
-            ->timeout(45)
-            ->generate($providerName, (string) $embeddingMetadata['model_name']);
+        $embeddings = $this->requestEmbeddingVectors($batchInputs, $embeddingMetadata, $providerName);
 
         $results = [];
-        $embeddings = $response->embeddings;
         foreach (array_values($batch) as $position => $_chunkContent) {
             $rawVector = $this->normalizeEmbeddingVector($embeddings[$position] ?? null);
             if ($rawVector === null) {
@@ -1102,6 +1102,74 @@ class KnowledgeChunkSyncService
 
         return str_contains($normalized, 'batch size')
             || str_contains($normalized, 'batch_size');
+    }
+
+    /**
+     * 生成一批文本对应的真实 embedding 向量。
+     *
+     * OpenAI 兼容服务商（OpenAI / 火山方舟 Doubao / MiniMax / 智谱 等）统一走直连 /embeddings 请求，
+     * 仅发送 model + input；不再附带 Laravel AI 默认注入的 dimensions 参数，避免部分服务商
+     * （如 doubao-embedding-text）将其判定为 InvalidParameter 而导致整批向量化失败。
+     * Gemini 原生接口形态不同，继续复用 SDK。
+     *
+     * @param  list<string>  $inputs
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     * @return list<mixed>  与 $inputs 顺序对应的原始向量数组
+     */
+    private function requestEmbeddingVectors(array $inputs, array $embeddingMetadata, string $providerName): array
+    {
+        if ($this->isGeminiEmbeddingMetadata($embeddingMetadata)) {
+            $response = Embeddings::for($inputs)
+                ->timeout(45)
+                ->generate($providerName, (string) $embeddingMetadata['model_name']);
+
+            return array_values((array) $response->embeddings);
+        }
+
+        return $this->requestOpenAiCompatibleEmbeddings($inputs, $embeddingMetadata);
+    }
+
+    /**
+     * 直连 OpenAI 兼容 /embeddings 接口，仅发送 model + input。
+     *
+     * 出站代理由全局 {@see \App\Support\GeoFlow\OutboundHttpProxy} 中间件按域名注入，无需在此重复配置。
+     *
+     * @param  list<string>  $inputs
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     * @return list<mixed>
+     */
+    private function requestOpenAiCompatibleEmbeddings(array $inputs, array $embeddingMetadata): array
+    {
+        $endpoint = rtrim((string) $embeddingMetadata['api_url'], '/').'/embeddings';
+
+        $response = Http::acceptJson()
+            ->asJson()
+            ->withToken((string) $embeddingMetadata['api_key'])
+            ->timeout(45)
+            ->post($endpoint, [
+                'model' => (string) $embeddingMetadata['model_name'],
+                'input' => $inputs,
+            ]);
+
+        if (! $response->successful()) {
+            // 保留服务商原始报文，使 batch size 等可识别错误仍能命中后续降级逻辑。
+            throw new \RuntimeException(sprintf(
+                'HTTP request returned status code %d: %s',
+                $response->status(),
+                trim($response->body())
+            ));
+        }
+
+        $data = $response->json();
+        $rows = is_array($data) ? ($data['data'] ?? []) : [];
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        return array_values(array_map(
+            static fn ($row): mixed => is_array($row) ? ($row['embedding'] ?? null) : null,
+            $rows
+        ));
     }
 
     private function embeddingBatchSize(): int
