@@ -21,6 +21,9 @@ return array_replace_recursive($base, [
         'quick_help' => 'Haz clic para autocompletar configuraciones comunes. Gemini usa la API nativa v1beta de Google; los demás proveedores conservan las reglas compatibles con OpenAI.',
         'gemini_embedding_notice' => 'Gemini Embedding 2 aplica automáticamente prefijos query/document para retrieval; este sistema no admite la configuración task_type de gemini-embedding-001.',
         'api_url_help' => 'Puedes indicar una URL base o un endpoint completo. Gemini se normaliza a https://generativelanguage.googleapis.com/v1beta; los demás modelos usan las rutas compatibles con OpenAI existentes.',
+        'field_max_tokens' => 'Tokens máximos de salida',
+        'max_tokens_placeholder' => 'Dejar vacío para usar el valor predeterminado (:tokens)',
+        'max_tokens_help' => 'Tokens máximos de salida para generación de artículos. Solo se aplica a modelos de chat.',
     ],
     'header' => [
         'welcome' => 'Bienvenido, :name',

@@ -6,8 +6,10 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\SiteSetting;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminAiModelsPageTest extends TestCase
@@ -49,6 +51,58 @@ class AdminAiModelsPageTest extends TestCase
 
         $response->assertOk()
             ->assertSee(__('admin.ai_models.test'));
+    }
+
+    public function test_admin_models_page_works_before_max_tokens_migration_runs(): void
+    {
+        Schema::table('ai_models', function (Blueprint $table): void {
+            $table->dropColumn('max_tokens');
+        });
+
+        $this->createAiModel('chat');
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-models.index'));
+
+        $response->assertOk()
+            ->assertSee(__('admin.ai_models.list_title'));
+    }
+
+    public function test_admin_saves_max_tokens_only_for_chat_models(): void
+    {
+        $admin = $this->createAdmin();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.ai-models.store'), [
+                'name' => 'Long Form Chat',
+                'version' => 'test',
+                'api_key' => 'test-api-key',
+                'model_id' => 'long-chat',
+                'model_type' => 'chat',
+                'api_url' => 'https://ai.test',
+                'failover_priority' => 100,
+                'daily_limit' => 0,
+                'max_tokens' => 12000,
+            ])
+            ->assertRedirect(route('admin.ai-models.index'));
+
+        $this->assertSame(12000, (int) AiModel::query()->where('model_id', 'long-chat')->value('max_tokens'));
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.ai-models.store'), [
+                'name' => 'Embedding Model',
+                'version' => 'test',
+                'api_key' => 'test-api-key',
+                'model_id' => 'embedding-model',
+                'model_type' => 'embedding',
+                'api_url' => 'https://ai.test',
+                'failover_priority' => 100,
+                'daily_limit' => 0,
+                'max_tokens' => 12000,
+            ])
+            ->assertRedirect(route('admin.ai-models.index'));
+
+        $this->assertNull(AiModel::query()->where('model_id', 'embedding-model')->value('max_tokens'));
     }
 
     public function test_admin_can_test_embedding_model_connection(): void

@@ -1865,8 +1865,8 @@ return array_replace_recursive($base, [
         'placeholder_api_key' => 'Digite a chave de API',
         'placeholder_api_url' => 'Exemplo: https://api.openai.com',
         'limit_help' => '0 significa ilimitado',
-        'max_tokens_placeholder' => 'Deixe vazio para usar o padrão (8192)',
-        'max_tokens_help' => 'Máximo de tokens de saída para geração de artigos. Deixe vazio para usar o padrão do sistema e evitar truncamento causado pelos padrões menores dos provedores (geralmente 4K).',
+        'max_tokens_placeholder' => 'Deixe vazio para usar o padrão (:tokens)',
+        'max_tokens_help' => 'Máximo de tokens de saída para geração de artigos. Aplica-se apenas a modelos de chat. Deixe vazio para usar o padrão do sistema e evitar truncamento causado pelos padrões menores dos provedores.',
         'confirm_delete' => 'Excluir modelo ":name"?',
         'error' => [
             'required_fields' => 'Nome, chave de API e ID são obrigatórios',

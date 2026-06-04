@@ -73,7 +73,9 @@ class MarkdownContentWriterAgent implements Agent, Conversational, HasProviderOp
             return [];
         }
 
-        return match ((string) $provider) {
+        $providerName = $provider instanceof Lab ? $provider->value : $provider;
+
+        return match ($providerName) {
             'gemini' => ['maxOutputTokens' => $this->maxTokens],
             'openai' => ['max_output_tokens' => $this->maxTokens],
             default => ['max_tokens' => $this->maxTokens],

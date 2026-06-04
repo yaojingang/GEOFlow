@@ -9,6 +9,7 @@ use App\Ai\Agents\MarkdownContentWriterAgent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Enums\Lab;
 use ReflectionMethod;
 use Tests\TestCase;
 
@@ -24,6 +25,8 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $this->assertSame(['max_tokens' => 8192], $agent->providerOptions('openrouter'));
         $this->assertSame(['max_output_tokens' => 8192], $agent->providerOptions('openai'));
         $this->assertSame(['maxOutputTokens' => 8192], $agent->providerOptions('gemini'));
+        $this->assertSame(['maxOutputTokens' => 8192], $agent->providerOptions(Lab::Gemini));
+        $this->assertSame(['max_output_tokens' => 8192], $agent->providerOptions(Lab::OpenAI));
     }
 
     public function test_generate_content_sends_configured_model_max_tokens(): void

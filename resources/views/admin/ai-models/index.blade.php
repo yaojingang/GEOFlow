@@ -291,9 +291,9 @@
                             <input type="number" name="daily_limit" id="daily_limit" min="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="0">
                             <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.limit_help') }}</p>
                         </div>
-                        <div>
+                        <div id="maxTokensField" class="{{ ($supportsModelMaxTokens ?? false) ? '' : 'hidden' }}">
                             <label for="max_tokens" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_max_tokens') }}</label>
-                            <input type="number" name="max_tokens" id="max_tokens" min="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.max_tokens_placeholder') }}">
+                            <input type="number" name="max_tokens" id="max_tokens" min="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.max_tokens_placeholder', ['tokens' => (int) ($contentMaxTokens ?? 8192)]) }}">
                             <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.max_tokens_help') }}</p>
                         </div>
                         <div id="statusField" class="hidden">
@@ -335,6 +335,7 @@
             testFailedPrefix: @json(__('admin.ai_models.test_failed_prefix')),
             testNetworkError: @json(__('admin.ai_models.test_network_error')),
         };
+        const SUPPORTS_MODEL_MAX_TOKENS = @json((bool) ($supportsModelMaxTokens ?? false));
         const UPDATE_URL_TEMPLATE = @json(route('admin.ai-models.update', ['modelId' => '__MODEL_ID__'], false));
         const DELETE_URL_TEMPLATE = @json(route('admin.ai-models.delete', ['modelId' => '__MODEL_ID__'], false));
         const TEST_URL_TEMPLATE = @json(route('admin.ai-models.test', ['modelId' => '__MODEL_ID__'], false));
@@ -367,6 +368,7 @@
             document.getElementById('apiKeyHelp').textContent = AI_MODELS_I18N.apiKeyHelpCreate;
             document.getElementById('api_url').value = 'https://api.deepseek.com';
             document.getElementById('failover_priority').value = 100;
+            syncMaxTokensVisibility();
             document.getElementById('modelModal').classList.remove('hidden');
         }
 
@@ -389,6 +391,7 @@
             document.getElementById('max_tokens').value = model.max_tokens ?? '';
             document.getElementById('status').value = model.status || 'active';
             document.getElementById('statusField').classList.remove('hidden');
+            syncMaxTokensVisibility();
             document.getElementById('modelModal').classList.remove('hidden');
         }
 
@@ -469,7 +472,27 @@
             document.getElementById('model_id').value = preset.model_id;
             document.getElementById('api_url').value = preset.api_url;
             document.getElementById('model_type').value = preset.model_type;
+            syncMaxTokensVisibility();
         }
+
+        function syncMaxTokensVisibility() {
+            const field = document.getElementById('maxTokensField');
+            const input = document.getElementById('max_tokens');
+            const modelType = document.getElementById('model_type')?.value || 'chat';
+            if (!field || !input) {
+                return;
+            }
+
+            const visible = SUPPORTS_MODEL_MAX_TOKENS && modelType === 'chat';
+            field.classList.toggle('hidden', !visible);
+            input.disabled = !visible;
+            if (!visible) {
+                input.value = '';
+            }
+        }
+
+        document.getElementById('model_type')?.addEventListener('change', syncMaxTokensVisibility);
+        syncMaxTokensVisibility();
 
         window.addEventListener('click', function (event) {
             const modal = document.getElementById('modelModal');

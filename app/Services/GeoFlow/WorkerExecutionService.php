@@ -20,6 +20,7 @@ use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Responses\Data\FinishReason;
 use RuntimeException;
 use Throwable;
 
@@ -856,7 +857,7 @@ class WorkerExecutionService
             throw new RuntimeException('AI返回空正文');
         }
 
-        $this->warnIfContentLooksTruncated($content, $aiModel);
+        $this->warnIfContentLooksTruncated($content, $aiModel, $response);
 
         AiModel::query()->whereKey((int) $aiModel->id)->update([
             'used_today' => DB::raw('COALESCE(used_today,0)+1'),
@@ -886,29 +887,42 @@ class WorkerExecutionService
      * 仅记录告警便于排查，不阻断流程：典型信号是未闭合的代码围栏（``` 数量为奇数），
      * 或正文结尾未落在正常的句末标点上。命中后提示调大该模型的 max_tokens。
      */
-    private function warnIfContentLooksTruncated(string $content, AiModel $aiModel): void
+    private function warnIfContentLooksTruncated(string $content, AiModel $aiModel, object $response): void
     {
         $trimmed = rtrim($content);
         if ($trimmed === '') {
             return;
         }
 
+        $maxTokens = $this->resolveMaxTokens($aiModel);
+        $completionTokens = (int) ($response->usage->completionTokens ?? 0);
+        $nearTokenLimit = $completionTokens > 0 && $completionTokens >= (int) floor($maxTokens * 0.92);
+        $lengthFinishReason = collect($response->steps ?? [])->contains(function (mixed $step): bool {
+            $finishReason = is_object($step) ? ($step->finishReason ?? null) : null;
+
+            return $finishReason === FinishReason::Length
+                || (is_string($finishReason) && $finishReason === FinishReason::Length->value)
+                || (is_object($finishReason) && property_exists($finishReason, 'value') && $finishReason->value === FinishReason::Length->value);
+        });
+
         $fenceCount = substr_count($trimmed, '```');
         $unclosedFence = ($fenceCount % 2) === 1;
 
         $lastChar = mb_substr($trimmed, -1);
-        $sentenceEndings = ['。', '！', '？', '.', '!', '?', '”', '"', '）', ')', '》', '`', '】', ']', '…'];
-        $endsAbruptly = ! in_array($lastChar, $sentenceEndings, true);
+        $sentenceEndings = ['。', '！', '？', '.', '!', '?', '”', '"', '）', ')', '》', '`', '】', ']', '…', ':', '：', ';', '；'];
+        $endsAbruptly = $nearTokenLimit && ! in_array($lastChar, $sentenceEndings, true);
 
-        if (! $unclosedFence && ! $endsAbruptly) {
+        if (! $lengthFinishReason && ! $unclosedFence && ! $endsAbruptly) {
             return;
         }
 
         Log::warning('GeoFlow 正文疑似被截断，建议调大该模型的 max_tokens', [
             'ai_model_id' => (int) $aiModel->id,
             'model_id' => (string) ($aiModel->model_id ?? ''),
-            'max_tokens' => $this->resolveMaxTokens($aiModel),
+            'max_tokens' => $maxTokens,
+            'completion_tokens' => $completionTokens,
             'content_length' => mb_strlen($trimmed),
+            'finish_reason_length' => $lengthFinishReason,
             'unclosed_code_fence' => $unclosedFence,
             'ends_abruptly' => $endsAbruptly,
         ]);
