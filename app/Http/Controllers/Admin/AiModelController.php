@@ -80,6 +80,7 @@ class AiModelController extends Controller
                 'api_url' => trim((string) ($payload['api_url'] ?? '')),
                 'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
                 'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
+                'max_tokens' => $this->normalizeMaxTokens($payload['max_tokens'] ?? null),
                 'status' => 'active',
             ]);
         } catch (\RuntimeException) {
@@ -121,6 +122,7 @@ class AiModelController extends Controller
             'api_url' => trim((string) ($payload['api_url'] ?? '')),
             'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
             'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
+            'max_tokens' => $this->normalizeMaxTokens($payload['max_tokens'] ?? null),
             'status' => $status,
         ];
 
@@ -341,6 +343,7 @@ class AiModelController extends Controller
                 'used_today',
                 'total_used',
                 'status',
+                'max_tokens',
                 'created_at',
                 'updated_at',
             ])
@@ -371,6 +374,7 @@ class AiModelController extends Controller
                 'used_today' => (int) ($model->used_today ?? 0),
                 'total_used' => (int) ($model->total_used ?? 0),
                 'status' => (string) ($model->status ?? 'active'),
+                'max_tokens' => $model->max_tokens !== null ? (int) $model->max_tokens : null,
                 'task_count' => (int) ($model->task_count ?? 0),
                 'article_count' => (int) ($model->article_count ?? 0),
                 'masked_api_key' => $this->maskApiKey((string) ($model->getRawOriginal('api_key') ?? '')),
@@ -444,12 +448,27 @@ class AiModelController extends Controller
             'api_url' => ['nullable', 'string', 'max:500'],
             'failover_priority' => ['nullable', 'integer', 'min:1'],
             'daily_limit' => ['nullable', 'integer', 'min:0'],
+            'max_tokens' => ['nullable', 'integer', 'min:1', 'max:1000000'],
         ];
         if ($isUpdate) {
             $rules['status'] = ['nullable', 'in:active,inactive'];
         }
 
         return $request->validate($rules);
+    }
+
+    /**
+     * 规范化 max_tokens 输入：仅当为正整数时保留，否则视为留空（使用全局默认值）。
+     */
+    private function normalizeMaxTokens(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $intValue = (int) $value;
+
+        return $intValue > 0 ? $intValue : null;
     }
 
     /**

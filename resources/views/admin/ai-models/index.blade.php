@@ -291,6 +291,11 @@
                             <input type="number" name="daily_limit" id="daily_limit" min="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="0">
                             <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.limit_help') }}</p>
                         </div>
+                        <div>
+                            <label for="max_tokens" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_max_tokens') }}</label>
+                            <input type="number" name="max_tokens" id="max_tokens" min="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.max_tokens_placeholder') }}">
+                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.max_tokens_help') }}</p>
+                        </div>
                         <div id="statusField" class="hidden">
                             <label for="status" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_status') }}</label>
                             <select name="status" id="status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
@@ -381,6 +386,7 @@
             document.getElementById('api_url').value = model.api_url || '';
             document.getElementById('failover_priority').value = model.failover_priority || 100;
             document.getElementById('daily_limit').value = model.daily_limit || 0;
+            document.getElementById('max_tokens').value = model.max_tokens ?? '';
             document.getElementById('status').value = model.status || 'active';
             document.getElementById('statusField').classList.remove('hidden');
             document.getElementById('modelModal').classList.remove('hidden');

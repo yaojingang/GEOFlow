@@ -1855,6 +1855,7 @@ return array_replace_recursive($base, [
         'field_api_url' => 'URL da API',
         'field_failover_priority' => 'Prioridade de Failover',
         'field_daily_limit' => 'Limite Diário',
+        'field_max_tokens' => 'Máximo de Tokens de Saída',
         'field_status' => 'Status',
         'type_chat_option' => 'Modelo de Chat',
         'type_embedding_option' => 'Modelo de Embedding',
@@ -1864,6 +1865,8 @@ return array_replace_recursive($base, [
         'placeholder_api_key' => 'Digite a chave de API',
         'placeholder_api_url' => 'Exemplo: https://api.openai.com',
         'limit_help' => '0 significa ilimitado',
+        'max_tokens_placeholder' => 'Deixe vazio para usar o padrão (8192)',
+        'max_tokens_help' => 'Máximo de tokens de saída para geração de artigos. Deixe vazio para usar o padrão do sistema e evitar truncamento causado pelos padrões menores dos provedores (geralmente 4K).',
         'confirm_delete' => 'Excluir modelo ":name"?',
         'error' => [
             'required_fields' => 'Nome, chave de API e ID são obrigatórios',
