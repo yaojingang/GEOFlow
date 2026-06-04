@@ -335,7 +335,7 @@ class SystemUpdatePlanService
      */
     private function gitTrackedFiles(): array
     {
-        if (! is_dir(base_path('.git'))) {
+        if (! file_exists(base_path('.git'))) {
             return [];
         }
 
