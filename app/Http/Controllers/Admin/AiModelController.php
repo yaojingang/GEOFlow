@@ -14,6 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Throwable;
 
@@ -51,6 +52,8 @@ class AiModelController extends Controller
             'defaultEmbeddingModelId' => $this->getDefaultEmbeddingModelId(),
             'chunkingConfig' => $this->getChunkingConfig(),
             'pgvectorEnabled' => $this->isPgvectorEnabled(),
+            'contentMaxTokens' => $this->defaultContentMaxTokens(),
+            'supportsModelMaxTokens' => $this->supportsModelMaxTokens(),
         ]);
     }
 
@@ -71,17 +74,23 @@ class AiModelController extends Controller
         }
 
         try {
-            $createdModel = AiModel::query()->create([
+            $modelType = $this->normalizeModelType((string) ($payload['model_type'] ?? 'chat'));
+            $createData = [
                 'name' => trim((string) $payload['name']),
                 'version' => trim((string) ($payload['version'] ?? '')),
                 'api_key' => $this->encryptApiKey($apiKey),
                 'model_id' => trim((string) $payload['model_id']),
-                'model_type' => $this->normalizeModelType((string) ($payload['model_type'] ?? 'chat')),
+                'model_type' => $modelType,
                 'api_url' => trim((string) ($payload['api_url'] ?? '')),
                 'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
                 'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
                 'status' => 'active',
-            ]);
+            ];
+            if ($this->supportsModelMaxTokens()) {
+                $createData['max_tokens'] = $this->normalizeMaxTokensForModelType($payload['max_tokens'] ?? null, $modelType);
+            }
+
+            $createdModel = AiModel::query()->create($createData);
         } catch (\RuntimeException) {
             return back()->withInput()->withErrors(__('admin.ai_models.error.crypto_key_missing'));
         }
@@ -123,6 +132,9 @@ class AiModelController extends Controller
             'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
             'status' => $status,
         ];
+        if ($this->supportsModelMaxTokens()) {
+            $updateData['max_tokens'] = $this->normalizeMaxTokensForModelType($payload['max_tokens'] ?? null, $modelType);
+        }
 
         $apiKey = trim((string) ($payload['api_key'] ?? ''));
         if ($apiKey !== '') {
@@ -327,23 +339,29 @@ class AiModelController extends Controller
      */
     private function loadModels(): array
     {
+        $supportsMaxTokens = $this->supportsModelMaxTokens();
+        $columns = [
+            'id',
+            'name',
+            'version',
+            'api_key',
+            'model_id',
+            'model_type',
+            'api_url',
+            'failover_priority',
+            'daily_limit',
+            'used_today',
+            'total_used',
+            'status',
+            'created_at',
+            'updated_at',
+        ];
+        if ($supportsMaxTokens) {
+            $columns[] = 'max_tokens';
+        }
+
         $models = AiModel::query()
-            ->select([
-                'id',
-                'name',
-                'version',
-                'api_key',
-                'model_id',
-                'model_type',
-                'api_url',
-                'failover_priority',
-                'daily_limit',
-                'used_today',
-                'total_used',
-                'status',
-                'created_at',
-                'updated_at',
-            ])
+            ->select($columns)
             ->withCount('tasks as task_count')
             ->addSelect([
                 'article_count' => Article::query()
@@ -356,7 +374,7 @@ class AiModelController extends Controller
 
         $defaultEmbeddingModelId = $this->getDefaultEmbeddingModelId();
 
-        return $models->map(function (AiModel $model) use ($defaultEmbeddingModelId): array {
+        return $models->map(function (AiModel $model) use ($defaultEmbeddingModelId, $supportsMaxTokens): array {
             $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
 
             return [
@@ -371,6 +389,7 @@ class AiModelController extends Controller
                 'used_today' => (int) ($model->used_today ?? 0),
                 'total_used' => (int) ($model->total_used ?? 0),
                 'status' => (string) ($model->status ?? 'active'),
+                'max_tokens' => $supportsMaxTokens && $model->max_tokens !== null ? (int) $model->max_tokens : null,
                 'task_count' => (int) ($model->task_count ?? 0),
                 'article_count' => (int) ($model->article_count ?? 0),
                 'masked_api_key' => $this->maskApiKey((string) ($model->getRawOriginal('api_key') ?? '')),
@@ -444,12 +463,41 @@ class AiModelController extends Controller
             'api_url' => ['nullable', 'string', 'max:500'],
             'failover_priority' => ['nullable', 'integer', 'min:1'],
             'daily_limit' => ['nullable', 'integer', 'min:0'],
+            'max_tokens' => ['nullable', 'integer', 'min:1', 'max:1000000'],
         ];
         if ($isUpdate) {
             $rules['status'] = ['nullable', 'in:active,inactive'];
         }
 
         return $request->validate($rules);
+    }
+
+    /**
+     * 规范化 max_tokens 输入：仅聊天模型保留正整数，其他类型视为留空。
+     */
+    private function normalizeMaxTokensForModelType(mixed $value, string $modelType): ?int
+    {
+        if ($this->normalizeModelType($modelType) !== 'chat') {
+            return null;
+        }
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $intValue = (int) $value;
+
+        return $intValue > 0 ? $intValue : null;
+    }
+
+    private function defaultContentMaxTokens(): int
+    {
+        return max(256, (int) config('geoflow.content_max_tokens', 8192));
+    }
+
+    private function supportsModelMaxTokens(): bool
+    {
+        return Schema::hasTable('ai_models') && Schema::hasColumn('ai_models', 'max_tokens');
     }
 
     /**
