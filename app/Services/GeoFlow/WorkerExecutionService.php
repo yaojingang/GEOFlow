@@ -897,10 +897,11 @@ class WorkerExecutionService
         $unclosedFence = ($fenceCount % 2) === 1;
 
         $lastChar = mb_substr($trimmed, -1);
-        $sentenceEndings = ['。', '！', '？', '.', '!', '?', '”', '"', '）', ')', '》', '`', '】', ']', '…'];
-        $endsAbruptly = ! in_array($lastChar, $sentenceEndings, true);
+        $allowedEndings = ['。', '！', '？', '.', '!', '?', '”', '"', '）', ')', '》', '`', '】', ']', '…', ':', '：', ';', '；', '-', '—'];
+        $hasAbruptTrailingText = ! in_array($lastChar, $allowedEndings, true)
+            && preg_match('/[\p{L}\p{N}]$/u', $trimmed) === 1;
 
-        if (! $unclosedFence && ! $endsAbruptly) {
+        if (! $unclosedFence && ! $hasAbruptTrailingText) {
             return;
         }
 
@@ -910,7 +911,7 @@ class WorkerExecutionService
             'max_tokens' => $this->resolveMaxTokens($aiModel),
             'content_length' => mb_strlen($trimmed),
             'unclosed_code_fence' => $unclosedFence,
-            'ends_abruptly' => $endsAbruptly,
+            'has_abrupt_trailing_text' => $hasAbruptTrailingText,
         ]);
     }
 
