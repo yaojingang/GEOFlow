@@ -66,7 +66,7 @@ class WorkerExecutionServicePromptTest extends TestCase
 
         $this->assertStringContainsString('【证据 K1】', $prompt);
         $this->assertStringContainsString('知识库引用要求', $prompt);
-        $this->assertStringContainsString('[K1]', $prompt);
+        $this->assertStringContainsString('最终正文不要输出 [K1]、[K2] 等证据编号', $prompt);
         $this->assertStringContainsString('证据不足时不要编造来源或结论', $prompt);
     }
 

@@ -604,10 +604,10 @@ class WorkerExecutionService
         }
 
         if ($this->isLikelyEnglishPrompt($prompt)) {
-            return 'Knowledge citation rule: when using facts, data, or business judgments from the reference knowledge, cite the evidence ID such as [K1] in the relevant sentence. If the evidence is insufficient, use cautious wording and do not invent sources or conclusions.';
+            return 'Knowledge citation rule: use the reference knowledge to ground facts, data, and business judgments, but do not output evidence IDs such as [K1] in the final article. If the evidence is insufficient, use cautious wording and do not invent sources or conclusions.';
         }
 
-        return '知识库引用要求：涉及事实、数据或业务判断时，优先依据参考知识中的 [K1] 等证据编号，并在相关句子后标注证据编号；证据不足时不要编造来源或结论。';
+        return '知识库引用要求：请吸收参考知识中的证据内容来支撑事实、数据和业务判断，但最终正文不要输出 [K1]、[K2] 等证据编号；证据不足时不要编造来源或结论。';
     }
 
     private function isLikelyEnglishPrompt(string $prompt): bool
