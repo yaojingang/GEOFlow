@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Models\AiModel;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
-use App\Ai\Agents\MarkdownContentWriterAgent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -24,9 +24,9 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $this->assertSame(['max_tokens' => 8192], $agent->providerOptions('deepseek'));
         $this->assertSame(['max_tokens' => 8192], $agent->providerOptions('openrouter'));
         $this->assertSame(['max_output_tokens' => 8192], $agent->providerOptions('openai'));
+        $this->assertSame(['max_output_tokens' => 8192], $agent->providerOptions(Lab::OpenAI));
         $this->assertSame(['maxOutputTokens' => 8192], $agent->providerOptions('gemini'));
         $this->assertSame(['maxOutputTokens' => 8192], $agent->providerOptions(Lab::Gemini));
-        $this->assertSame(['max_output_tokens' => 8192], $agent->providerOptions(Lab::OpenAI));
     }
 
     public function test_generate_content_sends_configured_model_max_tokens(): void
@@ -90,6 +90,21 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
     {
         Http::fake([
             'https://ai.test/v1/chat/completions' => Http::response($this->completion('# 标题'."\n\n".'这是一篇完整收尾的文章。')),
+        ]);
+
+        Log::spy();
+
+        $model = $this->createChatModel(['max_tokens' => 8192]);
+
+        $this->generateContent($model, '写一篇文章。');
+
+        Log::shouldNotHaveReceived('warning');
+    }
+
+    public function test_generate_content_does_not_warn_for_valid_markdown_colon_ending(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response($this->completion('# 标题'."\n\n".'下一节重点如下：')),
         ]);
 
         Log::spy();

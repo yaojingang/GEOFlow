@@ -909,10 +909,12 @@ class WorkerExecutionService
         $unclosedFence = ($fenceCount % 2) === 1;
 
         $lastChar = mb_substr($trimmed, -1);
-        $sentenceEndings = ['。', '！', '？', '.', '!', '?', '”', '"', '）', ')', '》', '`', '】', ']', '…', ':', '：', ';', '；'];
-        $endsAbruptly = $nearTokenLimit && ! in_array($lastChar, $sentenceEndings, true);
+        $allowedEndings = ['。', '！', '？', '.', '!', '?', '”', '"', '）', ')', '》', '`', '】', ']', '…', ':', '：', ';', '；', '-', '—'];
+        $hasAbruptTrailingText = $nearTokenLimit
+            && ! in_array($lastChar, $allowedEndings, true)
+            && preg_match('/[\p{L}\p{N}]$/u', $trimmed) === 1;
 
-        if (! $lengthFinishReason && ! $unclosedFence && ! $endsAbruptly) {
+        if (! $lengthFinishReason && ! $unclosedFence && ! $hasAbruptTrailingText) {
             return;
         }
 
@@ -924,7 +926,7 @@ class WorkerExecutionService
             'content_length' => mb_strlen($trimmed),
             'finish_reason_length' => $lengthFinishReason,
             'unclosed_code_fence' => $unclosedFence,
-            'ends_abruptly' => $endsAbruptly,
+            'has_abrupt_trailing_text' => $hasAbruptTrailingText,
         ]);
     }
 
