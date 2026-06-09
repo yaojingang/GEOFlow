@@ -5,11 +5,16 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
+use App\Models\ArticleImage;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\Image;
+use App\Models\ImageLibrary;
 use App\Models\SiteSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -59,6 +64,138 @@ class AdminArticlesPageTest extends TestCase
             ->get(route('admin.articles.create'))
             ->assertOk()
             ->assertSee(__('admin.article_create.page_heading'));
+    }
+
+    public function test_article_edit_page_renders_markdown_editor_assets_and_upload_route(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_editor_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-editor-admin@example.com',
+            'display_name' => 'Articles Editor Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '编辑器分类',
+            'slug' => 'editor-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Markdown 编辑器测试文章',
+            'slug' => 'markdown-editor-article',
+            'excerpt' => '摘要',
+            'content' => "## 小节\n\n正文",
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => (int) $article->id]))
+            ->assertOk()
+            ->assertSee('vendor/vditor/dist/index.min.js', false)
+            ->assertSee('vendor/cropperjs/cropper.min.js', false)
+            ->assertSee(route('admin.articles.editor.images.upload', ['articleId' => (int) $article->id], false), false)
+            ->assertSee('id="content-editor"', false)
+            ->assertSee('id="article-editor-quick-image-input"', false)
+            ->assertSee('id="article-editor-context-menu"', false)
+            ->assertSee(__('admin.article_editor.quick_actions.image'), false)
+            ->assertSee(__('admin.article_editor.quick_actions.heading'), false);
+    }
+
+    public function test_admin_can_upload_article_editor_image_and_receive_markdown(): void
+    {
+        Storage::fake('public');
+
+        $admin = Admin::query()->create([
+            'username' => 'articles_image_upload_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-image-upload@example.com',
+            'display_name' => 'Articles Image Upload Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '图片分类',
+            'slug' => 'image-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => '文章图片上传测试',
+            'slug' => 'article-editor-image-upload',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.images.upload', ['articleId' => (int) $article->id]), [
+                'image' => UploadedFile::fake()->image('geo-flow-editor.png', 640, 360),
+                'alt' => 'GEOFlow 编辑器截图',
+                'position' => 12,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('message', __('admin.article_editor.message.upload_success'))
+            ->assertJsonPath('image.alt', 'GEOFlow 编辑器截图');
+
+        $markdown = (string) $response->json('image.markdown');
+        $url = (string) $response->json('image.url');
+
+        $this->assertStringStartsWith('![GEOFlow 编辑器截图](/storage/uploads/images/', $markdown);
+        $this->assertStringStartsWith('/storage/uploads/images/', $url);
+        $this->assertSame(1, ImageLibrary::query()->where('name', '文章编辑器图片')->count());
+        $this->assertSame(1, Image::query()->where('original_name', 'GEOFlow 编辑器截图')->count());
+        $this->assertSame(1, ArticleImage::query()->where('article_id', (int) $article->id)->count());
+
+        Storage::disk('public')->assertExists(ltrim(substr($url, strlen('/storage/')), '/'));
+    }
+
+    public function test_article_editor_image_upload_rejects_non_images(): void
+    {
+        Storage::fake('public');
+
+        $admin = Admin::query()->create([
+            'username' => 'articles_image_reject_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-image-reject@example.com',
+            'display_name' => 'Articles Image Reject Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '图片校验分类',
+            'slug' => 'image-validation-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => '文章图片校验测试',
+            'slug' => 'article-editor-image-validation',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.images.upload', ['articleId' => (int) $article->id]), [
+                'image' => UploadedFile::fake()->create('not-image.txt', 4, 'text/plain'),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('image');
     }
 
     public function test_admin_can_save_article_hot_and_featured_flags(): void

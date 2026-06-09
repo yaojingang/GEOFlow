@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\AiPromptController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
+use App\Http\Controllers\Admin\ArticleEditorAssetController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\CategoryController;
@@ -139,6 +140,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{articleId}/restore', [ArticleController::class, 'restore'])->name('restore')->whereNumber('articleId');
             Route::post('{articleId}/force-delete', [ArticleController::class, 'forceDelete'])->name('force-delete')->whereNumber('articleId');
             Route::get('{articleId}/edit', [ArticleController::class, 'edit'])->name('edit');
+            Route::post('{articleId}/editor/images/upload', [ArticleEditorAssetController::class, 'uploadImage'])->name('editor.images.upload')->whereNumber('articleId');
             Route::put('{articleId}', [ArticleController::class, 'update'])->name('update');
         });
 

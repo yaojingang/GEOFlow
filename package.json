@@ -11,10 +11,12 @@
         "@tailwindcss/vite": "^4.0.0",
         "axios": "^1.11.0",
         "concurrently": "^9.0.1",
+        "cropperjs": "^1.6.2",
         "laravel-echo": "^2.3.4",
         "laravel-vite-plugin": "^2.0.0",
         "pusher-js": "^8.5.0",
         "tailwindcss": "^4.0.0",
+        "vditor": "^3.11.2",
         "vite": "^7.0.7"
     }
 }
