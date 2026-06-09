@@ -2599,6 +2599,13 @@ return [
         'secret_notice_title' => '请立即保存渠道密钥',
         'secret_notice_desc' => 'Secret 当前临时展示，刷新页面后将隐藏；超级管理员可在渠道详情页输入当前密码再次临时显示。',
         'queue_summary' => '待处理 :pending，失败 :failed',
+        'pagination' => [
+            'summary' => '显示第 :from - :to 条日志，共 :total 条',
+            'pages' => '（第 :page 页，共 :total_pages 页）',
+            'go_to' => '跳转到',
+            'prev' => '上一页',
+            'next' => '下一页',
+        ],
         'stats' => [
             'total' => '渠道总数',
             'active' => '活跃渠道',

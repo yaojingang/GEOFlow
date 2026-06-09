@@ -2599,6 +2599,13 @@ return [
         'secret_notice_title' => 'Save this channel secret now',
         'secret_notice_desc' => 'The secret is shown temporarily and hidden after refresh. Super admins can reveal it again from the channel detail page with their current password.',
         'queue_summary' => 'Pending :pending, failed :failed',
+        'pagination' => [
+            'summary' => 'Showing :from - :to of :total logs',
+            'pages' => '(Page :page of :total_pages)',
+            'go_to' => 'Go to',
+            'prev' => 'Previous',
+            'next' => 'Next',
+        ],
         'stats' => [
             'total' => 'Total Channels',
             'active' => 'Active Channels',

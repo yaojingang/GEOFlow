@@ -118,7 +118,7 @@
             <div class="border-b border-gray-200 px-6 py-4">
                 <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.recent_logs_title') }}</h2>
             </div>
-            @if ($logs->isEmpty())
+            @if ($logs->count() === 0)
                 <div class="px-6 py-8 text-sm text-gray-500">{{ __('admin.distribution.empty_logs') }}</div>
             @else
                 <div class="divide-y divide-gray-200">
@@ -137,6 +137,66 @@
                             </div>
                         </div>
                     @endforeach
+                </div>
+                <div class="border-t border-gray-200 px-6 py-4">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div class="text-sm text-gray-500">
+                            {{ __('admin.distribution.pagination.summary', [
+                                'from' => $logs->firstItem(),
+                                'to' => $logs->lastItem(),
+                                'total' => $logs->total(),
+                            ]) }}
+                            {{ __('admin.distribution.pagination.pages', [
+                                'page' => $logs->currentPage(),
+                                'total_pages' => $logs->lastPage(),
+                            ]) }}
+                        </div>
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                            @if ($logs->hasPages())
+                                <nav class="flex flex-wrap items-center gap-2" aria-label="{{ __('admin.distribution.recent_logs_title') }}">
+                                    @if ($logs->onFirstPage())
+                                        <span class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-300">{{ __('admin.distribution.pagination.prev') }}</span>
+                                    @else
+                                        <a href="{{ $logs->previousPageUrl() }}" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('admin.distribution.pagination.prev') }}</a>
+                                    @endif
+
+                                    @foreach ($logs->getUrlRange(max(1, $logs->currentPage() - 2), min($logs->lastPage(), $logs->currentPage() + 2)) as $page => $url)
+                                        @if ($page === $logs->currentPage())
+                                            <span class="rounded-md border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-medium text-white">{{ $page }}</span>
+                                        @else
+                                            <a href="{{ $url }}" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ $page }}</a>
+                                        @endif
+                                    @endforeach
+
+                                    @if ($logs->hasMorePages())
+                                        <a href="{{ $logs->nextPageUrl() }}" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('admin.distribution.pagination.next') }}</a>
+                                    @else
+                                        <span class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-300">{{ __('admin.distribution.pagination.next') }}</span>
+                                    @endif
+                                </nav>
+                            @endif
+                            <form method="GET" action="{{ route('admin.distribution.index') }}" class="flex items-center gap-2">
+                                @foreach (request()->except('logs_page') as $key => $value)
+                                    @if (is_scalar($value))
+                                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                    @endif
+                                @endforeach
+                                <label for="distribution-logs-page" class="whitespace-nowrap text-sm text-gray-500">{{ __('admin.distribution.pagination.go_to') }}</label>
+                                <input
+                                    id="distribution-logs-page"
+                                    name="logs_page"
+                                    type="number"
+                                    min="1"
+                                    max="{{ $logs->lastPage() }}"
+                                    value="{{ $logs->currentPage() }}"
+                                    class="block w-20 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                >
+                                <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                    {{ __('admin.button.jump') }}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
                 </div>
             @endif
         </div>

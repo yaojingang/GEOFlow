@@ -35,7 +35,7 @@ class DistributionController extends Controller
         private readonly SiteThemeCatalog $siteThemeCatalog,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
         $channels = DistributionChannel::query()
             ->with('activeSecret')
@@ -53,12 +53,20 @@ class DistributionController extends Controller
             'failed' => ArticleDistribution::query()->where('status', 'failed')->count(),
         ];
 
-        $logs = DistributionLog::query()
+        $logsQuery = DistributionLog::query()
             ->with('channel:id,name')
             ->with('article:id,title,slug')
-            ->orderByDesc('id')
-            ->limit(10)
-            ->get();
+            ->orderByDesc('id');
+        $logsPerPage = 10;
+        $logsTotal = (clone $logsQuery)->count();
+        $logsLastPage = max(1, (int) ceil($logsTotal / $logsPerPage));
+        $logsPage = min(
+            max(1, (int) $request->query('logs_page', 1)),
+            $logsLastPage
+        );
+        $logs = $logsQuery
+            ->paginate($logsPerPage, ['*'], 'logs_page', $logsPage)
+            ->withQueryString();
 
         return view('admin.distribution.index', [
             'pageTitle' => __('admin.distribution.page_title'),

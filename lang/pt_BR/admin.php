@@ -3384,6 +3384,13 @@ return array_replace_recursive($base, [
         'secret_notice_title' => 'Salve este segredo de canal agora',
         'secret_notice_desc' => 'O segredo é exibido temporariamente e fica oculto após atualizar a página. Super admins podem revelá-lo novamente nos detalhes do canal com a senha atual.',
         'queue_summary' => 'Pendentes :pending, com falha :failed',
+        'pagination' => [
+            'summary' => 'Exibindo :from - :to de :total logs',
+            'pages' => '(Página :page de :total_pages)',
+            'go_to' => 'Ir para',
+            'prev' => 'Anterior',
+            'next' => 'Próximo',
+        ],
         'stats' => [
             'total' => 'Total de Canais',
             'active' => 'Canais Ativos',

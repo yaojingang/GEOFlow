@@ -41,6 +41,51 @@ class AdminDistributionPageTest extends TestCase
             ->assertSee(__('admin.distribution.page_heading'));
     }
 
+    public function test_distribution_index_recent_logs_are_paginated_with_jump_input(): void
+    {
+        $admin = $this->admin();
+        $channel = DistributionChannel::query()->create([
+            'name' => '分页渠道',
+            'domain' => 'example.com',
+            'endpoint_url' => 'https://example.com',
+            'status' => 'active',
+        ]);
+
+        for ($i = 1; $i <= 12; $i++) {
+            DistributionLog::query()->create([
+                'distribution_channel_id' => (int) $channel->id,
+                'level' => 'info',
+                'event' => 'distribution.test',
+                'message' => sprintf('paged-log-%02d', $i),
+                'created_at' => now()->subMinutes(12 - $i),
+            ]);
+        }
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.distribution.index'))
+            ->assertOk()
+            ->assertSee('paged-log-12')
+            ->assertSee('paged-log-03')
+            ->assertDontSee('paged-log-02')
+            ->assertDontSee('paged-log-01')
+            ->assertSee(__('admin.distribution.pagination.pages', ['page' => 1, 'total_pages' => 2]))
+            ->assertSee('name="logs_page"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.distribution.index', ['logs_page' => 2]))
+            ->assertOk()
+            ->assertSee('paged-log-02')
+            ->assertSee('paged-log-01')
+            ->assertDontSee('paged-log-12')
+            ->assertSee(__('admin.distribution.pagination.pages', ['page' => 2, 'total_pages' => 2]));
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.distribution.index', ['logs_page' => 999]))
+            ->assertOk()
+            ->assertSee('paged-log-02')
+            ->assertSee(__('admin.distribution.pagination.pages', ['page' => 2, 'total_pages' => 2]));
+    }
+
     public function test_distribution_pages_do_not_render_missing_translation_keys(): void
     {
         $admin = $this->admin();
