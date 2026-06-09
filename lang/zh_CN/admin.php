@@ -583,6 +583,13 @@ return [
         'language_label' => '界面语言',
         'language_hint' => '登录前可先切换语言，登录后后台将沿用本次选择。',
         'language_switch_to' => '切换为 :language',
+        'first_login_hint_title' => '首次部署登录提示',
+        'first_login_hint_intro' => '仅首次显示一次。登录成功后，请立即进入后台修改默认管理员密码。',
+        'first_login_username' => '初始用户名',
+        'first_login_password' => '初始密码',
+        'first_login_password_from_log' => '生产环境未配置固定密码时，系统会生成一次性密码；请在 geoflow-init 初始化日志中查看。',
+        'first_login_security' => '请勿在公共设备保存登录状态，首次进入后台后务必修改密码。',
+        'first_login_dismiss' => '关闭首次部署提示',
         'back_home' => '返回首页',
         'error' => [
             'invalid_request' => 'Invalid request',

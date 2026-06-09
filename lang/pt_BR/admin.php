@@ -588,6 +588,13 @@ return array_replace_recursive($base, [
         'language_label' => 'Idioma da Interface',
         'language_hint' => 'Escolha um idioma antes de entrar. O console de admin continuará com esta seleção após o login.',
         'language_switch_to' => 'Mudar interface para :language',
+        'first_login_hint_title' => 'Dica do primeiro deploy',
+        'first_login_hint_intro' => 'Exibido apenas uma vez. Depois de entrar, altere imediatamente a senha do administrador.',
+        'first_login_username' => 'Usuário inicial',
+        'first_login_password' => 'Senha inicial',
+        'first_login_password_from_log' => 'Quando produção não tem senha fixa configurada, o GEOFlow cria uma senha de uso único. Verifique o log geoflow-init.',
+        'first_login_security' => 'Não mantenha sessão em dispositivos compartilhados. Altere a senha após o primeiro acesso.',
+        'first_login_dismiss' => 'Fechar dica do primeiro deploy',
         'back_home' => 'Voltar ao Início',
         'error' => [
             'invalid_request' => 'Requisição inválida',

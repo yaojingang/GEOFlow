@@ -10,7 +10,9 @@ use App\Support\GeoFlow\AdminLoginLockService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
+use Throwable;
 
 /**
  * Blade 后台会话登录/退出/语言切换（替代 bak/admin/index.php、logout.php）。
@@ -29,6 +31,7 @@ class AdminAuthController extends Controller
 
         return view('admin.auth.login', [
             'adminSiteName' => AdminWeb::siteName(),
+            'initialAdminHint' => $this->initialAdminHint(),
         ]);
     }
 
@@ -104,5 +107,60 @@ class AdminAuthController extends Controller
         app()->setLocale($locale);
 
         return redirect()->back();
+    }
+
+    /**
+     * 登录页只在首次部署、默认管理员尚未成功登录时给出一次性提示。
+     * 未显式配置密码时，Seeder 可能生成随机密码，只能提示查看初始化日志。
+     *
+     * @return array{enabled: bool, mode?: string, username?: string, password?: string, storage_key?: string}
+     */
+    private function initialAdminHint(): array
+    {
+        if (! (bool) config('geoflow.initial_admin_hint_enabled', true)) {
+            return ['enabled' => false];
+        }
+
+        $username = trim((string) config('geoflow.initial_admin_username', 'admin'));
+        if ($username === '') {
+            return ['enabled' => false];
+        }
+
+        try {
+            /** @var Admin|null $admin */
+            $admin = Admin::query()
+                ->where('username', $username)
+                ->first(['id', 'username', 'password', 'status', 'last_login']);
+        } catch (Throwable) {
+            return ['enabled' => false];
+        }
+
+        if (! $admin instanceof Admin || (string) $admin->status !== 'active' || $admin->last_login !== null) {
+            return ['enabled' => false];
+        }
+
+        $password = (string) config('geoflow.initial_admin_password', '');
+        $storageKey = 'geoflow.initial-admin-hint.'.sha1($username.'|'.(string) config('geoflow.app_version'));
+
+        if ($password !== '') {
+            if (Hash::check($password, (string) $admin->password)) {
+                return [
+                    'enabled' => true,
+                    'mode' => 'known',
+                    'username' => $username,
+                    'password' => $password,
+                    'storage_key' => $storageKey,
+                ];
+            }
+
+            return ['enabled' => false];
+        }
+
+        return [
+            'enabled' => true,
+            'mode' => 'log',
+            'username' => $username,
+            'storage_key' => $storageKey,
+        ];
     }
 }

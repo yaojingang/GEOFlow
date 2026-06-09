@@ -583,6 +583,13 @@ return [
         'language_label' => 'Interface Language',
         'language_hint' => 'Choose a language before signing in. The admin console will continue with this selection after login.',
         'language_switch_to' => 'Switch interface to :language',
+        'first_login_hint_title' => 'First deployment sign-in hint',
+        'first_login_hint_intro' => 'Shown only once. After signing in, change the default administrator password immediately.',
+        'first_login_username' => 'Initial username',
+        'first_login_password' => 'Initial password',
+        'first_login_password_from_log' => 'When production has no fixed password configured, GEOFlow creates a one-time password. Check the geoflow-init initialization log.',
+        'first_login_security' => 'Do not keep sessions on shared devices. Change the password after first access.',
+        'first_login_dismiss' => 'Dismiss first deployment hint',
         'back_home' => 'Back to Home',
         'error' => [
             'invalid_request' => 'Invalid request',

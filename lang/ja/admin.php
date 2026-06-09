@@ -108,6 +108,13 @@ return array_replace_recursive($base, [
         'remember_30_days' => '30日間ログイン状態を保持',
         'remember_30_days_hint' => '信頼できる端末向け',
         'language_label' => '表示言語',
+        'first_login_hint_title' => '初回デプロイのログイン情報',
+        'first_login_hint_intro' => '一度だけ表示されます。ログイン後、管理者パスワードをすぐに変更してください。',
+        'first_login_username' => '初期ユーザー名',
+        'first_login_password' => '初期パスワード',
+        'first_login_password_from_log' => '本番環境で固定パスワード未設定の場合、GEOFlow は一度限りのパスワードを生成します。geoflow-init の初期化ログを確認してください。',
+        'first_login_security' => '共有端末ではログイン状態を保存しないでください。初回アクセス後にパスワードを変更してください。',
+        'first_login_dismiss' => '初回デプロイの案内を閉じる',
         'back_home' => 'ホームへ戻る',
         'error' => [
             'invalid_credentials' => 'ユーザー名またはパスワードが正しくないか、アカウントが無効です',

@@ -108,6 +108,13 @@ return array_replace_recursive($base, [
         'remember_30_days' => 'Оставаться в системе 30 дней',
         'remember_30_days_hint' => 'Для доверенных устройств',
         'language_label' => 'Язык интерфейса',
+        'first_login_hint_title' => 'Подсказка первого развертывания',
+        'first_login_hint_intro' => 'Показывается только один раз. После входа сразу измените пароль администратора.',
+        'first_login_username' => 'Начальное имя пользователя',
+        'first_login_password' => 'Начальный пароль',
+        'first_login_password_from_log' => 'Если в production не задан фиксированный пароль, GEOFlow создает одноразовый пароль. Проверьте журнал geoflow-init.',
+        'first_login_security' => 'Не сохраняйте сессию на общих устройствах. Смените пароль после первого входа.',
+        'first_login_dismiss' => 'Закрыть подсказку первого развертывания',
         'back_home' => 'На главную',
         'error' => [
             'invalid_credentials' => 'Неверное имя пользователя или пароль, либо аккаунт отключен',

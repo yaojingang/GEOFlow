@@ -40,6 +40,10 @@ return [
 
     // 当前系统版本（底部展示、GitHub 更新检查对比）；默认跟随本地 version.json，避免已部署 .env 锁死版本号。
     'app_version' => $appVersion,
+    // 首次部署登录页初始管理员提示；仅当默认管理员尚未登录且密码可验证时展示一次。
+    'initial_admin_hint_enabled' => filter_var(env('GEOFLOW_INITIAL_ADMIN_HINT_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+    'initial_admin_username' => trim((string) env('GEOFLOW_ADMIN_USERNAME', 'admin')) ?: 'admin',
+    'initial_admin_password' => (string) env('GEOFLOW_ADMIN_PASSWORD', ''),
     // 欢迎弹窗「介绍」文案版本：变更后所有管理员会再次看到介绍弹窗
     'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '2.1'),
     // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
