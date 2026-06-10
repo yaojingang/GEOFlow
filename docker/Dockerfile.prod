@@ -1,9 +1,25 @@
 ARG COMPOSER_IMAGE=composer:2
 ARG PHP_FPM_IMAGE=php:8.4-fpm-bookworm
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
 
 FROM ${COMPOSER_IMAGE} AS vendor
 
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY}
+
 WORKDIR /app
+
+# composer:2 基于 Alpine；国内 ECS 需替换 apk 源（与 dev Dockerfile 的 Debian 镜像策略一致）
+RUN set -eux; \
+    if [ -f /etc/apk/repositories ]; then \
+        sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories; \
+    fi
 
 # composer:2 基础镜像未默认启用 pcntl；Horizon 在 install 时会校验 ext-pcntl（运行阶段已安装，此处对齐锁文件平台检查）
 RUN docker-php-ext-install pcntl
@@ -35,6 +51,13 @@ RUN composer dump-autoload \
  && BROADCAST_CONNECTION=null php artisan package:discover --ansi
 
 FROM ${PHP_FPM_IMAGE}
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY}
 
 WORKDIR /var/www/html
 

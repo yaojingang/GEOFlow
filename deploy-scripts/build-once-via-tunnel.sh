@@ -63,10 +63,14 @@ cat >"${TMP_DOCKER_CONFIG}/config.json" <<EOF
 }
 EOF
 
-echo ">>> 一次性构建（临时代理 ${PROXY_URL}，不重启 docker）"
+echo ">>> 一次性构建（拉镜像 + 构建容器内网络均走 ${PROXY_URL}，不重启 docker）"
 export DOCKER_CONFIG="${TMP_DOCKER_CONFIG}"
 
-sudo -E env DOCKER_CONFIG="${DOCKER_CONFIG}" \
+# DOCKER_CONFIG 仅影响 registry 拉取；RUN 内 apk/apt/pecl/composer 需 build-arg 传入代理
+sudo -E env \
+  DOCKER_CONFIG="${DOCKER_CONFIG}" \
+  DOCKER_BUILD_HTTP_PROXY="${PROXY_URL}" \
+  DOCKER_BUILD_HTTPS_PROXY="${PROXY_URL}" \
   docker-compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" build
 
 echo ">>> 构建完成。启动: sudo docker-compose --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d"
