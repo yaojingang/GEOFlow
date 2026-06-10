@@ -26,6 +26,7 @@ use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
+use App\Http\Controllers\Admin\SiteThemeReplicationController;
 use App\Http\Controllers\Admin\SystemUpdateController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
@@ -268,6 +269,40 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('/', [SiteSettingsController::class, 'index'])->name('index');
             Route::post('/', [SiteSettingsController::class, 'update'])->name('update');
             Route::post('theme', [SiteSettingsController::class, 'updateTheme'])->name('theme');
+            Route::get('theme-replications/create', [SiteThemeReplicationController::class, 'create'])->name('theme-replications.create');
+            Route::post('theme-replications', [SiteThemeReplicationController::class, 'store'])->name('theme-replications.store');
+            Route::get('theme-replications/{replicationId}', [SiteThemeReplicationController::class, 'show'])
+                ->name('theme-replications.show')
+                ->whereNumber('replicationId');
+            Route::get('theme-replications/{replicationId}/preview/{page}', [SiteThemeReplicationController::class, 'preview'])
+                ->name('theme-replications.preview')
+                ->whereNumber('replicationId')
+                ->whereIn('page', ['home', 'category', 'article']);
+            Route::get('theme-replications/{replicationId}/assets/{assetPath}', [SiteThemeReplicationController::class, 'asset'])
+                ->name('theme-replications.assets')
+                ->whereNumber('replicationId')
+                ->where('assetPath', '.*');
+            Route::post('theme-replications/{replicationId}/retry', [SiteThemeReplicationController::class, 'retry'])
+                ->name('theme-replications.retry')
+                ->whereNumber('replicationId');
+            Route::post('theme-replications/{replicationId}/iterate', [SiteThemeReplicationController::class, 'iterate'])
+                ->name('theme-replications.iterate')
+                ->whereNumber('replicationId');
+            Route::post('theme-replications/{replicationId}/publish', [SiteThemeReplicationController::class, 'publish'])
+                ->name('theme-replications.publish')
+                ->whereNumber('replicationId');
+            Route::post('theme-replications/{replicationId}/copy', [SiteThemeReplicationController::class, 'copy'])
+                ->name('theme-replications.copy')
+                ->whereNumber('replicationId');
+            Route::post('theme-replications/{replicationId}/archive', [SiteThemeReplicationController::class, 'archive'])
+                ->name('theme-replications.archive')
+                ->whereNumber('replicationId');
+            Route::post('theme-replications/{replicationId}/drafts/delete', [SiteThemeReplicationController::class, 'deleteDrafts'])
+                ->name('theme-replications.delete-drafts')
+                ->whereNumber('replicationId');
+            Route::get('theme-replications/{replicationId}/package', [SiteThemeReplicationController::class, 'downloadPackage'])
+                ->name('theme-replications.package')
+                ->whereNumber('replicationId');
             Route::post('article-detail-ads', [SiteSettingsController::class, 'updateArticleDetailAds'])->name('ads');
             Route::get('sensitive-words', [SecuritySettingsController::class, 'index'])->name('sensitive-words');
             Route::post('sensitive-words', [SecuritySettingsController::class, 'storeSensitiveWords'])->name('sensitive-words.store');
