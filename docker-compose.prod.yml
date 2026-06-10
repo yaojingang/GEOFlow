@@ -24,7 +24,7 @@ services:
       POSTGRES_USER: "${DB_USERNAME:-geo_user}"
       POSTGRES_PASSWORD: "${DB_PASSWORD:-change-this-password}"
     volumes:
-      - ${POSTGRES_DATA_DIR:-./docker-data/prod/postgres}:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_DIR:-./docker-data/prod/postgres}:${POSTGRES_CONTAINER_DATA_DIR:-/var/lib/postgresql/data}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
