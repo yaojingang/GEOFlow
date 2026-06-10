@@ -116,6 +116,14 @@ return [
             'error' => '检查失败',
             'unavailable' => '暂不可用',
         ],
+        'plan_status' => [
+            'ready' => '已检测到新版本，可以立即生成更新计划。',
+            'no_update' => '当前没有可生成计划的新版本。',
+            'archive_missing' => '已检测到新版本，但版本元数据缺少发布包地址，暂时无法自动生成更新计划。',
+            'archive_untrusted' => '已检测到新版本，但发布包地址不在允许的 GitHub 仓库范围内。',
+            'active_run' => '已有更新或回滚任务正在执行，完成后才能生成新的更新计划。',
+            'disabled_hint' => '请先修正版本元数据或查看 GitHub 更新日志后手动升级。',
+        ],
         'label' => [
             'current_version' => '当前版本',
             'latest_version' => '最新版本',

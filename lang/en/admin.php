@@ -116,6 +116,14 @@ return [
             'error' => 'Check failed',
             'unavailable' => 'Unavailable',
         ],
+        'plan_status' => [
+            'ready' => 'A new version is available. You can generate an update plan now.',
+            'no_update' => 'There is no newer version to plan for.',
+            'archive_missing' => 'A new version is available, but the release metadata is missing an archive URL, so an update plan cannot be generated automatically yet.',
+            'archive_untrusted' => 'A new version is available, but the archive URL is outside the allowed GitHub repository scope.',
+            'active_run' => 'An update or rollback run is already active. Generate a new plan after it finishes.',
+            'disabled_hint' => 'Fix the release metadata first, or review the GitHub changelog and upgrade manually.',
+        ],
         'label' => [
             'current_version' => 'Current version',
             'latest_version' => 'Latest version',

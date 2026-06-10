@@ -2,6 +2,7 @@
   "version": "2.0.4",
   "release_date": "2026-06-02",
   "release_type": "patch",
+  "archive_url": "https://github.com/yaojingang/GEOFlow/archive/refs/heads/main.zip",
   "payload": {
     "title_zh": "GEOFlow v2.0.4",
     "title_en": "GEOFlow v2.0.4",

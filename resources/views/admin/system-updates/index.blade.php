@@ -30,11 +30,18 @@
         $executionReady = !empty($summary['execution_enabled']) && !empty($summary['archive_apply_enabled']);
         $rollbackReady = !empty($summary['rollback_enabled']);
         $passwordRequired = !empty($summary['admin_password_required']);
+        $status = (string) ($state['status'] ?? 'unavailable');
+        $planStatus = is_array($summary['plan_status'] ?? null) ? $summary['plan_status'] : [];
+        $canGeneratePlan = !empty($planStatus['can_plan']);
+        $planStatusKey = (string) ($planStatus['key'] ?? 'no_update');
+        $planStatusMessage = (string) ($planStatus['message'] ?? '');
+        $planStatusClass = $canGeneratePlan
+            ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+            : ($status === 'available' ? 'border-amber-100 bg-amber-50 text-amber-700' : 'border-slate-100 bg-slate-50 text-slate-600');
         $localeForChangelog = app()->getLocale() === 'en' ? 'en' : 'zh-CN';
         $summaryText = (string) ($localeForChangelog === 'en'
             ? ($payload['summary_en'] ?? '')
             : ($payload['summary_zh'] ?? ($payload['summary_en'] ?? '')));
-        $status = (string) ($state['status'] ?? 'unavailable');
         $statusClass = match ($status) {
             'available' => 'bg-amber-50 text-amber-700 border-amber-200',
             'current' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -127,9 +134,20 @@
                             <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.overview') }}</h2>
                             <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.overview_desc') }}</p>
                         </div>
-                        <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold {{ $statusClass }}">
-                            {{ __('admin.system_updates.status.'.$status) }}
-                        </span>
+                        <div class="flex flex-wrap items-center justify-start gap-3 sm:justify-end">
+                            <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold {{ $statusClass }}">
+                                {{ __('admin.system_updates.status.'.$status) }}
+                            </span>
+                            @if($status === 'available')
+                                <form method="POST" action="{{ route('admin.system-updates.plan') }}">
+                                    @csrf
+                                    <button type="submit" @disabled(! $canGeneratePlan) class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                                        <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
+                                        {{ __('admin.system_updates.button.generate_plan') }}
+                                    </button>
+                                </form>
+                            @endif
+                        </div>
                     </div>
                 </div>
                 <div class="grid gap-4 px-6 py-6 sm:grid-cols-2 xl:grid-cols-4">
@@ -154,6 +172,21 @@
                     <div class="border-t border-gray-100 px-6 py-5">
                         <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.label.release_summary') }}</div>
                         <p class="mt-2 text-sm leading-6 text-gray-700">{{ $summaryText }}</p>
+                    </div>
+                @endif
+                @if($status === 'available' && $planStatusMessage !== '')
+                    <div class="border-t border-gray-100 px-6 py-5">
+                        <div class="rounded-lg border px-4 py-3 text-sm leading-6 {{ $planStatusClass }}">
+                            <div class="flex items-start gap-3">
+                                <i data-lucide="{{ $canGeneratePlan ? 'check-circle-2' : 'alert-triangle' }}" class="mt-0.5 h-4 w-4 flex-none"></i>
+                                <div>
+                                    <p class="font-semibold">{{ $planStatusMessage }}</p>
+                                    @if(! $canGeneratePlan && $planStatusKey !== 'active_run')
+                                        <p class="mt-1 opacity-90">{{ __('admin.system_updates.plan_status.disabled_hint') }}</p>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 @endif
             </section>
@@ -434,12 +467,15 @@
                         </div>
                         <form method="POST" action="{{ route('admin.system-updates.plan') }}">
                             @csrf
-                            <button type="submit" @disabled(empty($summary['can_plan']) || $hasActiveUpdateRun) class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                            <button type="submit" @disabled(! $canGeneratePlan) class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
                                 <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
                                 {{ __('admin.system_updates.button.generate_plan') }}
                             </button>
                         </form>
                     </div>
+                    @if($status === 'available' && $planStatusMessage !== '')
+                        <p class="mt-3 text-sm {{ $canGeneratePlan ? 'text-emerald-700' : 'text-amber-700' }}">{{ $planStatusMessage }}</p>
+                    @endif
                 </div>
 
                 @if($latestPlan)

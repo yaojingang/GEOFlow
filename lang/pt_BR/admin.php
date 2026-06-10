@@ -118,6 +118,14 @@ return array_replace_recursive($base, [
             'error' => 'Falha na verificação',
             'unavailable' => 'Indisponível',
         ],
+        'plan_status' => [
+            'ready' => 'Há uma nova versão disponível. Você já pode gerar um plano de atualização.',
+            'no_update' => 'Não há uma versão mais nova para planejar.',
+            'archive_missing' => 'Há uma nova versão disponível, mas os metadados da release não trazem a URL do pacote, então o plano ainda não pode ser gerado automaticamente.',
+            'archive_untrusted' => 'Há uma nova versão disponível, mas a URL do pacote está fora do repositório GitHub permitido.',
+            'active_run' => 'Já existe uma atualização ou rollback em execução. Gere um novo plano depois que terminar.',
+            'disabled_hint' => 'Corrija os metadados da release primeiro, ou revise o changelog no GitHub e atualize manualmente.',
+        ],
         'label' => [
             'current_version' => 'Versão atual',
             'latest_version' => 'Última versão',

@@ -14,6 +14,7 @@ class SystemUpdateStateService
         private readonly SystemUpdateDeploymentDiagnosticsService $deploymentDiagnosticsService,
         private readonly SystemUpdatePreflightService $preflightService,
         private readonly SystemUpdateRunHealthService $runHealthService,
+        private readonly SystemUpdateArchiveValidator $archiveValidator,
     ) {}
 
     /**
@@ -26,6 +27,8 @@ class SystemUpdateStateService
         $links = is_array($notification['links'] ?? null) ? $notification['links'] : [];
         $deployment = $this->deploymentDetector->detect();
         $latestPlan = $this->latestPlanForState($state);
+        $hasActiveRun = $this->hasActiveRun();
+        $planStatus = $this->planStatus($state, $hasActiveRun);
 
         return [
             'state' => $state,
@@ -36,10 +39,10 @@ class SystemUpdateStateService
             'preflight' => $this->preflightService->build($state, $deployment, $latestPlan),
             'recent_backups' => $this->recentBackups(),
             'recent_runs' => $this->recentRuns(),
-            'has_active_run' => $this->hasActiveRun(),
+            'has_active_run' => $hasActiveRun,
             'queue_health' => $this->runHealthService->summary(),
-            'can_plan' => (bool) ($state['is_update_available'] ?? false)
-                && trim((string) ($state['archive_url'] ?? '')) !== '',
+            'can_plan' => (bool) ($planStatus['can_plan'] ?? false),
+            'plan_status' => $planStatus,
             'can_backup' => $latestPlan !== null,
             'execution_enabled' => (bool) config('geoflow.update_execution_enabled', false),
             'archive_apply_enabled' => (bool) config('geoflow.update_archive_apply_enabled', false),
@@ -47,6 +50,46 @@ class SystemUpdateStateService
                 && (bool) config('geoflow.update_rollback_enabled', false),
             'admin_password_required' => (bool) config('geoflow.update_require_admin_password', true),
             'backup_keep' => max(1, (int) config('geoflow.update_backup_keep', 10)),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     * @return array{can_plan: bool, key: string, message: string}
+     */
+    private function planStatus(array $state, bool $hasActiveRun): array
+    {
+        if ($hasActiveRun) {
+            return $this->planStatusResult(false, 'active_run');
+        }
+
+        if (! (bool) ($state['is_update_available'] ?? false)) {
+            return $this->planStatusResult(false, 'no_update');
+        }
+
+        $archiveUrl = trim((string) ($state['archive_url'] ?? ''));
+        if ($archiveUrl === '') {
+            return $this->planStatusResult(false, 'archive_missing');
+        }
+
+        try {
+            $this->archiveValidator->assertAllowedArchiveUrl($archiveUrl);
+        } catch (\Throwable) {
+            return $this->planStatusResult(false, 'archive_untrusted');
+        }
+
+        return $this->planStatusResult(true, 'ready');
+    }
+
+    /**
+     * @return array{can_plan: bool, key: string, message: string}
+     */
+    private function planStatusResult(bool $canPlan, string $key): array
+    {
+        return [
+            'can_plan' => $canPlan,
+            'key' => $key,
+            'message' => __('admin.system_updates.plan_status.'.$key),
         ];
     }
 

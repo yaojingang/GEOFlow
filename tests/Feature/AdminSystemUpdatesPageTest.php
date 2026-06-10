@@ -31,6 +31,8 @@ class AdminSystemUpdatesPageTest extends TestCase
             'geoflow.update_archive_max_uncompressed_bytes' => 150 * 1024 * 1024,
             'geoflow.update_preflight_check_git_dirty' => false,
         ]);
+
+        Cache::flush();
     }
 
     public function test_super_admin_can_open_system_update_center_from_header(): void
@@ -66,7 +68,45 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->assertSee(__('admin.system_updates.section.preflight'))
             ->assertSee('2.0.2')
             ->assertSee('2.0.3')
-            ->assertSee('测试更新中心摘要');
+            ->assertSee('测试更新中心摘要')
+            ->assertSee(__('admin.system_updates.plan_status.archive_missing'));
+    }
+
+    public function test_update_center_shows_ready_plan_action_when_archive_url_is_available(): void
+    {
+        $admin = $this->createAdmin();
+
+        config([
+            'geoflow.app_version' => '2.0.2',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => 'https://example.test/version.json',
+        ]);
+
+        Http::fake([
+            'https://example.test/version.json' => Http::response([
+                'version' => '2.0.3',
+                'commit' => 'remote-commit',
+                'archive_url' => 'https://example.test/geoflow.zip',
+                'payload' => [
+                    'summary_zh' => '可以生成计划的更新摘要',
+                    'release_url' => 'https://example.test/release',
+                ],
+            ]),
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.plan_status.ready'))
+            ->assertSee(route('admin.system-updates.plan', [], false), false)
+            ->assertSee('可以生成计划的更新摘要');
+
+        $summary = app(\App\Services\Admin\SystemUpdateStateService::class)->summary();
+
+        $this->assertTrue($summary['can_plan']);
+        $this->assertSame('ready', $summary['plan_status']['key'] ?? null);
     }
 
     public function test_system_update_center_shows_deployment_diagnostics_panel(): void
@@ -406,7 +446,8 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->get(route('admin.system-updates.index'))
             ->assertOk()
             ->assertSee(__('admin.system_updates.preflight.status_fail'))
-            ->assertSee(__('admin.system_updates.preflight.repository_fail'));
+            ->assertSee(__('admin.system_updates.preflight.repository_fail'))
+            ->assertSee(__('admin.system_updates.plan_status.archive_untrusted'));
     }
 
     public function test_update_center_preflight_blocks_unapproved_archive_url(): void
@@ -434,7 +475,8 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->get(route('admin.system-updates.index'))
             ->assertOk()
             ->assertSee(__('admin.system_updates.preflight.status_fail'))
-            ->assertSee(__('admin.system_updates.preflight.repository_archive_fail'));
+            ->assertSee(__('admin.system_updates.preflight.repository_archive_fail'))
+            ->assertSee(__('admin.system_updates.plan_status.archive_untrusted'));
     }
 
     public function test_update_plan_rejects_unsafe_archive_paths(): void
