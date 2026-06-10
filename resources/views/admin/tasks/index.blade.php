@@ -643,20 +643,27 @@ function initTaskRealtime() {
         return;
     }
 
-    const pusher = new window.Pusher(TASK_REALTIME.key, {
+    const useTls = TASK_REALTIME.scheme === 'https';
+    const port = TASK_REALTIME.port || (useTls ? 443 : 80);
+    const pusherOptions = {
         cluster: 'mt1',
         wsHost: TASK_REALTIME.host,
-        wsPort: TASK_REALTIME.port || 80,
-        wssPort: TASK_REALTIME.port || 443,
-        forceTLS: TASK_REALTIME.scheme === 'https',
-        enabledTransports: ['ws', 'wss'],
+        wsPort: port,
+        wssPort: port,
+        forceTLS: useTls,
+        enabledTransports: useTls ? ['wss'] : ['ws', 'wss'],
         authEndpoint: @js(url('/broadcasting/auth')),
         auth: {
             headers: {
                 'X-CSRF-TOKEN': @js(csrf_token()),
             },
         },
-    });
+    };
+    if (TASK_REALTIME.path) {
+        pusherOptions.wsPath = TASK_REALTIME.path;
+    }
+
+    const pusher = new window.Pusher(TASK_REALTIME.key, pusherOptions);
 
     const channel = pusher.subscribe('private-admin.tasks');
     channel.bind('tasks.overview.updated', (payload) => {
