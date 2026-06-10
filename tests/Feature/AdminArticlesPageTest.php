@@ -100,11 +100,46 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee('vendor/vditor/dist/index.min.js', false)
             ->assertSee('vendor/cropperjs/cropper.min.js', false)
             ->assertSee(route('admin.articles.editor.images.upload', ['articleId' => (int) $article->id], false), false)
+            ->assertSee(route('admin.articles.editor.wechat-html', [], false), false)
             ->assertSee('id="content-editor"', false)
+            ->assertSee('id="article-editor-copy-markdown"', false)
+            ->assertSee('id="article-editor-copy-wechat-html"', false)
             ->assertSee('id="article-editor-quick-image-input"', false)
             ->assertSee('id="article-editor-context-menu"', false)
+            ->assertSee(__('admin.article_editor.copy.button'), false)
+            ->assertSee(__('admin.article_editor.wechat.button'), false)
+            ->assertSee('navigator.clipboard.writeText', false)
+            ->assertSee('ClipboardItem', false)
             ->assertSee(__('admin.article_editor.quick_actions.image'), false)
             ->assertSee(__('admin.article_editor.quick_actions.heading'), false);
+    }
+
+    public function test_admin_can_export_article_editor_wechat_html(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_wechat_export_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-wechat-export@example.com',
+            'display_name' => 'Articles WeChat Export Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.wechat-html'), [
+                'content' => "## 小节\n\n正文 **重点**\n\n<script>alert(1)</script>\n\n| A | B |\n| --- | --- |\n| 1 | 2 |",
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('message', __('admin.article_editor.wechat.success'));
+
+        $html = (string) $response->json('html');
+        $this->assertStringContainsString('data-geoflow-export="wechat-article"', $html);
+        $this->assertStringContainsString('style="', $html);
+        $this->assertStringContainsString('<h2', $html);
+        $this->assertStringContainsString('<strong', $html);
+        $this->assertStringContainsString('<table', $html);
+        $this->assertStringNotContainsString('<script', $html);
     }
 
     public function test_admin_can_upload_article_editor_image_and_receive_markdown(): void

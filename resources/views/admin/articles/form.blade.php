@@ -8,6 +8,7 @@
     $articleImageUploadUrl = $isEdit
         ? route('admin.articles.editor.images.upload', ['articleId' => (int) $articleId], false)
         : '';
+    $articleWechatHtmlUrl = route('admin.articles.editor.wechat-html', [], false);
     $vditorLocaleMap = [
         'zh_CN' => 'zh_CN',
         'en' => 'en_US',
@@ -91,9 +92,27 @@
 
                     <div class="bg-white shadow rounded-lg">
                         <div class="px-6 py-4 border-b border-gray-200">
-                            <div class="flex items-center justify-between">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
                                 <h3 class="text-lg font-medium text-gray-900">{{ __($i18nRoot.'.section.content_title') }}</h3>
-                                <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">{{ __($i18nRoot.'.help.markdown_supported') }}</span>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">{{ __($i18nRoot.'.help.markdown_supported') }}</span>
+                                    <button
+                                        type="button"
+                                        id="article-editor-copy-markdown"
+                                        class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                    >
+                                        <i data-lucide="copy" class="mr-1.5 h-4 w-4"></i>
+                                        {{ __('admin.article_editor.copy.button') }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        id="article-editor-copy-wechat-html"
+                                        class="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        <i data-lucide="copy-check" class="mr-1.5 h-4 w-4"></i>
+                                        {{ __('admin.article_editor.wechat.button') }}
+                                    </button>
+                                </div>
                             </div>
                             <p class="mt-2 text-sm text-gray-600">{{ __('admin.article_editor.editor_desc') }}</p>
                         </div>
@@ -118,6 +137,7 @@
                                 class="article-markdown-editor"
                                 data-upload-url="{{ $articleImageUploadUrl }}"
                                 data-upload-enabled="{{ $isEdit ? '1' : '0' }}"
+                                data-wechat-html-url="{{ $articleWechatHtmlUrl }}"
                             ></div>
                             <input id="article-editor-quick-image-input" type="file" accept="image/*" class="hidden">
                             <div id="article-editor-context-menu" class="article-editor-context-menu" hidden>
@@ -407,12 +427,15 @@
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             const uploadUrl = editorNode?.dataset.uploadUrl || '';
             const uploadEnabled = editorNode?.dataset.uploadEnabled === '1' && uploadUrl !== '';
+            const wechatHtmlUrl = editorNode?.dataset.wechatHtmlUrl || '';
             const cropperScriptUrl = @json(asset('vendor/cropperjs/cropper.min.js'));
             const modal = document.getElementById('article-image-modal');
             const cropTarget = document.getElementById('article-image-crop-target');
             const altInput = document.getElementById('article-image-alt');
             const cropEnabledInput = document.getElementById('article-image-crop-enabled');
             const statusNode = document.getElementById('article-image-status');
+            const copyMarkdownButton = document.getElementById('article-editor-copy-markdown');
+            const copyWechatHtmlButton = document.getElementById('article-editor-copy-wechat-html');
             const uploadOriginalButton = document.getElementById('article-image-upload-original');
             const uploadCroppedButton = document.getElementById('article-image-upload-cropped');
             const quickImageInput = document.getElementById('article-editor-quick-image-input');
@@ -434,6 +457,12 @@
                 cropUnavailable: @json(__('admin.article_editor.error.crop_unavailable')),
                 uploading: @json(__('admin.article_editor.message.uploading')),
                 uploadSuccess: @json(__('admin.article_editor.message.upload_success')),
+                copyEmpty: @json(__('admin.article_editor.copy.empty')),
+                copySuccess: @json(__('admin.article_editor.copy.success')),
+                copyFailed: @json(__('admin.article_editor.copy.failed')),
+                wechatCopying: @json(__('admin.article_editor.wechat.copying')),
+                wechatSuccess: @json(__('admin.article_editor.wechat.success')),
+                wechatFailed: @json(__('admin.article_editor.wechat.failed')),
             };
             const snippets = {
                 heading: @json(__('admin.article_editor.snippets.heading')),
@@ -517,6 +546,157 @@
                 }
 
                 setStatus(message, 'error');
+            }
+
+            function getCurrentMarkdown() {
+                if (editor && typeof editor.getValue === 'function') {
+                    return editor.getValue() || '';
+                }
+
+                return textarea.value || '';
+            }
+
+            function copyWithFallback(value) {
+                const helper = document.createElement('textarea');
+                helper.value = value;
+                helper.setAttribute('readonly', 'readonly');
+                helper.style.position = 'fixed';
+                helper.style.left = '-9999px';
+                helper.style.top = '0';
+                document.body.appendChild(helper);
+                helper.select();
+                helper.setSelectionRange(0, helper.value.length);
+
+                try {
+                    return document.execCommand('copy');
+                } finally {
+                    helper.remove();
+                }
+            }
+
+            async function copyArticleMarkdown() {
+                const markdown = getCurrentMarkdown();
+                textarea.value = markdown;
+
+                if (!markdown.trim()) {
+                    showEditorTip(messages.copyEmpty);
+                    return;
+                }
+
+                try {
+                    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function' && window.isSecureContext) {
+                        await navigator.clipboard.writeText(markdown);
+                    } else if (!copyWithFallback(markdown)) {
+                        throw new Error(messages.copyFailed);
+                    }
+
+                    showEditorTip(messages.copySuccess);
+                } catch (error) {
+                    showEditorTip(error.message || messages.copyFailed);
+                }
+            }
+
+            function copyHtmlWithFallback(html) {
+                const helper = document.createElement('div');
+                helper.setAttribute('contenteditable', 'true');
+                helper.style.position = 'fixed';
+                helper.style.left = '-9999px';
+                helper.style.top = '0';
+                helper.style.width = '720px';
+                helper.innerHTML = html;
+                document.body.appendChild(helper);
+                helper.focus();
+
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(helper);
+                selection?.removeAllRanges();
+                selection?.addRange(range);
+
+                try {
+                    return document.execCommand('copy');
+                } finally {
+                    selection?.removeAllRanges();
+                    helper.remove();
+                }
+            }
+
+            async function copyRichHtml(html, plainText) {
+                if (
+                    navigator.clipboard
+                    && typeof navigator.clipboard.write === 'function'
+                    && typeof window.ClipboardItem !== 'undefined'
+                    && window.isSecureContext
+                ) {
+                    await navigator.clipboard.write([
+                        new ClipboardItem({
+                            'text/html': new Blob([html], { type: 'text/html' }),
+                            'text/plain': new Blob([plainText || html], { type: 'text/plain' }),
+                        }),
+                    ]);
+                    return;
+                }
+
+                if (!copyHtmlWithFallback(html)) {
+                    throw new Error(messages.wechatFailed);
+                }
+            }
+
+            async function copyWeChatHtml() {
+                const markdown = getCurrentMarkdown();
+                textarea.value = markdown;
+
+                if (!markdown.trim()) {
+                    showEditorTip(messages.copyEmpty);
+                    return;
+                }
+                if (!wechatHtmlUrl) {
+                    showEditorTip(messages.wechatFailed);
+                    return;
+                }
+
+                const originalHtml = copyWechatHtmlButton?.innerHTML || '';
+                if (copyWechatHtmlButton) {
+                    copyWechatHtmlButton.disabled = true;
+                    copyWechatHtmlButton.setAttribute('aria-busy', 'true');
+                    copyWechatHtmlButton.innerHTML = '<i data-lucide="loader-2" class="mr-1.5 h-4 w-4 animate-spin"></i>' + messages.wechatCopying;
+                    if (window.lucide) {
+                        window.lucide.createIcons();
+                    }
+                }
+
+                try {
+                    const response = await fetch(wechatHtmlUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({ content: markdown }),
+                    });
+                    const payload = await response.json().catch(function () {
+                        return {};
+                    });
+                    if (!response.ok || !payload.html) {
+                        throw new Error(payload.message || messages.wechatFailed);
+                    }
+
+                    await copyRichHtml(String(payload.html), String(payload.plain || markdown));
+                    showEditorTip(payload.message || messages.wechatSuccess);
+                } catch (error) {
+                    showEditorTip(error.message || messages.wechatFailed);
+                } finally {
+                    if (copyWechatHtmlButton) {
+                        copyWechatHtmlButton.disabled = false;
+                        copyWechatHtmlButton.removeAttribute('aria-busy');
+                        copyWechatHtmlButton.innerHTML = originalHtml;
+                        if (window.lucide) {
+                            window.lucide.createIcons();
+                        }
+                    }
+                }
             }
 
             function hideContextMenu() {
@@ -818,6 +998,9 @@
                     runEditorAction(node.dataset.editorAction || '');
                 });
             });
+
+            copyMarkdownButton?.addEventListener('click', copyArticleMarkdown);
+            copyWechatHtmlButton?.addEventListener('click', copyWeChatHtml);
 
             document.addEventListener('click', function (event) {
                 if (!contextMenu || contextMenu.hidden) {

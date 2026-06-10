@@ -3251,6 +3251,18 @@ return [
             'image' => '可从工具栏、拖拽或粘贴上传图片，上传后自动插入 Markdown。',
             'crop' => '上传前可裁剪图片，并填写图片描述用于 alt 文本。',
         ],
+        'copy' => [
+            'button' => '一键复制',
+            'success' => '已复制 Markdown 正文，可粘贴到其他编辑器。',
+            'empty' => '正文为空，暂无内容可复制。',
+            'failed' => '复制失败，请手动选择正文复制。',
+        ],
+        'wechat' => [
+            'button' => '复制公众号格式',
+            'copying' => '生成中...',
+            'success' => '已复制公众号 HTML，可直接粘贴到富文本编辑器。',
+            'failed' => '公众号 HTML 复制失败，请稍后重试。',
+        ],
         'quick_actions' => [
             'title' => '快速插入',
             'context_title' => '常用排版',

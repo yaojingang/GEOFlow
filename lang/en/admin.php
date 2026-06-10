@@ -3251,6 +3251,18 @@ return [
             'image' => 'Upload images from the toolbar, drag-and-drop, or paste. Markdown is inserted automatically.',
             'crop' => 'Crop before upload and write image descriptions for alt text.',
         ],
+        'copy' => [
+            'button' => 'Copy',
+            'success' => 'Markdown body copied. You can paste it into another editor.',
+            'empty' => 'The body is empty. Nothing to copy.',
+            'failed' => 'Copy failed. Please select and copy the body manually.',
+        ],
+        'wechat' => [
+            'button' => 'Copy WeChat Format',
+            'copying' => 'Generating...',
+            'success' => 'WeChat-ready HTML copied. You can paste it into a rich-text editor.',
+            'failed' => 'Failed to copy WeChat-ready HTML. Please try again later.',
+        ],
         'quick_actions' => [
             'title' => 'Quick Insert',
             'context_title' => 'Common Formatting',

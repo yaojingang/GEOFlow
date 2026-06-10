@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\ArticleImage;
 use App\Models\Image;
 use App\Models\ImageLibrary;
+use App\Support\Admin\WeChatArticleHtmlExporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -17,6 +18,28 @@ use Illuminate\Validation\Rules\File;
 class ArticleEditorAssetController extends Controller
 {
     private const EDITOR_LIBRARY_NAME = '文章编辑器图片';
+
+    public function exportWeChatHtml(Request $request, WeChatArticleHtmlExporter $exporter): JsonResponse
+    {
+        $payload = $request->validate([
+            'content' => ['required', 'string', 'max:1000000'],
+        ], [
+            'content.required' => __('admin.article_editor.copy.empty'),
+        ]);
+
+        $html = $exporter->toHtml((string) $payload['content']);
+        if ($html === '') {
+            return response()->json([
+                'message' => __('admin.article_editor.copy.empty'),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => __('admin.article_editor.wechat.success'),
+            'html' => $html,
+            'plain' => $exporter->toPlainText($html),
+        ]);
+    }
 
     public function uploadImage(Request $request, int $articleId): JsonResponse
     {
