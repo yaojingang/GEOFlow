@@ -8,6 +8,21 @@
     $helpDocsUrl = app()->getLocale() === 'en'
         ? 'https://github.com/yaojingang/GEOFlow/wiki/Home-English'
         : 'https://github.com/yaojingang/GEOFlow/wiki';
+    $reverbApp = config('reverb.apps.apps.0', []);
+    $reverbHost = (string) (config('reverb.servers.reverb.hostname') ?: config('app.url'));
+    $reverbParsedHost = parse_url($reverbHost, PHP_URL_HOST);
+    $reverbPath = trim((string) config('reverb.servers.reverb.path', ''));
+    if ($reverbPath !== '' && ! str_starts_with($reverbPath, '/')) {
+        $reverbPath = '/'.$reverbPath;
+    }
+    $reverbRuntimeConfig = [
+        'enabled' => (string) config('broadcasting.default') === 'reverb',
+        'key' => (string) ($reverbApp['key'] ?? ''),
+        'host' => $reverbParsedHost ? (string) $reverbParsedHost : $reverbHost,
+        'port' => (int) (config('reverb.apps.apps.0.options.port') ?: 443),
+        'scheme' => (string) (config('reverb.apps.apps.0.options.scheme') ?: 'https'),
+        'path' => rtrim($reverbPath, '/'),
+    ];
 @endphp
 <footer class="bg-white border-t border-gray-200 mt-12">
     <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
@@ -32,6 +47,7 @@
 </footer>
 <script>
     window.ADMIN_BASE_PATH = @json('/'.\App\Support\AdminWeb::basePath());
+    window.GEOFLOW_REVERB_CONFIG = @json($reverbRuntimeConfig, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     window.adminUrl = function (path) {
         const base = window.ADMIN_BASE_PATH || '';
         if (!path) return base + '/';
