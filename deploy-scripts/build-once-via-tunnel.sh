@@ -69,6 +69,7 @@ export DOCKER_CONFIG="${TMP_DOCKER_CONFIG}"
 # DOCKER_CONFIG 仅影响 registry 拉取；RUN 内 apk/apt/pecl/composer 需 build-arg 传入代理
 sudo -E env \
   DOCKER_CONFIG="${DOCKER_CONFIG}" \
+  DOCKER_BUILD_NETWORK="host" \
   DOCKER_BUILD_HTTP_PROXY="${PROXY_URL}" \
   DOCKER_BUILD_HTTPS_PROXY="${PROXY_URL}" \
   docker-compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" build
