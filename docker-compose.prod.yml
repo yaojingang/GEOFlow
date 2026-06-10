@@ -4,6 +4,7 @@ name: geoflow-laravel-prod
 x-prod-app-build-args: &prod_app_build_args
   COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
   PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
+  PECL_REDIS_VERSION: ${PECL_REDIS_VERSION:-6.3.0}
   COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
   HTTP_PROXY: ${DOCKER_BUILD_HTTP_PROXY:-}
   HTTPS_PROXY: ${DOCKER_BUILD_HTTPS_PROXY:-${DOCKER_BUILD_HTTP_PROXY:-}}

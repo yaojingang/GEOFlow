@@ -1,5 +1,6 @@
 ARG COMPOSER_IMAGE=composer:2
 ARG PHP_FPM_IMAGE=php:8.4-fpm-bookworm
+ARG PECL_REDIS_VERSION=6.3.0
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
@@ -52,6 +53,7 @@ RUN composer dump-autoload \
 
 FROM ${PHP_FPM_IMAGE}
 
+ARG PECL_REDIS_VERSION
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
@@ -72,6 +74,7 @@ RUN set -eux; \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        ca-certificates \
         curl \
         libonig-dev \
         libpq-dev \
@@ -86,8 +89,10 @@ RUN apt-get update \
         pdo_pgsql \
         pdo_sqlite \
         zip \
-    && pecl install redis \
+    && curl -fsSL "https://pecl.php.net/get/redis-${PECL_REDIS_VERSION}.tgz" -o /tmp/redis.tgz \
+    && pecl install /tmp/redis.tgz \
     && docker-php-ext-enable redis \
+    && rm -f /tmp/redis.tgz \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/99-opcache.ini

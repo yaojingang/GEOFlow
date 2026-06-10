@@ -275,14 +275,16 @@ proxy_set_header X-Forwarded-Host $host;
 **终端 1（Mac，保持不关）：**
 
 ```bash
-ECS_HOST=ecs-user@你的IP bash deploy-scripts/start-docker-pull-tunnel.sh
+REMOTE_PROXY_PORT=1080 LOCAL_PROXY_PORT=1082 \
+ECS_HOST=ecs-user@you-ip \
+bash deploy-scripts/start-docker-pull-tunnel.sh
 ```
 
 **终端 2（ECS）：**
 
 ```bash
-bash deploy-scripts/pull-images-once-via-tunnel.sh --env-file .env.prod
-bash deploy-scripts/build-once-via-tunnel.sh --env-file .env.prod
+DOCKER_TUNNEL_PROXY_PORT=1080 bash deploy-scripts/pull-images-once-via-tunnel.sh --env-file .env.prod
+DOCKER_TUNNEL_PROXY_PORT=1080 bash deploy-scripts/build-once-via-tunnel.sh --env-file .env.prod
 sudo docker-compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
