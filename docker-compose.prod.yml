@@ -192,3 +192,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  default:
+    name: ${DOCKER_NETWORK_NAME:-geoflow-prod-net}
+    ipam:
+      config:
+        # 避开 VPC 172.16.0.0/12，避免容器路由与内网地址冲突。
+        - subnet: ${DOCKER_NETWORK_SUBNET:-10.88.0.0/16}
+          gateway: ${DOCKER_NETWORK_GATEWAY:-10.88.0.1}
