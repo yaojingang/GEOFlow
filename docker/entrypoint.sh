@@ -52,7 +52,30 @@ if [ "${COMPOSER_NEED_POST_INSTALL}" = "true" ]; then
   composer dump-autoload --optimize --no-interaction
 fi
 
-mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs
+mkdir -p \
+  bootstrap/cache \
+  storage/app/public \
+  storage/app/public/uploads/images \
+  storage/app/tmp \
+  storage/framework/cache/data \
+  storage/framework/sessions \
+  storage/framework/views \
+  storage/logs
+
+if [ "${AUTO_FIX_STORAGE_PERMISSIONS:-true}" = "true" ]; then
+  if [ "$(id -u)" = "0" ]; then
+    RUNTIME_USER="${RUNTIME_USER:-www-data}"
+    RUNTIME_GROUP="${RUNTIME_GROUP:-www-data}"
+
+    echo "[entrypoint] fixing storage permissions for ${RUNTIME_USER}:${RUNTIME_GROUP}"
+    chown -R "${RUNTIME_USER}:${RUNTIME_GROUP}" storage bootstrap/cache
+    find storage bootstrap/cache -type d -exec chmod 775 {} \;
+    find storage bootstrap/cache -type f -exec chmod 664 {} \;
+  else
+    echo "[entrypoint] skip permission fix: container is not running as root"
+  fi
+fi
+
 if [ ! -e public/storage ]; then
   php artisan storage:link --force --no-interaction
 fi
