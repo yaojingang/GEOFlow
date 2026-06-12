@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
+use App\Services\Admin\SiteThemeReplicationService;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
 use App\Support\Site\SiteSettingsBag;
@@ -23,7 +24,10 @@ use Illuminate\View\View;
  */
 class SiteSettingsController extends Controller
 {
-    public function __construct(private readonly SiteThemeCatalog $siteThemeCatalog) {}
+    public function __construct(
+        private readonly SiteThemeCatalog $siteThemeCatalog,
+        private readonly SiteThemeReplicationService $themeReplicationService
+    ) {}
 
     /**
      * 网站设置页面。
@@ -39,6 +43,8 @@ class SiteSettingsController extends Controller
             'settings' => $settings,
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
             'availableThemes' => $this->siteThemeCatalog->all(),
+            'recentThemeReplications' => $this->themeReplicationService->recent(3),
+            'themeReplicationDeployment' => $this->themeReplicationService->deploymentDiagnostics(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
         ]);
