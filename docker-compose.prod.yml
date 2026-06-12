@@ -5,14 +5,14 @@ x-prod-app-build-args: &prod_app_build_args
   COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
   PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
   PECL_REDIS_VERSION: ${PECL_REDIS_VERSION:-6.3.0}
-  COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
+  COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
   HTTP_PROXY: ${DOCKER_BUILD_HTTP_PROXY:-}
   HTTPS_PROXY: ${DOCKER_BUILD_HTTPS_PROXY:-${DOCKER_BUILD_HTTP_PROXY:-}}
   NO_PROXY: ${DOCKER_BUILD_NO_PROXY:-localhost,127.0.0.1,::1,postgres,redis}
 
 services:
   postgres:
-    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
+    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg18}
     container_name: geoflow-postgres-prod
     environment:
       POSTGRES_DB: "${DB_DATABASE:-geo_flow}"
@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: ${REDIS_IMAGE:-redis:7-alpine}
+    image: ${REDIS_IMAGE:-redis:8-alpine}
     container_name: geoflow-redis-prod
     environment:
       REDIS_PASSWORD: "${REDIS_PASSWORD:-}"

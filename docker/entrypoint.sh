@@ -23,13 +23,13 @@ elif [ "${COMPOSER_ON_START}" = "true" ]; then
 fi
 
 if [ "${RUN_COMPOSER}" = "true" ]; then
-  # Packagist 中国镜像，加速 composer install。
-  COMPOSER_PACKAGIST_MIRROR="${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}"
   COMPOSER_HOME="${COMPOSER_HOME:-/tmp/composer}"
   export COMPOSER_HOME
   mkdir -p "${COMPOSER_HOME}"
-  if ! composer config -g repo.packagist composer "${COMPOSER_PACKAGIST_MIRROR}"; then
-    echo "[entrypoint] warning: failed to configure composer mirror, continue with default source"
+  if [ -n "${COMPOSER_PACKAGIST_MIRROR:-}" ]; then
+    if ! composer config -g repo.packagist composer "${COMPOSER_PACKAGIST_MIRROR}"; then
+      echo "[entrypoint] warning: failed to configure composer mirror, continue with default source"
+    fi
   fi
   echo "[entrypoint] composer install (COMPOSER_ON_START=${COMPOSER_ON_START}, vendor missing=$([ ! -f vendor/autoload.php ] && echo yes || echo no))"
   # 无有效 APP_KEY 时 composer 脚本会调 artisan（package:discover），易失败且留不下 vendor/autoload.php
