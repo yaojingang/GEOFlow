@@ -193,7 +193,7 @@ class KnowledgeBaseController extends Controller
     {
         $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
 
-        $taskCount = Task::query()->where('knowledge_base_id', $knowledgeBaseId)->count();
+        $taskCount = $this->knowledgeBaseTaskCount($knowledgeBaseId);
         if ($taskCount > 0) {
             return back()->withErrors(__('admin.knowledge_bases.error.in_use', ['count' => $taskCount]));
         }
@@ -542,12 +542,51 @@ class KnowledgeBaseController extends Controller
      */
     private function loadRelatedTasks(int $knowledgeBaseId): EloquentCollection
     {
+        $taskIds = $this->taskIdsUsingKnowledgeBase($knowledgeBaseId);
+        if ($taskIds === []) {
+            return Task::query()->whereRaw('1 = 0')->get();
+        }
+
         return Task::query()
             ->select(['id', 'name', 'status', 'updated_at'])
-            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->whereIn('id', $taskIds)
             ->orderByDesc('updated_at')
             ->limit(5)
             ->get();
+    }
+
+    private function knowledgeBaseTaskCount(int $knowledgeBaseId): int
+    {
+        return count($this->taskIdsUsingKnowledgeBase($knowledgeBaseId));
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function taskIdsUsingKnowledgeBase(int $knowledgeBaseId): array
+    {
+        $taskIds = Task::query()
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+
+        if (Schema::hasTable('task_knowledge_bases')) {
+            $taskIds = array_merge(
+                $taskIds,
+                DB::table('task_knowledge_bases')
+                    ->where('knowledge_base_id', $knowledgeBaseId)
+                    ->pluck('task_id')
+                    ->map(static fn (mixed $id): int => (int) $id)
+                    ->all()
+            );
+        }
+
+        return collect($taskIds)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

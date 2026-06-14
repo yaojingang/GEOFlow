@@ -17,6 +17,7 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Support\AdminWeb;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -96,7 +97,7 @@ class MaterialsController extends Controller
             'knowledge_chunks' => $knowledgeChunks,
             'vectorized_chunks' => $vectorizedChunks,
             'unvectorized_chunks' => max(0, $knowledgeChunks - $vectorizedChunks),
-            'knowledge_usage_count' => Task::query()->whereNotNull('knowledge_base_id')->count(),
+            'knowledge_usage_count' => $this->knowledgeUsageTaskCount(),
             'active_embedding_models' => AiModel::query()
                 ->where('status', 'active')
                 ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'")
@@ -130,6 +131,27 @@ class MaterialsController extends Controller
                 }
             })
             ->count();
+    }
+
+    private function knowledgeUsageTaskCount(): int
+    {
+        $taskIds = Task::query()
+            ->whereNotNull('knowledge_base_id')
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+
+        if (Schema::hasTable('task_knowledge_bases')) {
+            $taskIds = array_merge(
+                $taskIds,
+                DB::table('task_knowledge_bases')
+                    ->pluck('task_id')
+                    ->map(static fn ($id): int => (int) $id)
+                    ->all()
+            );
+        }
+
+        return count(array_unique(array_filter($taskIds, static fn (int $id): bool => $id > 0)));
     }
 
     private function reviewedKnowledgeBaseCount(): int

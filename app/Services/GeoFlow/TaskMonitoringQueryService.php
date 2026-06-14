@@ -7,6 +7,7 @@ use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * 任务监控查询编排服务。
@@ -208,13 +209,35 @@ class TaskMonitoringQueryService
             ->whereIn('id', $tasks->pluck('ai_model_id')->filter()->all())
             ->pluck('name', 'id');
 
-        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $runStats, $latestRuns, $titleNames, $modelNames): array {
+        $legacyKnowledgeBaseNames = DB::table('knowledge_bases')
+            ->whereIn('id', $tasks->pluck('knowledge_base_id')->filter()->all())
+            ->pluck('name', 'id');
+
+        $taskKnowledgeBaseLinks = $this->loadTaskKnowledgeBaseLinks($taskIds);
+
+        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $runStats, $latestRuns, $titleNames, $modelNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks): array {
             $taskId = (int) $task->id;
             $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0, 'draft_articles' => 0, 'publishable_drafts' => 0]);
             $distributions = $distributionStats->get($taskId, ['distribution_total_count' => 0, 'distribution_synced_count' => 0, 'distribution_failed_count' => 0]);
             $runs = $runStats->get($taskId, ['pending_jobs' => 0, 'running_jobs' => 0, 'completed_jobs' => 0, 'failed_jobs' => 0]);
             /** @var TaskRun|null $latestRun */
             $latestRun = $latestRuns->get($taskId);
+            $knowledgeBases = $taskKnowledgeBaseLinks->get($taskId, collect([]))->values()->all();
+            $legacyKnowledgeBaseId = $this->nullableInt($task->knowledge_base_id);
+
+            if (empty($knowledgeBases) && $legacyKnowledgeBaseId !== null) {
+                $knowledgeBases = [[
+                    'id' => $legacyKnowledgeBaseId,
+                    'name' => (string) ($legacyKnowledgeBaseNames[$legacyKnowledgeBaseId] ?? ''),
+                ]];
+            }
+
+            $knowledgeBaseIds = collect($knowledgeBases)
+                ->pluck('id')
+                ->map(static fn ($id): int => (int) $id)
+                ->filter(static fn (int $id): bool => $id > 0)
+                ->values()
+                ->all();
 
             // batch_status 是任务页按钮与状态徽标的关键字段：
             // running > pending > paused(idle) > failed/cancelled > waiting。
@@ -230,7 +253,9 @@ class TaskMonitoringQueryService
                 'title_library_id' => $this->nullableInt($task->title_library_id),
                 'prompt_id' => $this->nullableInt($task->prompt_id),
                 'ai_model_id' => $this->nullableInt($task->ai_model_id),
-                'knowledge_base_id' => $this->nullableInt($task->knowledge_base_id),
+                'knowledge_base_id' => $legacyKnowledgeBaseId,
+                'knowledge_base_ids' => $knowledgeBaseIds,
+                'knowledge_bases' => $knowledgeBases,
                 'author_id' => $this->nullableInt($task->author_id),
                 'image_library_id' => $this->nullableInt($task->image_library_id),
                 'image_count' => (int) ($task->image_count ?? 0),
@@ -292,6 +317,35 @@ class TaskMonitoringQueryService
                 ],
             ];
         });
+    }
+
+    /**
+     * @param  list<int>  $taskIds
+     * @return Collection<int, Collection<int, array{id:int,name:string}>>
+     */
+    private function loadTaskKnowledgeBaseLinks(array $taskIds): Collection
+    {
+        if (empty($taskIds) || ! Schema::hasTable('task_knowledge_bases')) {
+            return collect([]);
+        }
+
+        return DB::table('task_knowledge_bases')
+            ->join('knowledge_bases', 'knowledge_bases.id', '=', 'task_knowledge_bases.knowledge_base_id')
+            ->whereIn('task_knowledge_bases.task_id', $taskIds)
+            ->orderBy('task_knowledge_bases.sort_order')
+            ->orderBy('knowledge_bases.id')
+            ->get([
+                'task_knowledge_bases.task_id',
+                'knowledge_bases.id',
+                'knowledge_bases.name',
+            ])
+            ->groupBy(static fn ($row): int => (int) $row->task_id)
+            ->map(static fn (Collection $rows): Collection => $rows
+                ->map(static fn ($row): array => [
+                    'id' => (int) $row->id,
+                    'name' => (string) $row->name,
+                ])
+                ->values());
     }
 
     /**

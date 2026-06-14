@@ -12,6 +12,18 @@
             </div>
         </div>
 
+        @unless ($schemaReady ?? true)
+            <div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
+                <div class="flex items-start gap-3">
+                    <i data-lucide="triangle-alert" class="mt-0.5 h-5 w-5 shrink-0 text-amber-600"></i>
+                    <div>
+                        <div class="font-semibold">{{ __('admin.theme_replication.message.migration_required_title') }}</div>
+                        <div class="mt-1">{{ __('admin.theme_replication.message.migration_required') }}</div>
+                    </div>
+                </div>
+            </div>
+        @endunless
+
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
             <form method="POST" action="{{ route('admin.site-settings.theme-replications.store') }}" class="space-y-6">
                 @csrf
@@ -95,7 +107,7 @@
 
                 <div class="flex items-center justify-end gap-3">
                     <a href="{{ route('admin.site-settings.index') }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('admin.button.cancel') }}</a>
-                    <button type="submit" class="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700" @disabled($activeChatModels->isEmpty())>
+                    <button type="submit" class="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300" @disabled($activeChatModels->isEmpty() || ! ($schemaReady ?? true))>
                         <i data-lucide="wand-sparkles" class="mr-2 h-4 w-4"></i>
                         {{ __('admin.theme_replication.button.create') }}
                     </button>

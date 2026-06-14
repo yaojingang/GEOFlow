@@ -19,6 +19,7 @@ use App\Support\AdminWeb;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Throwable;
 
@@ -201,6 +202,7 @@ class TaskController extends Controller
                 'image_library_id' => (string) (($task['image_library_id'] ?? '') ?: ''),
                 'image_count' => (string) ($task['image_count'] ?? 0),
                 'knowledge_base_id' => (string) (($task['knowledge_base_id'] ?? '') ?: ''),
+                'knowledge_base_ids' => $this->taskKnowledgeBaseIds($taskId, isset($task['knowledge_base_id']) ? (int) $task['knowledge_base_id'] : null),
                 'fixed_category_id' => (string) (($task['fixed_category_id'] ?? '') ?: ''),
                 'status' => (string) ($task['status'] ?? 'active'),
                 'article_limit' => (string) ($task['article_limit'] ?? 10),
@@ -525,6 +527,7 @@ class TaskController extends Controller
      *     image_library_id: int|null,
      *     image_count: int|null,
      *     knowledge_base_id: int|null,
+     *     knowledge_base_ids: list<int>,
      *     fixed_category_id: int|null,
      *     status: string,
      *     article_limit: int|null,
@@ -544,7 +547,9 @@ class TaskController extends Controller
             'author_id' => ['nullable', 'integer', 'min:0'],
             'image_library_id' => ['nullable', 'integer', 'min:1'],
             'image_count' => ['nullable', 'integer', 'min:0', 'max:5'],
-            'knowledge_base_id' => ['nullable', 'integer', 'min:1'],
+            'knowledge_base_id' => ['nullable', 'integer', 'min:1', 'exists:knowledge_bases,id'],
+            'knowledge_base_ids' => ['nullable', 'array', 'max:5'],
+            'knowledge_base_ids.*' => ['integer', 'min:1', 'distinct', 'exists:knowledge_bases,id'],
             'fixed_category_id' => ['nullable', 'integer', 'min:1'],
             'status' => ['required', 'string', 'in:active,paused'],
             'article_limit' => ['nullable', 'integer', 'min:1', 'max:99999'],
@@ -569,6 +574,8 @@ class TaskController extends Controller
             $categoryMode = 'smart';
         }
 
+        $knowledgeBaseIds = $this->selectedKnowledgeBaseIds($payload);
+
         return [
             'name' => (string) $payload['task_name'],
             'title_library_id' => (int) $payload['title_library_id'],
@@ -577,7 +584,8 @@ class TaskController extends Controller
             'prompt_id' => (int) $payload['prompt_id'],
             'ai_model_id' => (int) $payload['ai_model_id'],
             'author_id' => isset($payload['author_id']) && (int) $payload['author_id'] > 0 ? (int) $payload['author_id'] : null,
-            'knowledge_base_id' => isset($payload['knowledge_base_id']) ? (int) $payload['knowledge_base_id'] : null,
+            'knowledge_base_id' => $knowledgeBaseIds[0] ?? null,
+            'knowledge_base_ids' => $knowledgeBaseIds,
             'fixed_category_id' => isset($payload['fixed_category_id']) ? (int) $payload['fixed_category_id'] : null,
             'status' => (string) $payload['status'],
             'publish_scope' => (string) ($payload['publish_scope'] ?? 'local_and_distribution'),
@@ -591,6 +599,28 @@ class TaskController extends Controller
             'auto_keywords' => $request->boolean('auto_keywords') ? 1 : 0,
             'auto_description' => $request->boolean('auto_description') ? 1 : 0,
         ];
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function selectedKnowledgeBaseIds(array $payload): array
+    {
+        $ids = isset($payload['knowledge_base_ids']) && is_array($payload['knowledge_base_ids'])
+            ? $payload['knowledge_base_ids']
+            : [];
+
+        if (empty($ids) && isset($payload['knowledge_base_id'])) {
+            $ids = [(int) $payload['knowledge_base_id']];
+        }
+
+        return collect($ids)
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->take(5)
+            ->values()
+            ->all();
     }
 
     /**
@@ -624,5 +654,29 @@ class TaskController extends Controller
             ->pluck('distribution_channels.id')
             ->map(static fn ($id): int => (int) $id)
             ->all();
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function taskKnowledgeBaseIds(int $taskId, ?int $legacyKnowledgeBaseId = null): array
+    {
+        if (Schema::hasTable('task_knowledge_bases')) {
+            $ids = Task::query()
+                ->whereKey($taskId)
+                ->first()
+                ?->knowledgeBases()
+                ->pluck('knowledge_bases.id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all() ?? [];
+
+            if (! empty($ids)) {
+                return $ids;
+            }
+        }
+
+        return $legacyKnowledgeBaseId && $legacyKnowledgeBaseId > 0
+            ? [$legacyKnowledgeBaseId]
+            : [];
     }
 }

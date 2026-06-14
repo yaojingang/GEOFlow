@@ -19,6 +19,7 @@ use App\Models\TitleLibrary;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -320,7 +321,6 @@ class MaterialLibraryService
             'knowledge-bases' => KnowledgeBase::query()
                 ->select(['id', 'name', 'description', 'content', 'character_count', 'used_task_count', 'file_type', 'file_path', 'word_count', 'usage_count', 'created_at', 'updated_at'])
                 ->withCount('chunks as chunk_count')
-                ->withCount('tasks as task_count')
                 ->orderByDesc('created_at'),
         };
     }
@@ -465,7 +465,7 @@ class MaterialLibraryService
                 'image_count' => (int) ($row->image_count ?? 0),
                 'item_count' => (int) ($row->item_count ?? 0),
                 'used_task_count' => (int) ($row->used_task_count ?? 0),
-                'task_count' => (int) ($row->task_count ?? 0),
+                'task_count' => $this->knowledgeBaseTaskCount((int) $row->id),
                 'total_size' => (int) ($row->total_size ?? 0),
                 'created_at' => $this->formatDate($row->created_at ?? null),
                 'updated_at' => $this->formatDate($row->updated_at ?? null),
@@ -844,13 +844,35 @@ class MaterialLibraryService
     private function deleteKnowledgeBase(Model $row): void
     {
         $id = (int) $row->id;
-        $taskCount = Task::query()->where('knowledge_base_id', $id)->count();
+        $taskCount = $this->knowledgeBaseTaskCount($id);
         if ($taskCount > 0) {
             throw new ApiException('material_in_use', '知识库仍被任务引用，无法删除', 409, ['task_count' => $taskCount]);
         }
         KnowledgeChunk::query()->where('knowledge_base_id', $id)->delete();
         KnowledgeBase::query()->whereKey($id)->delete();
         $this->cleanupFiles([(string) ($row->file_path ?? '')]);
+    }
+
+    private function knowledgeBaseTaskCount(int $knowledgeBaseId): int
+    {
+        $taskIds = Task::query()
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+
+        if (Schema::hasTable('task_knowledge_bases')) {
+            $taskIds = array_merge(
+                $taskIds,
+                DB::table('task_knowledge_bases')
+                    ->where('knowledge_base_id', $knowledgeBaseId)
+                    ->pluck('task_id')
+                    ->map(static fn (mixed $id): int => (int) $id)
+                    ->all()
+            );
+        }
+
+        return count(array_unique(array_filter($taskIds, static fn (int $id): bool => $id > 0)));
     }
 
     private function refreshKeywordLibraryCount(int $libraryId): void

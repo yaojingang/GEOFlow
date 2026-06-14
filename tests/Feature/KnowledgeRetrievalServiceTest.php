@@ -327,6 +327,65 @@ class KnowledgeRetrievalServiceTest extends TestCase
         $this->assertStringNotContainsString('冲突处理：', $context);
     }
 
+    public function test_multi_knowledge_base_retrieval_merges_evidence_with_unique_citations(): void
+    {
+        $strategyKnowledgeBase = $this->createKnowledgeBase([
+            'name' => 'GEO 策略知识库',
+            'source_name' => '策略文档',
+            'business_line' => '策略',
+            'risk_level' => 'low',
+            'review_status' => 'reviewed',
+        ]);
+        $distributionKnowledgeBase = $this->createKnowledgeBase([
+            'name' => '分发执行知识库',
+            'source_name' => '分发手册',
+            'business_line' => '分发',
+            'risk_level' => 'low',
+            'review_status' => 'reviewed',
+        ]);
+
+        KnowledgeChunk::query()->create([
+            'knowledge_base_id' => (int) $strategyKnowledgeBase->id,
+            'chunk_index' => 0,
+            'content' => '品牌 GEO 策略需要先明确业务线、目标关键词和可信证据来源。',
+            'content_hash' => hash('sha256', 'multi-kb-strategy'),
+            'chunk_title' => '策略准备',
+            'section_path' => 'GEO 策略 > 准备',
+            'chunk_strategy' => 'structured_rule',
+            'metadata_json' => '{}',
+            'source_hash' => hash('sha256', 'source-multi-kb-strategy'),
+            'token_count' => 28,
+            'embedding_json' => '[]',
+        ]);
+        KnowledgeChunk::query()->create([
+            'knowledge_base_id' => (int) $distributionKnowledgeBase->id,
+            'chunk_index' => 0,
+            'content' => '多站分发执行需要记录目标渠道、发布范围和远端同步状态。',
+            'content_hash' => hash('sha256', 'multi-kb-distribution'),
+            'chunk_title' => '分发执行',
+            'section_path' => '内容分发 > 执行',
+            'chunk_strategy' => 'structured_rule',
+            'metadata_json' => '{}',
+            'source_hash' => hash('sha256', 'source-multi-kb-distribution'),
+            'token_count' => 26,
+            'embedding_json' => '[]',
+        ]);
+
+        $context = app(KnowledgeRetrievalService::class)->retrieveContextFromMany(
+            [(int) $strategyKnowledgeBase->id, (int) $distributionKnowledgeBase->id],
+            '品牌 GEO 策略 多站 分发 同步 状态',
+            4,
+            2400
+        );
+
+        $this->assertStringContainsString('【证据 K1】', $context);
+        $this->assertStringContainsString('【证据 K2】', $context);
+        $this->assertStringContainsString('知识库：GEO 策略知识库', $context);
+        $this->assertStringContainsString('知识库：分发执行知识库', $context);
+        $this->assertStringContainsString('品牌 GEO 策略需要先明确业务线', $context);
+        $this->assertStringContainsString('多站分发执行需要记录目标渠道', $context);
+    }
+
     private function createKnowledgeBase(array $overrides = []): KnowledgeBase
     {
         return KnowledgeBase::query()->create(array_merge([

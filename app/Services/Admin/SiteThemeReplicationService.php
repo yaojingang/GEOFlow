@@ -30,6 +30,10 @@ class SiteThemeReplicationService
      */
     public function create(array $payload): SiteThemeReplication
     {
+        if (! $this->isSchemaReady()) {
+            throw new RuntimeException(__('admin.theme_replication.message.migration_required'));
+        }
+
         $normalizedUrls = $this->normalizeReferenceUrls([
             'home_url' => (string) $payload['home_url'],
             'category_url' => (string) $payload['category_url'],
@@ -374,9 +378,120 @@ class SiteThemeReplicationService
         return SiteThemeReplication::query()->where('theme_id', $themeId)->exists();
     }
 
+    public function isSchemaReady(): bool
+    {
+        return Schema::hasTable('site_theme_replications')
+            && Schema::hasTable('site_theme_replication_logs')
+            && Schema::hasTable('site_theme_replication_versions');
+    }
+
     public function isCatalogThemeId(string $themeId): bool
     {
         return in_array($themeId, $this->themeCatalog->ids(), true);
+    }
+
+    /**
+     * @param  iterable<int, SiteThemeReplicationLog>|null  $logs
+     * @return array<string, mixed>
+     */
+    public function progressSnapshot(SiteThemeReplication $replication, ?iterable $logs = null): array
+    {
+        $logItems = collect($logs ?? $replication->logs()->oldest('id')->limit(100)->get())->values();
+        $loggedSteps = $logItems
+            ->pluck('step')
+            ->filter()
+            ->map(static fn ($step): string => (string) $step)
+            ->values()
+            ->all();
+
+        $isIteration = in_array((string) $replication->status, [SiteThemeReplication::STATUS_ITERATING], true)
+            || in_array('iteration_queued', $loggedSteps, true)
+            || in_array('iterating', $loggedSteps, true);
+        $hasReferenceSteps = array_intersect(['fetching', 'extracting'], $loggedSteps) !== [];
+
+        $stageKeys = match (true) {
+            $isIteration && $hasReferenceSteps => ['created', 'queued', 'iterating', 'fetching', 'extracting', 'analyzing', 'generating', 'scanning', 'ready'],
+            $isIteration => ['created', 'queued', 'iterating', 'analyzing', 'generating', 'scanning', 'ready'],
+            default => ['created', 'queued', 'fetching', 'extracting', 'analyzing', 'generating', 'scanning', 'ready'],
+        };
+
+        $statusStep = $this->statusToProgressStep((string) $replication->status, $logItems);
+        $currentIndex = array_search($statusStep, $stageKeys, true);
+        if ($currentIndex === false) {
+            $currentIndex = max(0, count($stageKeys) - 1);
+        }
+
+        $status = (string) $replication->status;
+        $isFailed = $status === SiteThemeReplication::STATUS_FAILED;
+        $isTerminal = in_array($status, [
+            SiteThemeReplication::STATUS_READY,
+            SiteThemeReplication::STATUS_PUBLISHED,
+            SiteThemeReplication::STATUS_ARCHIVED,
+            SiteThemeReplication::STATUS_FAILED,
+        ], true);
+
+        $stages = [];
+        foreach ($stageKeys as $index => $stageKey) {
+            $state = 'pending';
+            if ($isFailed && $index === $currentIndex) {
+                $state = 'failed';
+            } elseif ($isTerminal && ! $isFailed) {
+                $state = 'done';
+            } elseif ($index < $currentIndex) {
+                $state = 'done';
+            } elseif ($index === $currentIndex) {
+                $state = 'current';
+            }
+
+            $log = $this->firstLogForStep($logItems, $stageKey);
+            $stages[] = [
+                'key' => $stageKey,
+                'label' => __('admin.theme_replication.progress.step.'.$stageKey),
+                'description' => __('admin.theme_replication.progress.step_desc.'.$stageKey),
+                'state' => $state,
+                'time' => $log ? optional($log->created_at)->format('H:i:s') : null,
+                'message' => $log ? (string) $log->message : null,
+            ];
+        }
+
+        if ($isTerminal && ! $isFailed) {
+            $progressPercent = 100;
+        } else {
+            $progressPercent = (int) round(($currentIndex / max(1, count($stageKeys) - 1)) * 100);
+            if (! $isFailed) {
+                $progressPercent = min(96, max(5, $progressPercent));
+            }
+        }
+
+        $latestLog = $logItems->sortByDesc('id')->first();
+        $lastUpdatedAt = $latestLog instanceof SiteThemeReplicationLog ? $latestLog->created_at : null;
+        if ($replication->updated_at && (! $lastUpdatedAt || $replication->updated_at->gt($lastUpdatedAt))) {
+            $lastUpdatedAt = $replication->updated_at;
+        }
+
+        return [
+            'status' => $status,
+            'status_label' => __('admin.theme_replication.status.'.$status),
+            'current_step' => $statusStep,
+            'current_step_label' => __('admin.theme_replication.progress.step.'.$statusStep),
+            'progress_percent' => $progressPercent,
+            'terminal' => $isTerminal,
+            'failed' => $isFailed,
+            'last_updated' => optional($lastUpdatedAt)->format('Y-m-d H:i:s'),
+            'stages' => $stages,
+            'logs' => $logItems
+                ->sortByDesc('id')
+                ->take(20)
+                ->values()
+                ->map(static fn (SiteThemeReplicationLog $log): array => [
+                    'id' => (int) $log->id,
+                    'level' => (string) $log->level,
+                    'step' => (string) $log->step,
+                    'message' => (string) $log->message,
+                    'time' => optional($log->created_at)->format('Y-m-d H:i:s'),
+                ])
+                ->all(),
+        ];
     }
 
     public function log(SiteThemeReplication $replication, string $level, string $step, string $message, array $context = []): SiteThemeReplicationLog
@@ -388,6 +503,55 @@ class SiteThemeReplicationService
             'message' => $message,
             'context_json' => $context !== [] ? $context : null,
         ]);
+    }
+
+    private function statusToProgressStep(string $status, \Illuminate\Support\Collection $logs): string
+    {
+        if ($status === SiteThemeReplication::STATUS_FAILED) {
+            $latestAction = $logs
+                ->reverse()
+                ->first(static fn (SiteThemeReplicationLog $log): bool => ! in_array((string) $log->step, ['', 'failed'], true));
+
+            return $latestAction instanceof SiteThemeReplicationLog
+                ? $this->normalizeProgressStep((string) $latestAction->step)
+                : 'queued';
+        }
+
+        return match ($status) {
+            SiteThemeReplication::STATUS_FETCHING => 'fetching',
+            SiteThemeReplication::STATUS_EXTRACTING => 'extracting',
+            SiteThemeReplication::STATUS_ANALYZING => 'analyzing',
+            SiteThemeReplication::STATUS_GENERATING => 'generating',
+            SiteThemeReplication::STATUS_SCANNING => 'scanning',
+            SiteThemeReplication::STATUS_ITERATING => 'iterating',
+            SiteThemeReplication::STATUS_READY,
+            SiteThemeReplication::STATUS_PUBLISHED,
+            SiteThemeReplication::STATUS_ARCHIVED => 'ready',
+            default => 'queued',
+        };
+    }
+
+    private function normalizeProgressStep(string $step): string
+    {
+        return match ($step) {
+            'iteration_queued', 'iterating' => 'iterating',
+            'ready', 'published', 'package_created', 'copied' => 'ready',
+            'fetching', 'extracting', 'analyzing', 'generating', 'scanning', 'created', 'queued' => $step,
+            default => 'queued',
+        };
+    }
+
+    private function firstLogForStep(\Illuminate\Support\Collection $logs, string $step): ?SiteThemeReplicationLog
+    {
+        $aliases = match ($step) {
+            'iterating' => ['iteration_queued', 'iterating'],
+            'ready' => ['ready', 'published', 'package_created'],
+            default => [$step],
+        };
+
+        $log = $logs->first(static fn (SiteThemeReplicationLog $item): bool => in_array((string) $item->step, $aliases, true));
+
+        return $log instanceof SiteThemeReplicationLog ? $log : null;
     }
 
     private function normalizeReferenceUrl(string $url): string

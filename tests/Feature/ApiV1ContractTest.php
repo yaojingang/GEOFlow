@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
+use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
@@ -295,6 +296,127 @@ class ApiV1ContractTest extends TestCase
             'author_id' => null,
             'knowledge_base_id' => null,
             'fixed_category_id' => null,
+        ]);
+    }
+
+    public function test_task_create_prefers_knowledge_base_ids_over_legacy_knowledge_base_id(): void
+    {
+        $admin = $this->createActiveAdmin('u10', 'p');
+        $bearer = $this->createBearerToken($admin, ['tasks:write']);
+        $model = AiModel::query()->create([
+            'name' => 'Task Create Model With Knowledge',
+            'model_id' => 'task-create-model-with-knowledge',
+            'model_type' => 'chat',
+            'status' => 'active',
+        ]);
+        $prompt = Prompt::query()->create([
+            'name' => 'Task Create Prompt With Knowledge',
+            'type' => 'content',
+            'content' => 'Write an article.',
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'name' => 'Task Create Titles With Knowledge',
+            'description' => '',
+            'title_count' => 0,
+        ]);
+        $legacyKnowledgeBase = KnowledgeBase::query()->create([
+            'name' => 'Legacy Knowledge',
+            'description' => '',
+            'content' => 'Legacy content',
+            'file_type' => 'markdown',
+            'character_count' => 14,
+            'word_count' => 14,
+        ]);
+        $firstKnowledgeBase = KnowledgeBase::query()->create([
+            'name' => 'Primary Knowledge',
+            'description' => '',
+            'content' => 'Primary content',
+            'file_type' => 'markdown',
+            'character_count' => 15,
+            'word_count' => 15,
+        ]);
+        $secondKnowledgeBase = KnowledgeBase::query()->create([
+            'name' => 'Secondary Knowledge',
+            'description' => '',
+            'content' => 'Secondary content',
+            'file_type' => 'markdown',
+            'character_count' => 17,
+            'word_count' => 17,
+        ]);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson('/api/v1/tasks', [
+                'name' => 'API create task with multiple knowledge bases',
+                'title_library_id' => $titleLibrary->id,
+                'prompt_id' => $prompt->id,
+                'ai_model_id' => $model->id,
+                'status' => 'paused',
+                'category_mode' => 'smart',
+                'draft_limit' => 1,
+                'article_limit' => 1,
+                'knowledge_base_id' => (int) $legacyKnowledgeBase->id,
+                'knowledge_base_ids' => [
+                    (int) $firstKnowledgeBase->id,
+                    (int) $secondKnowledgeBase->id,
+                ],
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.knowledge_base_id', (int) $firstKnowledgeBase->id)
+            ->assertJsonPath('data.knowledge_base_ids.0', (int) $firstKnowledgeBase->id)
+            ->assertJsonPath('data.knowledge_base_ids.1', (int) $secondKnowledgeBase->id)
+            ->assertJsonCount(2, 'data.knowledge_base_ids');
+
+        $taskId = (int) $response->json('data.id');
+        $this->assertDatabaseHas('tasks', [
+            'id' => $taskId,
+            'knowledge_base_id' => (int) $firstKnowledgeBase->id,
+        ]);
+        $this->assertDatabaseHas('task_knowledge_bases', [
+            'task_id' => $taskId,
+            'knowledge_base_id' => (int) $firstKnowledgeBase->id,
+            'sort_order' => 0,
+        ]);
+        $this->assertDatabaseHas('task_knowledge_bases', [
+            'task_id' => $taskId,
+            'knowledge_base_id' => (int) $secondKnowledgeBase->id,
+            'sort_order' => 1,
+        ]);
+        $this->assertDatabaseMissing('task_knowledge_bases', [
+            'task_id' => $taskId,
+            'knowledge_base_id' => (int) $legacyKnowledgeBase->id,
+        ]);
+    }
+
+    public function test_material_api_cannot_delete_knowledge_base_referenced_by_task_pivot(): void
+    {
+        $admin = $this->createActiveAdmin('u11', 'p');
+        $bearer = $this->createBearerToken($admin, ['materials:write']);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => 'API Referenced Knowledge',
+            'description' => '',
+            'content' => 'Referenced content',
+            'file_type' => 'markdown',
+            'character_count' => 18,
+            'word_count' => 18,
+        ]);
+        $task = Task::query()->create([
+            'name' => 'API task uses knowledge',
+            'status' => 'paused',
+            'knowledge_base_id' => null,
+        ]);
+        $task->knowledgeBases()->attach((int) $knowledgeBase->id, ['sort_order' => 0]);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->deleteJson('/api/v1/materials/knowledge-bases/'.(int) $knowledgeBase->id)
+            ->assertStatus(409)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error.code', 'material_in_use')
+            ->assertJsonPath('error.details.task_count', 1);
+
+        $this->assertDatabaseHas('knowledge_bases', [
+            'id' => (int) $knowledgeBase->id,
         ]);
     }
 }

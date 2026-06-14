@@ -9,6 +9,7 @@ use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
@@ -207,6 +208,165 @@ class AdminTasksPageTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_create_task_with_zero_one_and_five_knowledge_bases(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_multi_kb_create_admin');
+        $dependencies = $this->createTaskFormDependencies();
+        $knowledgeBases = $this->createKnowledgeBases(5);
+
+        $cases = [
+            '不使用知识库' => [],
+            '单知识库' => [(string) $knowledgeBases[0]->id],
+            '五个知识库' => $knowledgeBases->pluck('id')->map(static fn ($id): string => (string) $id)->all(),
+        ];
+
+        foreach ($cases as $taskName => $knowledgeBaseIds) {
+            $this->actingAs($admin, 'admin')
+                ->post(route('admin.tasks.store'), $this->validTaskPayload($dependencies, [
+                    'task_name' => $taskName,
+                    'knowledge_base_ids' => $knowledgeBaseIds,
+                ]))
+                ->assertRedirect(route('admin.tasks.index'))
+                ->assertSessionHasNoErrors();
+
+            $task = Task::query()->where('name', $taskName)->firstOrFail();
+            $this->assertSame($knowledgeBaseIds[0] ?? null, $task->knowledge_base_id !== null ? (string) $task->knowledge_base_id : null);
+            $this->assertSame(
+                $knowledgeBaseIds,
+                $task->knowledgeBases()
+                    ->pluck('knowledge_bases.id')
+                    ->map(static fn ($id): string => (string) $id)
+                    ->all()
+            );
+        }
+    }
+
+    public function test_admin_cannot_create_task_with_more_than_five_knowledge_bases(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_multi_kb_limit_admin');
+        $dependencies = $this->createTaskFormDependencies();
+        $knowledgeBaseIds = $this->createKnowledgeBases(6)
+            ->pluck('id')
+            ->map(static fn ($id): string => (string) $id)
+            ->all();
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.tasks.create'))
+            ->post(route('admin.tasks.store'), $this->validTaskPayload($dependencies, [
+                'task_name' => '超过五个知识库任务',
+                'knowledge_base_ids' => $knowledgeBaseIds,
+            ]))
+            ->assertRedirect(route('admin.tasks.create'))
+            ->assertSessionHasErrors('knowledge_base_ids');
+
+        $this->assertDatabaseMissing('tasks', [
+            'name' => '超过五个知识库任务',
+        ]);
+    }
+
+    public function test_task_form_collapses_knowledge_bases_after_two_rows(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_multi_kb_collapse_admin');
+        $dependencies = $this->createTaskFormDependencies();
+        $knowledgeBases = $this->createKnowledgeBases(8);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.create'))
+            ->assertOk()
+            ->assertSee('展开更多 2 个知识库');
+
+        $this->assertSame(
+            2,
+            preg_match_all('/<label[^>]*data-knowledge-base-card[^>]*data-knowledge-base-collapsed="true"/', (string) $response->getContent())
+        );
+
+        $task = Task::query()->create([
+            'name' => '已选后排知识库任务',
+            'title_library_id' => $dependencies['title_library']->id,
+            'prompt_id' => $dependencies['prompt']->id,
+            'ai_model_id' => $dependencies['ai_model']->id,
+            'knowledge_base_id' => $knowledgeBases[6]->id,
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+        $task->knowledgeBases()->sync([
+            (int) $knowledgeBases[6]->id => ['sort_order' => 0],
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.edit', ['taskId' => (int) $task->id]))
+            ->assertOk()
+            ->assertSee('展开更多 1 个知识库')
+            ->assertSee('name="knowledge_base_ids[]" value="'.(int) $knowledgeBases[6]->id.'" checked', false);
+
+        $this->assertSame(
+            1,
+            preg_match_all('/<label[^>]*data-knowledge-base-card[^>]*data-knowledge-base-collapsed="true"/', (string) $response->getContent())
+        );
+    }
+
+    public function test_admin_can_edit_task_knowledge_base_selection_and_clear_it(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_multi_kb_edit_admin');
+        $dependencies = $this->createTaskFormDependencies();
+        $knowledgeBases = $this->createKnowledgeBases(3);
+
+        $task = Task::query()->create([
+            'name' => '待编辑知识库任务',
+            'title_library_id' => $dependencies['title_library']->id,
+            'prompt_id' => $dependencies['prompt']->id,
+            'ai_model_id' => $dependencies['ai_model']->id,
+            'knowledge_base_id' => $knowledgeBases[0]->id,
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+        $task->knowledgeBases()->sync([
+            (int) $knowledgeBases[0]->id => ['sort_order' => 0],
+            (int) $knowledgeBases[1]->id => ['sort_order' => 1],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.edit', ['taskId' => (int) $task->id]))
+            ->assertOk()
+            ->assertSee('name="knowledge_base_ids[]" value="'.(int) $knowledgeBases[0]->id.'" checked', false)
+            ->assertSee('name="knowledge_base_ids[]" value="'.(int) $knowledgeBases[1]->id.'" checked', false);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.tasks.update', ['taskId' => (int) $task->id]), $this->validTaskPayload($dependencies, [
+                'task_name' => '已更新知识库任务',
+                'knowledge_base_ids' => [(string) $knowledgeBases[2]->id],
+            ]))
+            ->assertRedirect(route('admin.tasks.index'))
+            ->assertSessionHasNoErrors();
+
+        $task->refresh();
+        $this->assertSame((int) $knowledgeBases[2]->id, (int) $task->knowledge_base_id);
+        $this->assertSame(
+            [(string) $knowledgeBases[2]->id],
+            $task->knowledgeBases()
+                ->pluck('knowledge_bases.id')
+                ->map(static fn ($id): string => (string) $id)
+                ->all()
+        );
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.tasks.update', ['taskId' => (int) $task->id]), $this->validTaskPayload($dependencies, [
+                'task_name' => '已清空知识库任务',
+            ]))
+            ->assertRedirect(route('admin.tasks.index'))
+            ->assertSessionHasNoErrors();
+
+        $task->refresh();
+        $this->assertNull($task->knowledge_base_id);
+        $this->assertSame(0, $task->knowledgeBases()->count());
+    }
+
     public function test_task_article_action_links_to_filtered_article_list(): void
     {
         $admin = Admin::query()->create([
@@ -358,5 +518,89 @@ class AdminTasksPageTest extends TestCase
             ->assertSessionHas('message', __('admin.tasks.message.delete_success'));
 
         $this->assertDatabaseMissing('tasks', ['id' => $task->id]);
+    }
+
+    private function createTaskFormAdmin(string $username): Admin
+    {
+        return Admin::query()->create([
+            'username' => $username,
+            'password' => 'secret-123',
+            'email' => $username.'@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+    }
+
+    /**
+     * @return array{ai_model: AiModel, prompt: Prompt, title_library: TitleLibrary, category: Category}
+     */
+    private function createTaskFormDependencies(): array
+    {
+        return [
+            'ai_model' => AiModel::query()->create([
+                'name' => '任务测试模型',
+                'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
+                'model_id' => 'test-model',
+                'model_type' => 'chat',
+                'api_url' => 'https://api.example.com/v1',
+                'status' => 'active',
+            ]),
+            'prompt' => Prompt::query()->create([
+                'name' => '任务正文提示词',
+                'type' => 'content',
+                'content' => '请写 {{title}}',
+            ]),
+            'title_library' => TitleLibrary::query()->create([
+                'name' => '任务标题库',
+            ]),
+            'category' => Category::query()->create([
+                'name' => '任务分类',
+                'slug' => 'task-category-'.uniqid(),
+            ]),
+        ];
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Collection<int, KnowledgeBase>
+     */
+    private function createKnowledgeBases(int $count): \Illuminate\Database\Eloquent\Collection
+    {
+        $knowledgeBases = new \Illuminate\Database\Eloquent\Collection();
+        for ($index = 1; $index <= $count; $index++) {
+            $knowledgeBases->push(KnowledgeBase::query()->create([
+                'name' => '任务知识库 '.$index,
+                'description' => '',
+                'content' => '任务知识库内容 '.$index,
+                'file_type' => 'markdown',
+                'word_count' => 12,
+                'character_count' => 12,
+            ]));
+        }
+
+        return $knowledgeBases;
+    }
+
+    /**
+     * @param  array{ai_model: AiModel, prompt: Prompt, title_library: TitleLibrary, category: Category}  $dependencies
+     * @param  array<string,mixed>  $overrides
+     * @return array<string,mixed>
+     */
+    private function validTaskPayload(array $dependencies, array $overrides = []): array
+    {
+        return array_merge([
+            'task_name' => '多知识库任务',
+            'title_library_id' => (int) $dependencies['title_library']->id,
+            'prompt_id' => (int) $dependencies['prompt']->id,
+            'ai_model_id' => (int) $dependencies['ai_model']->id,
+            'fixed_category_id' => (int) $dependencies['category']->id,
+            'status' => 'paused',
+            'publish_scope' => 'local_only',
+            'article_limit' => 3,
+            'draft_limit' => 2,
+            'publish_interval' => 60,
+            'category_mode' => 'fixed',
+            'model_selection_mode' => 'fixed',
+        ], $overrides);
     }
 }
