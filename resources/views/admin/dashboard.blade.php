@@ -20,14 +20,18 @@
         ];
 
         $quickMaterialLinks = [
-            ['label' => __('admin.dashboard.quick_start.knowledge'), 'href' => route('admin.knowledge-bases.index'), 'class' => 'border-orange-100 bg-orange-50 text-orange-700 hover:bg-orange-100'],
+            ['label' => __('admin.dashboard.quick_start.entities'), 'href' => route('admin.entities.index'), 'class' => 'border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'],
             ['label' => __('admin.dashboard.quick_start.titles'), 'href' => route('admin.title-libraries.index'), 'class' => 'border-green-100 bg-green-50 text-green-700 hover:bg-green-100'],
             ['label' => __('admin.dashboard.quick_start.keywords'), 'href' => route('admin.keyword-libraries.index'), 'class' => 'border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100'],
             ['label' => __('admin.dashboard.quick_start.images'), 'href' => route('admin.image-libraries.index'), 'class' => 'border-purple-100 bg-purple-50 text-purple-700 hover:bg-purple-100'],
-            ['label' => __('admin.dashboard.quick_start.authors'), 'href' => route('admin.authors.index'), 'class' => 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'],
-            ['label' => __('admin.dashboard.quick_start.tags'), 'href' => route('admin.material-tags.index'), 'class' => 'border-cyan-100 bg-cyan-50 text-cyan-700 hover:bg-cyan-100'],
-            ['label' => __('admin.dashboard.quick_start.entities'), 'href' => route('admin.entities.index'), 'class' => 'border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'],
             ['label' => __('admin.dashboard.quick_start.cases'), 'href' => route('admin.cases.index'), 'class' => 'border-amber-100 bg-amber-50 text-amber-700 hover:bg-amber-100'],
+            ['label' => __('admin.dashboard.quick_start.authors'), 'href' => route('admin.authors.index'), 'class' => 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'],
+        ];
+
+        $quickKnowledgeLinks = [
+            ['label' => __('admin.dashboard.quick_start.knowledge'), 'href' => route('admin.knowledge-bases.index'), 'class' => 'border-orange-100 bg-orange-50 text-orange-700 hover:bg-orange-100'],
+            ['label' => __('admin.dashboard.quick_start.tags'), 'href' => route('admin.material-tags.index'), 'class' => 'border-cyan-100 bg-cyan-50 text-cyan-700 hover:bg-cyan-100'],
+            ['label' => __('admin.dashboard.quick_start.url_import'), 'href' => route('admin.url-import'), 'class' => 'border-sky-100 bg-sky-50 text-sky-700 hover:bg-sky-100'],
         ];
 
         $stats = $dashboardStats ?? [];
@@ -50,6 +54,17 @@
         $chatModels = (int) ($ai['chat_models'] ?? 0);
         $embeddingModels = (int) ($ai['embedding_models'] ?? 0);
         $aiUsedToday = (int) ($ai['used_today'] ?? 0);
+        $collectionsTotal = (int) ($materials['collections'] ?? $stats['total_collections'] ?? 0);
+        $activeCollections = (int) ($materials['active_collections'] ?? 0);
+        $entitiesTotal = (int) ($materials['entities'] ?? $stats['total_entities'] ?? 0);
+        $casesTotal = (int) ($materials['cases'] ?? $stats['total_cases'] ?? 0);
+        $crmOpenTasks = (int) ($materials['crm_open_tasks'] ?? 0);
+        $crmOpenInquiries = (int) ($materials['crm_open_inquiries'] ?? 0);
+        $crmOpenOpportunities = (int) ($materials['crm_open_opportunities'] ?? 0);
+        $crmOpenTickets = (int) ($materials['crm_open_tickets'] ?? 0);
+        $themeReplications = (int) ($materials['theme_replications'] ?? 0);
+        $themeReplicationsReady = (int) ($materials['theme_replications_ready'] ?? 0);
+        $themeReplicationsFailed = (int) ($materials['theme_replications_failed'] ?? 0);
         $materialLibraryCount = (int) ($materials['keyword_libraries'] ?? 0)
             + (int) ($materials['title_libraries'] ?? 0)
             + (int) ($materials['knowledge_bases'] ?? 0)
@@ -68,29 +83,131 @@
         $distributionSynced = (int) ($distribution['synced'] ?? 0);
         $distributionTotal = (int) ($distribution['total'] ?? 0);
         $urlImportFailed = (int) ($urlImport['failed'] ?? 0);
+        $urlImportWaiting = (int) ($urlImport['waiting_import'] ?? 0);
         $todayArticles = (int) ($todayStats['today_articles'] ?? 0);
         $todayVisits = (int) ($todayStats['today_views'] ?? 0);
         $aiBotCount = (int) ($todayStats['today_ai_bot_views'] ?? 0);
-        $riskCount = $failedJobs + $distributionFailed + $urlImportFailed;
+        $riskCount = $failedJobs + $distributionFailed + $urlImportFailed + $themeReplicationsFailed;
 
         $aiStatus = ($chatModels + $embeddingModels) > 0 ? 'ready' : 'warning';
-        $materialsStatus = $unvectorizedChunks > 0 ? 'warning' : ($materialLibraryCount > 0 ? 'ready' : 'available');
+        $collectionStatus = $activeCollections > 0 ? 'ready' : 'warning';
+        $materialsStatus = $unvectorizedChunks > 0 ? 'warning' : (($materialLibraryCount + $entitiesTotal + $casesTotal) > 0 ? 'ready' : 'available');
         $promptStatus = $totalPrompts > 0 ? 'ready' : 'warning';
         $taskStatus = $failedJobs > 0 ? 'error' : (($runningJobs + $pendingJobs) > 0 ? 'running' : ($activeTasks > 0 ? 'ready' : 'available'));
         $contentStatus = $todayArticles > 0 ? 'running' : (($publishedArticles + $draftArticles) > 0 ? 'ready' : 'available');
         $reviewStatus = $pendingReview > 0 ? 'warning' : 'ready';
         $distributionStatus = $distributionFailed > 0 ? 'error' : ($distributionPending > 0 ? 'warning' : ($channelsActive > 0 ? 'ready' : 'available'));
+        $templateStatus = $themeReplicationsFailed > 0 ? 'error' : ($themeReplicationsReady > 0 ? 'ready' : ($themeReplications > 0 ? 'running' : 'available'));
         $feedbackStatus = $todayVisits > 0 ? 'running' : 'available';
         $runningBadgeCount = (int) (($runningJobs + $pendingJobs) > 0)
             + (int) ((int) ($distribution['sending'] ?? 0) > 0)
-            + (int) ($todayArticles > 0);
+            + (int) ($todayArticles > 0)
+            + (int) ($themeReplications > $themeReplicationsReady + $themeReplicationsFailed);
         $attentionBadgeCount = (int) ($failedJobs > 0)
             + (int) ($unvectorizedChunks > 0)
             + (int) ($pendingReview > 0)
             + (int) ($distributionFailed > 0)
-            + (int) ($urlImportFailed > 0);
+            + (int) ($urlImportFailed > 0)
+            + (int) ($themeReplicationsFailed > 0);
+
+        $capabilityCards = [
+            [
+                'title' => __('admin.dashboard.capabilities.collections_title'),
+                'desc' => __('admin.dashboard.capabilities.collections_desc'),
+                'href' => route('admin.collections.index'),
+                'icon' => 'layout-dashboard',
+                'tone' => 'slate',
+                'count' => $activeCollections.'/'.$collectionsTotal,
+            ],
+            [
+                'title' => __('admin.dashboard.capabilities.entity_title'),
+                'desc' => __('admin.dashboard.capabilities.entity_desc'),
+                'href' => route('admin.entities.index'),
+                'icon' => 'network',
+                'tone' => 'blue',
+                'count' => $entitiesTotal,
+            ],
+            [
+                'title' => __('admin.dashboard.capabilities.knowledge_title'),
+                'desc' => __('admin.dashboard.capabilities.knowledge_desc'),
+                'href' => route('admin.knowledge-bases.index'),
+                'icon' => 'database-zap',
+                'tone' => 'green',
+                'count' => $vectorizedChunks.'/'.$knowledgeChunks,
+            ],
+            [
+                'title' => __('admin.dashboard.capabilities.case_title'),
+                'desc' => __('admin.dashboard.capabilities.case_desc'),
+                'href' => route('admin.cases.index'),
+                'icon' => 'badge-check',
+                'tone' => 'amber',
+                'count' => $casesTotal,
+            ],
+            [
+                'title' => __('admin.dashboard.capabilities.url_import_title'),
+                'desc' => __('admin.dashboard.capabilities.url_import_desc'),
+                'href' => route('admin.url-import'),
+                'icon' => 'wand-sparkles',
+                'tone' => 'violet',
+                'count' => (int) ($urlImport['completed'] ?? 0).'/'.(int) ($urlImport['total'] ?? 0),
+            ],
+            [
+                'title' => __('admin.dashboard.capabilities.quality_title'),
+                'desc' => __('admin.dashboard.capabilities.quality_desc'),
+                'href' => route('admin.articles.index'),
+                'icon' => 'clipboard-check',
+                'tone' => 'red',
+                'count' => $pendingReview,
+            ],
+            [
+                'title' => __('admin.dashboard.capabilities.crm_title'),
+                'desc' => __('admin.dashboard.capabilities.crm_desc'),
+                'href' => route('admin.crm.dashboard'),
+                'icon' => 'handshake',
+                'tone' => 'green',
+                'count' => $crmOpenTasks,
+            ],
+            [
+                'title' => __('admin.dashboard.capabilities.template_title'),
+                'desc' => __('admin.dashboard.capabilities.template_desc'),
+                'href' => route('admin.site-settings.theme-replications.create'),
+                'icon' => 'panel-top',
+                'tone' => 'violet',
+                'count' => $themeReplicationsReady.'/'.$themeReplications,
+            ],
+        ];
 
         $flowNodes = [
+            [
+                'title' => __('admin.dashboard.automation.node_collection_title'),
+                'desc' => __('admin.dashboard.automation.node_collection_desc'),
+                'icon' => 'layout-dashboard',
+                'tone' => 'slate',
+                'status' => $collectionStatus,
+                'metrics' => [
+                    __('admin.dashboard.automation.metric_collections', ['active' => $activeCollections, 'total' => $collectionsTotal]),
+                    __('admin.dashboard.automation.metric_entities', ['count' => $entitiesTotal]),
+                    __('admin.dashboard.automation.metric_cases', ['count' => $casesTotal]),
+                ],
+                'actions' => [
+                    ['label' => __('admin.dashboard.automation.action_manage_collections'), 'href' => route('admin.collections.index'), 'primary' => true],
+                ],
+            ],
+            [
+                'title' => __('admin.dashboard.automation.node_materials_title'),
+                'desc' => __('admin.dashboard.automation.node_materials_desc'),
+                'icon' => 'database',
+                'tone' => 'green',
+                'status' => $materialsStatus,
+                'metrics' => [
+                    __('admin.dashboard.automation.metric_materials', ['count' => $materialLibraryCount]),
+                    __('admin.dashboard.automation.metric_vectorized', ['done' => $vectorizedChunks, 'total' => $knowledgeChunks]),
+                ],
+                'actions' => [
+                    ['label' => __('admin.dashboard.quick_start.knowledge'), 'href' => route('admin.knowledge-bases.index'), 'primary' => true],
+                    ['label' => __('admin.dashboard.automation.action_refresh_chunks'), 'href' => route('admin.knowledge-bases.index'), 'primary' => false, 'warning' => true],
+                ],
+            ],
             [
                 'title' => __('admin.dashboard.automation.node_ai_title'),
                 'desc' => __('admin.dashboard.automation.node_ai_desc'),
@@ -105,21 +222,6 @@
                 'actions' => [
                     ['label' => __('admin.dashboard.automation.action_config'), 'href' => route('admin.ai-models.index'), 'primary' => true],
                     ['label' => __('admin.dashboard.automation.action_test'), 'href' => route('admin.ai-models.index'), 'primary' => false],
-                ],
-            ],
-            [
-                'title' => __('admin.dashboard.automation.node_materials_title'),
-                'desc' => __('admin.dashboard.automation.node_materials_desc'),
-                'icon' => 'database',
-                'tone' => 'green',
-                'status' => $materialsStatus,
-                'metrics' => [
-                    __('admin.dashboard.automation.metric_materials', ['count' => $materialLibraryCount]),
-                    __('admin.dashboard.automation.metric_vectorized', ['done' => $vectorizedChunks, 'total' => $knowledgeChunks]),
-                ],
-                'actions' => [
-                    ['label' => __('admin.dashboard.automation.action_refresh_chunks'), 'href' => route('admin.knowledge-bases.index'), 'primary' => false, 'warning' => true],
-                    ['label' => __('admin.dashboard.automation.action_view'), 'href' => route('admin.materials.index'), 'primary' => false],
                 ],
             ],
             [
@@ -154,33 +256,51 @@
                 ],
             ],
             [
-                'title' => __('admin.dashboard.automation.node_content_title'),
-                'desc' => __('admin.dashboard.automation.node_content_desc'),
-                'icon' => 'file-plus-2',
-                'tone' => 'green',
-                'status' => $contentStatus,
-                'metrics' => [
-                    __('admin.dashboard.automation.metric_drafts', ['count' => $draftArticles]),
-                    __('admin.dashboard.automation.metric_today_new', ['count' => $todayArticles]),
-                ],
-                'actions' => [
-                    ['label' => __('admin.dashboard.automation.action_articles'), 'href' => route('admin.articles.index'), 'primary' => false],
-                    ['label' => __('admin.dashboard.automation.action_tasks'), 'href' => route('admin.tasks.index'), 'primary' => false],
-                ],
-            ],
-            [
-                'title' => __('admin.dashboard.automation.node_review_title'),
-                'desc' => __('admin.dashboard.automation.node_review_desc'),
-                'icon' => 'badge-check',
+                'title' => __('admin.dashboard.automation.node_quality_title'),
+                'desc' => __('admin.dashboard.automation.node_quality_desc'),
+                'icon' => 'clipboard-check',
                 'tone' => 'amber',
                 'status' => $reviewStatus,
                 'metrics' => [
                     __('admin.dashboard.automation.metric_review_pending', ['count' => $pendingReview]),
+                    __('admin.dashboard.automation.metric_drafts', ['count' => $draftArticles]),
                     __('admin.dashboard.automation.metric_published', ['count' => $publishedArticles]),
                 ],
                 'actions' => [
-                    ['label' => __('admin.dashboard.automation.action_review'), 'href' => route('admin.articles.index'), 'primary' => false, 'warning' => true],
-                    ['label' => __('admin.dashboard.automation.action_publish'), 'href' => route('admin.articles.index'), 'primary' => false],
+                    ['label' => __('admin.dashboard.automation.action_review'), 'href' => route('admin.articles.index'), 'primary' => true],
+                    ['label' => __('admin.dashboard.automation.action_articles'), 'href' => route('admin.articles.index'), 'primary' => false],
+                ],
+            ],
+            [
+                'title' => __('admin.dashboard.automation.node_crm_title'),
+                'desc' => __('admin.dashboard.automation.node_crm_desc'),
+                'icon' => 'handshake',
+                'tone' => 'green',
+                'status' => $crmOpenTasks > 0 ? 'running' : 'available',
+                'metrics' => [
+                    __('admin.dashboard.automation.metric_crm_tasks', ['count' => $crmOpenTasks]),
+                    __('admin.dashboard.automation.metric_crm_inquiries', ['count' => $crmOpenInquiries]),
+                    __('admin.dashboard.automation.metric_crm_opportunities', ['count' => $crmOpenOpportunities]),
+                ],
+                'actions' => [
+                    ['label' => __('admin.dashboard.capabilities.crm_title'), 'href' => route('admin.crm.dashboard'), 'primary' => true],
+                    ['label' => __('admin.dashboard.automation.action_crm_tasks'), 'href' => route('admin.crm.tasks.index'), 'primary' => false],
+                ],
+            ],
+            [
+                'title' => __('admin.dashboard.automation.node_template_title'),
+                'desc' => __('admin.dashboard.automation.node_template_desc'),
+                'icon' => 'panel-top',
+                'tone' => 'violet',
+                'status' => $templateStatus,
+                'metrics' => [
+                    __('admin.dashboard.automation.metric_templates', ['ready' => $themeReplicationsReady, 'total' => $themeReplications]),
+                    __('admin.dashboard.automation.metric_template_failed', ['count' => $themeReplicationsFailed]),
+                    __('admin.dashboard.automation.metric_channels', ['count' => $channelsTotal]),
+                ],
+                'actions' => [
+                    ['label' => __('admin.dashboard.automation.action_template_factory'), 'href' => route('admin.site-settings.theme-replications.create'), 'primary' => true],
+                    ['label' => __('admin.dashboard.automation.action_channels'), 'href' => route('admin.distribution.index'), 'primary' => false],
                 ],
             ],
             [
@@ -217,6 +337,17 @@
 
         $recommendations = [
             [
+                'title' => __('admin.dashboard.automation.rec_task_title'),
+                'desc' => __('admin.dashboard.automation.rec_task_desc'),
+                'count' => $failedJobs,
+                'icon' => 'circle-alert',
+                'style' => 'border-red-200 bg-red-50',
+                'badge' => 'error',
+                'href' => route('admin.tasks.index'),
+                'button' => __('admin.dashboard.automation.action_queue'),
+                'buttonStyle' => 'border-red-200 bg-white text-red-700 hover:bg-red-50',
+            ],
+            [
                 'title' => __('admin.dashboard.automation.rec_distribution_title'),
                 'desc' => __('admin.dashboard.automation.rec_distribution_desc'),
                 'count' => $distributionFailed,
@@ -249,6 +380,28 @@
                 'button' => __('admin.dashboard.automation.action_review'),
                 'buttonStyle' => 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700',
             ],
+            [
+                'title' => __('admin.dashboard.automation.rec_url_import_title'),
+                'desc' => __('admin.dashboard.automation.rec_url_import_desc'),
+                'count' => $urlImportFailed + $urlImportWaiting,
+                'icon' => 'wand-sparkles',
+                'style' => 'border-violet-200 bg-violet-50',
+                'badge' => $urlImportFailed > 0 ? 'error' : 'warning',
+                'href' => route('admin.url-import.history'),
+                'button' => __('admin.dashboard.quick_start.url_import'),
+                'buttonStyle' => 'border-violet-200 bg-white text-violet-700 hover:bg-violet-50',
+            ],
+            [
+                'title' => __('admin.dashboard.automation.rec_template_title'),
+                'desc' => __('admin.dashboard.automation.rec_template_desc'),
+                'count' => $themeReplicationsFailed,
+                'icon' => 'panel-top',
+                'style' => 'border-red-200 bg-red-50',
+                'badge' => 'error',
+                'href' => route('admin.site-settings.index'),
+                'button' => __('admin.dashboard.automation.action_template_factory'),
+                'buttonStyle' => 'border-red-200 bg-white text-red-700 hover:bg-red-50',
+            ],
         ];
         $activeRecommendations = array_values(array_filter(
             $recommendations,
@@ -271,11 +424,32 @@
                 'tone' => 'blue',
             ],
             [
+                'title' => __('admin.dashboard.automation.health_knowledge_title'),
+                'value' => (string) ($entitiesTotal + $casesTotal),
+                'meta' => __('admin.dashboard.automation.health_knowledge_meta', ['entities' => $entitiesTotal, 'cases' => $casesTotal, 'chunks' => $knowledgeChunks]),
+                'icon' => 'network',
+                'tone' => 'green',
+            ],
+            [
                 'title' => __('admin.dashboard.automation.health_distribution_title'),
                 'value' => (string) $channelsActive,
                 'meta' => __('admin.dashboard.automation.health_distribution_meta', ['active' => $channelsActive, 'pending' => $distributionPending, 'failed' => $distributionFailed]),
                 'icon' => 'radio-tower',
                 'tone' => $distributionFailed > 0 ? 'red' : 'green',
+            ],
+            [
+                'title' => __('admin.dashboard.automation.health_crm_title'),
+                'value' => (string) $crmOpenTasks,
+                'meta' => __('admin.dashboard.automation.health_crm_meta', ['inquiries' => $crmOpenInquiries, 'opportunities' => $crmOpenOpportunities, 'tickets' => $crmOpenTickets]),
+                'icon' => 'handshake',
+                'tone' => 'amber',
+            ],
+            [
+                'title' => __('admin.dashboard.automation.health_template_title'),
+                'value' => $themeReplicationsReady.' / '.$themeReplications,
+                'meta' => __('admin.dashboard.automation.health_template_meta', ['ready' => $themeReplicationsReady, 'failed' => $themeReplicationsFailed]),
+                'icon' => 'panel-top',
+                'tone' => $themeReplicationsFailed > 0 ? 'red' : 'violet',
             ],
             [
                 'title' => __('admin.dashboard.automation.health_feedback_title'),
@@ -293,6 +467,8 @@
                 'rows' => [
                     ['title' => __('admin.dashboard.navigation.ai_config_title'), 'desc' => __('admin.dashboard.automation.lane_ai_desc'), 'href' => route('admin.ai-models.index'), 'icon' => 'cpu', 'count' => $chatModels + $embeddingModels],
                     ['title' => __('admin.dashboard.navigation.materials_title'), 'desc' => __('admin.dashboard.automation.lane_material_desc'), 'href' => route('admin.materials.index'), 'icon' => 'database', 'count' => $materialLibraryCount],
+                    ['title' => __('admin.dashboard.capabilities.knowledge_title'), 'desc' => __('admin.dashboard.automation.lane_knowledge_desc'), 'href' => route('admin.knowledge-bases.index'), 'icon' => 'database-zap', 'count' => $knowledgeChunks],
+                    ['title' => __('admin.dashboard.navigation.url_import_title'), 'desc' => __('admin.dashboard.navigation.url_import_desc'), 'href' => route('admin.url-import'), 'icon' => 'wand-sparkles', 'count' => (int) ($urlImport['total'] ?? 0)],
                     ['title' => __('admin.dashboard.navigation.create_task_title'), 'desc' => __('admin.dashboard.navigation.create_task_desc'), 'href' => route('admin.tasks.create'), 'icon' => 'plus-circle', 'count' => $totalTasks],
                     ['title' => __('admin.dashboard.navigation.articles_title'), 'desc' => __('admin.dashboard.automation.lane_articles_desc'), 'href' => route('admin.articles.index'), 'icon' => 'file-text', 'count' => $totalArticles],
                     ['title' => __('admin.dashboard.navigation.prompt_config_title'), 'desc' => __('admin.dashboard.navigation.prompt_config_desc'), 'href' => route('admin.ai-prompts'), 'icon' => 'message-square-text', 'count' => $totalPrompts],
@@ -304,6 +480,7 @@
                 'title' => __('admin.dashboard.automation.lane_multi_title'),
                 'desc' => __('admin.dashboard.automation.lane_multi_desc'),
                 'rows' => [
+                    ['title' => __('admin.dashboard.capabilities.template_title'), 'desc' => __('admin.dashboard.automation.lane_template_desc'), 'href' => route('admin.site-settings.theme-replications.create'), 'icon' => 'panel-top', 'count' => $themeReplicationsReady.'/'.$themeReplications],
                     ['title' => __('admin.dashboard.navigation.distribution_channels_title'), 'desc' => __('admin.dashboard.navigation.distribution_channels_desc'), 'href' => route('admin.distribution.index'), 'icon' => 'radio-tower', 'count' => $channelsTotal],
                     ['title' => __('admin.dashboard.navigation.create_channel_title'), 'desc' => __('admin.dashboard.automation.lane_channel_desc'), 'href' => route('admin.distribution.create'), 'icon' => 'square-plus', 'count' => $channelsActive],
                     ['title' => __('admin.dashboard.navigation.distribution_jobs_title'), 'desc' => __('admin.dashboard.automation.lane_queue_desc'), 'href' => route('admin.distribution.jobs'), 'icon' => 'list-checks', 'count' => $distributionPending],
@@ -315,6 +492,8 @@
                 'desc' => __('admin.dashboard.automation.lane_feedback_desc'),
                 'rows' => [
                     ['title' => __('admin.dashboard.navigation.analytics_title'), 'desc' => __('admin.dashboard.automation.lane_analytics_desc'), 'href' => route('admin.analytics'), 'icon' => 'chart-no-axes-combined', 'count' => $todayVisits],
+                    ['title' => __('admin.dashboard.capabilities.quality_title'), 'desc' => __('admin.dashboard.automation.lane_quality_desc'), 'href' => route('admin.articles.index'), 'icon' => 'clipboard-check', 'count' => $pendingReview],
+                    ['title' => __('admin.dashboard.capabilities.crm_title'), 'desc' => __('admin.dashboard.automation.lane_crm_desc'), 'href' => route('admin.crm.dashboard'), 'icon' => 'handshake', 'count' => $crmOpenTasks],
                     ['title' => __('admin.dashboard.automation.lane_ai_bot_title'), 'desc' => __('admin.dashboard.automation.lane_ai_bot_desc'), 'href' => route('admin.analytics'), 'icon' => 'bot', 'count' => $aiBotCount],
                     ['title' => __('admin.dashboard.automation.lane_risk_title'), 'desc' => __('admin.dashboard.automation.lane_risk_desc'), 'href' => route('admin.analytics'), 'icon' => 'triangle-alert', 'count' => $riskCount],
                 ],
@@ -377,7 +556,7 @@
                 </span>
             </div>
 
-            <div class="grid grid-cols-1 divide-y divide-gray-100 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+            <div class="grid grid-cols-1 divide-y divide-gray-100 lg:grid-cols-4 lg:divide-x lg:divide-y-0">
                 <div class="p-6">
                     <div class="flex items-start gap-4">
                         <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">1</div>
@@ -411,7 +590,24 @@
 
                 <div class="p-6">
                     <div class="flex items-start gap-4">
-                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">3</div>
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-600 text-sm font-semibold text-white">3</div>
+                        <div class="min-w-0 flex-1">
+                            <h3 class="text-base font-semibold text-gray-900">{{ __('admin.dashboard.quick_start.knowledge_title') }}</h3>
+                            <p class="mt-2 text-sm leading-6 text-gray-500">{{ __('admin.dashboard.quick_start.knowledge_desc') }}</p>
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                @foreach ($quickKnowledgeLinks as $link)
+                                    <a href="{{ $link['href'] }}" class="inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium {{ $link['class'] }}">
+                                        {{ $link['label'] }}
+                                    </a>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-6">
+                    <div class="flex items-start gap-4">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">4</div>
                         <div>
                             <h3 class="text-base font-semibold text-gray-900">{{ __('admin.dashboard.quick_start.task_title') }}</h3>
                             <p class="mt-2 text-sm leading-6 text-gray-500">{{ __('admin.dashboard.quick_start.task_desc') }}</p>
@@ -422,6 +618,34 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <section class="mb-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
+            <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.dashboard.capabilities.title') }}</h2>
+                    <p class="mt-2 max-w-4xl text-sm leading-6 text-gray-500">{{ __('admin.dashboard.capabilities.desc') }}</p>
+                </div>
+                <a href="{{ route('admin.tasks.create') }}" class="inline-flex h-9 w-fit items-center rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700">
+                    <i data-lucide="plus" class="mr-2 h-4 w-4"></i>
+                    {{ __('admin.dashboard.quick_start.task_button') }}
+                </a>
+            </div>
+            <div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+                @foreach ($capabilityCards as $card)
+                    @php($toneClass = $toneStyles[$card['tone']] ?? $toneStyles['slate'])
+                    <a href="{{ $card['href'] }}" class="group rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40 hover:shadow-md">
+                        <div class="flex items-start justify-between gap-3">
+                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg {{ $toneClass }}">
+                                <i data-lucide="{{ $card['icon'] }}" class="h-5 w-5"></i>
+                            </span>
+                            <span class="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700 group-hover:border-blue-100 group-hover:bg-white">{{ $card['count'] }}</span>
+                        </div>
+                        <h3 class="mt-4 text-base font-semibold text-gray-900">{{ $card['title'] }}</h3>
+                        <p class="mt-2 text-sm leading-6 text-gray-500">{{ $card['desc'] }}</p>
+                    </a>
+                @endforeach
             </div>
         </section>
 

@@ -38,7 +38,7 @@ class CrmInquiryController extends Controller
 
         $query = CrmInquiry::query()
             ->with(['collection', 'customer'])
-            ->withCount(['entities', 'knowledgeBases', 'cases', 'quotes'])
+            ->withCount(['entities', 'knowledgeBases', 'cases', 'quotes', 'opportunities'])
             ->orderByDesc('updated_at')
             ->orderByDesc('id');
 
@@ -236,7 +236,7 @@ class CrmInquiryController extends Controller
             'subject' => ['required', 'string', 'max:200'],
             'raw_message' => ['nullable', 'string', 'max:50000'],
             'detected_language' => ['nullable', 'string', 'max:80'],
-            'status' => ['nullable', 'string', Rule::in(['new', 'analyzing', 'qualified', 'quoted', 'won', 'lost', 'closed'])],
+            'status' => ['nullable', 'string', Rule::in(['new', 'analyzing', 'qualified', 'converted', 'invalid', 'closed', 'quoted', 'won', 'lost'])],
             'priority' => ['nullable', 'string', Rule::in(['low', 'normal', 'high', 'urgent'])],
             'assigned_to' => ['nullable', 'string', 'max:120'],
             'customer_need_summary' => ['nullable', 'string', 'max:20000'],
@@ -476,4 +476,3 @@ class CrmInquiryController extends Controller
         return back()->with('message', '跟进记录已删除');
     }
 }
-

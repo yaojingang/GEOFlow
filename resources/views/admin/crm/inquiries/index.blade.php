@@ -1,5 +1,31 @@
 @extends('admin.layouts.app')
 
+@php
+    $inquiryStatusOptions = [
+        'new' => '新询盘',
+        'analyzing' => '分析中',
+        'qualified' => '已确认',
+        'converted' => '已转商机',
+        'invalid' => '无效',
+        'closed' => '已关闭',
+        'quoted' => '已报价（历史）',
+        'won' => '赢单（历史）',
+        'lost' => '丢单（历史）',
+    ];
+    $inquiryStatusTone = [
+        'new' => 'bg-blue-50 text-blue-700',
+        'analyzing' => 'bg-amber-50 text-amber-700',
+        'qualified' => 'bg-emerald-50 text-emerald-700',
+        'converted' => 'bg-purple-50 text-purple-700',
+        'invalid' => 'bg-gray-100 text-gray-600',
+        'closed' => 'bg-slate-100 text-slate-700',
+        'quoted' => 'bg-orange-50 text-orange-700',
+        'won' => 'bg-emerald-100 text-emerald-700',
+        'lost' => 'bg-red-50 text-red-700',
+    ];
+    $priorityLabels = ['low' => '低', 'normal' => '普通', 'high' => '高', 'urgent' => '紧急'];
+@endphp
+
 @section('content')
     <div class="px-4 sm:px-0">
         <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -39,7 +65,7 @@
                     <label class="mb-2 block text-sm font-medium text-gray-700">状态</label>
                     <select name="status" class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                         <option value="">全部</option>
-                        @foreach (['new' => '新询盘', 'qualified' => '已确认', 'quoted' => '已报价', 'won' => '赢单', 'lost' => '丢单', 'closed' => '关闭'] as $value => $label)
+                        @foreach ($inquiryStatusOptions as $value => $label)
                             <option value="{{ $value }}" @selected($status === $value)>{{ $label }}</option>
                         @endforeach
                     </select>
@@ -80,7 +106,11 @@
                                 <tr>
                                     <td class="px-6 py-4">
                                         <div class="font-semibold text-gray-900">{{ $inquiry->subject }}</div>
-                                        <div class="mt-1 text-xs text-gray-500">{{ $inquiry->collection?->name ?? '未指定' }} · {{ $inquiry->status }} · {{ $inquiry->priority }}</div>
+                                        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                                            <span class="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{{ $inquiry->collection?->name ?? '未指定' }}</span>
+                                            <span class="rounded-full px-2.5 py-1 font-medium {{ $inquiryStatusTone[$inquiry->status] ?? 'bg-gray-100 text-gray-700' }}">{{ $inquiryStatusOptions[$inquiry->status] ?? $inquiry->status }}</span>
+                                            <span class="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-700">优先级：{{ $priorityLabels[$inquiry->priority] ?? $inquiry->priority }}</span>
+                                        </div>
                                         @if ((string) ($inquiry->customer_need_summary ?? '') !== '')
                                             <div class="mt-2 max-w-2xl text-sm leading-6 text-gray-600">{{ \Illuminate\Support\Str::limit($inquiry->customer_need_summary, 140) }}</div>
                                         @endif
@@ -94,6 +124,7 @@
                                             <span class="rounded bg-blue-50 px-2 py-1 text-blue-700">{{ (int) ($inquiry->entities_count ?? 0) }} Entity</span>
                                             <span class="rounded bg-orange-50 px-2 py-1 text-orange-700">{{ (int) ($inquiry->knowledge_bases_count ?? 0) }} 知识库</span>
                                             <span class="rounded bg-emerald-50 px-2 py-1 text-emerald-700">{{ (int) ($inquiry->cases_count ?? 0) }} Case</span>
+                                            <span class="rounded bg-indigo-50 px-2 py-1 text-indigo-700">{{ (int) ($inquiry->opportunities_count ?? 0) }} 商机</span>
                                             <span class="rounded bg-purple-50 px-2 py-1 text-purple-700">{{ (int) ($inquiry->quotes_count ?? 0) }} 报价</span>
                                         </div>
                                     </td>
@@ -101,6 +132,9 @@
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <a href="{{ route('admin.crm.inquiries.show', ['inquiryId' => (int) $inquiry->id]) }}" class="inline-flex items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><i data-lucide="eye" class="mr-1 h-4 w-4"></i>查看</a>
                                             <a href="{{ route('admin.crm.inquiries.edit', ['inquiryId' => (int) $inquiry->id]) }}" class="inline-flex items-center rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><i data-lucide="pencil" class="mr-1 h-4 w-4"></i>编辑</a>
+                                            @if ((int) ($inquiry->opportunities_count ?? 0) > 0)
+                                                <a href="{{ route('admin.crm.opportunities.index', ['collection_id' => (int) ($inquiry->collection_id ?? 0)]) }}" class="inline-flex items-center rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"><i data-lucide="briefcase-business" class="mr-1 h-4 w-4"></i>商机</a>
+                                            @endif
                                             <a href="{{ route('admin.crm.quotes.create', ['inquiry_id' => (int) $inquiry->id]) }}" class="inline-flex items-center rounded border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100"><i data-lucide="file-plus-2" class="mr-1 h-4 w-4"></i>报价</a>
                                             <form method="POST" action="{{ route('admin.crm.inquiries.delete', ['inquiryId' => (int) $inquiry->id]) }}" onsubmit="return confirm('确认归档此询盘？关联商业记录将保留。')">
                                                 @csrf

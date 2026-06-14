@@ -43,11 +43,11 @@
             </div>
         </div>
 
-        <form method="GET" action="{{ route('admin.collections.index') }}" class="mb-6 rounded-lg border border-gray-200 bg-white px-5 py-4 shadow-sm">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
-                <input type="text" name="search" value="{{ $search }}" placeholder="{{ __('admin.collections.search_placeholder') }}" class="block w-full rounded-md border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:ring-slate-500">
-                <div class="flex gap-2">
-                    <button type="submit" class="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+        <div class="mb-6 rounded-lg bg-white shadow">
+            <div class="px-6 py-4">
+                <form method="GET" action="{{ route('admin.collections.index') }}" class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
+                    <input type="text" name="search" value="{{ $search }}" placeholder="{{ __('admin.collections.search_placeholder') }}" class="block w-full rounded-md border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                         <i data-lucide="search" class="mr-2 h-4 w-4"></i>
                         {{ __('admin.button.search') }}
                     </button>
@@ -55,9 +55,9 @@
                         <i data-lucide="x" class="mr-2 h-4 w-4"></i>
                         {{ __('admin.button.clear') }}
                     </a>
-                </div>
+                </form>
             </div>
-        </form>
+        </div>
 
         <div class="overflow-hidden rounded-lg bg-white shadow">
             <div class="border-b border-gray-200 px-6 py-4">

@@ -24,7 +24,7 @@ final class MaterialAnalysisPromptRules
 
     public static function autoLanguageDirective(): string
     {
-        return 'Auto-detect the dominant source language from the submitted material. All generated user-facing field values must use that same language unless the supplemental analysis requirements explicitly request another language. Do not mix Chinese with English or any other language. Keep JSON field names unchanged, and preserve brand names, model names, part numbers, URLs, standards, units, and quoted proper nouns exactly when appropriate.';
+        return 'Auto-detect whether the submitted material should be handled as Simplified Chinese or English. All generated user-facing field values must use Simplified Chinese when the source is clearly Chinese; otherwise use English. Do not generate any language other than Simplified Chinese or English. Do not mix Chinese and English except for brand names, model names, part numbers, URLs, standards, units, and quoted proper nouns that should be preserved exactly. Keep JSON field names unchanged.';
     }
 
     public static function jsonOnlyRule(): string

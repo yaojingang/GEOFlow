@@ -60,7 +60,10 @@ class AdminCollectionsPageTest extends TestCase
             ->get(route('admin.collections.index', ['search' => 'Automation Equipment Test']))
             ->assertOk()
             ->assertSee('Automation Equipment Test')
-            ->assertSee('automation-equipment-test');
+            ->assertSee('automation-equipment-test')
+            ->assertSee('bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700', false)
+            ->assertSee('border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50', false)
+            ->assertDontSee('inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800', false);
 
         $this->actingAs($admin, 'admin')
             ->put(route('admin.collections.update', ['collectionId' => (int) $collection->id]), [

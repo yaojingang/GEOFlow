@@ -14,13 +14,6 @@
         'zh-CN' => 'zh_CN',
         'en' => 'en_US',
         'en_US' => 'en_US',
-        'ja' => 'ja_JP',
-        'ja_JP' => 'ja_JP',
-        'ru' => 'ru_RU',
-        'ru_RU' => 'ru_RU',
-        'pt_BR' => 'pt_BR',
-        'es' => 'es_ES',
-        'es_ES' => 'es_ES',
     ];
     $vditorLang = $vditorLocaleMap[str_replace('-', '_', app()->getLocale())] ?? 'en_US';
     $editorQuickActions = [

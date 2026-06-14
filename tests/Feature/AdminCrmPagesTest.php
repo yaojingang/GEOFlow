@@ -14,6 +14,7 @@ use App\Models\CrmCustomerContact;
 use App\Models\CrmOpportunity;
 use App\Models\CrmQuote;
 use App\Models\CrmSalesOrder;
+use App\Models\CrmSellerProfile;
 use App\Models\CrmTask;
 use App\Models\EntityRecord;
 use App\Models\KnowledgeBase;
@@ -367,6 +368,60 @@ class AdminCrmPagesTest extends TestCase
         }
     }
 
+    public function test_admin_can_save_seller_profiles_and_quote_json_must_be_valid(): void
+    {
+        $admin = $this->admin('crm_seller_profile_admin');
+        $collection = $this->collection('Seller Profile CRM');
+        $customer = CrmCustomer::query()->create([
+            'collection_id' => (int) $collection->id,
+            'company_name' => 'Seller Profile Buyer',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.crm.quotes.seller-profiles.store'), [
+                'type' => 'seller_company',
+                'name' => 'Robota Default Seller',
+                'payload' => json_encode([
+                    'name' => 'Robota Automation',
+                    'address' => 'Shenzhen',
+                    'email' => 'sales@example.com',
+                ], JSON_THROW_ON_ERROR),
+                'set_default' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('profile.name', 'Robota Default Seller')
+            ->assertJsonPath('profile.is_default', true);
+
+        $this->assertDatabaseHas('crm_seller_profiles', [
+            'type' => 'seller_company',
+            'name' => 'Robota Default Seller',
+            'is_default' => true,
+        ]);
+        $this->assertSame('Robota Automation', (string) CrmSellerProfile::query()->firstOrFail()->payload['name']);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.crm.quotes.create', ['collection_id' => (int) $collection->id]))
+            ->assertOk()
+            ->assertSee('Robota Default Seller')
+            ->assertSee('Seller Company JSON');
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.crm.quotes.store'), [
+                'collection_id' => (int) $collection->id,
+                'customer_id' => (int) $customer->id,
+                'title' => 'Invalid Seller JSON Quote',
+                'seller_company_json' => '{"name":',
+                'bank_account_json' => '{"bank_name":"Valid Bank"}',
+                'items' => [
+                    'item_name' => ['Machine'],
+                    'quantity' => [1],
+                    'unit_price' => [100],
+                ],
+            ])
+            ->assertSessionHasErrors('seller_company_json');
+    }
+
     public function test_admin_can_convert_quote_to_order_and_create_after_sales_ticket(): void
     {
         $admin = $this->admin('crm_order_admin');
@@ -645,10 +700,40 @@ class AdminCrmPagesTest extends TestCase
         $collection = $this->collection('Pipeline CRM');
         $customer = CrmCustomer::query()->create(['collection_id'=>$collection->id,'company_name'=>'Pipeline Buyer','contact_person'=>'Buyer','status'=>'active']);
         $inquiry = CrmInquiry::query()->create(['collection_id'=>$collection->id,'customer_id'=>$customer->id,'subject'=>'Machine project','status'=>'qualified','priority'=>'high']);
-        $this->actingAs($admin,'admin')->post(route('admin.crm.opportunities.store'),['collection_id'=>$collection->id,'customer_id'=>$customer->id,'source_inquiry_id'=>$inquiry->id,'name'=>'Machine project','stage'=>'qualified','amount'=>12000,'currency'=>'USD','probability'=>30])->assertRedirect();
+        $this->actingAs($admin,'admin')->get(route('admin.crm.inquiries.show',['inquiryId'=>$inquiry->id]))->assertOk()->assertSee('转为商机');
+        $this->actingAs($admin,'admin')->post(route('admin.crm.opportunities.from-inquiry',['inquiryId'=>$inquiry->id]))->assertRedirect();
         $opportunity = CrmOpportunity::query()->firstOrFail();
+        $this->assertSame('converted', (string) $inquiry->fresh()->status);
+        $this->assertSame((int) $inquiry->id, (int) $opportunity->source_inquiry_id);
         $this->actingAs($admin,'admin')->put(route('admin.crm.opportunities.update',['opportunityId'=>$opportunity->id]),['customer_id'=>$customer->id,'name'=>'Machine project','stage'=>'lost','amount'=>12000,'currency'=>'USD','probability'=>0])->assertSessionHasErrors('lost_reason');
         $this->actingAs($admin,'admin')->get(route('admin.crm.opportunities.index'))->assertOk()->assertSee('Machine project');
+        $this->actingAs($admin,'admin')->get(route('admin.crm.quotes.create',['opportunity_id'=>$opportunity->id]))->assertOk()->assertSee('关联商机')->assertSee('Machine project');
+        $this->actingAs($admin,'admin')->post(route('admin.crm.quotes.store'),[
+            'collection_id'=>$collection->id,
+            'customer_id'=>$customer->id,
+            'inquiry_id'=>$inquiry->id,
+            'opportunity_id'=>$opportunity->id,
+            'title'=>'Opportunity quotation',
+            'currency'=>'USD',
+            'status'=>'draft',
+        ])->assertRedirect();
+        $this->assertDatabaseHas('crm_quotes',[
+            'title'=>'Opportunity quotation',
+            'opportunity_id'=>$opportunity->id,
+            'inquiry_id'=>$inquiry->id,
+        ]);
+        $closedInquiry = CrmInquiry::query()->create(['collection_id'=>$collection->id,'customer_id'=>$customer->id,'subject'=>'Closed inquiry','status'=>'closed','priority'=>'normal']);
+        $this->actingAs($admin,'admin')->post(route('admin.crm.opportunities.store'),[
+            'collection_id'=>$collection->id,
+            'customer_id'=>$customer->id,
+            'source_inquiry_id'=>$closedInquiry->id,
+            'name'=>'Closed source opportunity',
+            'stage'=>'qualified',
+            'amount'=>0,
+            'currency'=>'USD',
+            'probability'=>10,
+        ])->assertRedirect();
+        $this->assertSame('closed', (string) $closedInquiry->fresh()->status);
     }
 
     public function test_quote_conversion_creates_independent_document_and_items(): void

@@ -248,13 +248,13 @@ docker exec -e APP_KEY="$(grep '^APP_KEY=' .env | cut -d= -f2-)" geoflow-app sh 
 
 **安全做法：** 只做局部微调（颜色、间距、字号），不做结构性 CSS 重写。任何 CSS 改动后必须逐一验证 5 种打印模板。
 
-### 19. _markdown-editor 组件不能用 x-cloak
+### 19. CRM `_markdown-editor` 组件不要依赖 Alpine
 
-**原因：** 项目没有定义 `[x-cloak] { display: none !important; }` CSS 规则。
+**原因：** 当前后台页面不能默认假设 Alpine 已加载。之前用 `x-data`、`@click`、`x-show` 写出的编辑器会正常渲染 HTML，但按钮点击、预览切换、源码切换不会真正执行。项目也没有定义 `[x-cloak] { display: none !important; }` CSS 规则。
 
-**症状：** 预览区和源码区在 Alpine 初始化前短暂裸显。
+**症状：** 活动记录编辑器看起来有 `编辑 / 预览 / 源码` 和快捷按钮，但点击加粗、预览等按钮没有反应；或者预览区和源码区在初始化前短暂裸显。
 
-**解决方案：** 组件中三个模式区（write/code/preview）用内联 `style="display:block"` 或 `style="display:none"` 设置初始可见性，Alpine 的 `x-show` 加载后接管控制。
+**解决方案：** CRM 轻量编辑器使用 `data-crm-markdown-editor` + 原生 JS 初始化，写/预览/源码三个 panel 使用 `hidden` 控制。除非先确认页面已全局加载 Alpine，否则不要再给该组件添加 `x-data`、`@click`、`x-show` 或 `x-cloak`。
 
 ### 20. 跟进记录删除路由必须在 CRM 组公用层级
 

@@ -475,36 +475,12 @@ class WorkerExecutionService
         }
         preg_match_all('/[A-Za-z]/', $text, $latinMatches);
         if ($han === 0 && count($latinMatches[0] ?? []) > 20) {
-            $scoresForExplicitLatinLanguages = [
-                'es' => preg_match_all('/\b(?:que|para|como|con|por|una|los|las|del|servicio|cliente|empresa)\b/u', $text),
-                'pt' => preg_match_all('/\b(?:que|para|como|com|por|uma|dos|das|serviço|cliente|empresa|você)\b/u', $text),
-                'fr' => preg_match_all('/\b(?:que|pour|avec|une|les|des|service|client|entreprise|dans)\b/u', $text),
-                'de' => preg_match_all('/\b(?:und|für|mit|eine|der|die|das|kunde|unternehmen|dienst)\b/u', $text),
-                'it' => preg_match_all('/\b(?:che|per|con|una|gli|delle|servizio|cliente|azienda)\b/u', $text),
-                'nl' => preg_match_all('/\b(?:voor|met|een|het|de|klant|bedrijf|dienst)\b/u', $text),
-            ];
-            arsort($scoresForExplicitLatinLanguages);
-            $topLatinLanguage = array_key_first($scoresForExplicitLatinLanguages);
-            if ($topLatinLanguage !== null && (int) $scoresForExplicitLatinLanguages[$topLatinLanguage] > 0) {
-                return (string) $topLatinLanguage;
-            }
-
             return 'en';
         }
 
-        $scores = [
-            'es' => preg_match_all('/\b(?:que|para|como|con|por|una|los|las|del|servicio|cliente|empresa)\b/u', $text),
-            'pt' => preg_match_all('/\b(?:que|para|como|com|por|uma|dos|das|serviço|cliente|empresa|você)\b/u', $text),
-            'fr' => preg_match_all('/\b(?:que|pour|avec|une|les|des|service|client|entreprise|dans)\b/u', $text),
-            'de' => preg_match_all('/\b(?:und|für|mit|eine|der|die|das|kunde|unternehmen|dienst)\b/u', $text),
-            'it' => preg_match_all('/\b(?:che|per|con|una|gli|delle|servizio|cliente|azienda)\b/u', $text),
-            'nl' => preg_match_all('/\b(?:voor|met|een|het|de|klant|bedrijf|dienst)\b/u', $text),
-            'en' => preg_match_all('/\b(?:the|and|for|with|how|what|why|service|customer|business|company)\b/u', $text),
-        ];
-        arsort($scores);
-        $top = array_key_first($scores);
-
-        return ($top !== null && (int) $scores[$top] > 0) ? (string) $top : 'unknown';
+        return preg_match('/\b(?:the|and|for|with|how|what|why|service|customer|business|company)\b/u', $text) === 1
+            ? 'en'
+            : 'unknown';
     }
 
     private function determineGenerationLanguage(string $title, string $keyword, ?string $promptContent): string
@@ -947,12 +923,6 @@ class WorkerExecutionService
     {
         $instruction = match ($targetLanguage) {
             'en' => 'The final article must be written entirely in English. Output only the final article body in Markdown. Do not repeat the prompt or output placeholders.',
-            'es' => 'El artículo final debe estar escrito completamente en español. Devuelve solo el cuerpo final del artículo en Markdown. No repitas el prompt ni muestres marcadores de posición.',
-            'pt' => 'O artigo final deve ser escrito inteiramente em português. Retorne apenas o corpo final do artigo em Markdown. Não repita o prompt nem mostre placeholders.',
-            'fr' => 'L’article final doit être entièrement rédigé en français. Retourne uniquement le corps final de l’article en Markdown. Ne répète pas le prompt et n’affiche aucun placeholder.',
-            'de' => 'Der finale Artikel muss vollständig auf Deutsch geschrieben sein. Gib nur den finalen Artikeltext in Markdown aus. Wiederhole den Prompt nicht und gib keine Platzhalter aus.',
-            'it' => 'L’articolo finale deve essere scritto interamente in italiano. Restituisci solo il corpo finale dell’articolo in Markdown. Non ripetere il prompt e non mostrare placeholder.',
-            'nl' => 'Het uiteindelijke artikel moet volledig in het Nederlands zijn geschreven. Geef alleen de definitieve artikeltekst in Markdown terug. Herhaal de prompt niet en toon geen placeholders.',
             default => '请直接输出最终中文文章正文（Markdown）。全文必须使用中文，不要重复提示词、不要输出占位符。',
         };
 

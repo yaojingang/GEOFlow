@@ -211,19 +211,7 @@ class ArticleQualityAssessmentService
             return 'unknown';
         }
 
-        $scores = [
-            'es' => preg_match_all('/\b(?:que|para|como|con|por|una|los|las|del|servicio|cliente|empresa|solución)\b/u', $normalized),
-            'pt' => preg_match_all('/\b(?:que|para|como|com|por|uma|dos|das|serviço|cliente|empresa|solução|você)\b/u', $normalized),
-            'fr' => preg_match_all('/\b(?:que|pour|avec|une|les|des|service|client|entreprise|solution|dans)\b/u', $normalized),
-            'de' => preg_match_all('/\b(?:und|für|mit|eine|der|die|das|kunde|unternehmen|lösung|dienst)\b/u', $normalized),
-            'it' => preg_match_all('/\b(?:che|per|con|una|gli|delle|servizio|cliente|azienda|soluzione)\b/u', $normalized),
-            'nl' => preg_match_all('/\b(?:voor|met|een|het|de|klant|bedrijf|dienst|oplossing)\b/u', $normalized),
-            'en' => preg_match_all('/\b(?:the|and|for|with|how|what|why|service|customer|business|company|solution)\b/u', $normalized),
-        ];
-        arsort($scores);
-        $top = array_key_first($scores);
-
-        return ($top !== null && (int) $scores[$top] > 0) ? (string) $top : 'latin';
+        return 'en';
     }
 
     private function expectedLanguage(array $generationTrace): string
@@ -238,7 +226,7 @@ class ArticleQualityAssessmentService
         $keyword = (string) data_get($generationTrace, 'title.keyword', '');
         $detected = $this->detectLanguage($title."\n".$keyword);
 
-        return in_array($detected, ['latin', 'unknown'], true) ? 'unknown' : $detected;
+        return $detected === 'unknown' ? 'unknown' : $detected;
     }
 
     private function normalizeLanguageCode(string $code): string
@@ -248,15 +236,18 @@ class ArticleQualityAssessmentService
             return '';
         }
         $aliases = [
+            'zh' => 'zh',
             'zh-cn' => 'zh',
             'zh-hans' => 'zh',
+            'zh-tw' => 'zh',
+            'zh-hant' => 'zh',
             'en-us' => 'en',
             'en-gb' => 'en',
-            'pt-br' => 'pt',
-            'pt-pt' => 'pt',
         ];
 
-        return $aliases[$code] ?? (str_contains($code, '-') ? (string) strtok($code, '-') : $code);
+        $normalized = $aliases[$code] ?? (str_contains($code, '-') ? (string) strtok($code, '-') : $code);
+
+        return in_array($normalized, ['zh', 'en'], true) ? $normalized : '';
     }
 
     private function primaryLanguage(string $code): string

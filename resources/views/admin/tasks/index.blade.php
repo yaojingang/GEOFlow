@@ -204,7 +204,7 @@
                                     <div class="flex w-fit items-center gap-1.5">
                                         @if (($task['status'] ?? '') === 'active')
                                             <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="stop" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
-                                                <i data-lucide="square" class="w-4 h-4"></i>
+                                                <i data-lucide="circle-stop" class="w-4 h-4"></i>
                                             </button>
                                         @else
                                             <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="start" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
@@ -426,7 +426,7 @@ function updateBatchButton(btn, taskId, taskName, isActive) {
     btn.disabled = false;
     btn.dataset.batchAction = isActive ? 'stop' : 'start';
     btn.className = isActive ? 'inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200' : 'inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200';
-    btn.innerHTML = isActive ? '<i data-lucide="square" class="w-4 h-4"></i>' : '<i data-lucide="play" class="w-4 h-4"></i>';
+    btn.innerHTML = isActive ? '<i data-lucide="circle-stop" class="w-4 h-4"></i>' : '<i data-lucide="play" class="w-4 h-4"></i>';
     btn.title = isActive ? TASK_I18N.stopBatch : TASK_I18N.startBatch;
     btn.setAttribute('aria-label', btn.title);
     btn.onclick = isActive ? () => stopBatchExecution(taskId, taskName) : () => startBatchExecution(taskId, taskName);

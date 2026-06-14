@@ -40,7 +40,7 @@ class UrlImportController extends Controller
             'url' => ['required', 'string', 'max:2048'],
             'project_name' => ['nullable', 'string', 'max:120'],
             'source_label' => ['nullable', 'string', 'max:120'],
-            'content_language' => ['nullable', 'string', 'max:20'],
+            'content_language' => ['nullable', 'string', Rule::in(['', 'zh-CN', 'en'])],
             'ai_model_id' => ['nullable', 'integer', 'min:0'],
             'collection_id' => ['nullable', 'integer', 'min:1', Rule::exists('collections', 'id')],
             'title_count' => ['nullable', 'integer', 'min:1', 'max:50'],

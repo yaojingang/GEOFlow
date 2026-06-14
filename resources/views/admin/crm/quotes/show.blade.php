@@ -144,6 +144,16 @@
                         <div><dt class="text-gray-500">买方</dt><dd class="mt-1 font-medium text-gray-900">{{ $quote->buyer_company ?: '未填写' }}</dd></div>
                         <div><dt class="text-gray-500">负责人</dt><dd class="mt-1 font-medium text-gray-900">{{ $quote->owner ?: '未指定' }}</dd></div>
                         <div><dt class="text-gray-500">业务容器</dt><dd class="mt-1 font-medium text-gray-900">{{ $quote->collection?->name ?? '未指定' }}</dd></div>
+                        <div>
+                            <dt class="text-gray-500">关联商机</dt>
+                            <dd class="mt-1 font-medium text-gray-900">
+                                @if ($quote->opportunity)
+                                    <a href="{{ route('admin.crm.opportunities.edit', ['opportunityId' => (int) $quote->opportunity->id]) }}" class="text-blue-600 hover:text-blue-700">{{ $quote->opportunity->name }}</a>
+                                @else
+                                    未关联
+                                @endif
+                            </dd>
+                        </div>
                         <div><dt class="text-gray-500">文档类型</dt><dd class="mt-1 font-medium text-gray-900">{{ ['quotation' => '报价单', 'proforma_invoice' => '形式发票', 'invoice' => '正式发票', 'packing_list' => '装箱单', 'contract' => '合同'][$quote->document_type] ?? '报价单' }}</dd></div>
                         <div><dt class="text-gray-500">贸易条款</dt><dd class="mt-1 font-medium text-gray-900">{{ $quote->trade_term ?: '未设置' }}</dd></div>
                         <div><dt class="text-gray-500">有效期</dt><dd class="mt-1 font-medium text-gray-900">{{ $quote->valid_until?->format('Y-m-d') ?? '未设置' }}</dd></div>

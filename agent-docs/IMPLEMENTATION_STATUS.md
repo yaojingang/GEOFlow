@@ -40,13 +40,15 @@
 | 轻量 CRM 阶段 5 | 已完成 | 新增售后工单，支持 AI 分析、关联订单、Entity、知识库和 Case |
 | 轻量 CRM 阶段 6 | 已完成 | 新增 CRM 内容候选与任务 CRM 来源关联，支持从询盘/工单沉淀标题、FAQ、Case |
 | 轻量 CRM 阶段 7 | 已完成核心功能 | CRM 列表筛选、Collection 约束、任务页 CRM 来源筛选和主要 UI 入口已补齐 |
-| CRM 活动与待办 | 已完成核心功能 | 询盘活动按询盘隔离，客户可汇总活动；未来动作使用独立 CRM 待办 |
+| CRM 活动与待办 | 已完成核心功能 | 询盘活动按询盘隔离，客户可汇总活动；未来动作使用独立 CRM 待办；活动记录使用轻量 Markdown 编辑器 |
 | CRM 工作台与商机管道 | 已完成核心功能 | 支持今日/逾期待办、商机阶段、金额、概率、成交日期和输单原因 |
 | CRM 多联系人 | 已完成核心功能 | 客户可维护多个外部联系人并指定主联系人，兼容旧单据带入字段 |
 | CRM 数据归档安全 | 已完成核心功能 | 客户及商业对象使用软删除；归档客户不会级联删除商业记录 |
 | CRM 单据独立转换 | 已完成核心功能 | 支持从已有单据创建独立报价 / PI / CI / PL / 合同副本并保留来源 |
 | CRM 单据系统阶段 1 | 已完成 | 报价/发票/装箱/合同基础字段结构、正式发票类型、最终合计和明细扩展字段已补齐 |
 | CRM 单据系统阶段 2-10 | 已完成核心功能 | 单据表单 UI、项目图片、报价/PI/发票/装箱单/合同分模板打印、卖方信息读取、基础中英文标签、测试与文档已补齐 |
+| CRM 卖方常用信息模板 | 已完成核心功能 | 单据卖方信息支持 Seller Company / Bank Account JSON 编辑、格式化、保存常用、导入常用和默认模板 |
+| CRM 询盘与商机边界 | 已完成核心功能 | 询盘状态收敛，一键转商机，商机显示来源询盘上下文，单据支持关联商机 |
 | 关键词和图片库级标签移除 | 已完成 | 只保留标题库库级标签 |
 | 素材库删除后保留筛选位置 | 已完成 | 关键词库、标题库、图片库、知识库删除后保留 query 并回到列表区域 |
 | 模板工厂 / 站点模板复刻 | 已完成核心功能 | 可从首页、列表页、文章页 3 个参考 URL 创建模板复刻任务，支持预览、迭代、发布、打包和归档 |
@@ -101,7 +103,9 @@
 - `AdminCrmPagesTest` CRM 阶段 4-7 扩展验证
 - `AdminTasksPageTest` CRM 来源关联回归验证
 - `AdminCrmPagesTest` CRM 单据系统阶段 2-10 扩展验证，覆盖图片字段、PI、装箱单、合同打印页
+- `AdminCrmPagesTest` CRM 询盘转商机与单据关联商机回归验证
 - Headless Chrome 新建单据页和多类型打印页截图检查
+- 浏览器检查询盘列表、询盘详情、商机创建页和单据创建页，无横向溢出；商机来源卡片和关联商机下拉正常渲染
 - `AdminArticlesPageTest`、`AdminLoginPageTest`、`AdminSiteSettingsPageTest`、`AdminSiteThemeReplicationTest`、`AdminDistributionPageTest` 联合回归通过，共 104 tests / 743 assertions
 
 ## 2026-06-12 上游功能融入
@@ -727,3 +731,17 @@ crm_customers.company_name   → crm_quotes.buyer_company → 打印页 Company
 - 客户、询盘、单据、订单、售后、活动记录已启用软删除归档。
 - 单据可转换为独立的报价 / PI / CI / 装箱单 / 合同记录，并通过 `source_quote_id` 追踪来源。
 - Docker 回归测试：`AdminCrmPagesTest` 11 项、108 个断言通过；桌面与 390px 移动端已完成截图检查。
+
+## 2026-06-14：CRM 活动记录编辑器优化
+
+- 保留活动记录与 CRM 待办两个概念：
+  - 活动记录：已发生的沟通结果。
+  - CRM 待办：未来需要执行的动作。
+- `resources/views/admin/crm/partials/_markdown-editor.blade.php` 升级为文章编辑器风格的轻量 Markdown 编辑器：
+  - 支持编辑、预览、源码三种视图。
+  - 支持标题、加粗、斜体、引用、列表、链接、行内代码和分隔线快捷插入。
+  - 不加载完整 Vditor，避免 CRM 详情页过重。
+  - 预览渲染限制链接协议，避免不安全链接直接可点击。
+- 回归验证：
+  - `php -l resources/views/admin/crm/partials/_markdown-editor.blade.php` 通过。
+  - `AdminCrmPagesTest` 通过，12 项、129 个断言。

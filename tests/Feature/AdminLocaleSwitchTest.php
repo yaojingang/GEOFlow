@@ -11,21 +11,17 @@ class AdminLocaleSwitchTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_supported_locales_include_new_languages(): void
+    public function test_admin_supported_locales_are_chinese_and_english_only(): void
     {
         $this->assertSame([
             'zh_CN',
             'en',
-            'ja',
-            'es',
-            'ru',
-            'pt_BR',
         ], array_keys(AdminWeb::supportedLocales()));
     }
 
-    public function test_admin_locale_switch_accepts_new_languages(): void
+    public function test_admin_locale_switch_accepts_chinese_and_english(): void
     {
-        foreach (['ja', 'es', 'ru', 'pt_BR'] as $locale) {
+        foreach (['zh_CN', 'en'] as $locale) {
             $this->from(route('admin.login'))
                 ->get(route('admin.locale.switch', ['locale' => $locale]))
                 ->assertRedirect(route('admin.login'))
@@ -33,7 +29,17 @@ class AdminLocaleSwitchTest extends TestCase
         }
     }
 
-    public function test_admin_dashboard_renders_new_locale_core_copy(): void
+    public function test_admin_locale_switch_falls_back_for_removed_languages(): void
+    {
+        foreach (['ja', 'es', 'ru', 'pt_BR'] as $locale) {
+            $this->from(route('admin.login'))
+                ->get(route('admin.locale.switch', ['locale' => $locale]))
+                ->assertRedirect(route('admin.login'))
+                ->assertSessionHas('locale', 'zh_CN');
+        }
+    }
+
+    public function test_admin_dashboard_renders_chinese_and_english_core_copy(): void
     {
         $admin = Admin::query()->create([
             'username' => 'locale_admin',
@@ -45,10 +51,8 @@ class AdminLocaleSwitchTest extends TestCase
         ]);
 
         $expectations = [
-            'ja' => 'ダッシュボード',
-            'es' => 'Panel',
-            'ru' => 'Панель',
-            'pt_BR' => 'Painel',
+            'zh_CN' => '首页导航',
+            'en' => 'Home Navigation',
         ];
 
         foreach ($expectations as $locale => $heading) {
@@ -57,6 +61,7 @@ class AdminLocaleSwitchTest extends TestCase
                 ->get(route('admin.dashboard'))
                 ->assertOk()
                 ->assertSee($heading)
+                ->assertDontSee('admin.dashboard')
                 ->assertDontSee('dashboard.heading');
         }
     }

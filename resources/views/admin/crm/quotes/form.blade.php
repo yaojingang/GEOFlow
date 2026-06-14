@@ -42,6 +42,8 @@
     $compactInputClass = 'block w-full rounded-md border border-gray-300 px-2 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500';
     $textareaClass = 'block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500';
     $sectionClass = 'rounded-lg border border-gray-200 bg-white p-5 shadow-sm mt-6';
+    $bankAccountJsonValue = old('bank_account_json', (string) ($quoteForm['bank_account_json'] ?? '')) ?: (string) ($defaultBankAccountJson ?? '{}');
+    $sellerCompanyJsonValue = old('seller_company_json', (string) ($quoteForm['seller_company_json'] ?? '')) ?: (string) ($defaultSellerCompanyJson ?? '{}');
 @endphp
 
 @section('content')
@@ -128,6 +130,17 @@
                         </select>
                     </div>
                     <div class="lg:col-span-3">
+                        <label class="mb-2 block text-sm font-medium text-gray-700">关联商机</label>
+                        <select name="opportunity_id" class="{{ $inputClass }}">
+                            <option value="">不关联商机</option>
+                            @foreach (($opportunityOptions ?? []) as $opportunity)
+                                <option value="{{ (int) $opportunity['id'] }}" @selected(old('opportunity_id', (string) ($quoteForm['opportunity_id'] ?? '')) === (string) $opportunity['id'])>
+                                    {{ $opportunity['label'] }} @if (($opportunity['meta'] ?? '') !== '') · {{ $opportunity['meta'] }} @endif
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="lg:col-span-2">
                         <label class="mb-2 block text-sm font-medium text-gray-700">单据类型</label>
                         <select name="document_type" class="{{ $inputClass }}">
                             @foreach (($documentTypeOptions ?? []) as $value => $label)
@@ -135,7 +148,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="lg:col-span-3">
+                    <div class="lg:col-span-2">
                         <label class="mb-2 block text-sm font-medium text-gray-700">语言</label>
                         <select name="document_language" class="{{ $inputClass }}">
                             @foreach (($languageOptions ?? []) as $value => $label)
@@ -143,7 +156,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="lg:col-span-3">
+                    <div class="lg:col-span-2">
                         <label class="mb-2 block text-sm font-medium text-gray-700">状态</label>
                         <select name="status" class="{{ $inputClass }}">
                             @foreach (['draft' => '草稿', 'sent' => '已发送', 'accepted' => '已接受', 'rejected' => '已拒绝', 'expired' => '已过期'] as $value => $label)
@@ -197,16 +210,76 @@
             <section class="{{ $sectionClass }}">
                 <div class="-mx-5 -mt-5 mb-4 rounded-t-lg border-b border-blue-200 bg-blue-50 px-5 py-3">
                     <h2 class="text-base font-semibold text-gray-900"><i data-lucide="building-2" class="mr-2 h-4 w-4 inline-block text-blue-600"></i>卖方信息</h2>
-                    <p class="mt-0.5 text-sm text-gray-500">JSON 格式，可直接编辑花括号内的值。银行与公司信息会渲染到对外单据模板中。</p>
+                    <p class="mt-0.5 text-sm text-gray-500">银行账户与卖方公司分开维护。可直接编辑 JSON，也可保存为常用模板后复用到其他单据。</p>
                 </div>
                 <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                    <div>
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 p-4" data-seller-json-panel data-profile-type="bank_account">
+                        <div class="mb-3 flex flex-col gap-3 xl:flex-row xl:items-end">
+                            <div class="min-w-0 flex-1">
+                                <label class="mb-2 block text-sm font-medium text-gray-700">常用银行账户</label>
+                                <select class="{{ $inputClass }} mt-0" data-profile-select>
+                                    <option value="">选择常用 Bank Account</option>
+                                    @foreach (($bankAccountProfileOptions ?? []) as $profile)
+                                        <option value="{{ (int) $profile['id'] }}" @selected((bool) ($profile['is_default'] ?? false))>
+                                            {{ $profile['name'] }}@if((bool) ($profile['is_default'] ?? false)) · 默认@endif
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="inline-flex h-9 items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50" data-profile-import>
+                                    导入常用
+                                </button>
+                                <button type="button" class="inline-flex h-9 items-center rounded-md border border-blue-200 bg-blue-50 px-3 text-sm font-medium text-blue-700 hover:bg-blue-100" data-profile-save>
+                                    保存常用
+                                </button>
+                            </div>
+                        </div>
                         <label class="mb-2 block text-sm font-medium text-gray-700">Bank Account JSON</label>
-                        <textarea name="bank_account_json" rows="3" class="{{ $textareaClass }}" style="font-family:monospace;font-size:12px;">{{ old('bank_account_json', (string) ($quoteForm['bank_account_json'] ?? '')) ?: '{"beneficiary":"","bank_name":"","account_no":"","swift":"","bank_address":""}' }}</textarea>
+                        <textarea name="bank_account_json" rows="8" class="{{ $textareaClass }} font-mono text-xs" data-json-template-field>{{ $bankAccountJsonValue }}</textarea>
+                        <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+                            <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                                <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" data-profile-default>
+                                保存时设为默认
+                            </label>
+                            <button type="button" class="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50" data-json-format>
+                                格式化 JSON
+                            </button>
+                        </div>
                     </div>
-                    <div>
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 p-4" data-seller-json-panel data-profile-type="seller_company">
+                        <div class="mb-3 flex flex-col gap-3 xl:flex-row xl:items-end">
+                            <div class="min-w-0 flex-1">
+                                <label class="mb-2 block text-sm font-medium text-gray-700">常用卖方公司</label>
+                                <select class="{{ $inputClass }} mt-0" data-profile-select>
+                                    <option value="">选择常用 Seller Company</option>
+                                    @foreach (($sellerCompanyProfileOptions ?? []) as $profile)
+                                        <option value="{{ (int) $profile['id'] }}" @selected((bool) ($profile['is_default'] ?? false))>
+                                            {{ $profile['name'] }}@if((bool) ($profile['is_default'] ?? false)) · 默认@endif
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="inline-flex h-9 items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50" data-profile-import>
+                                    导入常用
+                                </button>
+                                <button type="button" class="inline-flex h-9 items-center rounded-md border border-blue-200 bg-blue-50 px-3 text-sm font-medium text-blue-700 hover:bg-blue-100" data-profile-save>
+                                    保存常用
+                                </button>
+                            </div>
+                        </div>
                         <label class="mb-2 block text-sm font-medium text-gray-700">Seller Company JSON</label>
-                        <textarea name="seller_company_json" rows="3" class="{{ $textareaClass }}" style="font-family:monospace;font-size:12px;">{{ old('seller_company_json', (string) ($quoteForm['seller_company_json'] ?? '')) ?: '{"name": "Robota Automation", "address": "Songang, Baoan, Shenzhen, China", "phone": "008615018549304", "email": "sales@robotadispensing.com", "website": "https://robotadispensing.com"}' }}</textarea>
+                        <textarea name="seller_company_json" rows="8" class="{{ $textareaClass }} font-mono text-xs" data-json-template-field>{{ $sellerCompanyJsonValue }}</textarea>
+                        <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+                            <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                                <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" data-profile-default>
+                                保存时设为默认
+                            </label>
+                            <button type="button" class="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50" data-json-format>
+                                格式化 JSON
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -452,6 +525,12 @@
 
             if (!form) return;
             const customerProfiles = @json($customerProfiles ?? []);
+            const sellerProfiles = {
+                bank_account: @json($bankAccountProfileOptions ?? []),
+                seller_company: @json($sellerCompanyProfileOptions ?? []),
+            };
+            const sellerProfileSaveUrl = @json(route('admin.crm.quotes.seller-profiles.store'));
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || form.querySelector('input[name="_token"]')?.value || '';
             const rowsContainer = form.querySelector('[data-crm-quote-items]');
             const template = form.querySelector('[data-crm-quote-row-template]');
             const subtotalEl = form.querySelector('[data-items-subtotal]');
@@ -462,6 +541,98 @@
             const refreshIcons = () => {
                 if (window.lucide) window.lucide.createIcons();
             };
+
+            const profileById = (type, id) => (sellerProfiles[type] || []).find((profile) => String(profile.id) === String(id));
+
+            const formatJsonTextarea = (textarea) => {
+                const value = String(textarea?.value || '').trim();
+                if (!value) return null;
+                try {
+                    const parsed = JSON.parse(value);
+                    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+                        throw new Error('JSON 必须是对象格式');
+                    }
+                    textarea.value = JSON.stringify(parsed, null, 2);
+                    return textarea.value;
+                } catch (error) {
+                    alert(`JSON 格式错误：${error.message}`);
+                    textarea?.focus();
+                    return false;
+                }
+            };
+
+            form.querySelectorAll('[data-seller-json-panel]').forEach((panel) => {
+                const type = panel.dataset.profileType;
+                const select = panel.querySelector('[data-profile-select]');
+                const textarea = panel.querySelector('[data-json-template-field]');
+
+                panel.querySelector('[data-profile-import]')?.addEventListener('click', () => {
+                    const profile = profileById(type, select?.value || '');
+                    if (!profile || !textarea) {
+                        alert('请选择一个常用模板');
+                        return;
+                    }
+                    textarea.value = profile.payload || '';
+                    formatJsonTextarea(textarea);
+                });
+
+                panel.querySelector('[data-json-format]')?.addEventListener('click', () => {
+                    formatJsonTextarea(textarea);
+                });
+
+                panel.querySelector('[data-profile-save]')?.addEventListener('click', async () => {
+                    const payload = formatJsonTextarea(textarea);
+                    if (!payload) return;
+
+                    const parsed = JSON.parse(payload);
+                    const defaultName = type === 'seller_company'
+                        ? (parsed.name || parsed.company || 'Seller Company')
+                        : (parsed.bank_name || parsed.beneficiary || 'Bank Account');
+                    const name = window.prompt('请输入常用模板名称', String(defaultName));
+                    if (!name || !name.trim()) return;
+
+                    const button = panel.querySelector('[data-profile-save]');
+                    button.disabled = true;
+                    try {
+                        const response = await fetch(sellerProfileSaveUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                            body: JSON.stringify({
+                                type,
+                                name: name.trim(),
+                                payload,
+                                set_default: Boolean(panel.querySelector('[data-profile-default]')?.checked),
+                            }),
+                        });
+                        const result = await response.json();
+                        if (!response.ok) {
+                            throw new Error(result.message || '保存常用模板失败');
+                        }
+
+                        const profile = result.profile;
+                        sellerProfiles[type] = (sellerProfiles[type] || []).filter((item) => String(item.id) !== String(profile.id));
+                        sellerProfiles[type].push(profile);
+
+                        let option = select.querySelector(`option[value="${profile.id}"]`);
+                        if (!option) {
+                            option = document.createElement('option');
+                            option.value = profile.id;
+                            select.appendChild(option);
+                        }
+                        option.textContent = `${profile.name}${profile.is_default ? ' · 默认' : ''}`;
+                        select.value = String(profile.id);
+                        alert(result.message || '常用信息已保存');
+                    } catch (error) {
+                        alert(error.message || '保存常用模板失败');
+                    } finally {
+                        button.disabled = false;
+                    }
+                });
+            });
 
             const calculate = () => {
                 let subtotal = 0;

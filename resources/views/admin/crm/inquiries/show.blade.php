@@ -1,5 +1,21 @@
 @extends('admin.layouts.app')
 
+@php
+    $inquiryStatusOptions = [
+        'new' => '新询盘',
+        'analyzing' => '分析中',
+        'qualified' => '已确认',
+        'converted' => '已转商机',
+        'invalid' => '无效',
+        'closed' => '已关闭',
+        'quoted' => '已报价（历史）',
+        'won' => '赢单（历史）',
+        'lost' => '丢单（历史）',
+    ];
+    $opportunityStageLabels = \App\Http\Controllers\Admin\CrmOpportunityController::STAGES;
+    $priorityLabels = ['low' => '低', 'normal' => '普通', 'high' => '高', 'urgent' => '紧急'];
+@endphp
+
 @section('content')
     <div class="px-4 sm:px-0">
         <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -10,7 +26,7 @@
                     </a>
                     <h1 class="text-2xl font-bold text-gray-900">{{ $inquiry->subject }}</h1>
                 </div>
-                <p class="mt-2 text-sm text-gray-600">{{ $inquiry->collection?->name ?? '未指定业务容器' }} · {{ $inquiry->status }} · {{ $inquiry->priority }}</p>
+                <p class="mt-2 text-sm text-gray-600">{{ $inquiry->collection?->name ?? '未指定业务容器' }} · {{ $inquiryStatusOptions[$inquiry->status] ?? $inquiry->status }} · {{ $priorityLabels[$inquiry->priority] ?? $inquiry->priority }}</p>
             </div>
             <div class="flex flex-wrap gap-2">
                 <form method="POST" action="{{ route('admin.crm.proposals.from-inquiry', ['inquiryId' => (int) $inquiry->id]) }}">
@@ -34,7 +50,20 @@
                     生成报价
                 </a>
                 @if($inquiry->opportunities->isEmpty())
-                <a href="{{ route('admin.crm.opportunities.create', ['inquiry_id'=>(int)$inquiry->id]) }}" class="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100"><i data-lucide="briefcase-business" class="mr-2 h-4 w-4"></i>转为商机</a>
+                    <form method="POST" action="{{ route('admin.crm.opportunities.from-inquiry', ['inquiryId' => (int) $inquiry->id]) }}">
+                        @csrf
+                        <button type="submit" class="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100">
+                            <i data-lucide="briefcase-business" class="mr-2 h-4 w-4"></i>
+                            转为商机
+                        </button>
+                    </form>
+                @else
+                    @foreach ($inquiry->opportunities->take(1) as $opportunity)
+                        <a href="{{ route('admin.crm.opportunities.edit', ['opportunityId' => (int) $opportunity->id]) }}" class="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100">
+                            <i data-lucide="briefcase-business" class="mr-2 h-4 w-4"></i>
+                            查看商机
+                        </a>
+                    @endforeach
                 @endif
                 <a href="{{ route('admin.crm.inquiries.edit', ['inquiryId' => (int) $inquiry->id]) }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     <i data-lucide="pencil" class="mr-2 h-4 w-4"></i>
@@ -84,6 +113,37 @@
                 <section class="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
                     <h2 class="text-base font-semibold text-gray-900">原始询盘内容</h2>
                     <div class="mt-4 whitespace-pre-wrap rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-gray-700">{{ $inquiry->raw_message ?: '暂无原文' }}</div>
+                </section>
+
+                <section class="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 class="text-base font-semibold text-gray-900">关联商机</h2>
+                            <p class="mt-1 text-sm text-gray-500">商机用于推进成交阶段、金额、下一步和单据制作。</p>
+                        </div>
+                        @if ($inquiry->opportunities->isEmpty())
+                            <form method="POST" action="{{ route('admin.crm.opportunities.from-inquiry', ['inquiryId' => (int) $inquiry->id]) }}">
+                                @csrf
+                                <button type="submit" class="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                                    <i data-lucide="plus" class="mr-2 h-4 w-4"></i>
+                                    创建商机
+                                </button>
+                            </form>
+                        @endif
+                    </div>
+                    <div class="mt-4 space-y-2">
+                        @forelse ($inquiry->opportunities as $opportunity)
+                            <a href="{{ route('admin.crm.opportunities.edit', ['opportunityId' => (int) $opportunity->id]) }}" class="flex flex-col gap-2 rounded-md border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm hover:bg-emerald-100 sm:flex-row sm:items-center sm:justify-between">
+                                <span>
+                                    <span class="font-semibold text-emerald-950">{{ $opportunity->name }}</span>
+                                    <span class="ml-2 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-emerald-700">{{ $opportunityStageLabels[$opportunity->stage] ?? $opportunity->stage }}</span>
+                                </span>
+                                <span class="text-emerald-800">{{ $opportunity->currency ?: 'USD' }} {{ number_format((float) $opportunity->amount, 2) }} · {{ (int) $opportunity->probability }}%</span>
+                            </a>
+                        @empty
+                            <div class="rounded-md border border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500">暂无关联商机。确认有真实采购可能后，再将询盘转为商机。</div>
+                        @endforelse
+                    </div>
                 </section>
 
                 <section class="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">

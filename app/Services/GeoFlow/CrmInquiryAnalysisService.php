@@ -306,10 +306,6 @@ class CrmInquiryAnalysisService
             return 'zh-CN';
         }
 
-        if (preg_match('/[¿¡ñáéíóúü]/iu', $message) === 1) {
-            return 'es';
-        }
-
         return 'en';
     }
 

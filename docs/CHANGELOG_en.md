@@ -2,6 +2,44 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-06-14
+
+### CRM Activity Editor Refinement
+
+- Kept “activity records” and “CRM tasks” as separate concepts:
+  - Activity records store completed communication outcomes.
+  - CRM tasks store future follow-up actions.
+- Upgraded the activity input into a lightweight Markdown editor with the article editor visual style:
+  - Supports write, preview, and source modes.
+  - Quick insert actions cover headings, bold, italic, quotes, lists, links, inline code, and dividers.
+  - Reuses admin form borders and button styling without loading full Vditor on CRM detail pages.
+  - Preview rendering now restricts link protocols so unsafe links are not rendered as direct clickable targets.
+- Verification:
+  - `_markdown-editor.blade.php` syntax check passed.
+  - `AdminCrmPagesTest` passed: `12 passed / 129 assertions`.
+
+### CRM Inquiry and Opportunity Boundary Optimization
+
+- Refined inquiry statuses: new/edit screens now focus on demand-processing states (`new`, `analyzing`, `qualified`, `converted`, `invalid`, `closed`) while remaining compatible with historical `quoted / won / lost` records.
+- Added a clear inquiry-to-opportunity conversion flow:
+  - Carries over Collection, customer, source inquiry, opportunity name, owner, and demand-summary context.
+  - Marks the source inquiry as converted after successful opportunity creation.
+  - Shows a “view opportunity” path when an inquiry already has linked opportunities.
+- Enhanced opportunity editing:
+  - Shows the source inquiry summary, missing questions, and linked Entity / Knowledge Base / Case counts.
+  - Adds a “new document” entry and linked document list.
+- Improved document creation:
+  - Added an “Associated Opportunity” selector to the document form.
+  - Creating a document from an opportunity now carries over opportunity, customer, Collection, and source inquiry.
+  - Document list and detail pages show the linked opportunity with a jump link.
+- Documentation:
+  - Updated `功能说明文档/10-轻量CRM与报价使用说明.md`.
+  - Updated `agent-docs/IMPLEMENTATION_STATUS.md`, `FEATURE_DOC_INDEX.md`, and the CRM inquiry/opportunity optimization prompt execution notes.
+- Verification:
+  - PHP / Blade syntax checks passed.
+  - `AdminCrmPagesTest` passed: `12 passed / 129 assertions`.
+  - Browser checks confirmed the inquiry list, inquiry detail, opportunity create page, and document create page render without horizontal overflow; the source-inquiry card and opportunity selector render correctly.
+
 ## 2026-06-12
 
 ### Upstream Integration: Article Editor, Template Factory, and First-Deploy Hint
@@ -385,9 +423,6 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Improved the first-deployment guide:
   - `GEOFlow 2.0 First Deployment Guide` now uses a compact white Kami-style document layout with smaller title and body typography.
   - Copy now covers dashboard navigation, Analytics, single-site operations, multi-site distribution, and backup checks before production.
-- Completed Portuguese admin localization:
-  - Incorporated and completed the `pt_BR` admin translations from PR #27, covering navigation, notifications, authors, frontend copy, materials, AI configuration, Analytics, Distribution Management, and all current admin language keys.
-  - Added Portuguese locale coverage tests to prevent new admin modules from falling back to English copy.
 - Incorporated low-risk Docker deployment PR improvements:
   - Development and production compose files can now configure PHP, Composer, Nginx, pgvector, Redis, and Composer Packagist mirror images through environment variables.
   - `.dockerignore` now excludes local Docker data, logs, caches, sessions, view caches, and upload directories so runtime data is not copied into built images.

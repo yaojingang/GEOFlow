@@ -7,8 +7,15 @@ use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\Author;
+use App\Models\CaseRecord;
 use App\Models\Category;
+use App\Models\CollectionRecord;
 use App\Models\DistributionChannel;
+use App\Models\CrmAfterSalesTicket;
+use App\Models\CrmInquiry;
+use App\Models\CrmOpportunity;
+use App\Models\CrmTask;
+use App\Models\EntityRecord;
 use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\Keyword;
@@ -16,6 +23,7 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
+use App\Models\SiteThemeReplication;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\Title;
@@ -75,6 +83,9 @@ class DashboardController extends Controller
             'special_prompts' => 0,
             'pending_review' => 0,
             'approved_articles' => 0,
+            'total_collections' => 0,
+            'total_entities' => 0,
+            'total_cases' => 0,
             'total_views' => 0,
             'total_likes' => 0,
         ];
@@ -111,6 +122,9 @@ class DashboardController extends Controller
             $defaults['total_prompts'] = (int) Prompt::query()->count();
             $defaults['body_prompts'] = (int) Prompt::query()->where('type', 'content')->count();
             $defaults['special_prompts'] = (int) Prompt::query()->whereIn('type', ['keyword', 'description'])->count();
+            $defaults['total_collections'] = $this->countTable('collections', CollectionRecord::class);
+            $defaults['total_entities'] = $this->countTable('entities', EntityRecord::class);
+            $defaults['total_cases'] = $this->countTable('case_records', CaseRecord::class);
         } catch (\Throwable) {
             return $defaults;
         }
@@ -215,35 +229,63 @@ class DashboardController extends Controller
 
     /**
      * @return array{
+     *   collections: int,
+     *   active_collections: int,
      *   keyword_libraries: int,
      *   title_libraries: int,
      *   knowledge_bases: int,
      *   image_libraries: int,
      *   authors: int,
+     *   entities: int,
+     *   cases: int,
      *   knowledge_chunks: int,
      *   vectorized_chunks: int,
-     *   unvectorized_chunks: int
+     *   unvectorized_chunks: int,
+     *   crm_open_tasks: int,
+     *   crm_open_inquiries: int,
+     *   crm_open_opportunities: int,
+     *   crm_open_tickets: int,
+     *   theme_replications: int,
+     *   theme_replications_ready: int,
+     *   theme_replications_failed: int
      * }
      */
     private function buildMaterialHealth(): array
     {
         $out = [
+            'collections' => 0,
+            'active_collections' => 0,
             'keyword_libraries' => 0,
             'title_libraries' => 0,
             'knowledge_bases' => 0,
             'image_libraries' => 0,
             'authors' => 0,
+            'entities' => 0,
+            'cases' => 0,
             'knowledge_chunks' => 0,
             'vectorized_chunks' => 0,
             'unvectorized_chunks' => 0,
+            'crm_open_tasks' => 0,
+            'crm_open_inquiries' => 0,
+            'crm_open_opportunities' => 0,
+            'crm_open_tickets' => 0,
+            'theme_replications' => 0,
+            'theme_replications_ready' => 0,
+            'theme_replications_failed' => 0,
         ];
 
         try {
+            $out['collections'] = $this->countTable('collections', CollectionRecord::class);
+            $out['active_collections'] = Schema::hasTable('collections')
+                ? (int) CollectionRecord::query()->where('status', 'active')->count()
+                : 0;
             $out['keyword_libraries'] = (int) KeywordLibrary::query()->count();
             $out['title_libraries'] = (int) TitleLibrary::query()->count();
             $out['knowledge_bases'] = (int) KnowledgeBase::query()->count();
             $out['image_libraries'] = (int) ImageLibrary::query()->count();
             $out['authors'] = (int) Author::query()->count();
+            $out['entities'] = $this->countTable('entities', EntityRecord::class);
+            $out['cases'] = $this->countTable('case_records', CaseRecord::class);
             $out['knowledge_chunks'] = (int) KnowledgeChunk::query()->count();
             $out['vectorized_chunks'] = (int) KnowledgeChunk::query()
                 ->where(function ($query): void {
@@ -253,6 +295,28 @@ class DashboardController extends Controller
                 })
                 ->count();
             $out['unvectorized_chunks'] = max(0, $out['knowledge_chunks'] - $out['vectorized_chunks']);
+            $out['crm_open_tasks'] = Schema::hasTable('crm_tasks')
+                ? (int) CrmTask::query()->where('status', 'open')->count()
+                : 0;
+            $out['crm_open_inquiries'] = Schema::hasTable('crm_inquiries')
+                ? (int) CrmInquiry::query()->whereNotIn('status', ['closed', 'archived'])->count()
+                : 0;
+            $out['crm_open_opportunities'] = Schema::hasTable('crm_opportunities')
+                ? (int) CrmOpportunity::query()->whereNotIn('stage', ['won', 'lost'])->count()
+                : 0;
+            $out['crm_open_tickets'] = Schema::hasTable('crm_after_sales_tickets')
+                ? (int) CrmAfterSalesTicket::query()->whereNotIn('status', ['resolved', 'closed'])->count()
+                : 0;
+            $out['theme_replications'] = $this->countTable('site_theme_replications', SiteThemeReplication::class);
+            $out['theme_replications_ready'] = Schema::hasTable('site_theme_replications')
+                ? (int) SiteThemeReplication::query()->whereIn('status', [
+                    SiteThemeReplication::STATUS_READY,
+                    SiteThemeReplication::STATUS_PUBLISHED,
+                ])->count()
+                : 0;
+            $out['theme_replications_failed'] = Schema::hasTable('site_theme_replications')
+                ? (int) SiteThemeReplication::query()->where('status', SiteThemeReplication::STATUS_FAILED)->count()
+                : 0;
         } catch (\Throwable) {
             // ignore
         }
@@ -383,5 +447,17 @@ class DashboardController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass
+     */
+    private function countTable(string $table, string $modelClass): int
+    {
+        if (! Schema::hasTable($table)) {
+            return 0;
+        }
+
+        return (int) $modelClass::query()->count();
     }
 }

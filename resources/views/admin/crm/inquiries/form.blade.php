@@ -5,6 +5,20 @@
         ? route('admin.crm.inquiries.update', ['inquiryId' => (int) $inquiryId])
         : route('admin.crm.inquiries.store');
     $currentSourceChannel = old('source_channel', (string) ($inquiryForm['source_channel'] ?? ''));
+    $currentInquiryStatus = old('status', (string) ($inquiryForm['status'] ?? 'new'));
+    $activeInquiryStatuses = [
+        'new' => '新询盘',
+        'analyzing' => '分析中',
+        'qualified' => '已确认',
+        'converted' => '已转商机',
+        'invalid' => '无效',
+        'closed' => '已关闭',
+    ];
+    $legacyInquiryStatuses = [
+        'quoted' => '已报价（历史状态）',
+        'won' => '赢单（历史状态）',
+        'lost' => '丢单（历史状态）',
+    ];
 @endphp
 
 @section('content')
@@ -106,13 +120,16 @@
                         </div>
                         <div>
                             <label class="mb-2 block text-sm font-medium text-gray-700">语言</label>
-                            <input type="text" name="detected_language" maxlength="80" value="{{ old('detected_language', (string) ($inquiryForm['detected_language'] ?? '')) }}" class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="en / zh-CN / es">
+                            <input type="text" name="detected_language" maxlength="80" value="{{ old('detected_language', (string) ($inquiryForm['detected_language'] ?? '')) }}" class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="en / zh-CN">
                         </div>
                         <div>
                             <label class="mb-2 block text-sm font-medium text-gray-700">状态</label>
                             <select name="status" class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                                @foreach (['new' => '新询盘', 'qualified' => '已确认', 'quoted' => '已报价', 'won' => '赢单', 'lost' => '丢单', 'closed' => '关闭'] as $value => $label)
-                                    <option value="{{ $value }}" @selected(old('status', (string) ($inquiryForm['status'] ?? 'new')) === $value)>{{ $label }}</option>
+                                @if (array_key_exists($currentInquiryStatus, $legacyInquiryStatuses))
+                                    <option value="{{ $currentInquiryStatus }}" selected>{{ $legacyInquiryStatuses[$currentInquiryStatus] }}</option>
+                                @endif
+                                @foreach ($activeInquiryStatuses as $value => $label)
+                                    <option value="{{ $value }}" @selected($currentInquiryStatus === $value)>{{ $label }}</option>
                                 @endforeach
                             </select>
                         </div>

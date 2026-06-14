@@ -1525,33 +1525,12 @@ PROMPT."\n\n".$this->languageDirective($language);
             'zh-cn' => 'zh-CN',
             'zh-hans' => 'zh-CN',
             'zh-sg' => 'zh-CN',
-            'zh-tw' => 'zh-TW',
-            'zh-hk' => 'zh-TW',
-            'zh-hant' => 'zh-TW',
+            'zh-tw' => 'zh-CN',
+            'zh-hk' => 'zh-CN',
+            'zh-hant' => 'zh-CN',
             'en' => 'en',
             'en-us' => 'en',
             'en-gb' => 'en',
-            'es' => 'es',
-            'es-es' => 'es',
-            'es-mx' => 'es',
-            'pt' => 'pt',
-            'pt-pt' => 'pt',
-            'pt-br' => 'pt-BR',
-            'fr' => 'fr',
-            'fr-fr' => 'fr',
-            'de' => 'de',
-            'de-de' => 'de',
-            'it' => 'it',
-            'it-it' => 'it',
-            'nl' => 'nl',
-            'nl-nl' => 'nl',
-            'ja' => 'ja',
-            'ja-jp' => 'ja',
-            'ko' => 'ko',
-            'ko-kr' => 'ko',
-            'ru' => 'ru',
-            'ru-ru' => 'ru',
-            'ar' => 'ar',
         ];
         if (isset($aliases[$language])) {
             return $aliases[$language];
@@ -1562,7 +1541,7 @@ PROMPT."\n\n".$this->languageDirective($language);
             return $aliases[$primary];
         }
 
-        return preg_match('/^[a-z]{2}(?:-[a-z0-9]{2,8})?$/', $language) === 1 ? $language : '';
+        return '';
     }
 
     private function detectLanguageFromText(string $text): string
@@ -1579,34 +1558,11 @@ PROMPT."\n\n".$this->languageDirective($language);
         $arabic = preg_match_all('/\p{Arabic}/u', $text);
         $latin = preg_match_all('/\p{Latin}/u', $text);
 
-        if ($hangul > 8) {
-            return 'ko';
-        }
-        if ($kana > 8) {
-            return 'ja';
+        if ($kana > 8 || $hangul > 8 || $cyrillic > 12 || $arabic > 12) {
+            return 'en';
         }
         if ($han > 12 && $han >= $latin) {
             return 'zh-CN';
-        }
-        if ($cyrillic > 12) {
-            return 'ru';
-        }
-        if ($arabic > 12) {
-            return 'ar';
-        }
-
-        $lower = mb_strtolower($text, 'UTF-8');
-        if (preg_match('/[áéíóúñ¿¡]|\b(el|la|los|las|para|con|una|que|por|servicios|soluciones|empresa)\b/u', $lower)) {
-            return 'es';
-        }
-        if (preg_match('/[ãõç]|\b(para|com|uma|serviços|soluções|empresa|gestão)\b/u', $lower)) {
-            return 'pt';
-        }
-        if (preg_match('/[àâçéèêëîïôûùüÿœ]|\b(avec|pour|les|des|une|services|solutions|entreprise)\b/u', $lower)) {
-            return 'fr';
-        }
-        if (preg_match('/[äöüß]|\b(und|für|mit|der|die|das|unternehmen|lösungen)\b/u', $lower)) {
-            return 'de';
         }
 
         return 'en';
@@ -1616,19 +1572,7 @@ PROMPT."\n\n".$this->languageDirective($language);
     {
         return [
             'zh-CN' => 'Simplified Chinese',
-            'zh-TW' => 'Traditional Chinese',
             'en' => 'English',
-            'es' => 'Spanish',
-            'pt' => 'Portuguese',
-            'pt-BR' => 'Brazilian Portuguese',
-            'fr' => 'French',
-            'de' => 'German',
-            'it' => 'Italian',
-            'nl' => 'Dutch',
-            'ja' => 'Japanese',
-            'ko' => 'Korean',
-            'ru' => 'Russian',
-            'ar' => 'Arabic',
         ][$code] ?? $code;
     }
 
@@ -1760,23 +1704,11 @@ PROMPT."\n\n".$this->languageDirective($language);
     private function libraryLabels(array $language): array
     {
         return match ($language['code']) {
-            'zh-CN', 'zh-TW' => [
+            'zh-CN' => [
                 'knowledge_suffix' => ' 知识库',
                 'keyword_suffix' => ' 关键词库',
                 'title_suffix' => ' 标题库',
                 'description' => 'URL智能采集自动生成',
-            ],
-            'es' => [
-                'knowledge_suffix' => ' Base de conocimiento',
-                'keyword_suffix' => ' Biblioteca de palabras clave',
-                'title_suffix' => ' Biblioteca de títulos',
-                'description' => 'Generado automáticamente por la importación inteligente de URL',
-            ],
-            'pt', 'pt-BR' => [
-                'knowledge_suffix' => ' Base de conhecimento',
-                'keyword_suffix' => ' Biblioteca de palavras-chave',
-                'title_suffix' => ' Biblioteca de títulos',
-                'description' => 'Gerado automaticamente pela importação inteligente de URL',
             ],
             default => [
                 'knowledge_suffix' => ' Knowledge Base',
@@ -1792,7 +1724,7 @@ PROMPT."\n\n".$this->languageDirective($language);
      */
     private function assertGeneratedLanguage(mixed $value, array $language, string $step): void
     {
-        if (! in_array($language['code'], ['en', 'es', 'pt', 'pt-BR', 'fr', 'de', 'it', 'nl'], true)) {
+        if ($language['code'] !== 'en') {
             return;
         }
 

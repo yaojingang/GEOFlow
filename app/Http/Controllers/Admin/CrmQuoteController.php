@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\CrmCustomer;
 use App\Models\CrmInquiry;
+use App\Models\CrmOpportunity;
 use App\Models\CrmQuote;
 use App\Models\CrmQuoteItem;
+use App\Models\CrmSellerProfile;
 use App\Models\EntityRecord;
 use App\Models\Image;
 use App\Support\AdminWeb;
@@ -21,6 +23,7 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use App\Support\Site\SiteSettingsBag;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -36,6 +39,8 @@ class CrmQuoteController extends Controller
     private const DOCUMENT_TYPES = ['quotation', 'proforma_invoice', 'invoice', 'contract', 'packing_list'];
 
     private const LINE_TYPES = ['product', 'accessory', 'service', 'spare_part', 'training', 'other'];
+
+    private const SELLER_PROFILE_TYPES = ['seller_company', 'bank_account'];
 
     /**
      * @return array<string, string>
@@ -73,7 +78,7 @@ class CrmQuoteController extends Controller
         $collectionId = $this->selectedCollectionId($request);
 
         $query = CrmQuote::query()
-            ->with(['collection', 'customer', 'inquiry'])
+            ->with(['collection', 'customer', 'inquiry', 'opportunity'])
             ->withCount('items')
             ->orderByDesc('updated_at')
             ->orderByDesc('id');
@@ -115,13 +120,26 @@ class CrmQuoteController extends Controller
     public function create(Request $request): View
     {
         $inquiry = null;
+        $opportunity = null;
+        $opportunityId = (int) $request->query('opportunity_id', 0);
+        if ($opportunityId > 0) {
+            $opportunity = CrmOpportunity::query()
+                ->with(['customer', 'sourceInquiry.entities'])
+                ->whereKey($opportunityId)
+                ->first();
+        }
+
         $inquiryId = (int) $request->query('inquiry_id', 0);
+        if ($inquiryId <= 0 && $opportunity?->sourceInquiry) {
+            $inquiryId = (int) $opportunity->sourceInquiry->id;
+        }
         if ($inquiryId > 0) {
             $inquiry = CrmInquiry::query()->with(['customer', 'entities'])->whereKey($inquiryId)->first();
         }
 
-        $collectionId = (int) ($request->query('collection_id', 0) ?: ($inquiry?->collection_id ?? 0));
-        $customerId = (int) ($request->query('customer_id', 0) ?: ($inquiry?->customer_id ?? 0));
+        $collectionId = (int) ($request->query('collection_id', 0) ?: ($opportunity?->collection_id ?? $inquiry?->collection_id ?? 0));
+        $customerId = (int) ($request->query('customer_id', 0) ?: ($opportunity?->customer_id ?? $inquiry?->customer_id ?? 0));
+        $titleSource = $opportunity?->name ?: $inquiry?->subject;
 
         return view('admin.crm.quotes.form', $this->formData([
             'pageTitle' => '新增单据',
@@ -132,7 +150,8 @@ class CrmQuoteController extends Controller
                 'customer_id' => $customerId > 0 ? (string) $customerId : '',
                 'owner' => (string) ($inquiry?->assigned_to ?: $inquiry?->customer?->owner ?: ''),
                 'inquiry_id' => (string) ((int) ($inquiry?->id ?? 0) ?: ''),
-                'title' => $inquiry ? 'Quotation - '.$inquiry->subject : '',
+                'opportunity_id' => (string) ((int) ($opportunity?->id ?? 0) ?: ''),
+                'title' => $titleSource ? 'Quotation - '.$titleSource : '',
             ]),
             'quoteItems' => $this->itemsFromInquiry($inquiry),
         ], $collectionId > 0 ? $collectionId : null, $customerId > 0 ? $customerId : null));
@@ -153,7 +172,7 @@ class CrmQuoteController extends Controller
     public function show(int $quoteId): View
     {
         $quote = CrmQuote::query()
-            ->with(['collection', 'customer', 'inquiry.customer.followUps.inquiry', 'items.entity', 'items.image'])
+            ->with(['collection', 'customer', 'inquiry.customer.followUps.inquiry', 'opportunity', 'items.entity', 'items.image'])
             ->whereKey($quoteId)
             ->firstOrFail();
 
@@ -180,6 +199,7 @@ class CrmQuoteController extends Controller
                 'customer_id' => (string) ((int) ($quote->customer_id ?? 0) ?: ''),
                 'owner' => (string) ($quote->owner ?? ''),
                 'inquiry_id' => (string) ((int) ($quote->inquiry_id ?? 0) ?: ''),
+                'opportunity_id' => (string) ((int) ($quote->opportunity_id ?? 0) ?: ''),
                 'quote_no' => (string) $quote->quote_no,
                 'document_type' => (string) ($quote->document_type ?? 'quotation'),
                 'title' => (string) $quote->title,
@@ -275,10 +295,55 @@ class CrmQuoteController extends Controller
         return redirect()->route('admin.crm.quotes.edit', ['quoteId'=>$copy->id])->with('message','已创建独立单据，请核对后保存');
     }
 
+    public function storeSellerProfile(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'type' => ['required', 'string', Rule::in(self::SELLER_PROFILE_TYPES)],
+            'name' => ['required', 'string', 'max:160'],
+            'payload' => ['required', 'string', 'max:20000', 'json'],
+            'set_default' => ['nullable', 'boolean'],
+        ]);
+
+        $payloadText = trim((string) $data['payload']);
+        $payload = json_decode($payloadText, true);
+        if (! str_starts_with($payloadText, '{') || ! is_array($payload)) {
+            return response()->json([
+                'message' => 'JSON 必须是对象格式，例如 {"name":"..."}。',
+            ], 422);
+        }
+
+        $type = (string) $data['type'];
+        $name = trim((string) $data['name']);
+        $setDefault = (bool) ($data['set_default'] ?? false);
+
+        if ($setDefault) {
+            CrmSellerProfile::query()->where('type', $type)->update(['is_default' => false]);
+        }
+
+        $profile = CrmSellerProfile::query()->firstOrNew([
+            'type' => $type,
+            'name' => $name,
+        ]);
+        $profile->payload = $payload;
+        if (! $profile->exists) {
+            $profile->created_by_admin_id = (int) ($request->user('admin')?->id ?? 0) ?: null;
+            $profile->is_default = false;
+        }
+        if ($setDefault) {
+            $profile->is_default = true;
+        }
+        $profile->save();
+
+        return response()->json([
+            'message' => '常用信息已保存',
+            'profile' => $this->sellerProfileOption($profile),
+        ]);
+    }
+
     public function print(int $quoteId, Request $request): View
     {
         $quote = CrmQuote::query()
-            ->with(['collection', 'customer', 'inquiry.customer.followUps.inquiry', 'items.entity', 'items.image'])
+            ->with(['collection', 'customer', 'inquiry.customer.followUps.inquiry', 'opportunity', 'items.entity', 'items.image'])
             ->whereKey($quoteId)
             ->firstOrFail();
 
@@ -309,7 +374,7 @@ class CrmQuoteController extends Controller
         public function downloadPdf(int $quoteId, Request $request)
     {
         $quote = CrmQuote::query()
-            ->with(['collection', 'customer', 'inquiry.customer.followUps.inquiry', 'items.entity', 'items.image'])
+            ->with(['collection', 'customer', 'inquiry.customer.followUps.inquiry', 'opportunity', 'items.entity', 'items.image'])
             ->whereKey($quoteId)
             ->firstOrFail();
 
@@ -341,6 +406,9 @@ class CrmQuoteController extends Controller
 
     private function formData(array $base, ?int $collectionId, ?int $customerId): array
     {
+        $sellerCompanyProfiles = $this->sellerProfileOptions('seller_company');
+        $bankAccountProfiles = $this->sellerProfileOptions('bank_account');
+
         return $base + [
             'activeMenu' => 'crm',
             'adminSiteName' => AdminWeb::siteName(),
@@ -348,12 +416,29 @@ class CrmQuoteController extends Controller
             'customerOptions' => $this->customerOptions($collectionId),
             'customerProfiles' => $this->customerProfiles($collectionId),
             'inquiryOptions' => $this->inquiryOptions($collectionId, $customerId),
+            'opportunityOptions' => $this->opportunityOptions($collectionId, $customerId),
             'entityOptions' => $this->entityOptions($collectionId),
             'imageOptions' => $this->imageOptions($collectionId),
             'employeeOptions' => CrmOptions::employeeOptions(),
             'documentTypeOptions' => self::documentTypeOptions(),
             'lineTypeOptions' => self::lineTypeOptions(),
             'languageOptions' => ['en' => 'English', 'zh_CN' => '简体中文'],
+            'sellerCompanyProfileOptions' => $sellerCompanyProfiles,
+            'bankAccountProfileOptions' => $bankAccountProfiles,
+            'defaultSellerCompanyJson' => $this->defaultSellerProfileJson('seller_company', $sellerCompanyProfiles, [
+                'name' => 'Robota Automation',
+                'address' => 'Songang, Baoan, Shenzhen, China',
+                'phone' => '008615018549304',
+                'email' => 'sales@robotadispensing.com',
+                'website' => 'https://robotadispensing.com',
+            ]),
+            'defaultBankAccountJson' => $this->defaultSellerProfileJson('bank_account', $bankAccountProfiles, [
+                'beneficiary' => '',
+                'bank_name' => '',
+                'account_no' => '',
+                'swift' => '',
+                'bank_address' => '',
+            ]),
         ];
     }
 
@@ -367,6 +452,7 @@ class CrmQuoteController extends Controller
             'customer_id' => ['required', 'integer', 'min:1', Rule::exists('crm_customers', 'id')],
             'owner' => ['nullable', 'string', 'max:120'],
             'inquiry_id' => ['nullable', 'integer', 'min:1', Rule::exists('crm_inquiries', 'id')],
+            'opportunity_id' => ['nullable', 'integer', 'min:1', Rule::exists('crm_opportunities', 'id')],
             'quote_no' => ['nullable', 'string', 'max:80', Rule::unique('crm_quotes', 'quote_no')->ignore($quote?->id)],
             'document_type' => ['nullable', 'string', Rule::in(self::DOCUMENT_TYPES)],
             'title' => ['required', 'string', 'max:200'],
@@ -398,8 +484,8 @@ class CrmQuoteController extends Controller
             'shipping_fee' => ['nullable', 'numeric', 'min:0'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'tax_amount' => ['nullable', 'numeric', 'min:0'],
-            'bank_account_json' => ['nullable', 'string', 'max:20000'],
-            'seller_company_json' => ['nullable', 'string', 'max:20000'],
+            'bank_account_json' => ['nullable', 'string', 'max:20000', 'json'],
+            'seller_company_json' => ['nullable', 'string', 'max:20000', 'json'],
             'signature_notes' => ['nullable', 'string', 'max:10000'],
             'contract_terms' => ['nullable', 'string', 'max:30000'],
             'governing_law' => ['nullable', 'string', 'max:160'],
@@ -466,6 +552,7 @@ class CrmQuoteController extends Controller
             'customer_id' => (int) $payload['customer_id'],
             'owner' => trim((string) ($payload['owner'] ?? '')),
             'inquiry_id' => $this->normalizeNullableId($payload['inquiry_id'] ?? null),
+            'opportunity_id' => $this->normalizeNullableId($payload['opportunity_id'] ?? null),
             'quote_no' => trim((string) ($payload['quote_no'] ?? '')) !== '' ? trim((string) $payload['quote_no']) : ($quote?->quote_no ?: $this->generateQuoteNo()),
             'document_type' => in_array((string) ($payload['document_type'] ?? ''), self::DOCUMENT_TYPES, true) ? (string) $payload['document_type'] : 'quotation',
             'title' => trim((string) $payload['title']),
@@ -619,6 +706,7 @@ class CrmQuoteController extends Controller
             'customer_id' => '',
             'owner' => '',
             'inquiry_id' => '',
+            'opportunity_id' => '',
             'quote_no' => '',
             'document_type' => 'quotation',
             'title' => '',
@@ -758,6 +846,49 @@ class CrmQuoteController extends Controller
     }
 
     /**
+     * @return list<array{id:int,name:string,payload:string,is_default:bool}>
+     */
+    private function sellerProfileOptions(string $type): array
+    {
+        return CrmSellerProfile::query()
+            ->where('type', $type)
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (CrmSellerProfile $profile): array => $this->sellerProfileOption($profile))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{id:int,name:string,payload:string,is_default:bool}
+     */
+    private function sellerProfileOption(CrmSellerProfile $profile): array
+    {
+        return [
+            'id' => (int) $profile->id,
+            'name' => (string) $profile->name,
+            'payload' => $this->encodeJsonForForm($profile->payload),
+            'is_default' => (bool) $profile->is_default,
+        ];
+    }
+
+    /**
+     * @param  list<array{id:int,name:string,payload:string,is_default:bool}>  $profiles
+     * @param  array<string, mixed>  $fallback
+     */
+    private function defaultSellerProfileJson(string $type, array $profiles, array $fallback): string
+    {
+        foreach ($profiles as $profile) {
+            if ((bool) ($profile['is_default'] ?? false)) {
+                return (string) $profile['payload'];
+            }
+        }
+
+        return $this->encodeJsonForForm($fallback);
+    }
+
+    /**
      * @return array{file_path:string,original_name:string}
      */
     private function storeQuoteUploadedImage(UploadedFile $file): array
@@ -878,6 +1009,27 @@ class CrmQuoteController extends Controller
     /**
      * @return list<array{id:int,label:string,meta:string,collection_id:int}>
      */
+    private function opportunityOptions(?int $collectionId, ?int $customerId): array
+    {
+        return CrmOpportunity::query()
+            ->with(['collection', 'customer'])
+            ->when($collectionId !== null && $collectionId > 0, static fn ($query) => $query->where('collection_id', $collectionId))
+            ->when($customerId !== null && $customerId > 0, static fn ($query) => $query->where('customer_id', $customerId))
+            ->orderByDesc('updated_at')
+            ->limit(300)
+            ->get()
+            ->map(static fn (CrmOpportunity $opportunity): array => [
+                'id' => (int) $opportunity->id,
+                'label' => (string) $opportunity->name,
+                'meta' => trim((string) ($opportunity->customer?->company_name ?? '').' '.(string) ($opportunity->collection?->name ?? '')),
+                'collection_id' => (int) ($opportunity->collection_id ?? 0),
+            ])
+            ->all();
+    }
+
+    /**
+     * @return list<array{id:int,label:string,meta:string,collection_id:int}>
+     */
     private function entityOptions(?int $collectionId): array
     {
         return EntityRecord::query()
@@ -902,7 +1054,7 @@ class CrmQuoteController extends Controller
     public function downloadExcel(int $quoteId, Request $request)
     {
         $quote = CrmQuote::query()
-            ->with(['collection', 'customer', 'inquiry.customer.followUps.inquiry', 'items.entity', 'items.image'])
+            ->with(['collection', 'customer', 'inquiry.customer.followUps.inquiry', 'opportunity', 'items.entity', 'items.image'])
             ->whereKey($quoteId)
             ->firstOrFail();
 

@@ -104,14 +104,6 @@
                                 <option value="" @selected($selectedContentLanguage === '')>{{ __('admin.url_import.option.auto_detect') }}</option>
                                 <option value="zh-CN" @selected($selectedContentLanguage === 'zh-CN')>{{ __('admin.url_import.language.zh_cn') }}</option>
                                 <option value="en" @selected($selectedContentLanguage === 'en')>{{ __('admin.url_import.language.en') }}</option>
-                                <option value="es" @selected($selectedContentLanguage === 'es')>{{ __('admin.url_import.language.es') }}</option>
-                                <option value="pt" @selected($selectedContentLanguage === 'pt')>{{ __('admin.url_import.language.pt') }}</option>
-                                <option value="pt-BR" @selected($selectedContentLanguage === 'pt-BR')>{{ __('admin.url_import.language.pt_br') }}</option>
-                                <option value="fr" @selected($selectedContentLanguage === 'fr')>{{ __('admin.url_import.language.fr') }}</option>
-                                <option value="de" @selected($selectedContentLanguage === 'de')>{{ __('admin.url_import.language.de') }}</option>
-                                <option value="ja" @selected($selectedContentLanguage === 'ja')>{{ __('admin.url_import.language.ja') }}</option>
-                                <option value="ko" @selected($selectedContentLanguage === 'ko')>{{ __('admin.url_import.language.ko') }}</option>
-                                <option value="ru" @selected($selectedContentLanguage === 'ru')>{{ __('admin.url_import.language.ru') }}</option>
                             </select>
                         </div>
                         <div>

@@ -802,6 +802,8 @@ class AdminTasksPageTest extends TestCase
 
         $response->assertSee('id="batch-btn-'.(int) $activeTask->id.'"', false)
             ->assertSee('data-batch-action="stop"', false)
+            ->assertSee('data-lucide="circle-stop"', false)
+            ->assertDontSee('data-lucide="square"', false)
             ->assertSee('id="batch-btn-'.(int) $pausedTask->id.'"', false)
             ->assertSee('data-batch-action="start"', false)
             ->assertSee('text-green-600 hover:text-green-800 hover:bg-green-50', false);

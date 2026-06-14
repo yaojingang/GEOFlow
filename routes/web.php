@@ -180,6 +180,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::get('/', [CrmOpportunityController::class, 'index'])->name('index');
                 Route::get('create', [CrmOpportunityController::class, 'create'])->name('create');
                 Route::post('create', [CrmOpportunityController::class, 'store'])->name('store');
+                Route::post('from-inquiry/{inquiryId}', [CrmOpportunityController::class, 'storeFromInquiry'])->name('from-inquiry')->whereNumber('inquiryId');
                 Route::get('{opportunityId}/edit', [CrmOpportunityController::class, 'edit'])->name('edit')->whereNumber('opportunityId');
                 Route::put('{opportunityId}', [CrmOpportunityController::class, 'update'])->name('update')->whereNumber('opportunityId');
                 Route::post('{opportunityId}/delete', [CrmOpportunityController::class, 'destroy'])->name('delete')->whereNumber('opportunityId');
@@ -217,6 +218,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::get('/', [CrmQuoteController::class, 'index'])->name('index');
                 Route::get('create', [CrmQuoteController::class, 'create'])->name('create');
                 Route::post('create', [CrmQuoteController::class, 'store'])->name('store');
+                Route::post('seller-profiles', [CrmQuoteController::class, 'storeSellerProfile'])->name('seller-profiles.store');
                 Route::get('{quoteId}', [CrmQuoteController::class, 'show'])->name('show')->whereNumber('quoteId');
                 Route::get('{quoteId}/edit', [CrmQuoteController::class, 'edit'])->name('edit')->whereNumber('quoteId');
                 Route::put('{quoteId}', [CrmQuoteController::class, 'update'])->name('update')->whereNumber('quoteId');

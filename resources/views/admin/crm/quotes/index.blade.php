@@ -73,6 +73,13 @@
                                         <div class="font-semibold text-gray-900">{{ $quote->quote_no }}</div>
                                         <div class="mt-1 text-sm text-gray-600">{{ $quote->title }}</div>
                                         <div class="mt-1 text-xs text-gray-500">{{ $quote->collection?->name ?? '未指定' }} · {{ $quote->status }} · {{ (int) ($quote->items_count ?? 0) }} 项</div>
+                                        @if ($quote->opportunity)
+                                            <div class="mt-2 text-xs">
+                                                <a href="{{ route('admin.crm.opportunities.edit', ['opportunityId' => (int) $quote->opportunity->id]) }}" class="inline-flex rounded-full bg-indigo-50 px-2.5 py-1 font-medium text-indigo-700 hover:bg-indigo-100">
+                                                    商机：{{ $quote->opportunity->name }}
+                                                </a>
+                                            </div>
+                                        @endif
                                     </td>
                                     <td class="px-6 py-4 text-sm">
                                         <div class="font-medium text-gray-900">{{ $quote->customer?->company_name ?? '未关联客户' }}</div>
