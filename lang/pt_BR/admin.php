@@ -3908,6 +3908,8 @@ return array_replace_recursive($base, [
             'section_title' => 'Configurações do Site Alvo',
             'section_desc' => 'Estas configurações se aplicam apenas ao site-alvo deste canal de distribuição. Elas controlam título, SEO, copyright e seleção de template do site remoto sem alterar as configurações do próprio GEOFlow. Salvar o canal sincroniza automaticamente com o site-alvo; se o site remoto estiver indisponível, tente novamente em “Sincronizar Configurações” na página de detalhes.',
             'theme_help' => 'Escolha o template frontend usado pelo site-alvo. O novo pacote do site-alvo troca estilos base por esta chave de template; Agents personalizados podem mapeá-la para seu próprio tema ou layout. Pacotes antigos precisam ser baixados e implantados novamente para o estilo do template entrar em vigor.',
+            'template_expand_more' => 'Mostrar mais :count templates',
+            'template_collapse' => 'Recolher templates',
         ],
         'target_update' => [
             'title' => 'Atualizar Site Alvo',

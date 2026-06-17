@@ -84,6 +84,7 @@ class DistributionController extends Controller
             'pageTitle' => __('admin.distribution.create_title'),
             'activeMenu' => 'distribution',
             'adminSiteName' => AdminWeb::siteName(),
+            'availableThemes' => $this->siteThemeCatalog->all(),
         ]);
     }
 

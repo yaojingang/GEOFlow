@@ -23,6 +23,7 @@ use App\Services\GeoFlow\DistributionPayloadBuilder;
 use App\Services\GeoFlow\DistributionRetryPolicy;
 use App\Services\GeoFlow\DistributionSigningService;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -220,6 +221,37 @@ class AdminDistributionPageTest extends TestCase
             ->assertSee('静态文件模式')
             ->assertSee('伪静态模式')
             ->assertSee(__('admin.distribution.help.endpoint_url'));
+    }
+
+    public function test_distribution_channel_create_form_collapses_template_choices_after_two_rows(): void
+    {
+        $this->app->instance(SiteThemeCatalog::class, new class extends SiteThemeCatalog
+        {
+            public function all(): array
+            {
+                return collect(range(1, 8))
+                    ->map(fn (int $index): array => [
+                        'id' => sprintf('theme-%02d', $index),
+                        'name' => sprintf('Theme %02d', $index),
+                        'version' => '1.0.0',
+                        'description' => sprintf('Theme %02d description', $index),
+                    ])
+                    ->all();
+            }
+        });
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.create'))
+            ->assertOk()
+            ->assertSee(__('admin.site_settings.theme.section_title'))
+            ->assertSee('name="template_key" value=""', false)
+            ->assertSee('name="template_key" value="theme-01"', false)
+            ->assertSee(__('admin.distribution.remote_site.template_expand_more', ['count' => 3]));
+
+        $html = (string) $response->getContent();
+
+        $this->assertSame(3, substr_count($html, 'data-distribution-theme-collapsed="true"'));
+        $this->assertMatchesRegularExpression('/class="[^"]*hidden[^"]*"[^>]*data-distribution-theme-card[^>]*data-distribution-theme-collapsed="true"[^>]*>\\s*<input[^>]+value="theme-06"/s', $html);
     }
 
     public function test_wordpress_distribution_channel_form_shows_wordpress_fields(): void

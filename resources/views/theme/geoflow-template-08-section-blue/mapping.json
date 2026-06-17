@@ -1,0 +1,37 @@
+{
+    "id": "geoflow-template-08-section-blue",
+    "base_theme_id": "netease-news-20260507",
+    "reference_urls": {
+        "home": "https://www.theguardian.com/",
+        "category": "https://www.theguardian.com/",
+        "article": "https://www.theguardian.com/"
+    },
+    "unchanged_contracts": [
+        "public routes",
+        "SEO title/description/keywords/canonical",
+        "JSON-LD schema output",
+        "GEOFlow category/article variables",
+        "rendered article HTML",
+        "optional article detail ad data"
+    ],
+    "visual_strategy": {
+        "reference_site": "The Guardian",
+        "summary": "A section-led editorial variant with deep blue identity, stacked blocks, and clear content groups.",
+        "css_focus": "Typography, color tokens, spacing density, card rhythm, navigation treatment, and article prose styling."
+    },
+    "edited_files": [
+        "layout.blade.php",
+        "home.blade.php",
+        "category.blade.php",
+        "article.blade.php",
+        "partials/header.blade.php",
+        "partials/sidebar.blade.php",
+        "partials/footer.blade.php",
+        "partials/article-card.blade.php",
+        "assets/theme.css",
+        "manifest.json",
+        "tokens.json",
+        "mapping.json",
+        "public/themes/geoflow-template-08-section-blue/theme.css"
+    ]
+}

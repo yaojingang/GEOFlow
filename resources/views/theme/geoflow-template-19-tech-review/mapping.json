@@ -1,0 +1,37 @@
+{
+    "id": "geoflow-template-19-tech-review",
+    "base_theme_id": "netease-news-20260507",
+    "reference_urls": {
+        "home": "https://www.technologyreview.com/",
+        "category": "https://www.technologyreview.com/",
+        "article": "https://www.technologyreview.com/"
+    },
+    "unchanged_contracts": [
+        "public routes",
+        "SEO title/description/keywords/canonical",
+        "JSON-LD schema output",
+        "GEOFlow category/article variables",
+        "rendered article HTML",
+        "optional article detail ad data"
+    ],
+    "visual_strategy": {
+        "reference_site": "MIT Technology Review",
+        "summary": "A science-tech editorial variant with crimson accents, modern research cards, and clear taxonomy.",
+        "css_focus": "Typography, color tokens, spacing density, card rhythm, navigation treatment, and article prose styling."
+    },
+    "edited_files": [
+        "layout.blade.php",
+        "home.blade.php",
+        "category.blade.php",
+        "article.blade.php",
+        "partials/header.blade.php",
+        "partials/sidebar.blade.php",
+        "partials/footer.blade.php",
+        "partials/article-card.blade.php",
+        "assets/theme.css",
+        "manifest.json",
+        "tokens.json",
+        "mapping.json",
+        "public/themes/geoflow-template-19-tech-review/theme.css"
+    ]
+}

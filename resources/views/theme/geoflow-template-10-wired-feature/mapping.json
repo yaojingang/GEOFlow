@@ -1,0 +1,37 @@
+{
+    "id": "geoflow-template-10-wired-feature",
+    "base_theme_id": "netease-news-20260507",
+    "reference_urls": {
+        "home": "https://www.wired.com/",
+        "category": "https://www.wired.com/",
+        "article": "https://www.wired.com/"
+    },
+    "unchanged_contracts": [
+        "public routes",
+        "SEO title/description/keywords/canonical",
+        "JSON-LD schema output",
+        "GEOFlow category/article variables",
+        "rendered article HTML",
+        "optional article detail ad data"
+    ],
+    "visual_strategy": {
+        "reference_site": "WIRED",
+        "summary": "A feature-story variant with large type, black-white contrast, and focused article presentation.",
+        "css_focus": "Typography, color tokens, spacing density, card rhythm, navigation treatment, and article prose styling."
+    },
+    "edited_files": [
+        "layout.blade.php",
+        "home.blade.php",
+        "category.blade.php",
+        "article.blade.php",
+        "partials/header.blade.php",
+        "partials/sidebar.blade.php",
+        "partials/footer.blade.php",
+        "partials/article-card.blade.php",
+        "assets/theme.css",
+        "manifest.json",
+        "tokens.json",
+        "mapping.json",
+        "public/themes/geoflow-template-10-wired-feature/theme.css"
+    ]
+}

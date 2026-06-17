@@ -1,0 +1,37 @@
+{
+    "id": "geoflow-template-09-tech-spectrum",
+    "base_theme_id": "netease-news-20260507",
+    "reference_urls": {
+        "home": "https://www.theverge.com/",
+        "category": "https://www.theverge.com/",
+        "article": "https://www.theverge.com/"
+    },
+    "unchanged_contracts": [
+        "public routes",
+        "SEO title/description/keywords/canonical",
+        "JSON-LD schema output",
+        "GEOFlow category/article variables",
+        "rendered article HTML",
+        "optional article detail ad data"
+    ],
+    "visual_strategy": {
+        "reference_site": "The Verge",
+        "summary": "A tech-magazine variant using vivid accents, angular cards, and stronger visual blocks.",
+        "css_focus": "Typography, color tokens, spacing density, card rhythm, navigation treatment, and article prose styling."
+    },
+    "edited_files": [
+        "layout.blade.php",
+        "home.blade.php",
+        "category.blade.php",
+        "article.blade.php",
+        "partials/header.blade.php",
+        "partials/sidebar.blade.php",
+        "partials/footer.blade.php",
+        "partials/article-card.blade.php",
+        "assets/theme.css",
+        "manifest.json",
+        "tokens.json",
+        "mapping.json",
+        "public/themes/geoflow-template-09-tech-spectrum/theme.css"
+    ]
+}

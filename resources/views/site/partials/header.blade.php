@@ -16,7 +16,7 @@
             </div>
 
             <nav class="hidden md:flex items-center space-x-6">
-                <a href="{{ route('site.home') }}" class="flex items-center text-sm font-medium {{ $isHome ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900' }}">
+                <a href="{{ route('site.home') }}" data-nav-item="home" class="flex items-center text-sm font-medium {{ $isHome ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900' }}">
                     <i data-lucide="home" class="w-4 h-4 mr-1"></i>
                     {{ __('front.nav.home') }}
                 </a>
@@ -52,7 +52,7 @@
 
         <div id="mobileMenu" class="mobile-panel md:hidden hidden border-t border-gray-100 py-4">
             <nav class="flex flex-col space-y-4">
-                <a href="{{ route('site.home') }}" class="mobile-nav-link flex items-center text-sm font-medium {{ $isHome ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900' }}">
+                <a href="{{ route('site.home') }}" data-nav-item="home" class="mobile-nav-link flex items-center text-sm font-medium {{ $isHome ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900' }}">
                     <i data-lucide="home" class="w-4 h-4 mr-3"></i>
                     {{ __('front.nav.home') }}
                 </a>

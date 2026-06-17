@@ -1,0 +1,31 @@
+{
+    "id": "geoflow-template-07-breaking-red",
+    "name": "GEOFlow 07 Breaking Red",
+    "version": "1.0.0",
+    "description": "A breaking-news variant with red-black urgency, bold headings, and fast feed rhythm. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "templates": [
+        "layout",
+        "home",
+        "category",
+        "article"
+    ],
+    "variant_number": 7,
+    "reference_site": "CNN",
+    "reference_url": "https://www.cnn.com/",
+    "notes": [
+        "Generated as a high-level visual variant inspired by CNN. It does not copy logos, assets, content, or proprietary source code.",
+        "Keeps GEOFlow Blade variables, SEO meta fields, JSON-LD schema output, category navigation, article routes, and markdown HTML rendering intact.",
+        "Visual differences are concentrated in theme.css and documented in tokens.json for future maintenance."
+    ],
+    "base_theme_id": "netease-news-20260507",
+    "target_theme_id": "geoflow-template-07-breaking-red",
+    "mode": "theme_variant",
+    "session_state": "published",
+    "created_at": "2026-06-17T03:57:50+00:00",
+    "preview_routes": [
+        "/",
+        "/category/{slug}",
+        "/article/{slug}",
+        "/archive"
+    ]
+}

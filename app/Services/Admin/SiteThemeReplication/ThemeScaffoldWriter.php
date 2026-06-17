@@ -211,7 +211,7 @@ BLADE;
     <div class="rep-shell rep-header__bar">
         <a class="rep-brand" href="{{ route('site.home') }}">{{ $siteTitle ?? config('app.name') }}</a>
         <nav class="rep-nav">
-            <a href="{{ route('site.home') }}">{{ __('front.nav.home') }}</a>
+            <a href="{{ route('site.home') }}" data-nav-item="home">{{ __('front.nav.home') }}</a>
             <a href="{{ route('site.archive') }}">{{ __('site.archive_title') }}</a>
         </nav>
     </div>
