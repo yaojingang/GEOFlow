@@ -9,6 +9,19 @@
     $selectedDistributionChannelIds = collect(old('distribution_channel_ids', $taskForm['distribution_channel_ids'] ?? []))
         ->map(static fn ($id): string => (string) $id)
         ->all();
+    $selectedKnowledgeBaseIds = collect(old('knowledge_base_ids', $taskForm['knowledge_base_ids'] ?? array_filter([(string) ($taskForm['knowledge_base_id'] ?? '')])))
+        ->map(static fn ($id): string => (string) $id)
+        ->filter()
+        ->unique()
+        ->take(5)
+        ->values()
+        ->all();
+    $knowledgeBases = $formOptions['knowledgeBases'] ?? [];
+    $visibleKnowledgeBaseLimit = 6;
+    $collapsedKnowledgeBaseCount = collect($knowledgeBases)
+        ->values()
+        ->filter(static fn (array $kb, int $index): bool => $index >= $visibleKnowledgeBaseLimit && ! in_array((string) ($kb['id'] ?? ''), $selectedKnowledgeBaseIds, true))
+        ->count();
     $publishScope = (string) old('publish_scope', (string) ($taskForm['publish_scope'] ?? 'local_and_distribution'));
     $distributionChannelsDisabled = $publishScope === 'local_only';
 @endphp
@@ -114,14 +127,56 @@
                                 </select>
                                 <p class="mt-1 text-sm text-gray-500">{!! $t('task_create.help.model_selection_mode') !!}</p>
                             </div>
-                            <div>
-                                <label for="knowledge_base_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.knowledge_base') }}</label>
-                                <select name="knowledge_base_id" id="knowledge_base_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                                    <option value="">{{ $t('task_create.option.no_knowledge_base') }}</option>
-                                    @foreach ($formOptions['knowledgeBases'] as $kb)
-                                        <option value="{{ $kb['id'] }}" @selected((string) old('knowledge_base_id', (string) ($taskForm['knowledge_base_id'] ?? '')) === (string) $kb['id'])>{{ $kb['name'] }}</option>
-                                    @endforeach
-                                </select>
+                            <div class="lg:col-span-3">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.knowledge_bases') }}</label>
+                                        <p class="mt-1 text-sm text-gray-500">{!! $t('task_create.help.knowledge_bases') !!}</p>
+                                    </div>
+                                    <span data-knowledge-base-count class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                        {{ $t('task_create.label.knowledge_base_selected_count', ['count' => count($selectedKnowledgeBaseIds), 'max' => 5]) }}
+                                    </span>
+                                </div>
+                                @if (empty($knowledgeBases))
+                                    <div class="mt-3 rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                                        {{ $t('task_create.option.no_knowledge_base') }}
+                                    </div>
+                                @else
+                                    <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                        @foreach ($knowledgeBases as $knowledgeBaseIndex => $kb)
+                                            @php($knowledgeBaseId = (string) $kb['id'])
+                                            @php($knowledgeBaseInitiallyHidden = $knowledgeBaseIndex >= $visibleKnowledgeBaseLimit && ! in_array($knowledgeBaseId, $selectedKnowledgeBaseIds, true))
+                                            <label data-knowledge-base-card @if($knowledgeBaseInitiallyHidden) data-knowledge-base-collapsed="true" @endif
+                                                   @class([
+                                                       'flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm transition hover:border-blue-300 hover:bg-blue-50',
+                                                       'hidden' => $knowledgeBaseInitiallyHidden,
+                                                   ])>
+                                                <input type="checkbox" name="knowledge_base_ids[]" value="{{ $knowledgeBaseId }}" @checked(in_array($knowledgeBaseId, $selectedKnowledgeBaseIds, true)) data-knowledge-base-input
+                                                       class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                                <span class="min-w-0">
+                                                    <span class="block font-medium text-gray-900">{{ $kb['name'] }}</span>
+                                                    <span class="block text-xs text-gray-500">{{ $t('task_create.help.knowledge_base_card') }}</span>
+                                                </span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                    @if ($collapsedKnowledgeBaseCount > 0)
+                                        <div class="mt-3">
+                                            <button type="button" data-knowledge-base-toggle
+                                                    data-expand-label="{{ $t('task_create.button.knowledge_base_expand_more', ['count' => '__COUNT__']) }}"
+                                                    data-collapse-label="{{ $t('task_create.button.knowledge_base_collapse') }}"
+                                                    class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+                                                {{ $t('task_create.button.knowledge_base_expand_more', ['count' => $collapsedKnowledgeBaseCount]) }}
+                                            </button>
+                                        </div>
+                                    @endif
+                                @endif
+                                @error('knowledge_base_ids')
+                                    <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                                @enderror
+                                @error('knowledge_base_ids.*')
+                                    <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                                @enderror
                             </div>
                             <div>
                                 <label for="author_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.author') }}</label>
@@ -418,7 +473,12 @@
             const categoryModeRadios = document.querySelectorAll('input[name="category_mode"]');
             const publishScopeRadios = document.querySelectorAll('[data-publish-scope-option]');
             const distributionChannelInputs = document.querySelectorAll('[data-distribution-channel-input]');
+            const knowledgeBaseInputs = document.querySelectorAll('[data-knowledge-base-input]');
+            const knowledgeBaseCount = document.querySelector('[data-knowledge-base-count]');
+            const knowledgeBaseToggle = document.querySelector('[data-knowledge-base-toggle]');
+            const collapsedKnowledgeBaseCards = document.querySelectorAll('[data-knowledge-base-collapsed="true"]');
             const form = document.querySelector('form');
+            let knowledgeBaseExpanded = false;
 
             if (!form) {
                 return;
@@ -494,11 +554,64 @@
                 });
             }
 
+            function syncKnowledgeBaseCount() {
+                if (!knowledgeBaseCount) {
+                    return;
+                }
+
+                const selectedCount = Array.from(knowledgeBaseInputs).filter((input) => input.checked).length;
+                knowledgeBaseCount.textContent = @json($t('task_create.label.knowledge_base_selected_count', ['count' => '__COUNT__', 'max' => 5])).replace('__COUNT__', String(selectedCount));
+            }
+
+            function syncKnowledgeBaseVisibility() {
+                if (!knowledgeBaseToggle || collapsedKnowledgeBaseCards.length === 0) {
+                    return;
+                }
+
+                const hiddenCards = [];
+
+                collapsedKnowledgeBaseCards.forEach((card) => {
+                    const input = card.querySelector('[data-knowledge-base-input]');
+                    const shouldHide = !knowledgeBaseExpanded && !(input && input.checked);
+                    card.classList.toggle('hidden', shouldHide);
+
+                    if (shouldHide) {
+                        hiddenCards.push(card);
+                    }
+                });
+
+                const expandLabel = knowledgeBaseToggle.dataset.expandLabel || '';
+                const collapseLabel = knowledgeBaseToggle.dataset.collapseLabel || '';
+                knowledgeBaseToggle.textContent = knowledgeBaseExpanded
+                    ? collapseLabel
+                    : expandLabel.replace('__COUNT__', String(hiddenCards.length));
+                knowledgeBaseToggle.setAttribute('aria-expanded', knowledgeBaseExpanded ? 'true' : 'false');
+                knowledgeBaseToggle.classList.toggle('hidden', !knowledgeBaseExpanded && hiddenCards.length === 0);
+            }
+
             imageLibrarySelect.addEventListener('change', toggleImageCountByLibrary);
             needReviewCheckbox.addEventListener('change', togglePublishInterval);
             articleLimitInput.addEventListener('input', syncDraftLimitMax);
             categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
             publishScopeRadios.forEach((radio) => radio.addEventListener('change', syncDistributionChannelsByScope));
+            if (knowledgeBaseToggle) {
+                knowledgeBaseToggle.addEventListener('click', function () {
+                    knowledgeBaseExpanded = !knowledgeBaseExpanded;
+                    syncKnowledgeBaseVisibility();
+                });
+            }
+            knowledgeBaseInputs.forEach((input) => {
+                input.addEventListener('change', function () {
+                    const selectedCount = Array.from(knowledgeBaseInputs).filter((item) => item.checked).length;
+                    if (selectedCount > 5) {
+                        input.checked = false;
+                        alert(@json($t('task_create.error.knowledge_base_limit')));
+                    }
+
+                    syncKnowledgeBaseCount();
+                    syncKnowledgeBaseVisibility();
+                });
+            });
 
             form.addEventListener('submit', function (event) {
                 if (!document.getElementById('task_name').value.trim()) {
@@ -541,6 +654,8 @@
             handleCategoryModeChange();
             syncDraftLimitMax();
             syncDistributionChannelsByScope();
+            syncKnowledgeBaseCount();
+            syncKnowledgeBaseVisibility();
         });
     </script>
 @endpush

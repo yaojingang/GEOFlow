@@ -114,6 +114,15 @@ class Task extends Model
         return $this->belongsTo(KnowledgeBase::class, 'knowledge_base_id');
     }
 
+    public function knowledgeBases(): BelongsToMany
+    {
+        return $this->belongsToMany(KnowledgeBase::class, 'task_knowledge_bases')
+            ->withPivot(['sort_order'])
+            ->withTimestamps()
+            ->orderByPivot('sort_order')
+            ->orderBy('knowledge_bases.id');
+    }
+
     public function fixedCategory(): BelongsTo
     {
         return $this->belongsTo(Category::class, 'fixed_category_id');

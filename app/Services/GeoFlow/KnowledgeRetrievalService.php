@@ -34,6 +34,69 @@ class KnowledgeRetrievalService
     }
 
     /**
+     * @param  list<int>  $knowledgeBaseIds
+     */
+    public function retrieveContextFromMany(array $knowledgeBaseIds, string $query, int $limit = 5, int $maxChars = 3200): string
+    {
+        return $this->composeEvidenceContext(
+            $this->retrieveEvidenceFromMany($knowledgeBaseIds, $query, max($limit * 4, 16)),
+            $limit,
+            $maxChars
+        );
+    }
+
+    /**
+     * @param  list<int>  $knowledgeBaseIds
+     * @return list<array<string,mixed>>
+     */
+    public function retrieveEvidenceFromMany(array $knowledgeBaseIds, string $query, int $candidateLimit = 16): array
+    {
+        $knowledgeBaseIds = collect($knowledgeBaseIds)
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->take(5)
+            ->values()
+            ->all();
+
+        if ($knowledgeBaseIds === []) {
+            return [];
+        }
+
+        if (count($knowledgeBaseIds) === 1) {
+            return $this->retrieveEvidence($knowledgeBaseIds[0], $query, $candidateLimit);
+        }
+
+        $perBaseLimit = max(6, (int) ceil(max(1, $candidateLimit) / count($knowledgeBaseIds)) + 4);
+        $merged = [];
+
+        foreach ($knowledgeBaseIds as $order => $knowledgeBaseId) {
+            foreach ($this->retrieveEvidence($knowledgeBaseId, $query, $perBaseLimit) as $candidate) {
+                $candidate['knowledge_base_rank'] = $order;
+                $merged[] = $candidate;
+            }
+        }
+
+        if ($merged === []) {
+            return [];
+        }
+
+        $merged = $this->resolveEvidenceConflicts($merged);
+        usort($merged, static function (array $a, array $b): int {
+            $diff = ((float) $b['score']) <=> ((float) $a['score']);
+            if ($diff !== 0) {
+                return $diff;
+            }
+
+            $rankDiff = ((int) ($a['knowledge_base_rank'] ?? 0)) <=> ((int) ($b['knowledge_base_rank'] ?? 0));
+
+            return $rankDiff !== 0 ? $rankDiff : ((int) $a['chunk_index'] <=> (int) $b['chunk_index']);
+        });
+
+        return array_slice($merged, 0, max(1, $candidateLimit));
+    }
+
+    /**
      * @return list<array<string,mixed>>
      */
     public function retrieveEvidence(int $knowledgeBaseId, string $query, int $candidateLimit = 16): array
@@ -150,6 +213,11 @@ class KnowledgeRetrievalService
             $citation = 'K'.(count($parts) + 1);
             $metadata = is_array($candidate['metadata'] ?? null) ? $candidate['metadata'] : [];
             $lines = ['【证据 '.$citation.'】'];
+
+            $knowledgeBaseName = trim((string) ($metadata['knowledge_base_name'] ?? ''));
+            if ($knowledgeBaseName !== '') {
+                $lines[] = '知识库：'.$knowledgeBaseName;
+            }
 
             $title = trim((string) ($candidate['chunk_title'] ?? ''));
             if ($title !== '') {

@@ -9,6 +9,7 @@ use App\Models\ImageLibrary;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
+use App\Models\Task;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
@@ -505,6 +506,50 @@ class AdminMaterialsPagesTest extends TestCase
         Storage::disk('local')->assertMissing('knowledge-bases/2026/beta.md');
         $this->assertDatabaseMissing('knowledge_bases', [
             'id' => (int) $knowledgeBase->id,
+        ]);
+    }
+
+    public function test_admin_cannot_delete_knowledge_base_referenced_by_task_pivot(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_delete_pivot_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-delete-pivot-admin@example.com',
+            'display_name' => 'Knowledge Delete Pivot Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '被任务引用知识库',
+            'description' => '',
+            'content' => '被任务引用的知识库不能删除。',
+            'character_count' => 15,
+            'file_type' => 'markdown',
+            'word_count' => 15,
+        ]);
+        $task = Task::query()->create([
+            'name' => '引用知识库任务',
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+            'knowledge_base_id' => null,
+        ]);
+        $task->knowledgeBases()->attach((int) $knowledgeBase->id, ['sort_order' => 0]);
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.knowledge-bases.index'))
+            ->post(route('admin.knowledge-bases.delete', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
+            ->assertRedirect(route('admin.knowledge-bases.index'))
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseHas('knowledge_bases', [
+            'id' => (int) $knowledgeBase->id,
+        ]);
+        $this->assertDatabaseHas('task_knowledge_bases', [
+            'task_id' => (int) $task->id,
+            'knowledge_base_id' => (int) $knowledgeBase->id,
         ]);
     }
 

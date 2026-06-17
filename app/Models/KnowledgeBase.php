@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class KnowledgeBase extends Model
@@ -47,5 +48,14 @@ class KnowledgeBase extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'knowledge_base_id');
+    }
+
+    public function linkedTasks(): BelongsToMany
+    {
+        return $this->belongsToMany(Task::class, 'task_knowledge_bases')
+            ->withPivot(['sort_order'])
+            ->withTimestamps()
+            ->orderByPivot('sort_order')
+            ->orderBy('tasks.id');
     }
 }

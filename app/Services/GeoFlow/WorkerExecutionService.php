@@ -20,6 +20,7 @@ use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Ai\Responses\Data\FinishReason;
 use RuntimeException;
 use Throwable;
@@ -623,40 +624,114 @@ class WorkerExecutionService
      */
     private function resolveKnowledgeContext(Task $task, string $title, string $keyword): string
     {
-        $knowledgeBaseId = (int) ($task->knowledge_base_id ?? 0);
-        if ($knowledgeBaseId <= 0) {
+        $knowledgeBaseIds = $this->resolveTaskKnowledgeBaseIds($task);
+        if ($knowledgeBaseIds === []) {
             return '';
         }
 
-        $knowledgeBase = KnowledgeBase::query()
-            ->whereKey($knowledgeBaseId)
-            ->first(['id', 'content']);
-        if (! $knowledgeBase) {
+        $knowledgeBases = KnowledgeBase::query()
+            ->whereIn('id', $knowledgeBaseIds)
+            ->get(['id', 'content'])
+            ->keyBy('id');
+        if ($knowledgeBases->isEmpty()) {
             return '';
         }
 
-        $content = trim((string) ($knowledgeBase->content ?? ''));
-        if ($content === '') {
-            return '';
+        $fallbackContents = [];
+        foreach ($knowledgeBaseIds as $knowledgeBaseId) {
+            /** @var KnowledgeBase|null $knowledgeBase */
+            $knowledgeBase = $knowledgeBases->get($knowledgeBaseId);
+            if (! $knowledgeBase) {
+                continue;
+            }
+
+            $content = trim((string) ($knowledgeBase->content ?? ''));
+            if ($content === '') {
+                continue;
+            }
+
+            $fallbackContents[$knowledgeBaseId] = $content;
+            $chunkCount = KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->count();
+            if ($chunkCount <= 0) {
+                $this->knowledgeChunkSyncService->sync($knowledgeBaseId, $content);
+            }
         }
 
-        $chunkCount = KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->count();
-        if ($chunkCount <= 0) {
-            $this->knowledgeChunkSyncService->sync($knowledgeBaseId, $content);
+        if ($fallbackContents === []) {
+            return '';
         }
 
         $query = trim($title."\n".$keyword);
-        $context = $this->knowledgeRetrievalService->retrieveContext($knowledgeBaseId, $query, 5, 3200);
+        $context = $this->knowledgeRetrievalService->retrieveContextFromMany($knowledgeBaseIds, $query, 5, 3200);
         if ($context !== '') {
             return $context;
         }
 
-        $chunkCount = KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->count();
+        $chunkCount = KnowledgeChunk::query()->whereIn('knowledge_base_id', $knowledgeBaseIds)->count();
         if ($chunkCount > 0) {
             return '';
         }
 
-        return mb_strlen($content, 'UTF-8') > 2400 ? mb_substr($content, 0, 2400, 'UTF-8') : $content;
+        return $this->fallbackKnowledgeContext($fallbackContents, 2400);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function resolveTaskKnowledgeBaseIds(Task $task): array
+    {
+        $taskId = (int) ($task->id ?? 0);
+        if ($taskId > 0 && Schema::hasTable('task_knowledge_bases')) {
+            $ids = DB::table('task_knowledge_bases')
+                ->where('task_id', $taskId)
+                ->orderBy('sort_order')
+                ->orderBy('knowledge_base_id')
+                ->pluck('knowledge_base_id')
+                ->map(static fn ($id): int => (int) $id)
+                ->filter(static fn (int $id): bool => $id > 0)
+                ->unique()
+                ->take(5)
+                ->values()
+                ->all();
+
+            if ($ids !== []) {
+                return $ids;
+            }
+        }
+
+        $legacyKnowledgeBaseId = (int) ($task->knowledge_base_id ?? 0);
+
+        return $legacyKnowledgeBaseId > 0 ? [$legacyKnowledgeBaseId] : [];
+    }
+
+    /**
+     * @param  array<int,string>  $contents
+     */
+    private function fallbackKnowledgeContext(array $contents, int $maxChars): string
+    {
+        $parts = [];
+        $charCount = 0;
+
+        foreach ($contents as $knowledgeBaseId => $content) {
+            $content = trim($content);
+            if ($content === '') {
+                continue;
+            }
+
+            $header = '【知识库 '.$knowledgeBaseId.'】';
+            $remaining = max(0, $maxChars - $charCount - mb_strlen($header, 'UTF-8') - 2);
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $snippet = mb_strlen($content, 'UTF-8') > $remaining
+                ? mb_substr($content, 0, $remaining, 'UTF-8')
+                : $content;
+            $parts[] = $header."\n".$snippet;
+            $charCount += mb_strlen($header."\n".$snippet, 'UTF-8');
+        }
+
+        return $parts === [] ? '' : implode("\n\n", $parts);
     }
 
     /**

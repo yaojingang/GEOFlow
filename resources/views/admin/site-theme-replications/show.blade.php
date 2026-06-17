@@ -28,6 +28,19 @@
         'category' => __('admin.theme_replication.preview.category'),
         'article' => __('admin.theme_replication.preview.article'),
     ];
+    $progress = $progress ?? ['progress_percent' => 0, 'terminal' => false, 'stages' => [], 'logs' => []];
+    $progressStateClass = [
+        'done' => 'border-green-200 bg-green-50 text-green-800',
+        'current' => 'border-blue-200 bg-blue-50 text-blue-800',
+        'failed' => 'border-red-200 bg-red-50 text-red-800',
+        'pending' => 'border-gray-200 bg-gray-50 text-gray-500',
+    ];
+    $progressDotClass = [
+        'done' => 'bg-green-600 text-white',
+        'current' => 'bg-blue-600 text-white',
+        'failed' => 'bg-red-600 text-white',
+        'pending' => 'bg-white text-gray-400 ring-1 ring-gray-300',
+    ];
 @endphp
 
 @section('content')
@@ -64,6 +77,81 @@
                 @endif
             </div>
         </div>
+
+        <section
+            id="theme-replication-progress"
+            class="mb-6 overflow-hidden rounded-lg border border-blue-100 bg-white shadow"
+            data-progress-url="{{ route('admin.site-settings.theme-replications.status', ['replicationId' => (int) $replication->id], false) }}"
+            data-terminal="{{ ! empty($progress['terminal']) ? '1' : '0' }}"
+        >
+            <div class="border-b border-gray-200 px-6 py-5">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.theme_replication.section.progress') }}</h2>
+                            <span data-progress-live-badge class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold {{ ! empty($progress['terminal']) ? 'bg-gray-100 text-gray-600' : 'bg-blue-50 text-blue-700' }}">
+                                <span class="mr-1.5 h-2 w-2 rounded-full {{ ! empty($progress['terminal']) ? 'bg-gray-400' : 'animate-pulse bg-blue-500' }}"></span>
+                                {{ ! empty($progress['terminal']) ? __('admin.theme_replication.progress.finished') : __('admin.theme_replication.progress.live') }}
+                            </span>
+                        </div>
+                        <p class="mt-1 text-sm text-gray-600">{{ __('admin.theme_replication.section.progress_desc') }}</p>
+                    </div>
+                    <dl class="grid min-w-[280px] grid-cols-3 gap-3 text-sm">
+                        <div class="rounded-lg bg-gray-50 p-3">
+                            <dt class="text-xs text-gray-500">{{ __('admin.theme_replication.label.current_step') }}</dt>
+                            <dd data-progress-current-step class="mt-1 font-semibold text-gray-900">{{ $progress['current_step_label'] ?? __('admin.common.none') }}</dd>
+                        </div>
+                        <div class="rounded-lg bg-gray-50 p-3">
+                            <dt class="text-xs text-gray-500">{{ __('admin.theme_replication.label.progress_percent') }}</dt>
+                            <dd data-progress-percent-text class="mt-1 font-semibold text-gray-900">{{ (int) ($progress['progress_percent'] ?? 0) }}%</dd>
+                        </div>
+                        <div class="rounded-lg bg-gray-50 p-3">
+                            <dt class="text-xs text-gray-500">{{ __('admin.theme_replication.label.last_updated') }}</dt>
+                            <dd data-progress-updated class="mt-1 font-mono text-xs font-semibold text-gray-900">{{ $progress['last_updated'] ?? __('admin.common.none') }}</dd>
+                        </div>
+                    </dl>
+                </div>
+                <div class="mt-5 h-2 overflow-hidden rounded-full bg-gray-100">
+                    <div data-progress-bar class="h-full rounded-full bg-blue-600 transition-all duration-500" style="width: {{ (int) ($progress['progress_percent'] ?? 0) }}%"></div>
+                </div>
+                <div data-progress-error class="mt-3 hidden rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">{{ __('admin.theme_replication.progress.poll_error') }}</div>
+            </div>
+            <div class="grid grid-cols-1 gap-0 divide-y divide-gray-100 xl:grid-cols-[minmax(0,1fr)_360px] xl:divide-x xl:divide-y-0">
+                <div data-progress-stages class="grid grid-cols-1 gap-3 p-5 md:grid-cols-2 xl:grid-cols-4">
+                    @foreach((array) ($progress['stages'] ?? []) as $stage)
+                        @php($stageState = (string) ($stage['state'] ?? 'pending'))
+                        <div class="rounded-lg border p-4 {{ $progressStateClass[$stageState] ?? $progressStateClass['pending'] }}" data-progress-stage="{{ $stage['key'] ?? '' }}">
+                            <div class="flex items-center gap-3">
+                                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold {{ $progressDotClass[$stageState] ?? $progressDotClass['pending'] }}">
+                                    {{ $loop->iteration }}
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="truncate text-sm font-semibold">{{ $stage['label'] ?? '' }}</div>
+                                    <div class="mt-0.5 text-xs opacity-80">{{ $stage['time'] ?? '' }}</div>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs leading-5 opacity-80">{{ $stage['description'] ?? '' }}</p>
+                            @if(! empty($stage['message']))
+                                <p class="mt-2 rounded-md bg-white/70 px-2 py-1 text-xs font-semibold leading-5 opacity-90">{{ $stage['message'] }}</p>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+                <div class="p-5">
+                    <div class="mb-3 text-sm font-semibold text-gray-900">{{ __('admin.theme_replication.section.logs') }}</div>
+                    <div data-progress-logs class="max-h-[320px] space-y-3 overflow-y-auto pr-1">
+                        @forelse((array) ($progress['logs'] ?? []) as $log)
+                            <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                <div class="text-sm font-semibold text-gray-900">{{ $log['message'] ?? '' }}</div>
+                                <div class="mt-1 text-xs text-gray-500">{{ strtoupper((string) ($log['level'] ?? 'info')) }} · {{ $log['step'] ?? '' }} · {{ $log['time'] ?? '' }}</div>
+                            </div>
+                        @empty
+                            <div class="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">{{ __('admin.theme_replication.empty.logs') }}</div>
+                        @endforelse
+                    </div>
+                </div>
+            </div>
+        </section>
 
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div class="space-y-6">
@@ -437,6 +525,122 @@
 @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            const progressPanel = document.getElementById('theme-replication-progress');
+            if (progressPanel) {
+                const stateClasses = {
+                    done: 'border-green-200 bg-green-50 text-green-800',
+                    current: 'border-blue-200 bg-blue-50 text-blue-800',
+                    failed: 'border-red-200 bg-red-50 text-red-800',
+                    pending: 'border-gray-200 bg-gray-50 text-gray-500',
+                };
+                const dotClasses = {
+                    done: 'bg-green-600 text-white',
+                    current: 'bg-blue-600 text-white',
+                    failed: 'bg-red-600 text-white',
+                    pending: 'bg-white text-gray-400 ring-1 ring-gray-300',
+                };
+                const liveLabel = @js(__('admin.theme_replication.progress.live'));
+                const finishedLabel = @js(__('admin.theme_replication.progress.finished'));
+                const emptyLogsLabel = @js(__('admin.theme_replication.empty.logs'));
+                const escapeHtml = (value) => String(value ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+
+                const renderStage = (stage, index) => {
+                    const state = ['done', 'current', 'failed', 'pending'].includes(stage.state) ? stage.state : 'pending';
+
+                    return `
+                        <div class="rounded-lg border p-4 ${stateClasses[state]}" data-progress-stage="${escapeHtml(stage.key)}">
+                            <div class="flex items-center gap-3">
+                                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${dotClasses[state]}">${index + 1}</div>
+                                <div class="min-w-0">
+                                    <div class="truncate text-sm font-semibold">${escapeHtml(stage.label)}</div>
+                                    <div class="mt-0.5 text-xs opacity-80">${escapeHtml(stage.time || '')}</div>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs leading-5 opacity-80">${escapeHtml(stage.description)}</p>
+                            ${stage.message ? `<p class="mt-2 rounded-md bg-white/70 px-2 py-1 text-xs font-semibold leading-5 opacity-90">${escapeHtml(stage.message)}</p>` : ''}
+                        </div>
+                    `;
+                };
+
+                const renderLog = (log) => `
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <div class="text-sm font-semibold text-gray-900">${escapeHtml(log.message)}</div>
+                        <div class="mt-1 text-xs text-gray-500">${escapeHtml(String(log.level || 'info').toUpperCase())} · ${escapeHtml(log.step)} · ${escapeHtml(log.time)}</div>
+                    </div>
+                `;
+
+                const renderProgress = (payload) => {
+                    const percent = Math.max(0, Math.min(100, Number(payload.progress_percent || 0)));
+                    const currentStep = progressPanel.querySelector('[data-progress-current-step]');
+                    const percentText = progressPanel.querySelector('[data-progress-percent-text]');
+                    const updatedText = progressPanel.querySelector('[data-progress-updated]');
+                    const progressBar = progressPanel.querySelector('[data-progress-bar]');
+                    const liveBadge = progressPanel.querySelector('[data-progress-live-badge]');
+                    const stages = progressPanel.querySelector('[data-progress-stages]');
+                    const logs = progressPanel.querySelector('[data-progress-logs]');
+                    const errorBox = progressPanel.querySelector('[data-progress-error]');
+
+                    progressPanel.dataset.terminal = payload.terminal ? '1' : '0';
+                    if (currentStep) currentStep.textContent = payload.current_step_label || '';
+                    if (percentText) percentText.textContent = `${percent}%`;
+                    if (updatedText) updatedText.textContent = payload.last_updated || '';
+                    if (progressBar) progressBar.style.width = `${percent}%`;
+                    if (stages) stages.innerHTML = Array.isArray(payload.stages) ? payload.stages.map(renderStage).join('') : '';
+                    if (logs) {
+                        logs.innerHTML = Array.isArray(payload.logs) && payload.logs.length > 0
+                            ? payload.logs.map(renderLog).join('')
+                            : `<div class="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">${emptyLogsLabel}</div>`;
+                    }
+                    if (liveBadge) {
+                        liveBadge.className = `inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${payload.terminal ? 'bg-gray-100 text-gray-600' : 'bg-blue-50 text-blue-700'}`;
+                        liveBadge.innerHTML = `<span class="mr-1.5 h-2 w-2 rounded-full ${payload.terminal ? 'bg-gray-400' : 'animate-pulse bg-blue-500'}"></span>${payload.terminal ? finishedLabel : liveLabel}`;
+                    }
+                    if (errorBox) {
+                        errorBox.classList.add('hidden');
+                    }
+                };
+
+                let progressTimer = null;
+                const refreshProgress = async () => {
+                    if (progressPanel.dataset.terminal === '1') {
+                        if (progressTimer) {
+                            clearInterval(progressTimer);
+                        }
+
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(progressPanel.dataset.progressUrl, {
+                            headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+                        });
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+
+                        const payload = await response.json();
+                        renderProgress(payload);
+                        if (payload.terminal && progressTimer) {
+                            clearInterval(progressTimer);
+                        }
+                    } catch (error) {
+                        const errorBox = progressPanel.querySelector('[data-progress-error]');
+                        if (errorBox) {
+                            errorBox.classList.remove('hidden');
+                        }
+                    }
+                };
+
+                if (progressPanel.dataset.terminal !== '1') {
+                    progressTimer = window.setInterval(refreshProgress, 3500);
+                }
+            }
+
             const buttons = Array.from(document.querySelectorAll('[data-preview-mode]'));
             const frames = Array.from(document.querySelectorAll('[data-preview-frame]'));
             const iframes = Array.from(document.querySelectorAll('[data-preview-iframe]'));

@@ -101,6 +101,7 @@ class TaskLifecycleService
             ]);
 
             $taskId = (int) $task->id;
+            $this->syncTaskKnowledgeBases($taskId, $normalized['knowledge_base_ids'] ?? []);
             $this->queueService->initializeTaskSchedule($taskId);
 
             if ($normalized['status'] === 'active') {
@@ -164,11 +165,18 @@ class TaskLifecycleService
 
         $status = $normalized['status'] ?? null;
         unset($normalized['status']);
+        $knowledgeBaseIdsProvided = array_key_exists('knowledge_base_ids', $normalized);
+        $knowledgeBaseIds = $knowledgeBaseIdsProvided ? $normalized['knowledge_base_ids'] : [];
+        unset($normalized['knowledge_base_ids']);
 
         DB::beginTransaction();
         try {
             if (! empty($normalized)) {
                 Task::query()->whereKey($taskId)->update($normalized);
+            }
+
+            if ($knowledgeBaseIdsProvided) {
+                $this->syncTaskKnowledgeBases($taskId, is_array($knowledgeBaseIds) ? $knowledgeBaseIds : []);
             }
 
             if ($status === 'active') {
@@ -212,7 +220,7 @@ class TaskLifecycleService
                     'updated_at' => now(),
                 ]);
 
-            foreach (['article_queue', 'task_materials', 'task_schedules'] as $table) {
+            foreach (['article_queue', 'task_materials', 'task_schedules', 'task_knowledge_bases'] as $table) {
                 if (Schema::hasTable($table)) {
                     DB::table($table)->where('task_id', $taskId)->delete();
                 }
@@ -448,8 +456,19 @@ class TaskLifecycleService
             'knowledge_base_id' => ['model' => KnowledgeBase::class, 'message' => '选择的知识库不存在', 'required' => false],
             'fixed_category_id' => ['model' => Category::class, 'message' => '固定分类不存在', 'required' => false],
         ];
+        $knowledgeBaseIdsProvided = array_key_exists('knowledge_base_ids', $data);
+
+        if ($knowledgeBaseIdsProvided) {
+            $knowledgeBaseIds = $this->normalizeKnowledgeBaseIds($data['knowledge_base_ids'], $fieldErrors);
+            $output['knowledge_base_ids'] = $knowledgeBaseIds;
+            $output['knowledge_base_id'] = $knowledgeBaseIds[0] ?? null;
+        }
 
         foreach ($referenceMap as $field => $config) {
+            if ($field === 'knowledge_base_id' && $knowledgeBaseIdsProvided) {
+                continue;
+            }
+
             if (! array_key_exists($field, $data)) {
                 if (! $isUpdate && $config['required']) {
                     $fieldErrors[$field] = '缺少必填字段';
@@ -495,6 +514,11 @@ class TaskLifecycleService
             } else {
                 $output[$field] = $id;
             }
+        }
+
+        if (! $knowledgeBaseIdsProvided && array_key_exists('knowledge_base_id', $output)) {
+            $knowledgeBaseId = (int) ($output['knowledge_base_id'] ?? 0);
+            $output['knowledge_base_ids'] = $knowledgeBaseId > 0 ? [$knowledgeBaseId] : [];
         }
 
         $flagFields = ['need_review', 'auto_keywords', 'auto_description', 'is_loop'];
@@ -651,6 +675,78 @@ class TaskLifecycleService
         if (! Task::query()->whereKey($taskId)->exists()) {
             throw new ApiException('task_not_found', '任务不存在', 404);
         }
+    }
+
+    /**
+     * @param  array<string,string>  $fieldErrors
+     * @return list<int>
+     */
+    private function normalizeKnowledgeBaseIds(mixed $value, array &$fieldErrors): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
+
+        if (! is_array($value)) {
+            $fieldErrors['knowledge_base_ids'] = '知识库选择格式无效';
+
+            return [];
+        }
+
+        $ids = collect($value)
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($ids->count() > 5) {
+            $fieldErrors['knowledge_base_ids'] = '一个任务最多选择 5 个知识库';
+
+            return $ids->take(5)->all();
+        }
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $existingIds = KnowledgeBase::query()
+            ->whereIn('id', $ids->all())
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+
+        if (count($existingIds) !== $ids->count()) {
+            $fieldErrors['knowledge_base_ids'] = '选择的知识库不存在';
+        }
+
+        return $ids->all();
+    }
+
+    /**
+     * @param  list<int>  $knowledgeBaseIds
+     */
+    private function syncTaskKnowledgeBases(int $taskId, array $knowledgeBaseIds): void
+    {
+        if (! Schema::hasTable('task_knowledge_bases')) {
+            return;
+        }
+
+        $task = Task::query()->whereKey($taskId)->first();
+        if (! $task) {
+            return;
+        }
+
+        $syncPayload = [];
+        foreach (array_values($knowledgeBaseIds) as $index => $knowledgeBaseId) {
+            $id = (int) $knowledgeBaseId;
+            if ($id <= 0) {
+                continue;
+            }
+
+            $syncPayload[$id] = ['sort_order' => $index];
+        }
+
+        $task->knowledgeBases()->sync($syncPayload);
     }
 
     /**

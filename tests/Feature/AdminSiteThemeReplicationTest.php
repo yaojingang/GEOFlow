@@ -20,6 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 use ZipArchive;
@@ -80,6 +81,49 @@ class AdminSiteThemeReplicationTest extends TestCase
             fn (RunSiteThemeReplicationJob $job): bool => $job->replicationId === (int) $replication->id
                 && $job->queue === 'theme-replication'
         );
+    }
+
+    public function test_docker_queue_workers_listen_to_theme_replication_queue(): void
+    {
+        foreach (['docker-compose.yml', 'docker-compose.prod.yml'] as $composeFile) {
+            $content = File::get(base_path($composeFile));
+
+            $this->assertStringContainsString(
+                '--queue=geoflow,distribution,theme-replication,default',
+                $content,
+                $composeFile.' must consume the queue used by theme replication jobs.'
+            );
+        }
+    }
+
+    public function test_theme_replication_store_returns_validation_error_when_tables_are_missing(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        Queue::fake();
+
+        $model = $this->activeChatModel();
+
+        Schema::dropIfExists('site_theme_replication_versions');
+        Schema::dropIfExists('site_theme_replication_logs');
+        Schema::dropIfExists('site_theme_replications');
+
+        $this->actingAs($this->admin(), 'admin')
+            ->from(route('admin.site-settings.theme-replications.create'))
+            ->post(route('admin.site-settings.theme-replications.store'), [
+                'name' => 'Missing Tables Clone',
+                'theme_id' => 'missing-tables-clone',
+                'base_theme_id' => '',
+                'ai_model_id' => $model->id,
+                'style_preference' => 'content_site',
+                'home_url' => 'https://example.com/',
+                'category_url' => 'https://example.com/blog',
+                'article_url' => 'https://example.com/blog/demo',
+                'compliance_ack' => '1',
+            ])
+            ->assertRedirect(route('admin.site-settings.theme-replications.create'))
+            ->assertSessionHasErrors('theme_replication');
+
+        Queue::assertNotPushed(RunSiteThemeReplicationJob::class);
     }
 
     public function test_theme_replication_rejects_private_reference_urls(): void
@@ -195,6 +239,99 @@ class AdminSiteThemeReplicationTest extends TestCase
             ->assertOk()
             ->assertSee('Show Clone')
             ->assertSee('Task created for test');
+    }
+
+    public function test_theme_replication_detail_shows_persistent_progress_timeline(): void
+    {
+        $replication = SiteThemeReplication::query()->create([
+            'name' => 'Progress Clone',
+            'theme_id' => 'progress-clone',
+            'ai_model_id' => $this->activeChatModel()->id,
+            'status' => SiteThemeReplication::STATUS_FETCHING,
+            'home_url' => 'https://example.com',
+            'category_url' => 'https://example.com/category',
+            'article_url' => 'https://example.com/article',
+            'style_preference' => 'content_site',
+        ]);
+
+        foreach (['created', 'queued', 'fetching'] as $step) {
+            SiteThemeReplicationLog::query()->create([
+                'replication_id' => $replication->id,
+                'level' => 'info',
+                'step' => $step,
+                'message' => 'Progress step '.$step,
+            ]);
+        }
+
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.site-settings.theme-replications.show', ['replicationId' => $replication->id]))
+            ->assertOk()
+            ->assertSee(__('admin.theme_replication.section.progress'))
+            ->assertSee(__('admin.theme_replication.progress.step.fetching'))
+            ->assertSee(route('admin.site-settings.theme-replications.status', ['replicationId' => $replication->id], false), false)
+            ->assertSee('data-progress-stages', false);
+    }
+
+    public function test_theme_replication_status_endpoint_returns_progress_payload(): void
+    {
+        $replication = SiteThemeReplication::query()->create([
+            'name' => 'Status Clone',
+            'theme_id' => 'status-clone',
+            'ai_model_id' => $this->activeChatModel()->id,
+            'status' => SiteThemeReplication::STATUS_GENERATING,
+            'home_url' => 'https://example.com',
+            'category_url' => 'https://example.com/category',
+            'article_url' => 'https://example.com/article',
+            'style_preference' => 'content_site',
+        ]);
+
+        foreach (['created', 'queued', 'fetching', 'extracting', 'analyzing', 'generating'] as $step) {
+            SiteThemeReplicationLog::query()->create([
+                'replication_id' => $replication->id,
+                'level' => 'info',
+                'step' => $step,
+                'message' => 'Status step '.$step,
+            ]);
+        }
+
+        $this->actingAs($this->admin(), 'admin')
+            ->getJson(route('admin.site-settings.theme-replications.status', ['replicationId' => $replication->id]))
+            ->assertOk()
+            ->assertJsonPath('status', SiteThemeReplication::STATUS_GENERATING)
+            ->assertJsonPath('current_step', 'generating')
+            ->assertJsonPath('terminal', false)
+            ->assertJsonPath('stages.5.key', 'generating')
+            ->assertJsonPath('logs.0.step', 'generating');
+    }
+
+    public function test_failed_iteration_progress_keeps_reference_stage_when_refetching(): void
+    {
+        $replication = SiteThemeReplication::query()->create([
+            'name' => 'Iteration Refetch Clone',
+            'theme_id' => 'iteration-refetch-clone',
+            'ai_model_id' => $this->activeChatModel()->id,
+            'status' => SiteThemeReplication::STATUS_FAILED,
+            'home_url' => 'https://example.com',
+            'category_url' => 'https://example.com/category',
+            'article_url' => 'https://example.com/article',
+            'style_preference' => 'content_site',
+        ]);
+
+        foreach (['created', 'queued', 'iteration_queued', 'fetching', 'failed'] as $step) {
+            SiteThemeReplicationLog::query()->create([
+                'replication_id' => $replication->id,
+                'level' => $step === 'failed' ? 'error' : 'info',
+                'step' => $step,
+                'message' => 'Iteration step '.$step,
+            ]);
+        }
+
+        $this->actingAs($this->admin(), 'admin')
+            ->getJson(route('admin.site-settings.theme-replications.status', ['replicationId' => $replication->id]))
+            ->assertOk()
+            ->assertJsonPath('current_step', 'fetching')
+            ->assertJsonPath('stages.3.key', 'fetching')
+            ->assertJsonPath('stages.3.state', 'failed');
     }
 
     public function test_failed_theme_replication_can_be_retried(): void

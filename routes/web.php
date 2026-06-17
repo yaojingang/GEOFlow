@@ -274,6 +274,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('theme-replications/{replicationId}', [SiteThemeReplicationController::class, 'show'])
                 ->name('theme-replications.show')
                 ->whereNumber('replicationId');
+            Route::get('theme-replications/{replicationId}/status', [SiteThemeReplicationController::class, 'status'])
+                ->name('theme-replications.status')
+                ->whereNumber('replicationId');
             Route::get('theme-replications/{replicationId}/preview/{page}', [SiteThemeReplicationController::class, 'preview'])
                 ->name('theme-replications.preview')
                 ->whereNumber('replicationId')
