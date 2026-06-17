@@ -1,0 +1,31 @@
+{
+    "id": "geoflow-template-13-linear-system",
+    "name": "GEOFlow 13 Linear System",
+    "version": "1.0.0",
+    "description": "A quiet product-system variant with slate surfaces, precise borders, and operational clarity. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "templates": [
+        "layout",
+        "home",
+        "category",
+        "article"
+    ],
+    "variant_number": 13,
+    "reference_site": "Linear",
+    "reference_url": "https://linear.app/",
+    "notes": [
+        "Generated as a high-level visual variant inspired by Linear. It does not copy logos, assets, content, or proprietary source code.",
+        "Keeps GEOFlow Blade variables, SEO meta fields, JSON-LD schema output, category navigation, article routes, and markdown HTML rendering intact.",
+        "Visual differences are concentrated in theme.css and documented in tokens.json for future maintenance."
+    ],
+    "base_theme_id": "netease-news-20260507",
+    "target_theme_id": "geoflow-template-13-linear-system",
+    "mode": "theme_variant",
+    "session_state": "published",
+    "created_at": "2026-06-17T03:57:50+00:00",
+    "preview_routes": [
+        "/",
+        "/category/{slug}",
+        "/article/{slug}",
+        "/archive"
+    ]
+}

@@ -1,0 +1,37 @@
+{
+    "id": "geoflow-template-16-newsletter-letter",
+    "base_theme_id": "netease-news-20260507",
+    "reference_urls": {
+        "home": "https://substack.com/",
+        "category": "https://substack.com/",
+        "article": "https://substack.com/"
+    },
+    "unchanged_contracts": [
+        "public routes",
+        "SEO title/description/keywords/canonical",
+        "JSON-LD schema output",
+        "GEOFlow category/article variables",
+        "rendered article HTML",
+        "optional article detail ad data"
+    ],
+    "visual_strategy": {
+        "reference_site": "Substack",
+        "summary": "A newsletter-style variant with authorial warmth, simple modules, and letter-like spacing.",
+        "css_focus": "Typography, color tokens, spacing density, card rhythm, navigation treatment, and article prose styling."
+    },
+    "edited_files": [
+        "layout.blade.php",
+        "home.blade.php",
+        "category.blade.php",
+        "article.blade.php",
+        "partials/header.blade.php",
+        "partials/sidebar.blade.php",
+        "partials/footer.blade.php",
+        "partials/article-card.blade.php",
+        "assets/theme.css",
+        "manifest.json",
+        "tokens.json",
+        "mapping.json",
+        "public/themes/geoflow-template-16-newsletter-letter/theme.css"
+    ]
+}

@@ -417,6 +417,12 @@ class AdminSiteThemeReplicationTest extends TestCase
         $this->assertStringNotContainsString('<script', $css);
         $this->assertStringNotContainsString('https://example.com', $css);
         $this->assertStringNotContainsString('vw', $css);
+        $headerBlade = Storage::disk('local')->get("geoflow-theme-replications/{$replication->id}/draft/1/views/partials/header.blade.php");
+        $homeNavPosition = strpos($headerBlade, 'data-nav-item="home"');
+        $archivePosition = strpos($headerBlade, "route('site.archive')");
+        $this->assertNotFalse($homeNavPosition);
+        $this->assertNotFalse($archivePosition);
+        $this->assertLessThan($archivePosition, $homeNavPosition);
         $homeBlade = Storage::disk('local')->get("geoflow-theme-replications/{$replication->id}/draft/1/views/home.blade.php");
         $articleBlade = Storage::disk('local')->get("geoflow-theme-replications/{$replication->id}/draft/1/views/article.blade.php");
         $this->assertStringNotContainsString('style=', $homeBlade.$articleBlade);

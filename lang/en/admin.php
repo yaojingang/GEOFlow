@@ -3047,6 +3047,8 @@ return [
             'section_title' => 'Target Site Settings',
             'section_desc' => 'These settings apply only to this distribution channel’s target site. They control the remote site title, SEO, copyright, and template selection without changing GEOFlow’s own site settings. Saving the channel automatically syncs them to the target site; if the remote site is unavailable, retry from “Sync Settings” on the detail page.',
             'theme_help' => 'Choose the frontend template used by the target site. The new target site package switches base styles by this template key; custom Agents can map it to their own theme or layout. Old site packages need to be downloaded and deployed again before template styling takes effect.',
+            'template_expand_more' => 'Show :count more templates',
+            'template_collapse' => 'Collapse templates',
         ],
         'target_update' => [
             'title' => 'Update Target Site',

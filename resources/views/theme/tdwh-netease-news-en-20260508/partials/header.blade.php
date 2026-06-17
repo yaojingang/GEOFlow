@@ -20,7 +20,7 @@
             </a>
 
             <nav class="ne-topnav" aria-label="Primary">
-                <a href="{{ route('site.home') }}" class="{{ $isHome ? 'is-active' : '' }}">{{ __('front.nav.home') }}</a>
+                <a href="{{ route('site.home') }}" data-nav-item="home" class="{{ $isHome ? 'is-active' : '' }}">{{ __('front.nav.home') }}</a>
                 @foreach($navCategories->take(5) as $categoryItem)
                     <a href="{{ route('site.category', $categoryItem->slug) }}" class="{{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
                 @endforeach
@@ -37,7 +37,7 @@
         </div>
         <div id="neMobileNav" class="hidden pb-4">
             <div class="ne-channel-rail !sticky !top-auto">
-                <a href="{{ route('site.home') }}" class="ne-channel {{ $isHome ? 'is-active' : '' }}">{{ __('front.nav.home') }}</a>
+                <a href="{{ route('site.home') }}" data-nav-item="home" class="ne-channel {{ $isHome ? 'is-active' : '' }}">{{ __('front.nav.home') }}</a>
                 @foreach($navCategories as $categoryItem)
                     <a href="{{ route('site.category', $categoryItem->slug) }}" class="ne-channel {{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
                 @endforeach

@@ -1,0 +1,31 @@
+{
+    "id": "geoflow-template-17-executive-review",
+    "name": "GEOFlow 17 Executive Review",
+    "version": "1.0.0",
+    "description": "An executive-review variant with mature red accents, structured summaries, and business-reading polish. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "templates": [
+        "layout",
+        "home",
+        "category",
+        "article"
+    ],
+    "variant_number": 17,
+    "reference_site": "Harvard Business Review",
+    "reference_url": "https://hbr.org/",
+    "notes": [
+        "Generated as a high-level visual variant inspired by Harvard Business Review. It does not copy logos, assets, content, or proprietary source code.",
+        "Keeps GEOFlow Blade variables, SEO meta fields, JSON-LD schema output, category navigation, article routes, and markdown HTML rendering intact.",
+        "Visual differences are concentrated in theme.css and documented in tokens.json for future maintenance."
+    ],
+    "base_theme_id": "netease-news-20260507",
+    "target_theme_id": "geoflow-template-17-executive-review",
+    "mode": "theme_variant",
+    "session_state": "published",
+    "created_at": "2026-06-17T03:57:50+00:00",
+    "preview_routes": [
+        "/",
+        "/category/{slug}",
+        "/article/{slug}",
+        "/archive"
+    ]
+}

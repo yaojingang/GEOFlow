@@ -1,0 +1,37 @@
+{
+    "id": "geoflow-template-20-research-journal",
+    "base_theme_id": "netease-news-20260507",
+    "reference_urls": {
+        "home": "https://www.nature.com/",
+        "category": "https://www.nature.com/",
+        "article": "https://www.nature.com/"
+    },
+    "unchanged_contracts": [
+        "public routes",
+        "SEO title/description/keywords/canonical",
+        "JSON-LD schema output",
+        "GEOFlow category/article variables",
+        "rendered article HTML",
+        "optional article detail ad data"
+    ],
+    "visual_strategy": {
+        "reference_site": "Nature",
+        "summary": "A research-journal variant with teal accents, rigorous article layout, and citation-friendly reading.",
+        "css_focus": "Typography, color tokens, spacing density, card rhythm, navigation treatment, and article prose styling."
+    },
+    "edited_files": [
+        "layout.blade.php",
+        "home.blade.php",
+        "category.blade.php",
+        "article.blade.php",
+        "partials/header.blade.php",
+        "partials/sidebar.blade.php",
+        "partials/footer.blade.php",
+        "partials/article-card.blade.php",
+        "assets/theme.css",
+        "manifest.json",
+        "tokens.json",
+        "mapping.json",
+        "public/themes/geoflow-template-20-research-journal/theme.css"
+    ]
+}

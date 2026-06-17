@@ -3,6 +3,18 @@
 @php
     $channelType = old('channel_type', 'geoflow_agent');
     $frontMode = old('front_mode', 'static');
+    $themes = $availableThemes ?? [];
+    $selectedTheme = old('template_key', '');
+    $visibleThemeLimit = 6;
+    $themeOptions = array_merge([[
+        'id' => '',
+        'name' => __('admin.site_settings.theme.default_name'),
+        'version' => '',
+        'description' => __('admin.site_settings.theme.default_desc'),
+    ]], $themes);
+    $collapsedThemeCount = collect($themeOptions)
+        ->filter(fn (array $themeOption, int $themeIndex): bool => $themeIndex >= $visibleThemeLimit && $selectedTheme !== $themeOption['id'])
+        ->count();
     $genericAuthType = old('generic_auth_type', 'bearer');
     $genericEndpointMethods = [
         'health' => ['GET', 'POST'],
@@ -221,12 +233,50 @@
                     </div>
 
                     <div data-channel-type-panel="geoflow_agent" @class(['space-y-6', 'hidden' => $channelType !== 'geoflow_agent'])>
-                        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-                            <div>
-                                <label for="template_key" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.field.template_key') }}</label>
-                                <input id="template_key" name="template_key" type="text" value="{{ old('template_key') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="default">
+                        <fieldset class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                            <legend class="text-sm font-medium text-gray-900">{{ __('admin.site_settings.theme.section_title') }}</legend>
+                            <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.remote_site.theme_help') }}</p>
+                                </div>
+                                @if ($collapsedThemeCount > 0)
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                                        data-distribution-theme-toggle
+                                        data-expand-label="{{ __('admin.distribution.remote_site.template_expand_more', ['count' => $collapsedThemeCount]) }}"
+                                        data-collapse-label="{{ __('admin.distribution.remote_site.template_collapse') }}"
+                                        aria-expanded="false"
+                                    >
+                                        {{ __('admin.distribution.remote_site.template_expand_more', ['count' => $collapsedThemeCount]) }}
+                                    </button>
+                                @endif
                             </div>
-                        </div>
+                            <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                                @foreach ($themeOptions as $themeIndex => $themeOption)
+                                    @php($isCollapsedTheme = $themeIndex >= $visibleThemeLimit && $selectedTheme !== $themeOption['id'])
+                                    <label
+                                        @class([
+                                            'flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-blue-200',
+                                            'hidden' => $isCollapsedTheme,
+                                        ])
+                                        data-distribution-theme-card
+                                        data-distribution-theme-collapsed="{{ $themeIndex >= $visibleThemeLimit ? 'true' : 'false' }}"
+                                    >
+                                        <input type="radio" name="template_key" value="{{ $themeOption['id'] }}" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($selectedTheme === $themeOption['id'])>
+                                        <span class="min-w-0">
+                                            <span class="flex flex-wrap items-center gap-2">
+                                                <span class="text-sm font-semibold text-gray-900">{{ $themeOption['name'] }}</span>
+                                                @if (($themeOption['version'] ?? '') !== '')
+                                                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">{{ __('admin.site_settings.theme.version_badge', ['version' => $themeOption['version']]) }}</span>
+                                                @endif
+                                            </span>
+                                            <span class="mt-1 block text-sm leading-6 text-gray-600">{{ ($themeOption['description'] ?? '') !== '' ? $themeOption['description'] : __('admin.site_settings.theme.no_description') }}</span>
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </fieldset>
 
                         <fieldset class="rounded-lg border border-gray-200 bg-gray-50 p-4">
                             <legend class="text-sm font-medium text-gray-900">{{ __('admin.distribution.field.front_mode') }}</legend>
@@ -287,6 +337,25 @@
                 toggleGenericAuthFields();
             }
         });
+        var themeToggle = document.querySelector('[data-distribution-theme-toggle]');
+        var themeExpanded = false;
+        function refreshDistributionThemeCards() {
+            document.querySelectorAll('[data-distribution-theme-card]').forEach(function (card) {
+                var isCollapsed = card.dataset.distributionThemeCollapsed === 'true';
+                var checkedInput = card.querySelector('input[type="radio"]:checked');
+                card.classList.toggle('hidden', isCollapsed && !themeExpanded && !checkedInput);
+            });
+            if (themeToggle) {
+                themeToggle.textContent = themeExpanded ? themeToggle.dataset.collapseLabel : themeToggle.dataset.expandLabel;
+                themeToggle.setAttribute('aria-expanded', themeExpanded ? 'true' : 'false');
+            }
+        }
+        if (themeToggle) {
+            themeToggle.addEventListener('click', function () {
+                themeExpanded = !themeExpanded;
+                refreshDistributionThemeCards();
+            });
+        }
         function toggleGenericAuthFields() {
             var select = document.getElementById('generic_auth_type');
             if (!select) {
@@ -301,5 +370,6 @@
             });
         }
         toggleGenericAuthFields();
+        refreshDistributionThemeCards();
     </script>
 @endsection
