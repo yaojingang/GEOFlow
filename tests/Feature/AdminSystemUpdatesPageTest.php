@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use App\Jobs\ProcessSystemUpdateApplyJob;
 use App\Services\Admin\SystemUpdateDeploymentDiagnosticsService;
+use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -59,7 +60,7 @@ class AdminSystemUpdatesPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertSee(route('admin.system-updates.index', []), false);
+            ->assertSee(AdminWeb::routePath('admin.system-updates.index'), false);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.system-updates.index'))
@@ -100,7 +101,7 @@ class AdminSystemUpdatesPageTest extends TestCase
         $response
             ->assertOk()
             ->assertSee(__('admin.system_updates.plan_status.ready'))
-            ->assertSee(route('admin.system-updates.plan', []), false)
+            ->assertSee(AdminWeb::routePath('admin.system-updates.plan'), false)
             ->assertSee('可以生成计划的更新摘要');
 
         $summary = app(\App\Services\Admin\SystemUpdateStateService::class)->summary();
@@ -163,7 +164,7 @@ class AdminSystemUpdatesPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertDontSee(route('admin.system-updates.index', []), false);
+            ->assertDontSee(AdminWeb::routePath('admin.system-updates.index'), false);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.system-updates.index'))
@@ -194,7 +195,7 @@ class AdminSystemUpdatesPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertDontSee(route('admin.system-updates.index', []), false);
+            ->assertDontSee(AdminWeb::routePath('admin.system-updates.index'), false);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.system-updates.index'))

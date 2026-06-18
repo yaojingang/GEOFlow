@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -122,11 +123,38 @@ class AdminDashboardQuickStartTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->get(route('admin.dashboard'));
 
-        $dismissPath = route('admin.welcome.dismiss', []);
+        $dismissPath = AdminWeb::routePath('admin.welcome.dismiss');
         $escapedDismissPath = str_replace('/', '\\/', $dismissPath);
         $html = $response->getContent();
 
         $response->assertOk();
+        $this->assertStringContainsString($escapedDismissPath, $html);
+        $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedDismissPath, $html);
+        $this->assertStringNotContainsString('https://configured.example'.$dismissPath, $html);
+    }
+
+    public function test_welcome_modal_dismiss_url_keeps_configured_subdirectory_without_absolute_host(): void
+    {
+        config(['app.url' => 'https://configured.example/geoflow']);
+
+        $admin = Admin::query()->create([
+            'username' => 'dashboard_subdirectory_admin',
+            'password' => 'secret-123',
+            'email' => 'dashboard-subdirectory@example.com',
+            'display_name' => 'Dashboard Subdirectory Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'));
+
+        $dismissPath = AdminWeb::routePath('admin.welcome.dismiss');
+        $escapedDismissPath = str_replace('/', '\\/', $dismissPath);
+        $html = $response->getContent();
+
+        $response->assertOk();
+        $this->assertStringStartsWith('/geoflow/', $dismissPath);
         $this->assertStringContainsString($escapedDismissPath, $html);
         $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedDismissPath, $html);
         $this->assertStringNotContainsString('https://configured.example'.$dismissPath, $html);
