@@ -452,7 +452,7 @@
                     </span>
                 </div>
             </div>
-            <div id="system-update-runs" data-status-url="{{ route('admin.system-updates.runs.status', [], false) }}" data-has-active-run="{{ $hasActiveUpdateRun ? '1' : '0' }}">
+            <div id="system-update-runs" data-status-url="{{ route('admin.system-updates.runs.status', []) }}" data-has-active-run="{{ $hasActiveUpdateRun ? '1' : '0' }}">
                 @include('admin.system-updates.partials.recent-runs', ['recentRuns' => $recentRuns])
             </div>
         </section>

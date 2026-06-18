@@ -6,9 +6,9 @@
         ? route('admin.articles.update', ['articleId' => (int) $articleId])
         : route('admin.articles.store');
     $articleImageUploadUrl = $isEdit
-        ? route('admin.articles.editor.images.upload', ['articleId' => (int) $articleId], false)
+        ? route('admin.articles.editor.images.upload', ['articleId' => (int) $articleId])
         : '';
-    $articleWechatHtmlUrl = route('admin.articles.editor.wechat-html', [], false);
+    $articleWechatHtmlUrl = route('admin.articles.editor.wechat-html', []);
     $vditorLocaleMap = [
         'zh_CN' => 'zh_CN',
         'en' => 'en_US',

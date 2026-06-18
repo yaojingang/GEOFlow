@@ -279,7 +279,7 @@
                 </div>
             @else
                 <div id="batch-actions" class="hidden px-6 py-3 bg-gray-50 border-b border-gray-200">
-                    <form method="POST" action="{{ route('admin.articles.batch.update-status', [], false) }}" id="batch-form">
+                    <form method="POST" action="{{ route('admin.articles.batch.update-status', []) }}" id="batch-form">
                         @csrf
                         <div id="batch-selected-ids"></div>
                         <div class="flex items-center space-x-4">
@@ -528,7 +528,7 @@
         const ARTICLES_I18N = @json($articlesI18n);
         const TRASH_I18N = @json($trashI18n);
         const IS_TRASH_VIEW = @json($isTrashView);
-        const EMPTY_TRASH_URL = @json(route('admin.articles.trash.empty', [], false));
+        const EMPTY_TRASH_URL = @json(route('admin.articles.trash.empty', []));
 
         function toggleBatchActions() {
             const batchActions = document.getElementById('batch-actions');
