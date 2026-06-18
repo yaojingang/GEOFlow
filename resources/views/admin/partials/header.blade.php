@@ -16,7 +16,7 @@
     $changelogLinks = is_array($updateLinks['changelog'] ?? null) ? $updateLinks['changelog'] : [];
     $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
-    $notificationUpdateCenterUrl = $isUpdateCenterEnabled && $isSuperAdmin ? route('admin.system-updates.index', [], false) : '';
+    $notificationUpdateCenterUrl = $isUpdateCenterEnabled && $isSuperAdmin ? route('admin.system-updates.index', []) : '';
     $notificationStatus = (string) ($updateState['status'] ?? 'disabled');
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],

@@ -401,8 +401,8 @@
 <script>
 const TASK_I18N = @json($taskI18n, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 const TASK_REALTIME = @json($taskRealtime, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-const TASK_HEALTH_URL = @js(route('admin.tasks.health', [], false));
-const TASK_BATCH_URL = @js(route('admin.tasks.batch', [], false));
+const TASK_HEALTH_URL = @js(route('admin.tasks.health', []));
+const TASK_BATCH_URL = @js(route('admin.tasks.batch', []));
 const TASK_INITIAL_OVERVIEW = @json($taskInitialOverview, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 const TASK_TEXT = {
     workerNone: @js(__('admin.tasks.worker.none')),

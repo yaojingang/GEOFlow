@@ -122,7 +122,7 @@ class AdminDashboardQuickStartTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->get(route('admin.dashboard'));
 
-        $dismissPath = route('admin.welcome.dismiss', [], false);
+        $dismissPath = route('admin.welcome.dismiss', []);
         $escapedDismissPath = str_replace('/', '\\/', $dismissPath);
         $html = $response->getContent();
 

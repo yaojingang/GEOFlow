@@ -336,9 +336,9 @@
             testNetworkError: @json(__('admin.ai_models.test_network_error')),
         };
         const SUPPORTS_MODEL_MAX_TOKENS = @json((bool) ($supportsModelMaxTokens ?? false));
-        const UPDATE_URL_TEMPLATE = @json(route('admin.ai-models.update', ['modelId' => '__MODEL_ID__'], false));
-        const DELETE_URL_TEMPLATE = @json(route('admin.ai-models.delete', ['modelId' => '__MODEL_ID__'], false));
-        const TEST_URL_TEMPLATE = @json(route('admin.ai-models.test', ['modelId' => '__MODEL_ID__'], false));
+        const UPDATE_URL_TEMPLATE = @json(route('admin.ai-models.update', ['modelId' => '__MODEL_ID__']));
+        const DELETE_URL_TEMPLATE = @json(route('admin.ai-models.delete', ['modelId' => '__MODEL_ID__']));
+        const TEST_URL_TEMPLATE = @json(route('admin.ai-models.test', ['modelId' => '__MODEL_ID__']));
 
         const PROVIDER_PRESETS = {
             minimax: {name: 'MiniMax M3', version: 'M3', model_id: 'MiniMax-M3', api_url: 'https://api.minimax.io', model_type: 'chat'},

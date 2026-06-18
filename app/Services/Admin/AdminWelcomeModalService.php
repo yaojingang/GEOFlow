@@ -33,7 +33,7 @@ class AdminWelcomeModalService
             'state' => [
                 'mode' => $welcomeState['mode'] ?? 'intro',
                 'shouldAutoOpen' => $shouldAutoOpen,
-                'dismissUrl' => route('admin.welcome.dismiss', [], false),
+                'dismissUrl' => route('admin.welcome.dismiss', []),
                 'csrfToken' => csrf_token(),
                 'links' => [
                     'x' => 'https://x.com/yaojingang',
