@@ -100,7 +100,7 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee('vendor/vditor/dist/index.min.js', false)
             ->assertSee('vendor/cropperjs/cropper.min.js', false)
             ->assertSee(route('admin.articles.editor.images.upload', ['articleId' => (int) $article->id], false), false)
-            ->assertSee(route('admin.articles.editor.wechat-html', [], false), false)
+            ->assertSee(route('admin.articles.editor.wechat-html', []), false)
             ->assertSee('id="content-editor"', false)
             ->assertSee('id="article-editor-copy-markdown"', false)
             ->assertSee('id="article-editor-copy-wechat-html"', false)
@@ -396,9 +396,9 @@ class AdminArticlesPageTest extends TestCase
             ->getContent();
 
         foreach ([
-            route('admin.articles.batch.update-status', [], false),
-            route('admin.articles.batch.update-review', [], false),
-            route('admin.articles.batch.delete', [], false),
+            route('admin.articles.batch.update-status', []),
+            route('admin.articles.batch.update-review', []),
+            route('admin.articles.batch.delete', []),
         ] as $path) {
             $escapedPath = str_replace('/', '\\/', $path);
 
@@ -407,7 +407,7 @@ class AdminArticlesPageTest extends TestCase
             $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedPath, $listHtml);
         }
         $this->assertStringContainsString(
-            'action="'.route('admin.articles.batch.update-status', [], false).'"',
+            'action="'.route('admin.articles.batch.update-status', []).'"',
             $listHtml
         );
 
@@ -419,9 +419,9 @@ class AdminArticlesPageTest extends TestCase
             ->getContent();
 
         foreach ([
-            route('admin.articles.batch.restore', [], false),
-            route('admin.articles.batch.force-delete', [], false),
-            route('admin.articles.trash.empty', [], false),
+            route('admin.articles.batch.restore', []),
+            route('admin.articles.batch.force-delete', []),
+            route('admin.articles.trash.empty', []),
         ] as $path) {
             $escapedPath = str_replace('/', '\\/', $path);
 
