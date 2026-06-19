@@ -60,14 +60,28 @@ if [ "${AUTO_WAIT_FOR_DB:-true}" = "true" ] && [ "${DB_CONNECTION:-}" = "pgsql" 
   done
 fi
 
-if [ "${AUTO_MIGRATE:-false}" = "true" ]; then
-  echo "[entrypoint-prod] php artisan migrate --force"
+# migrate:status 仅用于判断是否为「空库首次 seed」，不影响 migrate 是否执行。
+# AUTO_MIGRATE=true 时，每次 init 都会跑 migrate；Laravel 会按 migrations 表跳过已执行项，只应用新增迁移。
+SHOULD_SEED_ONCE=false
+if [ "${AUTO_SEED_ONCE:-true}" = "true" ]; then
+  if ! php artisan migrate:status --no-interaction >/dev/null 2>&1; then
+    SHOULD_SEED_ONCE=true
+  fi
+fi
+
+if [ "${AUTO_MIGRATE:-true}" = "true" ]; then
+  echo "[entrypoint-prod] php artisan migrate --force (runs every init; only pending migrations are applied)"
   php artisan migrate --force --no-interaction
 fi
 
 if [ "${AUTO_SEED:-false}" = "true" ]; then
   echo "[entrypoint-prod] php artisan db:seed --force"
   php artisan db:seed --force --no-interaction
+elif [ "${SHOULD_SEED_ONCE}" = "true" ]; then
+  echo "[entrypoint-prod] first-time database seed (DatabaseSeeder)"
+  php artisan db:seed --force --no-interaction
+else
+  echo "[entrypoint-prod] skip seed (database already initialized; migrate above still applied pending migrations)"
 fi
 
 if [ "${AUTO_OPTIMIZE:-true}" = "true" ]; then

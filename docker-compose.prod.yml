@@ -64,9 +64,10 @@ services:
       - ./.env.prod
     command: ["php", "artisan", "about"]
     environment:
-      AUTO_MIGRATE: "true"
-      AUTO_SEED: "true"
-      AUTO_OPTIMIZE: "false"
+      AUTO_MIGRATE: "${AUTO_MIGRATE:-true}"
+      AUTO_SEED: "${AUTO_SEED:-false}"
+      AUTO_SEED_ONCE: "${AUTO_SEED_ONCE:-true}"
+      AUTO_OPTIMIZE: "${AUTO_OPTIMIZE:-true}"
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
