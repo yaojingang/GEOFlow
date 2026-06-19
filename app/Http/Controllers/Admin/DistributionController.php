@@ -14,6 +14,7 @@ use App\Services\GeoFlow\DistributionPublisherManager;
 use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use App\Support\Site\ArticleTextAdPicker;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -153,6 +154,8 @@ class DistributionController extends Controller
             'channel' => $channel,
             'remoteSiteSettings' => $channel->resolvedSiteSettings(),
             'availableThemes' => $this->siteThemeCatalog->all(),
+            'articleDetailTextAds' => ArticleTextAdPicker::all(false),
+            'articleTextAdPolicy' => $channel->resolvedArticleTextAdPolicy(),
         ]);
     }
 
@@ -266,6 +269,8 @@ class DistributionController extends Controller
             'jobs' => $jobs,
             'logs' => $logs,
             'remoteSiteSettings' => $channel->resolvedSiteSettings(),
+            'articleTextAdPolicy' => $channel->resolvedArticleTextAdPolicy(),
+            'effectiveArticleTextAds' => $channel->effectiveArticleTextAds(),
         ]);
     }
 
@@ -785,6 +790,13 @@ class DistributionController extends Controller
             'seo_description_template' => ['nullable', 'string', 'max:255'],
             'featured_limit' => ['nullable', 'integer', 'min:1', 'max:100'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'article_text_ad_policy' => ['nullable', 'array'],
+            'article_text_ad_policy.content_top.mode' => ['nullable', 'string', 'in:inherit,disabled,selected'],
+            'article_text_ad_policy.content_top.ad_ids' => ['nullable', 'array'],
+            'article_text_ad_policy.content_top.ad_ids.*' => ['nullable', 'string', 'max:120'],
+            'article_text_ad_policy.content_bottom.mode' => ['nullable', 'string', 'in:inherit,disabled,selected'],
+            'article_text_ad_policy.content_bottom.ad_ids' => ['nullable', 'array'],
+            'article_text_ad_policy.content_bottom.ad_ids.*' => ['nullable', 'string', 'max:120'],
         ]);
 
         $payload['endpoint_url'] = $this->normalizeEndpointUrl((string) $payload['endpoint_url']);
@@ -906,11 +918,13 @@ class DistributionController extends Controller
     private function normalizeChannelConfig(array $payload, ?DistributionChannel $channel = null): array
     {
         $channelType = (string) ($payload['channel_type'] ?? 'geoflow_agent');
+        $articleTextAdPolicy = $this->normalizeArticleTextAdPolicy($payload['article_text_ad_policy'] ?? null, $channel);
 
         if ($channelType === 'generic_http_api') {
             $defaults = $channel?->resolvedGenericHttpConfig() ?? (new DistributionChannel)->resolvedGenericHttpConfig();
 
             return [
+                'article_text_ad_policy' => $articleTextAdPolicy,
                 'generic_auth_type' => (string) ($payload['generic_auth_type'] ?? $defaults['generic_auth_type']),
                 'generic_basic_username' => trim((string) ($payload['generic_basic_username'] ?? $defaults['generic_basic_username'])),
                 'generic_header_name' => trim((string) ($payload['generic_header_name'] ?? $defaults['generic_header_name'])),
@@ -938,7 +952,9 @@ class DistributionController extends Controller
         }
 
         if ($channelType !== 'wordpress_rest') {
-            return [];
+            return [
+                'article_text_ad_policy' => $articleTextAdPolicy,
+            ];
         }
 
         $defaults = $channel?->resolvedChannelConfig() ?? [
@@ -952,6 +968,7 @@ class DistributionController extends Controller
         ];
 
         return [
+            'article_text_ad_policy' => $articleTextAdPolicy,
             'wordpress_username' => trim((string) ($payload['wordpress_username'] ?? $defaults['wordpress_username'])),
             'wordpress_post_status' => (string) ($payload['wordpress_post_status'] ?? $defaults['wordpress_post_status']),
             'wordpress_category_strategy' => (string) ($payload['wordpress_category_strategy'] ?? $defaults['wordpress_category_strategy']),
@@ -960,6 +977,22 @@ class DistributionController extends Controller
             'wordpress_image_strategy' => (string) ($payload['wordpress_image_strategy'] ?? $defaults['wordpress_image_strategy']),
             'wordpress_content_format' => 'html',
         ];
+    }
+
+    /**
+     * @return array{
+     *   content_top:array{mode:string,ad_ids:list<string>},
+     *   content_bottom:array{mode:string,ad_ids:list<string>}
+     * }
+     */
+    private function normalizeArticleTextAdPolicy(mixed $policy, ?DistributionChannel $channel = null): array
+    {
+        if ($policy === null) {
+            return $channel?->resolvedArticleTextAdPolicy()
+                ?? DistributionChannel::normalizeArticleTextAdPolicy(null);
+        }
+
+        return DistributionChannel::normalizeArticleTextAdPolicy($policy);
     }
 
     /**

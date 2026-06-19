@@ -435,6 +435,110 @@
                         </button>
                     </div>
                 </form>
+
+                <form method="POST" action="{{ route('admin.site-settings.text-ads') }}" id="article-text-ad-form" class="mt-8 space-y-6 border-t border-gray-200 pt-8">
+                    @csrf
+                    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h4 class="text-base font-semibold text-gray-900">{{ __('admin.site_settings.ads.text_section_title') }}</h4>
+                            <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.ads.text_section_desc') }}</p>
+                        </div>
+                        <button type="button" id="add-article-text-ad" class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100">
+                            <i data-lucide="plus" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.site_settings.ads.text_add') }}
+                        </button>
+                    </div>
+
+                    <div id="article-text-ad-list" class="space-y-5">
+                        @foreach ($articleDetailTextAds as $index => $textAd)
+                            <div class="article-text-ad-item rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" data-text-ad-index="{{ $index }}">
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <div class="text-sm font-semibold text-gray-900">{{ $textAd['name'] !== '' ? $textAd['name'] : __('admin.site_settings.ads.text_default_name', ['index' => $index + 1]) }}</div>
+                                        <div class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.ads.text_card_desc') }}</div>
+                                    </div>
+                                    <button type="button" class="remove-article-text-ad inline-flex items-center rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                                        <i data-lucide="trash-2" class="mr-2 h-4 w-4"></i>
+                                        {{ __('admin.button.delete') }}
+                                    </button>
+                                </div>
+
+                                <input type="hidden" name="text_ads[{{ $index }}][id]" value="{{ $textAd['id'] }}">
+
+                                <div class="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-4">
+                                    <div class="lg:col-span-2">
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_name') }}</label>
+                                        <input type="text" name="text_ads[{{ $index }}][name]" value="{{ $textAd['name'] }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.site_settings.ads.text_placeholder_name') }}">
+                                    </div>
+                                    <div>
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_position') }}</label>
+                                        <select name="text_ads[{{ $index }}][placement]" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            <option value="content_top" @selected($textAd['placement'] === 'content_top')>{{ __('admin.site_settings.ads.text_position_top') }}</option>
+                                            <option value="content_bottom" @selected($textAd['placement'] === 'content_bottom')>{{ __('admin.site_settings.ads.text_position_bottom') }}</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_sort') }}</label>
+                                        <input type="number" min="0" max="10000" name="text_ads[{{ $index }}][sort_order]" value="{{ $textAd['sort_order'] }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    </div>
+                                </div>
+
+                                <div class="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-4">
+                                    <div class="lg:col-span-2">
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_text') }}</label>
+                                        <input type="text" name="text_ads[{{ $index }}][text]" value="{{ $textAd['text'] }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.site_settings.ads.text_placeholder_text') }}">
+                                    </div>
+                                    <div class="lg:col-span-2">
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_url') }}</label>
+                                        <input type="text" name="text_ads[{{ $index }}][url]" value="{{ $textAd['url'] }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.site_settings.ads.text_placeholder_url') }}">
+                                    </div>
+                                </div>
+
+                                <div class="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-4">
+                                    <div>
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_color') }}</label>
+                                        <div class="flex overflow-hidden rounded-md border border-gray-300 bg-white shadow-sm focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
+                                            <input type="color" value="{{ $textAd['text_color'] }}" class="h-10 w-12 border-0 bg-white p-1" aria-label="{{ __('admin.site_settings.ads.text_field_color') }}">
+                                            <input type="text" name="text_ads[{{ $index }}][text_color]" value="{{ $textAd['text_color'] }}" class="min-w-0 flex-1 border-0 px-3 py-2 focus:ring-0" placeholder="#2563eb">
+                                        </div>
+                                    </div>
+                                    <div class="lg:col-span-2">
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_tracking') }}</label>
+                                        <input type="text" name="text_ads[{{ $index }}][tracking_param]" value="{{ $textAd['tracking_param'] }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="utm_source=geoflow&utm_medium=article_text_ad">
+                                    </div>
+                                    <div class="flex items-end">
+                                        <div class="grid w-full grid-cols-3 gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                                            <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
+                                                <input type="checkbox" name="text_ads[{{ $index }}][open_new_tab]" value="1" @checked($textAd['open_new_tab']) class="rounded border-gray-300 text-blue-600">
+                                                {{ __('admin.site_settings.ads.text_open_new_tab') }}
+                                            </label>
+                                            <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
+                                                <input type="checkbox" name="text_ads[{{ $index }}][tracking_enabled]" value="1" @checked($textAd['tracking_enabled']) class="rounded border-gray-300 text-blue-600">
+                                                {{ __('admin.site_settings.ads.text_tracking_enabled') }}
+                                            </label>
+                                            <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
+                                                <input type="checkbox" name="text_ads[{{ $index }}][enabled]" value="1" @checked($textAd['enabled']) class="rounded border-gray-300 text-blue-600">
+                                                {{ __('admin.site_settings.ads.text_enabled') }}
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div id="article-text-ad-empty" class="{{ !empty($articleDetailTextAds) ? 'hidden ' : '' }}rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center">
+                        <div class="text-base font-medium text-gray-900">{{ __('admin.site_settings.ads.text_empty_title') }}</div>
+                        <div class="mt-2 text-sm text-gray-500">{{ __('admin.site_settings.ads.text_empty_desc') }}</div>
+                    </div>
+
+                    <div class="flex justify-end border-t border-gray-200 pt-2">
+                        <button type="submit" class="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-6 py-3 text-base font-medium text-white hover:bg-blue-700">
+                            <i data-lucide="save" class="mr-2 h-5 w-5"></i>
+                            {{ __('admin.site_settings.ads.text_save') }}
+                        </button>
+                    </div>
+                </form>
             </div>
         </details>
     </div>
@@ -554,6 +658,158 @@
 
             adList.querySelectorAll('.article-ad-item').forEach(bindRemove);
             refreshState();
+        });
+    </script>
+
+    <template id="article-text-ad-template">
+        <div class="article-text-ad-item rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" data-text-ad-index="__INDEX__">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.ads.text_new_slot') }}</div>
+                    <div class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.ads.text_card_desc') }}</div>
+                </div>
+                <button type="button" class="remove-article-text-ad inline-flex items-center rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                    <i data-lucide="trash-2" class="mr-2 h-4 w-4"></i>
+                    {{ __('admin.button.delete') }}
+                </button>
+            </div>
+
+            <input type="hidden" name="text_ads[__INDEX__][id]" value="">
+
+            <div class="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-4">
+                <div class="lg:col-span-2">
+                    <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_name') }}</label>
+                    <input type="text" name="text_ads[__INDEX__][name]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.site_settings.ads.text_placeholder_name') }}">
+                </div>
+                <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_position') }}</label>
+                    <select name="text_ads[__INDEX__][placement]" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="content_top">{{ __('admin.site_settings.ads.text_position_top') }}</option>
+                        <option value="content_bottom">{{ __('admin.site_settings.ads.text_position_bottom') }}</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_sort') }}</label>
+                    <input type="number" min="0" max="10000" name="text_ads[__INDEX__][sort_order]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <div class="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-4">
+                <div class="lg:col-span-2">
+                    <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_text') }}</label>
+                    <input type="text" name="text_ads[__INDEX__][text]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.site_settings.ads.text_placeholder_text') }}">
+                </div>
+                <div class="lg:col-span-2">
+                    <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_url') }}</label>
+                    <input type="text" name="text_ads[__INDEX__][url]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.site_settings.ads.text_placeholder_url') }}">
+                </div>
+            </div>
+
+            <div class="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-4">
+                <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_color') }}</label>
+                    <div class="flex overflow-hidden rounded-md border border-gray-300 bg-white shadow-sm focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
+                        <input type="color" value="#2563eb" class="h-10 w-12 border-0 bg-white p-1" aria-label="{{ __('admin.site_settings.ads.text_field_color') }}">
+                        <input type="text" name="text_ads[__INDEX__][text_color]" value="#2563eb" class="min-w-0 flex-1 border-0 px-3 py-2 focus:ring-0" placeholder="#2563eb">
+                    </div>
+                </div>
+                <div class="lg:col-span-2">
+                    <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_tracking') }}</label>
+                    <input type="text" name="text_ads[__INDEX__][tracking_param]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="utm_source=geoflow&utm_medium=article_text_ad">
+                </div>
+                <div class="flex items-end">
+                    <div class="grid w-full grid-cols-3 gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                        <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
+                            <input type="checkbox" name="text_ads[__INDEX__][open_new_tab]" value="1" checked class="rounded border-gray-300 text-blue-600">
+                            {{ __('admin.site_settings.ads.text_open_new_tab') }}
+                        </label>
+                        <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
+                            <input type="checkbox" name="text_ads[__INDEX__][tracking_enabled]" value="1" checked class="rounded border-gray-300 text-blue-600">
+                            {{ __('admin.site_settings.ads.text_tracking_enabled') }}
+                        </label>
+                        <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
+                            <input type="checkbox" name="text_ads[__INDEX__][enabled]" value="1" checked class="rounded border-gray-300 text-blue-600">
+                            {{ __('admin.site_settings.ads.text_enabled') }}
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const textAdList = document.getElementById('article-text-ad-list');
+            const textAdEmptyState = document.getElementById('article-text-ad-empty');
+            const textAdAddButton = document.getElementById('add-article-text-ad');
+            const textAdTemplate = document.getElementById('article-text-ad-template');
+
+            if (!textAdList || !textAdEmptyState || !textAdAddButton || !textAdTemplate) {
+                return;
+            }
+
+            let textAdIndex = textAdList.querySelectorAll('.article-text-ad-item').length;
+
+            function refreshTextAdState() {
+                textAdEmptyState.classList.toggle('hidden', textAdList.querySelectorAll('.article-text-ad-item').length > 0);
+            }
+
+            function bindTextAdRemove(scope) {
+                const removeButton = scope.querySelector('.remove-article-text-ad');
+                if (!removeButton) {
+                    return;
+                }
+
+                removeButton.addEventListener('click', function () {
+                    scope.remove();
+                    refreshTextAdState();
+                });
+            }
+
+            function bindColorPicker(scope) {
+                scope.querySelectorAll('input[type="color"]').forEach(function (picker) {
+                    const textInput = picker.parentElement ? picker.parentElement.querySelector('input[type="text"]') : null;
+                    if (!textInput) {
+                        return;
+                    }
+
+                    picker.addEventListener('input', function () {
+                        textInput.value = picker.value;
+                    });
+
+                    textInput.addEventListener('input', function () {
+                        if (/^#[0-9a-fA-F]{6}$/.test(textInput.value)) {
+                            picker.value = textInput.value;
+                        }
+                    });
+                });
+            }
+
+            textAdAddButton.addEventListener('click', function () {
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = textAdTemplate.innerHTML.replaceAll('__INDEX__', String(textAdIndex)).trim();
+                textAdIndex += 1;
+
+                const textAdItem = wrapper.firstElementChild;
+                if (!textAdItem) {
+                    return;
+                }
+
+                textAdList.appendChild(textAdItem);
+                bindTextAdRemove(textAdItem);
+                bindColorPicker(textAdItem);
+                refreshTextAdState();
+
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            });
+
+            textAdList.querySelectorAll('.article-text-ad-item').forEach(function (item) {
+                bindTextAdRemove(item);
+                bindColorPicker(item);
+            });
+            refreshTextAdState();
         });
     </script>
 @endpush

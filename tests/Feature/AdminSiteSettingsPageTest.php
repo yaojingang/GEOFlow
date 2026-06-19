@@ -307,4 +307,135 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertSame('/article/demo', $slides[0]['link_url']);
         $this->assertTrue($slides[0]['enabled']);
     }
+
+    public function test_article_detail_text_ads_can_be_saved_updated_and_deleted_without_touching_sticky_ads(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'article_detail_ads'],
+            ['setting_value' => '[{"title":"Sticky CTA","enabled":true}]']
+        );
+
+        $admin = Admin::query()->create([
+            'username' => 'site_text_ads_admin',
+            'password' => 'secret-123',
+            'email' => 'site-text-ads-admin@example.com',
+            'display_name' => 'Site Text Ads Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.text-ads'), [
+                'text_ads' => [
+                    [
+                        'id' => 'bottom-ad',
+                        'name' => 'Bottom Ad',
+                        'placement' => 'content_bottom',
+                        'text' => 'Bottom CTA',
+                        'url' => 'offers/bottom',
+                        'text_color' => '#0f0',
+                        'open_new_tab' => '1',
+                        'tracking_enabled' => '1',
+                        'tracking_param' => 'utm_source=geoflow',
+                        'enabled' => '1',
+                        'sort_order' => 20,
+                    ],
+                    [
+                        'id' => 'top-ad',
+                        'name' => 'Top Ad',
+                        'placement' => 'content_top',
+                        'text' => 'Top CTA',
+                        'url' => 'https://example.com/top',
+                        'text_color' => '#2563EB',
+                        'enabled' => '1',
+                        'sort_order' => 10,
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $saved = json_decode((string) SiteSetting::query()->where('setting_key', 'article_detail_text_ads')->value('setting_value'), true);
+        $this->assertIsArray($saved);
+        $this->assertCount(2, $saved);
+        $this->assertSame('top-ad', $saved[0]['id']);
+        $this->assertSame('#2563eb', $saved[0]['text_color']);
+        $this->assertSame('/offers/bottom', $saved[1]['url']);
+        $this->assertSame('#00ff00', $saved[1]['text_color']);
+        $this->assertTrue($saved[1]['open_new_tab']);
+        $this->assertTrue($saved[1]['tracking_enabled']);
+        $this->assertSame('[{"title":"Sticky CTA","enabled":true}]', (string) SiteSetting::query()->where('setting_key', 'article_detail_ads')->value('setting_value'));
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.text-ads'), [
+                'text_ads' => [
+                    [
+                        'id' => 'top-ad',
+                        'name' => 'Top Ad Updated',
+                        'placement' => 'content_top',
+                        'text' => 'Updated Top CTA',
+                        'url' => '/offers/top',
+                        'text_color' => '#123456',
+                        'enabled' => '1',
+                        'sort_order' => 5,
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $updated = json_decode((string) SiteSetting::query()->where('setting_key', 'article_detail_text_ads')->value('setting_value'), true);
+        $this->assertIsArray($updated);
+        $this->assertCount(1, $updated);
+        $this->assertSame('top-ad', $updated[0]['id']);
+        $this->assertSame('Updated Top CTA', $updated[0]['text']);
+    }
+
+    public function test_article_detail_text_ads_reject_invalid_url_and_color(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_text_ads_invalid_admin',
+            'password' => 'secret-123',
+            'email' => 'site-text-ads-invalid-admin@example.com',
+            'display_name' => 'Site Text Ads Invalid Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.site-settings.index'))
+            ->post(route('admin.site-settings.text-ads'), [
+                'text_ads' => [
+                    [
+                        'name' => 'Bad URL',
+                        'placement' => 'content_top',
+                        'text' => 'Bad URL',
+                        'url' => 'javascript:alert(1)',
+                        'text_color' => '#2563eb',
+                        'enabled' => '1',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertSessionHasErrors();
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.site-settings.index'))
+            ->post(route('admin.site-settings.text-ads'), [
+                'text_ads' => [
+                    [
+                        'name' => 'Bad Color',
+                        'placement' => 'content_bottom',
+                        'text' => 'Bad Color',
+                        'url' => '/offers',
+                        'text_color' => 'red',
+                        'enabled' => '1',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertSessionHasErrors();
+    }
 }

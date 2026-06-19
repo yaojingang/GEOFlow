@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\ArticleStickyAdPicker;
+use App\Support\Site\ArticleTextAdPicker;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
 use Illuminate\View\View;
@@ -42,7 +43,9 @@ class ArticleController extends Controller
             $excerpt = ArticleHtmlPresenter::stripLeadingTitleHeading($excerpt, (string) $article->title);
         }
 
-        $contentHtml = ArticleHtmlPresenter::markdownToHtml($body);
+        $contentHtml = ArticleTextAdPicker::injectIntoContentHtml(
+            ArticleHtmlPresenter::markdownToHtml($body)
+        );
 
         $tags = $this->keywordTags((string) $article->keywords);
 

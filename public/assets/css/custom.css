@@ -820,6 +820,49 @@ html body div.prose-lg blockquote,
     border-bottom-color: rgba(30, 64, 175, 0.42);
 }
 
+.article-text-ads {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin: 1.35rem 0;
+    padding: 0.85rem 0;
+    background: transparent;
+}
+
+.article-text-ads--content-top {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.article-text-ads--content-bottom {
+    margin-top: 1.65rem;
+    margin-bottom: 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.article-text-ad-link {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    color: var(--article-text-ad-color, #2563eb);
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.7;
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--article-text-ad-color, #2563eb) 24%, transparent);
+}
+
+.article-text-ad-link:hover {
+    color: var(--article-text-ad-color, #1d4ed8);
+    border-bottom-color: currentColor;
+}
+
+.article-text-ad-text {
+    overflow-wrap: anywhere;
+}
+
 .article-prose p + p {
     margin-top: -0.1rem;
 }

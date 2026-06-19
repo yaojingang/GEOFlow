@@ -67,6 +67,7 @@ class DistributionTargetSitePackageBuilder
             'seo_description_template' => $siteSettings['seo_description_template'],
             'featured_limit' => $siteSettings['featured_limit'],
             'per_page' => $siteSettings['per_page'],
+            'article_text_ads' => method_exists($channel, 'effectiveArticleTextAds') ? $channel->effectiveArticleTextAds() : [],
             'active_theme' => (string) ($channel->template_key ?? ''),
             'front_mode' => $frontMode,
             'static_publish_enabled' => $staticPublishEnabled,
@@ -93,6 +94,7 @@ class DistributionTargetSitePackageBuilder
             ."    'seo_description_template' => ".var_export($config['seo_description_template'], true).",\n"
             ."    'featured_limit' => ".$config['featured_limit'].",\n"
             ."    'per_page' => ".$config['per_page'].",\n"
+            ."    'article_text_ads' => ".var_export($config['article_text_ads'], true).",\n"
             ."    'active_theme' => ".var_export($config['active_theme'], true).",\n"
             ."    'front_mode' => ".var_export($config['front_mode'], true).",\n"
             ."    'static_publish_enabled' => ".($config['static_publish_enabled'] ? 'true' : 'false').",\n"
@@ -266,6 +268,7 @@ h2{font-size:22px;margin:0 0 10px}h2 a{color:#111827;text-decoration:none}h2 a:h
 .content img{display:block;max-width:100%;height:auto;border-radius:8px;margin:24px auto}.content blockquote{margin:1.4em 0;padding:14px 18px;border-left:4px solid #dbeafe;background:#f8fafc;color:#374151}
 .content pre{overflow:auto;border-radius:8px;background:#111827;color:#f9fafb;padding:16px;margin:1.4em 0}.content code{border-radius:4px;background:#f3f4f6;padding:2px 5px;font-size:.92em}.content pre code{background:transparent;padding:0;color:inherit}
 .content .article-table-wrap{overflow-x:auto;margin:1.4em 0;border:1px solid #e5e7eb;border-radius:8px}.content .article-table{width:100%;border-collapse:collapse;background:#fff}.content .article-table th,.content .article-table td{border-bottom:1px solid #e5e7eb;padding:10px 12px;text-align:left;vertical-align:top}.content .article-table th{background:#f9fafb;color:#111827;font-weight:700}
+.article-text-ads{display:grid;gap:8px;margin:18px 0;padding:12px 0;border-top:1px solid rgba(148,163,184,.26);border-bottom:1px solid rgba(148,163,184,.26);background:transparent;font:inherit}.article-text-ads--content-top{margin-top:0;margin-bottom:22px}.article-text-ads--content-bottom{margin-top:26px;margin-bottom:0}.article-text-ad-link{display:inline-flex;align-items:center;width:max-content;max-width:100%;color:var(--article-text-ad-color,#2563eb);font:inherit;font-weight:700;line-height:1.65;text-decoration:none}.article-text-ad-link:hover{text-decoration:underline;text-underline-offset:4px}.article-text-ad-text{overflow-wrap:anywhere}
 .tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px;padding-top:22px;border-top:1px solid #e5e7eb}.tags span{display:inline-flex;border:1px solid #e5e7eb;background:#f9fafb;color:#4b5563;border-radius:999px;padding:5px 10px;font-size:13px}
 .empty{padding:52px;text-align:center;color:#6b7280}.back{display:inline-block;margin:28px 0 18px;color:#4b5563;text-decoration:none}
 footer{border-top:1px solid #e5e7eb;color:#6b7280;font-size:13px;padding:24px 0 36px}
@@ -378,6 +381,102 @@ function imageAssetsDir(array $config): string
     return staticRoot($config).'/assets/images';
 }
 
+function normalizeArticleTextAdUrl(string $url): string
+{
+    $normalized = trim($url);
+    if ($normalized === '' || str_starts_with($normalized, '//')) {
+        return '';
+    }
+
+    if (str_starts_with($normalized, '/')) {
+        return $normalized;
+    }
+
+    if (preg_match('#^https?://#i', $normalized) === 1) {
+        return $normalized;
+    }
+
+    if (preg_match('#^[a-z][a-z0-9+.-]*:#i', $normalized) === 1) {
+        return '';
+    }
+
+    return '/'.ltrim($normalized, '/');
+}
+
+function normalizeArticleTextAdColor(string $color): string
+{
+    $color = trim($color);
+    if (preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $color) !== 1) {
+        return '#2563eb';
+    }
+
+    $hex = ltrim(strtolower($color), '#');
+    if (strlen($hex) === 3) {
+        $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+    }
+
+    return '#'.$hex;
+}
+
+function normalizeArticleTextAdTrackingParam(string $trackingParam): string
+{
+    $trackingParam = ltrim(trim($trackingParam), "? \t\n\r\0\x0B");
+    if (
+        $trackingParam === ''
+        || strlen($trackingParam) > 250
+        || str_contains($trackingParam, '://')
+        || str_starts_with($trackingParam, '/')
+        || preg_match('/^[A-Za-z0-9._~%=&+;,:@-]+$/', $trackingParam) !== 1
+    ) {
+        return '';
+    }
+
+    return $trackingParam;
+}
+
+function normalizeArticleTextAds(mixed $ads): array
+{
+    if (! is_array($ads)) {
+        return [];
+    }
+
+    $normalized = [];
+    foreach ($ads as $ad) {
+        if (! is_array($ad)) {
+            continue;
+        }
+
+        $placement = (string) ($ad['placement'] ?? 'content_top');
+        if (! in_array($placement, ['content_top', 'content_bottom'], true)) {
+            continue;
+        }
+
+        $text = trim((string) ($ad['text'] ?? ''));
+        $url = normalizeArticleTextAdUrl((string) ($ad['url'] ?? ''));
+        if ($text === '' || $url === '') {
+            continue;
+        }
+
+        $normalized[] = [
+            'id' => trim((string) ($ad['id'] ?? '')),
+            'name' => trim((string) ($ad['name'] ?? '')),
+            'placement' => $placement,
+            'text' => $text,
+            'url' => $url,
+            'text_color' => normalizeArticleTextAdColor((string) ($ad['text_color'] ?? '#2563eb')),
+            'open_new_tab' => ! empty($ad['open_new_tab']),
+            'tracking_enabled' => ! empty($ad['tracking_enabled']),
+            'tracking_param' => normalizeArticleTextAdTrackingParam((string) ($ad['tracking_param'] ?? '')),
+            'enabled' => ! empty($ad['enabled']),
+            'sort_order' => (int) ($ad['sort_order'] ?? 0),
+        ];
+    }
+
+    usort($normalized, static fn (array $a, array $b): int => ((int) $a['sort_order']) <=> ((int) $b['sort_order']));
+
+    return $normalized;
+}
+
 function normalizeSiteSettings(array $settings, array $config = []): array
 {
     $siteName = trim((string) ($settings['site_name'] ?? $config['site_name'] ?? 'GEOFlow Target Site'));
@@ -397,6 +496,7 @@ function normalizeSiteSettings(array $settings, array $config = []): array
         'seo_description_template' => trim((string) ($settings['seo_description_template'] ?? $config['seo_description_template'] ?? '{description}')),
         'featured_limit' => min(100, max(1, (int) ($settings['featured_limit'] ?? $config['featured_limit'] ?? 6))),
         'per_page' => min(200, max(1, (int) ($settings['per_page'] ?? $config['per_page'] ?? 12))),
+        'article_text_ads' => normalizeArticleTextAds($settings['article_text_ads'] ?? $config['article_text_ads'] ?? []),
         'active_theme' => trim((string) ($settings['active_theme'] ?? $config['active_theme'] ?? '')),
         'front_mode' => $frontMode,
     ];
@@ -701,6 +801,59 @@ function articleContentHtml(array $article): string
     }
 
     return markdownToHtml((string) ($article['content'] ?? ''), (string) ($article['title'] ?? ''));
+}
+
+function articleTextAdUrlWithTracking(string $url, bool $trackingEnabled, string $trackingParam): string
+{
+    if (! $trackingEnabled || $trackingParam === '') {
+        return $url;
+    }
+
+    $fragment = '';
+    $baseUrl = $url;
+    $hashPosition = strpos($url, '#');
+    if ($hashPosition !== false) {
+        $fragment = substr($url, $hashPosition);
+        $baseUrl = substr($url, 0, $hashPosition);
+    }
+
+    $separator = str_contains($baseUrl, '?')
+        ? (str_ends_with($baseUrl, '?') || str_ends_with($baseUrl, '&') ? '' : '&')
+        : '?';
+
+    return $baseUrl.$separator.$trackingParam.$fragment;
+}
+
+function renderArticleTextAds(array $settings, string $placement, int $limit = 3): string
+{
+    if (! in_array($placement, ['content_top', 'content_bottom'], true)) {
+        return '';
+    }
+
+    $ads = normalizeArticleTextAds($settings['article_text_ads'] ?? []);
+    $matched = array_values(array_filter(
+        $ads,
+        static fn (array $ad): bool => ! empty($ad['enabled']) && ($ad['placement'] ?? '') === $placement
+    ));
+
+    if ($matched === []) {
+        return '';
+    }
+
+    $placementClass = str_replace('_', '-', $placement);
+    $html = '<div class="article-text-ads article-text-ads--'.h($placementClass).'" data-placement="'.h($placement).'">';
+    foreach (array_slice($matched, 0, max(1, $limit)) as $ad) {
+        $url = articleTextAdUrlWithTracking((string) $ad['url'], (bool) $ad['tracking_enabled'], (string) $ad['tracking_param']);
+        $target = ! empty($ad['open_new_tab']) ? ' target="_blank"' : '';
+        $style = '--article-text-ad-color: '.h((string) $ad['text_color']).';';
+
+        $html .= '<a class="article-text-ad-link" href="'.h($url).'" rel="noopener sponsored nofollow"'.$target.' style="'.$style.'">';
+        $html .= '<span class="article-text-ad-text">'.h((string) $ad['text']).'</span>';
+        $html .= '</a>';
+    }
+    $html .= '</div>';
+
+    return $html;
 }
 
 function keywordTags(string $keywords): array
@@ -1604,6 +1757,7 @@ function renderArticlePage(array $config, string $slug): void
     $title = (string) ($article['title'] ?? '未命名文章');
     $category = is_array($article['category'] ?? null) ? (string) ($article['category']['name'] ?? '默认分类') : '默认分类';
     $publishedAt = substr((string) ($article['published_at'] ?? $article['updated_at'] ?? ''), 0, 10);
+    $settings = siteSettings($config);
     pageHeader($config, $title);
     echo jsonLdScript([
         "@context"=>"https://schema.org",
@@ -1619,7 +1773,7 @@ function renderArticlePage(array $config, string $slug): void
         ],
         "publisher"=>[
             "@type"=>"Organization",
-            "name"=>(string) siteSettings($config)['site_name'],
+            "name"=>(string) $settings['site_name'],
         ],
     ]);
     echo jsonLdScript([
@@ -1630,7 +1784,7 @@ function renderArticlePage(array $config, string $slug): void
             ["@type"=>"ListItem", "position"=>2, "name"=>$title, "item"=>frontSiteUrl($config, '/article/'.rawurlencode($slug))],
         ],
     ]);
-    $themeClass = themeClass(siteSettings($config));
+    $themeClass = themeClass($settings);
     $isFashion = $themeClass === 'target-theme-fashion';
     $isApparel = $themeClass === 'target-theme-apparel';
     echo $isApparel ? '<div class="asi-shell asi-article-layout"><main class="asi-article-column"><nav class="asi-breadcrumb"><a href="'.h(frontSitePath($config, '/')).'">Latest</a><span>/</span><span>'.h($category).'</span></nav>' : '';
@@ -1658,7 +1812,7 @@ function renderArticlePage(array $config, string $slug): void
         echo '</header>';
         renderApparelVisual($config, $article, 'asi-article-visual');
     }
-    echo '<div class="'.($isApparel ? 'asi-prose content' : 'content').'">'.articleContentHtml($article).'</div>';
+    echo '<div class="'.($isApparel ? 'asi-prose content' : 'content').'">'.renderArticleTextAds($settings, 'content_top').articleContentHtml($article).renderArticleTextAds($settings, 'content_bottom').'</div>';
     $tags = keywordTags((string) ($article['keywords'] ?? ''));
     if ($tags !== []) {
         echo '<div class="tags">';
@@ -1670,7 +1824,7 @@ function renderArticlePage(array $config, string $slug): void
     echo '</article>';
     if ($isApparel) {
         echo '</main>';
-        renderApparelSidebar($config, siteSettings($config), loadArticles($config));
+        renderApparelSidebar($config, $settings, loadArticles($config));
         echo '</div>';
     }
     pageFooter($config);

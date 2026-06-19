@@ -117,6 +117,75 @@ MD);
             ->assertSee('Read more');
     }
 
+    public function test_article_page_renders_content_text_ads_around_article_body(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'article_detail_text_ads'],
+            ['setting_value' => json_encode([
+                [
+                    'id' => 'top-text-ad',
+                    'name' => 'Top Text Ad',
+                    'placement' => 'content_top',
+                    'text' => 'Top <Deal>',
+                    'url' => '/promo?#intro',
+                    'text_color' => '#ff6600',
+                    'open_new_tab' => false,
+                    'tracking_enabled' => true,
+                    'tracking_param' => 'utm_source=geoflow',
+                    'enabled' => true,
+                    'sort_order' => 10,
+                ],
+                [
+                    'id' => 'bottom-text-ad',
+                    'name' => 'Bottom Text Ad',
+                    'placement' => 'content_bottom',
+                    'text' => 'Bottom CTA',
+                    'url' => 'https://example.com/bottom',
+                    'text_color' => '#2563eb',
+                    'open_new_tab' => true,
+                    'tracking_enabled' => false,
+                    'tracking_param' => '',
+                    'enabled' => true,
+                    'sort_order' => 20,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => '科技资讯',
+            'slug' => 'tech',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => '正文广告渲染测试',
+            'slug' => 'article-text-ad-render-test',
+            'excerpt' => '',
+            'content' => '## 正文标题',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_ai_generated' => 1,
+            'published_at' => now(),
+        ]);
+
+        $this->get(route('site.article', $article->slug))
+            ->assertOk()
+            ->assertSee('article-text-ads--content-top', false)
+            ->assertSee('article-text-ads--content-bottom', false)
+            ->assertSee('Top &lt;Deal&gt;', false)
+            ->assertDontSee('Top <Deal>', false)
+            ->assertSee('href="/promo?utm_source=geoflow#intro"', false)
+            ->assertDontSee('href="/promo?&utm_source=geoflow#intro"', false)
+            ->assertSee('href="https://example.com/bottom"', false)
+            ->assertSee('rel="noopener sponsored nofollow"', false)
+            ->assertSee('target="_blank"', false)
+            ->assertSee('--article-text-ad-color: #ff6600;', false);
+    }
+
     public function test_homepage_uses_explicit_hot_and_featured_articles(): void
     {
         $category = Category::query()->create([

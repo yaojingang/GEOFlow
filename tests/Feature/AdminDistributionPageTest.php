@@ -16,6 +16,7 @@ use App\Models\DistributionLog;
 use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\Prompt;
+use App\Models\SiteSetting;
 use App\Models\Task;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\DistributionOrchestrator;
@@ -23,6 +24,7 @@ use App\Services\GeoFlow\DistributionPayloadBuilder;
 use App\Services\GeoFlow\DistributionRetryPolicy;
 use App\Services\GeoFlow\DistributionSigningService;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -775,6 +777,95 @@ class AdminDistributionPageTest extends TestCase
         ], $channel->site_settings);
     }
 
+    public function test_distribution_channel_article_text_ad_policy_is_saved_and_reflected_in_payload(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'article_detail_text_ads'],
+            ['setting_value' => json_encode([
+                [
+                    'id' => 'sync-top',
+                    'name' => 'Top Sync',
+                    'placement' => 'content_top',
+                    'text' => 'Top Sync CTA',
+                    'url' => '/top-sync',
+                    'text_color' => '#2563eb',
+                    'open_new_tab' => false,
+                    'tracking_enabled' => false,
+                    'tracking_param' => '',
+                    'enabled' => true,
+                    'sort_order' => 10,
+                ],
+                [
+                    'id' => 'sync-bottom',
+                    'name' => 'Bottom Sync',
+                    'placement' => 'content_bottom',
+                    'text' => 'Bottom Sync CTA',
+                    'url' => '/bottom-sync',
+                    'text_color' => '#16a34a',
+                    'open_new_tab' => true,
+                    'tracking_enabled' => true,
+                    'tracking_param' => 'utm_source=geoflow',
+                    'enabled' => true,
+                    'sort_order' => 20,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $admin = $this->admin();
+        $channel = DistributionChannel::query()->create([
+            'name' => '文本广告渠道',
+            'domain' => 'ads.example.com',
+            'endpoint_url' => 'https://ads.example.com',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.distribution.update', ['channelId' => (int) $channel->id]), [
+                'name' => '文本广告渠道',
+                'domain' => 'ads.example.com',
+                'endpoint_url' => 'https://ads.example.com',
+                'front_mode' => 'static',
+                'template_key' => 'default',
+                'status' => 'active',
+                'description' => '',
+                'site_name' => '广告目标站',
+                'site_subtitle' => '',
+                'site_description' => '广告目标站描述',
+                'site_keywords' => '',
+                'copyright_info' => '© 2026 广告目标站',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'article_text_ad_policy' => [
+                    'content_top' => [
+                        'mode' => 'selected',
+                        'ad_ids' => ['sync-top'],
+                    ],
+                    'content_bottom' => [
+                        'mode' => 'disabled',
+                        'ad_ids' => ['sync-bottom'],
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]));
+
+        $channel->refresh();
+        $policy = $channel->resolvedArticleTextAdPolicy();
+        $this->assertSame('selected', $policy['content_top']['mode']);
+        $this->assertSame(['sync-top'], $policy['content_top']['ad_ids']);
+        $this->assertSame('disabled', $policy['content_bottom']['mode']);
+
+        $payload = $channel->targetSiteSettingsPayload();
+        $this->assertArrayHasKey('article_text_ads', $payload);
+        $this->assertCount(1, $payload['article_text_ads']);
+        $this->assertSame('sync-top', $payload['article_text_ads'][0]['id']);
+        $this->assertSame('Top Sync CTA', $payload['article_text_ads'][0]['text']);
+    }
+
     public function test_admin_update_distribution_channel_syncs_remote_site_settings_when_secret_exists(): void
     {
         Http::fake([
@@ -1204,6 +1295,26 @@ class AdminDistributionPageTest extends TestCase
 
     public function test_super_admin_can_download_channel_target_site_package_with_current_password(): void
     {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'article_detail_text_ads'],
+            ['setting_value' => json_encode([
+                [
+                    'id' => 'package-text-ad',
+                    'name' => 'Package Text Ad',
+                    'placement' => 'content_top',
+                    'text' => 'Package CTA',
+                    'url' => '/package-offer',
+                    'text_color' => '#2563eb',
+                    'open_new_tab' => false,
+                    'tracking_enabled' => false,
+                    'tracking_param' => '',
+                    'enabled' => true,
+                    'sort_order' => 10,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
         $channel = DistributionChannel::query()->create([
             'name' => '官网主站',
             'domain' => 'example.com',
@@ -1259,6 +1370,8 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString("'copyright_info' => '© 2026 远程门户'", $config);
         $this->assertStringContainsString("'active_theme' => 'toutiao-news-20260426'", $config);
         $this->assertStringContainsString("'per_page' => 14", $config);
+        $this->assertStringContainsString("'article_text_ads' =>", $config);
+        $this->assertStringContainsString("'Package CTA'", $config);
 
         $rootIndex = (string) $zip->getFromName('index.php');
         $this->assertStringContainsString("require __DIR__.'/public/index.php';", $rootIndex);
@@ -1336,8 +1449,14 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('article-table-wrap', $frontController);
         $this->assertStringContainsString('class="tags"', $frontController);
         $this->assertStringContainsString('.content h2', $siteCss);
+        $this->assertStringContainsString('.article-text-ads', $siteCss);
         $this->assertStringContainsString('function activeTheme', $frontController);
         $this->assertStringContainsString('function themeClass', $frontController);
+        $this->assertStringContainsString('function normalizeArticleTextAds', $frontController);
+        $this->assertStringContainsString('function renderArticleTextAds', $frontController);
+        $this->assertStringContainsString("str_ends_with(\$baseUrl, '?')", $frontController);
+        $this->assertStringContainsString("renderArticleTextAds(\$settings, 'content_top')", $frontController);
+        $this->assertStringContainsString("renderArticleTextAds(\$settings, 'content_bottom')", $frontController);
         $this->assertStringNotContainsString('function themeStyles', $frontController);
         $this->assertStringContainsString('target-theme-toutiao', $frontController);
         $this->assertStringContainsString('activeTheme($settings)', $frontController);
