@@ -186,6 +186,71 @@ MD);
             ->assertSee('--article-text-ad-color: #ff6600;', false);
     }
 
+    public function test_article_page_renders_module_based_content_text_ads(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'article_detail_text_ads'],
+            ['setting_value' => json_encode([
+                [
+                    'id' => 'module-top',
+                    'name' => 'Top Module',
+                    'placement' => 'content_top',
+                    'enabled' => true,
+                    'sort_order' => 10,
+                    'links' => [
+                        [
+                            'id' => 'module-top-link-1',
+                            'text' => 'Top Module CTA',
+                            'url' => '/module-top',
+                            'text_color' => '#2563eb',
+                            'open_new_tab' => false,
+                            'tracking_enabled' => true,
+                            'tracking_param' => 'utm_campaign=module',
+                            'enabled' => true,
+                            'sort_order' => 10,
+                        ],
+                        [
+                            'id' => 'module-top-link-2',
+                            'text' => 'Disabled Module CTA',
+                            'url' => '/disabled',
+                            'enabled' => false,
+                            'sort_order' => 20,
+                        ],
+                    ],
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => '科技资讯',
+            'slug' => 'module-tech',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => '模块广告渲染测试',
+            'slug' => 'article-text-ad-module-render-test',
+            'excerpt' => '',
+            'content' => '## 正文标题',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_ai_generated' => 1,
+            'published_at' => now(),
+        ]);
+
+        $this->get(route('site.article', $article->slug))
+            ->assertOk()
+            ->assertSee('article-text-ad-module', false)
+            ->assertSee('data-module-id="module-top"', false)
+            ->assertSee('Top Module CTA')
+            ->assertSee('href="/module-top?utm_campaign=module"', false)
+            ->assertDontSee('Disabled Module CTA');
+    }
+
     public function test_homepage_uses_explicit_hot_and_featured_articles(): void
     {
         $category = Category::query()->create([

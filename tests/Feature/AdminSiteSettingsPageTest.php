@@ -328,29 +328,43 @@ class AdminSiteSettingsPageTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->post(route('admin.site-settings.text-ads'), [
-                'text_ads' => [
+                'text_ad_modules' => [
                     [
                         'id' => 'bottom-ad',
                         'name' => 'Bottom Ad',
                         'placement' => 'content_bottom',
-                        'text' => 'Bottom CTA',
-                        'url' => 'offers/bottom',
-                        'text_color' => '#0f0',
-                        'open_new_tab' => '1',
-                        'tracking_enabled' => '1',
-                        'tracking_param' => 'utm_source=geoflow',
                         'enabled' => '1',
                         'sort_order' => 20,
+                        'links' => [
+                            [
+                                'id' => 'bottom-link',
+                                'text' => 'Bottom CTA',
+                                'url' => 'offers/bottom',
+                                'text_color' => '#0f0',
+                                'open_new_tab' => '1',
+                                'tracking_enabled' => '1',
+                                'tracking_param' => 'utm_source=geoflow',
+                                'enabled' => '1',
+                                'sort_order' => 10,
+                            ],
+                        ],
                     ],
                     [
                         'id' => 'top-ad',
                         'name' => 'Top Ad',
                         'placement' => 'content_top',
-                        'text' => 'Top CTA',
-                        'url' => 'https://example.com/top',
-                        'text_color' => '#2563EB',
                         'enabled' => '1',
                         'sort_order' => 10,
+                        'links' => [
+                            [
+                                'id' => 'top-link',
+                                'text' => 'Top CTA',
+                                'url' => 'https://example.com/top',
+                                'text_color' => '#2563EB',
+                                'enabled' => '1',
+                                'sort_order' => 10,
+                            ],
+                        ],
                     ],
                 ],
             ])
@@ -360,25 +374,33 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertIsArray($saved);
         $this->assertCount(2, $saved);
         $this->assertSame('top-ad', $saved[0]['id']);
-        $this->assertSame('#2563eb', $saved[0]['text_color']);
-        $this->assertSame('/offers/bottom', $saved[1]['url']);
-        $this->assertSame('#00ff00', $saved[1]['text_color']);
-        $this->assertTrue($saved[1]['open_new_tab']);
-        $this->assertTrue($saved[1]['tracking_enabled']);
+        $this->assertSame('top-link', $saved[0]['links'][0]['id']);
+        $this->assertSame('#2563eb', $saved[0]['links'][0]['text_color']);
+        $this->assertSame('/offers/bottom', $saved[1]['links'][0]['url']);
+        $this->assertSame('#00ff00', $saved[1]['links'][0]['text_color']);
+        $this->assertTrue($saved[1]['links'][0]['open_new_tab']);
+        $this->assertTrue($saved[1]['links'][0]['tracking_enabled']);
         $this->assertSame('[{"title":"Sticky CTA","enabled":true}]', (string) SiteSetting::query()->where('setting_key', 'article_detail_ads')->value('setting_value'));
 
         $this->actingAs($admin, 'admin')
             ->post(route('admin.site-settings.text-ads'), [
-                'text_ads' => [
+                'text_ad_modules' => [
                     [
                         'id' => 'top-ad',
                         'name' => 'Top Ad Updated',
                         'placement' => 'content_top',
-                        'text' => 'Updated Top CTA',
-                        'url' => '/offers/top',
-                        'text_color' => '#123456',
                         'enabled' => '1',
                         'sort_order' => 5,
+                        'links' => [
+                            [
+                                'id' => 'top-link',
+                                'text' => 'Updated Top CTA',
+                                'url' => '/offers/top',
+                                'text_color' => '#123456',
+                                'enabled' => '1',
+                                'sort_order' => 10,
+                            ],
+                        ],
                     ],
                 ],
             ])
@@ -388,7 +410,7 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertIsArray($updated);
         $this->assertCount(1, $updated);
         $this->assertSame('top-ad', $updated[0]['id']);
-        $this->assertSame('Updated Top CTA', $updated[0]['text']);
+        $this->assertSame('Updated Top CTA', $updated[0]['links'][0]['text']);
     }
 
     public function test_article_detail_text_ads_reject_invalid_url_and_color(): void
@@ -432,6 +454,46 @@ class AdminSiteSettingsPageTest extends TestCase
                         'url' => '/offers',
                         'text_color' => 'red',
                         'enabled' => '1',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertSessionHasErrors();
+    }
+
+    public function test_article_detail_text_ads_reject_more_than_ten_links_per_module(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_text_ads_max_admin',
+            'password' => 'secret-123',
+            'email' => 'site-text-ads-max-admin@example.com',
+            'display_name' => 'Site Text Ads Max Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $links = [];
+        for ($i = 1; $i <= 11; $i++) {
+            $links[] = [
+                'text' => 'CTA '.$i,
+                'url' => '/offers/'.$i,
+                'text_color' => '#2563eb',
+                'enabled' => '1',
+                'sort_order' => $i * 10,
+            ];
+        }
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.site-settings.index'))
+            ->post(route('admin.site-settings.text-ads'), [
+                'text_ad_modules' => [
+                    [
+                        'name' => 'Too Many Links',
+                        'placement' => 'content_top',
+                        'enabled' => '1',
+                        'links' => $links,
                     ],
                 ],
             ])

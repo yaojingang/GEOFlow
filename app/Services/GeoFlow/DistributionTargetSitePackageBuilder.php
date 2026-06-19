@@ -268,7 +268,7 @@ h2{font-size:22px;margin:0 0 10px}h2 a{color:#111827;text-decoration:none}h2 a:h
 .content img{display:block;max-width:100%;height:auto;border-radius:8px;margin:24px auto}.content blockquote{margin:1.4em 0;padding:14px 18px;border-left:4px solid #dbeafe;background:#f8fafc;color:#374151}
 .content pre{overflow:auto;border-radius:8px;background:#111827;color:#f9fafb;padding:16px;margin:1.4em 0}.content code{border-radius:4px;background:#f3f4f6;padding:2px 5px;font-size:.92em}.content pre code{background:transparent;padding:0;color:inherit}
 .content .article-table-wrap{overflow-x:auto;margin:1.4em 0;border:1px solid #e5e7eb;border-radius:8px}.content .article-table{width:100%;border-collapse:collapse;background:#fff}.content .article-table th,.content .article-table td{border-bottom:1px solid #e5e7eb;padding:10px 12px;text-align:left;vertical-align:top}.content .article-table th{background:#f9fafb;color:#111827;font-weight:700}
-.article-text-ads{display:grid;gap:8px;margin:18px 0;padding:12px 0;border-top:1px solid rgba(148,163,184,.26);border-bottom:1px solid rgba(148,163,184,.26);background:transparent;font:inherit}.article-text-ads--content-top{margin-top:0;margin-bottom:22px}.article-text-ads--content-bottom{margin-top:26px;margin-bottom:0}.article-text-ad-link{display:inline-flex;align-items:center;width:max-content;max-width:100%;color:var(--article-text-ad-color,#2563eb);font:inherit;font-weight:700;line-height:1.65;text-decoration:none}.article-text-ad-link:hover{text-decoration:underline;text-underline-offset:4px}.article-text-ad-text{overflow-wrap:anywhere}
+.article-text-ads{display:grid;gap:10px;margin:18px 0;padding:12px 0;border-top:1px solid rgba(148,163,184,.26);border-bottom:1px solid rgba(148,163,184,.26);background:transparent;font:inherit}.article-text-ads--content-top{margin-top:0;margin-bottom:22px}.article-text-ads--content-bottom{margin-top:26px;margin-bottom:0}.article-text-ad-module{display:flex;flex-direction:column;gap:6px;background:transparent}.article-text-ad-link{display:inline-flex;align-items:center;width:max-content;max-width:100%;color:var(--article-text-ad-color,#2563eb);font:inherit;font-weight:700;line-height:1.65;text-decoration:none}.article-text-ad-link:hover{text-decoration:underline;text-underline-offset:4px}.article-text-ad-text{overflow-wrap:anywhere}
 .tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px;padding-top:22px;border-top:1px solid #e5e7eb}.tags span{display:inline-flex;border:1px solid #e5e7eb;background:#f9fafb;color:#4b5563;border-radius:999px;padding:5px 10px;font-size:13px}
 .empty{padding:52px;text-align:center;color:#6b7280}.back{display:inline-block;margin:28px 0 18px;color:#4b5563;text-decoration:none}
 footer{border-top:1px solid #e5e7eb;color:#6b7280;font-size:13px;padding:24px 0 36px}
@@ -434,7 +434,63 @@ function normalizeArticleTextAdTrackingParam(string $trackingParam): string
     return $trackingParam;
 }
 
-function normalizeArticleTextAds(mixed $ads): array
+function normalizeArticleTextAdLinks(mixed $links, bool $enabledOnly = false, int $maxLinks = 10): array
+{
+    if (! is_array($links)) {
+        return [];
+    }
+
+    $normalized = [];
+    foreach ($links as $link) {
+        if (! is_array($link)) {
+            continue;
+        }
+
+        $text = trim((string) ($link['text'] ?? ''));
+        $url = normalizeArticleTextAdUrl((string) ($link['url'] ?? ''));
+        if ($text === '' || $url === '') {
+            continue;
+        }
+
+        $enabled = ! empty($link['enabled']);
+        if ($enabledOnly && ! $enabled) {
+            continue;
+        }
+
+        $normalized[] = [
+            'id' => trim((string) ($link['id'] ?? '')),
+            'text' => $text,
+            'url' => $url,
+            'text_color' => normalizeArticleTextAdColor((string) ($link['text_color'] ?? '#2563eb')),
+            'open_new_tab' => ! empty($link['open_new_tab']),
+            'tracking_enabled' => ! empty($link['tracking_enabled']),
+            'tracking_param' => normalizeArticleTextAdTrackingParam((string) ($link['tracking_param'] ?? '')),
+            'enabled' => $enabled,
+            'sort_order' => (int) ($link['sort_order'] ?? count($normalized) * 10),
+        ];
+    }
+
+    usort($normalized, static fn (array $a, array $b): int => ((int) $a['sort_order']) <=> ((int) $b['sort_order']));
+
+    return array_slice(array_values($normalized), 0, max(0, $maxLinks));
+}
+
+function legacyArticleTextAdToLink(array $ad): array
+{
+    return [
+        'id' => trim((string) ($ad['id'] ?? '')),
+        'text' => trim((string) ($ad['text'] ?? '')),
+        'url' => (string) ($ad['url'] ?? ''),
+        'text_color' => (string) ($ad['text_color'] ?? '#2563eb'),
+        'open_new_tab' => ! empty($ad['open_new_tab']),
+        'tracking_enabled' => ! empty($ad['tracking_enabled']),
+        'tracking_param' => (string) ($ad['tracking_param'] ?? ''),
+        'enabled' => ! empty($ad['enabled']),
+        'sort_order' => (int) ($ad['sort_order'] ?? 0),
+    ];
+}
+
+function normalizeArticleTextAds(mixed $ads, bool $enabledOnly = false, int $maxModules = 30): array
 {
     if (! is_array($ads)) {
         return [];
@@ -451,30 +507,41 @@ function normalizeArticleTextAds(mixed $ads): array
             continue;
         }
 
-        $text = trim((string) ($ad['text'] ?? ''));
-        $url = normalizeArticleTextAdUrl((string) ($ad['url'] ?? ''));
-        if ($text === '' || $url === '') {
+        $enabled = ! empty($ad['enabled']);
+        if ($enabledOnly && ! $enabled) {
             continue;
         }
 
+        $links = normalizeArticleTextAdLinks(
+            is_array($ad['links'] ?? null) ? $ad['links'] : [legacyArticleTextAdToLink($ad)],
+            $enabledOnly
+        );
+        if ($links === []) {
+            continue;
+        }
+
+        $id = trim((string) ($ad['id'] ?? ''));
+        $name = trim((string) ($ad['name'] ?? ''));
+        $sortOrder = (int) ($ad['sort_order'] ?? count($normalized) * 10);
+
         $normalized[] = [
-            'id' => trim((string) ($ad['id'] ?? '')),
-            'name' => trim((string) ($ad['name'] ?? '')),
+            'schema_version' => 2,
+            'id' => $id !== '' ? $id : 'article_text_module_'.md5($placement.'|'.$name.'|'.$sortOrder.'|'.json_encode($links)),
+            'name' => $name !== '' ? $name : (string) ($links[0]['text'] ?? 'Text Ad Module'),
             'placement' => $placement,
-            'text' => $text,
-            'url' => $url,
-            'text_color' => normalizeArticleTextAdColor((string) ($ad['text_color'] ?? '#2563eb')),
-            'open_new_tab' => ! empty($ad['open_new_tab']),
-            'tracking_enabled' => ! empty($ad['tracking_enabled']),
-            'tracking_param' => normalizeArticleTextAdTrackingParam((string) ($ad['tracking_param'] ?? '')),
-            'enabled' => ! empty($ad['enabled']),
-            'sort_order' => (int) ($ad['sort_order'] ?? 0),
+            'enabled' => $enabled,
+            'sort_order' => $sortOrder,
+            'links' => $links,
         ];
     }
 
-    usort($normalized, static fn (array $a, array $b): int => ((int) $a['sort_order']) <=> ((int) $b['sort_order']));
+    usort($normalized, static function (array $a, array $b): int {
+        $order = ((int) $a['sort_order']) <=> ((int) $b['sort_order']);
 
-    return $normalized;
+        return $order !== 0 ? $order : strcmp((string) $a['name'], (string) $b['name']);
+    });
+
+    return array_slice(array_values($normalized), 0, max(0, $maxModules));
 }
 
 function normalizeSiteSettings(array $settings, array $config = []): array
@@ -824,16 +891,16 @@ function articleTextAdUrlWithTracking(string $url, bool $trackingEnabled, string
     return $baseUrl.$separator.$trackingParam.$fragment;
 }
 
-function renderArticleTextAds(array $settings, string $placement, int $limit = 3): string
+function renderArticleTextAds(array $settings, string $placement, int $limit = 2): string
 {
     if (! in_array($placement, ['content_top', 'content_bottom'], true)) {
         return '';
     }
 
-    $ads = normalizeArticleTextAds($settings['article_text_ads'] ?? []);
+    $ads = normalizeArticleTextAds($settings['article_text_ads'] ?? [], true);
     $matched = array_values(array_filter(
         $ads,
-        static fn (array $ad): bool => ! empty($ad['enabled']) && ($ad['placement'] ?? '') === $placement
+        static fn (array $module): bool => ($module['placement'] ?? '') === $placement && ($module['links'] ?? []) !== []
     ));
 
     if ($matched === []) {
@@ -842,14 +909,22 @@ function renderArticleTextAds(array $settings, string $placement, int $limit = 3
 
     $placementClass = str_replace('_', '-', $placement);
     $html = '<div class="article-text-ads article-text-ads--'.h($placementClass).'" data-placement="'.h($placement).'">';
-    foreach (array_slice($matched, 0, max(1, $limit)) as $ad) {
-        $url = articleTextAdUrlWithTracking((string) $ad['url'], (bool) $ad['tracking_enabled'], (string) $ad['tracking_param']);
-        $target = ! empty($ad['open_new_tab']) ? ' target="_blank"' : '';
-        $style = '--article-text-ad-color: '.h((string) $ad['text_color']).';';
+    foreach (array_slice($matched, 0, max(1, $limit)) as $module) {
+        $html .= '<div class="article-text-ad-module" data-module-id="'.h((string) $module['id']).'">';
+        foreach ((array) ($module['links'] ?? []) as $link) {
+            if (! is_array($link) || empty($link['enabled'])) {
+                continue;
+            }
 
-        $html .= '<a class="article-text-ad-link" href="'.h($url).'" rel="noopener sponsored nofollow"'.$target.' style="'.$style.'">';
-        $html .= '<span class="article-text-ad-text">'.h((string) $ad['text']).'</span>';
-        $html .= '</a>';
+            $url = articleTextAdUrlWithTracking((string) $link['url'], (bool) $link['tracking_enabled'], (string) $link['tracking_param']);
+            $target = ! empty($link['open_new_tab']) ? ' target="_blank"' : '';
+            $style = '--article-text-ad-color: '.h((string) $link['text_color']).';';
+
+            $html .= '<a class="article-text-ad-link" href="'.h($url).'" rel="noopener sponsored nofollow"'.$target.' style="'.$style.'">';
+            $html .= '<span class="article-text-ad-text">'.h((string) $link['text']).'</span>';
+            $html .= '</a>';
+        }
+        $html .= '</div>';
     }
     $html .= '</div>';
 

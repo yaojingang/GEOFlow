@@ -823,7 +823,7 @@ html body div.prose-lg blockquote,
 .article-text-ads {
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.8rem;
     margin: 1.35rem 0;
     padding: 0.85rem 0;
     background: transparent;
@@ -839,6 +839,13 @@ html body div.prose-lg blockquote,
     margin-top: 1.65rem;
     margin-bottom: 0;
     border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.article-text-ad-module {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    background: transparent;
 }
 
 .article-text-ad-link {

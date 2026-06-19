@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DistributionChannel extends Model
 {
+    public const MAX_CUSTOM_TEXT_AD_MODULES_PER_PLACEMENT = 5;
+
     protected $fillable = [
         'name',
         'domain',
@@ -211,8 +213,8 @@ class DistributionChannel extends Model
 
     /**
      * @return array{
-     *   content_top:array{mode:string,ad_ids:list<string>},
-     *   content_bottom:array{mode:string,ad_ids:list<string>}
+     *   content_top:array{mode:string,module_ids:list<string>,ad_ids:list<string>,custom_modules:list<array<string,mixed>>},
+     *   content_bottom:array{mode:string,module_ids:list<string>,ad_ids:list<string>,custom_modules:list<array<string,mixed>>}
      * }
      */
     public function resolvedArticleTextAdPolicy(): array
@@ -228,54 +230,69 @@ class DistributionChannel extends Model
     public function effectiveArticleTextAds(): array
     {
         $policy = $this->resolvedArticleTextAdPolicy();
-        $globalAds = ArticleTextAdPicker::all(true);
-        $effectiveAds = [];
+        $globalModules = ArticleTextAdPicker::all(true);
+        $effectiveModules = [];
 
-        foreach (['content_top', 'content_bottom'] as $placement) {
-            $placementPolicy = $policy[$placement] ?? ['mode' => 'inherit', 'ad_ids' => []];
+        foreach (ArticleTextAdPicker::PLACEMENTS as $placement) {
+            $placementPolicy = $policy[$placement] ?? self::defaultArticleTextAdPolicyForPlacement();
             $mode = (string) ($placementPolicy['mode'] ?? 'inherit');
             if ($mode === 'disabled') {
                 continue;
             }
 
-            $adsForPlacement = array_values(array_filter(
-                $globalAds,
-                static fn (array $ad): bool => ($ad['placement'] ?? '') === $placement
+            if ($mode === 'custom') {
+                $effectiveModules = array_merge(
+                    $effectiveModules,
+                    ArticleTextAdPicker::normalizeModules(
+                        $placementPolicy['custom_modules'] ?? [],
+                        true,
+                        self::MAX_CUSTOM_TEXT_AD_MODULES_PER_PLACEMENT
+                    )
+                );
+
+                continue;
+            }
+
+            $modulesForPlacement = array_values(array_filter(
+                $globalModules,
+                static fn (array $module): bool => ($module['placement'] ?? '') === $placement
             ));
 
             if ($mode === 'selected') {
-                $selectedIds = $placementPolicy['ad_ids'] ?? [];
-                $adsForPlacement = array_values(array_filter(
-                    $adsForPlacement,
-                    static fn (array $ad): bool => in_array((string) ($ad['id'] ?? ''), $selectedIds, true)
+                $selectedModuleIds = $placementPolicy['module_ids'] ?? [];
+                $legacyAdIds = $placementPolicy['ad_ids'] ?? [];
+                $selectedIds = $selectedModuleIds !== [] ? $selectedModuleIds : $legacyAdIds;
+                $modulesForPlacement = array_values(array_filter(
+                    $modulesForPlacement,
+                    static fn (array $module): bool => ArticleTextAdPicker::moduleOrLinkMatchesIds($module, $selectedIds)
                 ));
             }
 
-            $effectiveAds = array_merge($effectiveAds, array_slice($adsForPlacement, 0, 3));
+            $effectiveModules = array_merge($effectiveModules, $modulesForPlacement);
         }
 
-        return array_values($effectiveAds);
+        return array_values($effectiveModules);
     }
 
     /**
      * @return array{
-     *   content_top:array{mode:string,ad_ids:list<string>},
-     *   content_bottom:array{mode:string,ad_ids:list<string>}
+     *   content_top:array{mode:string,module_ids:list<string>,ad_ids:list<string>,custom_modules:list<array<string,mixed>>},
+     *   content_bottom:array{mode:string,module_ids:list<string>,ad_ids:list<string>,custom_modules:list<array<string,mixed>>}
      * }
      */
     public static function normalizeArticleTextAdPolicy(mixed $policy): array
     {
         $default = [
-            'content_top' => ['mode' => 'inherit', 'ad_ids' => []],
-            'content_bottom' => ['mode' => 'inherit', 'ad_ids' => []],
+            'content_top' => self::defaultArticleTextAdPolicyForPlacement(),
+            'content_bottom' => self::defaultArticleTextAdPolicyForPlacement(),
         ];
 
         if (is_string($policy)) {
-            $mode = in_array($policy, ['inherit', 'disabled', 'selected'], true) ? $policy : 'inherit';
+            $mode = self::normalizeArticleTextAdMode($policy);
 
             return [
-                'content_top' => ['mode' => $mode, 'ad_ids' => []],
-                'content_bottom' => ['mode' => $mode, 'ad_ids' => []],
+                'content_top' => self::defaultArticleTextAdPolicyForPlacement($mode),
+                'content_bottom' => self::defaultArticleTextAdPolicyForPlacement($mode),
             ];
         }
 
@@ -284,25 +301,70 @@ class DistributionChannel extends Model
         }
 
         if (array_key_exists('mode', $policy)) {
-            $mode = (string) ($policy['mode'] ?? 'inherit');
+            $mode = self::normalizeArticleTextAdMode((string) ($policy['mode'] ?? 'inherit'));
+            $moduleIds = self::normalizeArticleTextAdIds($policy['module_ids'] ?? []);
             $adIds = self::normalizeArticleTextAdIds($policy['ad_ids'] ?? []);
+            $customModules = ArticleTextAdPicker::normalizeModules(
+                $policy['custom_modules'] ?? [],
+                false,
+                self::MAX_CUSTOM_TEXT_AD_MODULES_PER_PLACEMENT
+            );
 
             return [
-                'content_top' => ['mode' => in_array($mode, ['inherit', 'disabled', 'selected'], true) ? $mode : 'inherit', 'ad_ids' => $adIds],
-                'content_bottom' => ['mode' => in_array($mode, ['inherit', 'disabled', 'selected'], true) ? $mode : 'inherit', 'ad_ids' => $adIds],
+                'content_top' => self::defaultArticleTextAdPolicyForPlacement($mode, $moduleIds, $adIds, $customModules),
+                'content_bottom' => self::defaultArticleTextAdPolicyForPlacement($mode, $moduleIds, $adIds, $customModules),
             ];
         }
 
-        foreach (['content_top', 'content_bottom'] as $placement) {
+        foreach (ArticleTextAdPicker::PLACEMENTS as $placement) {
             $placementPolicy = is_array($policy[$placement] ?? null) ? $policy[$placement] : [];
-            $mode = (string) ($placementPolicy['mode'] ?? 'inherit');
-            $default[$placement] = [
-                'mode' => in_array($mode, ['inherit', 'disabled', 'selected'], true) ? $mode : 'inherit',
-                'ad_ids' => self::normalizeArticleTextAdIds($placementPolicy['ad_ids'] ?? []),
-            ];
+            $default[$placement] = self::defaultArticleTextAdPolicyForPlacement(
+                self::normalizeArticleTextAdMode((string) ($placementPolicy['mode'] ?? 'inherit')),
+                self::normalizeArticleTextAdIds($placementPolicy['module_ids'] ?? []),
+                self::normalizeArticleTextAdIds($placementPolicy['ad_ids'] ?? []),
+                self::normalizeCustomArticleTextAdModules($placementPolicy['custom_modules'] ?? [], $placement)
+            );
         }
 
         return $default;
+    }
+
+    /**
+     * @param  list<string>  $moduleIds
+     * @param  list<string>  $adIds
+     * @param  list<array<string,mixed>>  $customModules
+     * @return array{mode:string,module_ids:list<string>,ad_ids:list<string>,custom_modules:list<array<string,mixed>>}
+     */
+    private static function defaultArticleTextAdPolicyForPlacement(
+        string $mode = 'inherit',
+        array $moduleIds = [],
+        array $adIds = [],
+        array $customModules = []
+    ): array {
+        return [
+            'mode' => self::normalizeArticleTextAdMode($mode),
+            'module_ids' => array_values($moduleIds),
+            'ad_ids' => array_values($adIds),
+            'custom_modules' => array_values($customModules),
+        ];
+    }
+
+    private static function normalizeArticleTextAdMode(string $mode): string
+    {
+        return in_array($mode, ['inherit', 'disabled', 'selected', 'custom'], true) ? $mode : 'inherit';
+    }
+
+    /**
+     * @return list<array<string,mixed>>
+     */
+    private static function normalizeCustomArticleTextAdModules(mixed $modules, string $placement): array
+    {
+        $normalized = ArticleTextAdPicker::normalizeModules($modules, false, self::MAX_CUSTOM_TEXT_AD_MODULES_PER_PLACEMENT);
+
+        return array_values(array_filter(
+            $normalized,
+            static fn (array $module): bool => ($module['placement'] ?? '') === $placement
+        ));
     }
 
     /**

@@ -843,7 +843,7 @@ class AdminDistributionPageTest extends TestCase
                 'article_text_ad_policy' => [
                     'content_top' => [
                         'mode' => 'selected',
-                        'ad_ids' => ['sync-top'],
+                        'module_ids' => ['sync-top'],
                     ],
                     'content_bottom' => [
                         'mode' => 'disabled',
@@ -856,14 +856,149 @@ class AdminDistributionPageTest extends TestCase
         $channel->refresh();
         $policy = $channel->resolvedArticleTextAdPolicy();
         $this->assertSame('selected', $policy['content_top']['mode']);
-        $this->assertSame(['sync-top'], $policy['content_top']['ad_ids']);
+        $this->assertSame(['sync-top'], $policy['content_top']['module_ids']);
         $this->assertSame('disabled', $policy['content_bottom']['mode']);
 
         $payload = $channel->targetSiteSettingsPayload();
         $this->assertArrayHasKey('article_text_ads', $payload);
         $this->assertCount(1, $payload['article_text_ads']);
         $this->assertSame('sync-top', $payload['article_text_ads'][0]['id']);
-        $this->assertSame('Top Sync CTA', $payload['article_text_ads'][0]['text']);
+        $this->assertSame('Top Sync CTA', $payload['article_text_ads'][0]['links'][0]['text']);
+    }
+
+    public function test_distribution_channel_can_use_custom_article_text_ad_modules(): void
+    {
+        $admin = $this->admin();
+        $channel = DistributionChannel::query()->create([
+            'name' => '自定义文本广告渠道',
+            'domain' => 'custom-ads.example.com',
+            'endpoint_url' => 'https://custom-ads.example.com',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.distribution.update', ['channelId' => (int) $channel->id]), [
+                'name' => '自定义文本广告渠道',
+                'domain' => 'custom-ads.example.com',
+                'endpoint_url' => 'https://custom-ads.example.com',
+                'front_mode' => 'static',
+                'template_key' => 'default',
+                'status' => 'active',
+                'description' => '',
+                'site_name' => '自定义广告站',
+                'site_subtitle' => '',
+                'site_description' => '自定义广告站描述',
+                'site_keywords' => '',
+                'copyright_info' => '© 2026 自定义广告站',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'article_text_ad_policy' => [
+                    'content_top' => [
+                        'mode' => 'custom',
+                        'custom_modules' => [
+                            [
+                                'name' => '渠道顶部推荐',
+                                'placement' => 'content_top',
+                                'enabled' => '1',
+                                'sort_order' => 10,
+                                'links' => [
+                                    [
+                                        'text' => '渠道独立统计链接',
+                                        'url' => 'https://custom.example.com/landing',
+                                        'text_color' => '#dc2626',
+                                        'open_new_tab' => '1',
+                                        'tracking_enabled' => '1',
+                                        'tracking_param' => 'utm_source=custom_channel',
+                                        'enabled' => '1',
+                                        'sort_order' => 10,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'content_bottom' => [
+                        'mode' => 'disabled',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]));
+
+        $channel->refresh();
+        $policy = $channel->resolvedArticleTextAdPolicy();
+        $this->assertSame('custom', $policy['content_top']['mode']);
+        $this->assertCount(1, $policy['content_top']['custom_modules']);
+        $this->assertSame('渠道顶部推荐', $policy['content_top']['custom_modules'][0]['name']);
+
+        $payload = $channel->targetSiteSettingsPayload();
+        $this->assertCount(1, $payload['article_text_ads']);
+        $this->assertSame('渠道顶部推荐', $payload['article_text_ads'][0]['name']);
+        $this->assertSame('渠道独立统计链接', $payload['article_text_ads'][0]['links'][0]['text']);
+    }
+
+    public function test_distribution_channel_rejects_invalid_custom_article_text_ad_modules(): void
+    {
+        $admin = $this->admin();
+        $channel = DistributionChannel::query()->create([
+            'name' => '非法文本广告渠道',
+            'domain' => 'invalid-ads.example.com',
+            'endpoint_url' => 'https://invalid-ads.example.com',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.distribution.edit', ['channelId' => (int) $channel->id]))
+            ->put(route('admin.distribution.update', ['channelId' => (int) $channel->id]), [
+                'name' => '非法文本广告渠道',
+                'domain' => 'invalid-ads.example.com',
+                'endpoint_url' => 'https://invalid-ads.example.com',
+                'front_mode' => 'static',
+                'template_key' => 'default',
+                'status' => 'active',
+                'description' => '',
+                'site_name' => '非法广告站',
+                'site_subtitle' => '',
+                'site_description' => '非法广告站描述',
+                'site_keywords' => '',
+                'copyright_info' => '© 2026 非法广告站',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'article_text_ad_policy' => [
+                    'content_top' => [
+                        'mode' => 'custom',
+                        'custom_modules' => [
+                            [
+                                'name' => '非法渠道模块',
+                                'placement' => 'content_top',
+                                'enabled' => '1',
+                                'links' => [
+                                    [
+                                        'text' => '危险链接',
+                                        'url' => 'javascript:alert(1)',
+                                        'text_color' => '#2563eb',
+                                        'enabled' => '1',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'content_bottom' => [
+                        'mode' => 'disabled',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.distribution.edit', ['channelId' => (int) $channel->id]))
+            ->assertSessionHasErrors('article_text_ad_policy');
+
+        $channel->refresh();
+        $this->assertSame([], $channel->channel_config ?? []);
     }
 
     public function test_admin_update_distribution_channel_syncs_remote_site_settings_when_secret_exists(): void
@@ -1450,10 +1585,13 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('class="tags"', $frontController);
         $this->assertStringContainsString('.content h2', $siteCss);
         $this->assertStringContainsString('.article-text-ads', $siteCss);
+        $this->assertStringContainsString('.article-text-ad-module', $siteCss);
         $this->assertStringContainsString('function activeTheme', $frontController);
         $this->assertStringContainsString('function themeClass', $frontController);
         $this->assertStringContainsString('function normalizeArticleTextAds', $frontController);
+        $this->assertStringContainsString('function normalizeArticleTextAdLinks', $frontController);
         $this->assertStringContainsString('function renderArticleTextAds', $frontController);
+        $this->assertStringContainsString('data-module-id', $frontController);
         $this->assertStringContainsString("str_ends_with(\$baseUrl, '?')", $frontController);
         $this->assertStringContainsString("renderArticleTextAds(\$settings, 'content_top')", $frontController);
         $this->assertStringContainsString("renderArticleTextAds(\$settings, 'content_bottom')", $frontController);

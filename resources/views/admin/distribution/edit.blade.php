@@ -11,6 +11,8 @@
     $articleTextAds = $articleDetailTextAds ?? [];
     $articleTextAdPolicy = \App\Models\DistributionChannel::normalizeArticleTextAdPolicy(old('article_text_ad_policy', $articleTextAdPolicy ?? $channel->resolvedArticleTextAdPolicy()));
     $articleTextAdsByPlacement = collect($articleTextAds)->groupBy('placement');
+    $articleTextAdCustomModuleLimit = 5;
+    $articleTextAdLinkLimit = \App\Support\Site\ArticleTextAdPicker::MAX_LINKS_PER_MODULE;
     $articleTextAdPlacements = [
         'content_top' => __('admin.distribution.article_text_ads.placement_top'),
         'content_bottom' => __('admin.distribution.article_text_ads.placement_bottom'),
@@ -376,15 +378,17 @@
                         <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
                             @foreach ($articleTextAdPlacements as $placement => $placementLabel)
                                 @php
-                                    $placementPolicy = $articleTextAdPolicy[$placement] ?? ['mode' => 'inherit', 'ad_ids' => []];
+                                    $placementPolicy = $articleTextAdPolicy[$placement] ?? ['mode' => 'inherit', 'module_ids' => [], 'ad_ids' => [], 'custom_modules' => []];
                                     $placementMode = (string) ($placementPolicy['mode'] ?? 'inherit');
-                                    $selectedAdIds = $placementPolicy['ad_ids'] ?? [];
+                                    $selectedModuleIds = $placementPolicy['module_ids'] ?? [];
+                                    $legacySelectedAdIds = $placementPolicy['ad_ids'] ?? [];
+                                    $customModules = is_array($placementPolicy['custom_modules'] ?? null) ? $placementPolicy['custom_modules'] : [];
                                     $placementAds = $articleTextAdsByPlacement->get($placement, collect())->values();
                                 @endphp
                                 <fieldset class="rounded-lg border border-gray-200 bg-gray-50 p-4">
                                     <legend class="text-sm font-semibold text-gray-900">{{ $placementLabel }}</legend>
-                                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                        @foreach (['inherit', 'selected', 'disabled'] as $mode)
+                                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                                        @foreach (['inherit', 'selected', 'custom', 'disabled'] as $mode)
                                             <label class="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm hover:border-blue-200">
                                                 <input
                                                     type="radio"
@@ -409,30 +413,131 @@
                                                 @foreach ($placementAds as $textAd)
                                                     @php
                                                         $textAdId = (string) ($textAd['id'] ?? '');
+                                                        $links = is_array($textAd['links'] ?? null) ? $textAd['links'] : [];
+                                                        $enabledLinks = collect($links)->filter(fn ($link) => is_array($link) && ! empty($link['enabled']))->values();
+                                                        $firstLinkText = (string) (($enabledLinks->first()['text'] ?? '') ?: ($links[0]['text'] ?? ''));
                                                         $enabled = ! empty($textAd['enabled']);
+                                                        $checked = in_array($textAdId, $selectedModuleIds, true) || ($selectedModuleIds === [] && \App\Support\Site\ArticleTextAdPicker::moduleOrLinkMatchesIds($textAd, $legacySelectedAdIds));
                                                     @endphp
                                                     <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-white px-3 py-3 hover:border-blue-200">
                                                         <input
                                                             type="checkbox"
-                                                            name="article_text_ad_policy[{{ $placement }}][ad_ids][]"
+                                                            name="article_text_ad_policy[{{ $placement }}][module_ids][]"
                                                             value="{{ $textAdId }}"
                                                             class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                            @checked(in_array($textAdId, $selectedAdIds, true))
+                                                            @checked($checked)
                                                             @disabled(! $enabled)
                                                         >
                                                         <span class="min-w-0">
                                                             <span class="flex flex-wrap items-center gap-2">
-                                                                <span class="text-sm font-semibold text-gray-900">{{ $textAd['name'] !== '' ? $textAd['name'] : $textAd['text'] }}</span>
+                                                                <span class="text-sm font-semibold text-gray-900">{{ $textAd['name'] !== '' ? $textAd['name'] : $firstLinkText }}</span>
+                                                                <span class="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{{ __('admin.site_settings.article_detail_ads.text_link_count', ['count' => count($links), 'max' => $articleTextAdLinkLimit]) }}</span>
                                                                 @unless ($enabled)
                                                                     <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">{{ __('admin.distribution.article_text_ads.disabled_badge') }}</span>
                                                                 @endunless
                                                             </span>
-                                                            <span class="mt-1 block truncate text-sm text-gray-600">{{ $textAd['text'] }}</span>
+                                                            <span class="mt-1 block truncate text-sm text-gray-600">{{ $firstLinkText }}</span>
                                                         </span>
                                                     </label>
                                                 @endforeach
                                             </div>
                                         @endif
+                                    </div>
+
+                                    <div class="mt-4 {{ $placementMode === 'custom' ? '' : 'hidden' }}" data-article-text-ad-custom="{{ $placement }}">
+                                        <div class="mb-3 flex items-center justify-between gap-3">
+                                            <p class="text-sm text-gray-600">{{ __('admin.distribution.article_text_ads.custom_desc', ['max' => $articleTextAdCustomModuleLimit]) }}</p>
+                                            <button type="button" class="inline-flex items-center rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50" data-add-channel-text-ad-module="{{ $placement }}">
+                                                <i data-lucide="plus" class="mr-1.5 h-4 w-4"></i>
+                                                {{ __('admin.distribution.article_text_ads.custom_add_module') }}
+                                            </button>
+                                        </div>
+                                        <div class="space-y-3" data-channel-text-ad-modules="{{ $placement }}" data-next-module-index="{{ count($customModules) }}">
+                                            @foreach ($customModules as $moduleIndex => $module)
+                                                @php
+                                                    $moduleLinks = is_array($module['links'] ?? null) ? $module['links'] : [];
+                                                @endphp
+                                                <div class="rounded-lg border border-gray-200 bg-white p-4" data-channel-text-ad-module>
+                                                    <input type="hidden" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][id]" value="{{ (string) ($module['id'] ?? '') }}">
+                                                    <input type="hidden" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][placement]" value="{{ $placement }}">
+                                                    <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                                        <div class="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3">
+                                                            <div>
+                                                                <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_name') }}</label>
+                                                                <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][name]" value="{{ (string) ($module['name'] ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                            </div>
+                                                            <div>
+                                                                <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_sort') }}</label>
+                                                                <input type="number" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][sort_order]" value="{{ (int) ($module['sort_order'] ?? (($loop->index + 1) * 10)) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                            </div>
+                                                            <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                                                                <input type="checkbox" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(! empty($module['enabled']))>
+                                                                {{ __('admin.site_settings.article_detail_ads.text_enabled') }}
+                                                            </label>
+                                                        </div>
+                                                        <button type="button" class="inline-flex items-center justify-center rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50" data-remove-channel-text-ad-module>
+                                                            <i data-lucide="trash-2" class="mr-1.5 h-4 w-4"></i>
+                                                            {{ __('admin.button.delete') }}
+                                                        </button>
+                                                    </div>
+
+                                                    <div class="mt-4 border-t border-gray-100 pt-4">
+                                                        <div class="mb-3 flex items-center justify-between gap-3">
+                                                            <div>
+                                                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.article_detail_ads.text_link_section') }}</div>
+                                                                <div class="text-xs text-gray-500">{{ __('admin.site_settings.article_detail_ads.text_link_section_desc') }}</div>
+                                                            </div>
+                                                            <button type="button" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50" data-add-channel-text-ad-link>
+                                                                <i data-lucide="plus" class="mr-1.5 h-4 w-4"></i>
+                                                                {{ __('admin.site_settings.article_detail_ads.text_add_link') }}
+                                                            </button>
+                                                        </div>
+                                                        <div class="space-y-3" data-channel-text-ad-links data-next-link-index="{{ count($moduleLinks) }}">
+                                                            @foreach ($moduleLinks as $linkIndex => $link)
+                                                                <div class="rounded-md border border-gray-200 bg-gray-50 p-3" data-channel-text-ad-link>
+                                                                    <div class="mb-3 flex items-center justify-between gap-3">
+                                                                        <span class="text-sm font-semibold text-gray-800">{{ __('admin.site_settings.article_detail_ads.text_link_item', ['index' => $loop->iteration]) }}</span>
+                                                                        <button type="button" class="text-sm font-medium text-red-600 hover:text-red-700" data-remove-channel-text-ad-link>{{ __('admin.button.delete') }}</button>
+                                                                    </div>
+                                                                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                                        <div>
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_text') }}</label>
+                                                                            <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][text]" value="{{ (string) ($link['text'] ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                                        </div>
+                                                                        <div>
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_url') }}</label>
+                                                                            <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][url]" value="{{ (string) ($link['url'] ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                                        </div>
+                                                                        <div>
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_color') }}</label>
+                                                                            <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][text_color]" value="{{ (string) ($link['text_color'] ?? '#2563eb') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                                        </div>
+                                                                        <div>
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_sort') }}</label>
+                                                                            <input type="number" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][sort_order]" value="{{ (int) ($link['sort_order'] ?? (($loop->index + 1) * 10)) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-4">
+                                                                        <div class="lg:col-span-2">
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_tracking') }}</label>
+                                                                            <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][tracking_param]" value="{{ (string) ($link['tracking_param'] ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                                        </div>
+                                                                        <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                                                                            <input type="checkbox" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][open_new_tab]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(! empty($link['open_new_tab']))>
+                                                                            {{ __('admin.site_settings.article_detail_ads.text_open_new_tab') }}
+                                                                        </label>
+                                                                        <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                                                                            <input type="checkbox" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(! empty($link['enabled']))>
+                                                                            {{ __('admin.site_settings.article_detail_ads.text_enabled') }}
+                                                                        </label>
+                                                                    </div>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
                                     </div>
                                 </fieldset>
                             @endforeach
@@ -459,6 +564,85 @@
             </div>
         </div>
     </div>
+    <template id="channel-text-ad-link-template">
+        <div class="rounded-md border border-gray-200 bg-gray-50 p-3" data-channel-text-ad-link>
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <span class="text-sm font-semibold text-gray-800">{{ __('admin.site_settings.article_detail_ads.text_link_item', ['index' => '__LINK_NUMBER__']) }}</span>
+                <button type="button" class="text-sm font-medium text-red-600 hover:text-red-700" data-remove-channel-text-ad-link>{{ __('admin.button.delete') }}</button>
+            </div>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_text') }}</label>
+                    <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][text]" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_url') }}</label>
+                    <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][url]" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_color') }}</label>
+                    <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][text_color]" value="#2563eb" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_sort') }}</label>
+                    <input type="number" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][sort_order]" value="__LINK_SORT__" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+            </div>
+            <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-4">
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_tracking') }}</label>
+                    <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][tracking_param]" value="utm_source=geoflow&utm_medium=article_text_ad" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input type="checkbox" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][open_new_tab]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                    {{ __('admin.site_settings.article_detail_ads.text_open_new_tab') }}
+                </label>
+                <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input type="checkbox" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                    {{ __('admin.site_settings.article_detail_ads.text_enabled') }}
+                </label>
+            </div>
+        </div>
+    </template>
+    <template id="channel-text-ad-module-template">
+        <div class="rounded-lg border border-gray-200 bg-white p-4" data-channel-text-ad-module>
+            <input type="hidden" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][id]" value="">
+            <input type="hidden" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][placement]" value="__PLACEMENT__">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div class="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_name') }}</label>
+                        <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][name]" value="{{ __('admin.distribution.article_text_ads.custom_default_name') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_sort') }}</label>
+                        <input type="number" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][sort_order]" value="__MODULE_SORT__" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                        <input type="checkbox" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                        {{ __('admin.site_settings.article_detail_ads.text_enabled') }}
+                    </label>
+                </div>
+                <button type="button" class="inline-flex items-center justify-center rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50" data-remove-channel-text-ad-module>
+                    <i data-lucide="trash-2" class="mr-1.5 h-4 w-4"></i>
+                    {{ __('admin.button.delete') }}
+                </button>
+            </div>
+            <div class="mt-4 border-t border-gray-100 pt-4">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.article_detail_ads.text_link_section') }}</div>
+                        <div class="text-xs text-gray-500">{{ __('admin.site_settings.article_detail_ads.text_link_section_desc') }}</div>
+                    </div>
+                    <button type="button" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50" data-add-channel-text-ad-link>
+                        <i data-lucide="plus" class="mr-1.5 h-4 w-4"></i>
+                        {{ __('admin.site_settings.article_detail_ads.text_add_link') }}
+                    </button>
+                </div>
+                <div class="space-y-3" data-channel-text-ad-links data-next-link-index="0"></div>
+            </div>
+        </div>
+    </template>
     <script>
         function toggleGenericAuthFields() {
             var select = document.getElementById('generic_auth_type');
@@ -481,6 +665,40 @@
                 toggleArticleTextAdPolicyFields();
             }
         });
+        document.addEventListener('click', function (event) {
+            var addModuleButton = event.target.closest('[data-add-channel-text-ad-module]');
+            if (addModuleButton) {
+                addChannelTextAdModule(addModuleButton.getAttribute('data-add-channel-text-ad-module'));
+                return;
+            }
+
+            var removeModuleButton = event.target.closest('[data-remove-channel-text-ad-module]');
+            if (removeModuleButton) {
+                var module = removeModuleButton.closest('[data-channel-text-ad-module]');
+                if (module) {
+                    var moduleList = module.parentElement;
+                    module.remove();
+                    syncChannelTextAdModuleList(moduleList);
+                }
+                return;
+            }
+
+            var addLinkButton = event.target.closest('[data-add-channel-text-ad-link]');
+            if (addLinkButton) {
+                addChannelTextAdLink(addLinkButton.closest('[data-channel-text-ad-module]'));
+                return;
+            }
+
+            var removeLinkButton = event.target.closest('[data-remove-channel-text-ad-link]');
+            if (removeLinkButton) {
+                var link = removeLinkButton.closest('[data-channel-text-ad-link]');
+                if (link) {
+                    var links = link.parentElement;
+                    link.remove();
+                    syncChannelTextAdLinks(links);
+                }
+            }
+        });
         toggleGenericAuthFields();
 
         function toggleArticleTextAdPolicyFields() {
@@ -489,8 +707,109 @@
                 var selectedMode = document.querySelector('[data-article-text-ad-mode="' + placement + '"]:checked');
                 panel.classList.toggle('hidden', !selectedMode || selectedMode.value !== 'selected');
             });
+            document.querySelectorAll('[data-article-text-ad-custom]').forEach(function (panel) {
+                var placement = panel.getAttribute('data-article-text-ad-custom');
+                var selectedMode = document.querySelector('[data-article-text-ad-mode="' + placement + '"]:checked');
+                panel.classList.toggle('hidden', !selectedMode || selectedMode.value !== 'custom');
+            });
         }
 
         toggleArticleTextAdPolicyFields();
+
+        function addChannelTextAdModule(placement) {
+            var list = document.querySelector('[data-channel-text-ad-modules="' + placement + '"]');
+            var template = document.getElementById('channel-text-ad-module-template');
+            if (!list || !template || list.querySelectorAll('[data-channel-text-ad-module]').length >= {{ $articleTextAdCustomModuleLimit }}) {
+                return;
+            }
+
+            var index = Number(list.dataset.nextModuleIndex || 0);
+            list.dataset.nextModuleIndex = String(index + 1);
+            var html = template.innerHTML
+                .replaceAll('__PLACEMENT__', placement)
+                .replaceAll('__MODULE_INDEX__', String(index))
+                .replaceAll('__MODULE_SORT__', String((index + 1) * 10));
+            var wrapper = document.createElement('div');
+            wrapper.innerHTML = html.trim();
+            var module = wrapper.firstElementChild;
+            list.appendChild(module);
+            addChannelTextAdLink(module);
+            syncChannelTextAdModuleList(list);
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
+        }
+
+        function addChannelTextAdLink(module) {
+            if (!module) {
+                return;
+            }
+
+            var list = module.querySelector('[data-channel-text-ad-links]');
+            var template = document.getElementById('channel-text-ad-link-template');
+            if (!list || !template || list.querySelectorAll('[data-channel-text-ad-link]').length >= {{ $articleTextAdLinkLimit }}) {
+                return;
+            }
+
+            var moduleInputs = module.querySelectorAll('input[name*="[custom_modules]"]');
+            var moduleName = moduleInputs.length > 0 ? moduleInputs[0].getAttribute('name') : '';
+            var match = moduleName.match(/article_text_ad_policy\[([^\]]+)\]\[custom_modules\]\[([^\]]+)\]/);
+            if (!match) {
+                return;
+            }
+
+            var placement = match[1];
+            var moduleIndex = match[2];
+            var index = Number(list.dataset.nextLinkIndex || 0);
+            list.dataset.nextLinkIndex = String(index + 1);
+            var html = template.innerHTML
+                .replaceAll('__PLACEMENT__', placement)
+                .replaceAll('__MODULE_INDEX__', moduleIndex)
+                .replaceAll('__LINK_INDEX__', String(index))
+                .replaceAll('__LINK_NUMBER__', String(list.querySelectorAll('[data-channel-text-ad-link]').length + 1))
+                .replaceAll('__LINK_SORT__', String((index + 1) * 10));
+            var wrapper = document.createElement('div');
+            wrapper.innerHTML = html.trim();
+            list.appendChild(wrapper.firstElementChild);
+            syncChannelTextAdLinks(list);
+        }
+
+        function syncChannelTextAdModuleList(list) {
+            if (!list) {
+                return;
+            }
+            var modules = list.querySelectorAll('[data-channel-text-ad-module]');
+            var placement = list.getAttribute('data-channel-text-ad-modules');
+            var addButton = document.querySelector('[data-add-channel-text-ad-module="' + placement + '"]');
+            if (addButton) {
+                addButton.disabled = modules.length >= {{ $articleTextAdCustomModuleLimit }};
+                addButton.classList.toggle('opacity-60', addButton.disabled);
+                addButton.classList.toggle('cursor-not-allowed', addButton.disabled);
+            }
+            modules.forEach(function (module) {
+                syncChannelTextAdLinks(module.querySelector('[data-channel-text-ad-links]'));
+            });
+        }
+
+        function syncChannelTextAdLinks(list) {
+            if (!list) {
+                return;
+            }
+            var links = list.querySelectorAll('[data-channel-text-ad-link]');
+            links.forEach(function (link, index) {
+                var title = link.querySelector('[data-remove-channel-text-ad-link]')?.closest('[data-channel-text-ad-link]')?.querySelector('.text-sm.font-semibold');
+                if (title) {
+                    title.textContent = @json(__('admin.site_settings.article_detail_ads.text_link_item', ['index' => '__INDEX__'])).replace('__INDEX__', String(index + 1));
+                }
+            });
+            var addButton = list.closest('[data-channel-text-ad-module]')?.querySelector('[data-add-channel-text-ad-link]');
+            if (addButton) {
+                addButton.disabled = links.length >= {{ $articleTextAdLinkLimit }};
+                addButton.classList.toggle('opacity-60', addButton.disabled);
+                addButton.classList.toggle('cursor-not-allowed', addButton.disabled);
+            }
+        }
+
+        document.querySelectorAll('[data-channel-text-ad-modules]').forEach(syncChannelTextAdModuleList);
     </script>
 @endsection
