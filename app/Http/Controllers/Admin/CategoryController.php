@@ -142,10 +142,13 @@ class CategoryController extends Controller
      */
     public function destroy(int $categoryId): RedirectResponse
     {
-        $category = Category::query()->withCount('articles')->whereKey($categoryId)->firstOrFail();
+        $category = Category::query()
+            ->withCount(['articlesIncludingTrashed as all_articles_count'])
+            ->whereKey($categoryId)
+            ->firstOrFail();
 
-        if ((int) ($category->articles_count ?? 0) > 0) {
-            return back()->withErrors(__('admin.categories.error.delete_blocked', ['count' => (int) $category->articles_count]));
+        if ((int) ($category->all_articles_count ?? 0) > 0) {
+            return back()->withErrors(__('admin.categories.error.delete_blocked', ['count' => (int) $category->all_articles_count]));
         }
 
         Category::query()->whereKey($categoryId)->delete();
@@ -156,25 +159,33 @@ class CategoryController extends Controller
     /**
      * 读取分类列表并附带文章数量。
      *
-     * @return array<int, array{id:int,name:string,slug:string,description:string,sort_order:int,article_count:int,created_at:?string}>
+     * @return array<int, array{id:int,name:string,slug:string,description:string,sort_order:int,article_count:int,active_article_count:int,trashed_article_count:int,created_at:?string}>
      */
     private function loadCategories(): array
     {
         $query = Category::query()
             ->select(['id', 'name', 'slug', 'description', 'sort_order', 'created_at'])
-            ->withCount('articles')
+            ->withCount([
+                'articles',
+                'articlesIncludingTrashed as all_articles_count',
+            ])
             ->orderBy('sort_order')
             ->orderBy('name');
 
         return $query->get()
             ->map(static function (Category $category): array {
+                $activeArticleCount = (int) ($category->articles_count ?? 0);
+                $allArticleCount = (int) ($category->all_articles_count ?? $activeArticleCount);
+
                 return [
                     'id' => (int) $category->id,
                     'name' => (string) $category->name,
                     'slug' => (string) ($category->slug ?? ''),
                     'description' => (string) ($category->description ?? ''),
                     'sort_order' => (int) ($category->sort_order ?? 0),
-                    'article_count' => (int) ($category->articles_count ?? 0),
+                    'article_count' => $allArticleCount,
+                    'active_article_count' => $activeArticleCount,
+                    'trashed_article_count' => max(0, $allArticleCount - $activeArticleCount),
                     'created_at' => $category->created_at?->format('Y-m-d H:i:s'),
                 ];
             })

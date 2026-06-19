@@ -29,4 +29,9 @@ class Category extends Model
     {
         return $this->hasMany(Article::class, 'category_id');
     }
+
+    public function articlesIncludingTrashed(): HasMany
+    {
+        return $this->hasMany(Article::class, 'category_id')->withTrashed();
+    }
 }
