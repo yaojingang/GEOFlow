@@ -63,6 +63,8 @@ $COMPOSE_PROD run --rm app php artisan optimize
 
 也就是说：命令从容器外的服务器项目目录执行，但实际运行在 `app` 容器内。
 
+默认 `db:seed` 只创建后台管理员，不会写入前台演示分类和文章。如果确实需要演示内容，再临时设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 后执行 seed。
+
 也可以先进容器后执行：
 
 ```bash
