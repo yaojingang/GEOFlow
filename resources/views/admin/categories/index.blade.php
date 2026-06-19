@@ -50,6 +50,8 @@
                         @foreach ($categories as $category)
                             @php
                                 $articleCount = (int) ($category['article_count'] ?? 0);
+                                $activeArticleCount = (int) ($category['active_article_count'] ?? $articleCount);
+                                $trashedArticleCount = (int) ($category['trashed_article_count'] ?? max(0, $articleCount - $activeArticleCount));
                             @endphp
                             <tr class="hover:bg-gray-50">
                                 <td class="px-6 py-4">
@@ -61,6 +63,9 @@
                                 </td>
                                 <td class="px-6 py-4 text-sm text-gray-700">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">{{ __('admin.categories.article_count_badge', ['count' => $articleCount]) }}</span>
+                                    @if ($trashedArticleCount > 0)
+                                        <div class="mt-1 text-xs text-gray-500">{{ __('admin.categories.article_count_trashed_hint', ['count' => $trashedArticleCount]) }}</div>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4 text-sm text-gray-700">{{ (int) ($category['sort_order'] ?? 0) }}</td>
                                 <td class="px-6 py-4 text-sm text-gray-500">{{ !empty($category['created_at']) ? \Illuminate\Support\Carbon::parse($category['created_at'])->format('Y-m-d H:i') : '-' }}</td>
@@ -93,4 +98,3 @@
         </div>
     </div>
 @endsection
-

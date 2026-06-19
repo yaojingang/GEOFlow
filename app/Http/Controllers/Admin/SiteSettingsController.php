@@ -47,6 +47,7 @@ class SiteSettingsController extends Controller
             'themeReplicationDeployment' => $this->themeReplicationService->deploymentDiagnostics(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
+            'articleDetailTextAds' => $this->parseArticleDetailTextAds((string) ($settings['article_detail_text_ads'] ?? '[]')),
         ]);
     }
 
@@ -231,6 +232,93 @@ class SiteSettingsController extends Controller
     }
 
     /**
+     * 保存文章正文顶部/底部文本广告设置。
+     */
+    public function updateArticleDetailTextAds(Request $request): RedirectResponse
+    {
+        $postedAds = $request->input('text_ads', []);
+        if (! is_array($postedAds)) {
+            $postedAds = [];
+        }
+
+        $ads = [];
+        foreach ($postedAds as $index => $postedAd) {
+            if (! is_array($postedAd)) {
+                continue;
+            }
+
+            $name = trim((string) ($postedAd['name'] ?? ''));
+            $placement = trim((string) ($postedAd['placement'] ?? 'content_top'));
+            $text = trim((string) ($postedAd['text'] ?? ''));
+            $rawUrl = trim((string) ($postedAd['url'] ?? ''));
+            $url = $this->normalizeArticleTextAdUrl($rawUrl);
+            $color = trim((string) ($postedAd['text_color'] ?? ''));
+            $trackingParam = trim((string) ($postedAd['tracking_param'] ?? ''));
+            $id = trim((string) ($postedAd['id'] ?? ''));
+
+            if ($name === '' && $text === '' && $rawUrl === '' && $color === '' && $trackingParam === '') {
+                continue;
+            }
+
+            if (! in_array($placement, ['content_top', 'content_bottom'], true)) {
+                return back()->withErrors(__('admin.site_settings.ads.text_validation_position', ['index' => ((int) $index + 1)]))->withInput();
+            }
+
+            if ($rawUrl !== '' && $url === '') {
+                return back()->withErrors(__('admin.site_settings.ads.text_validation_url', ['index' => ((int) $index + 1)]))->withInput();
+            }
+
+            if ($text === '' || $url === '') {
+                return back()->withErrors(__('admin.site_settings.ads.text_validation_required', ['index' => ((int) $index + 1)]))->withInput();
+            }
+
+            if ($color !== '' && $this->normalizeHexColor($color) === '') {
+                return back()->withErrors(__('admin.site_settings.ads.text_validation_color', ['index' => ((int) $index + 1)]))->withInput();
+            }
+
+            $trackingEnabled = ! empty($postedAd['tracking_enabled']);
+            if ($trackingEnabled && $trackingParam === '') {
+                $trackingParam = 'utm_source=geoflow&utm_medium=article_text_ad';
+            }
+            $trackingParam = ltrim($trackingParam, "? \t\n\r\0\x0B");
+
+            if ($trackingParam !== '' && ! $this->isValidTrackingParam($trackingParam)) {
+                return back()->withErrors(__('admin.site_settings.ads.text_validation_tracking', ['index' => ((int) $index + 1)]))->withInput();
+            }
+
+            $sortOrder = filter_var($postedAd['sort_order'] ?? null, FILTER_VALIDATE_INT);
+            if ($sortOrder === false) {
+                $sortOrder = (count($ads) + 1) * 10;
+            }
+
+            $ads[] = [
+                'id' => $id !== '' ? $id : uniqid('article_text_ad_', true),
+                'name' => $name !== '' ? $name : __('admin.site_settings.ads.text_default_name', ['index' => (count($ads) + 1)]),
+                'placement' => $placement,
+                'text' => $text,
+                'url' => $url,
+                'text_color' => $color !== '' ? $this->normalizeHexColor($color) : '#2563eb',
+                'open_new_tab' => ! empty($postedAd['open_new_tab']),
+                'tracking_enabled' => $trackingEnabled,
+                'tracking_param' => $trackingParam,
+                'enabled' => ! empty($postedAd['enabled']),
+                'sort_order' => max(0, min(10000, (int) $sortOrder)),
+            ];
+        }
+
+        usort($ads, static fn (array $a, array $b): int => ((int) ($a['sort_order'] ?? 0)) <=> ((int) ($b['sort_order'] ?? 0)));
+
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'article_detail_text_ads'],
+            ['setting_value' => (string) json_encode($ads, JSON_UNESCAPED_UNICODE)]
+        );
+
+        SiteSettingsBag::forget();
+
+        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.ads.text_saved'));
+    }
+
+    /**
      * @return array{
      *   site_name:string,
      *   site_subtitle:string,
@@ -247,7 +335,8 @@ class SiteSettingsController extends Controller
      *   admin_base_path:string,
      *   active_theme:string,
      *   home_carousel_slides:string,
-     *   article_detail_ads:string
+     *   article_detail_ads:string,
+     *   article_detail_text_ads:string
      * }
      */
     private function loadSettings(): array
@@ -269,6 +358,7 @@ class SiteSettingsController extends Controller
             'active_theme' => (string) config('geoflow.default_theme', ''),
             'home_carousel_slides' => '[]',
             'article_detail_ads' => '[]',
+            'article_detail_text_ads' => '[]',
         ];
 
         $stored = SiteSetting::query()
@@ -301,6 +391,7 @@ class SiteSettingsController extends Controller
             'active_theme' => (string) ($stored['active_theme'] !== '' ? $stored['active_theme'] : config('geoflow.default_theme', '')),
             'home_carousel_slides' => (string) $stored['home_carousel_slides'],
             'article_detail_ads' => (string) $stored['article_detail_ads'],
+            'article_detail_text_ads' => (string) $stored['article_detail_text_ads'],
         ];
     }
 
@@ -340,6 +431,64 @@ class SiteSettingsController extends Controller
                 'enabled' => ! empty($item['enabled']),
             ];
         }
+
+        return $ads;
+    }
+
+    /**
+     * @return array<int, array{
+     *   id:string,
+     *   name:string,
+     *   placement:string,
+     *   text:string,
+     *   url:string,
+     *   text_color:string,
+     *   open_new_tab:bool,
+     *   tracking_enabled:bool,
+     *   tracking_param:string,
+     *   enabled:bool,
+     *   sort_order:int
+     * }>
+     */
+    private function parseArticleDetailTextAds(string $raw): array
+    {
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $ads = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $placement = (string) ($item['placement'] ?? 'content_top');
+            if (! in_array($placement, ['content_top', 'content_bottom'], true)) {
+                $placement = 'content_top';
+            }
+
+            $color = $this->normalizeHexColor((string) ($item['text_color'] ?? '#2563eb'));
+            if ($color === '') {
+                $color = '#2563eb';
+            }
+
+            $ads[] = [
+                'id' => trim((string) ($item['id'] ?? '')),
+                'name' => trim((string) ($item['name'] ?? '')),
+                'placement' => $placement,
+                'text' => trim((string) ($item['text'] ?? '')),
+                'url' => trim((string) ($item['url'] ?? '')),
+                'text_color' => $color,
+                'open_new_tab' => ! empty($item['open_new_tab']),
+                'tracking_enabled' => ! empty($item['tracking_enabled']),
+                'tracking_param' => trim((string) ($item['tracking_param'] ?? '')),
+                'enabled' => ! empty($item['enabled']),
+                'sort_order' => (int) ($item['sort_order'] ?? 0),
+            ];
+        }
+
+        usort($ads, static fn (array $a, array $b): int => ((int) ($a['sort_order'] ?? 0)) <=> ((int) ($b['sort_order'] ?? 0)));
 
         return $ads;
     }
@@ -458,5 +607,61 @@ class SiteSettingsController extends Controller
         }
 
         return '/'.ltrim($normalized, '/');
+    }
+
+    /**
+     * 正文文本广告链接只允许站内相对路径或 http(s) URL，不接受协议相对 URL 与脚本协议。
+     */
+    private function normalizeArticleTextAdUrl(string $url): string
+    {
+        $normalized = trim($url);
+        if ($normalized === '' || str_starts_with($normalized, '//')) {
+            return '';
+        }
+
+        if (str_starts_with($normalized, '/')) {
+            return $normalized;
+        }
+
+        if (preg_match('#^https?://#i', $normalized) === 1) {
+            return $normalized;
+        }
+
+        if (preg_match('#^[a-z][a-z0-9+.-]*:#i', $normalized) === 1) {
+            return '';
+        }
+
+        return '/'.ltrim($normalized, '/');
+    }
+
+    private function isValidHexColor(string $color): bool
+    {
+        return preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', trim($color)) === 1;
+    }
+
+    private function normalizeHexColor(string $color): string
+    {
+        $color = trim($color);
+        if (! $this->isValidHexColor($color)) {
+            return '';
+        }
+
+        $hex = ltrim(strtolower($color), '#');
+        if (strlen($hex) === 3) {
+            $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+        }
+
+        return '#'.$hex;
+    }
+
+    private function isValidTrackingParam(string $trackingParam): bool
+    {
+        $trackingParam = trim($trackingParam);
+
+        return $trackingParam !== ''
+            && mb_strlen($trackingParam) <= 250
+            && ! str_contains($trackingParam, '://')
+            && ! str_starts_with($trackingParam, '/')
+            && preg_match('/^[A-Za-z0-9._~%=&+;,:@-]+$/', $trackingParam) === 1;
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Site\ArticleTextAdPicker;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -80,6 +81,7 @@ class DistributionChannel extends Model
         return $this->resolvedSiteSettings() + [
             'active_theme' => (string) ($this->template_key ?? ''),
             'front_mode' => $this->frontMode(),
+            'article_text_ads' => $this->effectiveArticleTextAds(),
         ];
     }
 
@@ -205,6 +207,123 @@ class DistributionChannel extends Model
             'generic_remote_url_path' => trim((string) ($stored['generic_remote_url_path'] ?? 'url')),
             'generic_payload_wrapper' => in_array($payloadWrapper, ['none', 'data'], true) ? $payloadWrapper : 'none',
         ];
+    }
+
+    /**
+     * @return array{
+     *   content_top:array{mode:string,ad_ids:list<string>},
+     *   content_bottom:array{mode:string,ad_ids:list<string>}
+     * }
+     */
+    public function resolvedArticleTextAdPolicy(): array
+    {
+        $stored = is_array($this->channel_config) ? $this->channel_config : [];
+
+        return self::normalizeArticleTextAdPolicy($stored['article_text_ad_policy'] ?? null);
+    }
+
+    /**
+     * @return array<int, array<string,mixed>>
+     */
+    public function effectiveArticleTextAds(): array
+    {
+        $policy = $this->resolvedArticleTextAdPolicy();
+        $globalAds = ArticleTextAdPicker::all(true);
+        $effectiveAds = [];
+
+        foreach (['content_top', 'content_bottom'] as $placement) {
+            $placementPolicy = $policy[$placement] ?? ['mode' => 'inherit', 'ad_ids' => []];
+            $mode = (string) ($placementPolicy['mode'] ?? 'inherit');
+            if ($mode === 'disabled') {
+                continue;
+            }
+
+            $adsForPlacement = array_values(array_filter(
+                $globalAds,
+                static fn (array $ad): bool => ($ad['placement'] ?? '') === $placement
+            ));
+
+            if ($mode === 'selected') {
+                $selectedIds = $placementPolicy['ad_ids'] ?? [];
+                $adsForPlacement = array_values(array_filter(
+                    $adsForPlacement,
+                    static fn (array $ad): bool => in_array((string) ($ad['id'] ?? ''), $selectedIds, true)
+                ));
+            }
+
+            $effectiveAds = array_merge($effectiveAds, array_slice($adsForPlacement, 0, 3));
+        }
+
+        return array_values($effectiveAds);
+    }
+
+    /**
+     * @return array{
+     *   content_top:array{mode:string,ad_ids:list<string>},
+     *   content_bottom:array{mode:string,ad_ids:list<string>}
+     * }
+     */
+    public static function normalizeArticleTextAdPolicy(mixed $policy): array
+    {
+        $default = [
+            'content_top' => ['mode' => 'inherit', 'ad_ids' => []],
+            'content_bottom' => ['mode' => 'inherit', 'ad_ids' => []],
+        ];
+
+        if (is_string($policy)) {
+            $mode = in_array($policy, ['inherit', 'disabled', 'selected'], true) ? $policy : 'inherit';
+
+            return [
+                'content_top' => ['mode' => $mode, 'ad_ids' => []],
+                'content_bottom' => ['mode' => $mode, 'ad_ids' => []],
+            ];
+        }
+
+        if (! is_array($policy)) {
+            return $default;
+        }
+
+        if (array_key_exists('mode', $policy)) {
+            $mode = (string) ($policy['mode'] ?? 'inherit');
+            $adIds = self::normalizeArticleTextAdIds($policy['ad_ids'] ?? []);
+
+            return [
+                'content_top' => ['mode' => in_array($mode, ['inherit', 'disabled', 'selected'], true) ? $mode : 'inherit', 'ad_ids' => $adIds],
+                'content_bottom' => ['mode' => in_array($mode, ['inherit', 'disabled', 'selected'], true) ? $mode : 'inherit', 'ad_ids' => $adIds],
+            ];
+        }
+
+        foreach (['content_top', 'content_bottom'] as $placement) {
+            $placementPolicy = is_array($policy[$placement] ?? null) ? $policy[$placement] : [];
+            $mode = (string) ($placementPolicy['mode'] ?? 'inherit');
+            $default[$placement] = [
+                'mode' => in_array($mode, ['inherit', 'disabled', 'selected'], true) ? $mode : 'inherit',
+                'ad_ids' => self::normalizeArticleTextAdIds($placementPolicy['ad_ids'] ?? []),
+            ];
+        }
+
+        return $default;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function normalizeArticleTextAdIds(mixed $adIds): array
+    {
+        if (! is_array($adIds)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($adIds as $adId) {
+            $value = trim((string) $adId);
+            if ($value === '' || mb_strlen($value) > 120 || in_array($value, $normalized, true)) {
+                continue;
+            }
+            $normalized[] = $value;
+        }
+
+        return $normalized;
     }
 
     /**

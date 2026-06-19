@@ -119,7 +119,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 
 ### 默认管理员（首次种子）
 
-生产 `docker-compose.prod.yml` 的 **`init`** 服务会在迁移完成后执行一次 `db:seed`，用于写入默认后台账号。常驻的 `app`、`queue`、`scheduler`、`reverb` 服务不会自动 seed，避免每次重启都执行种子。
+生产 `docker-compose.prod.yml` 的 **`init`** 服务会在迁移完成后执行一次 `db:seed`，默认只写入默认后台账号。前台演示分类和文章默认不会写入；只有显式设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 时才会导入演示数据。常驻的 `app`、`queue`、`scheduler`、`reverb` 服务不会自动 seed，避免每次重启都执行种子。
 
 ```bash
 # 如果你没有使用 compose 的 init 服务，或手动关闭了 AUTO_SEED，可在迁移成功后补跑一次：

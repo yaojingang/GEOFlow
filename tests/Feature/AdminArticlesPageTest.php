@@ -12,6 +12,7 @@ use App\Models\DistributionChannel;
 use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\SiteSetting;
+use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -99,8 +100,8 @@ class AdminArticlesPageTest extends TestCase
             ->assertOk()
             ->assertSee('vendor/vditor/dist/index.min.js', false)
             ->assertSee('vendor/cropperjs/cropper.min.js', false)
-            ->assertSee(route('admin.articles.editor.images.upload', ['articleId' => (int) $article->id], false), false)
-            ->assertSee(route('admin.articles.editor.wechat-html', []), false)
+            ->assertSee(AdminWeb::routePath('admin.articles.editor.images.upload', ['articleId' => (int) $article->id]), false)
+            ->assertSee(AdminWeb::routePath('admin.articles.editor.wechat-html'), false)
             ->assertSee('id="content-editor"', false)
             ->assertSee('id="article-editor-copy-markdown"', false)
             ->assertSee('id="article-editor-copy-wechat-html"', false)
@@ -396,9 +397,9 @@ class AdminArticlesPageTest extends TestCase
             ->getContent();
 
         foreach ([
-            route('admin.articles.batch.update-status', []),
-            route('admin.articles.batch.update-review', []),
-            route('admin.articles.batch.delete', []),
+            AdminWeb::routePath('admin.articles.batch.update-status'),
+            AdminWeb::routePath('admin.articles.batch.update-review'),
+            AdminWeb::routePath('admin.articles.batch.delete'),
         ] as $path) {
             $escapedPath = str_replace('/', '\\/', $path);
 
@@ -407,7 +408,7 @@ class AdminArticlesPageTest extends TestCase
             $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedPath, $listHtml);
         }
         $this->assertStringContainsString(
-            'action="'.route('admin.articles.batch.update-status', []).'"',
+            'action="'.AdminWeb::routePath('admin.articles.batch.update-status').'"',
             $listHtml
         );
 
@@ -419,9 +420,9 @@ class AdminArticlesPageTest extends TestCase
             ->getContent();
 
         foreach ([
-            route('admin.articles.batch.restore', []),
-            route('admin.articles.batch.force-delete', []),
-            route('admin.articles.trash.empty', []),
+            AdminWeb::routePath('admin.articles.batch.restore'),
+            AdminWeb::routePath('admin.articles.batch.force-delete'),
+            AdminWeb::routePath('admin.articles.trash.empty'),
         ] as $path) {
             $escapedPath = str_replace('/', '\\/', $path);
 
@@ -429,6 +430,53 @@ class AdminArticlesPageTest extends TestCase
             $this->assertStringNotContainsString('https://configured.example'.$path, $trashHtml);
             $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedPath, $trashHtml);
         }
+    }
+
+    public function test_article_batch_urls_keep_configured_subdirectory_without_absolute_host(): void
+    {
+        config(['app.url' => 'https://configured.example/geoflow']);
+
+        $admin = Admin::query()->create([
+            'username' => 'articles_subdirectory_batch_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-subdirectory-batch@example.com',
+            'display_name' => 'Articles Subdirectory Batch Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $category = Category::query()->create([
+            'name' => '二级目录批量分类',
+            'slug' => 'subdirectory-batch-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        Article::query()->create([
+            'title' => '二级目录批量路径文章',
+            'slug' => 'subdirectory-batch-actions-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.index'))
+            ->assertOk()
+            ->getContent();
+
+        $path = AdminWeb::routePath('admin.articles.batch.update-status');
+        $escapedPath = str_replace('/', '\\/', $path);
+
+        $this->assertStringStartsWith('/geoflow/', $path);
+        $this->assertStringContainsString('action="'.$path.'"', $html);
+        $this->assertStringContainsString($escapedPath, $html);
+        $this->assertStringNotContainsString('https://configured.example'.$path, $html);
+        $this->assertStringNotContainsString('https:\/\/configured.example'.$escapedPath, $html);
     }
 
     public function test_admin_brand_stays_geoflow_when_public_site_name_changes(): void

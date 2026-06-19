@@ -33,8 +33,8 @@
         data-status="{{ $job->status }}"
         data-has-result="{{ $result !== [] ? '1' : '0' }}"
         data-autostart="{{ $job->status === 'queued' ? '1' : '0' }}"
-        data-run-url="{{ route('admin.url-import.run', ['jobId' => $job->id]) }}"
-        data-status-url="{{ route('admin.url-import.status', ['jobId' => $job->id]) }}"
+        data-run-url="{{ \App\Support\AdminWeb::routePath('admin.url-import.run', ['jobId' => $job->id]) }}"
+        data-status-url="{{ \App\Support\AdminWeb::routePath('admin.url-import.status', ['jobId' => $job->id]) }}"
         data-ai-config-url="{{ route('admin.ai-models.index') }}"
     >
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

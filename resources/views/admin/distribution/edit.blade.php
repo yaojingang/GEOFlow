@@ -8,6 +8,13 @@
     $channelType = $channel->channelType();
     $channelConfig = $channel->resolvedChannelConfig();
     $genericConfig = $channel->resolvedGenericHttpConfig();
+    $articleTextAds = $articleDetailTextAds ?? [];
+    $articleTextAdPolicy = \App\Models\DistributionChannel::normalizeArticleTextAdPolicy(old('article_text_ad_policy', $articleTextAdPolicy ?? $channel->resolvedArticleTextAdPolicy()));
+    $articleTextAdsByPlacement = collect($articleTextAds)->groupBy('placement');
+    $articleTextAdPlacements = [
+        'content_top' => __('admin.distribution.article_text_ads.placement_top'),
+        'content_bottom' => __('admin.distribution.article_text_ads.placement_bottom'),
+    ];
     $genericEndpointMethods = [
         'health' => ['GET', 'POST'],
         'publish' => ['POST', 'PUT', 'PATCH'],
@@ -360,6 +367,82 @@
                         @endif
                     </div>
 
+                    <div class="rounded-lg border border-gray-200 bg-white p-5">
+                        <div class="mb-5">
+                            <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.article_text_ads.section_title') }}</h2>
+                            <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.distribution.article_text_ads.section_desc') }}</p>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                            @foreach ($articleTextAdPlacements as $placement => $placementLabel)
+                                @php
+                                    $placementPolicy = $articleTextAdPolicy[$placement] ?? ['mode' => 'inherit', 'ad_ids' => []];
+                                    $placementMode = (string) ($placementPolicy['mode'] ?? 'inherit');
+                                    $selectedAdIds = $placementPolicy['ad_ids'] ?? [];
+                                    $placementAds = $articleTextAdsByPlacement->get($placement, collect())->values();
+                                @endphp
+                                <fieldset class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                                    <legend class="text-sm font-semibold text-gray-900">{{ $placementLabel }}</legend>
+                                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                        @foreach (['inherit', 'selected', 'disabled'] as $mode)
+                                            <label class="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm hover:border-blue-200">
+                                                <input
+                                                    type="radio"
+                                                    name="article_text_ad_policy[{{ $placement }}][mode]"
+                                                    value="{{ $mode }}"
+                                                    class="mt-0.5 text-blue-600 focus:ring-blue-500"
+                                                    data-article-text-ad-mode="{{ $placement }}"
+                                                    @checked($placementMode === $mode)
+                                                >
+                                                <span class="font-medium text-gray-800">{{ __('admin.distribution.article_text_ads.mode_'.$mode) }}</span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+
+                                    <div class="mt-4 {{ $placementMode === 'selected' ? '' : 'hidden' }}" data-article-text-ad-selected="{{ $placement }}">
+                                        @if ($placementAds->isEmpty())
+                                            <div class="rounded-md border border-dashed border-gray-300 bg-white px-4 py-4 text-sm text-gray-500">
+                                                {{ __('admin.distribution.article_text_ads.empty') }}
+                                            </div>
+                                        @else
+                                            <div class="space-y-2">
+                                                @foreach ($placementAds as $textAd)
+                                                    @php
+                                                        $textAdId = (string) ($textAd['id'] ?? '');
+                                                        $enabled = ! empty($textAd['enabled']);
+                                                    @endphp
+                                                    <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-white px-3 py-3 hover:border-blue-200">
+                                                        <input
+                                                            type="checkbox"
+                                                            name="article_text_ad_policy[{{ $placement }}][ad_ids][]"
+                                                            value="{{ $textAdId }}"
+                                                            class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                            @checked(in_array($textAdId, $selectedAdIds, true))
+                                                            @disabled(! $enabled)
+                                                        >
+                                                        <span class="min-w-0">
+                                                            <span class="flex flex-wrap items-center gap-2">
+                                                                <span class="text-sm font-semibold text-gray-900">{{ $textAd['name'] !== '' ? $textAd['name'] : $textAd['text'] }}</span>
+                                                                @unless ($enabled)
+                                                                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">{{ __('admin.distribution.article_text_ads.disabled_badge') }}</span>
+                                                                @endunless
+                                                            </span>
+                                                            <span class="mt-1 block truncate text-sm text-gray-600">{{ $textAd['text'] }}</span>
+                                                        </span>
+                                                    </label>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
+                                </fieldset>
+                            @endforeach
+                        </div>
+
+                        <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                            {{ __('admin.distribution.article_text_ads.package_hint') }}
+                        </div>
+                    </div>
+
                     <div>
                         <label for="description" class="block text-sm font-medium text-gray-700">{{ __('admin.common.description') }}</label>
                         <textarea id="description" name="description" rows="4" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.distribution.placeholder.description') }}">{{ old('description', (string) ($channel->description ?? '')) }}</textarea>
@@ -394,7 +477,20 @@
             if (event.target.matches('#generic_auth_type')) {
                 toggleGenericAuthFields();
             }
+            if (event.target.matches('[data-article-text-ad-mode]')) {
+                toggleArticleTextAdPolicyFields();
+            }
         });
         toggleGenericAuthFields();
+
+        function toggleArticleTextAdPolicyFields() {
+            document.querySelectorAll('[data-article-text-ad-selected]').forEach(function (panel) {
+                var placement = panel.getAttribute('data-article-text-ad-selected');
+                var selectedMode = document.querySelector('[data-article-text-ad-mode="' + placement + '"]:checked');
+                panel.classList.toggle('hidden', !selectedMode || selectedMode.value !== 'selected');
+            });
+        }
+
+        toggleArticleTextAdPolicyFields();
     </script>
 @endsection

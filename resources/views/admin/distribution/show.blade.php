@@ -11,6 +11,15 @@
     $channelTypeLabel = __('admin.distribution.channel_type.'.$channelType);
     $channelConfig = $channel->resolvedChannelConfig();
     $genericConfig = $channel->resolvedGenericHttpConfig();
+    $articleTextAdPolicy = \App\Models\DistributionChannel::normalizeArticleTextAdPolicy($articleTextAdPolicy ?? $channel->resolvedArticleTextAdPolicy());
+    $effectiveArticleTextAds = is_array($effectiveArticleTextAds ?? null) ? $effectiveArticleTextAds : $channel->effectiveArticleTextAds();
+    $articleTextAdCounts = ['content_top' => 0, 'content_bottom' => 0];
+    foreach ($effectiveArticleTextAds as $textAd) {
+        $placement = (string) ($textAd['placement'] ?? '');
+        if (array_key_exists($placement, $articleTextAdCounts)) {
+            $articleTextAdCounts[$placement]++;
+        }
+    }
     $genericSamplePayload = [
         'version' => '1.0',
         'source' => 'geoflow',
@@ -198,6 +207,34 @@
                         </div>
                     @endif
                 @endif
+            </div>
+        </div>
+
+        <div class="rounded-lg bg-white p-6 shadow">
+            <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                    <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.article_text_ads.detail_title') }}</h2>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.distribution.article_text_ads.detail_desc') }}</p>
+                </div>
+                <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <i data-lucide="pencil" class="mr-2 h-4 w-4"></i>
+                    {{ __('admin.button.edit') }}
+                </a>
+            </div>
+            <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                @foreach (['content_top' => __('admin.distribution.article_text_ads.placement_top'), 'content_bottom' => __('admin.distribution.article_text_ads.placement_bottom')] as $placement => $placementLabel)
+                    @php($mode = (string) ($articleTextAdPolicy[$placement]['mode'] ?? 'inherit'))
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4">
+                        <div class="text-sm font-semibold text-gray-900">{{ $placementLabel }}</div>
+                        <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                            <span class="rounded-full bg-white px-2.5 py-1 font-medium text-gray-800 ring-1 ring-gray-200">{{ __('admin.distribution.article_text_ads.mode_'.$mode) }}</span>
+                            <span>{{ __('admin.distribution.article_text_ads.effective_count', ['count' => $articleTextAdCounts[$placement] ?? 0]) }}</span>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+            <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                {{ __('admin.distribution.article_text_ads.package_hint') }}
             </div>
         </div>
 

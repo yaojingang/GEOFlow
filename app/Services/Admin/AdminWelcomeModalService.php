@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Models\Admin;
+use App\Support\AdminWeb;
 
 /**
  * 后台「欢迎使用 GEOFlow」弹窗：负责版本态判断、自动打开一次、以及关闭落库所需的数据。
@@ -33,7 +34,7 @@ class AdminWelcomeModalService
             'state' => [
                 'mode' => $welcomeState['mode'] ?? 'intro',
                 'shouldAutoOpen' => $shouldAutoOpen,
-                'dismissUrl' => route('admin.welcome.dismiss', []),
+                'dismissUrl' => AdminWeb::routePath('admin.welcome.dismiss'),
                 'csrfToken' => csrf_token(),
                 'links' => [
                     'x' => 'https://x.com/yaojingang',
