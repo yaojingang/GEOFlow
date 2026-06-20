@@ -10,6 +10,7 @@ const reverbScheme = runtimeReverb.scheme ?? 'https';
 const reverbPort = runtimeReverb.port ?? (reverbScheme === 'https' ? 443 : 80);
 const reverbKey = runtimeReverb.key;
 const reverbHost = runtimeReverb.host;
+const authEndpoint = (runtimeReverb.authEndpoint ?? '/broadcasting/auth').trim();
 
 if (!runtimeReverb.enabled || !reverbKey || !reverbHost) {
     window.Echo = null;
@@ -22,6 +23,7 @@ if (!runtimeReverb.enabled || !reverbKey || !reverbHost) {
         wssPort: reverbPort,
         forceTLS: reverbScheme === 'https',
         enabledTransports: ['ws', 'wss'],
+        authEndpoint: authEndpoint.startsWith('/') ? authEndpoint : `/${authEndpoint}`,
         auth: {
             headers: {
                 'X-CSRF-TOKEN': csrfToken,

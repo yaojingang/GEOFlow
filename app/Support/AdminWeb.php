@@ -44,6 +44,26 @@ final class AdminWeb
     }
 
     /**
+     * 为同源前端请求补全 APP_URL 中的二级目录前缀（如 /doc/broadcasting/auth）。
+     */
+    public static function appPath(string $path): string
+    {
+        $path = '/'.ltrim($path, '/');
+        $appPath = trim((string) (parse_url((string) config('app.url', ''), PHP_URL_PATH) ?: ''), '/');
+
+        if ($appPath === '') {
+            return $path;
+        }
+
+        $appPrefix = '/'.$appPath;
+        if ($path === $appPrefix || str_starts_with($path, $appPrefix.'/')) {
+            return $path;
+        }
+
+        return rtrim($appPrefix, '/').$path;
+    }
+
+    /**
      * Build a same-origin route path for admin JavaScript endpoints and forms.
      *
      * This keeps URLs independent from the configured APP_URL host while still
