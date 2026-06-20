@@ -340,7 +340,11 @@
             </summary>
             <div class="px-6 py-6">
                 <form method="POST" action="{{ route('admin.site-settings.ads') }}" id="article-ad-form" class="space-y-6">
-                    <div class="flex justify-end">
+                    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h4 class="text-base font-semibold text-gray-900">{{ __('admin.site_settings.ads.sticky_section_title') }}</h4>
+                            <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.ads.sticky_section_desc') }}</p>
+                        </div>
                         <button type="button" id="add-article-ad" class="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
                             {{ __('admin.site_settings.ads.add') }}

@@ -57,6 +57,16 @@ if [ ! -e public/storage ]; then
   php artisan storage:link --force --no-interaction
 fi
 
+run_database_seed() {
+  if [ -n "${AUTO_SEED_CLASS:-}" ]; then
+    echo "[entrypoint] php artisan db:seed --class=${AUTO_SEED_CLASS} --force"
+    php artisan db:seed --class="${AUTO_SEED_CLASS}" --force --no-interaction
+  else
+    echo "[entrypoint] php artisan db:seed --force"
+    php artisan db:seed --force --no-interaction
+  fi
+}
+
 if [ "${DB_CONNECTION:-}" = "pgsql" ]; then
   DB_HOST_VALUE="${DB_HOST:-postgres}"
   DB_PORT_VALUE="${DB_PORT:-5432}"
@@ -76,7 +86,7 @@ if [ "${AUTO_INIT_ONCE:-false}" = "true" ]; then
   else
     echo "[entrypoint] first startup initialization: migrate + seed"
     php artisan migrate --force --no-interaction
-    php artisan db:seed --force --no-interaction
+    run_database_seed
   fi
 fi
 
@@ -88,8 +98,7 @@ fi
 
 # 每次启动是否跑 seed（默认关；仅在你明确要重置演示数据时打开）
 if [ "${AUTO_SEED:-false}" = "true" ]; then
-  echo "[entrypoint] php artisan db:seed --force"
-  php artisan db:seed --force --no-interaction
+  run_database_seed
 fi
 
 # 缓存 config / events / routes / views（需有效 APP_KEY；设为 false 可跳过，便于本地排障）

@@ -59,6 +59,7 @@ services:
     environment:
       AUTO_MIGRATE: "true"
       AUTO_SEED: "true"
+      AUTO_SEED_CLASS: 'Database\Seeders\AdminUserSeeder'
       AUTO_OPTIMIZE: "false"
     volumes:
       - ./.env.prod:/var/www/html/.env

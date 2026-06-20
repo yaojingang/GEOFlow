@@ -256,6 +256,98 @@ class AdminDistributionPageTest extends TestCase
         $this->assertMatchesRegularExpression('/class="[^"]*hidden[^"]*"[^>]*data-distribution-theme-card[^>]*data-distribution-theme-collapsed="true"[^>]*>\\s*<input[^>]+value="theme-06"/s', $html);
     }
 
+    public function test_distribution_channel_edit_form_collapses_template_choices_after_two_rows(): void
+    {
+        $this->app->instance(SiteThemeCatalog::class, new class extends SiteThemeCatalog
+        {
+            public function all(): array
+            {
+                return collect(range(1, 8))
+                    ->map(fn (int $index): array => [
+                        'id' => sprintf('theme-%02d', $index),
+                        'name' => sprintf('Theme %02d', $index),
+                        'version' => '1.0.0',
+                        'description' => sprintf('Theme %02d description', $index),
+                    ])
+                    ->all();
+            }
+        });
+
+        $channel = DistributionChannel::query()->create([
+            'name' => '模板折叠渠道',
+            'domain' => 'theme-collapse.example.com',
+            'endpoint_url' => 'https://theme-collapse.example.com',
+            'template_key' => 'theme-08',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.edit', ['channelId' => (int) $channel->id]))
+            ->assertOk()
+            ->assertSee(__('admin.site_settings.theme.section_title'))
+            ->assertSee('name="template_key" value=""', false)
+            ->assertSee('name="template_key" value="theme-08"', false)
+            ->assertSee(__('admin.distribution.remote_site.template_expand_more', ['count' => 2]));
+
+        $html = (string) $response->getContent();
+
+        $this->assertSame(3, substr_count($html, 'data-distribution-theme-collapsed="true"'));
+        $this->assertMatchesRegularExpression('/class="[^"]*hidden[^"]*"[^>]*data-distribution-theme-card[^>]*data-distribution-theme-collapsed="true"[^>]*>\\s*<input[^>]+value="theme-06"/s', $html);
+        $this->assertDoesNotMatchRegularExpression('/class="[^"]*hidden[^"]*"[^>]*data-distribution-theme-card[^>]*data-distribution-theme-collapsed="true"[^>]*>\\s*<input[^>]+value="theme-08"/s', $html);
+    }
+
+    public function test_distribution_channel_edit_custom_text_ads_render_localized_fields(): void
+    {
+        $channel = DistributionChannel::query()->create([
+            'name' => '自定义广告编辑渠道',
+            'domain' => 'custom-ad-edit.example.com',
+            'endpoint_url' => 'https://custom-ad-edit.example.com',
+            'status' => 'active',
+            'channel_config' => [
+                'article_text_ad_policy' => [
+                    'content_top' => [
+                        'mode' => 'custom',
+                        'custom_modules' => [
+                            [
+                                'id' => 'channel-module-1',
+                                'name' => '渠道顶部广告',
+                                'placement' => 'content_top',
+                                'enabled' => true,
+                                'sort_order' => 10,
+                                'links' => [
+                                    [
+                                        'text' => '渠道文字链',
+                                        'url' => 'https://example.com/landing',
+                                        'text_color' => '#2563eb',
+                                        'open_new_tab' => true,
+                                        'tracking_enabled' => true,
+                                        'tracking_param' => 'utm_source=channel',
+                                        'enabled' => true,
+                                        'sort_order' => 10,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'content_bottom' => [
+                        'mode' => 'inherit',
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.edit', ['channelId' => (int) $channel->id]))
+            ->assertOk()
+            ->assertSee(__('admin.site_settings.ads.text_field_name'))
+            ->assertSee(__('admin.site_settings.ads.text_link_section'))
+            ->assertSee(__('admin.site_settings.ads.text_add_link'))
+            ->assertSee('name="article_text_ad_policy[content_top][custom_modules][0][links][0][text]"', false)
+            ->assertSee('渠道文字链')
+            ->assertDontSee('admin.site_settings.article_detail_ads')
+            ->assertDontSee('admin.site_settings.ads.');
+    }
+
     public function test_wordpress_distribution_channel_form_shows_wordpress_fields(): void
     {
         $this->actingAs($this->admin(), 'admin')

@@ -39,6 +39,8 @@ return [
     'default_theme' => env('GEOFLOW_DEFAULT_THEME', 'toutiao-news-20260426'),
     // 是否在默认 db:seed 中写入前台演示分类和文章。生产环境默认关闭，避免重启/初始化时污染真实内容。
     'seed_frontend_demo' => filter_var(env('GEOFLOW_SEED_FRONTEND_DEMO', false), FILTER_VALIDATE_BOOLEAN),
+    // 演示数据默认只补缺，不覆盖用户已修改的网站设置、广告、分类和文章；仅调试演示库时才显式开启覆盖。
+    'seed_frontend_demo_overwrite' => filter_var(env('GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE', false), FILTER_VALIDATE_BOOLEAN),
 
     // 当前系统版本（底部展示、GitHub 更新检查对比）；默认跟随本地 version.json，避免已部署 .env 锁死版本号。
     'app_version' => $appVersion,

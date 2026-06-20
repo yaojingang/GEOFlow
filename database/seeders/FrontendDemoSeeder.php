@@ -11,48 +11,49 @@ use Illuminate\Database\Seeder;
 
 class FrontendDemoSeeder extends Seeder
 {
+    private bool $overwriteExistingDemoData = false;
+
     public function run(): void
     {
+        $this->overwriteExistingDemoData = (bool) config('geoflow.seed_frontend_demo_overwrite', false);
+
         $this->seedSiteSettings();
 
-        $author = Author::query()->updateOrCreate(
-            ['email' => 'demo@geoflow.local'],
-            [
-                'name' => 'GEOFlow 编辑部',
-                'bio' => '用于前台模板、分类页和文章页预览的示例作者。',
-                'avatar' => '',
-                'website' => '',
-                'social_links' => '',
-            ],
-        );
+        $author = $this->seedAuthor();
 
         $categories = $this->seedCategories();
 
         foreach ($this->articles() as $index => $article) {
             $category = $categories[$article['category_slug']];
-            Article::query()->updateOrCreate(
-                ['slug' => $article['slug']],
-                [
-                    'title' => $article['title'],
-                    'excerpt' => $article['excerpt'],
-                    'content' => $article['content'],
-                    'category_id' => $category->id,
-                    'author_id' => $author->id,
-                    'original_keyword' => $article['keyword'],
-                    'keywords' => implode(',', $article['tags']),
-                    'meta_description' => $article['excerpt'],
-                    'status' => 'published',
-                    'review_status' => 'approved',
-                    'view_count' => 320 + ($index * 37),
-                    'is_ai_generated' => 0,
-                    'is_hot' => in_array($index, [0, 3, 6], true),
-                    'is_featured' => in_array($index, [0, 1], true),
-                    'published_at' => now()->subDays($index)->setTime(9, 30),
-                ],
-            );
+            $this->seedArticle($article, $category, $author, $index);
         }
 
         SiteSettingsBag::forget();
+    }
+
+    private function seedAuthor(): Author
+    {
+        $values = [
+            'name' => 'GEOFlow 编辑部',
+            'bio' => '用于前台模板、分类页和文章页预览的示例作者。',
+            'avatar' => '',
+            'website' => '',
+            'social_links' => '',
+        ];
+
+        $author = Author::query()->where('email', 'demo@geoflow.local')->first();
+        if ($author instanceof Author) {
+            if ($this->overwriteExistingDemoData) {
+                $author->fill($values)->save();
+            }
+
+            return $author;
+        }
+
+        return Author::query()->create([
+            'email' => 'demo@geoflow.local',
+            ...$values,
+        ]);
     }
 
     private function seedSiteSettings(): void
@@ -100,10 +101,19 @@ class FrontendDemoSeeder extends Seeder
         ];
 
         foreach ($settings as $key => $value) {
-            SiteSetting::query()->updateOrCreate(
-                ['setting_key' => $key],
-                ['setting_value' => $value],
-            );
+            $setting = SiteSetting::query()->where('setting_key', $key)->first();
+            if ($setting instanceof SiteSetting) {
+                if ($this->overwriteExistingDemoData) {
+                    $setting->forceFill(['setting_value' => $value])->save();
+                }
+
+                continue;
+            }
+
+            SiteSetting::query()->create([
+                'setting_key' => $key,
+                'setting_value' => $value,
+            ]);
         }
     }
 
@@ -141,17 +151,75 @@ class FrontendDemoSeeder extends Seeder
 
         $categories = [];
         foreach ($rows as $row) {
-            $categories[$row['slug']] = Category::query()->updateOrCreate(
-                ['slug' => $row['slug']],
-                [
-                    'name' => $row['name'],
-                    'description' => $row['description'],
-                    'sort_order' => $row['sort_order'],
-                ],
-            );
+            $category = Category::query()->where('slug', $row['slug'])->first();
+            if ($category instanceof Category) {
+                if ($this->overwriteExistingDemoData) {
+                    $category->fill([
+                        'name' => $row['name'],
+                        'description' => $row['description'],
+                        'sort_order' => $row['sort_order'],
+                    ])->save();
+                }
+
+                $categories[$row['slug']] = $category;
+                continue;
+            }
+
+            $categories[$row['slug']] = Category::query()->create([
+                'slug' => $row['slug'],
+                'name' => $row['name'],
+                'description' => $row['description'],
+                'sort_order' => $row['sort_order'],
+            ]);
         }
 
         return $categories;
+    }
+
+    /**
+     * @param  array{
+     *   category_slug:string,
+     *   slug:string,
+     *   title:string,
+     *   excerpt:string,
+     *   keyword:string,
+     *   tags:list<string>,
+     *   content:string
+     * }  $article
+     */
+    private function seedArticle(array $article, Category $category, Author $author, int $index): void
+    {
+        $values = [
+            'title' => $article['title'],
+            'excerpt' => $article['excerpt'],
+            'content' => $article['content'],
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'original_keyword' => $article['keyword'],
+            'keywords' => implode(',', $article['tags']),
+            'meta_description' => $article['excerpt'],
+            'status' => 'published',
+            'review_status' => 'approved',
+            'view_count' => 320 + ($index * 37),
+            'is_ai_generated' => 0,
+            'is_hot' => in_array($index, [0, 3, 6], true),
+            'is_featured' => in_array($index, [0, 1], true),
+            'published_at' => now()->subDays($index)->setTime(9, 30),
+        ];
+
+        $existing = Article::query()->withTrashed()->where('slug', $article['slug'])->first();
+        if ($existing instanceof Article) {
+            if ($this->overwriteExistingDemoData && $existing->deleted_at === null) {
+                $existing->fill($values)->save();
+            }
+
+            return;
+        }
+
+        Article::query()->create([
+            'slug' => $article['slug'],
+            ...$values,
+        ]);
     }
 
     /**

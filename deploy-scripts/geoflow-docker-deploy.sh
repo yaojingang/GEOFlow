@@ -315,8 +315,8 @@ deploy_stack() {
   log "Starting GEOFlow services."
   "${COMPOSE[@]}" up -d app web queue scheduler reverb
 
-  log "Seeding default admin account if it does not exist."
-  "${COMPOSE[@]}" run --rm app php artisan db:seed --force
+  log "Ensuring default admin account if it does not exist."
+  "${COMPOSE[@]}" run --rm app php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
 
   log "Clearing and rebuilding Laravel caches."
   "${COMPOSE[@]}" run --rm app php artisan optimize:clear

@@ -32,6 +32,16 @@ if [ ! -e public/storage ]; then
   php artisan storage:link --force --no-interaction
 fi
 
+run_database_seed() {
+  if [ -n "${AUTO_SEED_CLASS:-}" ]; then
+    echo "[entrypoint-prod] php artisan db:seed --class=${AUTO_SEED_CLASS} --force"
+    php artisan db:seed --class="${AUTO_SEED_CLASS}" --force --no-interaction
+  else
+    echo "[entrypoint-prod] php artisan db:seed --force"
+    php artisan db:seed --force --no-interaction
+  fi
+}
+
 if [ "${AUTO_WAIT_FOR_DB:-true}" = "true" ] && [ "${DB_CONNECTION:-}" = "pgsql" ]; then
   DB_HOST_VALUE="${DB_HOST:-postgres}"
   DB_PORT_VALUE="${DB_PORT:-5432}"
@@ -50,8 +60,7 @@ if [ "${AUTO_MIGRATE:-false}" = "true" ]; then
 fi
 
 if [ "${AUTO_SEED:-false}" = "true" ]; then
-  echo "[entrypoint-prod] php artisan db:seed --force"
-  php artisan db:seed --force --no-interaction
+  run_database_seed
 fi
 
 if [ "${AUTO_OPTIMIZE:-true}" = "true" ]; then

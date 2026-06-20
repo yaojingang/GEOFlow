@@ -219,7 +219,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - Frontend and admin both enter through `web` (Nginx)
 - PHP is executed by `app` (php-fpm)
-- **Default admin:** the production `init` service runs `db:seed` after migrations to create the default admin account; repeated runs do not overwrite an existing `admin` user.
+- **Default admin:** the production `init` service runs `db:seed` after migrations to create the default admin account; repeated runs do not overwrite an existing `admin` user. Frontend demo data is disabled by default; even when explicitly enabled, it only fills missing rows and does not overwrite user-edited site settings, ads, categories, or articles.
 - See `../../docs/deployment/DEPLOYMENT.md` for details
 
 ### Option 2: Local PHP stack
@@ -236,7 +236,7 @@ composer install --no-interaction --prefer-dist
 php artisan key:generate
 
 php artisan migrate --force
-php artisan db:seed --force    # optional: default admin, etc.
+php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force    # optional: default admin only
 php artisan storage:link
 
 php artisan serve --host=127.0.0.1 --port=8080
@@ -327,6 +327,7 @@ Optional localhost-only DB/Redis host ports: see `DB_EXPOSE_PORT` and `REDIS_EXP
 | `AUTO_INIT_ONCE` | `true` on `init` only | First-time `migrate` + `db:seed` on empty DB |
 | `AUTO_GENERATE_APP_KEY` | enabled in `init` | Generate `APP_KEY` when missing |
 | `AUTO_SEED` | `false` | If `true`, runs **`db:seed` every start** (use with care) |
+| `AUTO_SEED_CLASS` | empty | Limit automatic seeding to one seeder class; production `init` defaults to `Database\Seeders\AdminUserSeeder` |
 
 `./storage` and `./.env` are mounted; application code lives in the image. For production, use the new **`docker-compose.prod.yml`** stack (`Nginx + php-fpm`) and see `../../docs/deployment/DEPLOYMENT.md`.
 

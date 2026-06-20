@@ -56,21 +56,21 @@ php artisan migrate --force
 ```bash
 $COMPOSE_PROD run --rm app php artisan key:generate --force
 $COMPOSE_PROD run --rm app php artisan migrate --force
-$COMPOSE_PROD run --rm app php artisan db:seed --force
+$COMPOSE_PROD run --rm app php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
 $COMPOSE_PROD run --rm app php artisan storage:link --force
 $COMPOSE_PROD run --rm app php artisan optimize
 ```
 
 也就是说：命令从容器外的服务器项目目录执行，但实际运行在 `app` 容器内。
 
-默认 `db:seed` 只创建后台管理员，不会写入前台演示分类和文章。如果确实需要演示内容，再临时设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 后执行 seed。
+默认补救命令只创建或确认后台管理员，不会写入前台演示分类和文章。如果确实需要演示内容，再临时设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 后执行 `php artisan db:seed --force`；演示数据默认只补缺，不覆盖已修改的网站设置、广告、分类和文章，除非额外设置 `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true`。
 
 也可以先进容器后执行：
 
 ```bash
 $COMPOSE_PROD exec app sh
 php artisan migrate --force
-php artisan db:seed --force
+php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
 php artisan optimize
 ```
 

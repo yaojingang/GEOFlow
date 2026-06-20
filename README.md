@@ -228,7 +228,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - 前台 / 后台统一经 `web`（Nginx）访问
 - PHP 由 `app`（php-fpm）解析
-- **默认管理员**：生产 `init` 服务会在迁移后执行一次 `db:seed`，只在目标用户名不存在时写入默认后台账号；重复执行不会覆盖已有账号或密码
+- **默认管理员**：生产 `init` 服务会在迁移后执行一次 `db:seed`，只在目标用户名不存在时写入默认后台账号；重复执行不会覆盖已有账号或密码。前台演示数据默认不导入；即使显式开启，也只补缺，不覆盖用户已修改的网站设置、广告、分类和文章。
 - 详细说明见 `docs/deployment/DEPLOYMENT.md`
 
 ### 方式二：本地 PHP 服务器
@@ -249,7 +249,7 @@ php artisan key:generate
 
 # 3. 数据库与存储
 php artisan migrate --force
-php artisan db:seed --force    # 可选：写入默认管理员等
+php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force    # 可选：只补默认管理员
 php artisan storage:link
 
 # 4. 开发用 HTTP（仅本地调试；生产请用 Nginx + PHP-FPM，站点根目录 public/）
@@ -343,6 +343,7 @@ php artisan geoflow:admin-unlock admin
 | `AUTO_INIT_ONCE` | 仅 `init` 为 `true` | 新库时执行一次 `migrate` + `db:seed` |
 | `AUTO_GENERATE_APP_KEY` | `init` 内为 `true` | 无有效 `APP_KEY` 时自动生成 |
 | `AUTO_SEED` | `false` | 为 `true` 时**每次**启动都 `db:seed`（慎用） |
+| `AUTO_SEED_CLASS` | 空 | 限制自动 seed 只执行指定 seeder；生产 `init` 默认使用 `Database\Seeders\AdminUserSeeder` |
 
 Compose 将 **`./storage`** 与 **`./.env`** 挂载进容器；应用代码在镜像内。若要用于正式生产，请改用仓库新增的 **`docker-compose.prod.yml`**（`Nginx + php-fpm`），并参见 `docs/deployment/DEPLOYMENT.md`。
 

@@ -198,7 +198,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 - フロント／管理は `web`（Nginx）経由、PHP は `app`（php-fpm）。
-- **既定管理者:** 本番の `init` サービスはマイグレーション後に `db:seed` を実行し、既定の管理者アカウントを作成します。再実行しても既存の `admin` ユーザーは上書きされません。
+- **既定管理者:** 本番の `init` サービスはマイグレーション後に `db:seed` を実行し、既定の管理者アカウントだけを作成します。再実行しても既存の `admin` ユーザーは上書きされません。フロントのデモデータは既定では導入されず、明示的に有効化しても既存のサイト設定、広告、カテゴリ、記事は上書きされません。
 - 手順の詳細は **`../../docs/deployment/DEPLOYMENT.md`** を参照してください。
 
 ### 方法 2：ローカル PHP
@@ -213,7 +213,7 @@ composer install --no-interaction --prefer-dist
 php artisan key:generate
 
 php artisan migrate --force
-php artisan db:seed --force
+php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
 php artisan storage:link
 
 php artisan serve --host=127.0.0.1 --port=8080
@@ -241,7 +241,7 @@ php artisan reverb:start
 
 ---
 
-## デフォルト管理者（`db:seed` 後）
+## デフォルト管理者（`AdminUserSeeder` 後）
 
 | 項目 | 値 |
 |------|-----|
@@ -249,6 +249,8 @@ php artisan reverb:start
 | パスワード | ローカル開発では既定 `password`。本番では `GEOFLOW_ADMIN_PASSWORD` を設定してください。未設定でアカウントがまだ存在しない場合、seeder は一回限りのランダムパスワードを init / `db:seed` ログに出力します。 |
 
 Seeder は対象ユーザー名が存在しない場合のみ作成します。再実行しても既存のユーザー名、メール、パスワードは上書きされません。
+
+フロントのデモカテゴリや記事が必要な場合のみ `GEOFLOW_SEED_FRONTEND_DEMO=true` を設定してから `php artisan db:seed --force` を実行してください。デモデータは既定で不足分だけを追加し、既存のサイト設定、広告、カテゴリ、記事は上書きしません。デモ環境をリセットしたい場合だけ `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` を追加します。
 
 ### ログイン失敗時のロックと手動解除
 

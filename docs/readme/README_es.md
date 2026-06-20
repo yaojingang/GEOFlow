@@ -198,7 +198,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 - Frontend y admin entran por `web` (Nginx); PHP en `app` (php-fpm).
-- **Admin por defecto:** el servicio `init` de producción ejecuta `db:seed` después de las migraciones para crear la cuenta admin inicial; las ejecuciones repetidas no sobrescriben el usuario `admin` existente.
+- **Admin por defecto:** el servicio `init` de producción ejecuta `db:seed` después de las migraciones para crear solo la cuenta admin inicial; las ejecuciones repetidas no sobrescriben el usuario `admin` existente. Los datos demo del frontend están desactivados por defecto y, aunque se activen explícitamente, no sobrescriben ajustes del sitio, anuncios, categorías ni artículos ya editados.
 - Más detalle: **`../../docs/deployment/DEPLOYMENT.md`**.
 
 ### Opción 2: PHP local
@@ -213,7 +213,7 @@ composer install --no-interaction --prefer-dist
 php artisan key:generate
 
 php artisan migrate --force
-php artisan db:seed --force
+php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
 php artisan storage:link
 
 php artisan serve --host=127.0.0.1 --port=8080
@@ -231,7 +231,7 @@ Admin: `http://127.0.0.1:8080/geo_admin/login`. **Producción:** Nginx + PHP-FPM
 
 ---
 
-## Credenciales por defecto (tras `db:seed`)
+## Credenciales por defecto (tras `AdminUserSeeder`)
 
 | Campo | Valor |
 |-------|--------|
@@ -239,6 +239,8 @@ Admin: `http://127.0.0.1:8080/geo_admin/login`. **Producción:** Nginx + PHP-FPM
 | Contraseña | En desarrollo local es `password`; en producción define `GEOFLOW_ADMIN_PASSWORD`. Si está vacío y la cuenta aún no existe, el seeder genera una contraseña aleatoria de un solo uso en los logs de init / `db:seed`. |
 
 El seeder solo crea la cuenta cuando el usuario objetivo no existe. Las ejecuciones repetidas nunca sobrescriben usuario, correo ni contraseña existentes.
+
+Si necesitas categorías y artículos demo del frontend, configura `GEOFLOW_SEED_FRONTEND_DEMO=true` y después ejecuta `php artisan db:seed --force`. Los datos demo solo rellenan filas faltantes por defecto y no sobrescriben ajustes del sitio, anuncios, categorías ni artículos existentes. Usa `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` solo para reiniciar una base demo.
 
 ### Bloqueo por intentos fallidos y desbloqueo manual
 

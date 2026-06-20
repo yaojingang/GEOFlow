@@ -4,6 +4,16 @@
     $remoteSettings = $remoteSiteSettings ?? $channel->resolvedSiteSettings();
     $themes = $availableThemes ?? [];
     $selectedTheme = old('template_key', (string) ($channel->template_key ?? ''));
+    $visibleThemeLimit = 6;
+    $themeOptions = array_merge([[
+        'id' => '',
+        'name' => __('admin.site_settings.theme.default_name'),
+        'version' => '',
+        'description' => __('admin.site_settings.theme.default_desc'),
+    ]], $themes);
+    $collapsedThemeCount = collect($themeOptions)
+        ->filter(fn (array $themeOption, int $themeIndex): bool => $themeIndex >= $visibleThemeLimit && $selectedTheme !== $themeOption['id'])
+        ->count();
     $frontMode = old('front_mode', method_exists($channel, 'frontMode') ? $channel->frontMode() : ((string) ($channel->front_mode ?? 'static')));
     $channelType = $channel->channelType();
     $channelConfig = $channel->resolvedChannelConfig();
@@ -340,27 +350,44 @@
 
                         @if ($channel->isGeoFlowAgent())
                             <div class="mt-6 border-t border-gray-200 pt-5">
-                                <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.theme.section_title') }}</h3>
-                                <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.remote_site.theme_help') }}</p>
+                                <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                        <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.theme.section_title') }}</h3>
+                                        <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.remote_site.theme_help') }}</p>
+                                    </div>
+                                    @if ($collapsedThemeCount > 0)
+                                        <button
+                                            type="button"
+                                            class="inline-flex shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                                            data-distribution-theme-toggle
+                                            data-expand-label="{{ __('admin.distribution.remote_site.template_expand_more', ['count' => $collapsedThemeCount]) }}"
+                                            data-collapse-label="{{ __('admin.distribution.remote_site.template_collapse') }}"
+                                            aria-expanded="false"
+                                        >
+                                            {{ __('admin.distribution.remote_site.template_expand_more', ['count' => $collapsedThemeCount]) }}
+                                        </button>
+                                    @endif
+                                </div>
                                 <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-                                    <label class="flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-blue-200">
-                                        <input type="radio" name="template_key" value="" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($selectedTheme === '')>
-                                        <span>
-                                            <span class="block text-sm font-semibold text-gray-900">{{ __('admin.site_settings.theme.default_name') }}</span>
-                                            <span class="mt-1 block text-sm text-gray-600">{{ __('admin.site_settings.theme.default_desc') }}</span>
-                                        </span>
-                                    </label>
-                                    @foreach ($themes as $themeOption)
-                                        <label class="flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-blue-200">
+                                    @foreach ($themeOptions as $themeIndex => $themeOption)
+                                        @php
+                                            $isCollapsedTheme = $themeIndex >= $visibleThemeLimit && $selectedTheme !== $themeOption['id'];
+                                            $themeCardClasses = 'flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-blue-200'.($isCollapsedTheme ? ' hidden' : '');
+                                        @endphp
+                                        <label
+                                            class="{{ $themeCardClasses }}"
+                                            data-distribution-theme-card
+                                            data-distribution-theme-collapsed="{{ $themeIndex >= $visibleThemeLimit ? 'true' : 'false' }}"
+                                        >
                                             <input type="radio" name="template_key" value="{{ $themeOption['id'] }}" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($selectedTheme === $themeOption['id'])>
                                             <span class="min-w-0">
                                                 <span class="flex flex-wrap items-center gap-2">
                                                     <span class="text-sm font-semibold text-gray-900">{{ $themeOption['name'] }}</span>
-                                                    @if ($themeOption['version'] !== '')
+                                                    @if (($themeOption['version'] ?? '') !== '')
                                                         <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">{{ __('admin.site_settings.theme.version_badge', ['version' => $themeOption['version']]) }}</span>
                                                     @endif
                                                 </span>
-                                                <span class="mt-1 block text-sm leading-6 text-gray-600">{{ $themeOption['description'] !== '' ? $themeOption['description'] : __('admin.site_settings.theme.no_description') }}</span>
+                                                <span class="mt-1 block text-sm leading-6 text-gray-600">{{ ($themeOption['description'] ?? '') !== '' ? $themeOption['description'] : __('admin.site_settings.theme.no_description') }}</span>
                                             </span>
                                         </label>
                                     @endforeach
@@ -375,7 +402,7 @@
                             <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.distribution.article_text_ads.section_desc') }}</p>
                         </div>
 
-                        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                        <div class="space-y-5">
                             @foreach ($articleTextAdPlacements as $placement => $placementLabel)
                                 @php
                                     $placementPolicy = $articleTextAdPolicy[$placement] ?? ['mode' => 'inherit', 'module_ids' => [], 'ad_ids' => [], 'custom_modules' => []];
@@ -387,7 +414,7 @@
                                 @endphp
                                 <fieldset class="rounded-lg border border-gray-200 bg-gray-50 p-4">
                                     <legend class="text-sm font-semibold text-gray-900">{{ $placementLabel }}</legend>
-                                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                                         @foreach (['inherit', 'selected', 'custom', 'disabled'] as $mode)
                                             <label class="flex cursor-pointer items-start gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm hover:border-blue-200">
                                                 <input
@@ -431,7 +458,7 @@
                                                         <span class="min-w-0">
                                                             <span class="flex flex-wrap items-center gap-2">
                                                                 <span class="text-sm font-semibold text-gray-900">{{ $textAd['name'] !== '' ? $textAd['name'] : $firstLinkText }}</span>
-                                                                <span class="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{{ __('admin.site_settings.article_detail_ads.text_link_count', ['count' => count($links), 'max' => $articleTextAdLinkLimit]) }}</span>
+                                                                <span class="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{{ __('admin.site_settings.ads.text_link_count', ['count' => count($links), 'max' => $articleTextAdLinkLimit]) }}</span>
                                                                 @unless ($enabled)
                                                                     <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">{{ __('admin.distribution.article_text_ads.disabled_badge') }}</span>
                                                                 @endunless
@@ -445,9 +472,9 @@
                                     </div>
 
                                     <div class="mt-4 {{ $placementMode === 'custom' ? '' : 'hidden' }}" data-article-text-ad-custom="{{ $placement }}">
-                                        <div class="mb-3 flex items-center justify-between gap-3">
+                                        <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                             <p class="text-sm text-gray-600">{{ __('admin.distribution.article_text_ads.custom_desc', ['max' => $articleTextAdCustomModuleLimit]) }}</p>
-                                            <button type="button" class="inline-flex items-center rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50" data-add-channel-text-ad-module="{{ $placement }}">
+                                            <button type="button" class="inline-flex shrink-0 items-center justify-center rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50" data-add-channel-text-ad-module="{{ $placement }}">
                                                 <i data-lucide="plus" class="mr-1.5 h-4 w-4"></i>
                                                 {{ __('admin.distribution.article_text_ads.custom_add_module') }}
                                             </button>
@@ -461,74 +488,74 @@
                                                     <input type="hidden" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][id]" value="{{ (string) ($module['id'] ?? '') }}">
                                                     <input type="hidden" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][placement]" value="{{ $placement }}">
                                                     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                                        <div class="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3">
+                                                        <div class="grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-3">
                                                             <div>
-                                                                <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_name') }}</label>
+                                                                <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_name') }}</label>
                                                                 <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][name]" value="{{ (string) ($module['name'] ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                                             </div>
                                                             <div>
-                                                                <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_sort') }}</label>
+                                                                <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_sort') }}</label>
                                                                 <input type="number" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][sort_order]" value="{{ (int) ($module['sort_order'] ?? (($loop->index + 1) * 10)) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                                             </div>
                                                             <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                                                                 <input type="checkbox" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(! empty($module['enabled']))>
-                                                                {{ __('admin.site_settings.article_detail_ads.text_enabled') }}
+                                                                {{ __('admin.site_settings.ads.text_enabled') }}
                                                             </label>
                                                         </div>
-                                                        <button type="button" class="inline-flex items-center justify-center rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50" data-remove-channel-text-ad-module>
+                                                        <button type="button" class="inline-flex shrink-0 items-center justify-center rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50" data-remove-channel-text-ad-module>
                                                             <i data-lucide="trash-2" class="mr-1.5 h-4 w-4"></i>
                                                             {{ __('admin.button.delete') }}
                                                         </button>
                                                     </div>
 
                                                     <div class="mt-4 border-t border-gray-100 pt-4">
-                                                        <div class="mb-3 flex items-center justify-between gap-3">
+                                                        <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                             <div>
-                                                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.article_detail_ads.text_link_section') }}</div>
-                                                                <div class="text-xs text-gray-500">{{ __('admin.site_settings.article_detail_ads.text_link_section_desc') }}</div>
+                                                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.ads.text_link_section') }}</div>
+                                                                <div class="text-xs text-gray-500">{{ __('admin.site_settings.ads.text_link_section_desc') }}</div>
                                                             </div>
-                                                            <button type="button" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50" data-add-channel-text-ad-link>
+                                                            <button type="button" class="inline-flex shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50" data-add-channel-text-ad-link>
                                                                 <i data-lucide="plus" class="mr-1.5 h-4 w-4"></i>
-                                                                {{ __('admin.site_settings.article_detail_ads.text_add_link') }}
+                                                                {{ __('admin.site_settings.ads.text_add_link') }}
                                                             </button>
                                                         </div>
                                                         <div class="space-y-3" data-channel-text-ad-links data-next-link-index="{{ count($moduleLinks) }}">
                                                             @foreach ($moduleLinks as $linkIndex => $link)
                                                                 <div class="rounded-md border border-gray-200 bg-gray-50 p-3" data-channel-text-ad-link>
-                                                                    <div class="mb-3 flex items-center justify-between gap-3">
-                                                                        <span class="text-sm font-semibold text-gray-800">{{ __('admin.site_settings.article_detail_ads.text_link_item', ['index' => $loop->iteration]) }}</span>
+                                                                    <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                                        <span class="text-sm font-semibold text-gray-800" data-channel-text-ad-link-title>{{ __('admin.site_settings.ads.text_link_item', ['index' => $loop->iteration]) }}</span>
                                                                         <button type="button" class="text-sm font-medium text-red-600 hover:text-red-700" data-remove-channel-text-ad-link>{{ __('admin.button.delete') }}</button>
                                                                     </div>
                                                                     <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                                                                         <div>
-                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_text') }}</label>
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_text') }}</label>
                                                                             <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][text]" value="{{ (string) ($link['text'] ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                                                         </div>
                                                                         <div>
-                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_url') }}</label>
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_url') }}</label>
                                                                             <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][url]" value="{{ (string) ($link['url'] ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                                                         </div>
                                                                         <div>
-                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_color') }}</label>
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_color') }}</label>
                                                                             <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][text_color]" value="{{ (string) ($link['text_color'] ?? '#2563eb') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                                                         </div>
                                                                         <div>
-                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_sort') }}</label>
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_sort') }}</label>
                                                                             <input type="number" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][sort_order]" value="{{ (int) ($link['sort_order'] ?? (($loop->index + 1) * 10)) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                                                         </div>
                                                                     </div>
                                                                     <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-4">
                                                                         <div class="lg:col-span-2">
-                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_tracking') }}</label>
+                                                                            <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_tracking') }}</label>
                                                                             <input type="text" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][tracking_param]" value="{{ (string) ($link['tracking_param'] ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                                                         </div>
                                                                         <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                                                                             <input type="checkbox" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][open_new_tab]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(! empty($link['open_new_tab']))>
-                                                                            {{ __('admin.site_settings.article_detail_ads.text_open_new_tab') }}
+                                                                            {{ __('admin.site_settings.ads.text_open_new_tab') }}
                                                                         </label>
                                                                         <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                                                                             <input type="checkbox" name="article_text_ad_policy[{{ $placement }}][custom_modules][{{ $moduleIndex }}][links][{{ $linkIndex }}][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(! empty($link['enabled']))>
-                                                                            {{ __('admin.site_settings.article_detail_ads.text_enabled') }}
+                                                                            {{ __('admin.site_settings.ads.text_enabled') }}
                                                                         </label>
                                                                     </div>
                                                                 </div>
@@ -566,40 +593,40 @@
     </div>
     <template id="channel-text-ad-link-template">
         <div class="rounded-md border border-gray-200 bg-gray-50 p-3" data-channel-text-ad-link>
-            <div class="mb-3 flex items-center justify-between gap-3">
-                <span class="text-sm font-semibold text-gray-800">{{ __('admin.site_settings.article_detail_ads.text_link_item', ['index' => '__LINK_NUMBER__']) }}</span>
+            <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <span class="text-sm font-semibold text-gray-800" data-channel-text-ad-link-title>{{ __('admin.site_settings.ads.text_link_item', ['index' => '__LINK_NUMBER__']) }}</span>
                 <button type="button" class="text-sm font-medium text-red-600 hover:text-red-700" data-remove-channel-text-ad-link>{{ __('admin.button.delete') }}</button>
             </div>
             <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_text') }}</label>
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_text') }}</label>
                     <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][text]" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_url') }}</label>
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_url') }}</label>
                     <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][url]" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_color') }}</label>
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_color') }}</label>
                     <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][text_color]" value="#2563eb" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_sort') }}</label>
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_sort') }}</label>
                     <input type="number" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][sort_order]" value="__LINK_SORT__" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                 </div>
             </div>
             <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-4">
                 <div class="lg:col-span-2">
-                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_tracking') }}</label>
+                    <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_tracking') }}</label>
                     <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][tracking_param]" value="utm_source=geoflow&utm_medium=article_text_ad" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                 </div>
                 <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                     <input type="checkbox" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][open_new_tab]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
-                    {{ __('admin.site_settings.article_detail_ads.text_open_new_tab') }}
+                    {{ __('admin.site_settings.ads.text_open_new_tab') }}
                 </label>
                 <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                     <input type="checkbox" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][links][__LINK_INDEX__][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
-                    {{ __('admin.site_settings.article_detail_ads.text_enabled') }}
+                    {{ __('admin.site_settings.ads.text_enabled') }}
                 </label>
             </div>
         </div>
@@ -609,34 +636,34 @@
             <input type="hidden" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][id]" value="">
             <input type="hidden" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][placement]" value="__PLACEMENT__">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div class="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3">
+                <div class="grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-3">
                     <div>
-                        <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_name') }}</label>
+                        <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_name') }}</label>
                         <input type="text" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][name]" value="{{ __('admin.distribution.article_text_ads.custom_default_name') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.article_detail_ads.text_field_sort') }}</label>
+                        <label class="block text-xs font-medium text-gray-700">{{ __('admin.site_settings.ads.text_field_sort') }}</label>
                         <input type="number" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][sort_order]" value="__MODULE_SORT__" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                     </div>
                     <label class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                         <input type="checkbox" name="article_text_ad_policy[__PLACEMENT__][custom_modules][__MODULE_INDEX__][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
-                        {{ __('admin.site_settings.article_detail_ads.text_enabled') }}
+                        {{ __('admin.site_settings.ads.text_enabled') }}
                     </label>
                 </div>
-                <button type="button" class="inline-flex items-center justify-center rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50" data-remove-channel-text-ad-module>
+                <button type="button" class="inline-flex shrink-0 items-center justify-center rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50" data-remove-channel-text-ad-module>
                     <i data-lucide="trash-2" class="mr-1.5 h-4 w-4"></i>
                     {{ __('admin.button.delete') }}
                 </button>
             </div>
             <div class="mt-4 border-t border-gray-100 pt-4">
-                <div class="mb-3 flex items-center justify-between gap-3">
+                <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.article_detail_ads.text_link_section') }}</div>
-                        <div class="text-xs text-gray-500">{{ __('admin.site_settings.article_detail_ads.text_link_section_desc') }}</div>
+                        <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.ads.text_link_section') }}</div>
+                        <div class="text-xs text-gray-500">{{ __('admin.site_settings.ads.text_link_section_desc') }}</div>
                     </div>
-                    <button type="button" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50" data-add-channel-text-ad-link>
+                    <button type="button" class="inline-flex shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50" data-add-channel-text-ad-link>
                         <i data-lucide="plus" class="mr-1.5 h-4 w-4"></i>
-                        {{ __('admin.site_settings.article_detail_ads.text_add_link') }}
+                        {{ __('admin.site_settings.ads.text_add_link') }}
                     </button>
                 </div>
                 <div class="space-y-3" data-channel-text-ad-links data-next-link-index="0"></div>
@@ -644,6 +671,28 @@
         </div>
     </template>
     <script>
+        var themeToggle = document.querySelector('[data-distribution-theme-toggle]');
+        var themeExpanded = false;
+
+        function refreshDistributionThemeCards() {
+            document.querySelectorAll('[data-distribution-theme-card]').forEach(function (card) {
+                var isCollapsed = card.dataset.distributionThemeCollapsed === 'true';
+                var checkedInput = card.querySelector('input[type="radio"]:checked');
+                card.classList.toggle('hidden', isCollapsed && !themeExpanded && !checkedInput);
+            });
+            if (themeToggle) {
+                themeToggle.textContent = themeExpanded ? themeToggle.dataset.collapseLabel : themeToggle.dataset.expandLabel;
+                themeToggle.setAttribute('aria-expanded', themeExpanded ? 'true' : 'false');
+            }
+        }
+
+        if (themeToggle) {
+            themeToggle.addEventListener('click', function () {
+                themeExpanded = !themeExpanded;
+                refreshDistributionThemeCards();
+            });
+        }
+
         function toggleGenericAuthFields() {
             var select = document.getElementById('generic_auth_type');
             if (!select) {
@@ -700,6 +749,7 @@
             }
         });
         toggleGenericAuthFields();
+        refreshDistributionThemeCards();
 
         function toggleArticleTextAdPolicyFields() {
             document.querySelectorAll('[data-article-text-ad-selected]').forEach(function (panel) {
@@ -797,9 +847,9 @@
             }
             var links = list.querySelectorAll('[data-channel-text-ad-link]');
             links.forEach(function (link, index) {
-                var title = link.querySelector('[data-remove-channel-text-ad-link]')?.closest('[data-channel-text-ad-link]')?.querySelector('.text-sm.font-semibold');
+                var title = link.querySelector('[data-channel-text-ad-link-title]');
                 if (title) {
-                    title.textContent = @json(__('admin.site_settings.article_detail_ads.text_link_item', ['index' => '__INDEX__'])).replace('__INDEX__', String(index + 1));
+                    title.textContent = @json(__('admin.site_settings.ads.text_link_item', ['index' => '__INDEX__'])).replace('__INDEX__', String(index + 1));
                 }
             });
             var addButton = list.closest('[data-channel-text-ad-module]')?.querySelector('[data-add-channel-text-ad-link]');

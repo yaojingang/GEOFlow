@@ -56,4 +56,17 @@ class DistributionQueueConfigurationTest extends TestCase
             }
         }
     }
+
+    public function test_production_init_seed_is_scoped_to_default_admin_only(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $compose = file_get_contents($root.'/docker-compose.prod.yml');
+        $entrypoint = file_get_contents($root.'/docker/entrypoint.prod.sh');
+
+        $this->assertIsString($compose);
+        $this->assertIsString($entrypoint);
+        $this->assertStringContainsString("AUTO_SEED_CLASS: 'Database\\Seeders\\AdminUserSeeder'", $compose);
+        $this->assertStringContainsString('php artisan db:seed --class=${AUTO_SEED_CLASS} --force', $entrypoint);
+        $this->assertStringContainsString('php artisan db:seed --class="${AUTO_SEED_CLASS}" --force --no-interaction', $entrypoint);
+    }
 }

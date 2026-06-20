@@ -231,7 +231,7 @@ class SystemUpdateDeploymentDiagnosticsService
                     'description' => __('admin.system_updates.diagnostics.command_init_desc'),
                     'commands' => [
                         '$COMPOSE_PROD run --rm app php artisan migrate --force',
-                        '$COMPOSE_PROD run --rm app php artisan db:seed --force',
+                        '$COMPOSE_PROD run --rm app php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force',
                         '$COMPOSE_PROD run --rm app php artisan storage:link --force',
                         '$COMPOSE_PROD run --rm app php artisan optimize',
                     ],
@@ -255,7 +255,7 @@ class SystemUpdateDeploymentDiagnosticsService
                 'commands' => [
                     'php artisan key:generate --force',
                     'php artisan migrate --force',
-                    'php artisan db:seed --force',
+                    'php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force',
                     'php artisan storage:link --force',
                     'php artisan optimize',
                 ],

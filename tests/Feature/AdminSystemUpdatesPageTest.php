@@ -149,6 +149,8 @@ class AdminSystemUpdatesPageTest extends TestCase
         $this->assertStringContainsString('docker compose --env-file .env.prod -f docker-compose.prod.yml', $commands);
         $this->assertStringContainsString('$COMPOSE_PROD run --rm app php artisan key:generate --force', $commands);
         $this->assertStringContainsString('$COMPOSE_PROD run --rm app php artisan migrate --force', $commands);
+        $this->assertStringContainsString('$COMPOSE_PROD run --rm app php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force', $commands);
+        $this->assertStringNotContainsString('$COMPOSE_PROD run --rm app php artisan db:seed --force', $commands);
         $this->assertStringContainsString('$COMPOSE_PROD logs --tail=200 app', $commands);
     }
 
