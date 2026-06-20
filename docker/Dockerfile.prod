@@ -49,6 +49,28 @@ RUN composer dump-autoload \
     --no-scripts \
  && BROADCAST_CONNECTION=null php artisan package:discover --ansi
 
+FROM node:22-bookworm-slim AS assets
+
+WORKDIR /app
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY}
+
+RUN npm config set registry https://registry.npmmirror.com/
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY resources ./resources
+COPY public ./public
+COPY vite.config.js ./
+
+RUN npm run build
+
 FROM ${PHP_FPM_IMAGE}
 
 ARG PECL_REDIS_VERSION
@@ -101,6 +123,7 @@ COPY docker/entrypoint.prod.sh /usr/local/bin/geoflow-entrypoint-prod
 RUN chmod +x /usr/local/bin/geoflow-entrypoint-prod
 
 COPY --from=vendor /app /var/www/html
+COPY --from=assets /app/public/build /var/www/html/public/build
 
 ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint-prod"]
 CMD ["php-fpm", "-F"]

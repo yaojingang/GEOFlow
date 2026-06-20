@@ -11,7 +11,7 @@ const reverbPort = runtimeReverb.port ?? (reverbScheme === 'https' ? 443 : 80);
 const reverbKey = runtimeReverb.key;
 const reverbHost = runtimeReverb.host;
 
-if (!reverbKey || !reverbHost) {
+if (!runtimeReverb.enabled || !reverbKey || !reverbHost) {
     window.Echo = null;
 } else {
     const echoOptions = {
