@@ -228,7 +228,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - 前台 / 后台统一经 `web`（Nginx）访问
 - PHP 由 `app`（php-fpm）解析
-- **默认管理员**：生产 `init` 服务会在迁移后执行一次 `db:seed`，只在目标用户名不存在时写入默认后台账号；重复执行不会覆盖已有账号或密码。前台演示数据默认不导入；即使显式开启，也只补缺，不覆盖用户已修改的网站设置、广告、分类和文章。
+- **首次安装**：生产 `init` 服务会先执行迁移，再运行 `php artisan geoflow:install`。该命令只在空库首次安装时写入默认后台账号；已有数据的旧库只补安装标记，不会重复写入分类、文章、网站设置、广告或提示词。
 - 详细说明见 `docs/deployment/DEPLOYMENT.md`
 
 ### 方式二：本地 PHP 服务器
@@ -249,7 +249,7 @@ php artisan key:generate
 
 # 3. 数据库与存储
 php artisan migrate --force
-php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force    # 可选：只补默认管理员
+php artisan geoflow:install                                            # 首次空库安装；旧库只补初始化标记
 php artisan storage:link
 
 # 4. 开发用 HTTP（仅本地调试；生产请用 Nginx + PHP-FPM，站点根目录 public/）
@@ -289,14 +289,14 @@ php artisan reverb:start
 chmod -R ug+rwx storage bootstrap/cache
 ```
 
-**默认管理员（执行 `php artisan db:seed` 后，以 `Database\\Seeders\\AdminUserSeeder` 为准）：**
+**默认管理员（首次空库执行 `php artisan geoflow:install` 后，以 `Database\\Seeders\\AdminUserSeeder` 为准）：**
 
 | 字段 | 值 |
 |------|-----|
 | 用户名 | `GEOFLOW_ADMIN_USERNAME`，默认 `admin` |
-| 密码 | 本地开发默认 `password`；生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`。若生产环境留空且账号尚不存在，seed 会生成一次性随机密码并输出到初始化日志 |
+| 密码 | 本地开发默认 `password`；生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`。若生产环境留空且账号尚不存在，首次安装会生成一次性随机密码并输出到初始化日志 |
 
-补充规则：`AdminUserSeeder` 只在目标用户名不存在时创建账号；重复执行不会覆盖已有用户名、邮箱或密码。若账号已存在，即使生产环境 `GEOFLOW_ADMIN_PASSWORD` 为空，也不会重新生成或打印密码。
+补充规则：`geoflow:install` 只在空库首次安装时执行安装填充；如果检测到线上已有业务数据但没有初始化标记，它只写入标记并跳过填充。`AdminUserSeeder` 本身仍保持幂等：目标用户名已存在时不会覆盖用户名、邮箱或密码。
 
 ### 管理员登录失败锁定与手动解锁
 
@@ -340,10 +340,11 @@ php artisan geoflow:admin-unlock admin
 |------|------|------|
 | `COMPOSER_ON_START` | `true` | 容器启动时执行 `composer install` |
 | `AUTO_MIGRATE` | `true` | 每次启动执行 `php artisan migrate --force` |
-| `AUTO_INIT_ONCE` | 仅 `init` 为 `true` | 新库时执行一次 `migrate` + `db:seed` |
+| `AUTO_INIT_ONCE` | 仅 `init` 为 `true` | 执行 `migrate` + `geoflow:install`，由安装命令判断是否空库 |
 | `AUTO_GENERATE_APP_KEY` | `init` 内为 `true` | 无有效 `APP_KEY` 时自动生成 |
-| `AUTO_SEED` | `false` | 为 `true` 时**每次**启动都 `db:seed`（慎用） |
-| `AUTO_SEED_CLASS` | 空 | 限制自动 seed 只执行指定 seeder；生产 `init` 默认使用 `Database\Seeders\AdminUserSeeder` |
+| `AUTO_INSTALL_ONCE` | `false` | 已完成迁移后单独执行一次 `geoflow:install`，常驻服务不建议开启 |
+| `AUTO_SEED` | `false` | 为 `true` 时**每次**启动都 `db:seed`（仅手动修复或演示重置时慎用） |
+| `AUTO_SEED_CLASS` | 空 | 限制手动 `AUTO_SEED` 只执行指定 seeder；正常部署请使用 `geoflow:install` |
 
 Compose 将 **`./storage`** 与 **`./.env`** 挂载进容器；应用代码在镜像内。若要用于正式生产，请改用仓库新增的 **`docker-compose.prod.yml`**（`Nginx + php-fpm`），并参见 `docs/deployment/DEPLOYMENT.md`。
 

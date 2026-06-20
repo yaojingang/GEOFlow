@@ -57,7 +57,7 @@ class DistributionQueueConfigurationTest extends TestCase
         }
     }
 
-    public function test_production_init_seed_is_scoped_to_default_admin_only(): void
+    public function test_production_init_uses_first_install_command_instead_of_auto_seed(): void
     {
         $root = dirname(__DIR__, 2);
         $compose = file_get_contents($root.'/docker-compose.prod.yml');
@@ -65,8 +65,9 @@ class DistributionQueueConfigurationTest extends TestCase
 
         $this->assertIsString($compose);
         $this->assertIsString($entrypoint);
-        $this->assertStringContainsString("AUTO_SEED_CLASS: 'Database\\Seeders\\AdminUserSeeder'", $compose);
-        $this->assertStringContainsString('php artisan db:seed --class=${AUTO_SEED_CLASS} --force', $entrypoint);
-        $this->assertStringContainsString('php artisan db:seed --class="${AUTO_SEED_CLASS}" --force --no-interaction', $entrypoint);
+        $this->assertStringContainsString('AUTO_INSTALL_ONCE: "true"', $compose);
+        $this->assertStringContainsString('AUTO_SEED: "false"', $compose);
+        $this->assertStringNotContainsString('AUTO_SEED_CLASS:', $compose);
+        $this->assertStringContainsString('php artisan geoflow:install', $entrypoint);
     }
 }

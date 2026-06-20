@@ -42,6 +42,11 @@ run_database_seed() {
   fi
 }
 
+run_geoflow_install() {
+  echo "[entrypoint-prod] php artisan geoflow:install"
+  php artisan geoflow:install --no-interaction
+}
+
 if [ "${AUTO_WAIT_FOR_DB:-true}" = "true" ] && [ "${DB_CONNECTION:-}" = "pgsql" ]; then
   DB_HOST_VALUE="${DB_HOST:-postgres}"
   DB_PORT_VALUE="${DB_PORT:-5432}"
@@ -57,6 +62,10 @@ fi
 if [ "${AUTO_MIGRATE:-false}" = "true" ]; then
   echo "[entrypoint-prod] php artisan migrate --force"
   php artisan migrate --force --no-interaction
+fi
+
+if [ "${AUTO_INSTALL_ONCE:-false}" = "true" ]; then
+  run_geoflow_install
 fi
 
 if [ "${AUTO_SEED:-false}" = "true" ]; then

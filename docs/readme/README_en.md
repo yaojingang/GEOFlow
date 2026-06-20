@@ -219,7 +219,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - Frontend and admin both enter through `web` (Nginx)
 - PHP is executed by `app` (php-fpm)
-- **Default admin:** the production `init` service runs `db:seed` after migrations to create the default admin account; repeated runs do not overwrite an existing `admin` user. Frontend demo data is disabled by default; even when explicitly enabled, it only fills missing rows and does not overwrite user-edited site settings, ads, categories, or articles.
+- **First install:** the production `init` service runs migrations and then `php artisan geoflow:install`. The install command only seeds the default admin on a fresh empty database; existing deployments without an install marker are marked as installed and are not seeded again.
 - See `../../docs/deployment/DEPLOYMENT.md` for details
 
 ### Option 2: Local PHP stack
@@ -236,7 +236,7 @@ composer install --no-interaction --prefer-dist
 php artisan key:generate
 
 php artisan migrate --force
-php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force    # optional: default admin only
+php artisan geoflow:install                                            # first install; existing data is only marked as installed
 php artisan storage:link
 
 php artisan serve --host=127.0.0.1 --port=8080
@@ -273,14 +273,14 @@ php artisan reverb:start
 chmod -R ug+rwx storage bootstrap/cache
 ```
 
-**Default admin** (after `php artisan db:seed`, see `Database\Seeders\AdminUserSeeder`):
+**Default admin** (after first-empty-db `php artisan geoflow:install`, see `Database\Seeders\AdminUserSeeder`):
 
 | Field | Value |
 |-------|--------|
 | Username | `GEOFLOW_ADMIN_USERNAME`, default `admin` |
-| Password | Local/dev default `password`; in production set `GEOFLOW_ADMIN_PASSWORD`. If it is empty and the account does not exist yet, the seeder generates a one-time random password in the init / `db:seed` logs. |
+| Password | Local/dev default `password`; in production set `GEOFLOW_ADMIN_PASSWORD`. If it is empty and the account does not exist yet, the installer generates a one-time random password in the init / `geoflow:install` logs. |
 
-The seeder only creates the account when the target username does not exist. Repeated runs never overwrite an existing username, email, or password.
+`geoflow:install` only runs install seeders on a fresh empty database. If it detects existing user/business data but no installation marker, it writes the marker and skips seeding. `AdminUserSeeder` itself remains idempotent and never overwrites an existing username, email, or password.
 
 ### Admin login lockout and manual unlock
 
@@ -324,10 +324,11 @@ Optional localhost-only DB/Redis host ports: see `DB_EXPOSE_PORT` and `REDIS_EXP
 |----------|---------|---------|
 | `COMPOSER_ON_START` | `true` | Run `composer install` on container start |
 | `AUTO_MIGRATE` | `true` | Run `php artisan migrate --force` on each start |
-| `AUTO_INIT_ONCE` | `true` on `init` only | First-time `migrate` + `db:seed` on empty DB |
+| `AUTO_INIT_ONCE` | `true` on `init` only | Run `migrate` + `geoflow:install`; the installer decides whether the DB is empty |
 | `AUTO_GENERATE_APP_KEY` | enabled in `init` | Generate `APP_KEY` when missing |
-| `AUTO_SEED` | `false` | If `true`, runs **`db:seed` every start** (use with care) |
-| `AUTO_SEED_CLASS` | empty | Limit automatic seeding to one seeder class; production `init` defaults to `Database\Seeders\AdminUserSeeder` |
+| `AUTO_INSTALL_ONCE` | `false` | Run `geoflow:install` after migrations; do not enable on long-running services |
+| `AUTO_SEED` | `false` | If `true`, runs **`db:seed` every start**; use only for manual recovery or demo resets |
+| `AUTO_SEED_CLASS` | empty | Limit manual `AUTO_SEED` to one seeder class; normal deployments should use `geoflow:install` |
 
 `./storage` and `./.env` are mounted; application code lives in the image. For production, use the new **`docker-compose.prod.yml`** stack (`Nginx + php-fpm`) and see `../../docs/deployment/DEPLOYMENT.md`.
 

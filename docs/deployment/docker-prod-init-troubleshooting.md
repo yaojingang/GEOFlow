@@ -56,27 +56,27 @@ php artisan migrate --force
 ```bash
 $COMPOSE_PROD run --rm app php artisan key:generate --force
 $COMPOSE_PROD run --rm app php artisan migrate --force
-$COMPOSE_PROD run --rm app php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
+$COMPOSE_PROD run --rm app php artisan geoflow:install
 $COMPOSE_PROD run --rm app php artisan storage:link --force
 $COMPOSE_PROD run --rm app php artisan optimize
 ```
 
 也就是说：命令从容器外的服务器项目目录执行，但实际运行在 `app` 容器内。
 
-默认补救命令只创建或确认后台管理员，不会写入前台演示分类和文章。如果确实需要演示内容，再临时设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 后执行 `php artisan db:seed --force`；演示数据默认只补缺，不覆盖已修改的网站设置、广告、分类和文章，除非额外设置 `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true`。
+`geoflow:install` 是首次安装入口：空库时创建默认管理员；如果检测到已有业务数据，则只补初始化标记，不会写入或覆盖前台演示分类、文章、网站设置、广告和提示词。如果确实需要重置演示内容，再临时设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 后手动执行 `php artisan db:seed --force`；演示数据默认只补缺，不覆盖已修改的数据，除非额外设置 `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true`。
 
 也可以先进容器后执行：
 
 ```bash
 $COMPOSE_PROD exec app sh
 php artisan migrate --force
-php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
+php artisan geoflow:install
 php artisan optimize
 ```
 
 注意：不要在 `web/nginx` 容器里执行 Laravel 初始化命令，应该在 `app` 容器里执行。
 
-如果用户说“初始化命令没找到”，通常是把 `php artisan ...` 直接复制到了 Ubuntu 宿主机执行。Docker 部署下应改用上面的 `$COMPOSE_PROD run --rm app php artisan ...`。
+如果用户说“初始化命令没找到”，通常是把 `php artisan ...` 直接复制到了 Ubuntu 宿主机执行。Docker 部署下应在服务器项目目录执行上面的 `$COMPOSE_PROD run --rm app php artisan ...`，让命令运行到 `app` 容器内。
 
 ## 二、初始化变量填了但仍然 500
 
@@ -131,7 +131,7 @@ $COMPOSE_PROD ps -a | grep init
 $COMPOSE_PROD logs --tail=200 init
 ```
 
-如果 `init` 容器已经成功执行，数据库迁移和初始化数据通常已经完成，不需要重复执行 `db:seed`。如果 `init` 没有运行或运行失败，再用 `docker compose ... run --rm app php artisan ...` 手动补执行。
+如果 `init` 容器已经成功执行，数据库迁移和首次安装通常已经完成，不需要重复执行安装填充。如果 `init` 没有运行或运行失败，再用 `docker compose ... run --rm app php artisan geoflow:install` 手动补执行。
 
 ## 三、常见原因速查
 

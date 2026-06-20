@@ -81,7 +81,8 @@ REVERB_EXPOSE_PORT=18081
 - `TRUSTED_PROXIES` 用于反向代理、CDN、负载均衡或一级目录部署。若外层代理会传 `X-Forwarded-Proto` / `X-Forwarded-Host` / `X-Forwarded-Prefix`，生产环境通常可设为 `*` 或具体代理 IP。
 - 如果部署在任意一级目录下，例如外部访问路径是 `/wiki`、`/docs`、`/site`，不要把目录写进 `ADMIN_BASE_PATH`；应由反向代理透传 `X-Forwarded-Prefix`，后台路径仍保持 `ADMIN_BASE_PATH=geo_admin`。
 - `AUTO_MIGRATE` 在 `.env.prod` 中默认建议为 `false`
-- `AUTO_SEED_CLASS` 可限制自动 seed 只执行指定 seeder；生产 `init` 服务默认设置为 `Database\Seeders\AdminUserSeeder`，避免初始化时写入或覆盖演示内容。
+- `AUTO_INSTALL_ONCE` 由生产 `init` 服务显式开启，迁移后运行 `php artisan geoflow:install`；该命令只在空库首次安装时执行安装填充，旧库只补初始化标记。
+- `AUTO_SEED` / `AUTO_SEED_CLASS` 仅建议作为手动修复或演示库重置入口，正常部署不要开启。
 - 生产镜像不会在启动时执行 `composer install`
 - **`postgres` / `redis` 凭据**：`docker-compose.prod.yml` 中 postgres 使用 `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` 映射为官方镜像的 `POSTGRES_*`；redis 使用 `REDIS_PASSWORD`；值均由 Compose 插值（推荐 `--env-file .env.prod`），与 Laravel 的 `DB_*` 同源、不重复定义。
 - **建议仍使用 `--env-file .env.prod`**：便于插值 `WEB_PORT`、`POSTGRES_DATA_DIR` 等与根目录 `.env` 对齐；若曾用错误密码初始化过 Postgres，须删掉 `POSTGRES_DATA_DIR` 对应数据目录后再启动。
@@ -118,23 +119,27 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 - 后台：`/geo_admin/login`（或你的 `ADMIN_BASE_PATH`）
 - Reverb：默认映射 `${REVERB_EXPOSE_PORT}:8080`
 
-### 默认管理员（首次种子）
+### 默认管理员（首次安装）
 
-生产 `docker-compose.prod.yml` 的 **`init`** 服务会在迁移完成后执行一次 `db:seed`，并通过 `AUTO_SEED_CLASS=Database\Seeders\AdminUserSeeder` 默认只写入后台管理员。前台演示分类和文章默认不会写入；只有显式设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 且执行完整 `DatabaseSeeder` 时才会导入演示数据。演示数据默认只补缺，不覆盖已修改的网站设置、广告、分类和文章；只有额外设置 `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` 时才允许覆盖演示数据。常驻的 `app`、`queue`、`scheduler`、`reverb` 服务不会自动 seed，避免每次重启都执行种子。
+生产 `docker-compose.prod.yml` 的 **`init`** 服务会在迁移完成后执行 `php artisan geoflow:install`。该命令只在空库首次安装时写入默认管理员；如果检测到已有业务数据但没有安装标记，只会补写标记并跳过填充，避免重启、重构或拉取新代码后污染线上网站设置、广告、提示词、分类和文章。常驻的 `app`、`queue`、`scheduler`、`reverb` 服务不会自动 seed。
 
 ```bash
-# 如果你没有使用 compose 的 init 服务，可在迁移成功后只补默认管理员：
-docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
+# 如果你没有使用 compose 的 init 服务，可在迁移成功后执行首次安装命令：
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php artisan geoflow:install
 ```
 
-账号由 `Database\Seeders\AdminUserSeeder` 写入：只在目标用户名不存在时创建，**重复执行不会覆盖**已存在账号的用户名、邮箱或密码。
+账号由 `Database\Seeders\AdminUserSeeder` 在首次空库安装时写入：只在目标用户名不存在时创建，**重复执行不会覆盖**已存在账号的用户名、邮箱或密码。前台演示分类和文章默认不会写入；只有显式设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 且首次空库安装时才会导入演示数据。
 
 | 项目 | 值 |
 |------|-----|
 | 用户名 | `GEOFLOW_ADMIN_USERNAME`，默认 `admin` |
-| 密码 | 生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`；若留空且账号尚不存在，seed 会生成一次性随机密码并输出到初始化日志 |
+| 密码 | 生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`；若留空且账号尚不存在，首次安装会生成一次性随机密码并输出到初始化日志 |
 
-登录地址：站点根 URL + `/geo_admin/login`（默认；若改过 `ADMIN_BASE_PATH` 则把 `geo_admin` 换成你的前缀）。账号已存在时，重复 seed 不会重新生成或打印密码。**上线后请立即修改默认或初始化生成的密码。**
+登录地址：站点根 URL + `/geo_admin/login`（默认；若改过 `ADMIN_BASE_PATH` 则把 `geo_admin` 换成你的前缀）。账号已存在时，重复执行安装命令不会重新生成或打印密码。**上线后请立即修改默认或初始化生成的密码。**
+
+### 初始化数据维护规则
+
+后续新增默认站点配置、默认提示词、默认渠道、默认模板、演示分类或演示文章时，必须接入 `php artisan geoflow:install` 的首次空库安装路径，或通过明确的手动修复命令执行。不要把用户可修改的默认数据放到常规容器启动、迁移或每次升级都会自动执行的 seed 流程里，避免覆盖线上用户配置。
 
 ## 5. 关键差异
 

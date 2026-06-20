@@ -181,7 +181,7 @@ docker compose up -d
 - Sitio: `http://localhost:18080` (puerto **`APP_PORT`**, por defecto `18080`)  
 - Admin: `http://localhost:18080/geo_admin/login` (**`ADMIN_BASE_PATH`**, por defecto `geo_admin`)  
 
-Con **`docker-compose.yml`**, el servicio **`init`** ejecuta la primera migración y `db:seed` cuando la base está lista (admin por defecto: véase más abajo).
+Con **`docker-compose.yml`**, el servicio **`init`** ejecuta la migración y `php artisan geoflow:install`; los datos iniciales solo se escriben cuando la base de datos está vacía (admin por defecto: véase más abajo).
 
 ### Suplemento: Docker (producción)
 
@@ -198,7 +198,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 - Frontend y admin entran por `web` (Nginx); PHP en `app` (php-fpm).
-- **Admin por defecto:** el servicio `init` de producción ejecuta `db:seed` después de las migraciones para crear solo la cuenta admin inicial; las ejecuciones repetidas no sobrescriben el usuario `admin` existente. Los datos demo del frontend están desactivados por defecto y, aunque se activen explícitamente, no sobrescriben ajustes del sitio, anuncios, categorías ni artículos ya editados.
+- **Primera instalación:** el servicio `init` de producción ejecuta migraciones y luego `php artisan geoflow:install`. Este comando solo crea la cuenta admin inicial cuando la base está vacía; si detecta datos existentes, solo registra el marcador de instalación y no vuelve a escribir categorías, artículos, ajustes del sitio, anuncios ni prompts.
 - Más detalle: **`../../docs/deployment/DEPLOYMENT.md`**.
 
 ### Opción 2: PHP local
@@ -213,7 +213,7 @@ composer install --no-interaction --prefer-dist
 php artisan key:generate
 
 php artisan migrate --force
-php artisan db:seed --class=Database\\Seeders\\AdminUserSeeder --force
+php artisan geoflow:install
 php artisan storage:link
 
 php artisan serve --host=127.0.0.1 --port=8080
@@ -231,14 +231,14 @@ Admin: `http://127.0.0.1:8080/geo_admin/login`. **Producción:** Nginx + PHP-FPM
 
 ---
 
-## Credenciales por defecto (tras `AdminUserSeeder`)
+## Credenciales por defecto (tras `geoflow:install`)
 
 | Campo | Valor |
 |-------|--------|
 | Usuario | `GEOFLOW_ADMIN_USERNAME`, por defecto `admin` |
-| Contraseña | En desarrollo local es `password`; en producción define `GEOFLOW_ADMIN_PASSWORD`. Si está vacío y la cuenta aún no existe, el seeder genera una contraseña aleatoria de un solo uso en los logs de init / `db:seed`. |
+| Contraseña | En desarrollo local es `password`; en producción define `GEOFLOW_ADMIN_PASSWORD`. Si está vacío y la cuenta aún no existe, el instalador genera una contraseña aleatoria de un solo uso en los logs de init / `geoflow:install`. |
 
-El seeder solo crea la cuenta cuando el usuario objetivo no existe. Las ejecuciones repetidas nunca sobrescriben usuario, correo ni contraseña existentes.
+`geoflow:install` solo ejecuta datos iniciales cuando la base está vacía. Si detecta datos de usuario o negocio, solo escribe el marcador de instalación y omite el seed. El seeder de admin sigue siendo idempotente y no sobrescribe usuario, correo ni contraseña existentes.
 
 Si necesitas categorías y artículos demo del frontend, configura `GEOFLOW_SEED_FRONTEND_DEMO=true` y después ejecuta `php artisan db:seed --force`. Los datos demo solo rellenan filas faltantes por defecto y no sobrescriben ajustes del sitio, anuncios, categorías ni artículos existentes. Usa `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` solo para reiniciar una base demo.
 

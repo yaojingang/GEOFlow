@@ -67,6 +67,11 @@ run_database_seed() {
   fi
 }
 
+run_geoflow_install() {
+  echo "[entrypoint] php artisan geoflow:install"
+  php artisan geoflow:install --no-interaction
+}
+
 if [ "${DB_CONNECTION:-}" = "pgsql" ]; then
   DB_HOST_VALUE="${DB_HOST:-postgres}"
   DB_PORT_VALUE="${DB_PORT:-5432}"
@@ -79,15 +84,15 @@ if [ "${DB_CONNECTION:-}" = "pgsql" ]; then
   done
 fi
 
-# 仅首次初始化（compose init 服务）：库尚不可连或尚无 migrations 表时 migrate + seed
+# 仅首次初始化（compose init 服务）：迁移可重复执行，安装填充由 geoflow:install 判断空库后只跑一次
 if [ "${AUTO_INIT_ONCE:-false}" = "true" ]; then
-  if php artisan migrate:status --no-interaction >/dev/null 2>&1; then
-    echo "[entrypoint] database already initialized, skip init migrate/seed"
-  else
-    echo "[entrypoint] first startup initialization: migrate + seed"
-    php artisan migrate --force --no-interaction
-    run_database_seed
-  fi
+  echo "[entrypoint] init service: migrate + geoflow:install"
+  php artisan migrate --force --no-interaction
+  run_geoflow_install
+fi
+
+if [ "${AUTO_INSTALL_ONCE:-false}" = "true" ]; then
+  run_geoflow_install
 fi
 
 # 每次容器启动执行迁移（拉代码/换新镜像后默认需要；设为 false 可关闭）

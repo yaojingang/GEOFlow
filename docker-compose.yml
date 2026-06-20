@@ -38,11 +38,12 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env
-    # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / seed）
+    # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / geoflow:install）
     command: ["php", "artisan", "about"]
     environment:
       AUTO_GENERATE_APP_KEY: "true"
       AUTO_INIT_ONCE: "true"
+      AUTO_MIGRATE: "false"
     volumes:
       - ./:/var/www/html
     depends_on:
