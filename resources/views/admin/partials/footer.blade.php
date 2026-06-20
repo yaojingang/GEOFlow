@@ -22,6 +22,7 @@
         'port' => (int) (config('reverb.apps.apps.0.options.port') ?: 443),
         'scheme' => (string) (config('reverb.apps.apps.0.options.scheme') ?: 'https'),
         'path' => rtrim($reverbPath, '/'),
+        'authEndpoint' => \App\Support\AdminWeb::appPath('/broadcasting/auth'),
     ];
 @endphp
 <footer class="bg-white border-t border-gray-200 mt-12">
