@@ -40,6 +40,9 @@ return [
                 'port' => env('REVERB_BROADCAST_PORT', env('REVERB_PORT', 8080)),
                 'scheme' => env('REVERB_BROADCAST_SCHEME', env('REVERB_SCHEME', 'http')),
                 'useTLS' => env('REVERB_BROADCAST_SCHEME', env('REVERB_SCHEME', 'http')) === 'https',
+                // 启用 REVERB_SERVER_PATH 时，事件投递端点会变成 /{path}/apps/{appId}/events；
+                // pusher-php-server 通过 options.path 把该前缀拼到内部 URL，避免 404。
+                'path' => ($path = env('REVERB_BROADCAST_PATH', env('REVERB_SERVER_PATH', ''))) === '' ? '' : rtrim($path, '/').'/',
             ],
             'client_options' => [
                 // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html

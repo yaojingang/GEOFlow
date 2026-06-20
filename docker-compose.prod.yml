@@ -1,16 +1,25 @@
 # postgres 凭据由 DB_* 插值映射为官方镜像的 POSTGRES_*；redis 使用 REDIS_PASSWORD。推荐 docker compose --env-file .env.prod …
 name: geoflow-laravel-prod
 
+x-prod-app-build-args: &prod_app_build_args
+  COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+  PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
+  PECL_REDIS_VERSION: ${PECL_REDIS_VERSION:-6.3.0}
+  COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
+  HTTP_PROXY: ${DOCKER_BUILD_HTTP_PROXY:-}
+  HTTPS_PROXY: ${DOCKER_BUILD_HTTPS_PROXY:-${DOCKER_BUILD_HTTP_PROXY:-}}
+  NO_PROXY: ${DOCKER_BUILD_NO_PROXY:-localhost,127.0.0.1,::1,postgres,redis}
+
 services:
   postgres:
-    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
+    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg18}
     container_name: geoflow-postgres-prod
     environment:
       POSTGRES_DB: "${DB_DATABASE:-geo_flow}"
       POSTGRES_USER: "${DB_USERNAME:-geo_user}"
       POSTGRES_PASSWORD: "${DB_PASSWORD:-change-this-password}"
     volumes:
-      - ${POSTGRES_DATA_DIR:-./docker-data/prod/postgres}:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_DIR:-./docker-data/prod/postgres}:${POSTGRES_CONTAINER_DATA_DIR:-/var/lib/postgresql/data}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
@@ -19,7 +28,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: ${REDIS_IMAGE:-redis:7-alpine}
+    image: ${REDIS_IMAGE:-redis:8-alpine}
     container_name: geoflow-redis-prod
     environment:
       REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
@@ -47,10 +56,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-      args:
-        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
-        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
+      network: ${DOCKER_BUILD_NETWORK:-default}
+      args: *prod_app_build_args
     container_name: geoflow-init-prod
     working_dir: /var/www/html
     env_file:
@@ -71,10 +78,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-      args:
-        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
-        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
+      network: ${DOCKER_BUILD_NETWORK:-default}
+      args: *prod_app_build_args
     container_name: geoflow-app-prod
     working_dir: /var/www/html
     volumes:
@@ -95,6 +100,7 @@ services:
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile.prod
+      network: ${DOCKER_BUILD_NETWORK:-default}
       args:
         NGINX_IMAGE: ${NGINX_IMAGE:-nginx:1.27-alpine}
     container_name: geoflow-web-prod
@@ -104,6 +110,8 @@ services:
       - ./storage:/var/www/html/storage:ro
     depends_on:
       app:
+        condition: service_started
+      reverb:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
@@ -117,10 +125,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-      args:
-        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
-        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
+      network: ${DOCKER_BUILD_NETWORK:-default}
+      args: *prod_app_build_args
     container_name: geoflow-queue-prod
     working_dir: /var/www/html
     command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=300"]
@@ -139,10 +145,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-      args:
-        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
-        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
+      network: ${DOCKER_BUILD_NETWORK:-default}
+      args: *prod_app_build_args
     container_name: geoflow-scheduler-prod
     working_dir: /var/www/html
     command: ["php", "artisan", "schedule:work"]
@@ -159,15 +163,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
-      args:
-        COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
-        PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
+      network: ${DOCKER_BUILD_NETWORK:-default}
+      args: *prod_app_build_args
     container_name: geoflow-reverb-prod
     working_dir: /var/www/html
-    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    # 端口由 .env.prod 的 REVERB_SERVER_PORT 决定（见 config/reverb.php）；nginx /reverb 反代端口须与之对齐
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0"]
     ports:
-      - "${REVERB_EXPOSE_PORT:-18081}:8080"
+      - "${REVERB_EXPOSE_PORT:-18081}:${REVERB_SERVER_PORT:-18080}"
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -177,3 +180,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  default:
+    name: ${DOCKER_NETWORK_NAME:-geoflow-prod-net}
+    ipam:
+      config:
+        # 避开 VPC 172.16.0.0/12，避免容器路由与内网地址冲突。
+        - subnet: ${DOCKER_NETWORK_SUBNET:-10.88.0.0/16}
+          gateway: ${DOCKER_NETWORK_GATEWAY:-10.88.0.1}

@@ -23,13 +23,13 @@ elif [ "${COMPOSER_ON_START}" = "true" ]; then
 fi
 
 if [ "${RUN_COMPOSER}" = "true" ]; then
-  # Packagist 中国镜像，加速 composer install。
-  COMPOSER_PACKAGIST_MIRROR="${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}"
   COMPOSER_HOME="${COMPOSER_HOME:-/tmp/composer}"
   export COMPOSER_HOME
   mkdir -p "${COMPOSER_HOME}"
-  if ! composer config -g repo.packagist composer "${COMPOSER_PACKAGIST_MIRROR}"; then
-    echo "[entrypoint] warning: failed to configure composer mirror, continue with default source"
+  if [ -n "${COMPOSER_PACKAGIST_MIRROR:-}" ]; then
+    if ! composer config -g repo.packagist composer "${COMPOSER_PACKAGIST_MIRROR}"; then
+      echo "[entrypoint] warning: failed to configure composer mirror, continue with default source"
+    fi
   fi
   echo "[entrypoint] composer install (COMPOSER_ON_START=${COMPOSER_ON_START}, vendor missing=$([ ! -f vendor/autoload.php ] && echo yes || echo no))"
   # 无有效 APP_KEY 时 composer 脚本会调 artisan（package:discover），易失败且留不下 vendor/autoload.php
@@ -51,7 +51,30 @@ if [ "${COMPOSER_NEED_POST_INSTALL}" = "true" ]; then
   composer dump-autoload --optimize --no-interaction
 fi
 
-mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs
+mkdir -p \
+  bootstrap/cache \
+  storage/app/public \
+  storage/app/public/uploads/images \
+  storage/app/tmp \
+  storage/framework/cache/data \
+  storage/framework/sessions \
+  storage/framework/views \
+  storage/logs
+
+if [ "${AUTO_FIX_STORAGE_PERMISSIONS:-true}" = "true" ]; then
+  if [ "$(id -u)" = "0" ]; then
+    RUNTIME_USER="${RUNTIME_USER:-www-data}"
+    RUNTIME_GROUP="${RUNTIME_GROUP:-www-data}"
+
+    echo "[entrypoint] fixing storage permissions for ${RUNTIME_USER}:${RUNTIME_GROUP}"
+    chown -R "${RUNTIME_USER}:${RUNTIME_GROUP}" storage bootstrap/cache
+    find storage bootstrap/cache -type d -exec chmod 775 {} \;
+    find storage bootstrap/cache -type f -exec chmod 664 {} \;
+  else
+    echo "[entrypoint] skip permission fix: container is not running as root"
+  fi
+fi
+
 if [ ! -e public/storage ]; then
   php artisan storage:link --force --no-interaction
 fi

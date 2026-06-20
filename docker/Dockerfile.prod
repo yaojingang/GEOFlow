@@ -1,14 +1,28 @@
 ARG COMPOSER_IMAGE=composer:2
 ARG PHP_FPM_IMAGE=php:8.4-fpm-bookworm
+ARG PECL_REDIS_VERSION=6.3.0
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
 
 FROM ${COMPOSER_IMAGE} AS vendor
 
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY}
+
 WORKDIR /app
 
-# composer:2 基础镜像未默认启用 pcntl；Horizon 在 install 时会校验 ext-pcntl（运行阶段已安装，此处对齐锁文件平台检查）
-RUN docker-php-ext-install pcntl
+# composer:2 基于 Alpine；国内 ECS 需替换 apk 源（与 dev Dockerfile 的 Debian 镜像策略一致）
+RUN set -eux; \
+    if [ -f /etc/apk/repositories ]; then \
+        sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories; \
+    fi
 
-ARG COMPOSER_PACKAGIST_MIRROR=https://mirrors.aliyun.com/composer/
+ARG COMPOSER_PACKAGIST_MIRROR=
 ENV COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_MEMORY_LIMIT=-1 \
     COMPOSER_PROCESS_TIMEOUT=2000
@@ -22,6 +36,7 @@ RUN composer install \
     --no-dev \
     --no-interaction \
     --prefer-dist \
+    --ignore-platform-req=ext-pcntl \
     --classmap-authoritative \
     --no-scripts
 
@@ -36,6 +51,14 @@ RUN composer dump-autoload \
 
 FROM ${PHP_FPM_IMAGE}
 
+ARG PECL_REDIS_VERSION
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY}
+
 WORKDIR /var/www/html
 
 RUN set -eux; \
@@ -49,6 +72,7 @@ RUN set -eux; \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        ca-certificates \
         curl \
         libonig-dev \
         libpq-dev \
@@ -63,8 +87,10 @@ RUN apt-get update \
         pdo_pgsql \
         pdo_sqlite \
         zip \
-    && pecl install redis \
+    && curl -fsSL "https://pecl.php.net/get/redis-${PECL_REDIS_VERSION}.tgz" -o /tmp/redis.tgz \
+    && pecl install /tmp/redis.tgz \
     && docker-php-ext-enable redis \
+    && rm -f /tmp/redis.tgz \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/99-opcache.ini
