@@ -40,10 +40,6 @@ services:
       - ./.env
     # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / geoflow:install）
     command: ["php", "artisan", "about"]
-    environment:
-      AUTO_GENERATE_APP_KEY: "true"
-      AUTO_INIT_ONCE: "true"
-      AUTO_MIGRATE: "false"
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -63,8 +59,6 @@ services:
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-app
     working_dir: /var/www/html
-    env_file:
-      - ./.env
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
     ports:
       - "${APP_PORT:-18080}:8080"
@@ -85,8 +79,6 @@ services:
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-queue
     working_dir: /var/www/html
-    env_file:
-      - ./.env
     command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=300"]
     volumes:
       - ./:/var/www/html
@@ -105,8 +97,6 @@ services:
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-scheduler
     working_dir: /var/www/html
-    env_file:
-      - ./.env
     command: ["php", "artisan", "schedule:work"]
     volumes:
       - ./:/var/www/html
@@ -125,8 +115,6 @@ services:
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-reverb
     working_dir: /var/www/html
-    env_file:
-      - ./.env
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
     ports:
       - "${REVERB_EXPOSE_PORT:-18081}:8080"

@@ -172,9 +172,9 @@
   - 业务代码统一读取 `config('geoflow.url_import_allow_mixed_dns')`，兼容 Laravel 配置缓存
 - 补充模型 driver 识别与 URL 标准化测试覆盖。
 - 修复生产 Docker 首次部署默认管理员初始化：
-  - `docker/entrypoint.prod.sh` 新增 `AUTO_SEED` 支持
-  - `docker-compose.prod.yml` 仅在一次性 `init` 服务中开启 seed
-  - 首次迁移后自动写入默认后台账号，重复执行不会覆盖已有 `admin` 用户
+  - `docker-compose.prod.yml` 的一次性 `init` 服务在迁移后运行 `geoflow:install`
+  - 首次空库安装才写入默认后台账号，已有数据的旧库只补初始化标记
+  - 常驻服务不接收初始化环境变量，重启时不会重复执行安装填充
 
 ## 2026-05-08
 

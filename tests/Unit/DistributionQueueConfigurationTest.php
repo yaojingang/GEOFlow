@@ -65,9 +65,10 @@ class DistributionQueueConfigurationTest extends TestCase
 
         $this->assertIsString($compose);
         $this->assertIsString($entrypoint);
-        $this->assertStringContainsString('AUTO_INSTALL_ONCE: "true"', $compose);
-        $this->assertStringContainsString('AUTO_SEED: "false"', $compose);
+        $this->assertStringContainsString('- ./.env.prod', $compose);
+        $this->assertStringNotContainsString('AUTO_SEED', $compose);
         $this->assertStringNotContainsString('AUTO_SEED_CLASS:', $compose);
+        $this->assertStringNotContainsString('php artisan db:seed', $entrypoint);
         $this->assertStringContainsString('php artisan geoflow:install', $entrypoint);
     }
 }

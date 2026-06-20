@@ -32,16 +32,6 @@ if [ ! -e public/storage ]; then
   php artisan storage:link --force --no-interaction
 fi
 
-run_database_seed() {
-  if [ -n "${AUTO_SEED_CLASS:-}" ]; then
-    echo "[entrypoint-prod] php artisan db:seed --class=${AUTO_SEED_CLASS} --force"
-    php artisan db:seed --class="${AUTO_SEED_CLASS}" --force --no-interaction
-  else
-    echo "[entrypoint-prod] php artisan db:seed --force"
-    php artisan db:seed --force --no-interaction
-  fi
-}
-
 run_geoflow_install() {
   echo "[entrypoint-prod] php artisan geoflow:install"
   php artisan geoflow:install --no-interaction
@@ -66,10 +56,6 @@ fi
 
 if [ "${AUTO_INSTALL_ONCE:-false}" = "true" ]; then
   run_geoflow_install
-fi
-
-if [ "${AUTO_SEED:-false}" = "true" ]; then
-  run_database_seed
 fi
 
 if [ "${AUTO_OPTIMIZE:-true}" = "true" ]; then

@@ -56,11 +56,6 @@ services:
     env_file:
       - ./.env.prod
     command: ["php", "artisan", "about"]
-    environment:
-      AUTO_MIGRATE: "true"
-      AUTO_INSTALL_ONCE: "true"
-      AUTO_SEED: "false"
-      AUTO_OPTIMIZE: "false"
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -82,8 +77,6 @@ services:
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-app-prod
     working_dir: /var/www/html
-    env_file:
-      - ./.env.prod
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -130,8 +123,6 @@ services:
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-queue-prod
     working_dir: /var/www/html
-    env_file:
-      - ./.env.prod
     command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=300"]
     volumes:
       - ./.env.prod:/var/www/html/.env
@@ -154,8 +145,6 @@ services:
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-scheduler-prod
     working_dir: /var/www/html
-    env_file:
-      - ./.env.prod
     command: ["php", "artisan", "schedule:work"]
     volumes:
       - ./.env.prod:/var/www/html/.env
@@ -176,8 +165,6 @@ services:
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-reverb-prod
     working_dir: /var/www/html
-    env_file:
-      - ./.env.prod
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
     ports:
       - "${REVERB_EXPOSE_PORT:-18081}:8080"
