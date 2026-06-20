@@ -140,9 +140,49 @@ class AdminTasksPageTest extends TestCase
             ->assertSee('data-publish-scope-option', false)
             ->assertSee('data-distribution-channel-card', false)
             ->assertSee('data-distribution-channel-input', false)
+            ->assertSee('data-distribution-strategy-input', false)
             ->assertSee('syncDistributionChannelsByScope', false)
             ->assertSee('disabled data-distribution-channel-input', false)
+            ->assertSee('disabled data-distribution-strategy-input', false)
+            ->assertSee('data-distribution-channel-count', false)
             ->assertDontSee('value="1" checked', false);
+    }
+
+    public function test_task_form_collapses_distribution_channels_after_two_rows(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_distribution_channel_collapse_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-distribution-channel-collapse@example.com',
+            'display_name' => 'Tasks Distribution Collapse Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        Category::query()->create([
+            'name' => '任务分类',
+            'slug' => 'task-distribution-channel-collapse-category',
+        ]);
+
+        for ($index = 1; $index <= 8; $index++) {
+            DistributionChannel::query()->create([
+                'name' => '目标站点 '.$index,
+                'domain' => 'target-'.$index.'.example.com',
+                'endpoint_url' => 'https://target-'.$index.'.example.com',
+                'status' => 'active',
+            ]);
+        }
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.create'))
+            ->assertOk()
+            ->assertSee(__('admin.task_create.button.distribution_channel_expand_more', ['count' => 2]))
+            ->assertSee(__('admin.task_create.button.distribution_channel_select_all'))
+            ->assertSee(__('admin.task_create.button.distribution_channel_clear'));
+
+        $this->assertSame(
+            2,
+            preg_match_all('/<label[^>]*data-distribution-channel-card[^>]*data-distribution-channel-collapsed="true"/', (string) $response->getContent())
+        );
     }
 
     public function test_local_only_task_submission_ignores_distribution_channel_ids(): void

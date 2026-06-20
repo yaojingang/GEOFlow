@@ -95,6 +95,8 @@ class TaskLifecycleService
                 'model_selection_mode' => $normalized['model_selection_mode'],
                 'status' => $normalized['status'],
                 'publish_scope' => $normalized['publish_scope'],
+                'distribution_strategy' => $normalized['distribution_strategy'],
+                'distribution_cursor' => 0,
                 'knowledge_base_id' => $normalized['knowledge_base_id'],
                 'category_mode' => $normalized['category_mode'],
                 'fixed_category_id' => $normalized['fixed_category_id'],
@@ -220,7 +222,7 @@ class TaskLifecycleService
                     'updated_at' => now(),
                 ]);
 
-            foreach (['article_queue', 'task_materials', 'task_schedules', 'task_knowledge_bases'] as $table) {
+            foreach (['article_queue', 'task_materials', 'task_schedules', 'task_knowledge_bases', 'task_distribution_channels'] as $table) {
                 if (Schema::hasTable($table)) {
                     DB::table($table)->where('task_id', $taskId)->delete();
                 }
@@ -600,6 +602,17 @@ class TaskLifecycleService
             }
         } elseif (! $isUpdate) {
             $output['publish_scope'] = 'local_and_distribution';
+        }
+
+        if (array_key_exists('distribution_strategy', $data)) {
+            $strategy = trim((string) $data['distribution_strategy']);
+            if (! in_array($strategy, TaskDistributionChannelSelector::strategies(), true)) {
+                $fieldErrors['distribution_strategy'] = '分发策略无效';
+            } else {
+                $output['distribution_strategy'] = $strategy;
+            }
+        } elseif (! $isUpdate) {
+            $output['distribution_strategy'] = TaskDistributionChannelSelector::STRATEGY_BROADCAST;
         }
 
         $effectiveCategoryMode = $output['category_mode'] ?? (($data['category_mode'] ?? 'smart') ?: 'smart');

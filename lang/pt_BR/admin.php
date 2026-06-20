@@ -2780,10 +2780,15 @@ return array_replace_recursive($base, [
         ],
         'label' => [
             'knowledge_base_selected_count' => 'Selecionadas :count/:max',
+            'distribution_channel_selected_count' => 'Selecionados :count',
         ],
         'button' => [
             'knowledge_base_expand_more' => 'Mostrar mais :count bases de conhecimento',
             'knowledge_base_collapse' => 'Recolher bases de conhecimento',
+            'distribution_channel_expand_more' => 'Mostrar mais :count canais',
+            'distribution_channel_collapse' => 'Recolher canais',
+            'distribution_channel_select_all' => 'Selecionar todos',
+            'distribution_channel_clear' => 'Limpar canais',
         ],
         'preview' => [
             'categories_title' => 'Categorias Disponíveis',
@@ -2825,6 +2830,16 @@ return array_replace_recursive($base, [
             'scope_distribution_only_desc' => 'Mantém uma cópia local privada de gestão; gera páginas públicas apenas nos canais-alvo.',
             'scope_local_only' => 'Publicar somente no GEOFlow',
             'scope_local_only_desc' => 'Publica localmente e não enfileira distribuição remota.',
+            'strategy_title' => 'Modo de Distribuição',
+            'strategy_help' => 'Escolha como cada artigo será associado aos canais-alvo ao entrar na fila remota.',
+            'strategy_broadcast' => 'Sincronizar com todos os canais selecionados',
+            'strategy_broadcast_desc' => 'Envia cada artigo para todos os canais selecionados, preservando o comportamento original.',
+            'strategy_round_robin' => 'Publicar em ordem rotativa',
+            'strategy_round_robin_desc' => 'Envia cada artigo para um canal e alterna entre os canais selecionados.',
+            'strategy_random_balanced' => 'Publicação aleatória balanceada',
+            'strategy_random_balanced_desc' => 'Prioriza canais com menos artigos publicados e sorteia em caso de empate.',
+            'channels_title' => 'Canais-alvo',
+            'channels_help' => 'Selecione canais manualmente ou em lote. Os canais são desativados quando a publicação é somente no GEOFlow.',
         ],
     ],
     'task_edit' => [

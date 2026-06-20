@@ -13,6 +13,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use App\Services\GeoFlow\TaskDistributionChannelSelector;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Support\AdminWeb;
@@ -215,6 +216,7 @@ class TaskController extends Controller
                 'auto_keywords' => (int) ($task['auto_keywords'] ?? 1),
                 'auto_description' => (int) ($task['auto_description'] ?? 1),
                 'publish_scope' => (string) ($task['publish_scope'] ?? 'local_and_distribution'),
+                'distribution_strategy' => (string) ($task['distribution_strategy'] ?? TaskDistributionChannelSelector::STRATEGY_BROADCAST),
                 'distribution_channel_ids' => $this->taskDistributionChannelIds($taskId),
             ],
         ]);
@@ -534,7 +536,8 @@ class TaskController extends Controller
      *     draft_limit: int|null,
      *     publish_interval: int|null,
      *     category_mode: string|null,
-     *     model_selection_mode: string|null
+     *     model_selection_mode: string|null,
+     *     distribution_strategy: string|null
      * }
      */
     private function validateTaskForm(Request $request): array
@@ -558,6 +561,7 @@ class TaskController extends Controller
             'category_mode' => ['nullable', 'string', 'in:smart,fixed,random'],
             'model_selection_mode' => ['nullable', 'string', 'in:fixed,smart_failover'],
             'publish_scope' => ['nullable', 'string', 'in:local_and_distribution,distribution_only,local_only'],
+            'distribution_strategy' => ['nullable', 'string', 'in:'.implode(',', TaskDistributionChannelSelector::strategies())],
             'distribution_channel_ids' => ['nullable', 'array'],
             'distribution_channel_ids.*' => ['integer', 'min:1'],
         ]);
@@ -589,6 +593,7 @@ class TaskController extends Controller
             'fixed_category_id' => isset($payload['fixed_category_id']) ? (int) $payload['fixed_category_id'] : null,
             'status' => (string) $payload['status'],
             'publish_scope' => (string) ($payload['publish_scope'] ?? 'local_and_distribution'),
+            'distribution_strategy' => (string) ($payload['distribution_strategy'] ?? TaskDistributionChannelSelector::STRATEGY_BROADCAST),
             'article_limit' => (int) ($payload['article_limit'] ?? 10),
             'draft_limit' => (int) ($payload['draft_limit'] ?? 10),
             'publish_interval' => max(1, (int) ($payload['publish_interval'] ?? 60)) * 60,

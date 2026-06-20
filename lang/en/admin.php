@@ -3352,10 +3352,15 @@ return [
         ],
         'label' => [
             'knowledge_base_selected_count' => 'Selected :count/:max',
+            'distribution_channel_selected_count' => 'Selected :count',
         ],
         'button' => [
             'knowledge_base_expand_more' => 'Show :count more knowledge bases',
             'knowledge_base_collapse' => 'Collapse knowledge bases',
+            'distribution_channel_expand_more' => 'Show :count more channels',
+            'distribution_channel_collapse' => 'Collapse channels',
+            'distribution_channel_select_all' => 'Select all channels',
+            'distribution_channel_clear' => 'Clear channels',
         ],
         'preview' => [
             'categories_title' => 'Available Categories',
@@ -3373,6 +3378,16 @@ return [
             'scope_distribution_only_desc' => 'Keep a private local management copy; generate public pages only on target channels.',
             'scope_local_only' => 'Publish to GEOFlow only',
             'scope_local_only_desc' => 'Publish locally and do not enqueue remote distribution.',
+            'strategy_title' => 'Distribution Mode',
+            'strategy_help' => 'Choose how each article is matched to target channels when it enters the remote queue.',
+            'strategy_broadcast' => 'Sync to all selected channels',
+            'strategy_broadcast_desc' => 'Send every article to all selected channels, preserving the original behavior.',
+            'strategy_round_robin' => 'Publish in round-robin order',
+            'strategy_round_robin_desc' => 'Send each article to one channel and rotate through the selected channels.',
+            'strategy_random_balanced' => 'Random balanced publishing',
+            'strategy_random_balanced_desc' => 'Prefer channels with fewer published articles, then randomize ties.',
+            'channels_title' => 'Target Channels',
+            'channels_help' => 'Select channels manually or in bulk. Channels are disabled when publishing only to GEOFlow.',
         ],
         'message' => [
             'created' => 'Task created successfully.',

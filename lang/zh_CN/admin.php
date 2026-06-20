@@ -3352,10 +3352,15 @@ return [
         ],
         'label' => [
             'knowledge_base_selected_count' => '已选择 :count/:max',
+            'distribution_channel_selected_count' => '已选择 :count',
         ],
         'button' => [
             'knowledge_base_expand_more' => '展开更多 :count 个知识库',
             'knowledge_base_collapse' => '收起知识库',
+            'distribution_channel_expand_more' => '展开更多 :count 个渠道',
+            'distribution_channel_collapse' => '收起渠道',
+            'distribution_channel_select_all' => '全选渠道',
+            'distribution_channel_clear' => '清空渠道',
         ],
         'preview' => [
             'categories_title' => '当前可用分类',
@@ -3373,6 +3378,16 @@ return [
             'scope_distribution_only_desc' => '本地保留私有副本用于管理，前台不展示；目标渠道站点生成公开页面。',
             'scope_local_only' => '仅发布到本站',
             'scope_local_only_desc' => '文章只在 GEOFlow 本站发布，不进入远程分发队列。',
+            'strategy_title' => '分发模式',
+            'strategy_help' => '控制每篇文章进入远程分发队列时如何匹配目标渠道。',
+            'strategy_broadcast' => '同步到全部已选渠道',
+            'strategy_broadcast_desc' => '每篇文章都推送到所有勾选渠道，保持原有分发方式。',
+            'strategy_round_robin' => '按顺序轮询发布',
+            'strategy_round_robin_desc' => '每篇文章只进入一个渠道，按勾选顺序循环分配。',
+            'strategy_random_balanced' => '随机均衡发布',
+            'strategy_random_balanced_desc' => '优先选择已发布数量较少的渠道，并在并列时随机。',
+            'channels_title' => '目标渠道',
+            'channels_help' => '可手动勾选，也可以批量全选；仅发布到本站时渠道会自动禁用。',
         ],
         'message' => [
             'created' => '任务创建成功！',

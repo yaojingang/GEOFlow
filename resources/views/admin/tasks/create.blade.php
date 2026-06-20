@@ -9,6 +9,12 @@
     $selectedDistributionChannelIds = collect(old('distribution_channel_ids', $taskForm['distribution_channel_ids'] ?? []))
         ->map(static fn ($id): string => (string) $id)
         ->all();
+    $distributionChannels = $formOptions['distributionChannels'] ?? [];
+    $visibleDistributionChannelLimit = 6;
+    $collapsedDistributionChannelCount = collect($distributionChannels)
+        ->values()
+        ->filter(static fn (array $channel, int $index): bool => $index >= $visibleDistributionChannelLimit && ! in_array((string) ($channel['id'] ?? ''), $selectedDistributionChannelIds, true))
+        ->count();
     $selectedKnowledgeBaseIds = collect(old('knowledge_base_ids', $taskForm['knowledge_base_ids'] ?? array_filter([(string) ($taskForm['knowledge_base_id'] ?? '')])))
         ->map(static fn ($id): string => (string) $id)
         ->filter()
@@ -23,6 +29,7 @@
         ->filter(static fn (array $kb, int $index): bool => $index >= $visibleKnowledgeBaseLimit && ! in_array((string) ($kb['id'] ?? ''), $selectedKnowledgeBaseIds, true))
         ->count();
     $publishScope = (string) old('publish_scope', (string) ($taskForm['publish_scope'] ?? 'local_and_distribution'));
+    $distributionStrategy = (string) old('distribution_strategy', (string) ($taskForm['distribution_strategy'] ?? 'broadcast'));
     $distributionChannelsDisabled = $publishScope === 'local_only';
 @endphp
 
@@ -285,19 +292,83 @@
                             </div>
                         </fieldset>
 
-                        @if (empty($formOptions['distributionChannels']))
+                        @if (empty($distributionChannels))
                             <div class="rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
                                 {{ $t('task_create.distribution.empty') }}
                                 <a href="{{ route('admin.distribution.create') }}" class="font-medium text-blue-600 hover:text-blue-700">{{ $t('task_create.distribution.create_link') }}</a>
                             </div>
                         @else
+                            <fieldset class="mb-5">
+                                <legend class="text-sm font-medium text-gray-900">{{ $t('task_create.distribution.strategy_title') }}</legend>
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.distribution.strategy_help') }}</p>
+                                <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                                    <label data-distribution-strategy-card @class([
+                                        'flex gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm transition',
+                                        'cursor-pointer hover:border-blue-300 hover:bg-blue-50' => ! $distributionChannelsDisabled,
+                                        'cursor-not-allowed bg-gray-50 opacity-50' => $distributionChannelsDisabled,
+                                    ])>
+                                        <input type="radio" name="distribution_strategy" value="broadcast" @checked($distributionStrategy === 'broadcast') @disabled($distributionChannelsDisabled) data-distribution-strategy-input class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
+                                        <span>
+                                            <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.strategy_broadcast') }}</span>
+                                            <span class="block text-gray-500">{{ $t('task_create.distribution.strategy_broadcast_desc') }}</span>
+                                        </span>
+                                    </label>
+                                    <label data-distribution-strategy-card @class([
+                                        'flex gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm transition',
+                                        'cursor-pointer hover:border-blue-300 hover:bg-blue-50' => ! $distributionChannelsDisabled,
+                                        'cursor-not-allowed bg-gray-50 opacity-50' => $distributionChannelsDisabled,
+                                    ])>
+                                        <input type="radio" name="distribution_strategy" value="round_robin" @checked($distributionStrategy === 'round_robin') @disabled($distributionChannelsDisabled) data-distribution-strategy-input class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
+                                        <span>
+                                            <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.strategy_round_robin') }}</span>
+                                            <span class="block text-gray-500">{{ $t('task_create.distribution.strategy_round_robin_desc') }}</span>
+                                        </span>
+                                    </label>
+                                    <label data-distribution-strategy-card @class([
+                                        'flex gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm transition',
+                                        'cursor-pointer hover:border-blue-300 hover:bg-blue-50' => ! $distributionChannelsDisabled,
+                                        'cursor-not-allowed bg-gray-50 opacity-50' => $distributionChannelsDisabled,
+                                    ])>
+                                        <input type="radio" name="distribution_strategy" value="random_balanced" @checked($distributionStrategy === 'random_balanced') @disabled($distributionChannelsDisabled) data-distribution-strategy-input class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
+                                        <span>
+                                            <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.strategy_random_balanced') }}</span>
+                                            <span class="block text-gray-500">{{ $t('task_create.distribution.strategy_random_balanced_desc') }}</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                @error('distribution_strategy')
+                                    <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                                @enderror
+                            </fieldset>
+
+                            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h4 class="text-sm font-medium text-gray-900">{{ $t('task_create.distribution.channels_title') }}</h4>
+                                    <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.distribution.channels_help') }}</p>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span data-distribution-channel-count class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700">
+                                        {{ $t('task_create.label.distribution_channel_selected_count', ['count' => count($selectedDistributionChannelIds)]) }}
+                                    </span>
+                                    <button type="button" data-distribution-channel-select-all @disabled($distributionChannelsDisabled)
+                                            class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
+                                        {{ $t('task_create.button.distribution_channel_select_all') }}
+                                    </button>
+                                    <button type="button" data-distribution-channel-clear @disabled($distributionChannelsDisabled)
+                                            class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
+                                        {{ $t('task_create.button.distribution_channel_clear') }}
+                                    </button>
+                                </div>
+                            </div>
                             <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                @foreach ($formOptions['distributionChannels'] as $channel)
+                                @foreach ($distributionChannels as $index => $channel)
                                     @php($channelId = (string) $channel['id'])
-                                    <label data-distribution-channel-card @class([
+                                    @php($channelInitiallyHidden = $index >= $visibleDistributionChannelLimit && ! in_array($channelId, $selectedDistributionChannelIds, true))
+                                    <label data-distribution-channel-card @if($index >= $visibleDistributionChannelLimit) data-distribution-channel-collapsed="true" @endif @class([
                                         'flex items-start gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm transition',
                                         'cursor-pointer hover:border-blue-300 hover:bg-blue-50' => ! $distributionChannelsDisabled,
                                         'cursor-not-allowed bg-gray-50 opacity-50' => $distributionChannelsDisabled,
+                                        'hidden' => $channelInitiallyHidden,
                                     ])>
                                         <input type="checkbox" name="distribution_channel_ids[]" value="{{ $channelId }}" @checked(! $distributionChannelsDisabled && in_array($channelId, $selectedDistributionChannelIds, true)) @disabled($distributionChannelsDisabled) data-distribution-channel-input
                                                class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
@@ -308,6 +379,16 @@
                                     </label>
                                 @endforeach
                             </div>
+                            @if ($collapsedDistributionChannelCount > 0)
+                                <div class="mt-3">
+                                    <button type="button" data-distribution-channel-toggle
+                                            data-expand-label="{{ $t('task_create.button.distribution_channel_expand_more', ['count' => '__COUNT__']) }}"
+                                            data-collapse-label="{{ $t('task_create.button.distribution_channel_collapse') }}"
+                                            class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+                                        {{ $t('task_create.button.distribution_channel_expand_more', ['count' => $collapsedDistributionChannelCount]) }}
+                                    </button>
+                                </div>
+                            @endif
                             <p class="mt-3 text-sm text-gray-500">{{ $t('task_create.distribution.help') }}</p>
                         @endif
                     </div>
@@ -473,11 +554,19 @@
             const categoryModeRadios = document.querySelectorAll('input[name="category_mode"]');
             const publishScopeRadios = document.querySelectorAll('[data-publish-scope-option]');
             const distributionChannelInputs = document.querySelectorAll('[data-distribution-channel-input]');
+            const distributionStrategyInputs = document.querySelectorAll('[data-distribution-strategy-input]');
+            const distributionStrategyCards = document.querySelectorAll('[data-distribution-strategy-card]');
+            const distributionChannelCount = document.querySelector('[data-distribution-channel-count]');
+            const distributionChannelToggle = document.querySelector('[data-distribution-channel-toggle]');
+            const collapsedDistributionChannelCards = document.querySelectorAll('[data-distribution-channel-collapsed="true"]');
+            const distributionSelectAllButton = document.querySelector('[data-distribution-channel-select-all]');
+            const distributionClearButton = document.querySelector('[data-distribution-channel-clear]');
             const knowledgeBaseInputs = document.querySelectorAll('[data-knowledge-base-input]');
             const knowledgeBaseCount = document.querySelector('[data-knowledge-base-count]');
             const knowledgeBaseToggle = document.querySelector('[data-knowledge-base-toggle]');
             const collapsedKnowledgeBaseCards = document.querySelectorAll('[data-knowledge-base-collapsed="true"]');
             const form = document.querySelector('form');
+            let distributionChannelsExpanded = false;
             let knowledgeBaseExpanded = false;
 
             if (!form) {
@@ -534,6 +623,19 @@
                 const selectedScope = document.querySelector('input[name="publish_scope"]:checked');
                 const isLocalOnly = selectedScope && selectedScope.value === 'local_only';
 
+                distributionStrategyInputs.forEach((input) => {
+                    input.disabled = isLocalOnly;
+                });
+
+                distributionStrategyCards.forEach((card) => {
+                    card.classList.toggle('cursor-pointer', !isLocalOnly);
+                    card.classList.toggle('hover:border-blue-300', !isLocalOnly);
+                    card.classList.toggle('hover:bg-blue-50', !isLocalOnly);
+                    card.classList.toggle('cursor-not-allowed', isLocalOnly);
+                    card.classList.toggle('bg-gray-50', isLocalOnly);
+                    card.classList.toggle('opacity-50', isLocalOnly);
+                });
+
                 distributionChannelInputs.forEach((input) => {
                     input.disabled = isLocalOnly;
                     if (isLocalOnly) {
@@ -552,6 +654,50 @@
                     card.classList.toggle('bg-gray-50', isLocalOnly);
                     card.classList.toggle('opacity-50', isLocalOnly);
                 });
+
+                [distributionSelectAllButton, distributionClearButton].forEach((button) => {
+                    if (button) {
+                        button.disabled = isLocalOnly;
+                    }
+                });
+
+                syncDistributionChannelCount();
+                syncDistributionChannelVisibility();
+            }
+
+            function syncDistributionChannelCount() {
+                if (!distributionChannelCount) {
+                    return;
+                }
+
+                const selectedCount = Array.from(distributionChannelInputs).filter((input) => input.checked).length;
+                distributionChannelCount.textContent = @json($t('task_create.label.distribution_channel_selected_count', ['count' => '__COUNT__'])).replace('__COUNT__', String(selectedCount));
+            }
+
+            function syncDistributionChannelVisibility() {
+                if (!distributionChannelToggle || collapsedDistributionChannelCards.length === 0) {
+                    return;
+                }
+
+                const hiddenCards = [];
+
+                collapsedDistributionChannelCards.forEach((card) => {
+                    const input = card.querySelector('[data-distribution-channel-input]');
+                    const shouldHide = !distributionChannelsExpanded && !(input && input.checked);
+                    card.classList.toggle('hidden', shouldHide);
+
+                    if (shouldHide) {
+                        hiddenCards.push(card);
+                    }
+                });
+
+                const expandLabel = distributionChannelToggle.dataset.expandLabel || '';
+                const collapseLabel = distributionChannelToggle.dataset.collapseLabel || '';
+                distributionChannelToggle.textContent = distributionChannelsExpanded
+                    ? collapseLabel
+                    : expandLabel.replace('__COUNT__', String(hiddenCards.length));
+                distributionChannelToggle.setAttribute('aria-expanded', distributionChannelsExpanded ? 'true' : 'false');
+                distributionChannelToggle.classList.toggle('hidden', !distributionChannelsExpanded && hiddenCards.length === 0);
             }
 
             function syncKnowledgeBaseCount() {
@@ -594,6 +740,40 @@
             articleLimitInput.addEventListener('input', syncDraftLimitMax);
             categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
             publishScopeRadios.forEach((radio) => radio.addEventListener('change', syncDistributionChannelsByScope));
+            distributionChannelInputs.forEach((input) => {
+                input.addEventListener('change', function () {
+                    syncDistributionChannelCount();
+                    syncDistributionChannelVisibility();
+                });
+            });
+            if (distributionSelectAllButton) {
+                distributionSelectAllButton.addEventListener('click', function () {
+                    distributionChannelInputs.forEach((input) => {
+                        if (!input.disabled) {
+                            input.checked = true;
+                        }
+                    });
+                    syncDistributionChannelCount();
+                    syncDistributionChannelVisibility();
+                });
+            }
+            if (distributionClearButton) {
+                distributionClearButton.addEventListener('click', function () {
+                    distributionChannelInputs.forEach((input) => {
+                        if (!input.disabled) {
+                            input.checked = false;
+                        }
+                    });
+                    syncDistributionChannelCount();
+                    syncDistributionChannelVisibility();
+                });
+            }
+            if (distributionChannelToggle) {
+                distributionChannelToggle.addEventListener('click', function () {
+                    distributionChannelsExpanded = !distributionChannelsExpanded;
+                    syncDistributionChannelVisibility();
+                });
+            }
             if (knowledgeBaseToggle) {
                 knowledgeBaseToggle.addEventListener('click', function () {
                     knowledgeBaseExpanded = !knowledgeBaseExpanded;
@@ -654,6 +834,8 @@
             handleCategoryModeChange();
             syncDraftLimitMax();
             syncDistributionChannelsByScope();
+            syncDistributionChannelCount();
+            syncDistributionChannelVisibility();
             syncKnowledgeBaseCount();
             syncKnowledgeBaseVisibility();
         });

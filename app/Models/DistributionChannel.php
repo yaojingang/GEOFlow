@@ -448,7 +448,7 @@ class DistributionChannel extends Model
     public function tasks(): BelongsToMany
     {
         return $this->belongsToMany(Task::class, 'task_distribution_channels')
-            ->withPivot(['trigger', 'remote_status', 'failure_policy', 'max_attempts'])
+            ->withPivot(['trigger', 'remote_status', 'failure_policy', 'max_attempts', 'sort_order'])
             ->withTimestamps();
     }
 
