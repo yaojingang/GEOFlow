@@ -10,6 +10,10 @@
 | --- | --- |
 | `geoflow-docker-deploy.sh` | 生产 Docker 一键部署脚本。会自检服务器、准备 `.env.prod`、部署 PostgreSQL、Redis、Web、App、队列、调度和 Reverb，并在最后执行健康检查。 |
 | `geoflow-healthcheck.sh` | 部署后健康检查脚本。可单独检查容器状态、Laravel 健康端点和数据库连接。 |
+| `start-docker-pull-tunnel.sh` | **本机 Mac**：SSH 反向隧道，把 Clash HTTP 代理暴露给 ECS。 |
+| `pull-images-once-via-tunnel.sh` | **ECS 一次性拉镜像**：经隧道 + `skopeo`，**不重启 docker**，不影响运行中容器。 |
+| `build-once-via-tunnel.sh` | **ECS 一次性 build**：临时代理仅作用于本次 `docker compose build`，**不重启 docker**。 |
+| `sync-images-from-local.sh` | **本机 Mac**：本机 `docker pull` 后 `ssh docker load` 到 ECS，无需隧道、无需改 ECS Docker。 |
 
 ## 推荐服务器配置
 
@@ -260,4 +264,40 @@ proxy_set_header X-Forwarded-Host $host;
 - The scripts are references, not a replacement for server security hardening.
 - Do not expose PostgreSQL or Redis to the public Internet.
 - Keep `.env.prod`, `storage/`, and PostgreSQL data backed up before upgrades.
-- If Docker image pulling is slow or unstable in mainland China, configure a stable registry mirror at the server level before running the script.
+- If Docker image pulling is slow or unstable in mainland China, use the one-shot tunnel scripts below (no `docker restart`) or configure a registry mirror in `daemon.json`.
+
+## 国内一次性拉镜像（不重启 Docker、不中断服务）
+
+改 `/etc/systemd/system/docker.service.d/` 并 `systemctl restart docker` **会短暂影响所有容器**。推荐用下面两种方式之一：
+
+### 方式 A：隧道 + skopeo（ECS 拉，走你本机网络）
+
+**终端 1（Mac，保持不关）：**
+
+```bash
+REMOTE_PROXY_PORT=1080 LOCAL_PROXY_PORT=1082 \
+ECS_HOST=ecs-user@you-ip \
+bash deploy-scripts/start-docker-pull-tunnel.sh
+```
+
+**终端 2（ECS）：**
+
+```bash
+DOCKER_TUNNEL_PROXY_PORT=1080 bash deploy-scripts/pull-images-once-via-tunnel.sh --env-file .env.prod
+DOCKER_TUNNEL_PROXY_PORT=1080 bash deploy-scripts/build-once-via-tunnel.sh --env-file .env.prod
+sudo docker-compose --env-file .env.prod -f docker-compose.prod.yml up -d
+```
+
+- `skopeo` 只在本进程走 `HTTP_PROXY`，**不动 Docker daemon**
+- `build-once-via-tunnel.sh` 用临时 `DOCKER_CONFIG`，仅本次 build 走代理
+- `up -d` 若镜像已齐，通常不再拉取
+
+### 方式 B：本机拉取 + 管道导入（更简单，不用隧道）
+
+```bash
+ECS_HOST=ecs-user@你的IP bash deploy-scripts/sync-images-from-local.sh
+```
+
+本机用 Clash 拉镜像，经 SSH `docker save | docker load` 灌进 ECS。ECS 零配置。
+
+Apple Silicon 本机默认拉 `linux/amd64`（脚本已设 `DOCKER_PLATFORM=linux/amd64`）。

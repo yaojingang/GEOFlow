@@ -341,10 +341,9 @@ php artisan geoflow:admin-unlock admin
 | `COMPOSER_ON_START` | `true` | 容器启动时执行 `composer install` |
 | `AUTO_MIGRATE` | `true` | 每次启动执行 `php artisan migrate --force` |
 | `AUTO_INIT_ONCE` | 仅 `init` 为 `true` | 执行 `migrate` + `geoflow:install`，由安装命令判断是否空库 |
-| `AUTO_GENERATE_APP_KEY` | `init` 内为 `true` | 无有效 `APP_KEY` 时自动生成 |
 | `AUTO_INSTALL_ONCE` | `false` | 已完成迁移后单独执行一次 `geoflow:install`，常驻服务不建议开启 |
-| `AUTO_SEED` | `false` | 为 `true` 时**每次**启动都 `db:seed`（仅手动修复或演示重置时慎用） |
-| `AUTO_SEED_CLASS` | 空 | 限制手动 `AUTO_SEED` 只执行指定 seeder；正常部署请使用 `geoflow:install` |
+
+入口脚本会在 `.env` 中没有有效 `APP_KEY` 时自动执行 `key:generate --force`，无需额外开关。
 
 Compose 将 **`./storage`** 与 **`./.env`** 挂载进容器；应用代码在镜像内。若要用于正式生产，请改用仓库新增的 **`docker-compose.prod.yml`**（`Nginx + php-fpm`），并参见 `docs/deployment/DEPLOYMENT.md`。
 

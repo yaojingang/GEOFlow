@@ -389,7 +389,6 @@
 @endsection
 
 @push('scripts')
-<script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 @php
     $taskInitialOverview = [
         'tasks' => $tasks,
@@ -400,7 +399,6 @@
 @endphp
 <script>
 const TASK_I18N = @json($taskI18n, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-const TASK_REALTIME = @json($taskRealtime, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 const TASK_HEALTH_URL = @js(\App\Support\AdminWeb::routePath('admin.tasks.health'));
 const TASK_BATCH_URL = @js(\App\Support\AdminWeb::routePath('admin.tasks.batch'));
 const TASK_INITIAL_OVERVIEW = @json($taskInitialOverview, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
@@ -639,27 +637,11 @@ function requestTaskSnapshot() {
 }
 
 function initTaskRealtime() {
-    if (!TASK_REALTIME.enabled || !TASK_REALTIME.key || typeof window.Pusher === 'undefined') {
+    if (!window.Echo || typeof window.Echo.private !== 'function') {
         return;
     }
 
-    const pusher = new window.Pusher(TASK_REALTIME.key, {
-        cluster: 'mt1',
-        wsHost: TASK_REALTIME.host,
-        wsPort: TASK_REALTIME.port || 80,
-        wssPort: TASK_REALTIME.port || 443,
-        forceTLS: TASK_REALTIME.scheme === 'https',
-        enabledTransports: ['ws', 'wss'],
-        authEndpoint: @js(url('/broadcasting/auth')),
-        auth: {
-            headers: {
-                'X-CSRF-TOKEN': @js(csrf_token()),
-            },
-        },
-    });
-
-    const channel = pusher.subscribe('private-admin.tasks');
-    channel.bind('tasks.overview.updated', (payload) => {
+    window.Echo.private('admin.tasks').listen('.tasks.overview.updated', (payload) => {
         applyOverview(payload);
     });
 }

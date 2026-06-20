@@ -172,9 +172,9 @@ This document tracks user-facing updates in the public repository. For future Gi
   - Application code reads `config('geoflow.url_import_allow_mixed_dns')`, so it is compatible with Laravel config caching
 - Added coverage for model driver resolution and URL normalization.
 - Fixed default admin initialization for production Docker first-time deployment:
-  - `docker/entrypoint.prod.sh` now supports `AUTO_SEED`
-  - `docker-compose.prod.yml` enables seeding only for the one-shot `init` service
-  - The default admin account is created after first-time migrations, and repeated runs do not overwrite an existing `admin` user
+  - The one-shot `init` service runs `geoflow:install` after migrations
+  - The default admin account is created only for an empty first install; existing deployments are marked as initialized
+  - Long-running services do not receive initialization environment variables, so restarts do not repeat install seeders
 
 ## 2026-05-08
 

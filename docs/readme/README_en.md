@@ -325,10 +325,9 @@ Optional localhost-only DB/Redis host ports: see `DB_EXPOSE_PORT` and `REDIS_EXP
 | `COMPOSER_ON_START` | `true` | Run `composer install` on container start |
 | `AUTO_MIGRATE` | `true` | Run `php artisan migrate --force` on each start |
 | `AUTO_INIT_ONCE` | `true` on `init` only | Run `migrate` + `geoflow:install`; the installer decides whether the DB is empty |
-| `AUTO_GENERATE_APP_KEY` | enabled in `init` | Generate `APP_KEY` when missing |
 | `AUTO_INSTALL_ONCE` | `false` | Run `geoflow:install` after migrations; do not enable on long-running services |
-| `AUTO_SEED` | `false` | If `true`, runs **`db:seed` every start**; use only for manual recovery or demo resets |
-| `AUTO_SEED_CLASS` | empty | Limit manual `AUTO_SEED` to one seeder class; normal deployments should use `geoflow:install` |
+
+The entrypoint automatically runs `key:generate --force` when `.env` does not contain a valid `APP_KEY`; no extra toggle is required.
 
 `./storage` and `./.env` are mounted; application code lives in the image. For production, use the new **`docker-compose.prod.yml`** stack (`Nginx + php-fpm`) and see `../../docs/deployment/DEPLOYMENT.md`.
 

@@ -36,6 +36,7 @@
     </main>
 @include('admin.partials.footer')
 @include('admin.partials.welcome-modal')
+@vite('resources/js/app.js')
 @stack('scripts')
 </body>
 </html>

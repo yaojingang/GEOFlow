@@ -71,7 +71,6 @@ class TaskController extends Controller
             'recentJobs' => $recentJobs,
             'legacyError' => $error,
             'taskI18n' => $this->taskI18n(),
-            'taskRealtime' => $this->taskRealtimeConfig(),
         ]);
     }
 
@@ -386,24 +385,6 @@ class TaskController extends Controller
             'pausing' => __('admin.tasks.action.pausing'),
             'confirmActivate' => __('admin.tasks.confirm.activate'),
             'confirmPause' => __('admin.tasks.confirm.pause'),
-        ];
-    }
-
-    /**
-     * @return array{enabled:bool,key:string,host:string,port:int,scheme:string}
-     */
-    private function taskRealtimeConfig(): array
-    {
-        $reverbApp = config('reverb.apps.apps.0', []);
-        $host = (string) (config('reverb.servers.reverb.hostname') ?: config('app.url'));
-        $parsedHost = parse_url($host, PHP_URL_HOST);
-
-        return [
-            'enabled' => (string) config('broadcasting.default') === 'reverb',
-            'key' => (string) ($reverbApp['key'] ?? ''),
-            'host' => $parsedHost ? (string) $parsedHost : (string) $host,
-            'port' => (int) (config('reverb.apps.apps.0.options.port') ?: 443),
-            'scheme' => (string) (config('reverb.apps.apps.0.options.scheme') ?: 'https'),
         ];
     }
 
