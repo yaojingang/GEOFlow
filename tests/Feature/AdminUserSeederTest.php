@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use Database\Seeders\AdminUserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -24,6 +25,24 @@ class AdminUserSeederTest extends TestCase
         $this->assertSame('super_admin', $admin->role);
         $this->assertSame('active', $admin->status);
         $this->assertTrue(Hash::check('password', (string) $admin->password));
+    }
+
+    /**
+     * 验证 Seeder 从配置层读取初始管理员账号，兼容 config:cache 场景。
+     */
+    public function test_admin_user_seeder_uses_configured_initial_credentials(): void
+    {
+        Config::set('geoflow.initial_admin_username', 'owner');
+        Config::set('geoflow.initial_admin_email', 'owner@example.com');
+        Config::set('geoflow.initial_admin_password', 'owner-secret');
+
+        $this->seed(AdminUserSeeder::class);
+
+        $admin = Admin::query()->where('username', 'owner')->first();
+
+        $this->assertNotNull($admin);
+        $this->assertSame('owner@example.com', $admin->email);
+        $this->assertTrue(Hash::check('owner-secret', (string) $admin->password));
     }
 
     public function test_admin_user_seeder_does_not_overwrite_existing_credentials(): void
