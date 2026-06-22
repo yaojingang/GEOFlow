@@ -1153,7 +1153,7 @@ return array_replace_recursive($base, [
         'column' => [
             'id' => 'ID',
             'info' => 'Info do Artigo',
-            'task_author' => 'Tarefa / Autor',
+            'task_author' => 'Tarefa / Autor / Site',
             'workflow' => 'Fluxo',
             'created_at' => 'Criado em',
             'actions' => 'Ações',
@@ -1174,6 +1174,9 @@ return array_replace_recursive($base, [
         'filters' => [
             'title' => 'Filtros e Busca',
             'task' => 'Tarefa',
+            'distribution_channel' => 'Site de Publicação',
+            'distribution_channel_selected_count' => ':count sites selecionados',
+            'distribution_channel_help' => 'Deixe vazio para mostrar todos os sites de publicação; selecione vários sites para mostrar artigos distribuídos para qualquer site selecionado.',
             'status' => 'Status de Publicação',
             'review_status' => 'Status de Revisão',
             'author' => 'Autor',
@@ -1182,6 +1185,7 @@ return array_replace_recursive($base, [
             'search' => 'Buscar',
             'search_placeholder' => 'Buscar título ou conteúdo...',
             'all_tasks' => 'Todas as Tarefas',
+            'all_distribution_channels' => 'Todos os Sites de Publicação',
             'all_status' => 'Todos os Status',
             'all_review' => 'Todos os Resultados',
             'all_authors' => 'Todos os Autores',
@@ -1259,6 +1263,12 @@ return array_replace_recursive($base, [
             'approve' => 'Aprovar',
             'reject' => 'Rejeitar',
             'review' => 'Revisar',
+            'view_remote' => 'Ver Página Publicada',
+            'view_remote_for_channel' => 'Ver página publicada em :channel',
+            'view_local' => 'Ver página local publicada',
+            'view_remote_unavailable' => 'Nenhuma página publicada disponível ainda',
+            'local_site' => 'Site local',
+            'remote_channel_unknown' => 'Site remoto',
         ],
         'confirm' => [
             'delete' => 'Excluir este artigo? Será movido para a lixeira.',
@@ -1302,7 +1312,7 @@ return array_replace_recursive($base, [
             'selected_suffix' => ' artigos selecionados',
             'column' => [
                 'info' => 'Info do Artigo',
-                'task_author' => 'Tarefa / Autor',
+                'task_author' => 'Tarefa / Autor / Site',
                 'deleted_at' => 'Excluído em',
                 'actions' => 'Ações',
             ],

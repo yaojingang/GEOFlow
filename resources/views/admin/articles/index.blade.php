@@ -6,6 +6,11 @@
     $selectedStatus = (string) ($filters['status'] ?? '');
     $selectedReviewStatus = (string) ($filters['review_status'] ?? '');
     $selectedAuthorId = (int) ($filters['author_id'] ?? 0);
+    $selectedDistributionChannelIds = collect($filters['distribution_channel_ids'] ?? [])
+        ->map(fn ($id) => (int) $id)
+        ->filter(fn ($id) => $id > 0)
+        ->values()
+        ->all();
     $selectedDateFrom = (string) ($filters['date_from'] ?? '');
     $selectedDateTo = (string) ($filters['date_to'] ?? '');
     $selectedSearch = (string) ($filters['search'] ?? '');
@@ -161,7 +166,7 @@
                     @if($isTrashView)
                         <input type="hidden" name="trashed" value="1">
                     @endif
-                    <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.task') }}</label>
                             <select name="task_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
@@ -210,6 +215,44 @@
                             <input type="date" name="date_to" value="{{ $selectedDateTo }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
                     </div>
+                    @if(!empty($distributionChannels))
+                        <div>
+                            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.distribution_channel') }}</label>
+                                <span data-distribution-channel-filter-count class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                                    {{ __('admin.articles.filters.distribution_channel_selected_count', ['count' => count($selectedDistributionChannelIds)]) }}
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                @foreach($distributionChannels as $channel)
+                                    @php
+                                        $channelId = (int) ($channel['id'] ?? 0);
+                                        $channelDomain = (string) ($channel['domain'] ?? '');
+                                        $isChannelSelected = in_array($channelId, $selectedDistributionChannelIds, true);
+                                    @endphp
+                                    <label data-distribution-channel-filter-card @class([
+                                        'flex items-start gap-3 rounded-md border px-4 py-3 text-sm transition',
+                                        'border-blue-200 bg-blue-50' => $isChannelSelected,
+                                        'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50' => ! $isChannelSelected,
+                                    ])>
+                                        <input type="checkbox"
+                                               name="distribution_channel_ids[]"
+                                               value="{{ $channelId }}"
+                                               @checked($isChannelSelected)
+                                               data-distribution-channel-filter-input
+                                               class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span class="min-w-0">
+                                            <span class="block font-medium text-gray-900">{{ $channel['name'] }}</span>
+                                            @if($channelDomain !== '')
+                                                <span class="block break-all text-gray-500">{{ $channelDomain }}</span>
+                                            @endif
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            <p class="mt-2 text-xs text-gray-500">{{ __('admin.articles.filters.distribution_channel_help') }}</p>
+                        </div>
+                    @endif
                     <div class="flex items-end space-x-4">
                         <div class="flex-1">
                             <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.search') }}</label>
@@ -359,6 +402,66 @@
                                 $distributionSynced = (int) ($article->distribution_synced_count ?? 0);
                                 $distributionFailed = (int) ($article->distribution_failed_count ?? 0);
                                 $distributionPending = max(0, $distributionTotal - $distributionSynced - $distributionFailed);
+                                $articleDistributionChannels = collect($article->distributions ?? []);
+                                if (count($selectedDistributionChannelIds) > 0) {
+                                    $articleDistributionChannels = $articleDistributionChannels->filter(
+                                        fn ($distribution): bool => in_array((int) ($distribution->distribution_channel_id ?? 0), $selectedDistributionChannelIds, true)
+                                    );
+                                }
+                                $articleDistributionChannelLabels = $articleDistributionChannels
+                                    ->map(function ($distribution): string {
+                                        $channelName = (string) ($distribution->channel->name ?? '');
+                                        $channelDomain = (string) ($distribution->channel->domain ?? '');
+                                        if ($channelName !== '' && $channelDomain !== '') {
+                                            return $channelName.' · '.$channelDomain;
+                                        }
+
+                                        return $channelName !== '' ? $channelName : $channelDomain;
+                                    })
+                                    ->filter(fn (string $label): bool => $label !== '')
+                                    ->unique()
+                                    ->values();
+                                $remoteDistributions = collect($article->syncedRemoteDistributions ?? []);
+                                if (count($selectedDistributionChannelIds) > 0) {
+                                    $remoteDistributions = $remoteDistributions->filter(
+                                        fn ($distribution): bool => in_array((int) ($distribution->distribution_channel_id ?? 0), $selectedDistributionChannelIds, true)
+                                    );
+                                }
+                                $remoteViewLinks = $remoteDistributions
+                                    ->map(function ($distribution): array {
+                                        $remoteUrl = trim((string) ($distribution->remote_url ?? ''));
+                                        $channelName = (string) ($distribution->channel->name ?? '');
+                                        $channelDomain = (string) ($distribution->channel->domain ?? '');
+
+                                        return [
+                                            'url' => $remoteUrl,
+                                            'channel' => $channelName !== '' ? $channelName : ($channelDomain !== '' ? $channelDomain : __('admin.articles.action.remote_channel_unknown')),
+                                            'host' => (string) (parse_url($remoteUrl, PHP_URL_HOST) ?: $channelDomain),
+                                        ];
+                                    })
+                                    ->filter(function (array $link): bool {
+                                        $url = (string) ($link['url'] ?? '');
+                                        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+
+                                        return filter_var($url, FILTER_VALIDATE_URL) !== false
+                                            && in_array($scheme, ['http', 'https'], true);
+                                    })
+                                    ->values();
+                                $primaryRemoteLink = $remoteViewLinks->first();
+                                $localArticleUrl = null;
+                                if ((string) $article->status === 'published' && trim((string) $article->slug) !== '') {
+                                    $localArticleUrl = route('site.article', ['slug' => (string) $article->slug]);
+                                }
+                                $primaryPublishedLink = $primaryRemoteLink;
+                                if ($primaryPublishedLink === null && $localArticleUrl !== null) {
+                                    $primaryPublishedLink = [
+                                        'url' => $localArticleUrl,
+                                        'channel' => __('admin.articles.action.local_site'),
+                                        'title' => __('admin.articles.action.view_local'),
+                                    ];
+                                } elseif ($primaryPublishedLink !== null) {
+                                    $primaryPublishedLink['title'] = __('admin.articles.action.view_remote_for_channel', ['channel' => $primaryPublishedLink['channel']]);
+                                }
                                 $distributionBadge = null;
                                 if (!$isTrashView && $distributionTotal > 0) {
                                     if ($distributionFailed > 0) {
@@ -421,14 +524,31 @@
                                         </div>
                                     @endif
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    @if((string) ($article->task->name ?? '') !== '')
-                                        <div class="text-blue-600">{{ $article->task->name }}</div>
-                                    @endif
-                                    <div>{{ $article->author->name ?? '' }}</div>
-                                    @if((int) ($article->is_ai_generated ?? 0) === 1)
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">{{ __('admin.articles.ai_generated') }}</span>
-                                    @endif
+                                <td class="px-6 py-4 text-sm text-gray-500">
+                                    <div class="space-y-1.5">
+                                        @if((string) ($article->task->name ?? '') !== '')
+                                            <div class="max-w-[220px] truncate font-medium text-blue-600" title="{{ $article->task->name }}">{{ $article->task->name }}</div>
+                                        @endif
+                                        <div class="text-gray-600">{{ $article->author->name ?? '' }}</div>
+                                        @if($articleDistributionChannelLabels->isNotEmpty())
+                                            <div class="flex max-w-[240px] flex-wrap gap-1.5">
+                                                @foreach($articleDistributionChannelLabels->take(3) as $channelLabel)
+                                                    <span class="inline-flex max-w-full items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200" title="{{ $channelLabel }}">
+                                                        <i data-lucide="radio-tower" class="mr-1 h-3 w-3 shrink-0"></i>
+                                                        <span class="max-w-[170px] truncate">{{ $channelLabel }}</span>
+                                                    </span>
+                                                @endforeach
+                                                @if($articleDistributionChannelLabels->count() > 3)
+                                                    <span class="inline-flex items-center rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-500 ring-1 ring-gray-200">
+                                                        +{{ $articleDistributionChannelLabels->count() - 3 }}
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        @endif
+                                        @if((int) ($article->is_ai_generated ?? 0) === 1)
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">{{ __('admin.articles.ai_generated') }}</span>
+                                        @endif
+                                    </div>
                                 </td>
                                 @if(!$isTrashView)
                                 <td class="px-6 py-4 whitespace-nowrap">
@@ -471,6 +591,15 @@
                                         </div>
                                     @else
                                         <div class="flex items-center space-x-2">
+                                            @if($primaryPublishedLink !== null)
+                                                <a href="{{ $primaryPublishedLink['url'] }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800" title="{{ $primaryPublishedLink['title'] }}">
+                                                    <i data-lucide="external-link" class="w-4 h-4"></i>
+                                                </a>
+                                            @else
+                                                <span class="inline-flex cursor-not-allowed text-gray-300" title="{{ __('admin.articles.action.view_remote_unavailable') }}">
+                                                    <i data-lucide="eye-off" class="w-4 h-4"></i>
+                                                </span>
+                                            @endif
                                             <a href="{{ route('admin.articles.edit', ['articleId' => (int) $article->id]) }}" class="text-green-600 hover:text-green-800" title="{{ __('admin.button.edit') }}">
                                                 <i data-lucide="edit" class="w-4 h-4"></i>
                                             </a>
@@ -505,7 +634,13 @@
                         <div class="flex items-center gap-2">
                             <form method="GET" class="flex items-center gap-2">
                                 @foreach(request()->except(['per_page', 'page']) as $key => $value)
-                                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                    @if(is_array($value))
+                                        @foreach($value as $arrayValue)
+                                            <input type="hidden" name="{{ $key }}[]" value="{{ $arrayValue }}">
+                                        @endforeach
+                                    @else
+                                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                    @endif
                                 @endforeach
                                 <input type="hidden" name="page" value="1">
                                 <label for="per-page-input" class="text-sm text-gray-600">{{ __('admin.articles.pagination.per_page') }}</label>
@@ -529,6 +664,7 @@
         const TRASH_I18N = @json($trashI18n);
         const IS_TRASH_VIEW = @json($isTrashView);
         const EMPTY_TRASH_URL = @json(\App\Support\AdminWeb::routePath('admin.articles.trash.empty'));
+        const DISTRIBUTION_CHANNEL_FILTER_COUNT_LABEL = @json(__('admin.articles.filters.distribution_channel_selected_count', ['count' => '__COUNT__']));
 
         function toggleBatchActions() {
             const batchActions = document.getElementById('batch-actions');
@@ -618,6 +754,36 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            const distributionChannelFilterInputs = document.querySelectorAll('[data-distribution-channel-filter-input]');
+            const distributionChannelFilterCount = document.querySelector('[data-distribution-channel-filter-count]');
+
+            function syncDistributionChannelFilterState() {
+                const selectedCount = Array.from(distributionChannelFilterInputs).filter((input) => input.checked).length;
+                if (distributionChannelFilterCount) {
+                    distributionChannelFilterCount.textContent = DISTRIBUTION_CHANNEL_FILTER_COUNT_LABEL.replace('__COUNT__', String(selectedCount));
+                }
+
+                distributionChannelFilterInputs.forEach((input) => {
+                    const card = input.closest('[data-distribution-channel-filter-card]');
+                    if (!card) {
+                        return;
+                    }
+
+                    const isSelected = input.checked;
+                    card.classList.toggle('border-blue-200', isSelected);
+                    card.classList.toggle('bg-blue-50', isSelected);
+                    card.classList.toggle('border-gray-200', !isSelected);
+                    card.classList.toggle('bg-white', !isSelected);
+                    card.classList.toggle('hover:border-blue-300', !isSelected);
+                    card.classList.toggle('hover:bg-blue-50', !isSelected);
+                });
+            }
+
+            distributionChannelFilterInputs.forEach((input) => {
+                input.addEventListener('change', syncDistributionChannelFilterState);
+            });
+            syncDistributionChannelFilterState();
+
             const selectAll = document.getElementById('select-all');
             if (selectAll) {
                 selectAll.addEventListener('change', function() {

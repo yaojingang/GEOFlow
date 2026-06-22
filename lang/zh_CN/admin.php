@@ -748,7 +748,7 @@ return [
         'column' => [
             'id' => 'ID',
             'info' => '文章信息',
-            'task_author' => '任务/作者',
+            'task_author' => '任务/作者/渠道',
             'workflow' => '流程状态',
             'created_at' => '创建时间',
             'actions' => '操作',
@@ -769,6 +769,9 @@ return [
         'filters' => [
             'title' => '筛选和搜索',
             'task' => '任务',
+            'distribution_channel' => '发布站点',
+            'distribution_channel_selected_count' => '已选 :count 个站点',
+            'distribution_channel_help' => '不勾选时显示所有发布站点；勾选多个时显示任一所选站点有分发记录的文章。',
             'status' => '发布状态',
             'review_status' => '审核结果',
             'author' => '作者',
@@ -777,6 +780,7 @@ return [
             'search' => '搜索',
             'search_placeholder' => '搜索标题或内容...',
             'all_tasks' => '所有任务',
+            'all_distribution_channels' => '所有发布站点',
             'all_status' => '所有发布状态',
             'all_review' => '所有审核结果',
             'all_authors' => '所有作者',
@@ -854,6 +858,12 @@ return [
             'approve' => '人工通过',
             'reject' => '拒绝',
             'review' => '审核',
+            'view_remote' => '查看发布页面',
+            'view_remote_for_channel' => '查看 :channel 发布页面',
+            'view_local' => '查看本站发布页面',
+            'view_remote_unavailable' => '暂无可查看的发布页面',
+            'local_site' => '本站',
+            'remote_channel_unknown' => '远端站点',
         ],
         'confirm' => [
             'delete' => '确定要删除这篇文章吗？删除后文章将移至垃圾箱。',
@@ -897,7 +907,7 @@ return [
             'selected_suffix' => '篇文章',
             'column' => [
                 'info' => '文章信息',
-                'task_author' => '任务/作者',
+                'task_author' => '任务/作者/渠道',
                 'deleted_at' => '删除时间',
                 'actions' => '操作',
             ],

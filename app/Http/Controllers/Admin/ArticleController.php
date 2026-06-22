@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\DistributionChannel;
 use App\Models\Task;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Support\AdminWeb;
@@ -48,6 +49,7 @@ class ArticleController extends Controller
             'filters' => $filters,
             'tasks' => $this->loadTaskOptions(),
             'authors' => $this->loadAuthorOptions(),
+            'distributionChannels' => $this->loadDistributionChannelOptions(),
             'articlesI18n' => $this->articlesI18n(),
             'isTrashView' => $isTrashView,
             'trashI18n' => $this->trashI18n(),
@@ -332,6 +334,7 @@ class ArticleController extends Controller
      *     status: string,
      *     review_status: string,
      *     author_id: int,
+     *     distribution_channel_ids: array<int, int>,
      *     date_from: string,
      *     date_to: string,
      *     search: string,
@@ -357,6 +360,7 @@ class ArticleController extends Controller
             'status' => $status,
             'review_status' => $reviewStatus,
             'author_id' => max(0, (int) $request->query('author_id', 0)),
+            'distribution_channel_ids' => $this->extractDistributionChannelIds($request),
             'date_from' => trim((string) $request->query('date_from', '')),
             'date_to' => trim((string) $request->query('date_to', '')),
             'search' => trim((string) $request->query('search', '')),
@@ -371,6 +375,7 @@ class ArticleController extends Controller
      *     status: string,
      *     review_status: string,
      *     author_id: int,
+     *     distribution_channel_ids: array<int, int>,
      *     date_from: string,
      *     date_to: string,
      *     search: string,
@@ -388,6 +393,8 @@ class ArticleController extends Controller
             'task:id,name,need_review',
             'author:id,name',
             'category:id,name',
+            'distributions.channel:id,name,domain',
+            'syncedRemoteDistributions.channel:id,name,domain',
         ])->withCount([
             'distributions as distribution_total_count',
             'distributions as distribution_synced_count' => fn ($distributionQuery) => $distributionQuery->where('status', 'synced'),
@@ -414,6 +421,12 @@ class ArticleController extends Controller
 
         if ($filters['author_id'] > 0) {
             $query->where('author_id', $filters['author_id']);
+        }
+
+        if (! empty($filters['distribution_channel_ids'])) {
+            $query->whereHas('distributions', function ($distributionQuery) use ($filters): void {
+                $distributionQuery->whereIn('distribution_channel_id', $filters['distribution_channel_ids']);
+            });
         }
 
         if ($filters['date_from'] !== '') {
@@ -475,6 +488,52 @@ class ArticleController extends Controller
         return [
             'trashed_total' => Article::onlyTrashed()->count(),
         ];
+    }
+
+    /**
+     * @return array<int, array{id: int, name: string, domain: string, status: string}>
+     */
+    private function loadDistributionChannelOptions(): array
+    {
+        try {
+            return DistributionChannel::query()
+                ->select(['id', 'name', 'domain', 'status'])
+                ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
+                ->orderBy('name')
+                ->get()
+                ->map(fn (DistributionChannel $channel): array => [
+                    'id' => (int) $channel->id,
+                    'name' => (string) $channel->name,
+                    'domain' => (string) ($channel->domain ?? ''),
+                    'status' => (string) ($channel->status ?? ''),
+                ])
+                ->all();
+        } catch (QueryException) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function extractDistributionChannelIds(Request $request): array
+    {
+        $rawIds = $request->query('distribution_channel_ids', []);
+        if (! is_array($rawIds)) {
+            $rawIds = [$rawIds];
+        }
+
+        $legacyId = (int) $request->query('distribution_channel_id', 0);
+        if ($legacyId > 0) {
+            $rawIds[] = $legacyId;
+        }
+
+        return collect($rawIds)
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

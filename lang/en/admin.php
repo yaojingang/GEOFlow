@@ -748,7 +748,7 @@ return [
         'column' => [
             'id' => 'ID',
             'info' => 'Article Info',
-            'task_author' => 'Task / Author',
+            'task_author' => 'Task / Author / Site',
             'workflow' => 'Workflow',
             'created_at' => 'Created At',
             'actions' => 'Actions',
@@ -769,6 +769,9 @@ return [
         'filters' => [
             'title' => 'Filters and Search',
             'task' => 'Task',
+            'distribution_channel' => 'Publishing Site',
+            'distribution_channel_selected_count' => ':count sites selected',
+            'distribution_channel_help' => 'Leave empty to show all publishing sites; select multiple sites to show articles distributed to any selected site.',
             'status' => 'Publish Status',
             'review_status' => 'Review Status',
             'author' => 'Author',
@@ -777,6 +780,7 @@ return [
             'search' => 'Search',
             'search_placeholder' => 'Search title or content...',
             'all_tasks' => 'All Tasks',
+            'all_distribution_channels' => 'All Publishing Sites',
             'all_status' => 'All Publish Statuses',
             'all_review' => 'All Review Results',
             'all_authors' => 'All Authors',
@@ -854,6 +858,12 @@ return [
             'approve' => 'Approve',
             'reject' => 'Reject',
             'review' => 'Review',
+            'view_remote' => 'View Published Page',
+            'view_remote_for_channel' => 'View :channel published page',
+            'view_local' => 'View local published page',
+            'view_remote_unavailable' => 'No published page available yet',
+            'local_site' => 'Local site',
+            'remote_channel_unknown' => 'Remote site',
         ],
         'confirm' => [
             'delete' => 'Delete this article? It will be moved to trash.',
@@ -897,7 +907,7 @@ return [
             'selected_suffix' => ' articles selected',
             'column' => [
                 'info' => 'Article Info',
-                'task_author' => 'Task / Author',
+                'task_author' => 'Task / Author / Site',
                 'deleted_at' => 'Deleted At',
                 'actions' => 'Actions',
             ],
