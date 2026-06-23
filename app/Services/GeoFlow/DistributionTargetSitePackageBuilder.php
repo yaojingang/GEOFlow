@@ -156,15 +156,94 @@ HTACCESS;
         $settings['active_theme'] = (string) ($channel->template_key ?? '');
         $themeClass = $this->targetThemeClass($settings);
         $assetVersion = $this->targetAssetVersion($channel);
+        $seo = $this->initialSeoPayload($channel, $settings, '首页');
 
-        return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            .'<title>'.htmlspecialchars('首页 - '.$siteName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</title>'
-            .'<meta name="description" content="'.htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'">'
+        $head = '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            .'<title>'.$this->h($seo['page_title']).'</title>'
+            .'<meta name="description" content="'.$this->h($seo['description']).'">';
+        if ($seo['keywords'] !== '') {
+            $head .= '<meta name="keywords" content="'.$this->h($seo['keywords']).'">';
+        }
+        if ($seo['canonical_url'] !== '') {
+            $head .= '<link rel="canonical" href="'.$this->h($seo['canonical_url']).'">';
+        }
+        $head .= '<meta property="og:title" content="'.$this->h($seo['page_title']).'">'
+            .'<meta property="og:description" content="'.$this->h($seo['description']).'">'
+            .'<meta property="og:type" content="'.$this->h($seo['og_type']).'">';
+        if ($seo['canonical_url'] !== '') {
+            $head .= '<meta property="og:url" content="'.$this->h($seo['canonical_url']).'">';
+        }
+        if ($siteName !== '') {
+            $head .= '<meta property="og:site_name" content="'.$this->h($siteName).'">';
+        }
+        if ((string) ($settings['site_favicon'] ?? '') !== '') {
+            $head .= '<link rel="icon" href="'.$this->h((string) $settings['site_favicon']).'">';
+        }
+
+        return $head
             .'<link rel="stylesheet" href="assets/css/site.css?v='.$assetVersion.'"><script defer src="assets/js/site.js?v='.$assetVersion.'"></script>'
-            .'</head><body class="'.htmlspecialchars($themeClass, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'"><header><div class="wrap bar"><div class="brand">'.htmlspecialchars($siteName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</div></div></header><main class="wrap">'
-            .'<section class="hero"><h1>'.htmlspecialchars($siteName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</h1><p>'.htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</p></section>'
+            .'</head><body class="'.$this->h($themeClass).'"><header><div class="wrap bar"><div class="brand">'.$this->h($siteName).'</div></div></header><main class="wrap">'
+            .'<section class="hero"><h1>'.$this->h($siteName).'</h1><p>'.$this->h($description).'</p></section>'
             .'<div class="empty">暂无文章。请先从 GEOFlow 发布一篇绑定此渠道的文章。</div></main>'
-            .'<footer><div class="wrap">'.htmlspecialchars($copyright, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</div></footer></body></html>';
+            .'<footer><div class="wrap">'.$this->h($copyright).'</div></footer></body></html>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @return array{page_title:string,description:string,keywords:string,canonical_url:string,og_type:string}
+     */
+    private function initialSeoPayload(DistributionChannel $channel, array $settings, string $title): array
+    {
+        $siteName = (string) ($settings['site_name'] ?? '');
+        $titleTemplate = (string) ($settings['seo_title_template'] ?? '{title} - {site_name}');
+        $descriptionTemplate = (string) ($settings['seo_description_template'] ?? '{description}');
+        $description = (string) ($settings['site_description'] ?? '');
+        $keywords = (string) ($settings['site_keywords'] ?? '');
+        $canonicalUrl = $this->initialCanonicalUrl($channel);
+
+        return [
+            'page_title' => $this->renderInitialTemplateString($titleTemplate, [
+                'title' => $title,
+                'site_name' => $siteName,
+                'category' => '',
+            ]),
+            'description' => $this->renderInitialTemplateString($descriptionTemplate, [
+                'description' => $description,
+                'site_name' => $siteName,
+                'keywords' => $keywords,
+            ]),
+            'keywords' => $keywords,
+            'canonical_url' => $canonicalUrl,
+            'og_type' => 'website',
+        ];
+    }
+
+    private function initialCanonicalUrl(DistributionChannel $channel): string
+    {
+        $base = trim((string) $channel->endpoint_url);
+        if ($base === '') {
+            $domain = trim((string) $channel->domain);
+            $base = $domain !== '' ? 'https://'.$domain : '';
+        }
+
+        return $base !== '' ? $this->publicFrontBaseUrl($base).'/' : '';
+    }
+
+    /**
+     * @param  array<string, string>  $vars
+     */
+    private function renderInitialTemplateString(string $template, array $vars): string
+    {
+        foreach ($vars as $key => $value) {
+            $template = str_replace('{'.$key.'}', $value, $template);
+        }
+
+        return trim($template);
+    }
+
+    private function h(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
     /**
@@ -1538,6 +1617,45 @@ function articleDate(array $article, string $format = 'Y-m-d'): string
     return $timestamp ? date($format, $timestamp) : $date;
 }
 
+function pageSeoPayload(array $settings, string $title, array $pageMeta = []): array
+{
+    $siteName = (string) $settings['site_name'];
+    $hasMetaDescription = array_key_exists('description', $pageMeta);
+    $hasMetaKeywords = array_key_exists('keywords', $pageMeta);
+    $metaDescription = trim((string) ($pageMeta['description'] ?? ''));
+    $metaKeywords = trim((string) ($pageMeta['keywords'] ?? ''));
+    $canonicalUrl = trim((string) ($pageMeta['canonical_url'] ?? ''));
+    $ogType = trim((string) ($pageMeta['og_type'] ?? 'website'));
+    $isArticle = $ogType === 'article' || ! empty($pageMeta['article_page']);
+
+    $titleTemplate = (string) ($settings['seo_title_template'] ?? '{title} - {site_name}');
+    $descriptionTemplate = (string) ($settings['seo_description_template'] ?? '{description}');
+
+    $pageTitle = $isArticle
+        ? $title
+        : renderTemplateString($titleTemplate, [
+            'title' => $title,
+            'site_name' => $siteName,
+            'category' => '',
+        ]);
+
+    $description = $isArticle && $hasMetaDescription && $metaDescription !== ''
+        ? $metaDescription
+        : renderTemplateString($descriptionTemplate, [
+            'description' => $hasMetaDescription ? $metaDescription : (string) $settings['site_description'],
+            'site_name' => $siteName,
+            'keywords' => $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'],
+        ]);
+
+    return [
+        'page_title' => $pageTitle,
+        'description' => $description,
+        'keywords' => $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'],
+        'canonical_url' => $canonicalUrl,
+        'og_type' => $ogType,
+    ];
+}
+
 function pageHeader(array $config, string $title, array $pageMeta = []): void
 {
     $settings = siteSettings($config);
@@ -1548,36 +1666,22 @@ function pageHeader(array $config, string $title, array $pageMeta = []): void
 
         return;
     }
-    $hasMetaDescription = array_key_exists('description', $pageMeta);
-    $hasMetaKeywords = array_key_exists('keywords', $pageMeta);
-    $metaDescription = trim((string) ($pageMeta['description'] ?? ''));
-    $metaKeywords = trim((string) ($pageMeta['keywords'] ?? ''));
-    $canonicalUrl = trim((string) ($pageMeta['canonical_url'] ?? ''));
-    $ogType = trim((string) ($pageMeta['og_type'] ?? 'website'));
-    $description = renderTemplateString((string) $settings['seo_description_template'], [
-        'description' => $hasMetaDescription ? $metaDescription : (string) $settings['site_description'],
-        'site_name' => $siteName,
-        'keywords' => $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'],
-    ]);
-    $pageTitle = renderTemplateString((string) $settings['seo_title_template'], [
-        'title' => $title,
-        'site_name' => $siteName,
-        'category' => '',
-    ]);
+    $seo = pageSeoPayload($settings, $title, $pageMeta);
     $homeUrl = frontSitePath($config, '/');
     echo '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
-    echo '<title>'.h($pageTitle).'</title><meta name="description" content="'.h($description).'">';
-    $keywords = $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'];
+    echo '<title>'.h((string) $seo['page_title']).'</title><meta name="description" content="'.h((string) $seo['description']).'">';
+    $keywords = (string) $seo['keywords'];
     if ($keywords !== '') {
         echo '<meta name="keywords" content="'.h($keywords).'">';
     }
-    if ($canonicalUrl !== '') {
-        echo '<link rel="canonical" href="'.h($canonicalUrl).'">';
+    if ((string) $seo['canonical_url'] !== '') {
+        echo '<link rel="canonical" href="'.h((string) $seo['canonical_url']).'">';
     }
-    echo '<meta property="og:title" content="'.h($pageTitle).'"><meta property="og:description" content="'.h($description).'"><meta property="og:type" content="'.h($ogType).'">';
-    if ($canonicalUrl !== '') {
-        echo '<meta property="og:url" content="'.h($canonicalUrl).'">';
+    echo '<meta property="og:title" content="'.h((string) $seo['page_title']).'"><meta property="og:description" content="'.h((string) $seo['description']).'"><meta property="og:type" content="'.h((string) $seo['og_type']).'">';
+    if ((string) $seo['canonical_url'] !== '') {
+        echo '<meta property="og:url" content="'.h((string) $seo['canonical_url']).'">';
     }
+    echo '<meta property="og:site_name" content="'.h($siteName).'">';
     if ((string) $settings['site_favicon'] !== '') {
         echo '<link rel="icon" href="'.h((string) $settings['site_favicon']).'">';
     }
@@ -1601,35 +1705,24 @@ function pageFooter(array $config): void
 function apparelPageHeader(array $config, array $settings, string $title, array $pageMeta = []): void
 {
     $siteName = (string) $settings['site_name'];
-    $hasMetaDescription = array_key_exists('description', $pageMeta);
-    $hasMetaKeywords = array_key_exists('keywords', $pageMeta);
-    $metaDescription = trim((string) ($pageMeta['description'] ?? ''));
-    $metaKeywords = trim((string) ($pageMeta['keywords'] ?? ''));
-    $canonicalUrl = trim((string) ($pageMeta['canonical_url'] ?? ''));
-    $ogType = trim((string) ($pageMeta['og_type'] ?? 'website'));
-    $description = renderTemplateString((string) $settings['seo_description_template'], [
-        'description' => $hasMetaDescription ? $metaDescription : (string) $settings['site_description'],
-        'site_name' => $siteName,
-        'keywords' => $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'],
-    ]);
-    $pageTitle = renderTemplateString((string) $settings['seo_title_template'], [
-        'title' => $title,
-        'site_name' => $siteName,
-        'category' => '',
-    ]);
+    $seo = pageSeoPayload($settings, $title, $pageMeta);
     $homeUrl = frontSitePath($config, '/');
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
-    echo '<title>'.h($pageTitle).'</title><meta name="description" content="'.h($description).'">';
-    $keywords = $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'];
+    echo '<title>'.h((string) $seo['page_title']).'</title><meta name="description" content="'.h((string) $seo['description']).'">';
+    $keywords = (string) $seo['keywords'];
     if ($keywords !== '') {
         echo '<meta name="keywords" content="'.h($keywords).'">';
     }
-    if ($canonicalUrl !== '') {
-        echo '<link rel="canonical" href="'.h($canonicalUrl).'">';
+    if ((string) $seo['canonical_url'] !== '') {
+        echo '<link rel="canonical" href="'.h((string) $seo['canonical_url']).'">';
     }
-    echo '<meta property="og:title" content="'.h($pageTitle).'"><meta property="og:description" content="'.h($description).'"><meta property="og:type" content="'.h($ogType).'">';
-    if ($canonicalUrl !== '') {
-        echo '<meta property="og:url" content="'.h($canonicalUrl).'">';
+    echo '<meta property="og:title" content="'.h((string) $seo['page_title']).'"><meta property="og:description" content="'.h((string) $seo['description']).'"><meta property="og:type" content="'.h((string) $seo['og_type']).'">';
+    if ((string) $seo['canonical_url'] !== '') {
+        echo '<meta property="og:url" content="'.h((string) $seo['canonical_url']).'">';
+    }
+    echo '<meta property="og:site_name" content="'.h($siteName).'">';
+    if ((string) $settings['site_favicon'] !== '') {
+        echo '<link rel="icon" href="'.h((string) $settings['site_favicon']).'">';
     }
     echo '<link rel="stylesheet" href="'.h(frontVersionedAssetPath($config, '/assets/css/site.css')).'">';
     echo '<script defer src="'.h(frontVersionedAssetPath($config, '/assets/js/site.js')).'"></script>';

@@ -152,6 +152,7 @@ class SiteThemeEditorController extends Controller
 
         $base = [
             'siteTitle' => $siteTitle,
+            'siteName' => $siteTitle,
             'siteDescription' => $siteDescription,
             'siteKeywords' => $siteKeywords,
             'siteSubtitle' => (string) ($map['site_subtitle'] ?? ''),
@@ -170,6 +171,8 @@ class SiteThemeEditorController extends Controller
             'viewTitle' => __('site.home_latest'),
             'pageTitle' => $siteTitle,
             'pageDescription' => $siteDescription,
+            'pageKeywords' => $siteKeywords,
+            'pageOgType' => 'website',
             'perPage' => 12,
         ];
 
@@ -179,6 +182,8 @@ class SiteThemeEditorController extends Controller
                 'articles' => $paginator,
                 'pageTitle' => $category->name.' - '.$siteTitle,
                 'pageDescription' => (string) $category->description,
+                'pageKeywords' => $siteKeywords,
+                'pageOgType' => 'website',
                 'canonicalUrl' => route('site.category', $category->slug),
             ]);
         }
@@ -187,15 +192,18 @@ class SiteThemeEditorController extends Controller
             $article = $articles->first();
             $body = ArticleHtmlPresenter::stripLeadingTitleHeading((string) $article->content, (string) $article->title);
             $contentHtml = ArticleTextAdPicker::injectIntoContentHtml(ArticleHtmlPresenter::markdownToHtml($body));
+            $tags = $this->keywordTags((string) $article->keywords);
 
             return array_merge($base, [
                 'activeNav' => 'article',
                 'article' => $article,
                 'contentHtml' => $contentHtml,
                 'excerptPlain' => ArticleHtmlPresenter::stripLeadingTitleHeading((string) $article->excerpt, (string) $article->title),
-                'tags' => ['GEO', 'AI 搜索', '内容结构'],
-                'pageTitle' => $article->title.' - '.$siteTitle,
+                'tags' => $tags,
+                'pageTitle' => (string) $article->title,
                 'pageDescription' => (string) $article->excerpt,
+                'pageKeywords' => implode(',', $tags),
+                'pageOgType' => 'article',
                 'stickyAd' => ArticleStickyAdPicker::firstEnabled(),
                 'canonicalUrl' => route('site.article', $article->slug),
             ]);
@@ -204,8 +212,32 @@ class SiteThemeEditorController extends Controller
         return array_merge($base, [
             'activeNav' => 'home',
             'pageTitle' => $siteTitle,
+            'pageKeywords' => $siteKeywords,
+            'pageOgType' => 'website',
             'canonicalUrl' => route('site.home'),
         ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function keywordTags(string $keywords): array
+    {
+        $keywords = trim($keywords);
+        if ($keywords === '') {
+            return ['GEO', 'AI 搜索', '内容结构'];
+        }
+
+        $parts = preg_split('/[,，、\n]+/u', $keywords) ?: [];
+        $out = [];
+        foreach ($parts as $part) {
+            $tag = trim((string) $part);
+            if ($tag !== '' && ! in_array($tag, $out, true)) {
+                $out[] = $tag;
+            }
+        }
+
+        return array_slice($out, 0, 12);
     }
 
     /**

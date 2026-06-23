@@ -22,6 +22,7 @@ class ArchiveController extends Controller
         $map = SiteSettingsBag::all();
         $siteTitle = (string) ($map['site_name'] ?? config('geoflow.site_name', config('app.name')));
         $siteDescription = (string) ($map['site_description'] ?? config('geoflow.site_description', ''));
+        $siteKeywords = (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', ''));
 
         $driver = DB::getDriverName();
         $archives = [];
@@ -52,9 +53,11 @@ class ArchiveController extends Controller
             'archives' => $archives,
             'siteTitle' => $siteTitle,
             'siteDescription' => $siteDescription,
-            'siteKeywords' => '',
+            'siteKeywords' => $siteKeywords,
             'pageTitle' => $pageTitle,
             'pageDescription' => $siteDescription,
+            'pageKeywords' => $siteKeywords,
+            'pageOgType' => 'website',
             'canonicalUrl' => route('site.archive'),
         ]);
     }
@@ -69,6 +72,7 @@ class ArchiveController extends Controller
         $perPage = max(1, min(200, (int) ($map['per_page'] ?? config('geoflow.items_per_page', 12))));
         $siteTitle = (string) ($map['site_name'] ?? config('geoflow.site_name', config('app.name')));
         $siteDescription = (string) ($map['site_description'] ?? config('geoflow.site_description', ''));
+        $siteKeywords = (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', ''));
 
         $start = Carbon::createFromDate((int) $year, (int) $month, 1)->startOfDay();
         $end = (clone $start)->copy()->endOfMonth()->endOfDay();
@@ -109,9 +113,11 @@ class ArchiveController extends Controller
             'cardSummaries' => $summaries,
             'siteTitle' => $siteTitle,
             'siteDescription' => $siteDescription,
-            'siteKeywords' => '',
+            'siteKeywords' => $siteKeywords,
             'pageTitle' => $pageTitle,
             'pageDescription' => $pageTitle,
+            'pageKeywords' => $siteKeywords,
+            'pageOgType' => 'website',
             'canonicalUrl' => route('site.archive.month', ['year' => $year, 'month' => $month]),
         ]);
     }

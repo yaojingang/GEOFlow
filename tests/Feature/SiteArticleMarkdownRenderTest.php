@@ -68,6 +68,55 @@ MD);
             ->assertDontSee('333.png', false);
     }
 
+    public function test_published_article_page_uses_article_seo_metadata(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_name'],
+            ['setting_value' => 'GEOFlow Support']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_description'],
+            ['setting_value' => 'Default site description']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_keywords'],
+            ['setting_value' => 'site,default']
+        );
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => '科技资讯',
+            'slug' => 'tech-seo',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Article SEO Title',
+            'slug' => 'article-seo-title',
+            'excerpt' => 'Article SEO Description',
+            'content' => '正文',
+            'keywords' => 'alpha,beta',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_ai_generated' => 1,
+            'published_at' => now(),
+        ]);
+
+        $this->get(route('site.article', $article->slug))
+            ->assertOk()
+            ->assertSee('<title>Article SEO Title</title>', false)
+            ->assertDontSee('<title>Article SEO Title - GEOFlow Support</title>', false)
+            ->assertSee('<meta name="description" content="Article SEO Description">', false)
+            ->assertSee('<meta name="keywords" content="alpha,beta">', false)
+            ->assertSee('<meta property="og:title" content="Article SEO Title">', false)
+            ->assertSee('<meta property="og:description" content="Article SEO Description">', false)
+            ->assertSee('<meta property="og:type" content="article">', false)
+            ->assertSee('<meta property="og:site_name" content="GEOFlow Support">', false);
+    }
+
     public function test_theme_article_page_renders_array_based_sticky_ad(): void
     {
         SiteSetting::query()->updateOrCreate(

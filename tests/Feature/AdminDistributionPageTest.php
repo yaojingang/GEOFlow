@@ -1736,6 +1736,16 @@ class AdminDistributionPageTest extends TestCase
 
         $staticIndex = (string) $zip->getFromName('index.html');
         $this->assertStringContainsString('远程门户', $staticIndex);
+        $this->assertStringContainsString('<title>首页 - 远程门户</title>', $staticIndex);
+        $this->assertStringContainsString('<meta name="description" content="远程站点描述 - 远程门户">', $staticIndex);
+        $this->assertStringContainsString('<meta name="keywords" content="geo,remote">', $staticIndex);
+        $this->assertStringContainsString('<link rel="canonical" href="https://example.com/">', $staticIndex);
+        $this->assertStringContainsString('<meta property="og:title" content="首页 - 远程门户">', $staticIndex);
+        $this->assertStringContainsString('<meta property="og:description" content="远程站点描述 - 远程门户">', $staticIndex);
+        $this->assertStringContainsString('<meta property="og:type" content="website">', $staticIndex);
+        $this->assertStringContainsString('<meta property="og:url" content="https://example.com/">', $staticIndex);
+        $this->assertStringContainsString('<meta property="og:site_name" content="远程门户">', $staticIndex);
+        $this->assertStringContainsString('<link rel="icon" href="https://example.com/favicon.ico">', $staticIndex);
         $this->assertStringContainsString('暂无文章', $staticIndex);
         $this->assertStringContainsString('assets/css/site.css', $staticIndex);
         $this->assertStringContainsString('class="target-theme-toutiao"', $staticIndex);
@@ -1803,6 +1813,10 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('function keywordTags', $frontController);
         $this->assertStringContainsString('function articleMetaDescription', $frontController);
         $this->assertStringContainsString('function articleMetaKeywords', $frontController);
+        $this->assertStringContainsString('function pageSeoPayload', $frontController);
+        $this->assertStringContainsString('$pageTitle = $isArticle', $frontController);
+        $this->assertStringContainsString('$description = $isArticle && $hasMetaDescription && $metaDescription !== \'\'', $frontController);
+        $this->assertStringContainsString('og:site_name', $frontController);
         $this->assertStringContainsString('pageHeader($config, $title, [', $frontController);
         $this->assertStringContainsString("array_key_exists('keywords', \$pageMeta)", $frontController);
         $this->assertStringContainsString("'canonical_url' => \$articleUrl", $frontController);
@@ -1948,6 +1962,11 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString("'public_base_url' => 'https://example.com/geoflow-target-site/index.php'", $config);
         $this->assertStringContainsString("'base_path' => '/geoflow-target-site'", $config);
         $this->assertStringContainsString("'front_mode' => 'static'", $config);
+
+        $staticIndex = (string) $zip->getFromName('index.html');
+        $this->assertStringContainsString('<link rel="canonical" href="https://example.com/geoflow-target-site/">', $staticIndex);
+        $this->assertStringContainsString('<meta property="og:url" content="https://example.com/geoflow-target-site/">', $staticIndex);
+        $this->assertStringNotContainsString('https://example.com/geoflow-target-site/index.php/', $staticIndex);
 
         $nginxRewrite = (string) $zip->getFromName('nginx.rewrite.conf');
         $this->assertStringContainsString('location = /geoflow-target-site/', $nginxRewrite);

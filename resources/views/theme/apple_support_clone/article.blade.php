@@ -1,11 +1,6 @@
 @extends('theme.apple_support_clone.layout')
 
 @push('head')
-    <meta property="og:title" content="{{ $article->title }}">
-    <meta property="og:description" content="{{ $pageDescription }}">
-    <meta property="og:type" content="article">
-    <meta property="og:url" content="{{ $canonicalUrl }}">
-    <meta property="og:site_name" content="{{ $siteTitle }}">
 @endpush
 
 @section('theme_content')

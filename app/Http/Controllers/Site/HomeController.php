@@ -161,6 +161,8 @@ class HomeController extends Controller
             'viewTitle' => $viewTitle,
             'pageTitle' => $pageTitle,
             'pageDescription' => $pageDescription,
+            'pageKeywords' => $siteKeywords,
+            'pageOgType' => 'website',
             'perPage' => $perPage,
             'canonicalUrl' => $canonicalUrl,
         ]);

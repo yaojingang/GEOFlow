@@ -75,6 +75,8 @@ class CategoryController extends Controller
             'siteKeywords' => $siteKeywords,
             'pageTitle' => $pageTitle,
             'pageDescription' => $pageDescription,
+            'pageKeywords' => $siteKeywords,
+            'pageOgType' => 'website',
             'canonicalUrl' => route('site.category', $category->slug),
         ]);
     }

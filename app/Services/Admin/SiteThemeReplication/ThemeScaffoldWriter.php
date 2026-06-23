@@ -88,15 +88,7 @@ class ThemeScaffoldWriter
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ \$pageTitle ?? \$siteName }}</title>
-    <meta name="description" content="{{ \$pageDescription ?? '' }}">
-    @if(!empty(\$siteKeywords))
-        <meta name="keywords" content="{{ \$siteKeywords }}">
-    @endif
-    @if(!empty(\$siteFavicon))
-        <link rel="icon" href="{{ \$siteFavicon }}">
-    @endif
-    <link rel="canonical" href="{{ \$canonicalUrl ?? url()->current() }}">
+    @include('site.partials.seo-head')
     @stack('head')
     <link rel="stylesheet" href="{{ \$themeAssetBaseUrl ?? asset('themes/{$themeId}/theme.css') }}">
 </head>

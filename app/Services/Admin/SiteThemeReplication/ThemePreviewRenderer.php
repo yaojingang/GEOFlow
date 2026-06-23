@@ -111,6 +111,8 @@ class ThemePreviewRenderer
             'siteKeywords' => $siteKeywords,
             'pageTitle' => $replication->name.' Preview - '.$siteTitle,
             'pageDescription' => $siteDescription,
+            'pageKeywords' => $siteKeywords,
+            'pageOgType' => 'website',
             'canonicalUrl' => route('admin.site-settings.theme-replications.preview', [
                 'replicationId' => (int) $replication->id,
                 'page' => $page,
@@ -128,7 +130,7 @@ class ThemePreviewRenderer
         return array_merge($data, match ($page) {
             'home' => $this->homeData($siteTitle, $siteSubtitle, $siteDescription),
             'category' => $this->categoryData($siteTitle, $siteDescription, $siteKeywords),
-            'article' => $this->articleData($siteTitle, $siteDescription),
+            'article' => $this->articleData($siteDescription),
         });
     }
 
@@ -157,6 +159,7 @@ class ThemePreviewRenderer
             'viewTitle' => __('site.home_latest'),
             'pageTitle' => ($siteSubtitle !== '' ? $siteSubtitle.' - '.$siteTitle : $siteTitle),
             'pageDescription' => $siteDescription,
+            'pageOgType' => 'website',
             'perPage' => 6,
         ];
     }
@@ -203,13 +206,15 @@ class ThemePreviewRenderer
             'pageDescription' => trim((string) $category->description) !== ''
                 ? (string) $category->description
                 : $category->name.' - '.$siteDescription,
+            'pageKeywords' => $siteKeywords,
+            'pageOgType' => 'website',
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function articleData(string $siteTitle, string $siteDescription): array
+    private function articleData(string $siteDescription): array
     {
         $article = Article::query()
             ->with(['category', 'author'])
@@ -231,17 +236,42 @@ class ThemePreviewRenderer
 
         $body = ArticleHtmlPresenter::stripLeadingTitleHeading((string) $article->content, (string) $article->title);
         $excerpt = ArticleHtmlPresenter::stripLeadingTitleHeading((string) $article->excerpt, (string) $article->title);
+        $tags = $this->keywordTags((string) $article->keywords);
 
         return [
             'article' => $article,
             'contentHtml' => ArticleHtmlPresenter::markdownToHtml($body),
             'excerptPlain' => $excerpt,
-            'tags' => [],
+            'tags' => $tags,
             'relatedArticles' => collect(),
-            'pageTitle' => $article->title.' - '.$siteTitle,
+            'pageTitle' => (string) $article->title,
             'pageDescription' => $excerpt !== '' ? $excerpt : $siteDescription,
+            'pageKeywords' => implode(',', $tags),
+            'pageOgType' => 'article',
             'stickyAd' => null,
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function keywordTags(string $keywords): array
+    {
+        $keywords = trim($keywords);
+        if ($keywords === '') {
+            return [];
+        }
+
+        $parts = preg_split('/[,，、\n]+/u', $keywords) ?: [];
+        $out = [];
+        foreach ($parts as $part) {
+            $tag = trim((string) $part);
+            if ($tag !== '' && ! in_array($tag, $out, true)) {
+                $out[] = $tag;
+            }
+        }
+
+        return array_slice($out, 0, 12);
     }
 
     /**
