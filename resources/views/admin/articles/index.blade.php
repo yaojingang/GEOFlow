@@ -219,11 +219,20 @@
                         <div>
                             <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
                                 <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.distribution_channel') }}</label>
-                                <span data-distribution-channel-filter-count class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                                    {{ __('admin.articles.filters.distribution_channel_selected_count', ['count' => count($selectedDistributionChannelIds)]) }}
-                                </span>
+                                <div class="flex items-center gap-2">
+                                    <span data-distribution-channel-filter-count class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                                        {{ __('admin.articles.filters.distribution_channel_selected_count', ['count' => count($selectedDistributionChannelIds)]) }}
+                                    </span>
+                                    <button type="button"
+                                            data-distribution-channel-filter-toggle
+                                            aria-expanded="false"
+                                            class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+                                        <span data-distribution-channel-filter-toggle-label>{{ __('admin.articles.filters.distribution_channel_expand') }}</span>
+                                        <i data-lucide="chevron-down" data-distribution-channel-filter-toggle-icon class="ml-1 h-3.5 w-3.5 transition-transform"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            <div data-distribution-channel-filter-panel class="hidden grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                                 @foreach($distributionChannels as $channel)
                                     @php
                                         $channelId = (int) ($channel['id'] ?? 0);
@@ -665,6 +674,8 @@
         const IS_TRASH_VIEW = @json($isTrashView);
         const EMPTY_TRASH_URL = @json(\App\Support\AdminWeb::routePath('admin.articles.trash.empty'));
         const DISTRIBUTION_CHANNEL_FILTER_COUNT_LABEL = @json(__('admin.articles.filters.distribution_channel_selected_count', ['count' => '__COUNT__']));
+        const DISTRIBUTION_CHANNEL_FILTER_EXPAND_LABEL = @json(__('admin.articles.filters.distribution_channel_expand'));
+        const DISTRIBUTION_CHANNEL_FILTER_COLLAPSE_LABEL = @json(__('admin.articles.filters.distribution_channel_collapse'));
 
         function toggleBatchActions() {
             const batchActions = document.getElementById('batch-actions');
@@ -756,6 +767,25 @@
         document.addEventListener('DOMContentLoaded', function() {
             const distributionChannelFilterInputs = document.querySelectorAll('[data-distribution-channel-filter-input]');
             const distributionChannelFilterCount = document.querySelector('[data-distribution-channel-filter-count]');
+            const distributionChannelFilterPanel = document.querySelector('[data-distribution-channel-filter-panel]');
+            const distributionChannelFilterToggle = document.querySelector('[data-distribution-channel-filter-toggle]');
+            const distributionChannelFilterToggleLabel = document.querySelector('[data-distribution-channel-filter-toggle-label]');
+            const distributionChannelFilterToggleIcon = document.querySelector('[data-distribution-channel-filter-toggle-icon]');
+
+            function setDistributionChannelFilterExpanded(isExpanded) {
+                if (!distributionChannelFilterPanel || !distributionChannelFilterToggle) {
+                    return;
+                }
+
+                distributionChannelFilterPanel.classList.toggle('hidden', !isExpanded);
+                distributionChannelFilterToggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+                if (distributionChannelFilterToggleLabel) {
+                    distributionChannelFilterToggleLabel.textContent = isExpanded
+                        ? DISTRIBUTION_CHANNEL_FILTER_COLLAPSE_LABEL
+                        : DISTRIBUTION_CHANNEL_FILTER_EXPAND_LABEL;
+                }
+                distributionChannelFilterToggleIcon?.classList.toggle('rotate-180', isExpanded);
+            }
 
             function syncDistributionChannelFilterState() {
                 const selectedCount = Array.from(distributionChannelFilterInputs).filter((input) => input.checked).length;
@@ -782,6 +812,10 @@
             distributionChannelFilterInputs.forEach((input) => {
                 input.addEventListener('change', syncDistributionChannelFilterState);
             });
+            distributionChannelFilterToggle?.addEventListener('click', function() {
+                setDistributionChannelFilterExpanded(this.getAttribute('aria-expanded') !== 'true');
+            });
+            setDistributionChannelFilterExpanded(false);
             syncDistributionChannelFilterState();
 
             const selectAll = document.getElementById('select-all');

@@ -236,6 +236,7 @@
 
                     @php
                         $currentThemeLabel = __('admin.site_settings.theme.default_name');
+                        $canEditThemeFiles = auth('admin')->user()?->isSuperAdmin() === true;
                         foreach ($availableThemes as $themeOption) {
                             if ($themeOption['id'] === $settings['active_theme']) {
                                 $currentThemeLabel = $themeOption['name'];
@@ -310,9 +311,18 @@
                                         {{ $themeOption['description'] !== '' ? $themeOption['description'] : __('admin.site_settings.theme.no_description') }}
                                     </div>
                                     <div class="mt-3 flex flex-wrap gap-2">
-                                        <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_home') }}</span>
-                                        <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_category') }}</span>
-                                        <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_article') }}</span>
+                                        @if ($canEditThemeFiles)
+                                            <a href="{{ route('admin.site-settings.theme-editor.preview', ['themeId' => $themeOption['id'], 'page' => 'home'], false) }}" target="_blank" rel="noopener" onclick="event.stopPropagation();" class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">{{ __('admin.site_settings.theme.preview_home') }}</a>
+                                            <a href="{{ route('admin.site-settings.theme-editor.preview', ['themeId' => $themeOption['id'], 'page' => 'category'], false) }}" target="_blank" rel="noopener" onclick="event.stopPropagation();" class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">{{ __('admin.site_settings.theme.preview_category') }}</a>
+                                            <a href="{{ route('admin.site-settings.theme-editor.preview', ['themeId' => $themeOption['id'], 'page' => 'article'], false) }}" target="_blank" rel="noopener" onclick="event.stopPropagation();" class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">{{ __('admin.site_settings.theme.preview_article') }}</a>
+                                            <a href="{{ route('admin.site-settings.theme-editor.edit', ['themeId' => $themeOption['id'], 'page' => 'home'], false) }}" onclick="event.stopPropagation();" class="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100">{{ __('admin.site_settings.theme.editor_home') }}</a>
+                                            <a href="{{ route('admin.site-settings.theme-editor.edit', ['themeId' => $themeOption['id'], 'page' => 'category'], false) }}" onclick="event.stopPropagation();" class="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100">{{ __('admin.site_settings.theme.editor_category') }}</a>
+                                            <a href="{{ route('admin.site-settings.theme-editor.edit', ['themeId' => $themeOption['id'], 'page' => 'article'], false) }}" onclick="event.stopPropagation();" class="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100">{{ __('admin.site_settings.theme.editor_article') }}</a>
+                                        @else
+                                            <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_home') }}</span>
+                                            <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_category') }}</span>
+                                            <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_article') }}</span>
+                                        @endif
                                         <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_archive') }}</span>
                                     </div>
                                 </div>

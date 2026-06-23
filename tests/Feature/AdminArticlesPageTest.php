@@ -461,6 +461,8 @@ class AdminArticlesPageTest extends TestCase
             ->assertOk()
             ->assertSee(__('admin.articles.filters.distribution_channel'))
             ->assertSee(__('admin.articles.filters.distribution_channel_selected_count', ['count' => 2]))
+            ->assertSee(__('admin.articles.filters.distribution_channel_expand'))
+            ->assertSee('data-distribution-channel-filter-panel class="hidden grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"', false)
             ->assertSee('渠道一筛选文章')
             ->assertSee('渠道一 · channel-one.example.com')
             ->assertSee('https://channel-one.example.com/article/one', false)
