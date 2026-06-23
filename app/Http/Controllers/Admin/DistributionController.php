@@ -653,6 +653,42 @@ class DistributionController extends Controller
         }
     }
 
+    public function syncSettingsAll(): RedirectResponse
+    {
+        $channels = DistributionChannel::query()
+            ->with('activeSecret')
+            ->where('status', 'active')
+            ->where(function ($query): void {
+                $query->whereNull('channel_type')
+                    ->orWhere('channel_type', 'geoflow_agent');
+            })
+            ->orderBy('id')
+            ->get();
+
+        $synced = 0;
+        $failed = 0;
+        $refreshCount = 0;
+        foreach ($channels as $channel) {
+            try {
+                $this->syncChannelSiteSettings($channel);
+                $refreshCount += $this->distributionOrchestrator->enqueueChannelContentRefresh($channel);
+                $synced++;
+            } catch (Throwable) {
+                $failed++;
+            }
+        }
+
+        $message = __('admin.distribution.message.settings_synced_all', [
+            'success' => $synced,
+            'failed' => $failed,
+            'refresh' => $refreshCount,
+        ]);
+
+        return $failed > 0
+            ? back()->with('message', $message)->withErrors(__('admin.distribution.message.settings_synced_all_failed_hint'))
+            : back()->with('message', $message);
+    }
+
     /**
      * @return array<string,mixed>
      */

@@ -8,6 +8,13 @@
                 <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.page_subtitle') }}</p>
             </div>
             <div class="flex items-center gap-3">
+                <form method="POST" action="{{ route('admin.distribution.sync-settings-all') }}" onsubmit="return confirm(@js(__('admin.distribution.confirm.sync_settings_all')))">
+                    @csrf
+                    <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
+                        {{ __('admin.distribution.button.sync_settings_all') }}
+                    </button>
+                </form>
                 <a href="{{ route('admin.distribution.jobs') }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
                     {{ __('admin.distribution.button.jobs') }}

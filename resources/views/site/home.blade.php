@@ -17,6 +17,15 @@
             </section>
         @endif
 
+        @include('site.partials.homepage-modules', [
+            'homepageModules' => $homepageModules ?? [],
+            'homepageStyle' => $homepageStyle ?? [],
+            'showHomepageModules' => $showHomepageModules ?? false,
+            'articles' => $articles,
+            'featuredArticles' => $featuredArticles,
+            'hotArticles' => $hotArticles,
+        ])
+
         @if($search === '' && ! $category && ! $categoryMissing && (int) request('page', 1) === 1 && $featuredArticles->isNotEmpty())
             <div class="flex items-center mb-6">
                 <div class="section-label mr-4">

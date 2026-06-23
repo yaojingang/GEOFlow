@@ -980,6 +980,33 @@ function articleSummary(array $article, int $limit = 160): string
     return mb_substr(trim(strip_tags((string) ($article['content'] ?? ''))), 0, $limit);
 }
 
+function articleMetaDescription(array $article, int $limit = 160): string
+{
+    $description = trim((string) ($article['meta_description'] ?? ''));
+    if ($description === '') {
+        $description = trim((string) ($article['excerpt'] ?? ''));
+    }
+    if ($description === '') {
+        $description = trim(strip_tags((string) ($article['content_html'] ?? '')));
+    }
+    if ($description === '') {
+        $description = trim(strip_tags((string) ($article['content'] ?? '')));
+    }
+    $description = preg_replace('/\s+/u', ' ', $description) ?: $description;
+
+    return mb_substr($description, 0, $limit);
+}
+
+function articleMetaKeywords(array $article): string
+{
+    $keywords = trim((string) ($article['keywords'] ?? ''));
+    if ($keywords === '') {
+        return '';
+    }
+
+    return implode(',', keywordTags($keywords));
+}
+
 function renderTemplateString(string $template, array $vars): string
 {
     foreach ($vars as $key => $value) {
@@ -1511,20 +1538,26 @@ function articleDate(array $article, string $format = 'Y-m-d'): string
     return $timestamp ? date($format, $timestamp) : $date;
 }
 
-function pageHeader(array $config, string $title): void
+function pageHeader(array $config, string $title, array $pageMeta = []): void
 {
     $settings = siteSettings($config);
     $siteName = (string) $settings['site_name'];
     $themeClass = themeClass($settings);
     if ($themeClass === 'target-theme-apparel') {
-        apparelPageHeader($config, $settings, $title);
+        apparelPageHeader($config, $settings, $title, $pageMeta);
 
         return;
     }
+    $hasMetaDescription = array_key_exists('description', $pageMeta);
+    $hasMetaKeywords = array_key_exists('keywords', $pageMeta);
+    $metaDescription = trim((string) ($pageMeta['description'] ?? ''));
+    $metaKeywords = trim((string) ($pageMeta['keywords'] ?? ''));
+    $canonicalUrl = trim((string) ($pageMeta['canonical_url'] ?? ''));
+    $ogType = trim((string) ($pageMeta['og_type'] ?? 'website'));
     $description = renderTemplateString((string) $settings['seo_description_template'], [
-        'description' => (string) $settings['site_description'],
+        'description' => $hasMetaDescription ? $metaDescription : (string) $settings['site_description'],
         'site_name' => $siteName,
-        'keywords' => (string) $settings['site_keywords'],
+        'keywords' => $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'],
     ]);
     $pageTitle = renderTemplateString((string) $settings['seo_title_template'], [
         'title' => $title,
@@ -1534,8 +1567,16 @@ function pageHeader(array $config, string $title): void
     $homeUrl = frontSitePath($config, '/');
     echo '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
     echo '<title>'.h($pageTitle).'</title><meta name="description" content="'.h($description).'">';
-    if ((string) $settings['site_keywords'] !== '') {
-        echo '<meta name="keywords" content="'.h((string) $settings['site_keywords']).'">';
+    $keywords = $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'];
+    if ($keywords !== '') {
+        echo '<meta name="keywords" content="'.h($keywords).'">';
+    }
+    if ($canonicalUrl !== '') {
+        echo '<link rel="canonical" href="'.h($canonicalUrl).'">';
+    }
+    echo '<meta property="og:title" content="'.h($pageTitle).'"><meta property="og:description" content="'.h($description).'"><meta property="og:type" content="'.h($ogType).'">';
+    if ($canonicalUrl !== '') {
+        echo '<meta property="og:url" content="'.h($canonicalUrl).'">';
     }
     if ((string) $settings['site_favicon'] !== '') {
         echo '<link rel="icon" href="'.h((string) $settings['site_favicon']).'">';
@@ -1557,13 +1598,19 @@ function pageFooter(array $config): void
     echo '</main><footer><div class="wrap">'.h((string) $settings['copyright_info']).'</div></footer></body></html>';
 }
 
-function apparelPageHeader(array $config, array $settings, string $title): void
+function apparelPageHeader(array $config, array $settings, string $title, array $pageMeta = []): void
 {
     $siteName = (string) $settings['site_name'];
+    $hasMetaDescription = array_key_exists('description', $pageMeta);
+    $hasMetaKeywords = array_key_exists('keywords', $pageMeta);
+    $metaDescription = trim((string) ($pageMeta['description'] ?? ''));
+    $metaKeywords = trim((string) ($pageMeta['keywords'] ?? ''));
+    $canonicalUrl = trim((string) ($pageMeta['canonical_url'] ?? ''));
+    $ogType = trim((string) ($pageMeta['og_type'] ?? 'website'));
     $description = renderTemplateString((string) $settings['seo_description_template'], [
-        'description' => (string) $settings['site_description'],
+        'description' => $hasMetaDescription ? $metaDescription : (string) $settings['site_description'],
         'site_name' => $siteName,
-        'keywords' => (string) $settings['site_keywords'],
+        'keywords' => $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'],
     ]);
     $pageTitle = renderTemplateString((string) $settings['seo_title_template'], [
         'title' => $title,
@@ -1573,8 +1620,16 @@ function apparelPageHeader(array $config, array $settings, string $title): void
     $homeUrl = frontSitePath($config, '/');
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
     echo '<title>'.h($pageTitle).'</title><meta name="description" content="'.h($description).'">';
-    if ((string) $settings['site_keywords'] !== '') {
-        echo '<meta name="keywords" content="'.h((string) $settings['site_keywords']).'">';
+    $keywords = $hasMetaKeywords ? $metaKeywords : (string) $settings['site_keywords'];
+    if ($keywords !== '') {
+        echo '<meta name="keywords" content="'.h($keywords).'">';
+    }
+    if ($canonicalUrl !== '') {
+        echo '<link rel="canonical" href="'.h($canonicalUrl).'">';
+    }
+    echo '<meta property="og:title" content="'.h($pageTitle).'"><meta property="og:description" content="'.h($description).'"><meta property="og:type" content="'.h($ogType).'">';
+    if ($canonicalUrl !== '') {
+        echo '<meta property="og:url" content="'.h($canonicalUrl).'">';
     }
     echo '<link rel="stylesheet" href="'.h(frontVersionedAssetPath($config, '/assets/css/site.css')).'">';
     echo '<script defer src="'.h(frontVersionedAssetPath($config, '/assets/js/site.js')).'"></script>';
@@ -1833,15 +1888,22 @@ function renderArticlePage(array $config, string $slug): void
     $category = is_array($article['category'] ?? null) ? (string) ($article['category']['name'] ?? '默认分类') : '默认分类';
     $publishedAt = substr((string) ($article['published_at'] ?? $article['updated_at'] ?? ''), 0, 10);
     $settings = siteSettings($config);
-    pageHeader($config, $title);
+    $articleUrl = frontSiteUrl($config, '/article/'.rawurlencode($slug));
+    $articleDescription = articleMetaDescription($article);
+    pageHeader($config, $title, [
+        'description' => $articleDescription,
+        'keywords' => articleMetaKeywords($article),
+        'canonical_url' => $articleUrl,
+        'og_type' => 'article',
+    ]);
     echo jsonLdScript([
         "@context"=>"https://schema.org",
         "@type"=>"Article",
         "headline"=>$title,
-        "description"=>(string) ($article['meta_description'] ?? $article['excerpt'] ?? ''),
+        "description"=>$articleDescription,
         "datePublished"=>(string) ($article['published_at'] ?? ''),
         "dateModified"=>(string) ($article['updated_at'] ?? ''),
-        "mainEntityOfPage"=>frontSiteUrl($config, '/article/'.rawurlencode($slug)),
+        "mainEntityOfPage"=>$articleUrl,
         "author"=>[
             "@type"=>"Person",
             "name"=>is_array($article['author'] ?? null) ? (string) ($article['author']['name'] ?? 'GEOFlow') : 'GEOFlow',

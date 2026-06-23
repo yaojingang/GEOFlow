@@ -31,7 +31,9 @@
 @endpush
 
 @section('content')
-    @php
+        @include("site.partials.homepage-modules", ["homepageModules" => $homepageModules ?? [], "homepageStyle" => $homepageStyle ?? [], "showHomepageModules" => $showHomepageModules ?? false, "articles" => $articles ?? collect(), "featuredArticles" => $featuredArticles ?? collect(), "hotArticles" => $hotArticles ?? collect()])
+
+@php
         $homeArticles = method_exists($articles, 'getCollection') ? $articles->getCollection() : collect($articles);
         $homepageHotArticles = collect($hotArticles ?? []);
         $isDefaultHome = $search === '' && !$category && !$categoryMissing;

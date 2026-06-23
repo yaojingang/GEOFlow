@@ -8,6 +8,7 @@ use App\Services\Admin\SiteThemeReplicationService;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
 use App\Support\Site\ArticleTextAdPicker;
+use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Http\RedirectResponse;
@@ -48,6 +49,17 @@ class SiteSettingsController extends Controller
             'recentThemeReplications' => $this->themeReplicationService->recent(3),
             'themeReplicationDeployment' => $this->themeReplicationService->deploymentDiagnostics(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
+            'homepageModules' => $this->parseHomepageModules((string) ($settings['homepage_modules'] ?? '[]')),
+            'homepageStyle' => $this->parseHomepageStyle((string) ($settings['homepage_style'] ?? '{}')),
+            'homepageModuleTypes' => HomepageModuleBuilder::TYPES,
+            'homepageModuleLayouts' => HomepageModuleBuilder::LAYOUTS,
+            'homepageArticleSources' => HomepageModuleBuilder::ARTICLE_SOURCES,
+            'homepageContainerWidths' => HomepageModuleBuilder::CONTAINER_WIDTHS,
+            'homepageSpacings' => HomepageModuleBuilder::SPACINGS,
+            'homepageRadii' => HomepageModuleBuilder::RADII,
+            'homepageAlignments' => HomepageModuleBuilder::ALIGNMENTS,
+            'homepagePresets' => HomepageModuleBuilder::presetIds(),
+            'homepagePresetModes' => HomepageModuleBuilder::presetModes(),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
             'articleDetailTextAds' => $this->parseArticleDetailTextAds((string) ($settings['article_detail_text_ads'] ?? '[]')),
         ]);
@@ -179,6 +191,128 @@ class SiteSettingsController extends Controller
     }
 
     /**
+     * 保存首页模块编排设置。
+     */
+    public function updateHomepageModules(Request $request): RedirectResponse
+    {
+        $postedModules = $request->input('homepage_modules', []);
+        $postedStyle = $request->input('homepage_style', []);
+
+        $this->assertValidHomepageStyle($postedStyle);
+        $this->assertValidHomepageModules($postedModules);
+
+        $style = HomepageModuleBuilder::normalizeStyle($postedStyle);
+        $modules = HomepageModuleBuilder::normalizeModules($postedModules, false, HomepageModuleBuilder::MAX_MODULES);
+
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_style'],
+            ['setting_value' => (string) json_encode($style, JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_modules'],
+            ['setting_value' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE)]
+        );
+
+        SiteSettingsBag::forget();
+
+        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.homepage.message.saved'));
+    }
+
+    /**
+     * 套用首页模块预设。
+     */
+    public function applyHomepageModulePreset(Request $request): RedirectResponse
+    {
+        $payload = $request->validate([
+            'homepage_preset' => ['required', 'string', Rule::in(HomepageModuleBuilder::presetIds())],
+            'preset_mode' => ['nullable', 'string', Rule::in(HomepageModuleBuilder::presetModes())],
+        ]);
+
+        $preset = HomepageModuleBuilder::buildPreset((string) $payload['homepage_preset']);
+        $mode = (string) ($payload['preset_mode'] ?? 'replace');
+        $style = $preset['style'];
+        $modules = $preset['modules'];
+
+        if ($mode === 'append') {
+            $currentSettings = $this->loadSettings();
+            $style = $this->parseHomepageStyle((string) ($currentSettings['homepage_style'] ?? '{}'));
+            $currentModules = $this->parseHomepageModules((string) ($currentSettings['homepage_modules'] ?? '[]'));
+            $modules = HomepageModuleBuilder::normalizeModules(
+                array_merge($currentModules, $modules),
+                false,
+                HomepageModuleBuilder::MAX_MODULES
+            );
+        }
+
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_style'],
+            ['setting_value' => (string) json_encode($style, JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_modules'],
+            ['setting_value' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE)]
+        );
+
+        SiteSettingsBag::forget();
+
+        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.homepage.message.preset_applied'));
+    }
+
+    /**
+     * 导入设计器或 Agent 输出的首页模块 JSON。
+     */
+    public function importHomepageModuleDesign(Request $request): RedirectResponse
+    {
+        $payload = $request->validate([
+            'homepage_design_json' => ['required', 'string', 'max:50000'],
+            'import_mode' => ['nullable', 'string', Rule::in(HomepageModuleBuilder::presetModes())],
+        ]);
+
+        try {
+            $decoded = json_decode((string) $payload['homepage_design_json'], true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw ValidationException::withMessages([
+                'homepage_design_json' => __('admin.site_settings.homepage.validation_import_json'),
+            ]);
+        }
+
+        $imported = HomepageModuleBuilder::normalizeDesignPayload($decoded);
+        if ($imported['modules'] === []) {
+            throw ValidationException::withMessages([
+                'homepage_design_json' => __('admin.site_settings.homepage.validation_import_empty'),
+            ]);
+        }
+
+        $mode = (string) ($payload['import_mode'] ?? 'replace');
+        $style = $imported['style'];
+        $modules = $imported['modules'];
+
+        if ($mode === 'append') {
+            $currentSettings = $this->loadSettings();
+            $style = $this->parseHomepageStyle((string) ($currentSettings['homepage_style'] ?? '{}'));
+            $currentModules = $this->parseHomepageModules((string) ($currentSettings['homepage_modules'] ?? '[]'));
+            $modules = HomepageModuleBuilder::normalizeModules(
+                array_merge($currentModules, $modules),
+                false,
+                HomepageModuleBuilder::MAX_MODULES
+            );
+        }
+
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_style'],
+            ['setting_value' => (string) json_encode($style, JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_modules'],
+            ['setting_value' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE)]
+        );
+
+        SiteSettingsBag::forget();
+
+        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.homepage.message.imported'));
+    }
+
+    /**
      * 保存文章详情页广告位设置。
      */
     public function updateArticleDetailAds(Request $request): RedirectResponse
@@ -272,6 +406,8 @@ class SiteSettingsController extends Controller
      *   admin_base_path:string,
      *   active_theme:string,
      *   home_carousel_slides:string,
+     *   homepage_modules:string,
+     *   homepage_style:string,
      *   article_detail_ads:string,
      *   article_detail_text_ads:string
      * }
@@ -294,6 +430,8 @@ class SiteSettingsController extends Controller
             'admin_base_path' => AdminWeb::basePath(),
             'active_theme' => (string) config('geoflow.default_theme', ''),
             'home_carousel_slides' => '[]',
+            'homepage_modules' => '[]',
+            'homepage_style' => '{}',
             'article_detail_ads' => '[]',
             'article_detail_text_ads' => '[]',
         ];
@@ -327,6 +465,8 @@ class SiteSettingsController extends Controller
             'admin_base_path' => AdminWeb::basePath(),
             'active_theme' => (string) ($stored['active_theme'] !== '' ? $stored['active_theme'] : config('geoflow.default_theme', '')),
             'home_carousel_slides' => (string) $stored['home_carousel_slides'],
+            'homepage_modules' => (string) $stored['homepage_modules'],
+            'homepage_style' => (string) $stored['homepage_style'],
             'article_detail_ads' => (string) $stored['article_detail_ads'],
             'article_detail_text_ads' => (string) $stored['article_detail_text_ads'],
         ];
@@ -380,6 +520,104 @@ class SiteSettingsController extends Controller
         $decoded = json_decode($raw, true);
 
         return ArticleTextAdPicker::normalizeModules($decoded, false, ArticleTextAdPicker::MAX_GLOBAL_MODULES);
+    }
+
+    /**
+     * @return array<int, array<string,mixed>>
+     */
+    private function parseHomepageModules(string $raw): array
+    {
+        return HomepageModuleBuilder::fromRaw($raw, false);
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function parseHomepageStyle(string $raw): array
+    {
+        return HomepageModuleBuilder::styleFromRaw($raw);
+    }
+
+    private function assertValidHomepageStyle(mixed $postedStyle): void
+    {
+        if (! is_array($postedStyle)) {
+            return;
+        }
+
+        foreach (['accent_color', 'background_color', 'surface_color', 'text_color', 'muted_color'] as $field) {
+            $raw = trim((string) ($postedStyle[$field] ?? ''));
+            if ($raw !== '' && HomepageModuleBuilder::normalizeHexColor($raw) === '') {
+                throw ValidationException::withMessages([
+                    'homepage_style' => __('admin.site_settings.homepage.validation_color'),
+                ]);
+            }
+        }
+    }
+
+    private function assertValidHomepageModules(mixed $postedModules): void
+    {
+        if (! is_array($postedModules)) {
+            return;
+        }
+
+        if (count($postedModules) > HomepageModuleBuilder::MAX_MODULES) {
+            throw ValidationException::withMessages([
+                'homepage_modules' => __('admin.site_settings.homepage.validation_max_modules', ['max' => HomepageModuleBuilder::MAX_MODULES]),
+            ]);
+        }
+
+        foreach (array_values($postedModules) as $index => $postedModule) {
+            if (! is_array($postedModule)) {
+                continue;
+            }
+
+            $number = $index + 1;
+            $type = (string) ($postedModule['type'] ?? 'rich_text');
+            if ($type !== '' && ! in_array($type, HomepageModuleBuilder::TYPES, true)) {
+                throw ValidationException::withMessages([
+                    'homepage_modules' => __('admin.site_settings.homepage.validation_type', ['index' => $number]),
+                ]);
+            }
+
+            $layout = (string) ($postedModule['layout'] ?? 'single');
+            if ($layout !== '' && ! in_array($layout, HomepageModuleBuilder::LAYOUTS, true)) {
+                throw ValidationException::withMessages([
+                    'homepage_modules' => __('admin.site_settings.homepage.validation_layout', ['index' => $number]),
+                ]);
+            }
+
+            $dataSource = (string) ($postedModule['data_source'] ?? 'latest');
+            if ($dataSource !== '' && ! in_array($dataSource, HomepageModuleBuilder::ARTICLE_SOURCES, true)) {
+                throw ValidationException::withMessages([
+                    'homepage_modules' => __('admin.site_settings.homepage.validation_source', ['index' => $number]),
+                ]);
+            }
+
+            $alignment = (string) ($postedModule['alignment'] ?? 'left');
+            if ($alignment !== '' && ! in_array($alignment, HomepageModuleBuilder::ALIGNMENTS, true)) {
+                throw ValidationException::withMessages([
+                    'homepage_modules' => __('admin.site_settings.homepage.validation_alignment', ['index' => $number]),
+                ]);
+            }
+
+            foreach (['accent_color', 'surface_color', 'text_color', 'muted_color'] as $field) {
+                $color = trim((string) ($postedModule[$field] ?? ''));
+                if ($color !== '' && HomepageModuleBuilder::normalizeHexColor($color) === '') {
+                    throw ValidationException::withMessages([
+                        'homepage_modules' => __('admin.site_settings.homepage.validation_color', ['index' => $number]),
+                    ]);
+                }
+            }
+
+            foreach (['image_url', 'link_url'] as $field) {
+                $url = trim((string) ($postedModule[$field] ?? ''));
+                if ($url !== '' && HomepageModuleBuilder::normalizeUrl($url) === '') {
+                    throw ValidationException::withMessages([
+                        'homepage_modules' => __('admin.site_settings.homepage.validation_url', ['index' => $number]),
+                    ]);
+                }
+            }
+        }
     }
 
     /**

@@ -231,6 +231,281 @@
                 <i data-lucide="chevron-down" class="w-5 h-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
             </summary>
             <div class="px-6 py-6">
+                @php
+                    $homepageFormModules = old('homepage_modules', $homepageModules ?? []);
+                    $homepageFormStyle = old('homepage_style', $homepageStyle ?? []);
+                @endphp
+
+                <form method="POST" action="{{ route('admin.site-settings.homepage-modules.preset') }}" class="mb-5 rounded-2xl border border-indigo-100 bg-white p-5">
+                    @csrf
+                    <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                        <div class="min-w-0 flex-1">
+                            <div class="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
+                                <i data-lucide="sparkles" class="mr-1.5 h-3.5 w-3.5"></i>
+                                {{ __('admin.site_settings.homepage.preset_title') }}
+                            </div>
+                            <p class="mt-3 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.homepage.preset_desc') }}</p>
+                        </div>
+                        <div class="grid w-full grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto] xl:max-w-3xl">
+                            <div>
+                                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.preset_field') }}</label>
+                                <select name="homepage_preset" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    @foreach ($homepagePresets as $preset)
+                                        <option value="{{ $preset }}">{{ __('admin.site_settings.homepage.preset_'.$preset) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.preset_mode') }}</label>
+                                <select name="preset_mode" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    @foreach ($homepagePresetModes as $mode)
+                                        <option value="{{ $mode }}">{{ __('admin.site_settings.homepage.preset_mode_'.$mode) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button type="submit" class="inline-flex w-full items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+                                    <i data-lucide="wand-sparkles" class="mr-2 h-4 w-4"></i>
+                                    {{ __('admin.site_settings.homepage.preset_apply') }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
+                <form method="POST" action="{{ route('admin.site-settings.homepage-modules.import') }}" class="mb-5 rounded-2xl border border-blue-100 bg-white p-5">
+                    @csrf
+                    <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
+                        <div class="min-w-0">
+                            <div class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                                <i data-lucide="braces" class="mr-1.5 h-3.5 w-3.5"></i>
+                                {{ __('admin.site_settings.homepage.import_title') }}
+                            </div>
+                            <p class="mt-3 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.homepage.import_desc') }}</p>
+                            <label class="mt-4 mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.import_field') }}</label>
+                            <textarea name="homepage_design_json" rows="5" class="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs leading-5 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.site_settings.homepage.import_placeholder') }}">{{ old('homepage_design_json') }}</textarea>
+                            @error('homepage_design_json')
+                                <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <div class="flex flex-col justify-end gap-3">
+                            <div>
+                                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.import_mode') }}</label>
+                                <select name="import_mode" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    @foreach ($homepagePresetModes as $mode)
+                                        <option value="{{ $mode }}" @selected(old('import_mode', 'replace') === $mode)>{{ __('admin.site_settings.homepage.preset_mode_'.$mode) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <button type="submit" class="inline-flex w-full items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                                <i data-lucide="upload" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.site_settings.homepage.import_apply') }}
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <form method="POST" action="{{ route('admin.site-settings.homepage-modules') }}" id="homepage-module-form" class="mb-8 rounded-2xl border border-gray-200 bg-gray-50/70 p-5">
+                    @csrf
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                            <div class="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                                <i data-lucide="layout-dashboard" class="mr-1.5 h-3.5 w-3.5"></i>
+                                {{ __('admin.site_settings.homepage.badge') }}
+                            </div>
+                            <h4 class="mt-3 text-base font-semibold text-gray-900">{{ __('admin.site_settings.homepage.section_title') }}</h4>
+                            <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.homepage.section_desc') }}</p>
+                        </div>
+                        <div class="flex shrink-0 flex-wrap gap-2">
+                            <button type="button" id="add-homepage-module" class="inline-flex items-center rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                                <i data-lucide="plus" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.site_settings.homepage.add_module') }}
+                            </button>
+                            <button type="submit" class="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                                <i data-lucide="save" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.site_settings.homepage.save') }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 rounded-2xl border border-blue-100 bg-white p-4">
+                        <div class="flex items-start gap-3">
+                            <div class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                <i data-lucide="info" class="h-4 w-4"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.homepage.scope_notice_title') }}</div>
+                                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.homepage.scope_notice_desc') }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 rounded-2xl border border-gray-200 bg-white p-4">
+                        <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.homepage.style_title') }}</div>
+                        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            @foreach (['accent_color', 'background_color', 'surface_color', 'text_color'] as $styleField)
+                                <div>
+                                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.style_'.$styleField) }}</label>
+                                    <input type="text" name="homepage_style[{{ $styleField }}]" value="{{ $homepageFormStyle[$styleField] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#2563eb">
+                                </div>
+                            @endforeach
+                            <div>
+                                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.style_muted_color') }}</label>
+                                <input type="text" name="homepage_style[muted_color]" value="{{ $homepageFormStyle['muted_color'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#6b7280">
+                            </div>
+                            <div>
+                                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.container_width') }}</label>
+                                <select name="homepage_style[container_width]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    @foreach ($homepageContainerWidths as $option)
+                                        <option value="{{ $option }}" @selected(($homepageFormStyle['container_width'] ?? 'default') === $option)>{{ __('admin.site_settings.homepage.container_width_'.$option) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.section_spacing') }}</label>
+                                <select name="homepage_style[section_spacing]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    @foreach ($homepageSpacings as $option)
+                                        <option value="{{ $option }}" @selected(($homepageFormStyle['section_spacing'] ?? 'normal') === $option)>{{ __('admin.site_settings.homepage.spacing_'.$option) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.radius') }}</label>
+                                <select name="homepage_style[radius]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    @foreach ($homepageRadii as $option)
+                                        <option value="{{ $option }}" @selected(($homepageFormStyle['radius'] ?? 'soft') === $option)>{{ __('admin.site_settings.homepage.radius_'.$option) }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="homepage-module-list" class="mt-5 space-y-4">
+                        @foreach ($homepageFormModules as $index => $module)
+                            <div class="homepage-module-item rounded-2xl border border-gray-200 bg-white p-4" data-homepage-module-index="{{ $index }}">
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.homepage.module_title', ['index' => $index + 1]) }}</div>
+                                        <div class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.homepage.module_desc') }}</div>
+                                    </div>
+                                    <button type="button" class="remove-homepage-module inline-flex items-center rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                                        <i data-lucide="trash-2" class="mr-2 h-4 w-4"></i>
+                                        {{ __('admin.button.delete') }}
+                                    </button>
+                                </div>
+                                <input type="hidden" name="homepage_modules[{{ $index }}][id]" value="{{ $module['id'] ?? '' }}">
+                                <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-4">
+                                    <div>
+                                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_type') }}</label>
+                                        <select name="homepage_modules[{{ $index }}][type]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            @foreach ($homepageModuleTypes as $type)
+                                                <option value="{{ $type }}" @selected(($module['type'] ?? 'rich_text') === $type)>{{ __('admin.site_settings.homepage.type_'.$type) }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_layout') }}</label>
+                                        <select name="homepage_modules[{{ $index }}][layout]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            @foreach ($homepageModuleLayouts as $layout)
+                                                <option value="{{ $layout }}" @selected(($module['layout'] ?? 'single') === $layout)>{{ __('admin.site_settings.homepage.layout_'.$layout) }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_source') }}</label>
+                                        <select name="homepage_modules[{{ $index }}][data_source]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            @foreach ($homepageArticleSources as $source)
+                                                <option value="{{ $source }}" @selected(($module['data_source'] ?? 'latest') === $source)>{{ __('admin.site_settings.homepage.source_'.$source) }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_limit') }}</label>
+                                            <input type="number" min="1" max="12" name="homepage_modules[{{ $index }}][limit]" value="{{ $module['limit'] ?? 4 }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        </div>
+                                        <div>
+                                            <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_sort') }}</label>
+                                            <input type="number" min="0" max="10000" name="homepage_modules[{{ $index }}][sort_order]" value="{{ $module['sort_order'] ?? (($index + 1) * 10) }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        </div>
+                                    </div>
+                                </div>
+                                <details class="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                                    <summary class="cursor-pointer text-sm font-semibold text-gray-700">{{ __('admin.site_settings.homepage.module_style_title') }}</summary>
+                                    <p class="mt-2 text-xs text-gray-500">{{ __('admin.site_settings.homepage.module_style_desc') }}</p>
+                                    <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-5">
+                                        <div>
+                                            <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_alignment') }}</label>
+                                            <select name="homepage_modules[{{ $index }}][alignment]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                @foreach ($homepageAlignments as $alignment)
+                                                    <option value="{{ $alignment }}" @selected(($module['alignment'] ?? 'left') === $alignment)>{{ __('admin.site_settings.homepage.alignment_'.$alignment) }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_accent_color') }}</label>
+                                            <input type="text" name="homepage_modules[{{ $index }}][accent_color]" value="{{ $module['accent_color'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#2563eb">
+                                        </div>
+                                        <div>
+                                            <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_surface_color') }}</label>
+                                            <input type="text" name="homepage_modules[{{ $index }}][surface_color]" value="{{ $module['surface_color'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#ffffff">
+                                        </div>
+                                        <div>
+                                            <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_text_color') }}</label>
+                                            <input type="text" name="homepage_modules[{{ $index }}][text_color]" value="{{ $module['text_color'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#111827">
+                                        </div>
+                                        <div>
+                                            <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_muted_color') }}</label>
+                                            <input type="text" name="homepage_modules[{{ $index }}][muted_color]" value="{{ $module['muted_color'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#6b7280">
+                                        </div>
+                                    </div>
+                                </details>
+                                <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                    <div>
+                                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_title') }}</label>
+                                        <input type="text" name="homepage_modules[{{ $index }}][title]" value="{{ $module['title'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_subtitle') }}</label>
+                                        <input type="text" name="homepage_modules[{{ $index }}][subtitle]" value="{{ $module['subtitle'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_body') }}</label>
+                                    <textarea name="homepage_modules[{{ $index }}][body]" rows="3" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.site_settings.homepage.placeholder_body') }}">{{ $module['body'] ?? '' }}</textarea>
+                                </div>
+                                <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                                    <div>
+                                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_image_url') }}</label>
+                                        <input type="text" name="homepage_modules[{{ $index }}][image_url]" value="{{ $module['image_url'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="/storage/hero.jpg">
+                                    </div>
+                                    <div>
+                                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_link_text') }}</label>
+                                        <input type="text" name="homepage_modules[{{ $index }}][link_text]" value="{{ $module['link_text'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_link_url') }}</label>
+                                        <input type="text" name="homepage_modules[{{ $index }}][link_url]" value="{{ $module['link_url'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="/category/demo">
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_custom_html') }}</label>
+                                    <textarea name="homepage_modules[{{ $index }}][custom_html]" rows="3" class="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="<p>HTML snippet</p>">{{ $module['custom_html'] ?? '' }}</textarea>
+                                </div>
+                                <label class="mt-4 flex items-center gap-2 text-sm font-medium text-gray-700">
+                                    <input type="checkbox" name="homepage_modules[{{ $index }}][enabled]" value="1" @checked(!empty($module['enabled'])) class="rounded border-gray-300 text-blue-600">
+                                    {{ __('admin.site_settings.homepage.field_enabled') }}
+                                </label>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div id="homepage-module-empty" class="{{ !empty($homepageFormModules) ? 'hidden ' : '' }}mt-5 rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-8 text-center">
+                        <div class="text-base font-medium text-gray-900">{{ __('admin.site_settings.homepage.empty_title') }}</div>
+                        <div class="mt-2 text-sm text-gray-500">{{ __('admin.site_settings.homepage.empty_desc') }}</div>
+                    </div>
+                </form>
+
                 <form method="POST" action="{{ route('admin.site-settings.theme') }}" class="space-y-5">
                     @csrf
 
@@ -597,6 +872,190 @@
 @endsection
 
 @push('scripts')
+    <template id="homepage-module-template">
+        <div class="homepage-module-item rounded-2xl border border-gray-200 bg-white p-4" data-homepage-module-index="__INDEX__">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.homepage.module_title', ['index' => '__NUMBER__']) }}</div>
+                    <div class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.homepage.module_desc') }}</div>
+                </div>
+                <button type="button" class="remove-homepage-module inline-flex items-center rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                    <i data-lucide="trash-2" class="mr-2 h-4 w-4"></i>
+                    {{ __('admin.button.delete') }}
+                </button>
+            </div>
+            <input type="hidden" name="homepage_modules[__INDEX__][id]" value="">
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-4">
+                <div>
+                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_type') }}</label>
+                    <select name="homepage_modules[__INDEX__][type]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        @foreach ($homepageModuleTypes as $type)
+                            <option value="{{ $type }}" @selected($type === 'rich_text')>{{ __('admin.site_settings.homepage.type_'.$type) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_layout') }}</label>
+                    <select name="homepage_modules[__INDEX__][layout]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        @foreach ($homepageModuleLayouts as $layout)
+                            <option value="{{ $layout }}" @selected($layout === 'single')>{{ __('admin.site_settings.homepage.layout_'.$layout) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_source') }}</label>
+                    <select name="homepage_modules[__INDEX__][data_source]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        @foreach ($homepageArticleSources as $source)
+                            <option value="{{ $source }}" @selected($source === 'latest')>{{ __('admin.site_settings.homepage.source_'.$source) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_limit') }}</label>
+                        <input type="number" min="1" max="12" name="homepage_modules[__INDEX__][limit]" value="4" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_sort') }}</label>
+                        <input type="number" min="0" max="10000" name="homepage_modules[__INDEX__][sort_order]" value="__SORT__" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
+            <details class="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <summary class="cursor-pointer text-sm font-semibold text-gray-700">{{ __('admin.site_settings.homepage.module_style_title') }}</summary>
+                <p class="mt-2 text-xs text-gray-500">{{ __('admin.site_settings.homepage.module_style_desc') }}</p>
+                <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-5">
+                    <div>
+                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_alignment') }}</label>
+                        <select name="homepage_modules[__INDEX__][alignment]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            @foreach ($homepageAlignments as $alignment)
+                                <option value="{{ $alignment }}" @selected($alignment === 'left')>{{ __('admin.site_settings.homepage.alignment_'.$alignment) }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_accent_color') }}</label>
+                        <input type="text" name="homepage_modules[__INDEX__][accent_color]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#2563eb">
+                    </div>
+                    <div>
+                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_surface_color') }}</label>
+                        <input type="text" name="homepage_modules[__INDEX__][surface_color]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#ffffff">
+                    </div>
+                    <div>
+                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_text_color') }}</label>
+                        <input type="text" name="homepage_modules[__INDEX__][text_color]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#111827">
+                    </div>
+                    <div>
+                        <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_muted_color') }}</label>
+                        <input type="text" name="homepage_modules[__INDEX__][muted_color]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="#6b7280">
+                    </div>
+                </div>
+            </details>
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div>
+                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_title') }}</label>
+                    <input type="text" name="homepage_modules[__INDEX__][title]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_subtitle') }}</label>
+                    <input type="text" name="homepage_modules[__INDEX__][subtitle]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+            </div>
+            <div class="mt-4">
+                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_body') }}</label>
+                <textarea name="homepage_modules[__INDEX__][body]" rows="3" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.site_settings.homepage.placeholder_body') }}"></textarea>
+            </div>
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div>
+                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_image_url') }}</label>
+                    <input type="text" name="homepage_modules[__INDEX__][image_url]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="/storage/hero.jpg">
+                </div>
+                <div>
+                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_link_text') }}</label>
+                    <input type="text" name="homepage_modules[__INDEX__][link_text]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_link_url') }}</label>
+                    <input type="text" name="homepage_modules[__INDEX__][link_url]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="/category/demo">
+                </div>
+            </div>
+            <div class="mt-4">
+                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_custom_html') }}</label>
+                <textarea name="homepage_modules[__INDEX__][custom_html]" rows="3" class="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="<p>HTML snippet</p>"></textarea>
+            </div>
+            <label class="mt-4 flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input type="checkbox" name="homepage_modules[__INDEX__][enabled]" value="1" checked class="rounded border-gray-300 text-blue-600">
+                {{ __('admin.site_settings.homepage.field_enabled') }}
+            </label>
+        </div>
+    </template>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const list = document.getElementById('homepage-module-list');
+            const emptyState = document.getElementById('homepage-module-empty');
+            const addButton = document.getElementById('add-homepage-module');
+            const template = document.getElementById('homepage-module-template');
+
+            if (!list || !emptyState || !addButton || !template) {
+                return;
+            }
+
+            let index = list.querySelectorAll('.homepage-module-item').length;
+            const maxModules = 30;
+
+            function refreshState() {
+                const count = list.querySelectorAll('.homepage-module-item').length;
+                emptyState.classList.toggle('hidden', count > 0);
+                addButton.disabled = count >= maxModules;
+                addButton.classList.toggle('opacity-50', count >= maxModules);
+                addButton.classList.toggle('cursor-not-allowed', count >= maxModules);
+            }
+
+            function bindRemove(scope) {
+                const button = scope.querySelector('.remove-homepage-module');
+                if (!button) {
+                    return;
+                }
+
+                button.addEventListener('click', function () {
+                    scope.remove();
+                    refreshState();
+                });
+            }
+
+            addButton.addEventListener('click', function () {
+                if (list.querySelectorAll('.homepage-module-item').length >= maxModules) {
+                    return;
+                }
+
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = template.innerHTML
+                    .replaceAll('__INDEX__', String(index))
+                    .replaceAll('__NUMBER__', String(index + 1))
+                    .replaceAll('__SORT__', String((index + 1) * 10))
+                    .trim();
+                index += 1;
+
+                const item = wrapper.firstElementChild;
+                if (!item) {
+                    return;
+                }
+
+                list.appendChild(item);
+                bindRemove(item);
+                refreshState();
+
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            });
+
+            list.querySelectorAll('.homepage-module-item').forEach(bindRemove);
+            refreshState();
+        });
+    </script>
+
     <template id="article-ad-template">
         <div class="article-ad-item rounded-2xl border border-gray-200 bg-gray-50/70 p-5" data-ad-index="__INDEX__">
             <div class="flex items-center justify-between gap-4">

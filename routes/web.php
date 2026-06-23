@@ -112,6 +112,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('create', [DistributionController::class, 'create'])->name('create');
             Route::post('create', [DistributionController::class, 'store'])->name('store');
             Route::get('jobs', [DistributionController::class, 'jobs'])->name('jobs');
+            Route::post('sync-settings-all', [DistributionController::class, 'syncSettingsAll'])->name('sync-settings-all');
             Route::get('jobs/{distributionId}/edit', [DistributionController::class, 'editArticle'])->name('article.edit')->whereNumber('distributionId');
             Route::put('jobs/{distributionId}', [DistributionController::class, 'updateArticle'])->name('article.update')->whereNumber('distributionId');
             Route::post('jobs/{distributionId}/delete', [DistributionController::class, 'deleteArticle'])->name('article.delete')->whereNumber('distributionId');
@@ -270,6 +271,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('/', [SiteSettingsController::class, 'index'])->name('index');
             Route::post('/', [SiteSettingsController::class, 'update'])->name('update');
             Route::post('theme', [SiteSettingsController::class, 'updateTheme'])->name('theme');
+            Route::post('homepage-modules', [SiteSettingsController::class, 'updateHomepageModules'])->name('homepage-modules');
+            Route::post('homepage-modules/preset', [SiteSettingsController::class, 'applyHomepageModulePreset'])->name('homepage-modules.preset');
+            Route::post('homepage-modules/import', [SiteSettingsController::class, 'importHomepageModuleDesign'])->name('homepage-modules.import');
             Route::get('theme-editor/{themeId}/{page}', [SiteThemeEditorController::class, 'edit'])
                 ->name('theme-editor.edit')
                 ->where('themeId', '[A-Za-z0-9_-]+')

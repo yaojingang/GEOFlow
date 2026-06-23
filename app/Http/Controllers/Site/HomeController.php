@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Category;
 use App\Support\Site\ArticleHtmlPresenter;
+use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
 use Illuminate\Http\Request;
@@ -32,6 +33,8 @@ class HomeController extends Controller
         $siteDescription = (string) ($map['site_description'] ?? config('geoflow.site_description', ''));
         $siteKeywords = (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', ''));
         $homepageCarouselSlides = $this->parseHomepageCarouselSlides((string) ($map['home_carousel_slides'] ?? '[]'));
+        $homepageModules = HomepageModuleBuilder::fromRaw((string) ($map['homepage_modules'] ?? '[]'));
+        $homepageStyle = HomepageModuleBuilder::styleFromRaw((string) ($map['homepage_style'] ?? '{}'));
 
         $category = null;
         $categoryMissing = false;
@@ -135,6 +138,8 @@ class HomeController extends Controller
             $canonicalUrl = route('site.home', ['category' => $categoryId]);
         }
 
+        $showHomepageModules = $search === '' && ! $category && ! $categoryMissing && $page === 1;
+
         return SiteThemeViewResolver::first('home', [
             'activeNav' => 'home',
             'search' => $search,
@@ -150,6 +155,9 @@ class HomeController extends Controller
             'siteDescription' => $siteDescription,
             'siteKeywords' => $siteKeywords,
             'homepageCarouselSlides' => $homepageCarouselSlides,
+            'homepageModules' => $homepageModules,
+            'homepageStyle' => $homepageStyle,
+            'showHomepageModules' => $showHomepageModules,
             'viewTitle' => $viewTitle,
             'pageTitle' => $pageTitle,
             'pageDescription' => $pageDescription,

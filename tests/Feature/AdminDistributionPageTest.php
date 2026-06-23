@@ -1195,6 +1195,136 @@ class AdminDistributionPageTest extends TestCase
             && $request->hasHeader('X-GEOFlow-Event', 'site.settings.update'));
     }
 
+    public function test_admin_can_sync_all_active_geoflow_agent_channel_settings(): void
+    {
+        Queue::fake();
+        Http::fake([
+            'https://one.example.com/geoflow-agent/v1/site-settings' => Http::response([
+                'ok' => true,
+                'updated' => true,
+            ]),
+            'https://two.example.com/geoflow-agent/v1/site-settings' => Http::response([
+                'ok' => true,
+                'updated' => true,
+            ]),
+        ]);
+
+        $fixtures = $this->taskFixtures();
+        $first = DistributionChannel::query()->create([
+            'name' => '一号站',
+            'domain' => 'one.example.com',
+            'endpoint_url' => 'https://one.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $first->id,
+            'key_id' => 'gfk_sync_all_one',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_sync_all_one_secret'),
+            'status' => 'active',
+            'scopes' => ['site.settings.update'],
+        ]);
+        $article = Article::query()->create([
+            'title' => '需要刷新 SEO 的文章',
+            'slug' => 'refresh-seo-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => (int) $fixtures['category']->id,
+            'author_id' => (int) $fixtures['author']->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        ArticleDistribution::query()->create([
+            'article_id' => (int) $article->id,
+            'distribution_channel_id' => (int) $first->id,
+            'action' => 'publish',
+            'status' => 'synced',
+            'remote_url' => 'https://one.example.com/article/refresh-seo-article',
+            'idempotency_key' => 'old-sync-all-key',
+        ]);
+
+        $second = DistributionChannel::query()->create([
+            'name' => '二号站',
+            'domain' => 'two.example.com',
+            'endpoint_url' => 'https://two.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $second->id,
+            'key_id' => 'gfk_sync_all_two',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_sync_all_two_secret'),
+            'status' => 'active',
+            'scopes' => ['site.settings.update'],
+        ]);
+
+        $wordpress = DistributionChannel::query()->create([
+            'name' => 'WordPress',
+            'domain' => 'wp.example.com',
+            'endpoint_url' => 'https://wp.example.com',
+            'channel_type' => 'wordpress_rest',
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $wordpress->id,
+            'key_id' => 'gfk_sync_all_wp',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_sync_all_wp_secret'),
+            'status' => 'active',
+            'scopes' => ['site.settings.update'],
+        ]);
+
+        $paused = DistributionChannel::query()->create([
+            'name' => '暂停站',
+            'domain' => 'paused.example.com',
+            'endpoint_url' => 'https://paused.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'paused',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $paused->id,
+            'key_id' => 'gfk_sync_all_paused',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_sync_all_paused_secret'),
+            'status' => 'active',
+            'scopes' => ['site.settings.update'],
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.sync-settings-all'))
+            ->assertRedirect()
+            ->assertSessionHas('message', __('admin.distribution.message.settings_synced_all', [
+                'success' => 2,
+                'failed' => 0,
+                'refresh' => 1,
+            ]));
+
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://one.example.com/geoflow-agent/v1/site-settings'
+            && $request->hasHeader('X-GEOFlow-Event', 'site.settings.update'));
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://two.example.com/geoflow-agent/v1/site-settings'
+            && $request->hasHeader('X-GEOFlow-Event', 'site.settings.update'));
+
+        $this->assertDatabaseHas('distribution_logs', [
+            'distribution_channel_id' => (int) $first->id,
+            'event' => 'site.settings.synced',
+        ]);
+        $this->assertDatabaseHas('distribution_logs', [
+            'distribution_channel_id' => (int) $second->id,
+            'event' => 'site.settings.synced',
+        ]);
+        $this->assertDatabaseHas('distribution_logs', [
+            'distribution_channel_id' => (int) $first->id,
+            'event' => 'target.content_refresh_queued',
+        ]);
+        $this->assertDatabaseHas('article_distributions', [
+            'article_id' => (int) $article->id,
+            'distribution_channel_id' => (int) $first->id,
+            'action' => 'update',
+            'status' => 'queued',
+        ]);
+        Queue::assertPushed(ProcessArticleDistributionJob::class, 1);
+    }
+
     public function test_admin_can_pause_distribution_channel_and_hide_it_from_task_form(): void
     {
         $admin = $this->admin();
@@ -1671,6 +1801,12 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('function markdownToHtml', $frontController);
         $this->assertStringContainsString('function stripLeadingTitleHeading', $frontController);
         $this->assertStringContainsString('function keywordTags', $frontController);
+        $this->assertStringContainsString('function articleMetaDescription', $frontController);
+        $this->assertStringContainsString('function articleMetaKeywords', $frontController);
+        $this->assertStringContainsString('pageHeader($config, $title, [', $frontController);
+        $this->assertStringContainsString("array_key_exists('keywords', \$pageMeta)", $frontController);
+        $this->assertStringContainsString("'canonical_url' => \$articleUrl", $frontController);
+        $this->assertStringContainsString("'og_type' => 'article'", $frontController);
         $this->assertStringContainsString("preg_match('~^(?:https?://|/|#)~i'", $frontController);
         $this->assertStringNotContainsString("preg_match('#^(https?://|/|#)#i'", $frontController);
         $this->assertStringContainsString("article['content_html']", $frontController);
@@ -1706,6 +1842,8 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('function localizeArticleAssets', $frontController);
         $this->assertStringContainsString('application/ld+json', $frontController);
         $this->assertStringContainsString('"@type"=>"Article"', $frontController);
+        $this->assertStringContainsString('"description"=>$articleDescription', $frontController);
+        $this->assertStringContainsString('"mainEntityOfPage"=>$articleUrl', $frontController);
         $this->assertStringContainsString('assets/images', $frontController);
         $this->assertStringContainsString('assets/css/site.css', $frontController);
         $this->assertStringNotContainsString('<style>', $frontController);

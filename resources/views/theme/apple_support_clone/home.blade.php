@@ -1,7 +1,9 @@
 @extends('theme.apple_support_clone.layout')
 
 @section('theme_content')
-    @php
+        @include("site.partials.homepage-modules", ["homepageModules" => $homepageModules ?? [], "homepageStyle" => $homepageStyle ?? [], "showHomepageModules" => $showHomepageModules ?? false, "articles" => $articles ?? collect(), "featuredArticles" => $featuredArticles ?? collect(), "hotArticles" => $hotArticles ?? collect()])
+
+@php
         $isLanding = $search === '' && ! $category && ! $categoryMissing && (int) request('page', 1) === 1;
     @endphp
 
