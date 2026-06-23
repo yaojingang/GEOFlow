@@ -1,0 +1,31 @@
+{
+  "id": "apihot-recommend-20260623",
+  "name": "API热点网精选推荐",
+  "version": "1.0.0",
+  "description": "A GEOFlow frontend theme for API recommendation portals, with a full static-style recommendation homepage, dynamic latest-article section, and NetEase-derived list/detail page contracts.",
+  "templates": [
+    "layout",
+    "home",
+    "category",
+    "article",
+    "archive-index",
+    "archive-month"
+  ],
+  "notes": [
+    "Homepage is derived from the local recommend static page and adapted into a GEOFlow Blade theme.",
+    "Default homepage shows the API recommendation modules plus the latest 10 published articles using the existing article paginator.",
+    "Search, category, article, archive, SEO meta, JSON-LD, route helpers, and article rendering contracts are preserved.",
+    "The original netease-news-20260507 theme is not modified."
+  ],
+  "base_theme_id": "netease-news-20260507",
+  "target_theme_id": "apihot-recommend-20260623",
+  "mode": "theme",
+  "session_state": "package",
+  "created_at": "2026-06-23T20:10:00+08:00",
+  "preview_routes": [
+    "/",
+    "/category/{slug}",
+    "/article/{slug}",
+    "/archive"
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "id": "apihot-recommend-20260623",
+  "name": "API热点网精选推荐",
+  "reference_urls": {
+    "home": "local:/Users/laoyao/AI Coding/01-Projects/Active/tokhub/web/static/recommend",
+    "category": "base:netease-news-20260507/category",
+    "article": "base:netease-news-20260507/article",
+    "archive": "theme:apihot-recommend-20260623/archive"
+  },
+  "omitted_reference_modules": [
+    "static app shell scripts that are not needed for GEOFlow routing",
+    "hard-coded article list data; latest articles now come from GEOFlow published articles",
+    "non-GEOFlow deployment files such as robots.txt, sitemap.xml, and llms.txt"
+  ],
+  "unchanged_contracts": [
+    "public routes",
+    "SEO title/description/keywords/canonical",
+    "JSON-LD schema output",
+    "GEOFlow category/article variables",
+    "rendered article HTML",
+    "optional article detail ad data"
+  ],
+  "modules": {
+    "header": "Recommendation-page navigation from the local static page on the default homepage; base GEOFlow header remains for search/category/article states.",
+    "footer": "Recommendation-page footer from the local static page on the default homepage; base GEOFlow footer remains elsewhere.",
+    "home.hero": "Static recommendation hero adapted from the local recommend page.",
+    "home.recommendation_cards": "Three curated recommendation cards for AIGoCode, PackyAPI, and PipeLLM.",
+    "home.latest_articles": "Dynamic latest 10 published articles, rendered after the recommendation cards with GEOFlow article routes and summaries.",
+    "home.rank_table": "Static recommendation comparison table from the local page.",
+    "home.workflow_blocks": "Static gateway setup, scenario, certification, and API readiness blocks from the local page.",
+    "home.article_card": "Latest-article cards using existing article paginator data.",
+    "category.article_card": "API recommendation style category header, chip tabs, and rounded latest-article cards.",
+    "article.hero": "API recommendation style article title card with pill metadata and soft-blue excerpt block.",
+    "article.prose_shell": "Readable white-card article body styling for rendered markdown HTML, images, tables, lists, and blockquotes.",
+    "article.related_articles": "Rounded related-content cards using the same numbered badge language as homepage latest articles.",
+    "article.sticky_ad": "Converted from floating sticky ad to a soft-blue inline optional ad slot.",
+    "archive.overview_row": "API recommendation style archive month cards for the homepage More destination.",
+    "archive.article_card": "Archive month article list reuses the same rounded latest-article cards as category pages."
+  },
+  "edited_files": [
+    "layout.blade.php",
+    "home.blade.php",
+    "category.blade.php",
+    "article.blade.php",
+    "archive-index.blade.php",
+    "archive-month.blade.php",
+    "partials/header.blade.php",
+    "partials/sidebar.blade.php",
+    "partials/footer.blade.php",
+    "partials/article-card.blade.php",
+    "assets/theme.css",
+    "public/themes/apihot-recommend-20260623/theme.css",
+    "public/themes/apihot-recommend-20260623/theme.js",
+    "manifest.json",
+    "tokens.json",
+    "mapping.json"
+  ]
+}
