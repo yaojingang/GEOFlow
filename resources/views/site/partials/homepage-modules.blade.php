@@ -11,7 +11,7 @@
         'radius' => 'soft',
     ], is_array($homepageStyle ?? null) ? $homepageStyle : []);
 
-    $latestArticleCollection = method_exists($articles ?? null, 'getCollection')
+    $latestArticleCollection = is_object($articles ?? null) && method_exists($articles, 'getCollection')
         ? ($articles->getCollection())
         : collect($articles ?? []);
     $articleCollections = [

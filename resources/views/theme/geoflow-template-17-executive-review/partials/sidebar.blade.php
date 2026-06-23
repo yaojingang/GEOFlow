@@ -1,6 +1,6 @@
 @php
     $sidebarHotArticles = collect($hotArticles ?? [])->take(6);
-    $latestArticles = method_exists($articles ?? null, 'getCollection')
+    $latestArticles = is_object($articles ?? null) && method_exists($articles, 'getCollection')
         ? $articles->getCollection()->take(6)
         : collect($articles ?? [])->take(6);
     $sidebarArticles = $sidebarHotArticles->isNotEmpty() ? $sidebarHotArticles : $latestArticles;

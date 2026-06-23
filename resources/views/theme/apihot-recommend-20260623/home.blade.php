@@ -5,7 +5,7 @@
         $recommendSchemaAtContext = chr(64).'context';
         $recommendSchemaAtType = chr(64).'type';
         $recommendSchemaItems = [];
-        foreach ((method_exists($articles, 'getCollection') ? $articles->getCollection() : collect($articles))->take(10) as $schemaArticle) {
+        foreach ((is_object($articles ?? null) && method_exists($articles, 'getCollection') ? $articles->getCollection() : collect($articles ?? []))->take(10) as $schemaArticle) {
             $recommendSchemaItems[] = [
                 $recommendSchemaAtType => 'ListItem',
                 'position' => count($recommendSchemaItems) + 1,
@@ -38,14 +38,14 @@
             ? (bool) $showHomepageModules
             : (($activeNav ?? '') === 'home');
         $isRecommendationHome = $recommendSearch === '' && !($categoryMissing ?? false) && $recommendShowHomepage;
-        $latestRecommendationArticles = method_exists($articles, 'getCollection') ? $articles->getCollection()->take(10) : collect($articles ?? [])->take(10);
+        $latestRecommendationArticles = is_object($articles ?? null) && method_exists($articles, 'getCollection') ? $articles->getCollection()->take(10) : collect($articles ?? [])->take(10);
     @endphp
 
     @if(! $isRecommendationHome)
 @include("site.partials.homepage-modules", ["homepageModules" => $homepageModules ?? [], "homepageStyle" => $homepageStyle ?? [], "showHomepageModules" => $showHomepageModules ?? false, "articles" => $articles ?? collect(), "featuredArticles" => $featuredArticles ?? collect(), "hotArticles" => $hotArticles ?? collect()])
 
 @php
-        $homeArticles = method_exists($articles, 'getCollection') ? $articles->getCollection() : collect($articles);
+        $homeArticles = is_object($articles ?? null) && method_exists($articles, 'getCollection') ? $articles->getCollection() : collect($articles ?? []);
         $homepageHotArticles = collect($hotArticles ?? []);
         $isDefaultHome = $search === '' && !$category && !$categoryMissing;
         $leadArticle = $isDefaultHome ? ($featuredArticles->first() ?: $homeArticles->first()) : null;

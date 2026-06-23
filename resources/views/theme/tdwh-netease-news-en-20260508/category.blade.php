@@ -9,7 +9,7 @@
         $schemaAtContext = chr(64).'context';
         $schemaAtType = chr(64).'type';
         $schemaItems = [];
-        foreach ((method_exists($articles, 'getCollection') ? $articles->getCollection() : collect($articles))->take(10) as $schemaArticle) {
+        foreach ((is_object($articles ?? null) && method_exists($articles, 'getCollection') ? $articles->getCollection() : collect($articles ?? []))->take(10) as $schemaArticle) {
             $schemaItems[] = [
                 $schemaAtType => 'ListItem',
                 'position' => count($schemaItems) + 1,

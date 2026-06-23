@@ -293,6 +293,27 @@ MD);
             ->assertSee('首页精选文章');
     }
 
+    public function test_homepage_modules_partial_tolerates_missing_article_collection(): void
+    {
+        $html = view('site.partials.homepage-modules', [
+            'homepageModules' => [],
+            'homepageStyle' => [],
+            'showHomepageModules' => false,
+        ])->render();
+
+        $this->assertSame('', trim($html));
+    }
+
+    public function test_theme_sidebar_tolerates_missing_article_collection(): void
+    {
+        $html = view('theme.apihot-recommend-20260623.partials.sidebar', [
+            'siteTitle' => 'GEOFlow',
+            'showFeedPanel' => false,
+        ])->render();
+
+        $this->assertStringContainsString(__('site.home_empty_title'), $html);
+    }
+
     public function test_frontend_category_navigation_hides_categories_without_published_articles(): void
     {
         $visibleCategory = Category::query()->create([
