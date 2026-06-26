@@ -39,6 +39,7 @@
             : (($activeNav ?? '') === 'home');
         $isRecommendationHome = $recommendSearch === '' && !($categoryMissing ?? false) && $recommendShowHomepage;
         $latestRecommendationArticles = is_object($articles ?? null) && method_exists($articles, 'getCollection') ? $articles->getCollection()->take(10) : collect($articles ?? [])->take(10);
+        $reviewCenterUrl = route('site.category', 'pc');
     @endphp
 
     @if(! $isRecommendationHome)
@@ -161,6 +162,7 @@
 <div class="nav-links">
 <a href="{{ route('site.home') }}">监控总览</a>
 <a class="active" href="{{ route('site.home') }}">精选推荐</a>
+<a href="{{ $reviewCenterUrl }}">评测中心</a>
 <a href="#ranks">通道明细</a>
 <a href="#picks">供应商</a>
 <a href="#certify">监控策略</a>
@@ -324,8 +326,11 @@
 </article>
 </section>
 <div class="section-head" id="latest-articles">
+<div>
 <h2>最新文章 <span class="tag">最近 10 篇</span></h2>
 <span class="sub">自动调用当前 GEOFlow 站点按发布时间排序的最新内容</span>
+</div>
+<a class="btn btn-ghost btn-sm" href="{{ $reviewCenterUrl }}">更多</a>
 </div>
 <section aria-label="最新文章" class="tk-latest-panel">
 <div class="tk-latest-grid">
@@ -361,7 +366,7 @@
     @endforelse
   </div>
 <div class="tk-latest-more">
-<a class="btn btn-primary" href="{{ route('site.archive') }}">查看更多文章 →</a>
+<a class="btn btn-primary" href="{{ $reviewCenterUrl }}">查看更多文章 →</a>
 </div>
 </section>
 

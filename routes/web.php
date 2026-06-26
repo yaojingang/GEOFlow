@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DistributionController;
+use App\Http\Controllers\Admin\EnterpriseKnowledgeController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
@@ -113,6 +114,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('create', [DistributionController::class, 'store'])->name('store');
             Route::get('jobs', [DistributionController::class, 'jobs'])->name('jobs');
             Route::post('sync-settings-all', [DistributionController::class, 'syncSettingsAll'])->name('sync-settings-all');
+            Route::post('sync-settings-selected', [DistributionController::class, 'syncSettingsSelected'])->name('sync-settings-selected');
             Route::get('jobs/{distributionId}/edit', [DistributionController::class, 'editArticle'])->name('article.edit')->whereNumber('distributionId');
             Route::put('jobs/{distributionId}', [DistributionController::class, 'updateArticle'])->name('article.update')->whereNumber('distributionId');
             Route::post('jobs/{distributionId}/delete', [DistributionController::class, 'deleteArticle'])->name('article.delete')->whereNumber('distributionId');
@@ -226,6 +228,24 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::put('{knowledgeBaseId}/detail', [KnowledgeBaseController::class, 'updateFromDetail'])->name('detail.update');
             Route::put('{knowledgeBaseId}', [KnowledgeBaseController::class, 'update'])->name('update');
             Route::post('{knowledgeBaseId}/delete', [KnowledgeBaseController::class, 'destroy'])->name('delete');
+        });
+
+        Route::prefix('enterprise-knowledge')->name('enterprise-knowledge.')->group(function () {
+            Route::get('/', [EnterpriseKnowledgeController::class, 'index'])->name('index');
+            Route::get('create', [EnterpriseKnowledgeController::class, 'create'])->name('create');
+            Route::post('create', [EnterpriseKnowledgeController::class, 'store'])->name('store');
+            Route::get('{projectId}/status', [EnterpriseKnowledgeController::class, 'status'])->name('status')->whereNumber('projectId');
+            Route::post('{projectId}/editor/images/upload', [EnterpriseKnowledgeController::class, 'uploadImage'])
+                ->name('editor.images.upload')
+                ->whereNumber('projectId');
+            Route::get('{projectId}', [EnterpriseKnowledgeController::class, 'show'])->name('show')->whereNumber('projectId');
+            Route::post('{projectId}/autosave', [EnterpriseKnowledgeController::class, 'autosave'])->name('autosave')->whereNumber('projectId');
+            Route::post('{projectId}/validate', [EnterpriseKnowledgeController::class, 'validateDraft'])->name('validate')->whereNumber('projectId');
+            Route::post('{projectId}/revisions/{revisionId}/restore', [EnterpriseKnowledgeController::class, 'restoreRevision'])
+                ->name('revisions.restore')
+                ->whereNumber(['projectId', 'revisionId']);
+            Route::post('{projectId}/publish', [EnterpriseKnowledgeController::class, 'publish'])->name('publish')->whereNumber('projectId');
+            Route::post('{projectId}/delete', [EnterpriseKnowledgeController::class, 'destroy'])->name('delete')->whereNumber('projectId');
         });
 
         // 业务页面

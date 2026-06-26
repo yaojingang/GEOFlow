@@ -25,7 +25,7 @@
     "footer": "Recommendation-page footer from the local static page on the default homepage; base GEOFlow footer remains elsewhere.",
     "home.hero": "Static recommendation hero adapted from the local recommend page.",
     "home.recommendation_cards": "Three curated recommendation cards for AIGoCode, PackyAPI, and PipeLLM.",
-    "home.latest_articles": "Dynamic latest 10 published articles, rendered after the recommendation cards with GEOFlow article routes and summaries.",
+    "home.latest_articles": "Dynamic latest 10 published articles, rendered after the recommendation cards with GEOFlow article routes and summaries; homepage More actions point to the pc review-center category.",
     "home.rank_table": "Static recommendation comparison table from the local page.",
     "home.workflow_blocks": "Static gateway setup, scenario, certification, and API readiness blocks from the local page.",
     "home.article_card": "Latest-article cards using existing article paginator data.",

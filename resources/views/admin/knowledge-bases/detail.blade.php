@@ -1,5 +1,65 @@
 @extends('admin.layouts.app')
 
+@php
+    $vditorLocaleMap = [
+        'zh_CN' => 'zh_CN',
+        'en' => 'en_US',
+        'en_US' => 'en_US',
+        'ja' => 'ja_JP',
+        'ja_JP' => 'ja_JP',
+        'ru' => 'ru_RU',
+        'ru_RU' => 'ru_RU',
+        'pt_BR' => 'pt_BR',
+        'es' => 'es_ES',
+        'es_ES' => 'es_ES',
+    ];
+    $vditorLang = $vditorLocaleMap[str_replace('-', '_', app()->getLocale())] ?? 'en_US';
+@endphp
+
+@push('styles')
+    <link rel="stylesheet" href="{{ asset('vendor/vditor/dist/index.css') }}">
+    <style>
+        .knowledge-markdown-editor .vditor {
+            border: 0;
+            border-radius: 0 0 0.75rem 0.75rem;
+            min-height: 720px;
+        }
+
+        .knowledge-markdown-editor .vditor-toolbar {
+            background: #f9fafb;
+            border-bottom-color: #e5e7eb;
+            padding: 8px 10px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .knowledge-markdown-editor .vditor-ir,
+        .knowledge-markdown-editor .vditor-sv,
+        .knowledge-markdown-editor .vditor-wysiwyg {
+            min-height: 660px;
+            padding: 30px 36px;
+            font-size: 16px;
+            line-height: 1.85;
+        }
+
+        .knowledge-markdown-editor .vditor-reset {
+            color: #111827;
+        }
+
+        .knowledge-markdown-editor .vditor-reset h1,
+        .knowledge-markdown-editor .vditor-reset h2,
+        .knowledge-markdown-editor .vditor-reset h3 {
+            color: #111827;
+            letter-spacing: 0;
+        }
+
+        .knowledge-markdown-editor .vditor-preview {
+            background: #fff;
+        }
+    </style>
+@endpush
+
 @section('content')
     <div class="px-4 sm:px-0">
         <div class="mb-8 flex items-center justify-between">
@@ -18,7 +78,7 @@
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">{{ __('admin.knowledge_detail.content_title') }}</h3>
             </div>
-            <form method="POST" action="{{ route('admin.knowledge-bases.detail.update', ['knowledgeBaseId' => (int) $knowledgeBase->id]) }}" class="p-6 space-y-4">
+            <form id="knowledge-detail-form" method="POST" action="{{ route('admin.knowledge-bases.detail.update', ['knowledgeBaseId' => (int) $knowledgeBase->id]) }}" class="p-6 space-y-4">
                 @csrf
                 @method('PUT')
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -41,15 +101,33 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.knowledge_detail.field_content') }}</label>
-                    <textarea name="content" rows="18" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm" required>{{ old('content', (string) ($knowledgeBase->content ?? '')) }}</textarea>
-                </div>
-                <div class="flex justify-end">
-                    <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm text-white bg-orange-600 hover:bg-orange-700">
-                        <i data-lucide="save" class="w-4 h-4 mr-2"></i>
-                        {{ __('admin.knowledge_detail.save_changes') }}
-                    </button>
+                    <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                        <div class="flex flex-col gap-3 border-b border-gray-200 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                            <span class="inline-flex w-fit items-center rounded-full bg-orange-50 px-3 py-1 text-sm font-semibold text-orange-700">
+                                <i data-lucide="file-pen-line" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.knowledge_detail.editor_badge') }}
+                            </span>
+                            <span class="text-sm text-gray-500">{{ __('admin.knowledge_detail.editor_hint') }}</span>
+                        </div>
+                        <textarea id="knowledge-content-textarea" name="content" rows="18" class="hidden w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm">{{ old('content', (string) ($knowledgeBase->content ?? '')) }}</textarea>
+                        <div id="knowledge-content-editor" class="knowledge-markdown-editor min-h-[720px]"></div>
+                    </div>
                 </div>
             </form>
+            <div class="-mt-2 flex flex-col gap-3 px-6 pb-6 sm:flex-row sm:items-center sm:justify-end">
+                <form method="POST" action="{{ route('admin.knowledge-bases.chunks.refresh', ['knowledgeBaseId' => (int) $knowledgeBase->id]) }}">
+                    @csrf
+                    <input type="hidden" name="redirect_to" value="{{ route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $knowledgeBase->id], false) }}">
+                    <button type="submit" class="inline-flex w-full items-center justify-center rounded-md border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100 sm:w-auto" title="{{ __('admin.knowledge_detail.resubmit_chunks_help') }}">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
+                        {{ __('admin.knowledge_detail.resubmit_chunks') }}
+                    </button>
+                </form>
+                <button type="submit" form="knowledge-detail-form" class="inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-md text-sm text-white bg-orange-600 hover:bg-orange-700">
+                    <i data-lucide="save" class="w-4 h-4 mr-2"></i>
+                    {{ __('admin.knowledge_detail.save_changes') }}
+                </button>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
@@ -152,3 +230,81 @@
         </div>
     </div>
 @endsection
+
+@push('scripts')
+    <script src="{{ asset('vendor/vditor/dist/index.min.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const textarea = document.getElementById('knowledge-content-textarea');
+            const editorNode = document.getElementById('knowledge-content-editor');
+            const form = document.getElementById('knowledge-detail-form');
+
+            if (!textarea || !editorNode) {
+                return;
+            }
+
+            if (typeof Vditor === 'undefined') {
+                textarea.classList.remove('hidden');
+                textarea.required = true;
+                editorNode.classList.add('hidden');
+                return;
+            }
+
+            let editor = null;
+
+            editor = new Vditor('knowledge-content-editor', {
+                value: textarea.value || '',
+                height: 720,
+                mode: 'wysiwyg',
+                cdn: @json(asset('vendor/vditor')),
+                lang: @json($vditorLang),
+                cache: { enable: false },
+                preview: {
+                    markdown: { toc: true },
+                    hljs: { lineNumber: false },
+                },
+                toolbar: [
+                    'emoji',
+                    'headings',
+                    'bold',
+                    'italic',
+                    'strike',
+                    '|',
+                    'line',
+                    'quote',
+                    'list',
+                    'ordered-list',
+                    'check',
+                    '|',
+                    'code',
+                    'inline-code',
+                    'table',
+                    'link',
+                    '|',
+                    'undo',
+                    'redo',
+                    'fullscreen',
+                    'preview',
+                ],
+                input(value) {
+                    textarea.value = value;
+                },
+                after() {
+                    if (editor) {
+                        textarea.value = editor.getValue();
+                    }
+
+                    if (window.lucide) {
+                        window.lucide.createIcons();
+                    }
+                },
+            });
+
+            form?.addEventListener('submit', () => {
+                if (editor) {
+                    textarea.value = editor.getValue();
+                }
+            });
+        });
+    </script>
+@endpush

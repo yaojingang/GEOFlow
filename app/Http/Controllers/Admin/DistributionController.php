@@ -655,13 +655,7 @@ class DistributionController extends Controller
 
     public function syncSettingsAll(): RedirectResponse
     {
-        $channels = DistributionChannel::query()
-            ->with('activeSecret')
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('channel_type')
-                    ->orWhere('channel_type', 'geoflow_agent');
-            })
+        $channels = $this->syncableAgentChannelsQuery()
             ->orderBy('id')
             ->get();
 
@@ -687,6 +681,62 @@ class DistributionController extends Controller
         return $failed > 0
             ? back()->with('message', $message)->withErrors(__('admin.distribution.message.settings_synced_all_failed_hint'))
             : back()->with('message', $message);
+    }
+
+    public function syncSettingsSelected(Request $request): RedirectResponse
+    {
+        $channelIds = collect($request->input('channel_ids', []))
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($channelIds->isEmpty()) {
+            return back()->withErrors(__('admin.distribution.message.settings_sync_selected_empty'));
+        }
+
+        $channels = $this->syncableAgentChannelsQuery()
+            ->whereIn('id', $channelIds->all())
+            ->orderBy('id')
+            ->get();
+
+        if ($channels->isEmpty()) {
+            return back()->withErrors(__('admin.distribution.message.settings_sync_selected_empty'));
+        }
+
+        $synced = 0;
+        $failed = 0;
+        $refreshCount = 0;
+        foreach ($channels as $channel) {
+            try {
+                $this->syncChannelSiteSettings($channel);
+                $refreshCount += $this->distributionOrchestrator->enqueueChannelContentRefresh($channel);
+                $synced++;
+            } catch (Throwable) {
+                $failed++;
+            }
+        }
+
+        $message = __('admin.distribution.message.settings_synced_selected', [
+            'success' => $synced,
+            'failed' => $failed,
+            'refresh' => $refreshCount,
+        ]);
+
+        return $failed > 0
+            ? back()->with('message', $message)->withErrors(__('admin.distribution.message.settings_synced_all_failed_hint'))
+            : back()->with('message', $message);
+    }
+
+    private function syncableAgentChannelsQuery()
+    {
+        return DistributionChannel::query()
+            ->with('activeSecret')
+            ->where('status', 'active')
+            ->where(function ($query): void {
+                $query->whereNull('channel_type')
+                    ->orWhere('channel_type', 'geoflow_agent');
+            });
     }
 
     /**

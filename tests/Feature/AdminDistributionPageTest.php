@@ -1325,6 +1325,120 @@ class AdminDistributionPageTest extends TestCase
         Queue::assertPushed(ProcessArticleDistributionJob::class, 1);
     }
 
+    public function test_admin_can_sync_selected_active_geoflow_agent_channel_settings(): void
+    {
+        Queue::fake();
+        Http::fake([
+            'https://selected-one.example.com/geoflow-agent/v1/site-settings' => Http::response([
+                'ok' => true,
+                'updated' => true,
+            ]),
+            'https://selected-two.example.com/geoflow-agent/v1/site-settings' => Http::response([
+                'ok' => true,
+                'updated' => true,
+            ]),
+            '*' => Http::response(['ok' => false], 500),
+        ]);
+
+        $first = DistributionChannel::query()->create([
+            'name' => '所选一号站',
+            'domain' => 'selected-one.example.com',
+            'endpoint_url' => 'https://selected-one.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $first->id,
+            'key_id' => 'gfk_sync_selected_one',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_sync_selected_one_secret'),
+            'status' => 'active',
+            'scopes' => ['site.settings.update'],
+        ]);
+
+        $second = DistributionChannel::query()->create([
+            'name' => '所选二号站',
+            'domain' => 'selected-two.example.com',
+            'endpoint_url' => 'https://selected-two.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $second->id,
+            'key_id' => 'gfk_sync_selected_two',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_sync_selected_two_secret'),
+            'status' => 'active',
+            'scopes' => ['site.settings.update'],
+        ]);
+
+        $unselected = DistributionChannel::query()->create([
+            'name' => '未选择站点',
+            'domain' => 'unselected.example.com',
+            'endpoint_url' => 'https://unselected.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $unselected->id,
+            'key_id' => 'gfk_sync_selected_unselected',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_sync_selected_unselected_secret'),
+            'status' => 'active',
+            'scopes' => ['site.settings.update'],
+        ]);
+
+        $wordpress = DistributionChannel::query()->create([
+            'name' => 'WordPress',
+            'domain' => 'wp-selected.example.com',
+            'endpoint_url' => 'https://wp-selected.example.com',
+            'channel_type' => 'wordpress_rest',
+            'status' => 'active',
+        ]);
+
+        $paused = DistributionChannel::query()->create([
+            'name' => '暂停站',
+            'domain' => 'paused-selected.example.com',
+            'endpoint_url' => 'https://paused-selected.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'paused',
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.sync-settings-selected'), [
+                'channel_ids' => [
+                    (int) $first->id,
+                    (int) $second->id,
+                    (int) $unselected->id + 9999,
+                    (int) $wordpress->id,
+                    (int) $paused->id,
+                ],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('message', __('admin.distribution.message.settings_synced_selected', [
+                'success' => 2,
+                'failed' => 0,
+                'refresh' => 0,
+            ]));
+
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://selected-one.example.com/geoflow-agent/v1/site-settings'
+            && $request->hasHeader('X-GEOFlow-Event', 'site.settings.update'));
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://selected-two.example.com/geoflow-agent/v1/site-settings'
+            && $request->hasHeader('X-GEOFlow-Event', 'site.settings.update'));
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'unselected.example.com'));
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'wp-selected.example.com'));
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'paused-selected.example.com'));
+        Queue::assertNotPushed(ProcessArticleDistributionJob::class);
+    }
+
+    public function test_admin_must_select_at_least_one_channel_for_selected_settings_sync(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.sync-settings-selected'), [
+                'channel_ids' => [],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+    }
+
     public function test_admin_can_pause_distribution_channel_and_hide_it_from_task_form(): void
     {
         $admin = $this->admin();

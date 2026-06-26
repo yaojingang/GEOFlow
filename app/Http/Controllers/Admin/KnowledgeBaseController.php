@@ -205,14 +205,14 @@ class KnowledgeBaseController extends Controller
         return redirect()->route('admin.knowledge-bases.index')->with('message', __('admin.knowledge_bases.message.delete_success'));
     }
 
-    public function refreshChunks(int $knowledgeBaseId): RedirectResponse
+    public function refreshChunks(Request $request, int $knowledgeBaseId): RedirectResponse
     {
         $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
         $content = trim((string) ($knowledgeBase->content ?? ''));
+        $redirect = $this->knowledgeChunkRefreshRedirect($request);
 
         if ($content === '') {
-            return redirect()
-                ->route('admin.knowledge-bases.index')
+            return $redirect
                 ->withErrors(__('admin.knowledge_bases.error.content_required'));
         }
 
@@ -222,16 +222,14 @@ class KnowledgeBaseController extends Controller
             $vectorizedCount = (int) ($stats['vectorized_count'] ?? 0);
 
             if ($chunkCount > 0 && $vectorizedCount < $chunkCount) {
-                return redirect()
-                    ->route('admin.knowledge-bases.index')
+                return $redirect
                     ->withErrors(__('admin.knowledge_bases.error.embedding_sync_partial', [
                         'chunks' => $chunkCount,
                         'vectorized' => $vectorizedCount,
                     ]));
             }
 
-            return redirect()
-                ->route('admin.knowledge-bases.index')
+            return $redirect
                 ->with('message', __('admin.knowledge_bases.message.chunks_refreshed', [
                     'chunks' => $chunkCount,
                     'vectorized' => $vectorizedCount,
@@ -239,12 +237,23 @@ class KnowledgeBaseController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
 
-            return redirect()
-                ->route('admin.knowledge-bases.index')
+            return $redirect
                 ->withErrors(__('admin.knowledge_bases.message.chunks_refresh_error', [
                     'message' => $exception->getMessage(),
                 ]));
         }
+    }
+
+    private function knowledgeChunkRefreshRedirect(Request $request): RedirectResponse
+    {
+        $redirectTo = trim((string) $request->input('redirect_to', ''));
+        $allowedPrefix = route('admin.knowledge-bases.index', [], false);
+
+        if ($redirectTo !== '' && str_starts_with($redirectTo, $allowedPrefix) && ! str_starts_with($redirectTo, '//')) {
+            return redirect()->to($redirectTo);
+        }
+
+        return redirect()->route('admin.knowledge-bases.index');
     }
 
     /**
@@ -873,22 +882,35 @@ class KnowledgeBaseController extends Controller
 
     private function deleteKnowledgeFilePath(string $relativePath): void
     {
-        $relativePath = trim($relativePath);
-        if ($relativePath === '') {
+        $relativePath = $this->normalizeDeletableKnowledgePath($relativePath);
+        if ($relativePath === null) {
             return;
         }
 
-        // 兼容新旧两种路径：优先 Laravel local 磁盘，相对旧数据再回退到项目根目录删除。
         if (Storage::disk('local')->exists($relativePath)) {
             Storage::disk('local')->delete($relativePath);
+        }
+    }
 
-            return;
+    private function normalizeDeletableKnowledgePath(string $relativePath): ?string
+    {
+        $relativePath = trim(str_replace('\\', '/', $relativePath));
+        if (
+            $relativePath === ''
+            || str_starts_with($relativePath, '/')
+            || preg_match('/^[A-Za-z]:\//', $relativePath) === 1
+            || str_contains('/'.$relativePath.'/', '/../')
+        ) {
+            return null;
         }
 
-        $absolutePath = base_path(ltrim($relativePath, '/'));
-        if (is_file($absolutePath)) {
-            @unlink($absolutePath);
+        foreach (['knowledge-bases/', 'uploads/knowledge/'] as $allowedPrefix) {
+            if (str_starts_with($relativePath, $allowedPrefix)) {
+                return $relativePath;
+            }
         }
+
+        return null;
     }
 
     /**
