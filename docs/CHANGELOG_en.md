@@ -2,6 +2,38 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-06-26
+
+### v2.1.0
+
+- Added the Enterprise Knowledge drafting workflow:
+  - The admin now includes an Enterprise Knowledge entry for creating projects, uploading or pasting multiple source files, reviewing parsed sources, generating AI drafts, and viewing revision history.
+  - Added project, source, and revision tables plus a queued generation job, so long drafting runs can execute in the background instead of blocking the admin page.
+  - Source parsing covers common formats including text, Markdown, HTML, CSV, JSON, XML, PDF, Word, and Excel, with each source kept traceable.
+  - AI cleanup and structured organization now prioritize source coverage. Long inputs are processed by module, and missing source facts are backfilled into the relevant sections to reduce over-simplification.
+  - Draft output keeps modules, audience, content format, manual-review notes, and source summaries for later review and publishing.
+- Improved knowledge-base and material management:
+  - Knowledge-base detail pages now include a Markdown editor for viewing and adjusting knowledge content directly in the admin.
+  - Knowledge-base detail pages can resubmit semantic chunking and safely return to the detail page after the action.
+  - The materials page now links into the Enterprise Knowledge builder, making standard knowledge bases, material libraries, and Enterprise Knowledge drafts easier to connect.
+- Expanded themes, templates, and frontend output:
+  - Added live theme-template editing from the admin, with test coverage for the editing flow.
+  - Site settings now support homepage module configuration and custom styling, and target-site packages can sync richer homepage structures.
+  - Added the APIHot recommendation frontend theme with home, category, archive, article pages, and bundled assets.
+  - Unified frontend SEO metadata output so themes share the same SEO head logic and avoid inconsistent titles, Open Graph data, and structured data.
+- Improved Distribution Management and target-site synchronization:
+  - Tasks now include distribution strategies for local, channel-only, and local-plus-channel publishing.
+  - Article lists show clearer distribution status, remote-copy links, sync state, and failure information.
+  - Distribution Management can sync target-site settings for selected active GEOFlow Agent channels.
+  - Target-site packages now follow the same SEO metadata contract as local frontend pages.
+- Improved deployment and runtime stability:
+  - Added install-state tracking and default-data seed guards so existing deployments are not polluted by repeated demo data after restarts, migrations, or upgrades.
+  - Default-admin initialization now supports email configuration, with additional production entrypoint, Redis session, Docker image, network, permissions, and reverse-proxy improvements.
+  - Admin paths and Reverb auth paths now support subdirectory deployments, reducing asset and WebSocket issues when `APP_URL` includes a path prefix.
+- Expanded test coverage:
+  - Added tests for Enterprise Knowledge, theme editing, site settings, distribution strategies, target-site sync, SEO metadata, install guards, and deployment configuration.
+  - Full release verification passed with `479 passed` and `3179 assertions`.
+
 ## 2026-06-02
 
 ### v2.0.4
