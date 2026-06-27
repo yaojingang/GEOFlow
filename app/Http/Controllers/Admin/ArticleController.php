@@ -465,7 +465,7 @@ class ArticleController extends Controller
     }
 
     /**
-     * @return array{total: int, published: int, draft: int, pending_review: int, today: int}
+     * @return array{total: int, published: int, draft: int, pending_review: int, observed: int, today: int}
      */
     private function loadStats(): array
     {
@@ -476,6 +476,7 @@ class ArticleController extends Controller
             'published' => (clone $baseQuery)->where('status', 'published')->count(),
             'draft' => (clone $baseQuery)->where('status', 'draft')->count(),
             'pending_review' => (clone $baseQuery)->where('review_status', 'pending')->count(),
+            'observed' => (clone $baseQuery)->where('view_count', '>', 0)->count(),
             'today' => (clone $baseQuery)->whereDate('created_at', Carbon::today())->count(),
         ];
     }

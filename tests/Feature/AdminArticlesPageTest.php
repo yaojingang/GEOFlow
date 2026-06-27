@@ -12,6 +12,7 @@ use App\Models\DistributionChannel;
 use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\SiteSetting;
+use App\Models\Task;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -50,6 +51,82 @@ class AdminArticlesPageTest extends TestCase
             ->assertViewHas('filters');
     }
 
+    public function test_articles_page_shows_content_engineering_workbench_with_pipeline_counts(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_workbench_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-workbench-admin@example.com',
+            'display_name' => 'Articles Workbench Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '内容工程分类',
+            'slug' => 'content-engineering-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+
+        Article::query()->create([
+            'title' => '待审核草稿',
+            'slug' => 'pending-review-draft',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+        Article::query()->create([
+            'title' => '已发布待观测内容',
+            'slug' => 'published-before-observation',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        Article::query()->create([
+            'title' => '已有观测数据内容',
+            'slug' => 'observed-content',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'view_count' => 8,
+            'published_at' => now(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.index'))
+            ->assertOk()
+            ->assertSee(__('admin.articles.workbench.title'))
+            ->assertSee(__('admin.articles.workbench.review_title'))
+            ->assertSee(__('admin.articles.workbench.optimize_title'))
+            ->assertSee(__('admin.articles.workbench.distribution_title'))
+            ->assertSee(__('admin.articles.workbench.observation_title'))
+            ->assertSee(__('admin.articles.workbench.current_action_title'))
+            ->assertSee(__('admin.articles.workbench.current_action_desc', [
+                'count' => 2,
+                'stage' => __('admin.articles.workbench.distribution_title'),
+            ]))
+            ->assertSee(__('admin.articles.workbench.current_action_button'))
+            ->assertSee(route('admin.articles.index', ['review_status' => 'pending']), false)
+            ->assertSee(route('admin.articles.index', ['status' => 'draft']), false)
+            ->assertSee(route('admin.articles.index', ['status' => 'published']), false)
+            ->assertSee(route('admin.analytics'), false)
+            ->assertViewHas('stats', fn (array $stats): bool => $stats['pending_review'] === 1
+                && $stats['draft'] === 1
+                && $stats['published'] === 2
+                && $stats['observed'] === 1);
+    }
+
     public function test_authenticated_admin_can_open_article_create_page(): void
     {
         $admin = Admin::query()->create([
@@ -64,7 +141,17 @@ class AdminArticlesPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.articles.create'))
             ->assertOk()
-            ->assertSee(__('admin.article_create.page_heading'));
+            ->assertSee(__('admin.article_create.page_heading'))
+            ->assertSeeInOrder([
+                __('admin.article_create.section.content_title'),
+                __('admin.articles.quality_scorecard.title'),
+                __('admin.article_create.section.seo_title'),
+            ])
+            ->assertSee(__('admin.articles.quality_scorecard.title'))
+            ->assertSee(__('admin.articles.quality_scorecard.manual_label'))
+            ->assertSee(__('admin.articles.quality_scorecard.dynamic_title'))
+            ->assertSee(__('admin.articles.quality_scorecard.check_excerpt_pending'))
+            ->assertSee(__('admin.articles.quality_scorecard.pending_label'));
     }
 
     public function test_article_edit_page_renders_markdown_editor_assets_and_upload_route(): void
@@ -84,15 +171,22 @@ class AdminArticlesPageTest extends TestCase
         $author = Author::query()->create([
             'name' => 'GEOFlow',
         ]);
+        $task = Task::query()->create([
+            'name' => 'GEO 内容工程演示任务',
+        ]);
         $article = Article::query()->create([
             'title' => 'Markdown 编辑器测试文章',
             'slug' => 'markdown-editor-article',
             'excerpt' => '摘要',
             'content' => "## 小节\n\n正文",
+            'keywords' => 'GEO,内容工程',
+            'meta_description' => '用于验证 GEO 质量评分卡的 SEO 描述。',
             'category_id' => $category->id,
             'author_id' => $author->id,
-            'status' => 'draft',
-            'review_status' => 'pending',
+            'task_id' => $task->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
         ]);
 
         $this->actingAs($admin, 'admin')
@@ -109,6 +203,20 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee('id="article-editor-context-menu"', false)
             ->assertSee(__('admin.article_editor.copy.button'), false)
             ->assertSee(__('admin.article_editor.wechat.button'), false)
+            ->assertSee(__('admin.articles.quality_scorecard.title'))
+            ->assertSee(__('admin.articles.quality_scorecard.dynamic_title'))
+            ->assertSee(__('admin.articles.quality_scorecard.structure_title'))
+            ->assertSee(__('admin.articles.quality_scorecard.ready_label'))
+            ->assertSee(__('admin.articles.quality_scorecard.check_excerpt_pass'))
+            ->assertSee(__('admin.articles.quality_scorecard.check_seo_pass'))
+            ->assertSee(__('admin.articles.quality_scorecard.check_publish_pass'))
+            ->assertSee(__('admin.articles.quality_scorecard.check_review_pass'))
+            ->assertSee(__('admin.articles.quality_scorecard.check_source_pass'))
+            ->assertSeeInOrder([
+                __('admin.article_edit.section.content_title'),
+                __('admin.articles.quality_scorecard.title'),
+                __('admin.article_edit.section.seo_title'),
+            ])
             ->assertSee('navigator.clipboard.writeText', false)
             ->assertSee('ClipboardItem', false)
             ->assertSee(__('admin.article_editor.quick_actions.image'), false)

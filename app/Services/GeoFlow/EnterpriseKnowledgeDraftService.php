@@ -273,12 +273,13 @@ final class EnterpriseKnowledgeDraftService
 2. 先穷举盘点输入资料中的事实、能力、场景、案例、FAQ、限制条件、流程、参数、限制和风险表述，再整理成结构化知识稿，不能遗漏高价值信息。
 3. 只能基于输入资料，不要编造事实、客户、案例、价格、资质、效果数据或承诺。
 4. 可以做轻量清洗和小错误纠正，例如错别字、标点、重复空白、明显格式错误；不确定、需要补传或需要人工确认的信息，统一放入“待人工确认”。
-5. 输出必须个性化贴合资料内容，不要套用固定模板、通用行业话术或空泛营销表达。
-6. 资料不足时写“资料中未发现明确信息，建议人工补充或补传资料。”，不要把缺失内容扩写成事实。
-7. 正文要像正式企业知识库内容，不输出来源清单、来源编号、角标引用、文件名列表、资料数量、字数、字符数或处理过程说明。
-8. 禁用表述要结合资料中的风险词和绝对化表达，列出不应在内容生成中使用的说法。
-9. 输出必须包含：企业介绍、业务信息摘要、产品能力、应用场景、典型案例、FAQ、禁用表述、风险与冲突、待人工确认。
-10. 宁可用更多条目保留原资料细节，也不要把多个不同事实压缩成一句泛泛总结；产品功能、服务流程、适用对象、交付方式、边界条件、FAQ 问答、案例线索都要尽量逐条保留。
+5. 每个知识点尽量整理成“知识原子”：明确主张、适用对象/业务线/时间边界、可核验依据线索、风险或待确认状态。
+6. 输出必须个性化贴合资料内容，不要套用固定模板、通用行业话术或空泛营销表达。
+7. 资料不足时写“资料中未发现明确信息，建议人工补充或补传资料。”，不要把缺失内容扩写成事实。
+8. 正文要像正式企业知识库内容，不输出来源清单、来源编号、角标引用、文件名列表、资料数量、字数、字符数或处理过程说明。
+9. 禁用表述要结合资料中的风险词和绝对化表达，列出不应在内容生成中使用的说法。
+10. 输出必须包含：企业介绍、业务信息摘要、产品能力、应用场景、典型案例、FAQ、禁用表述、风险与冲突、待人工确认。
+11. 宁可用更多条目保留原资料细节，也不要把多个不同事实压缩成一句泛泛总结；产品功能、服务流程、适用对象、交付方式、边界条件、FAQ 问答、案例线索都要尽量逐条保留。
 PROMPT;
     }
 
@@ -489,9 +490,8 @@ PROMPT;
     }
 
     /**
-     * @return array{content:string,source:string,model_id:?int,error:?string}
-     *
      * @param  list<array{name:string,type:string,content:string,characters:int}>  $sourceBlocks
+     * @return array{content:string,source:string,model_id:?int,error:?string}
      */
     private function buildFallbackDraft(EnterpriseKnowledgeProject $project, string $sourceText, array $sourceBlocks): array
     {
@@ -718,6 +718,7 @@ MARKDOWN;
                 if ($heading === $section) {
                     $capturing = true;
                     $baseLevel = $level;
+
                     continue;
                 }
             }
@@ -831,6 +832,7 @@ MARKDOWN;
 
             if (preg_match('/^(```+|~~~+)/u', $trimmed) === 1) {
                 $inFence = ! $inFence;
+
                 continue;
             }
 
@@ -895,6 +897,7 @@ MARKDOWN;
             $lineChars = mb_strlen($text, 'UTF-8') + 3;
             if ($usedChars + $lineChars > self::SOURCE_COVERAGE_APPEND_CHAR_LIMIT) {
                 $overflowCount++;
+
                 continue;
             }
 

@@ -96,6 +96,7 @@ class AdminMaterialsPagesTest extends TestCase
             ->assertSee(__('admin.materials.page_title'))
             ->assertSee(__('admin.materials.knowledge_hub_label'))
             ->assertSee(__('admin.materials.knowledge_hub_vector_progress'))
+            ->assertSee(__('admin.materials.evidence_layer_title'))
             ->assertSeeInOrder([
                 __('admin.materials.knowledge_hub_create'),
                 __('admin.materials.manage_knowledge_bases'),
@@ -162,6 +163,47 @@ class AdminMaterialsPagesTest extends TestCase
             ->assertSee(__('admin.url_import_history.page_title'));
     }
 
+    public function test_materials_page_counts_high_risk_unreviewed_knowledge_as_pending(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'materials_evidence_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-evidence-admin@example.com',
+            'display_name' => 'Materials Evidence Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        KnowledgeBase::query()->create([
+            'name' => '待审核高风险知识',
+            'content' => '包含待确认风险表述。',
+            'file_type' => 'markdown',
+            'risk_level' => 'high',
+            'review_status' => 'unreviewed',
+        ]);
+        KnowledgeBase::query()->create([
+            'name' => '待审核高风险知识 2',
+            'content' => '另一条待确认风险表述。',
+            'file_type' => 'markdown',
+            'risk_level' => 'high',
+            'review_status' => 'unreviewed',
+        ]);
+        KnowledgeBase::query()->create([
+            'name' => '已审核高风险知识',
+            'content' => '已经人工确认。',
+            'file_type' => 'markdown',
+            'risk_level' => 'high',
+            'review_status' => 'reviewed',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.materials.index'))
+            ->assertOk()
+            ->assertSee(__('admin.materials.evidence_risk_title'))
+            ->assertSee(__('admin.materials.evidence_risk_desc'))
+            ->assertSee('>2<', false);
+    }
+
     public function test_admin_can_create_knowledge_base_from_form(): void
     {
         $admin = Admin::query()->create([
@@ -224,7 +266,7 @@ class AdminMaterialsPagesTest extends TestCase
                 'content' => "手动输入的 GEO 背景。\n\n第二段。",
                 'knowledge_files' => [
                     UploadedFile::fake()->createWithContent('alpha.md', "# Alpha\nMarkdown 内容"),
-                    UploadedFile::fake()->createWithContent('beta.txt', "Beta 文本内容"),
+                    UploadedFile::fake()->createWithContent('beta.txt', 'Beta 文本内容'),
                 ],
             ])
             ->assertRedirect(route('admin.knowledge-bases.index'));

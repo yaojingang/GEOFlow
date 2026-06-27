@@ -33,14 +33,36 @@ class AdminDashboardQuickStartTest extends TestCase
             ->assertSee(__('admin.dashboard.automation.flow_title'))
             ->assertSee(__('admin.dashboard.automation.recommendations_title'))
             ->assertSee(__('admin.dashboard.automation.recommendations_empty'))
-            ->assertSee(__('admin.dashboard.automation.node_ai_title'))
-            ->assertSee(__('admin.dashboard.automation.node_distribution_title'))
+            ->assertDontSee('内容工程演示层')
+            ->assertDontSee('工程')
+            ->assertDontSee('�')
+            ->assertSee(__('admin.dashboard.demo_journey.title'))
+            ->assertSee(__('admin.dashboard.demo_journey.assets_title'))
+            ->assertSee(__('admin.dashboard.demo_journey.quality_title'))
+            ->assertSee(__('admin.dashboard.demo_journey.observation_title'))
+            ->assertSee(__('admin.dashboard.automation.node_prompt_graph_title'))
+            ->assertSee(__('admin.dashboard.automation.node_content_title'))
+            ->assertSee(__('admin.dashboard.automation.node_authority_distribution_title'))
+            ->assertSee(__('admin.dashboard.automation.step_label', ['step' => '01']))
+            ->assertSee(__('admin.dashboard.automation.step_label', ['step' => '08']))
+            ->assertSee('id="content-engineering-step-01"', false)
+            ->assertSee('id="content-engineering-step-08"', false)
+            ->assertSeeInOrder([
+                __('admin.dashboard.automation.node_prompt_graph_title'),
+                __('admin.dashboard.automation.node_knowledge_assets_title'),
+                __('admin.dashboard.automation.node_evidence_structure_title'),
+                __('admin.dashboard.automation.node_engineering_task_title'),
+                __('admin.dashboard.automation.node_content_title'),
+                __('admin.dashboard.automation.node_quality_gate_title'),
+                __('admin.dashboard.automation.node_authority_distribution_title'),
+                __('admin.dashboard.automation.node_measurement_title'),
+            ])
             ->assertSee(__('admin.dashboard.automation.lane_single_title'))
             ->assertSee(__('admin.dashboard.automation.lane_multi_title'))
             ->assertSee(__('admin.dashboard.automation.lane_feedback_title'))
             ->assertSee(__('admin.dashboard.navigation.ai_config_title'))
             ->assertSee(__('admin.dashboard.navigation.materials_title'))
-            ->assertSee('配置素材库')
+            ->assertSee('知识资产与证据库')
             ->assertDontSee('建设素材库')
             ->assertSee(__('admin.dashboard.navigation.create_task_title'))
             ->assertSee(__('admin.dashboard.navigation.articles_title'))
@@ -74,6 +96,7 @@ class AdminDashboardQuickStartTest extends TestCase
             ->assertSee(route('admin.keyword-libraries.index'), false)
             ->assertSee(route('admin.image-libraries.index'), false)
             ->assertSee(route('admin.authors.index'), false)
+            ->assertSee(route('admin.materials.index'), false)
             ->assertSee(route('admin.tasks.create'), false)
             ->assertSee(route('admin.articles.index'), false)
             ->assertSee(route('admin.site-settings.index'), false)
@@ -105,6 +128,51 @@ class AdminDashboardQuickStartTest extends TestCase
         $this->assertStringNotContainsString(__('admin.dashboard.automation.metric_materials', ['count' => 449]), $html);
         $this->assertStringNotContainsString(__('admin.dashboard.automation.metric_vectorized', ['done' => 584, 'total' => 612]), $html);
         $this->assertStringNotContainsString(__('admin.dashboard.automation.metric_ai_today', ['count' => 74]), $html);
+    }
+
+    public function test_dashboard_description_copy_does_not_end_with_sentence_periods(): void
+    {
+        foreach (['zh_CN', 'en'] as $locale) {
+            app()->setLocale($locale);
+
+            $this->assertDashboardDescriptionsDoNotEndWithSentencePeriods(
+                trans('admin.dashboard'),
+                'admin.dashboard'
+            );
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $copy
+     */
+    private function assertDashboardDescriptionsDoNotEndWithSentencePeriods(array $copy, string $path): void
+    {
+        foreach ($copy as $key => $value) {
+            $nextPath = $path.'.'.$key;
+
+            if (is_array($value)) {
+                $this->assertDashboardDescriptionsDoNotEndWithSentencePeriods($value, $nextPath);
+
+                continue;
+            }
+
+            if (! is_string($value) || ! $this->isDashboardDescriptionKey((string) $key)) {
+                continue;
+            }
+
+            $this->assertFalse(
+                str_ends_with($value, '。') || str_ends_with($value, '.'),
+                "{$nextPath} should not end with sentence punctuation."
+            );
+        }
+    }
+
+    private function isDashboardDescriptionKey(string $key): bool
+    {
+        return $key === 'desc'
+            || $key === 'subtitle'
+            || $key === 'recommendations_empty'
+            || str_ends_with($key, '_desc');
     }
 
     public function test_welcome_modal_dismiss_url_is_relative_when_app_url_differs_from_origin(): void

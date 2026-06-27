@@ -47,6 +47,35 @@
             </div>
         </div>
 
+        <section class="mb-6 rounded-lg border border-blue-100 bg-white p-5 shadow-sm">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900">{{ $t('task_create.engineering.title') }}</h2>
+                    <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">{{ $t('task_create.engineering.desc') }}</p>
+                </div>
+                <span class="inline-flex w-fit items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                    <i data-lucide="workflow" class="mr-1.5 h-3.5 w-3.5"></i>
+                    {{ $t('task_create.engineering.badge') }}
+                </span>
+            </div>
+            <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                @foreach ([
+                    ['icon' => 'map', 'title' => $t('task_create.engineering.prompt_title'), 'desc' => $t('task_create.engineering.prompt_desc')],
+                    ['icon' => 'database', 'title' => $t('task_create.engineering.evidence_title'), 'desc' => $t('task_create.engineering.evidence_desc')],
+                    ['icon' => 'shield-check', 'title' => $t('task_create.engineering.gate_title'), 'desc' => $t('task_create.engineering.gate_desc')],
+                    ['icon' => 'radio-tower', 'title' => $t('task_create.engineering.distribution_title'), 'desc' => $t('task_create.engineering.distribution_desc')],
+                ] as $item)
+                    <article class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-md bg-white text-blue-600 ring-1 ring-blue-100">
+                            <i data-lucide="{{ $item['icon'] }}" class="h-5 w-5"></i>
+                        </div>
+                        <h3 class="mt-4 text-sm font-semibold text-gray-900">{{ $item['title'] }}</h3>
+                        <p class="mt-1 text-xs leading-5 text-gray-500">{{ $item['desc'] }}</p>
+                    </article>
+                @endforeach
+            </div>
+        </section>
+
         <div data-task-form-shell class="w-full">
             @if (! $hasCategories)
                 <div class="bg-amber-50 border border-amber-200 rounded-lg p-5">

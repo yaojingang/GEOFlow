@@ -5,7 +5,8 @@
         ? route('admin.knowledge-bases.update', ['knowledgeBaseId' => (int) $knowledgeBaseId])
         : route('admin.knowledge-bases.store');
     $focusUpload = ! $isEdit && request()->query('mode') === 'upload';
-    $fieldClass = 'w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm leading-6 shadow-sm transition focus:border-orange-500 focus:ring-orange-500';
+    $fieldClass = 'h-11 w-full rounded-lg border border-gray-300 px-3 text-sm leading-6 shadow-sm transition focus:border-orange-500 focus:ring-orange-500';
+    $selectClass = 'admin-knowledge-select h-11 w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-3 pr-11 text-sm leading-6 shadow-sm transition focus:border-orange-500 focus:ring-orange-500';
     $textareaClass = 'w-full rounded-lg border border-gray-300 px-3 py-3 text-sm leading-6 shadow-sm transition focus:border-orange-500 focus:ring-orange-500';
     $sourceTypeOptions = [
         'document' => __('admin.knowledge_bases.source_type_document'),
@@ -24,6 +25,31 @@
         'reviewed' => __('admin.knowledge_bases.review_status_reviewed'),
     ];
 @endphp
+
+@push('styles')
+    <style>
+        .admin-knowledge-select {
+            -webkit-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M5 7.5L10 12.5L15 7.5' stroke='%23111827' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3e%3c/svg%3e");
+            background-position: right 1rem center;
+            background-repeat: no-repeat;
+            background-size: 1rem 1rem;
+        }
+
+        .admin-knowledge-select::-ms-expand {
+            display: none;
+        }
+
+        .admin-knowledge-evidence-summary {
+            list-style: none;
+        }
+
+        .admin-knowledge-evidence-summary::-webkit-details-marker {
+            display: none;
+        }
+    </style>
+@endpush
 
 @section('content')
     <div class="px-4 sm:px-0">
@@ -73,7 +99,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_doc_type') }}</label>
-                            <select name="file_type" class="{{ $fieldClass }}">
+                            <select name="file_type" class="{{ $selectClass }}">
                                 <option value="markdown" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'markdown')>{{ __('admin.status.markdown') }}</option>
                                 <option value="word" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'word')>{{ __('admin.status.word_document') }}</option>
                                 <option value="text" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'text')>{{ __('admin.status.text') }}</option>
@@ -93,7 +119,7 @@
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_source_type') }}</label>
-                                    <select name="source_type" class="{{ $fieldClass }}">
+                                    <select name="source_type" class="{{ $selectClass }}">
                                         @foreach ($sourceTypeOptions as $value => $label)
                                             <option value="{{ $value }}" @selected(old('source_type', (string) ($knowledgeForm['source_type'] ?? 'document')) === $value)>{{ $label }}</option>
                                         @endforeach
@@ -110,7 +136,7 @@
                                 <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_risk_level') }}</label>
-                                        <select name="risk_level" class="{{ $fieldClass }}">
+                                        <select name="risk_level" class="{{ $selectClass }}">
                                             @foreach ($riskLevelOptions as $value => $label)
                                                 <option value="{{ $value }}" @selected(old('risk_level', (string) ($knowledgeForm['risk_level'] ?? 'medium')) === $value)>{{ $label }}</option>
                                             @endforeach
@@ -118,7 +144,7 @@
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_review_status') }}</label>
-                                        <select name="review_status" class="{{ $fieldClass }}">
+                                        <select name="review_status" class="{{ $selectClass }}">
                                             @foreach ($reviewStatusOptions as $value => $label)
                                                 <option value="{{ $value }}" @selected(old('review_status', (string) ($knowledgeForm['review_status'] ?? 'unreviewed')) === $value)>{{ $label }}</option>
                                             @endforeach
@@ -159,12 +185,21 @@
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_description') }}</label>
-                                    <textarea name="description" rows="3" class="{{ $textareaClass }} min-h-[104px]" placeholder="{{ __('admin.knowledge_bases.placeholder_description') }}" data-knowledge-description-input>{{ old('description', (string) ($knowledgeForm['description'] ?? '')) }}</textarea>
+                                    <input type="text" name="description" value="{{ old('description', (string) ($knowledgeForm['description'] ?? '')) }}" class="{{ $fieldClass }}" placeholder="{{ __('admin.knowledge_bases.placeholder_description') }}" data-knowledge-description-input>
                                 </div>
-                                <div class="border-t border-gray-100 pt-5 lg:col-span-2">
-                                    <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.knowledge_bases.evidence_metadata_title') }}</h3>
-                                    <p class="mt-1 text-sm text-gray-500">{{ __('admin.knowledge_bases.evidence_metadata_desc') }}</p>
-                                    <div class="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-3">
+                                <details class="group rounded-lg border border-gray-200 bg-gray-50/60 lg:col-span-2">
+                                    <summary class="admin-knowledge-evidence-summary flex cursor-pointer items-center justify-between gap-4 px-4 py-3">
+                                        <div class="min-w-0">
+                                            <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.knowledge_bases.evidence_metadata_title') }}</h3>
+                                            <p class="mt-0.5 text-sm text-gray-500">{{ __('admin.knowledge_bases.evidence_metadata_collapsed_desc') }}</p>
+                                        </div>
+                                        <span class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition group-open:text-orange-700 group-open:ring-orange-200">
+                                            <span class="group-open:hidden">{{ __('admin.knowledge_bases.evidence_metadata_expand') }}</span>
+                                            <span class="hidden group-open:inline">{{ __('admin.knowledge_bases.evidence_metadata_collapse') }}</span>
+                                            <i data-lucide="chevron-down" class="h-4 w-4 transition-transform group-open:rotate-180"></i>
+                                        </span>
+                                    </summary>
+                                    <div class="grid grid-cols-1 gap-5 border-t border-gray-200 bg-white px-4 py-4 lg:grid-cols-3">
                                         <div>
                                             <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_source_name') }}</label>
                                             <input type="text" name="source_name" value="{{ old('source_name', (string) ($knowledgeForm['source_name'] ?? '')) }}" class="{{ $fieldClass }}" placeholder="{{ __('admin.knowledge_bases.placeholder_source_name') }}">
@@ -175,7 +210,7 @@
                                         </div>
                                         <div>
                                             <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_source_type') }}</label>
-                                            <select name="source_type" class="{{ $fieldClass }}">
+                                            <select name="source_type" class="{{ $selectClass }}">
                                                 @foreach ($sourceTypeOptions as $value => $label)
                                                     <option value="{{ $value }}" @selected(old('source_type', (string) ($knowledgeForm['source_type'] ?? 'document')) === $value)>{{ $label }}</option>
                                                 @endforeach
@@ -192,7 +227,7 @@
                                         <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
                                             <div>
                                                 <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_risk_level') }}</label>
-                                                <select name="risk_level" class="{{ $fieldClass }}">
+                                                <select name="risk_level" class="{{ $selectClass }}">
                                                     @foreach ($riskLevelOptions as $value => $label)
                                                         <option value="{{ $value }}" @selected(old('risk_level', (string) ($knowledgeForm['risk_level'] ?? 'medium')) === $value)>{{ $label }}</option>
                                                     @endforeach
@@ -200,7 +235,7 @@
                                             </div>
                                             <div>
                                                 <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_review_status') }}</label>
-                                                <select name="review_status" class="{{ $fieldClass }}">
+                                                <select name="review_status" class="{{ $selectClass }}">
                                                     @foreach ($reviewStatusOptions as $value => $label)
                                                         <option value="{{ $value }}" @selected(old('review_status', (string) ($knowledgeForm['review_status'] ?? 'unreviewed')) === $value)>{{ $label }}</option>
                                                     @endforeach
@@ -208,7 +243,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                </details>
                             </div>
                         </div>
 

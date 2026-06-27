@@ -65,6 +65,26 @@
         <p class="mt-1 text-sm text-gray-600">{{ __('admin.analytics.overall_desc') }}</p>
     </div>
 
+    <div class="mb-5 grid grid-cols-1 gap-4 rounded-lg border border-blue-100 bg-white p-5 shadow-sm lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div>
+            <h3 class="text-base font-semibold text-gray-900">{{ __('admin.analytics.observation_title') }}</h3>
+            <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.analytics.observation_desc') }}</p>
+        </div>
+        <div class="grid grid-cols-1 gap-2 text-sm">
+            @foreach ([
+                ['icon' => 'file-text', 'label' => __('admin.analytics.observation_content')],
+                ['icon' => 'database', 'label' => __('admin.analytics.observation_assets')],
+                ['icon' => 'shield-check', 'label' => __('admin.analytics.observation_quality')],
+                ['icon' => 'bot', 'label' => __('admin.analytics.observation_ai')],
+            ] as $item)
+                <div class="flex items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-blue-700">
+                    <i data-lucide="{{ $item['icon'] }}" class="h-4 w-4"></i>
+                    <span class="font-medium">{{ $item['label'] }}</span>
+                </div>
+            @endforeach
+        </div>
+    </div>
+
     <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         @foreach ($cards as $card)
             <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-gray-200">

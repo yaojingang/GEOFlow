@@ -173,7 +173,11 @@ class MaterialsController extends Controller
 
         return KnowledgeBase::query()
             ->where('risk_level', 'high')
-            ->where('review_status', '<>', 'reviewed')
+            ->where(function ($query): void {
+                $query
+                    ->whereNull('review_status')
+                    ->orWhere('review_status', '<>', 'reviewed');
+            })
             ->count();
     }
 

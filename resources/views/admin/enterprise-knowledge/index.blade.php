@@ -22,6 +22,26 @@
             </a>
         </div>
 
+        <section class="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            @foreach ([
+                ['icon' => 'copy-plus', 'title' => __('admin.enterprise_knowledge.index_atom_source_title'), 'desc' => __('admin.enterprise_knowledge.index_atom_source_desc')],
+                ['icon' => 'blocks', 'title' => __('admin.enterprise_knowledge.index_atom_structure_title'), 'desc' => __('admin.enterprise_knowledge.index_atom_structure_desc')],
+                ['icon' => 'database-zap', 'title' => __('admin.enterprise_knowledge.index_atom_publish_title'), 'desc' => __('admin.enterprise_knowledge.index_atom_publish_desc')],
+            ] as $card)
+                <article class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                    <div class="flex items-start gap-4">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-orange-50 text-orange-600">
+                            <i data-lucide="{{ $card['icon'] }}" class="h-5 w-5"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-semibold text-gray-900">{{ $card['title'] }}</h2>
+                            <p class="mt-1 text-sm leading-6 text-gray-500">{{ $card['desc'] }}</p>
+                        </div>
+                    </div>
+                </article>
+            @endforeach
+        </section>
+
         <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
             <div class="border-b border-gray-200 px-6 py-5">
                 <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.enterprise_knowledge.list_title') }}</h2>

@@ -72,6 +72,36 @@
                 ],
             ],
         ];
+        $evidenceCards = [
+            [
+                'title' => __('admin.materials.evidence_source_title'),
+                'desc' => __('admin.materials.evidence_source_desc'),
+                'value' => (int) ($stats['metadata_ready_count'] ?? 0).' / '.$knowledgeBases,
+                'icon' => 'fingerprint',
+                'tone' => 'bg-blue-50 text-blue-600',
+            ],
+            [
+                'title' => __('admin.materials.evidence_review_title'),
+                'desc' => __('admin.materials.evidence_review_desc'),
+                'value' => (int) ($stats['reviewed_knowledge_bases'] ?? 0),
+                'icon' => 'shield-check',
+                'tone' => 'bg-emerald-50 text-emerald-600',
+            ],
+            [
+                'title' => __('admin.materials.evidence_risk_title'),
+                'desc' => __('admin.materials.evidence_risk_desc'),
+                'value' => (int) ($stats['high_risk_pending_count'] ?? 0),
+                'icon' => 'triangle-alert',
+                'tone' => ((int) ($stats['high_risk_pending_count'] ?? 0) > 0 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-700'),
+            ],
+            [
+                'title' => __('admin.materials.evidence_vector_title'),
+                'desc' => __('admin.materials.evidence_vector_desc'),
+                'value' => $vectorizedChunks.' / '.$knowledgeChunks,
+                'icon' => 'database-zap',
+                'tone' => 'bg-orange-50 text-orange-600',
+            ],
+        ];
     @endphp
 
     <div class="px-4 sm:px-0">
@@ -145,9 +175,10 @@
                         </div>
                     </div>
 
-                    <div class="mt-7 grid grid-cols-1 gap-4 border-t border-gray-100 pt-6 md:grid-cols-5">
+                    <div class="mt-7 grid grid-cols-1 gap-4 border-t border-gray-100 pt-6 md:grid-cols-3 xl:grid-cols-6">
                         @foreach ([
                             ['icon' => 'file-input', 'title' => __('admin.materials.knowledge_flow_ingest'), 'desc' => __('admin.materials.knowledge_flow_ingest_desc')],
+                            ['icon' => 'fingerprint', 'title' => __('admin.materials.knowledge_flow_evidence'), 'desc' => __('admin.materials.knowledge_flow_evidence_desc')],
                             ['icon' => 'scissors', 'title' => __('admin.materials.knowledge_flow_chunk'), 'desc' => __('admin.materials.knowledge_flow_chunk_desc')],
                             ['icon' => 'scan-search', 'title' => __('admin.materials.knowledge_flow_vector'), 'desc' => __('admin.materials.knowledge_flow_vector_desc')],
                             ['icon' => 'search-check', 'title' => __('admin.materials.knowledge_flow_recall'), 'desc' => __('admin.materials.knowledge_flow_recall_desc')],
@@ -162,15 +193,36 @@
                             </div>
                         @endforeach
                     </div>
+
+                    <div class="mt-7">
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900">{{ __('admin.materials.evidence_layer_title') }}</h3>
+                            <p class="mt-1 text-sm leading-6 text-gray-500">{{ __('admin.materials.evidence_layer_desc') }}</p>
+                        </div>
+                        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            @foreach ($evidenceCards as $card)
+                                <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md {{ $card['tone'] }}">
+                                            <i data-lucide="{{ $card['icon'] }}" class="h-5 w-5"></i>
+                                        </div>
+                                        <div class="text-right text-lg font-bold text-gray-900">{{ $card['value'] }}</div>
+                                    </div>
+                                    <h4 class="mt-4 text-sm font-semibold text-gray-900">{{ $card['title'] }}</h4>
+                                    <p class="mt-1 text-xs leading-5 text-gray-500">{{ $card['desc'] }}</p>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
                 </div>
 
-                <div class="px-6 py-6 lg:px-8">
+                <div class="flex flex-col px-6 py-6 lg:min-h-full lg:px-8">
                     <div class="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ring-1 {{ $knowledgeHealthStyles[$knowledgeHealth] ?? $knowledgeHealthStyles['empty'] }}">
                         <i data-lucide="activity" class="mr-2 h-4 w-4"></i>
                         {{ __('admin.materials.knowledge_health_'.$knowledgeHealth) }}
                     </div>
 
-                    <dl class="mt-6 space-y-4 text-sm">
+                    <dl class="mt-6 space-y-4 text-sm lg:space-y-5">
                         <div class="flex items-start justify-between gap-4">
                             <dt class="text-gray-500">{{ __('admin.materials.knowledge_hub_embedding_model') }}</dt>
                             <dd class="max-w-[220px] text-right font-semibold text-gray-900">{{ (string) ($stats['default_embedding_model'] ?? '') !== '' ? (string) $stats['default_embedding_model'] : __('admin.materials.knowledge_hub_embedding_missing') }}</dd>
@@ -205,7 +257,7 @@
                         </div>
                     </dl>
 
-                    <div class="mt-6 grid grid-cols-1 gap-3">
+                    <div class="mt-6 grid grid-cols-1 gap-3 border-t border-gray-100 pt-6 lg:mt-auto">
                         <a href="{{ route('admin.knowledge-bases.index') }}" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                             <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
                             {{ __('admin.materials.knowledge_hub_refresh_chunks') }}

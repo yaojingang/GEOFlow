@@ -33,8 +33,8 @@ class AdminAnalyticsPageTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('数据分析')
-            ->assertSee('按日期、站点、内容和日志来源查看内容生产与访问趋势')
+            ->assertSee(__('admin.analytics.heading'))
+            ->assertSee(__('admin.analytics.subtitle'))
             ->assertSee(__('admin.analytics.filters.apply'))
             ->assertSee(__('admin.analytics.filters.source_pending', ['source' => __('admin.analytics.filters.server')]))
             ->assertSee(route('admin.analytics'), false)
@@ -62,7 +62,7 @@ class AdminAnalyticsPageTest extends TestCase
             ->assertSee(route('admin.knowledge-bases.index'), false)
             ->assertSee(route('admin.authors.index'), false)
             ->assertSee(route('admin.url-import.history'), false)
-            ->assertSee('日志分析')
+            ->assertSee(__('admin.analytics.logs_title'))
             ->assertSee('暂无日志数据');
 
         $html = $response->getContent();
@@ -98,7 +98,7 @@ class AdminAnalyticsPageTest extends TestCase
             ->assertOk()
             ->assertSee('2026-05-20')
             ->assertSee('2026-05-21')
-            ->assertSee(__('admin.analytics.global_overview.title'))
+            ->assertSee(__('admin.analytics.overall_title'))
             ->assertSee('data-analytics-global-overview', false)
             ->assertSee(__('admin.dashboard.total_articles'))
             ->assertSee('今日新增', false)

@@ -104,6 +104,12 @@
             ['key' => 'completed', 'icon' => 'database-zap'],
             ['key' => 'failed', 'icon' => 'triangle-alert'],
         ];
+        $atomStandards = [
+            ['icon' => 'message-square-quote', 'title' => __('admin.enterprise_knowledge.atom_claim_title'), 'desc' => __('admin.enterprise_knowledge.atom_claim_desc')],
+            ['icon' => 'fingerprint', 'title' => __('admin.enterprise_knowledge.atom_evidence_title'), 'desc' => __('admin.enterprise_knowledge.atom_evidence_desc')],
+            ['icon' => 'calendar-clock', 'title' => __('admin.enterprise_knowledge.atom_context_title'), 'desc' => __('admin.enterprise_knowledge.atom_context_desc')],
+            ['icon' => 'shield-alert', 'title' => __('admin.enterprise_knowledge.atom_risk_title'), 'desc' => __('admin.enterprise_knowledge.atom_risk_desc')],
+        ];
         $progressStepKeys = array_column($progressSteps, 'key');
         $progressStep = $status === 'failed'
             ? 'failed'
@@ -252,6 +258,24 @@
         @endif
 
         <div class="space-y-6">
+            <section class="overflow-hidden rounded-lg border border-orange-100 bg-white shadow">
+                <div class="border-b border-orange-100 bg-orange-50/60 px-6 py-5">
+                    <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.enterprise_knowledge.atom_panel_title') }}</h2>
+                    <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">{{ __('admin.enterprise_knowledge.atom_editor_desc') }}</p>
+                </div>
+                <div class="grid grid-cols-1 gap-4 p-6 md:grid-cols-2 xl:grid-cols-4">
+                    @foreach ($atomStandards as $standard)
+                        <article class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                            <div class="flex h-10 w-10 items-center justify-center rounded-md bg-white text-orange-600 ring-1 ring-orange-100">
+                                <i data-lucide="{{ $standard['icon'] }}" class="h-5 w-5"></i>
+                            </div>
+                            <h3 class="mt-4 text-sm font-semibold text-gray-900">{{ $standard['title'] }}</h3>
+                            <p class="mt-1 text-xs leading-5 text-gray-500">{{ $standard['desc'] }}</p>
+                        </article>
+                    @endforeach
+                </div>
+            </section>
+
             <section class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
                 <div class="flex flex-col gap-3 border-b border-gray-200 px-6 py-5 md:flex-row md:items-center md:justify-between">
                     <div>

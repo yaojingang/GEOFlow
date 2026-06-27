@@ -16,7 +16,7 @@ class AdminWelcomeIntroCopyTest extends TestCase
         $this->assertStringContainsString('提高被理解、引用和推荐的概率', $copy['zh-CN']['letter']['subtitle']);
         $this->assertStringContainsString('不承诺排名', $copy['zh-CN']['letter']['subtitle']);
         $this->assertStringContainsString('GEO 优化的是答案引擎采纳事实、观点和页面的概率', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
-        $this->assertStringContainsString('数据分析', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
+        $this->assertStringContainsString('观测归因', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
         $this->assertStringContainsString('WordPress', $this->flattenCopy($copy['en']['letter']['blocks']));
         $this->assertStringContainsString('GEO optimizes the probability', $this->flattenCopy($copy['en']['letter']['blocks']));
         $this->assertStringContainsString('Project Intro', $copy['en']['meta']['badge']);

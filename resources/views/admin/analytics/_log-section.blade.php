@@ -2,6 +2,12 @@
     <div class="border-b border-gray-100 px-6 py-5">
         <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.analytics.self_log_title') }}</h2>
         <p class="mt-1 text-sm text-gray-600">{{ __('admin.analytics.self_log_desc') }}</p>
+        <div class="mt-4 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+            <div class="flex items-start gap-2">
+                <i data-lucide="info" class="mt-0.5 h-4 w-4 shrink-0"></i>
+                <p>{{ __('admin.analytics.logs_boundary_note') }}</p>
+            </div>
+        </div>
     </div>
 
     @if (empty($logSummary['has_data']))

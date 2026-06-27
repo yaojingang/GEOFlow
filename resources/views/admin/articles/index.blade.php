@@ -27,6 +27,52 @@
     $trashUrl = route('admin.articles.index', ['trashed' => 1]);
     $articlesIndexUrl = route('admin.articles.index');
     $clearTaskFilterUrl = route('admin.articles.index', request()->except(['task_id', 'page']));
+    $contentWorkbenchItems = [
+        [
+            'icon' => 'shield-check',
+            'title' => __('admin.articles.workbench.review_title'),
+            'desc' => __('admin.articles.workbench.review_desc'),
+            'count' => (int) ($stats['pending_review'] ?? 0),
+            'href' => $reviewCenterUrl,
+            'iconClass' => 'bg-amber-50 text-amber-600 ring-amber-100',
+            'countClass' => 'text-amber-700',
+            'linkClass' => 'text-amber-700 group-hover:text-amber-800',
+        ],
+        [
+            'icon' => 'edit',
+            'title' => __('admin.articles.workbench.optimize_title'),
+            'desc' => __('admin.articles.workbench.optimize_desc'),
+            'count' => (int) ($stats['draft'] ?? 0),
+            'href' => route('admin.articles.index', ['status' => 'draft']),
+            'iconClass' => 'bg-blue-50 text-blue-600 ring-blue-100',
+            'countClass' => 'text-blue-700',
+            'linkClass' => 'text-blue-700 group-hover:text-blue-800',
+        ],
+        [
+            'icon' => 'send',
+            'title' => __('admin.articles.workbench.distribution_title'),
+            'desc' => __('admin.articles.workbench.distribution_desc'),
+            'count' => (int) ($stats['published'] ?? 0),
+            'href' => route('admin.articles.index', ['status' => 'published']),
+            'iconClass' => 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+            'countClass' => 'text-emerald-700',
+            'linkClass' => 'text-emerald-700 group-hover:text-emerald-800',
+        ],
+        [
+            'icon' => 'chart-no-axes-combined',
+            'title' => __('admin.articles.workbench.observation_title'),
+            'desc' => __('admin.articles.workbench.observation_desc'),
+            'count' => (int) ($stats['observed'] ?? 0),
+            'href' => route('admin.analytics'),
+            'iconClass' => 'bg-purple-50 text-purple-600 ring-purple-100',
+            'countClass' => 'text-purple-700',
+            'linkClass' => 'text-purple-700 group-hover:text-purple-800',
+        ],
+    ];
+    $workbenchPriority = collect($contentWorkbenchItems)
+        ->sortByDesc(fn ($item) => (int) ($item['count'] ?? 0))
+        ->first();
+    $workbenchHasPriority = (int) ($workbenchPriority['count'] ?? 0) > 0;
 @endphp
 
 @section('content')
@@ -86,6 +132,68 @@
             </div>
         </div>
         @else
+        <section class="mb-8">
+            <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-blue-600">{{ __('admin.articles.workbench.eyebrow') }}</p>
+                    <h2 class="mt-1 text-xl font-semibold text-gray-900">{{ __('admin.articles.workbench.title') }}</h2>
+                    <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">{{ __('admin.articles.workbench.desc') }}</p>
+                </div>
+                <a href="{{ route('admin.tasks.create') }}" class="inline-flex w-fit items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+                    <i data-lucide="workflow" class="mr-2 h-4 w-4"></i>
+                    {{ __('admin.articles.workbench.create_task') }}
+                </a>
+            </div>
+            <div class="mb-4 rounded-lg border border-blue-100 bg-white p-4 shadow-sm">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex items-start gap-3">
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-md ring-1 {{ $workbenchHasPriority ? $workbenchPriority['iconClass'] : 'bg-blue-50 text-blue-600 ring-blue-100' }}">
+                            <i data-lucide="{{ $workbenchHasPriority ? $workbenchPriority['icon'] : 'circle-check' }}" class="h-5 w-5"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-wide text-blue-600">{{ __('admin.articles.workbench.current_action_title') }}</p>
+                            <h3 class="mt-1 text-base font-semibold text-gray-900">
+                                @if($workbenchHasPriority)
+                                    {{ __('admin.articles.workbench.current_action_desc', ['count' => (int) $workbenchPriority['count'], 'stage' => $workbenchPriority['title']]) }}
+                                @else
+                                    {{ __('admin.articles.workbench.current_action_empty_title') }}
+                                @endif
+                            </h3>
+                            <p class="mt-1 text-sm leading-6 text-gray-500">
+                                {{ $workbenchHasPriority ? __('admin.articles.workbench.current_action_help') : __('admin.articles.workbench.current_action_empty_desc') }}
+                            </p>
+                        </div>
+                    </div>
+                    <a href="{{ $workbenchHasPriority ? $workbenchPriority['href'] : route('admin.tasks.create') }}" class="inline-flex h-9 w-fit shrink-0 items-center rounded-md bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700">
+                        {{ $workbenchHasPriority ? __('admin.articles.workbench.current_action_button') : __('admin.articles.workbench.current_action_empty_button') }}
+                        <i data-lucide="arrow-right" class="ml-1.5 h-4 w-4"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                @foreach ($contentWorkbenchItems as $item)
+                    <a href="{{ $item['href'] }}" class="group flex min-h-44 flex-col justify-between rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
+                        <div>
+                            <div class="flex items-start justify-between gap-4">
+                                <div class="flex h-11 w-11 items-center justify-center rounded-md ring-1 {{ $item['iconClass'] }}">
+                                    <i data-lucide="{{ $item['icon'] }}" class="h-5 w-5"></i>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-2xl font-semibold {{ $item['countClass'] }}">{{ $item['count'] }}</div>
+                                </div>
+                            </div>
+                            <h3 class="mt-5 text-base font-semibold text-gray-900">{{ $item['title'] }}</h3>
+                            <p class="mt-2 text-sm leading-6 text-gray-500">{{ $item['desc'] }}</p>
+                        </div>
+                        <div class="mt-5 inline-flex items-center text-sm font-semibold {{ $item['linkClass'] }}">
+                            {{ __('admin.articles.workbench.open') }}
+                            <i data-lucide="arrow-right" class="ml-1.5 h-4 w-4 transition group-hover:translate-x-0.5"></i>
+                        </div>
+                    </a>
+                @endforeach
+            </div>
+        </section>
+
         <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="p-5">
@@ -234,26 +342,21 @@
                             </div>
                             <div data-distribution-channel-filter-panel class="hidden grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                                 @foreach($distributionChannels as $channel)
-                                    @php
-                                        $channelId = (int) ($channel['id'] ?? 0);
-                                        $channelDomain = (string) ($channel['domain'] ?? '');
-                                        $isChannelSelected = in_array($channelId, $selectedDistributionChannelIds, true);
-                                    @endphp
                                     <label data-distribution-channel-filter-card @class([
                                         'flex items-start gap-3 rounded-md border px-4 py-3 text-sm transition',
-                                        'border-blue-200 bg-blue-50' => $isChannelSelected,
-                                        'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50' => ! $isChannelSelected,
+                                        'border-blue-200 bg-blue-50' => in_array((int) ($channel['id'] ?? 0), $selectedDistributionChannelIds, true),
+                                        'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50' => ! in_array((int) ($channel['id'] ?? 0), $selectedDistributionChannelIds, true),
                                     ])>
                                         <input type="checkbox"
                                                name="distribution_channel_ids[]"
-                                               value="{{ $channelId }}"
-                                               @checked($isChannelSelected)
+                                               value="{{ (int) ($channel['id'] ?? 0) }}"
+                                               @checked(in_array((int) ($channel['id'] ?? 0), $selectedDistributionChannelIds, true))
                                                data-distribution-channel-filter-input
                                                class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                         <span class="min-w-0">
                                             <span class="block font-medium text-gray-900">{{ $channel['name'] }}</span>
-                                            @if($channelDomain !== '')
-                                                <span class="block break-all text-gray-500">{{ $channelDomain }}</span>
+                                            @if((string) ($channel['domain'] ?? '') !== '')
+                                                <span class="block break-all text-gray-500">{{ (string) ($channel['domain'] ?? '') }}</span>
                                             @endif
                                         </span>
                                     </label>

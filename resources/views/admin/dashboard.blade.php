@@ -19,12 +19,64 @@
             'slate' => 'bg-slate-100 text-slate-700',
         ];
 
+        $stepNumberStyles = [
+            'blue' => 'text-blue-600',
+            'green' => 'text-emerald-600',
+            'amber' => 'text-amber-600',
+            'red' => 'text-red-600',
+            'violet' => 'text-violet-600',
+            'slate' => 'text-slate-600',
+        ];
+
         $quickMaterialLinks = [
             ['label' => __('admin.dashboard.quick_start.knowledge'), 'href' => route('admin.knowledge-bases.index'), 'class' => 'border-orange-100 bg-orange-50 text-orange-700 hover:bg-orange-100'],
             ['label' => __('admin.dashboard.quick_start.titles'), 'href' => route('admin.title-libraries.index'), 'class' => 'border-green-100 bg-green-50 text-green-700 hover:bg-green-100'],
             ['label' => __('admin.dashboard.quick_start.keywords'), 'href' => route('admin.keyword-libraries.index'), 'class' => 'border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100'],
             ['label' => __('admin.dashboard.quick_start.images'), 'href' => route('admin.image-libraries.index'), 'class' => 'border-purple-100 bg-purple-50 text-purple-700 hover:bg-purple-100'],
             ['label' => __('admin.dashboard.quick_start.authors'), 'href' => route('admin.authors.index'), 'class' => 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'],
+        ];
+
+        $demoJourney = [
+            [
+                'step' => '01',
+                'title' => __('admin.dashboard.demo_journey.assets_title'),
+                'desc' => __('admin.dashboard.demo_journey.assets_desc'),
+                'href' => route('admin.materials.index'),
+                'icon' => 'database',
+                'tone' => 'green',
+            ],
+            [
+                'step' => '02',
+                'title' => __('admin.dashboard.demo_journey.task_title'),
+                'desc' => __('admin.dashboard.demo_journey.task_desc'),
+                'href' => route('admin.tasks.create'),
+                'icon' => 'workflow',
+                'tone' => 'blue',
+            ],
+            [
+                'step' => '03',
+                'title' => __('admin.dashboard.demo_journey.quality_title'),
+                'desc' => __('admin.dashboard.demo_journey.quality_desc'),
+                'href' => route('admin.articles.index'),
+                'icon' => 'shield-check',
+                'tone' => 'amber',
+            ],
+            [
+                'step' => '04',
+                'title' => __('admin.dashboard.demo_journey.distribution_title'),
+                'desc' => __('admin.dashboard.demo_journey.distribution_desc'),
+                'href' => route('admin.distribution.index'),
+                'icon' => 'radio-tower',
+                'tone' => 'violet',
+            ],
+            [
+                'step' => '05',
+                'title' => __('admin.dashboard.demo_journey.observation_title'),
+                'desc' => __('admin.dashboard.demo_journey.observation_desc'),
+                'href' => route('admin.analytics'),
+                'icon' => 'chart-no-axes-combined',
+                'tone' => 'slate',
+            ],
         ];
 
         $stats = $dashboardStats ?? [];
@@ -70,11 +122,10 @@
         $aiBotCount = (int) ($todayStats['today_ai_bot_views'] ?? 0);
         $riskCount = $failedJobs + $distributionFailed + $urlImportFailed;
 
-        $aiStatus = ($chatModels + $embeddingModels) > 0 ? 'ready' : 'warning';
         $materialsStatus = $unvectorizedChunks > 0 ? 'warning' : ($materialLibraryCount > 0 ? 'ready' : 'available');
         $promptStatus = $totalPrompts > 0 ? 'ready' : 'warning';
         $taskStatus = $failedJobs > 0 ? 'error' : (($runningJobs + $pendingJobs) > 0 ? 'running' : ($activeTasks > 0 ? 'ready' : 'available'));
-        $contentStatus = $todayArticles > 0 ? 'running' : (($publishedArticles + $draftArticles) > 0 ? 'ready' : 'available');
+        $contentLibraryStatus = $pendingReview > 0 ? 'warning' : ($totalArticles > 0 ? 'ready' : 'available');
         $reviewStatus = $pendingReview > 0 ? 'warning' : 'ready';
         $distributionStatus = $distributionFailed > 0 ? 'error' : ($distributionPending > 0 ? 'warning' : ($channelsActive > 0 ? 'ready' : 'available'));
         $feedbackStatus = $todayVisits > 0 ? 'running' : 'available';
@@ -89,24 +140,23 @@
 
         $flowNodes = [
             [
-                'title' => __('admin.dashboard.automation.node_ai_title'),
-                'desc' => __('admin.dashboard.automation.node_ai_desc'),
-                'icon' => 'cpu',
+                'title' => __('admin.dashboard.automation.node_prompt_graph_title'),
+                'desc' => __('admin.dashboard.automation.node_prompt_graph_desc'),
+                'icon' => 'map',
                 'tone' => 'blue',
-                'status' => $aiStatus,
+                'status' => $promptStatus,
                 'metrics' => [
-                    __('admin.dashboard.automation.metric_chat_models', ['count' => $chatModels]),
-                    __('admin.dashboard.automation.metric_embedding_models', ['count' => $embeddingModels]),
-                    __('admin.dashboard.automation.metric_ai_today', ['count' => $aiUsedToday]),
+                    __('admin.dashboard.automation.metric_body_prompts', ['count' => $bodyPrompts]),
+                    __('admin.dashboard.automation.metric_special_prompts', ['count' => $specialPrompts]),
                 ],
                 'actions' => [
-                    ['label' => __('admin.dashboard.automation.action_config'), 'href' => route('admin.ai-models.index'), 'primary' => true],
-                    ['label' => __('admin.dashboard.automation.action_test'), 'href' => route('admin.ai-models.index'), 'primary' => false],
+                    ['label' => __('admin.dashboard.navigation.body_prompt_label'), 'href' => route('admin.ai-prompts'), 'primary' => false],
+                    ['label' => __('admin.dashboard.navigation.special_prompt_label'), 'href' => route('admin.ai-special-prompts'), 'primary' => false],
                 ],
             ],
             [
-                'title' => __('admin.dashboard.automation.node_materials_title'),
-                'desc' => __('admin.dashboard.automation.node_materials_desc'),
+                'title' => __('admin.dashboard.automation.node_knowledge_assets_title'),
+                'desc' => __('admin.dashboard.automation.node_knowledge_assets_desc'),
                 'icon' => 'database',
                 'tone' => 'green',
                 'status' => $materialsStatus,
@@ -120,23 +170,23 @@
                 ],
             ],
             [
-                'title' => __('admin.dashboard.automation.node_prompts_title'),
-                'desc' => __('admin.dashboard.automation.node_prompts_desc'),
-                'icon' => 'message-square-text',
-                'tone' => 'violet',
-                'status' => $promptStatus,
+                'title' => __('admin.dashboard.automation.node_evidence_structure_title'),
+                'desc' => __('admin.dashboard.automation.node_evidence_structure_desc'),
+                'icon' => 'blocks',
+                'tone' => 'amber',
+                'status' => $materialsStatus,
                 'metrics' => [
-                    __('admin.dashboard.automation.metric_body_prompts', ['count' => $bodyPrompts]),
-                    __('admin.dashboard.automation.metric_special_prompts', ['count' => $specialPrompts]),
+                    __('admin.dashboard.automation.metric_vectorized', ['done' => $vectorizedChunks, 'total' => $knowledgeChunks]),
+                    __('admin.dashboard.automation.metric_unvectorized', ['count' => $unvectorizedChunks]),
                 ],
                 'actions' => [
-                    ['label' => __('admin.dashboard.navigation.body_prompt_label'), 'href' => route('admin.ai-prompts'), 'primary' => false],
-                    ['label' => __('admin.dashboard.navigation.special_prompt_label'), 'href' => route('admin.ai-special-prompts'), 'primary' => false],
+                    ['label' => __('admin.dashboard.automation.action_refresh_chunks'), 'href' => route('admin.knowledge-bases.index'), 'primary' => false, 'warning' => true],
+                    ['label' => __('admin.dashboard.automation.action_view'), 'href' => route('admin.materials.index'), 'primary' => false],
                 ],
             ],
             [
-                'title' => __('admin.dashboard.automation.node_tasks_title'),
-                'desc' => __('admin.dashboard.automation.node_tasks_desc'),
+                'title' => __('admin.dashboard.automation.node_engineering_task_title'),
+                'desc' => __('admin.dashboard.automation.node_engineering_task_desc'),
                 'icon' => 'workflow',
                 'tone' => 'blue',
                 'status' => $taskStatus,
@@ -153,21 +203,22 @@
             [
                 'title' => __('admin.dashboard.automation.node_content_title'),
                 'desc' => __('admin.dashboard.automation.node_content_desc'),
-                'icon' => 'file-plus-2',
-                'tone' => 'green',
-                'status' => $contentStatus,
+                'icon' => 'file-pen-line',
+                'tone' => 'violet',
+                'status' => $contentLibraryStatus,
                 'metrics' => [
                     __('admin.dashboard.automation.metric_drafts', ['count' => $draftArticles]),
                     __('admin.dashboard.automation.metric_today_new', ['count' => $todayArticles]),
+                    __('admin.dashboard.automation.metric_published', ['count' => $publishedArticles]),
                 ],
                 'actions' => [
-                    ['label' => __('admin.dashboard.automation.action_articles'), 'href' => route('admin.articles.index'), 'primary' => false],
-                    ['label' => __('admin.dashboard.automation.action_tasks'), 'href' => route('admin.tasks.index'), 'primary' => false],
+                    ['label' => __('admin.dashboard.automation.action_articles'), 'href' => route('admin.articles.index'), 'primary' => true],
+                    ['label' => __('admin.dashboard.automation.action_review'), 'href' => route('admin.articles.index', ['review_status' => 'pending']), 'primary' => false, 'warning' => true],
                 ],
             ],
             [
-                'title' => __('admin.dashboard.automation.node_review_title'),
-                'desc' => __('admin.dashboard.automation.node_review_desc'),
+                'title' => __('admin.dashboard.automation.node_quality_gate_title'),
+                'desc' => __('admin.dashboard.automation.node_quality_gate_desc'),
                 'icon' => 'badge-check',
                 'tone' => 'amber',
                 'status' => $reviewStatus,
@@ -181,8 +232,8 @@
                 ],
             ],
             [
-                'title' => __('admin.dashboard.automation.node_distribution_title'),
-                'desc' => __('admin.dashboard.automation.node_distribution_desc'),
+                'title' => __('admin.dashboard.automation.node_authority_distribution_title'),
+                'desc' => __('admin.dashboard.automation.node_authority_distribution_desc'),
                 'icon' => 'radio-tower',
                 'tone' => 'red',
                 'status' => $distributionStatus,
@@ -197,14 +248,15 @@
                 ],
             ],
             [
-                'title' => __('admin.dashboard.automation.node_feedback_title'),
-                'desc' => __('admin.dashboard.automation.node_feedback_desc'),
+                'title' => __('admin.dashboard.automation.node_measurement_title'),
+                'desc' => __('admin.dashboard.automation.node_measurement_desc'),
                 'icon' => 'chart-no-axes-combined',
                 'tone' => 'violet',
                 'status' => $feedbackStatus,
                 'metrics' => [
                     __('admin.dashboard.automation.metric_today_visits', ['count' => $todayVisits]),
                     __('admin.dashboard.automation.metric_ai_bots', ['count' => $aiBotCount]),
+                    __('admin.dashboard.automation.metric_ai_today', ['count' => $aiUsedToday]),
                 ],
                 'actions' => [
                     ['label' => __('admin.dashboard.navigation.analytics_title'), 'href' => route('admin.analytics'), 'primary' => true],
@@ -425,6 +477,39 @@
         <section class="mb-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
             <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
                 <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">{{ __('admin.dashboard.demo_journey.eyebrow') }}</p>
+                    <h2 class="mt-2 text-xl font-semibold text-gray-900">{{ __('admin.dashboard.demo_journey.title') }}</h2>
+                    <p class="mt-2 max-w-4xl text-sm leading-6 text-gray-500">{{ __('admin.dashboard.demo_journey.desc') }}</p>
+                </div>
+                <span class="inline-flex w-fit items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                    <i data-lucide="presentation" class="mr-1.5 h-3.5 w-3.5"></i>
+                    {{ __('admin.dashboard.demo_journey.badge') }}
+                </span>
+            </div>
+            <div class="grid grid-cols-1 divide-y divide-gray-100 lg:grid-cols-5 lg:divide-x lg:divide-y-0">
+                @foreach ($demoJourney as $journeyItem)
+                    @php($toneClass = $toneStyles[$journeyItem['tone']] ?? $toneStyles['slate'])
+                    <article class="flex min-h-[220px] flex-col p-5">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg {{ $toneClass }}">
+                                <i data-lucide="{{ $journeyItem['icon'] }}" class="h-5 w-5"></i>
+                            </div>
+                            <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">{{ $journeyItem['step'] }}</span>
+                        </div>
+                        <h3 class="mt-4 text-base font-semibold text-gray-900">{{ $journeyItem['title'] }}</h3>
+                        <p class="mt-2 text-sm leading-6 text-gray-500">{{ $journeyItem['desc'] }}</p>
+                        <a href="{{ $journeyItem['href'] }}" class="mt-auto inline-flex h-9 w-fit items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                            {{ __('admin.dashboard.demo_journey.open') }}
+                            <i data-lucide="arrow-right" class="ml-1.5 h-4 w-4"></i>
+                        </a>
+                    </article>
+                @endforeach
+            </div>
+        </section>
+
+        <section class="mb-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
+            <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
                     <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.dashboard.automation.title') }}</h2>
                     <p class="mt-2 max-w-4xl text-sm leading-6 text-gray-500">{{ __('admin.dashboard.automation.desc') }}</p>
                 </div>
@@ -456,19 +541,25 @@
                     <div class="relative grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                         <div class="pointer-events-none absolute left-[8%] right-[8%] top-[42px] hidden h-0.5 bg-gradient-to-r from-blue-200 via-emerald-200 to-red-200 xl:block"></div>
                         @foreach ($flowNodes as $node)
+                            @php($stepNumber = str_pad((string) $loop->iteration, 2, '0', STR_PAD_LEFT))
                             @php($statusClass = $statusStyles[$node['status']] ?? $statusStyles['ready'])
                             @php($toneClass = $toneStyles[$node['tone']] ?? $toneStyles['slate'])
-                            <article class="relative z-10 flex min-h-[178px] flex-col rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                            @php($stepNumberClass = $stepNumberStyles[$node['tone']] ?? $stepNumberStyles['slate'])
+                            <article id="content-engineering-step-{{ $stepNumber }}" class="relative z-10 flex min-h-[178px] scroll-mt-24 flex-col rounded-lg border border-gray-200 bg-white p-4 shadow-sm" aria-label="{{ __('admin.dashboard.automation.step_anchor', ['step' => $stepNumber, 'title' => $node['title']]) }}">
                                 <div class="flex items-start justify-between gap-3">
-                                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg {{ $toneClass }}">
-                                        <i data-lucide="{{ $node['icon'] }}" class="h-5 w-5"></i>
+                                    <div class="flex items-center gap-3">
+                                        <span class="shrink-0 text-2xl font-semibold leading-10 tracking-wide tabular-nums {{ $stepNumberClass }}">{{ $stepNumber }}</span>
+                                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg {{ $toneClass }}">
+                                            <i data-lucide="{{ $node['icon'] }}" class="h-5 w-5"></i>
+                                        </div>
                                     </div>
                                     <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold {{ $statusClass }}">
                                         <span class="mr-1.5 h-1.5 w-1.5 rounded-full bg-current"></span>
                                         {{ __('admin.dashboard.automation.status_'.$node['status']) }}
                                     </span>
                                 </div>
-                                <h3 class="mt-4 text-base font-semibold text-gray-900">{{ $node['title'] }}</h3>
+                                <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('admin.dashboard.automation.step_label', ['step' => $stepNumber]) }}</p>
+                                <h3 class="mt-1 text-base font-semibold text-gray-900">{{ $node['title'] }}</h3>
                                 <p class="mt-2 text-sm leading-6 text-gray-500">{{ $node['desc'] }}</p>
                                 <div class="mt-auto flex flex-wrap gap-2 pt-4">
                                     @foreach ($node['metrics'] as $metric)

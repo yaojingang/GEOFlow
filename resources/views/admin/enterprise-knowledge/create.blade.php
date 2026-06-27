@@ -1,6 +1,15 @@
 @extends('admin.layouts.app')
 
 @section('content')
+    @php
+        $atomStandards = [
+            ['icon' => 'message-square-quote', 'title' => __('admin.enterprise_knowledge.atom_claim_title'), 'desc' => __('admin.enterprise_knowledge.atom_claim_desc')],
+            ['icon' => 'fingerprint', 'title' => __('admin.enterprise_knowledge.atom_evidence_title'), 'desc' => __('admin.enterprise_knowledge.atom_evidence_desc')],
+            ['icon' => 'calendar-clock', 'title' => __('admin.enterprise_knowledge.atom_context_title'), 'desc' => __('admin.enterprise_knowledge.atom_context_desc')],
+            ['icon' => 'shield-alert', 'title' => __('admin.enterprise_knowledge.atom_risk_title'), 'desc' => __('admin.enterprise_knowledge.atom_risk_desc')],
+        ];
+    @endphp
+
     <div class="px-4 sm:px-0">
         <div class="mb-8 flex items-center gap-4">
             <a href="{{ route('admin.enterprise-knowledge.index') }}" class="text-gray-400 hover:text-gray-600">
@@ -11,6 +20,30 @@
                 <p class="mt-1 text-sm text-gray-600">{{ __('admin.enterprise_knowledge.create_subtitle') }}</p>
             </div>
         </div>
+
+        <section class="mb-6 rounded-lg border border-orange-100 bg-white p-5 shadow">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.enterprise_knowledge.atom_panel_title') }}</h2>
+                    <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">{{ __('admin.enterprise_knowledge.atom_panel_desc') }}</p>
+                </div>
+                <span class="inline-flex w-fit items-center rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
+                    <i data-lucide="blocks" class="mr-1.5 h-3.5 w-3.5"></i>
+                    {{ __('admin.enterprise_knowledge.atom_panel_badge') }}
+                </span>
+            </div>
+            <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                @foreach ($atomStandards as $standard)
+                    <article class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-md bg-white text-orange-600 ring-1 ring-orange-100">
+                            <i data-lucide="{{ $standard['icon'] }}" class="h-5 w-5"></i>
+                        </div>
+                        <h3 class="mt-4 text-sm font-semibold text-gray-900">{{ $standard['title'] }}</h3>
+                        <p class="mt-1 text-xs leading-5 text-gray-500">{{ $standard['desc'] }}</p>
+                    </article>
+                @endforeach
+            </div>
+        </section>
 
         <form method="POST" action="{{ route('admin.enterprise-knowledge.store') }}" enctype="multipart/form-data" id="enterprise-knowledge-form" class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
             @csrf
