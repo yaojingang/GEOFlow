@@ -117,9 +117,10 @@ class AdminArticlesPageTest extends TestCase
                 'stage' => __('admin.articles.workbench.distribution_title'),
             ]))
             ->assertSee(__('admin.articles.workbench.current_action_button'))
-            ->assertSee(route('admin.articles.index', ['review_status' => 'pending']), false)
-            ->assertSee(route('admin.articles.index', ['status' => 'draft']), false)
-            ->assertSee(route('admin.articles.index', ['status' => 'published']), false)
+            ->assertSee('id="article-list"', false)
+            ->assertSee(route('admin.articles.index', ['review_status' => 'pending']).'#article-list', false)
+            ->assertSee(route('admin.articles.index', ['status' => 'draft']).'#article-list', false)
+            ->assertSee(route('admin.articles.index', ['status' => 'published']).'#article-list', false)
             ->assertSee(route('admin.analytics'), false)
             ->assertViewHas('stats', fn (array $stats): bool => $stats['pending_review'] === 1
                 && $stats['draft'] === 1

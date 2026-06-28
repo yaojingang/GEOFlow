@@ -22,8 +22,9 @@
             break;
         }
     }
+    $articleListAnchor = '#article-list';
     $categoryManageUrl = route('admin.categories.index');
-    $reviewCenterUrl = route('admin.articles.index', ['review_status' => 'pending']);
+    $reviewCenterUrl = route('admin.articles.index', ['review_status' => 'pending']).$articleListAnchor;
     $trashUrl = route('admin.articles.index', ['trashed' => 1]);
     $articlesIndexUrl = route('admin.articles.index');
     $clearTaskFilterUrl = route('admin.articles.index', request()->except(['task_id', 'page']));
@@ -43,7 +44,7 @@
             'title' => __('admin.articles.workbench.optimize_title'),
             'desc' => __('admin.articles.workbench.optimize_desc'),
             'count' => (int) ($stats['draft'] ?? 0),
-            'href' => route('admin.articles.index', ['status' => 'draft']),
+            'href' => route('admin.articles.index', ['status' => 'draft']).$articleListAnchor,
             'iconClass' => 'bg-blue-50 text-blue-600 ring-blue-100',
             'countClass' => 'text-blue-700',
             'linkClass' => 'text-blue-700 group-hover:text-blue-800',
@@ -53,7 +54,7 @@
             'title' => __('admin.articles.workbench.distribution_title'),
             'desc' => __('admin.articles.workbench.distribution_desc'),
             'count' => (int) ($stats['published'] ?? 0),
-            'href' => route('admin.articles.index', ['status' => 'published']),
+            'href' => route('admin.articles.index', ['status' => 'published']).$articleListAnchor,
             'iconClass' => 'bg-emerald-50 text-emerald-600 ring-emerald-100',
             'countClass' => 'text-emerald-700',
             'linkClass' => 'text-emerald-700 group-hover:text-emerald-800',
@@ -385,7 +386,7 @@
             </div>
         </div>
 
-        <div class="bg-white shadow rounded-lg">
+        <div id="article-list" class="scroll-mt-24 bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">
