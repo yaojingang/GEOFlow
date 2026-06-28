@@ -1,5 +1,71 @@
 @extends('admin.layouts.app')
 
+@php
+    $siteSettingsGroupRows = [
+        [
+            [
+                'title' => __('admin.site_settings.group_basic'),
+                'desc' => __('admin.site_settings.group_basic_desc'),
+                'columns' => 'md:grid-cols-2',
+                'items' => [
+                    [
+                        'title' => __('admin.site_settings.section_basic'),
+                        'desc' => __('admin.site_settings.module_basic_desc'),
+                        'href' => '#site-settings-basic',
+                        'target' => 'site-settings-basic',
+                        'icon' => 'settings',
+                        'iconClass' => 'bg-blue-50 text-blue-600 ring-blue-100',
+                        'action' => __('admin.site_settings.open_section'),
+                    ],
+                    [
+                        'title' => __('admin.site_settings.theme.section_title'),
+                        'desc' => __('admin.site_settings.module_theme_desc'),
+                        'href' => '#site-settings-theme',
+                        'target' => 'site-settings-theme',
+                        'icon' => 'layout-template',
+                        'iconClass' => 'bg-indigo-50 text-indigo-600 ring-indigo-100',
+                        'action' => __('admin.site_settings.open_section'),
+                    ],
+                ],
+            ],
+        ],
+        [
+            [
+                'title' => __('admin.site_settings.group_operations'),
+                'desc' => __('admin.site_settings.group_operations_desc'),
+                'columns' => '',
+                'items' => [
+                    [
+                        'title' => __('admin.site_settings.ads.section_title'),
+                        'desc' => __('admin.site_settings.module_ads_desc'),
+                        'href' => '#site-settings-ads',
+                        'target' => 'site-settings-ads',
+                        'icon' => 'megaphone',
+                        'iconClass' => 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+                        'action' => __('admin.site_settings.open_section'),
+                    ],
+                ],
+            ],
+            [
+                'title' => __('admin.site_settings.group_security'),
+                'desc' => __('admin.site_settings.group_security_desc'),
+                'columns' => '',
+                'items' => [
+                    [
+                        'title' => __('admin.site_settings.module_sensitive_words'),
+                        'desc' => __('admin.site_settings.module_sensitive_words_desc'),
+                        'href' => route('admin.site-settings.sensitive-words'),
+                        'target' => null,
+                        'icon' => 'shield-alert',
+                        'iconClass' => 'bg-red-50 text-red-600 ring-red-100',
+                        'action' => __('admin.site_settings.manage_module'),
+                    ],
+                ],
+            ],
+        ],
+    ];
+@endphp
+
 @section('content')
     <div class="px-4 sm:px-0">
         <div class="mb-8">
@@ -7,25 +73,54 @@
             <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.page_subtitle') }}</p>
         </div>
 
-        <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <a href="{{ route('admin.site-settings.sensitive-words') }}" class="group rounded-lg border border-gray-200 bg-white p-5 shadow hover:border-blue-200 hover:bg-blue-50/40">
-                <div class="flex items-start gap-3">
-                    <span class="inline-flex rounded-lg bg-red-50 p-2 text-red-600 group-hover:bg-red-100">
-                        <i data-lucide="shield-alert" class="h-5 w-5"></i>
-                    </span>
-                    <span class="min-w-0">
-                        <span class="block text-base font-semibold text-gray-900">{{ __('admin.site_settings.module_sensitive_words') }}</span>
-                        <span class="mt-1 block text-sm leading-6 text-gray-600">{{ __('admin.site_settings.module_sensitive_words_desc') }}</span>
-                    </span>
+        <div class="mb-8 space-y-6">
+            @foreach ($siteSettingsGroupRows as $settingsGroupRow)
+                <div class="{{ count($settingsGroupRow) > 1 ? 'grid grid-cols-1 gap-6 lg:grid-cols-2' : 'space-y-6' }}">
+                    @foreach ($settingsGroupRow as $settingsGroup)
+                        <section>
+                            <div class="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                                <div>
+                                    <h2 class="text-sm font-semibold text-gray-900">{{ $settingsGroup['title'] }}</h2>
+                                    <p class="mt-1 text-sm leading-6 text-gray-500">{{ $settingsGroup['desc'] }}</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 gap-4 {{ $settingsGroup['columns'] }}">
+                                @foreach ($settingsGroup['items'] as $settingsItem)
+                                    <a href="{{ $settingsItem['href'] }}"
+                                       @if ($settingsItem['target'] !== null) data-site-settings-target="{{ $settingsItem['target'] }}" @endif
+                                       class="group flex min-h-36 flex-col justify-between rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                                        <span class="flex items-start gap-4">
+                                            <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md ring-1 {{ $settingsItem['iconClass'] }}">
+                                                <i data-lucide="{{ $settingsItem['icon'] }}" class="h-5 w-5"></i>
+                                            </span>
+                                            <span class="min-w-0">
+                                                <span class="block text-base font-semibold text-gray-900">{{ $settingsItem['title'] }}</span>
+                                                <span class="mt-1 block text-sm leading-6 text-gray-600">{{ $settingsItem['desc'] }}</span>
+                                            </span>
+                                        </span>
+                                        <span class="mt-4 inline-flex items-center text-sm font-semibold text-blue-700">
+                                            {{ $settingsItem['action'] }}
+                                            <i data-lucide="arrow-right" class="ml-1.5 h-4 w-4 transition-transform group-hover:translate-x-0.5"></i>
+                                        </span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        </section>
+                    @endforeach
                 </div>
-            </a>
+            @endforeach
         </div>
 
-        <details class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
-            <summary class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-                <div>
-                    <h3 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.section_basic') }}</h3>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.page_subtitle') }}</p>
+        <details id="site-settings-basic" class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
+            <summary class="px-6 py-5 border-b border-gray-200 flex items-center justify-between gap-4 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <div class="flex min-w-0 items-start gap-4">
+                    <span class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600 ring-1 ring-blue-100 sm:inline-flex">
+                        <i data-lucide="settings" class="h-5 w-5"></i>
+                    </span>
+                    <div class="min-w-0 max-w-3xl">
+                        <h3 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.section_basic') }}</h3>
+                        <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.module_basic_desc') }}</p>
+                    </div>
                 </div>
                 <i data-lucide="chevron-down" class="w-5 h-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
             </summary>
@@ -222,11 +317,16 @@
             </div>
         </details>
 
-        <details class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
-            <summary class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-                <div>
-                    <h3 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.theme.section_title') }}</h3>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.theme.section_desc') }}</p>
+        <details id="site-settings-theme" class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
+            <summary class="px-6 py-5 border-b border-gray-200 flex items-center justify-between gap-4 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <div class="flex min-w-0 items-start gap-4">
+                    <span class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 sm:inline-flex">
+                        <i data-lucide="layout-template" class="h-5 w-5"></i>
+                    </span>
+                    <div class="min-w-0 max-w-3xl">
+                        <h3 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.theme.section_title') }}</h3>
+                        <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.module_theme_desc') }}</p>
+                    </div>
                 </div>
                 <i data-lucide="chevron-down" class="w-5 h-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
             </summary>
@@ -615,11 +715,16 @@
             </div>
         </details>
 
-        <details class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
-            <summary class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-                <div>
-                    <h3 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.ads.section_title') }}</h3>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.ads.section_desc') }}</p>
+        <details id="site-settings-ads" class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
+            <summary class="px-6 py-5 border-b border-gray-200 flex items-center justify-between gap-4 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <div class="flex min-w-0 items-start gap-4">
+                    <span class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 sm:inline-flex">
+                        <i data-lucide="megaphone" class="h-5 w-5"></i>
+                    </span>
+                    <div class="min-w-0 max-w-3xl">
+                        <h3 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.ads.section_title') }}</h3>
+                        <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.module_ads_desc') }}</p>
+                    </div>
                 </div>
                 <i data-lucide="chevron-down" class="w-5 h-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
             </summary>
@@ -872,6 +977,29 @@
 @endsection
 
 @push('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('[data-site-settings-target]').forEach(function (trigger) {
+                trigger.addEventListener('click', function (event) {
+                    const targetId = trigger.getAttribute('data-site-settings-target');
+                    const target = targetId ? document.getElementById(targetId) : null;
+
+                    if (!target) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    target.open = true;
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                    if (window.history && window.history.pushState) {
+                        window.history.pushState(null, '', '#' + targetId);
+                    }
+                });
+            });
+        });
+    </script>
+
     <template id="homepage-module-template">
         <div class="homepage-module-item rounded-2xl border border-gray-200 bg-white p-4" data-homepage-module-index="__INDEX__">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
