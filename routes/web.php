@@ -13,8 +13,8 @@ use App\Http\Controllers\Admin\AiPromptController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
-use App\Http\Controllers\Admin\ArticleEditorAssetController;
 use App\Http\Controllers\Admin\ArticleController;
+use App\Http\Controllers\Admin\ArticleEditorAssetController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -113,7 +113,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('create', [DistributionController::class, 'create'])->name('create');
             Route::post('create', [DistributionController::class, 'store'])->name('store');
             Route::get('jobs', [DistributionController::class, 'jobs'])->name('jobs');
+            Route::get('sync-settings-all/preview', [DistributionController::class, 'previewSyncSettingsAll'])->name('sync-settings-all.preview');
             Route::post('sync-settings-all', [DistributionController::class, 'syncSettingsAll'])->name('sync-settings-all');
+            Route::post('sync-settings-selected/preview', [DistributionController::class, 'previewSyncSettingsSelected'])->name('sync-settings-selected.preview');
             Route::post('sync-settings-selected', [DistributionController::class, 'syncSettingsSelected'])->name('sync-settings-selected');
             Route::get('jobs/{distributionId}/edit', [DistributionController::class, 'editArticle'])->name('article.edit')->whereNumber('distributionId');
             Route::put('jobs/{distributionId}', [DistributionController::class, 'updateArticle'])->name('article.update')->whereNumber('distributionId');
@@ -126,6 +128,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{channelId}/rotate-secret', [DistributionController::class, 'rotateSecret'])->name('rotate-secret')->whereNumber('channelId');
             Route::post('{channelId}/reveal-secret', [DistributionController::class, 'revealSecret'])->name('reveal-secret')->whereNumber('channelId');
             Route::post('{channelId}/download-package', [DistributionController::class, 'downloadPackage'])->name('download-package')->whereNumber('channelId');
+            Route::post('{channelId}/frontend-capabilities/refresh', [DistributionController::class, 'refreshFrontendCapabilities'])->name('frontend-capabilities.refresh')->whereNumber('channelId');
+            Route::get('{channelId}/sync-settings/preview', [DistributionController::class, 'previewSyncSettings'])->name('sync-settings.preview')->whereNumber('channelId');
             Route::post('{channelId}/sync-settings', [DistributionController::class, 'syncSettings'])->name('sync-settings')->whereNumber('channelId');
             Route::get('{channelId}', [DistributionController::class, 'show'])->name('show')->whereNumber('channelId');
             Route::post('{channelId}/health', [DistributionController::class, 'health'])->name('health')->whereNumber('channelId');

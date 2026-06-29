@@ -12,9 +12,11 @@ use App\Models\DistributionLog;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPublisherManager;
 use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
+use App\Services\GeoFlow\FrontendExperienceInspector;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\Site\ArticleTextAdPicker;
+use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -34,6 +36,7 @@ class DistributionController extends Controller
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly DistributionTargetSitePackageBuilder $targetSitePackageBuilder,
         private readonly SiteThemeCatalog $siteThemeCatalog,
+        private readonly FrontendExperienceInspector $frontendExperienceInspector,
     ) {}
 
     public function index(Request $request): View
@@ -74,6 +77,9 @@ class DistributionController extends Controller
             'activeMenu' => 'distribution',
             'adminSiteName' => AdminWeb::siteName(),
             'channels' => $channels,
+            'channelSyncSummaries' => $channels
+                ->mapWithKeys(fn (DistributionChannel $channel): array => [(int) $channel->id => $this->frontendExperienceInspector->syncSummary($channel)])
+                ->all(),
             'stats' => $stats,
             'logs' => $logs,
         ]);
@@ -156,6 +162,9 @@ class DistributionController extends Controller
             'availableThemes' => $this->siteThemeCatalog->all(),
             'articleDetailTextAds' => ArticleTextAdPicker::all(false),
             'articleTextAdPolicy' => $channel->resolvedArticleTextAdPolicy(),
+            'frontendExperienceMode' => $channel->frontendExperienceMode(),
+            'frontendExperienceModes' => DistributionChannel::frontendExperienceModes(),
+            'frontendExperienceReport' => $this->frontendExperienceInspector->inspect($channel, true),
         ]);
     }
 
@@ -220,6 +229,13 @@ class DistributionController extends Controller
         $message = __('admin.distribution.message.updated');
         $channel->load('activeSecret');
         if ($channel->activeSecret || ($channel->isGenericHttpApi() && $channel->resolvedGenericHttpConfig()['generic_auth_type'] === 'none')) {
+            if ($channel->isGeoFlowAgent() && $this->frontendExperienceInspector->requiresSyncConfirmation($channel)) {
+                return redirect()
+                    ->route('admin.distribution.show', ['channelId' => (int) $channel->id])
+                    ->with('message', $message)
+                    ->withErrors('设置已保存。同步前需要先通过前台体验预览确认风险。');
+            }
+
             try {
                 $this->syncChannelSiteSettings($channel);
                 $message = __('admin.distribution.message.updated_and_settings_synced');
@@ -271,6 +287,7 @@ class DistributionController extends Controller
             'remoteSiteSettings' => $channel->resolvedSiteSettings(),
             'articleTextAdPolicy' => $channel->resolvedArticleTextAdPolicy(),
             'effectiveArticleTextAds' => $channel->effectiveArticleTextAds(),
+            'frontendExperienceReport' => $this->frontendExperienceInspector->inspect($channel, true),
         ]);
     }
 
@@ -629,7 +646,7 @@ class DistributionController extends Controller
         }
     }
 
-    public function syncSettings(int $channelId): RedirectResponse
+    public function refreshFrontendCapabilities(int $channelId): RedirectResponse
     {
         $channel = DistributionChannel::query()
             ->with('activeSecret')
@@ -637,6 +654,71 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+
+        $result = $this->frontendExperienceInspector->refreshRemoteCapabilities($channel);
+        $message = '远端前台能力已刷新：'.(string) ($result['message'] ?? '');
+
+        return (string) ($result['status'] ?? '') === 'ok'
+            ? back()->with('message', $message)
+            : back()->with('message', $message)->withErrors((string) ($result['message'] ?? '远端前台能力刷新失败。'));
+    }
+
+    public function previewSyncSettings(int $channelId): View|RedirectResponse
+    {
+        $channel = DistributionChannel::query()
+            ->with('activeSecret')
+            ->whereKey($channelId)
+            ->first();
+        if (! $channel) {
+            return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+
+        return $this->syncPreviewView('single', collect([$channel]));
+    }
+
+    public function previewSyncSettingsAll(): View
+    {
+        $channels = $this->syncableAgentChannelsQuery()
+            ->orderBy('id')
+            ->get();
+
+        return $this->syncPreviewView('all', $channels);
+    }
+
+    public function previewSyncSettingsSelected(Request $request): View|RedirectResponse
+    {
+        $channelIds = $this->validatedSyncChannelIds($request);
+        if ($channelIds->isEmpty()) {
+            return back()->withErrors(__('admin.distribution.message.settings_sync_selected_empty'));
+        }
+
+        $channels = $this->syncableAgentChannelsQuery()
+            ->whereIn('id', $channelIds->all())
+            ->orderBy('id')
+            ->get();
+
+        if ($channels->isEmpty()) {
+            return back()->withErrors(__('admin.distribution.message.settings_sync_selected_empty'));
+        }
+
+        return $this->syncPreviewView('selected', $channels);
+    }
+
+    public function syncSettings(Request $request, int $channelId): RedirectResponse
+    {
+        $channel = DistributionChannel::query()
+            ->with('activeSecret')
+            ->whereKey($channelId)
+            ->first();
+        if (! $channel) {
+            return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+
+        if (! $request->boolean('frontend_sync_confirmed') && $this->frontendExperienceInspector->requiresSyncConfirmation($channel)) {
+            return redirect()
+                ->route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id])
+                ->withErrors('同步前需要先确认前台体验风险。');
         }
 
         try {
@@ -653,11 +735,18 @@ class DistributionController extends Controller
         }
     }
 
-    public function syncSettingsAll(): RedirectResponse
+    public function syncSettingsAll(Request $request): RedirectResponse
     {
         $channels = $this->syncableAgentChannelsQuery()
             ->orderBy('id')
             ->get();
+
+        if (! $request->boolean('frontend_sync_confirmed')
+            && (bool) $this->frontendExperienceInspector->syncPreviewForChannels($channels)['requires_confirmation']) {
+            return redirect()
+                ->route('admin.distribution.sync-settings-all.preview')
+                ->withErrors('同步前需要先确认前台体验风险。');
+        }
 
         $synced = 0;
         $failed = 0;
@@ -685,11 +774,7 @@ class DistributionController extends Controller
 
     public function syncSettingsSelected(Request $request): RedirectResponse
     {
-        $channelIds = collect($request->input('channel_ids', []))
-            ->map(static fn ($id): int => (int) $id)
-            ->filter(static fn (int $id): bool => $id > 0)
-            ->unique()
-            ->values();
+        $channelIds = $this->validatedSyncChannelIds($request);
 
         if ($channelIds->isEmpty()) {
             return back()->withErrors(__('admin.distribution.message.settings_sync_selected_empty'));
@@ -702,6 +787,11 @@ class DistributionController extends Controller
 
         if ($channels->isEmpty()) {
             return back()->withErrors(__('admin.distribution.message.settings_sync_selected_empty'));
+        }
+
+        if (! $request->boolean('frontend_sync_confirmed')
+            && (bool) $this->frontendExperienceInspector->syncPreviewForChannels($channels)['requires_confirmation']) {
+            return back()->withErrors('同步前需要先通过预览页确认前台体验风险。');
         }
 
         $synced = 0;
@@ -726,6 +816,33 @@ class DistributionController extends Controller
         return $failed > 0
             ? back()->with('message', $message)->withErrors(__('admin.distribution.message.settings_synced_all_failed_hint'))
             : back()->with('message', $message);
+    }
+
+    /**
+     * @param  iterable<DistributionChannel>  $channels
+     */
+    private function syncPreviewView(string $scope, iterable $channels): View
+    {
+        $channels = collect($channels)->values();
+        $previewReport = $this->frontendExperienceInspector->syncPreviewForChannels($channels);
+
+        return view('admin.distribution.sync-preview', [
+            'pageTitle' => '前台体验同步预览',
+            'activeMenu' => 'distribution',
+            'adminSiteName' => AdminWeb::siteName(),
+            'scope' => $scope,
+            'channels' => $channels,
+            'previewReport' => $previewReport,
+        ]);
+    }
+
+    private function validatedSyncChannelIds(Request $request)
+    {
+        return collect($request->input('channel_ids', []))
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
     }
 
     private function syncableAgentChannelsQuery()
@@ -755,6 +872,7 @@ class DistributionController extends Controller
                 [
                     'event' => 'site.settings.synced',
                     'remote_result' => $result,
+                    'sync_summary' => $this->frontendExperienceInspector->syncSummary($channel),
                 ]
             );
 
@@ -876,6 +994,10 @@ class DistributionController extends Controller
             'seo_description_template' => ['nullable', 'string', 'max:255'],
             'featured_limit' => ['nullable', 'integer', 'min:1', 'max:100'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'frontend_experience_mode' => ['nullable', 'string', 'in:custom,inherit_default,snapshot_default'],
+            'homepage_style_json' => ['nullable', 'string', 'max:50000'],
+            'homepage_modules_json' => ['nullable', 'string', 'max:120000'],
+            'home_carousel_slides_json' => ['nullable', 'string', 'max:30000'],
             'article_text_ad_policy' => ['nullable', 'array'],
             'article_text_ad_policy.content_top.mode' => ['nullable', 'string', 'in:inherit,disabled,selected,custom'],
             'article_text_ad_policy.content_top.module_ids' => ['nullable', 'array'],
@@ -894,6 +1016,10 @@ class DistributionController extends Controller
         $payload['endpoint_url'] = $this->normalizeEndpointUrl((string) $payload['endpoint_url']);
         $payload['channel_type'] = (string) ($payload['channel_type'] ?? 'geoflow_agent');
         $payload['front_mode'] = (string) ($payload['front_mode'] ?? 'static');
+        $payload['frontend_experience_mode'] = DistributionChannel::normalizeFrontendExperienceMode($payload['frontend_experience_mode'] ?? null);
+        $payload['homepage_style_payload'] = $this->decodeOptionalFrontendJson($payload['homepage_style_json'] ?? null, 'homepage_style_json');
+        $payload['homepage_modules_payload'] = $this->decodeOptionalFrontendJson($payload['homepage_modules_json'] ?? null, 'homepage_modules_json');
+        $payload['home_carousel_slides_payload'] = $this->decodeOptionalFrontendJson($payload['home_carousel_slides_json'] ?? null, 'home_carousel_slides_json');
         if (! $this->isValidHttpEndpoint((string) $payload['endpoint_url'])) {
             throw ValidationException::withMessages([
                 'endpoint_url' => __('admin.distribution.validation.endpoint_url'),
@@ -967,6 +1093,26 @@ class DistributionController extends Controller
         $this->validateArticleTextAdPolicyPayload($payload['article_text_ad_policy'] ?? null);
 
         return $payload;
+    }
+
+    /**
+     * @return array<string,mixed>|list<mixed>|null
+     */
+    private function decodeOptionalFrontendJson(mixed $value, string $field): ?array
+    {
+        $raw = trim((string) ($value ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
+            throw ValidationException::withMessages([
+                $field => '前台体验 JSON 格式无效。',
+            ]);
+        }
+
+        return $decoded;
     }
 
     private function validateArticleTextAdPolicyPayload(mixed $policy): void
@@ -1183,6 +1329,42 @@ class DistributionController extends Controller
             'seo_description_template' => trim((string) ($payload['seo_description_template'] ?? $defaults['seo_description_template'])),
             'featured_limit' => min(100, max(1, (int) ($payload['featured_limit'] ?? $defaults['featured_limit']))),
             'per_page' => min(200, max(1, (int) ($payload['per_page'] ?? $defaults['per_page']))),
+        ] + $this->normalizeChannelFrontendSettings($payload, $channel);
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @return array{
+     *   homepage_style:array<string,string>,
+     *   homepage_modules:list<array<string,mixed>>,
+     *   home_carousel_slides:list<array<string,mixed>>
+     * }
+     */
+    private function normalizeChannelFrontendSettings(array $payload, ?DistributionChannel $channel = null): array
+    {
+        $mode = DistributionChannel::normalizeFrontendExperienceMode($payload['frontend_experience_mode'] ?? null);
+        $defaults = match ($mode) {
+            DistributionChannel::FRONTEND_EXPERIENCE_INHERIT_DEFAULT,
+            DistributionChannel::FRONTEND_EXPERIENCE_SNAPSHOT_DEFAULT => DistributionChannel::defaultFrontendExperienceSettings(),
+            default => $channel?->resolvedFrontendExperienceSettings() ?? DistributionChannel::defaultFrontendExperienceSettings(),
+        };
+
+        $stylePayload = $payload['homepage_style_payload'] ?? null;
+        $modulesPayload = $payload['homepage_modules_payload'] ?? null;
+        $slidesPayload = $payload['home_carousel_slides_payload'] ?? null;
+
+        if (is_array($modulesPayload) && ! array_is_list($modulesPayload)) {
+            $design = HomepageModuleBuilder::normalizeDesignPayload($modulesPayload);
+            $modulesPayload = $design['modules'];
+            if ($stylePayload === null) {
+                $stylePayload = $design['style'];
+            }
+        }
+
+        return [
+            'homepage_style' => DistributionChannel::normalizeHomepageStyle($stylePayload ?? $defaults['homepage_style']),
+            'homepage_modules' => DistributionChannel::normalizeHomepageModules($modulesPayload ?? $defaults['homepage_modules']),
+            'home_carousel_slides' => DistributionChannel::normalizeHomeCarouselSlides($slidesPayload ?? $defaults['home_carousel_slides']),
         ];
     }
 
@@ -1194,12 +1376,16 @@ class DistributionController extends Controller
     {
         $channelType = (string) ($payload['channel_type'] ?? 'geoflow_agent');
         $articleTextAdPolicy = $this->normalizeArticleTextAdPolicy($payload['article_text_ad_policy'] ?? null, $channel);
+        $frontendExperienceMode = DistributionChannel::normalizeFrontendExperienceMode(
+            $payload['frontend_experience_mode'] ?? $channel?->frontendExperienceMode()
+        );
 
         if ($channelType === 'generic_http_api') {
             $defaults = $channel?->resolvedGenericHttpConfig() ?? (new DistributionChannel)->resolvedGenericHttpConfig();
 
-            return [
+            return $this->withExistingFrontendCapabilitiesCache([
                 'article_text_ad_policy' => $articleTextAdPolicy,
+                'frontend_experience_mode' => $frontendExperienceMode,
                 'generic_auth_type' => (string) ($payload['generic_auth_type'] ?? $defaults['generic_auth_type']),
                 'generic_basic_username' => trim((string) ($payload['generic_basic_username'] ?? $defaults['generic_basic_username'])),
                 'generic_header_name' => trim((string) ($payload['generic_header_name'] ?? $defaults['generic_header_name'])),
@@ -1223,13 +1409,14 @@ class DistributionController extends Controller
                 'generic_remote_id_path' => trim((string) ($payload['generic_remote_id_path'] ?? $defaults['generic_remote_id_path'])),
                 'generic_remote_url_path' => trim((string) ($payload['generic_remote_url_path'] ?? $defaults['generic_remote_url_path'])),
                 'generic_payload_wrapper' => (string) ($payload['generic_payload_wrapper'] ?? $defaults['generic_payload_wrapper']),
-            ];
+            ], $channel);
         }
 
         if ($channelType !== 'wordpress_rest') {
-            return [
+            return $this->withExistingFrontendCapabilitiesCache([
                 'article_text_ad_policy' => $articleTextAdPolicy,
-            ];
+                'frontend_experience_mode' => $frontendExperienceMode,
+            ], $channel);
         }
 
         $defaults = $channel?->resolvedChannelConfig() ?? [
@@ -1242,8 +1429,9 @@ class DistributionController extends Controller
             'wordpress_content_format' => 'html',
         ];
 
-        return [
+        return $this->withExistingFrontendCapabilitiesCache([
             'article_text_ad_policy' => $articleTextAdPolicy,
+            'frontend_experience_mode' => $frontendExperienceMode,
             'wordpress_username' => trim((string) ($payload['wordpress_username'] ?? $defaults['wordpress_username'])),
             'wordpress_post_status' => (string) ($payload['wordpress_post_status'] ?? $defaults['wordpress_post_status']),
             'wordpress_category_strategy' => (string) ($payload['wordpress_category_strategy'] ?? $defaults['wordpress_category_strategy']),
@@ -1251,7 +1439,23 @@ class DistributionController extends Controller
             'wordpress_tag_strategy' => (string) ($payload['wordpress_tag_strategy'] ?? $defaults['wordpress_tag_strategy']),
             'wordpress_image_strategy' => (string) ($payload['wordpress_image_strategy'] ?? $defaults['wordpress_image_strategy']),
             'wordpress_content_format' => 'html',
-        ];
+        ], $channel);
+    }
+
+    /**
+     * @param  array<string,mixed>  $config
+     * @return array<string,mixed>
+     */
+    private function withExistingFrontendCapabilitiesCache(array $config, ?DistributionChannel $channel): array
+    {
+        $stored = is_array($channel?->channel_config) ? $channel->channel_config : [];
+        if (array_key_exists(DistributionChannel::FRONTEND_CAPABILITIES_CACHE_KEY, $stored)) {
+            $config[DistributionChannel::FRONTEND_CAPABILITIES_CACHE_KEY] = DistributionChannel::normalizeFrontendCapabilitiesCache(
+                $stored[DistributionChannel::FRONTEND_CAPABILITIES_CACHE_KEY]
+            );
+        }
+
+        return $config;
     }
 
     /**
@@ -1283,7 +1487,7 @@ class DistributionController extends Controller
             'key_id' => $keyId,
             'secret_ciphertext' => $this->apiKeyCrypto->encrypt($plainSecret),
             'status' => 'active',
-            'scopes' => ['article.publish', 'article.update', 'article.delete', 'site.settings.update', 'health.check'],
+            'scopes' => ['article.publish', 'article.update', 'article.delete', 'site.settings.update', 'health.check', 'frontend.capabilities'],
         ]);
 
         return [
@@ -1315,7 +1519,6 @@ class DistributionController extends Controller
     }
 
     /**
-     * @param  mixed  $value
      * @return list<int>
      */
     private function normalizeGenericSuccessStatuses(mixed $value): array

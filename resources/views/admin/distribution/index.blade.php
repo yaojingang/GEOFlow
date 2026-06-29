@@ -2,6 +2,7 @@
 
 @section('content')
     @php($syncableChannels = $channels->filter(fn ($channel) => $channel->status === 'active' && $channel->channelType() === 'geoflow_agent')->values())
+    @php($channelSyncSummaries = $channelSyncSummaries ?? [])
 
     <div class="space-y-8 px-4 sm:px-0">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -14,13 +15,10 @@
                     <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
                     {{ __('admin.distribution.button.sync_settings_selected') }}
                 </button>
-                <form method="POST" action="{{ route('admin.distribution.sync-settings-all') }}" onsubmit="return confirm(@js(__('admin.distribution.confirm.sync_settings_all')))">
-                    @csrf
-                    <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.distribution.button.sync_settings_all') }}
-                    </button>
-                </form>
+                <a href="{{ route('admin.distribution.sync-settings-all.preview') }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <i data-lucide="scan-search" class="mr-2 h-4 w-4"></i>
+                    {{ __('admin.distribution.button.sync_settings_all') }}
+                </a>
                 <a href="{{ route('admin.distribution.jobs') }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
                     {{ __('admin.distribution.button.jobs') }}
@@ -35,7 +33,7 @@
         <div data-selected-sync-modal class="fixed inset-0 z-50 hidden overflow-y-auto px-4 py-6 sm:px-6 lg:px-8" aria-labelledby="selected-sync-title" role="dialog" aria-modal="true">
             <div class="fixed inset-0 bg-gray-900/40" data-selected-sync-close></div>
             <div class="relative mx-auto max-w-4xl rounded-xl bg-white shadow-xl">
-                <form method="POST" action="{{ route('admin.distribution.sync-settings-selected') }}" onsubmit="return confirm(@js(__('admin.distribution.confirm.sync_settings_selected')))">
+                <form method="POST" action="{{ route('admin.distribution.sync-settings-selected.preview') }}">
                     @csrf
                     <div class="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5">
                         <div>
@@ -66,11 +64,18 @@
                             <div class="max-h-[56vh] overflow-y-auto pr-1">
                                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                                     @foreach ($syncableChannels as $channel)
+                                        @php($syncSummary = $channelSyncSummaries[(int) $channel->id] ?? [])
                                         <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-blue-300 hover:bg-blue-50/40">
                                             <input type="checkbox" name="channel_ids[]" value="{{ (int) $channel->id }}" data-selected-sync-checkbox class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                             <span class="min-w-0">
                                                 <span class="block truncate text-sm font-semibold text-gray-900">{{ $channel->name }}</span>
                                                 <span class="mt-1 block truncate text-sm text-gray-500">{{ $channel->domain }}</span>
+                                                <span class="mt-2 block text-xs leading-5 text-gray-600">
+                                                    {{ $syncSummary['frontend_experience_mode'] ?? $channel->frontendExperienceMode() }} · {{ ($syncSummary['active_theme'] ?? '') !== '' ? $syncSummary['active_theme'] : '默认主题' }} · {{ $syncSummary['front_mode'] ?? $channel->frontMode() }}
+                                                </span>
+                                                <span class="mt-1 block text-xs leading-5 text-gray-500">
+                                                    模块 {{ (int) ($syncSummary['homepage_modules_count'] ?? 0) }} · 轮播 {{ (int) ($syncSummary['home_carousel_slides_count'] ?? 0) }} · 文字广告 {{ (int) ($syncSummary['article_text_ads_count'] ?? 0) }}
+                                                </span>
                                             </span>
                                         </label>
                                     @endforeach

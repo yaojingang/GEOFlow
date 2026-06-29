@@ -88,7 +88,7 @@ class DistributionHttpClient
         $channel->loadMissing('activeSecret');
         $body = '{}';
         $path = '/geoflow-agent/v1/health';
-        $request = Http::timeout(10)->acceptJson();
+        $request = Http::timeout(10)->connectTimeout(3)->acceptJson();
         if ($channel->activeSecret) {
             $request = $request->withHeaders($this->signingService->headers(
                 $channel->activeSecret,
@@ -115,12 +115,35 @@ class DistributionHttpClient
         }
 
         if ($response->failed()) {
-            throw new RuntimeException($this->failureMessage('目标站健康检查', $response, $endpoint));
+            throw new DistributionHttpException($this->failureMessage('目标站健康检查', $response, $endpoint), $response->status(), $endpoint);
         }
 
         $json = $response->json();
 
         return is_array($json) ? $json : ['ok' => true];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function frontendCapabilities(DistributionChannel $channel): array
+    {
+        $channel->loadMissing('activeSecret');
+        $secret = $channel->activeSecret;
+        if (! $secret) {
+            throw new RuntimeException('分发渠道有效密钥不存在');
+        }
+
+        $path = '/geoflow-agent/v1/frontend-capabilities';
+
+        return $this->signedGetJson(
+            $channel,
+            $secret,
+            $path,
+            'frontend.capabilities',
+            'frontend-capabilities-channel-'.(int) $channel->id.'-'.time(),
+            '目标站前台能力读取'
+        );
     }
 
     /**
@@ -175,7 +198,7 @@ class DistributionHttpClient
         $secret->forceFill(['last_used_at' => now()])->save();
 
         if ($failedResponse->failed()) {
-            throw new RuntimeException($this->failureMessage($operation, $failedResponse, $failedEndpoint));
+            throw new DistributionHttpException($this->failureMessage($operation, $failedResponse, $failedEndpoint), $failedResponse->status(), $failedEndpoint);
         }
 
         return $this->decodeJson($response);
@@ -184,6 +207,7 @@ class DistributionHttpClient
     private function postSignedJson(DistributionChannelSecret $secret, string $endpoint, string $path, string $body, string $event, string $idempotencyKey, int $timeout): Response
     {
         return Http::timeout($timeout)
+            ->connectTimeout(5)
             ->withHeaders($this->signingService->headers(
                 $secret,
                 'POST',
@@ -194,6 +218,50 @@ class DistributionHttpClient
             ))
             ->withBody($body, 'application/json')
             ->post($endpoint);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function signedGetJson(DistributionChannel $channel, DistributionChannelSecret $secret, string $path, string $event, string $idempotencyKey, string $operation): array
+    {
+        $body = '{}';
+        $request = Http::timeout(10)
+            ->connectTimeout(3)
+            ->acceptJson()
+            ->withHeaders($this->signingService->headers(
+                $secret,
+                'GET',
+                $path,
+                $body,
+                $event,
+                $idempotencyKey
+            ));
+
+        $endpoint = $this->endpoint($channel, $path);
+        $response = $request->get($endpoint);
+        $failedEndpoint = $endpoint;
+        $failedResponse = $response;
+
+        if ($response->status() === 404 && $this->canUseIndexPhpFallback($channel)) {
+            $fallbackEndpoint = $this->indexPhpEndpoint($channel, $path);
+            $fallbackResponse = $request->get($fallbackEndpoint);
+            $failedEndpoint = $fallbackEndpoint;
+            $failedResponse = $fallbackResponse;
+
+            if (! $fallbackResponse->failed()) {
+                $result = $this->decodeJson($fallbackResponse);
+                $result['agent_base_url'] = $this->indexPhpBaseUrl($channel);
+
+                return $result;
+            }
+        }
+
+        if ($failedResponse->failed()) {
+            throw new DistributionHttpException($this->failureMessage($operation, $failedResponse, $failedEndpoint), $failedResponse->status(), $failedEndpoint);
+        }
+
+        return $this->decodeJson($response);
     }
 
     /**
