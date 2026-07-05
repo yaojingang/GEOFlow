@@ -13,6 +13,30 @@ class AdminLeadFormsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_create_form_selects_use_inset_custom_chevrons(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.lead-forms.create'))
+            ->assertOk()
+            ->assertSee('h-10', false)
+            ->assertSee('appearance-none', false)
+            ->assertSee('pr-10', false)
+            ->assertSee('data-lucide="chevron-down"', false)
+            ->assertSee('right-3', false);
+    }
+
+    public function test_create_form_field_rows_use_single_line_options_and_centered_required_control(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.lead-forms.create'))
+            ->assertOk()
+            ->assertSee('<input type="text" name="fields[0][options]"', false)
+            ->assertDontSee('<textarea name="fields[0][options]"', false)
+            ->assertSee(__('admin.lead_forms.options_placeholder_inline'), false)
+            ->assertSee('justify-center', false)
+            ->assertSee('h-4 w-4', false);
+    }
+
     public function test_admin_can_create_edit_toggle_and_delete_lead_forms(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
@@ -29,7 +53,7 @@ class AdminLeadFormsTest extends TestCase
                 'success_message' => '已收到预约',
                 'fields' => [
                     ['label' => '姓名', 'name' => 'name', 'type' => 'text', 'required' => '1'],
-                    ['label' => '预算', 'name' => 'budget', 'type' => 'select', 'required' => '1', 'options' => "1万以内\n1-5万"],
+                    ['label' => '预算', 'name' => 'budget', 'type' => 'select', 'required' => '1', 'options' => "1万以内\n1-5万，5万以上|定制预算"],
                     ['label' => '公司名称', 'name' => '', 'type' => 'text', 'required' => ''],
                     ['label' => '来源页面', 'name' => 'source_url', 'type' => 'text', 'required' => ''],
                 ],
@@ -39,7 +63,7 @@ class AdminLeadFormsTest extends TestCase
         $form = LeadForm::query()->firstOrFail();
         $this->assertSame('product-demo', $form->slug);
         $this->assertSame('budget', $form->fields[1]['name']);
-        $this->assertSame(['1万以内', '1-5万'], $form->fields[1]['options']);
+        $this->assertSame(['1万以内', '1-5万', '5万以上', '定制预算'], $form->fields[1]['options']);
         $this->assertSame('field_3', $form->fields[2]['name']);
         $this->assertSame('source_url_field', $form->fields[3]['name']);
 

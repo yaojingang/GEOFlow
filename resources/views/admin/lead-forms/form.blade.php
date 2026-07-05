@@ -3,6 +3,9 @@
 @php
     $leadForm = $leadForm ?? null;
     $rows = collect($fields ?? [])->values()->all();
+    $controlClass = 'h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500';
+    $selectClass = 'h-10 w-full appearance-none rounded-md border border-gray-300 bg-white px-3 pr-10 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500';
+    $checkboxClass = 'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500';
     while (count($rows) < 8) {
         $rows[] = ['name' => '', 'label' => '', 'type' => 'text', 'required' => false, 'options' => []];
     }
@@ -43,11 +46,14 @@
                     </div>
                     <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.lead_forms.field.status') }}</label>
-                        <select name="status" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                            @foreach (['active', 'inactive'] as $status)
-                                <option value="{{ $status }}" @selected(old('status', $leadForm?->status ?? 'active') === $status)>{{ __('admin.lead_forms.status.'.$status) }}</option>
-                            @endforeach
-                        </select>
+                        <div class="relative">
+                            <select name="status" class="{{ $selectClass }}">
+                                @foreach (['active', 'inactive'] as $status)
+                                    <option value="{{ $status }}" @selected(old('status', $leadForm?->status ?? 'active') === $status)>{{ __('admin.lead_forms.status.'.$status) }}</option>
+                                @endforeach
+                            </select>
+                            <i data-lucide="chevron-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
+                        </div>
                     </div>
                     <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('admin.lead_forms.field.submit_button_label') }}</label>
@@ -75,28 +81,32 @@
                             <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
                                 <div class="lg:col-span-3">
                                     <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.lead_forms.field.label') }}</label>
-                                    <input type="text" name="fields[{{ $index }}][label]" value="{{ $field['label'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <input type="text" name="fields[{{ $index }}][label]" value="{{ $field['label'] ?? '' }}" class="{{ $controlClass }}">
                                 </div>
                                 <div class="lg:col-span-2">
                                     <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.lead_forms.field.field_name') }}</label>
-                                    <input type="text" name="fields[{{ $index }}][name]" value="{{ $field['name'] ?? '' }}" class="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <input type="text" name="fields[{{ $index }}][name]" value="{{ $field['name'] ?? '' }}" class="{{ $controlClass }} font-mono">
                                 </div>
                                 <div class="lg:col-span-2">
                                     <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.lead_forms.field.type') }}</label>
-                                    <select name="fields[{{ $index }}][type]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                                        @foreach (\App\Models\LeadForm::FIELD_TYPES as $type)
-                                            <option value="{{ $type }}" @selected(($field['type'] ?? 'text') === $type)>{{ __('admin.lead_forms.type.'.$type) }}</option>
-                                        @endforeach
-                                    </select>
+                                    <div class="relative">
+                                        <select name="fields[{{ $index }}][type]" class="{{ $selectClass }}">
+                                            @foreach (\App\Models\LeadForm::FIELD_TYPES as $type)
+                                                <option value="{{ $type }}" @selected(($field['type'] ?? 'text') === $type)>{{ __('admin.lead_forms.type.'.$type) }}</option>
+                                            @endforeach
+                                        </select>
+                                        <i data-lucide="chevron-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
+                                    </div>
                                 </div>
                                 <div class="lg:col-span-4">
                                     <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.lead_forms.field.options') }}</label>
-                                    <textarea name="fields[{{ $index }}][options]" rows="2" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.lead_forms.options_placeholder') }}">{{ implode("\n", $field['options'] ?? []) }}</textarea>
+                                    <input type="text" name="fields[{{ $index }}][options]" value="{{ implode(', ', $field['options'] ?? []) }}" class="{{ $controlClass }}" placeholder="{{ __('admin.lead_forms.options_placeholder_inline') }}">
                                 </div>
-                                <div class="flex items-end lg:col-span-1">
-                                    <label class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
-                                        <input type="checkbox" name="fields[{{ $index }}][required]" value="1" @checked(!empty($field['required'])) class="rounded border-gray-300 text-blue-600">
-                                        {{ __('admin.lead_forms.field.required') }}
+                                <div class="lg:col-span-1">
+                                    <span class="mb-2 block select-none text-xs font-medium text-transparent" aria-hidden="true">{{ __('admin.lead_forms.field.required') }}</span>
+                                    <label class="flex h-10 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm">
+                                        <input type="checkbox" name="fields[{{ $index }}][required]" value="1" @checked(!empty($field['required'])) class="{{ $checkboxClass }}">
+                                        <span class="whitespace-nowrap">{{ __('admin.lead_forms.field.required') }}</span>
                                     </label>
                                 </div>
                             </div>

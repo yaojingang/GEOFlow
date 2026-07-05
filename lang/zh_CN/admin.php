@@ -1803,6 +1803,7 @@ return [
             'checkbox' => '勾选',
         ],
         'options_placeholder' => "每行一个选项\n例如：咨询服务",
+        'options_placeholder_inline' => '用逗号分隔，例如：咨询服务，报价咨询',
         'defaults' => [
             'name' => '姓名',
             'phone' => '手机号',
