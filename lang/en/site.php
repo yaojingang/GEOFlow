@@ -26,4 +26,10 @@ return [
     'pagination_next' => 'Next',
     'search_placeholder' => 'Search title or excerpt…',
     'search_button' => 'Search',
+    'lead_forms' => [
+        'success' => 'Submitted successfully. We will review it soon.',
+        'not_found' => 'The form does not exist or is inactive',
+        'select_placeholder' => 'Please select',
+        'submit' => 'Submit',
+    ],
 ];

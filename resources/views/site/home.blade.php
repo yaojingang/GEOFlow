@@ -24,6 +24,7 @@
             'articles' => $articles,
             'featuredArticles' => $featuredArticles,
             'hotArticles' => $hotArticles,
+            'leadForms' => $leadForms ?? collect(),
         ])
 
         @if($search === '' && ! $category && ! $categoryMissing && (int) request('page', 1) === 1 && $featuredArticles->isNotEmpty())

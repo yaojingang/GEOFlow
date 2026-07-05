@@ -18,6 +18,29 @@
     $channelType = $channel->channelType();
     $channelConfig = $channel->resolvedChannelConfig();
     $genericConfig = $channel->resolvedGenericHttpConfig();
+    $frontendExperienceMode = old('frontend_experience_mode', $frontendExperienceMode ?? $channel->frontendExperienceMode());
+    $frontendExperienceModes = $frontendExperienceModes ?? \App\Models\DistributionChannel::frontendExperienceModes();
+    $frontendExperienceReport = $frontendExperienceReport ?? [];
+    $channelFrontendReport = $frontendExperienceReport['channel'] ?? [];
+    $targetPackageCapabilities = $frontendExperienceReport['target_package'] ?? [];
+    $remoteTargetCapabilities = $frontendExperienceReport['remote_target'] ?? [];
+    $frontendSyncSummary = $channelFrontendReport['sync_summary'] ?? [];
+    $frontendDifferences = $frontendExperienceReport['differences'] ?? [];
+    $supportedFrontendModules = $targetPackageCapabilities['supported_modules'] ?? \App\Support\Site\HomepageModuleBuilder::TYPES;
+    $remoteSupportedModules = is_array($remoteTargetCapabilities['supported_modules'] ?? null) ? $remoteTargetCapabilities['supported_modules'] : [];
+    $remoteSupportedRoutes = is_array($remoteTargetCapabilities['supported_routes'] ?? null) ? $remoteTargetCapabilities['supported_routes'] : [];
+    $remoteStatus = (string) ($remoteTargetCapabilities['status'] ?? 'not_checked');
+    $remoteStatusCopy = [
+        'ok' => ['label' => '已检查', 'class' => 'border-emerald-200 bg-emerald-50 text-emerald-800'],
+        'missing_secret' => ['label' => '缺少密钥', 'class' => 'border-amber-200 bg-amber-50 text-amber-800'],
+        'unsupported_or_not_found' => ['label' => '旧包或未暴露', 'class' => 'border-amber-200 bg-amber-50 text-amber-800'],
+        'unavailable' => ['label' => '不可达', 'class' => 'border-red-200 bg-red-50 text-red-800'],
+        'not_applicable' => ['label' => '不适用', 'class' => 'border-gray-200 bg-gray-50 text-gray-700'],
+        'not_checked' => ['label' => '未检查', 'class' => 'border-gray-200 bg-gray-50 text-gray-700'],
+    ][$remoteStatus] ?? ['label' => $remoteStatus, 'class' => 'border-gray-200 bg-gray-50 text-gray-700'];
+    $homepageStyleJson = old('homepage_style_json', json_encode($remoteSettings['homepage_style'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    $homepageModulesJson = old('homepage_modules_json', json_encode($remoteSettings['homepage_modules'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    $homeCarouselSlidesJson = old('home_carousel_slides_json', json_encode($remoteSettings['home_carousel_slides'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     $articleTextAds = $articleDetailTextAds ?? [];
     $articleTextAdPolicy = \App\Models\DistributionChannel::normalizeArticleTextAdPolicy(old('article_text_ad_policy', $articleTextAdPolicy ?? $channel->resolvedArticleTextAdPolicy()));
     $articleTextAdsByPlacement = collect($articleTextAds)->groupBy('placement');
@@ -54,13 +77,21 @@
                     <h2 class="text-sm font-semibold text-blue-950">{{ __('admin.distribution.target_update.title') }}</h2>
                     <p class="mt-1 text-sm leading-6 text-blue-800">{{ __('admin.distribution.target_update.desc') }}</p>
                 </div>
-                <form method="POST" action="{{ route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]) }}" class="flex-none">
-                    @csrf
-                    <button type="submit" class="inline-flex w-full items-center justify-center rounded-md border border-blue-300 bg-white px-4 py-2 text-sm font-medium text-blue-800 shadow-sm hover:bg-blue-50 md:w-auto">
-                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.distribution.button.update_target_site') }}
-                    </button>
-                </form>
+                <div class="flex flex-col gap-2 sm:flex-row">
+                    @if ($channel->isGeoFlowAgent())
+                        <form method="POST" action="{{ route('admin.distribution.frontend-capabilities.refresh', ['channelId' => (int) $channel->id]) }}" class="flex-none">
+                            @csrf
+                            <button type="submit" class="inline-flex w-full items-center justify-center rounded-md border border-blue-300 bg-white px-4 py-2 text-sm font-medium text-blue-800 shadow-sm hover:bg-blue-50 md:w-auto">
+                                <i data-lucide="radar" class="mr-2 h-4 w-4"></i>
+                                刷新远端能力
+                            </button>
+                        </form>
+                    @endif
+                    <a href="{{ route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]) }}" class="inline-flex w-full items-center justify-center rounded-md border border-blue-300 bg-white px-4 py-2 text-sm font-medium text-blue-800 shadow-sm hover:bg-blue-50 md:w-auto">
+                        <i data-lucide="scan-search" class="mr-2 h-4 w-4"></i>
+                        查看同步预览
+                    </a>
+                </div>
             </div>
         </div>
 
@@ -393,8 +424,167 @@
                                     @endforeach
                                 </div>
                             </div>
+
+                            <div class="mt-6 border-t border-gray-200 pt-5">
+                                <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                        <h3 class="text-sm font-semibold text-gray-900">前台体验</h3>
+                                        <p class="mt-1 text-sm leading-6 text-gray-600">管理这个 GeoFlow Agent 目标站点的首页模块、样式、轮播与默认站同步关系。</p>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2 text-xs">
+                                        <span class="rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-700">能力版本 {{ $targetPackageCapabilities['capability_version'] ?? '1.1' }}</span>
+                                        <span class="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">{{ count($supportedFrontendModules) }} 类模块</span>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                                        <div class="text-xs font-medium text-gray-500">当前模式</div>
+                                        <div class="mt-1 text-sm font-semibold text-gray-900">{{ $frontendExperienceMode }}</div>
+                                    </div>
+                                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                                        <div class="text-xs font-medium text-gray-500">首页模块</div>
+                                        <div class="mt-1 text-sm font-semibold text-gray-900">{{ (int) ($frontendSyncSummary['homepage_modules_count'] ?? 0) }} 个</div>
+                                    </div>
+                                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                                        <div class="text-xs font-medium text-gray-500">轮播</div>
+                                        <div class="mt-1 text-sm font-semibold text-gray-900">{{ (int) ($frontendSyncSummary['home_carousel_slides_count'] ?? 0) }} 张</div>
+                                    </div>
+                                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                                        <div class="text-xs font-medium text-gray-500">样式 token</div>
+                                        <div class="mt-1 text-sm font-semibold text-gray-900">{{ count($frontendSyncSummary['homepage_style_keys'] ?? []) }} 个</div>
+                                    </div>
+                                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                                        <div class="text-xs font-medium text-gray-500">文字广告</div>
+                                        <div class="mt-1 text-sm font-semibold text-gray-900">{{ (int) ($frontendSyncSummary['article_text_ads_count'] ?? 0) }} 个</div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                                    <div class="rounded-lg border {{ $remoteStatusCopy['class'] }} px-4 py-3">
+                                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                            <div>
+                                                <div class="text-sm font-semibold">远端能力状态：{{ $remoteStatusCopy['label'] }}</div>
+                                                <p class="mt-1 text-sm leading-6">
+                                                    @if ($remoteStatus === 'ok')
+                                                        目标包 {{ $remoteTargetCapabilities['package_version'] ?? 'unknown' }}，能力版本 {{ $remoteTargetCapabilities['capability_version'] ?? 'unknown' }}。
+                                                        @if (($remoteTargetCapabilities['checked_at'] ?? '') !== '')
+                                                            最近检查 {{ $remoteTargetCapabilities['checked_at'] }}。
+                                                        @endif
+                                                    @else
+                                                        {{ $remoteTargetCapabilities['message'] ?? '远端能力尚未读取。' }}
+                                                    @endif
+                                                </p>
+                                            </div>
+                                            @if ($remoteStatus === 'ok')
+                                                <div class="flex flex-wrap gap-2 text-xs">
+                                                    <span class="rounded-full bg-white/70 px-2.5 py-1 font-medium">{{ count($remoteSupportedModules) }} 类模块</span>
+                                                    <span class="rounded-full bg-white/70 px-2.5 py-1 font-medium">{{ count($remoteSupportedRoutes) }} 条路由</span>
+                                                </div>
+                                            @endif
+                                        </div>
+                                        @if ($remoteStatus === 'ok')
+                                            <dl class="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                                                <div>
+                                                    <dt class="text-xs font-medium opacity-70">远端主题</dt>
+                                                    <dd class="mt-0.5 font-semibold">{{ $remoteTargetCapabilities['active_theme'] ?: '默认主题' }}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt class="text-xs font-medium opacity-70">远端 front_mode</dt>
+                                                    <dd class="mt-0.5 font-semibold">{{ $remoteTargetCapabilities['front_mode'] ?: '未声明' }}</dd>
+                                                </div>
+                                            </dl>
+                                        @endif
+                                    </div>
+
+                                    <div class="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                                        <div class="text-sm font-semibold text-gray-900">同步前差异摘要</div>
+                                        <dl class="mt-3 grid grid-cols-1 gap-2 text-sm text-gray-700 sm:grid-cols-2">
+                                            <div>
+                                                <dt class="text-xs font-medium text-gray-500">主题</dt>
+                                                <dd class="mt-0.5 font-semibold text-gray-900">{{ ($frontendSyncSummary['active_theme'] ?? '') !== '' ? $frontendSyncSummary['active_theme'] : '默认主题' }}</dd>
+                                            </div>
+                                            <div>
+                                                <dt class="text-xs font-medium text-gray-500">front_mode</dt>
+                                                <dd class="mt-0.5 font-semibold text-gray-900">{{ $frontendSyncSummary['front_mode'] ?? $frontMode }}</dd>
+                                            </div>
+                                            <div>
+                                                <dt class="text-xs font-medium text-gray-500">首页模块/轮播</dt>
+                                                <dd class="mt-0.5 font-semibold text-gray-900">{{ (int) ($frontendSyncSummary['homepage_modules_count'] ?? 0) }} / {{ (int) ($frontendSyncSummary['home_carousel_slides_count'] ?? 0) }}</dd>
+                                            </div>
+                                            <div>
+                                                <dt class="text-xs font-medium text-gray-500">文字广告</dt>
+                                                <dd class="mt-0.5 font-semibold text-gray-900">{{ (int) ($frontendSyncSummary['article_text_ads_count'] ?? 0) }}</dd>
+                                            </div>
+                                        </dl>
+                                        @if (! empty($frontendDifferences))
+                                            <ul class="mt-3 space-y-2 text-sm leading-6 text-gray-700">
+                                                @foreach ($frontendDifferences as $difference)
+                                                    <li class="flex gap-2">
+                                                        <span class="mt-2 h-1.5 w-1.5 flex-none rounded-full {{ ($difference['severity'] ?? '') === 'warning' ? 'bg-amber-500' : ((($difference['severity'] ?? '') === 'ok') ? 'bg-emerald-500' : 'bg-blue-500') }}"></span>
+                                                        <span>{{ $difference['message'] ?? '' }}</span>
+                                                    </li>
+                                                @endforeach
+                                            </ul>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                @if ($errors->has('homepage_style_json') || $errors->has('homepage_modules_json') || $errors->has('home_carousel_slides_json'))
+                                    <div class="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                        {{ $errors->first('homepage_style_json') ?: ($errors->first('homepage_modules_json') ?: $errors->first('home_carousel_slides_json')) }}
+                                    </div>
+                                @endif
+
+                                <fieldset class="mt-4">
+                                    <legend class="sr-only">前台体验模式</legend>
+                                    <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                                        @foreach ($frontendExperienceModes as $mode)
+                                            @php
+                                                $modeCopy = [
+                                                    'inherit_default' => ['label' => '跟随默认站', 'desc' => '同步时实时使用默认站首页模块和样式。'],
+                                                    'snapshot_default' => ['label' => '复制默认站快照', 'desc' => '保存时复制默认站当前体验，之后独立维护。'],
+                                                    'custom' => ['label' => '渠道自定义', 'desc' => '完全使用下方 JSON 配置管理该渠道前台。'],
+                                                ][$mode] ?? ['label' => $mode, 'desc' => ''];
+                                            @endphp
+                                            <label class="flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-blue-200">
+                                                <input type="radio" name="frontend_experience_mode" value="{{ $mode }}" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($frontendExperienceMode === $mode)>
+                                                <span>
+                                                    <span class="block text-sm font-semibold text-gray-900">{{ $modeCopy['label'] }}</span>
+                                                    <span class="mt-1 block text-sm leading-6 text-gray-600">{{ $modeCopy['desc'] }}</span>
+                                                </span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                </fieldset>
+
+                                <div class="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
+                                    支持模块：{{ implode('、', $supportedFrontendModules) }}。WordPress REST 和 Generic API 只透传字段，不保证渲染 GEOFlow 模块。
+                                </div>
+
+                                <div class="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+                                    <div>
+                                        <label for="homepage_style_json" class="block text-sm font-medium text-gray-700">首页样式 JSON</label>
+                                        <textarea id="homepage_style_json" name="homepage_style_json" rows="10" class="mt-1 block w-full rounded-md border-gray-300 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ $homepageStyleJson }}</textarea>
+                                    </div>
+                                    <div>
+                                        <label for="home_carousel_slides_json" class="block text-sm font-medium text-gray-700">首页轮播 JSON</label>
+                                        <textarea id="home_carousel_slides_json" name="home_carousel_slides_json" rows="10" class="mt-1 block w-full rounded-md border-gray-300 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ $homeCarouselSlidesJson }}</textarea>
+                                    </div>
+                                    <div class="xl:col-span-2">
+                                        <label for="homepage_modules_json" class="block text-sm font-medium text-gray-700">首页模块 JSON</label>
+                                        <textarea id="homepage_modules_json" name="homepage_modules_json" rows="16" class="mt-1 block w-full rounded-md border-gray-300 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ $homepageModulesJson }}</textarea>
+                                    </div>
+                                </div>
+                            </div>
                         @endif
                     </div>
+
+                    @if (! $channel->isGeoFlowAgent())
+                        <div class="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
+                            WordPress REST 和 Generic API 只作为外部分发渠道处理，可接收字段透传，不保证渲染 GEOFlow 首页模块、轮播或主题映射。
+                        </div>
+                    @endif
 
                     <div class="rounded-lg border border-gray-200 bg-white p-5">
                         <div class="mb-5">

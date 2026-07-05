@@ -26,4 +26,10 @@ return [
     'pagination_next' => '下一页',
     'search_placeholder' => '搜索文章标题或摘要…',
     'search_button' => '搜索',
+    'lead_forms' => [
+        'success' => '提交成功，我们会尽快处理。',
+        'not_found' => '表单不存在或已停用',
+        'select_placeholder' => '请选择',
+        'submit' => '提交',
+    ],
 ];

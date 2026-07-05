@@ -67,9 +67,14 @@ class DistributionTargetSitePackageBuilder
             'seo_description_template' => $siteSettings['seo_description_template'],
             'featured_limit' => $siteSettings['featured_limit'],
             'per_page' => $siteSettings['per_page'],
+            'homepage_style' => $siteSettings['homepage_style'] ?? [],
+            'homepage_modules' => $siteSettings['homepage_modules'] ?? [],
+            'home_carousel_slides' => $siteSettings['home_carousel_slides'] ?? [],
+            'frontend_experience_mode' => method_exists($channel, 'frontendExperienceMode') ? $channel->frontendExperienceMode() : 'custom',
             'article_text_ads' => method_exists($channel, 'effectiveArticleTextAds') ? $channel->effectiveArticleTextAds() : [],
             'active_theme' => (string) ($channel->template_key ?? ''),
             'front_mode' => $frontMode,
+            'package_version' => (string) config('geoflow.app_version', ''),
             'static_publish_enabled' => $staticPublishEnabled,
             'domain' => (string) $channel->domain,
             'public_base_url' => rtrim((string) $channel->endpoint_url, '/'),
@@ -94,9 +99,14 @@ class DistributionTargetSitePackageBuilder
             ."    'seo_description_template' => ".var_export($config['seo_description_template'], true).",\n"
             ."    'featured_limit' => ".$config['featured_limit'].",\n"
             ."    'per_page' => ".$config['per_page'].",\n"
+            ."    'homepage_style' => ".var_export($config['homepage_style'], true).",\n"
+            ."    'homepage_modules' => ".var_export($config['homepage_modules'], true).",\n"
+            ."    'home_carousel_slides' => ".var_export($config['home_carousel_slides'], true).",\n"
+            ."    'frontend_experience_mode' => ".var_export($config['frontend_experience_mode'], true).",\n"
             ."    'article_text_ads' => ".var_export($config['article_text_ads'], true).",\n"
             ."    'active_theme' => ".var_export($config['active_theme'], true).",\n"
             ."    'front_mode' => ".var_export($config['front_mode'], true).",\n"
+            ."    'package_version' => ".var_export($config['package_version'], true).",\n"
             ."    'static_publish_enabled' => ".($config['static_publish_enabled'] ? 'true' : 'false').",\n"
             ."    'domain' => ".var_export($config['domain'], true).",\n"
             ."    'public_base_url' => ".var_export($config['public_base_url'], true).",\n"
@@ -179,13 +189,248 @@ HTACCESS;
         if ((string) ($settings['site_favicon'] ?? '') !== '') {
             $head .= '<link rel="icon" href="'.$this->h((string) $settings['site_favicon']).'">';
         }
+        $experienceHtml = $this->initialHomepageExperienceHtml($settings);
+        if ($experienceHtml === '') {
+            $experienceHtml = '<section class="hero"><h1>'.$this->h($siteName).'</h1><p>'.$this->h($description).'</p></section>';
+        }
 
         return $head
             .'<link rel="stylesheet" href="assets/css/site.css?v='.$assetVersion.'"><script defer src="assets/js/site.js?v='.$assetVersion.'"></script>'
             .'</head><body class="'.$this->h($themeClass).'"><header><div class="wrap bar"><div class="brand">'.$this->h($siteName).'</div></div></header><main class="wrap">'
-            .'<section class="hero"><h1>'.$this->h($siteName).'</h1><p>'.$this->h($description).'</p></section>'
+            .$experienceHtml
             .'<div class="empty">暂无文章。请先从 GEOFlow 发布一篇绑定此渠道的文章。</div></main>'
             .'<footer><div class="wrap">'.$this->h($copyright).'</div></footer></body></html>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     */
+    private function initialHomepageExperienceHtml(array $settings): string
+    {
+        return $this->initialHomeCarouselHtml($settings).$this->initialHomepageModulesHtml($settings);
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     */
+    private function initialHomeCarouselHtml(array $settings): string
+    {
+        $slides = array_values(array_filter(
+            DistributionChannel::normalizeHomeCarouselSlides($settings['home_carousel_slides'] ?? []),
+            static fn (array $slide): bool => ! empty($slide['enabled'])
+        ));
+        if ($slides === []) {
+            return '';
+        }
+
+        $html = '<section class="homepage-carousel" style="'.$this->h($this->initialHomepageStyleAttribute($settings)).'"><div class="homepage-carousel-track">';
+        foreach ($slides as $slide) {
+            $imageUrl = $this->initialHomepageHref((string) $slide['image_url']);
+            if ($imageUrl === '') {
+                continue;
+            }
+
+            $title = (string) $slide['title'];
+            $linkUrl = $this->initialHomepageHref((string) $slide['link_url']);
+            $html .= '<article class="homepage-slide">';
+            $html .= $linkUrl !== '' ? '<a class="homepage-slide-media" href="'.$this->h($linkUrl).'">' : '<div class="homepage-slide-media">';
+            $html .= '<img src="'.$this->h($imageUrl).'" alt="'.$this->h($title).'">';
+            $html .= $linkUrl !== '' ? '</a>' : '</div>';
+            if ($title !== '') {
+                $html .= '<div class="homepage-slide-copy">';
+                $html .= $linkUrl !== '' ? '<a href="'.$this->h($linkUrl).'">'.$this->h($title).'</a>' : $this->h($title);
+                $html .= '</div>';
+            }
+            $html .= '</article>';
+        }
+
+        return $html.'</div></section>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     */
+    private function initialHomepageModulesHtml(array $settings): string
+    {
+        $modules = DistributionChannel::normalizeHomepageModules($settings['homepage_modules'] ?? []);
+        if ($modules === []) {
+            return '';
+        }
+
+        $html = '<section class="homepage-modules" style="'.$this->h($this->initialHomepageStyleAttribute($settings)).'">';
+        foreach ($modules as $module) {
+            $html .= $this->initialHomepageModuleHtml($module);
+        }
+
+        return $html.'</section>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $module
+     */
+    private function initialHomepageModuleHtml(array $module): string
+    {
+        $type = (string) $module['type'];
+        $style = $this->initialHomepageModuleStyleAttribute($module);
+        $html = '<section class="'.$this->h('homepage-module homepage-'.$type.' align-'.(string) $module['alignment']).'"'.($style !== '' ? ' style="'.$this->h($style).'"' : '').'>';
+
+        if ($type === 'image_band') {
+            $html .= '<div class="homepage-module-inner">';
+            if ((string) $module['image_url'] !== '') {
+                $html .= '<img src="'.$this->h($this->initialHomepageHref((string) $module['image_url'])).'" alt="'.$this->h((string) $module['title']).'">';
+            }
+
+            return $html.'<div class="module-copy">'.$this->initialHomepageModuleHeadingHtml($module).$this->initialHomepageActionHtml($module).'</div></div></section>';
+        }
+
+        $html .= '<div class="homepage-module-inner'.(((string) $module['layout']) === 'split' ? ' homepage-split' : '').'"><div>';
+        $html .= $this->initialHomepageModuleHeadingHtml($module, $type === 'hero' ? 'h1' : 'h2');
+        $html .= $this->initialHomepageActionHtml($module).'</div>';
+
+        if ($type === 'hero' && (string) $module['image_url'] !== '') {
+            $html .= '<div class="homepage-media"><img src="'.$this->h($this->initialHomepageHref((string) $module['image_url'])).'" alt="'.$this->h((string) $module['title']).'"></div>';
+        } elseif ($type === 'metric_band') {
+            $html .= '<div class="homepage-metrics">';
+            foreach (array_slice($this->initialHomepageRows((string) $module['body']), 0, 6) as $row) {
+                $html .= '<div class="metric-item"><span>'.$this->h((string) ($row[0] ?? '')).'</span><strong>'.$this->h((string) ($row[1] ?? '')).'</strong>';
+                if ((string) ($row[2] ?? '') !== '') {
+                    $html .= '<span>'.$this->h((string) $row[2]).'</span>';
+                }
+                $html .= '</div>';
+            }
+            $html .= '</div>';
+        } elseif ($type === 'chart_band') {
+            $html .= '<div class="homepage-chart-bars">';
+            foreach (array_slice($this->initialHomepageRows((string) $module['body']), 0, 8) as $row) {
+                $label = (string) ($row[0] ?? '');
+                $value = min(100, max(0, (int) ($row[1] ?? 0)));
+                $html .= '<div class="chart-row"><strong>'.$this->h($label).'</strong><div class="chart-bar"><i style="--bar-width:'.$value.'%"></i></div><span>'.$value.'%</span></div>';
+            }
+            $html .= '</div>';
+        } elseif ($type === 'feature_grid') {
+            $html .= '<div class="homepage-features">';
+            foreach (array_slice($this->initialHomepageRows((string) $module['body']), 0, 9) as $row) {
+                $url = $this->initialHomepageHref((string) ($row[2] ?? ''));
+                $title = $this->h((string) ($row[0] ?? ''));
+                $html .= '<div class="feature-item"><h3>'.($url !== '' ? '<a href="'.$this->h($url).'">'.$title.'</a>' : $title).'</h3><p>'.$this->h((string) ($row[1] ?? '')).'</p></div>';
+            }
+            $html .= '</div>';
+        } elseif ($type === 'article_collection') {
+            $html .= '<div class="homepage-article-grid"></div>';
+        } elseif ($type === 'custom_html') {
+            $html .= '<div class="homepage-custom-html">'.(string) $module['custom_html'].'</div>';
+        }
+
+        return $html.'</div></section>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $module
+     */
+    private function initialHomepageModuleHeadingHtml(array $module, string $headingTag = 'h2'): string
+    {
+        $html = '';
+        if ((string) $module['subtitle'] !== '') {
+            $html .= '<div class="module-kicker">'.$this->h((string) $module['subtitle']).'</div>';
+        }
+        if ((string) $module['title'] !== '') {
+            $html .= '<'.$headingTag.'>'.$this->h((string) $module['title']).'</'.$headingTag.'>';
+        }
+        if ((string) $module['body'] !== '' && ! in_array((string) $module['type'], ['metric_band', 'chart_band', 'feature_grid'], true)) {
+            $html .= '<p>'.nl2br($this->h((string) $module['body'])).'</p>';
+        }
+
+        return $html;
+    }
+
+    /**
+     * @param  array<string, mixed>  $module
+     */
+    private function initialHomepageActionHtml(array $module): string
+    {
+        $url = $this->initialHomepageHref((string) $module['link_url']);
+        $text = (string) $module['link_text'];
+
+        return $url !== '' && $text !== ''
+            ? '<a class="module-action" href="'.$this->h($url).'">'.$this->h($text).'</a>'
+            : '';
+    }
+
+    /**
+     * @return list<list<string>>
+     */
+    private function initialHomepageRows(string $body): array
+    {
+        $rows = [];
+        foreach (preg_split('/\r?\n/u', trim($body)) ?: [] as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+            $rows[] = array_map(static fn (string $part): string => trim($part), explode('|', $line));
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     */
+    private function initialHomepageStyleAttribute(array $settings): string
+    {
+        $style = DistributionChannel::normalizeHomepageStyle($settings['homepage_style'] ?? []);
+        $radius = match ($style['radius']) {
+            'none' => '0px',
+            'round' => '20px',
+            default => '8px',
+        };
+
+        return sprintf(
+            '--homepage-accent:%s;--homepage-bg:%s;--homepage-surface:%s;--homepage-text:%s;--homepage-muted:%s;--homepage-radius:%s',
+            $style['accent_color'],
+            $style['background_color'],
+            $style['surface_color'],
+            $style['text_color'],
+            $style['muted_color'],
+            $radius
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $module
+     */
+    private function initialHomepageModuleStyleAttribute(array $module): string
+    {
+        $styles = [];
+        foreach ([
+            'accent_color' => '--module-accent',
+            'surface_color' => '--module-surface',
+            'text_color' => '--module-text',
+            'muted_color' => '--module-muted',
+        ] as $field => $variable) {
+            $color = trim((string) ($module[$field] ?? ''));
+            if ($color !== '') {
+                $styles[] = $variable.':'.$color;
+            }
+        }
+
+        return implode(';', $styles);
+    }
+
+    private function initialHomepageHref(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '' || str_starts_with($url, '//')) {
+            return '';
+        }
+        if (str_starts_with($url, '/') || preg_match('#^https?://#i', $url) === 1) {
+            return $url;
+        }
+        if (preg_match('#^[a-z][a-z0-9+.-]*:#i', $url) === 1) {
+            return '';
+        }
+
+        return '/'.ltrim($url, '/');
     }
 
     /**
@@ -350,6 +595,8 @@ h2{font-size:22px;margin:0 0 10px}h2 a{color:#111827;text-decoration:none}h2 a:h
 .article-text-ads{display:grid;gap:10px;margin:18px 0;padding:12px 0;border-top:1px solid rgba(148,163,184,.26);border-bottom:1px solid rgba(148,163,184,.26);background:transparent;font:inherit}.article-text-ads--content-top{margin-top:0;margin-bottom:22px}.article-text-ads--content-bottom{margin-top:26px;margin-bottom:0}.article-text-ad-module{display:flex;flex-direction:column;gap:6px;background:transparent}.article-text-ad-link{display:inline-flex;align-items:center;width:max-content;max-width:100%;color:var(--article-text-ad-color,#2563eb);font:inherit;font-weight:700;line-height:1.65;text-decoration:none}.article-text-ad-link:hover{text-decoration:underline;text-underline-offset:4px}.article-text-ad-text{overflow-wrap:anywhere}
 .tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px;padding-top:22px;border-top:1px solid #e5e7eb}.tags span{display:inline-flex;border:1px solid #e5e7eb;background:#f9fafb;color:#4b5563;border-radius:999px;padding:5px 10px;font-size:13px}
 .empty{padding:52px;text-align:center;color:#6b7280}.back{display:inline-block;margin:28px 0 18px;color:#4b5563;text-decoration:none}
+.homepage-carousel{padding:32px 0 4px}.homepage-carousel-track{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.homepage-slide{position:relative;overflow:hidden;border:1px solid rgba(148,163,184,.24);border-radius:var(--homepage-radius,8px);background:var(--homepage-surface,#fff);color:var(--homepage-text,#111827)}.homepage-slide-media{display:block;aspect-ratio:16/9;background:#e5e7eb}.homepage-slide-media img{display:block;width:100%;height:100%;object-fit:cover}.homepage-slide-copy{padding:14px 16px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}.homepage-slide-copy a{color:var(--homepage-text,#111827);text-decoration:none}.homepage-slide-copy a:hover{color:var(--homepage-accent,#2563eb)}
+.homepage-modules{display:grid;gap:22px;padding:32px 0}.homepage-module{border-radius:var(--homepage-radius,8px);background:var(--module-surface,var(--homepage-surface,#fff));color:var(--module-text,var(--homepage-text,#111827));border:1px solid rgba(148,163,184,.24);overflow:hidden}.homepage-module-inner{padding:28px}.homepage-module h1,.homepage-module h2{letter-spacing:0;margin:0 0 10px;overflow-wrap:anywhere}.homepage-module p{color:var(--module-muted,var(--homepage-muted,#6b7280));line-height:1.7;margin:0 0 16px}.homepage-module a{color:var(--module-accent,var(--homepage-accent,#2563eb))}.homepage-module .module-kicker{color:var(--module-accent,var(--homepage-accent,#2563eb));font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.homepage-module .module-action{display:inline-flex;align-items:center;border-radius:999px;background:var(--module-accent,var(--homepage-accent,#2563eb));color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:9px 15px}.homepage-module.align-center{text-align:center}.homepage-hero h1{font-size:clamp(34px,6vw,68px);line-height:1.02}.homepage-split{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(280px,.95fr);gap:24px;align-items:center}.homepage-media img,.homepage-image-band img{display:block;width:100%;height:auto;border-radius:calc(var(--homepage-radius,8px) - 2px)}.homepage-image-band .homepage-module-inner{padding:0}.homepage-image-band .module-copy{padding:24px}.homepage-metrics,.homepage-features,.homepage-chart-bars,.homepage-article-grid{display:grid;gap:14px}.homepage-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.metric-item,.feature-item,.chart-row,.homepage-article-card{border:1px solid rgba(148,163,184,.22);border-radius:calc(var(--homepage-radius,8px) - 2px);background:rgba(255,255,255,.72);padding:16px}.metric-item strong{display:block;font-size:28px;line-height:1.1}.metric-item span,.chart-row span{display:block;color:var(--module-muted,var(--homepage-muted,#6b7280));font-size:13px}.homepage-features,.homepage-article-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.feature-item h3,.homepage-article-card h3{margin:0 0 8px;font-size:18px;line-height:1.25}.chart-row strong{display:block;margin-bottom:8px}.chart-bar{height:10px;border-radius:999px;background:rgba(37,99,235,.14);overflow:hidden}.chart-bar i{display:block;height:100%;width:var(--bar-width,0%);background:var(--module-accent,var(--homepage-accent,#2563eb))}.homepage-custom-html :first-child{margin-top:0}.homepage-custom-html :last-child{margin-bottom:0}
 footer{border-top:1px solid #e5e7eb;color:#6b7280;font-size:13px;padding:24px 0 36px}
 body.target-theme-toutiao{background:#fffafa}.target-theme-toutiao header{border-bottom-color:#fecaca}.target-theme-toutiao .brand,.target-theme-toutiao h2 a:hover,.target-theme-toutiao .read{color:#dc2626}.target-theme-toutiao .chip{border-color:#fecaca;background:#fef2f2;color:#b91c1c}.target-theme-toutiao .card{border-color:#fee2e2}
 body.target-theme-netease{background:#f7f7f7}.target-theme-netease header{border-top:3px solid #d7000f}.target-theme-netease .brand,.target-theme-netease h2 a:hover,.target-theme-netease .read{color:#b91c1c}.target-theme-netease .chip{border-color:#fee2e2;background:#fff1f2;color:#991b1b}.target-theme-netease .hero h1{font-weight:900}.target-theme-netease .card{box-shadow:none}
@@ -358,6 +605,7 @@ body.target-theme-apparel{background:#f7f4ee;color:#1d2527;font-family:Georgia,"
 .target-theme-apparel{--asi-ink:#1d2527;--asi-muted:#657173;--asi-soft:#f7f4ee;--asi-paper:#fffdf8;--asi-line:#d9d3c7;--asi-green:#24483f;--asi-sage:#6f8379;--asi-brass:#a87628;--asi-red:#8f352c;--asi-shadow:0 18px 50px rgba(29,37,39,.11);background:var(--asi-soft);color:var(--asi-ink);font-family:Georgia,"Times New Roman",serif}.target-theme-apparel a{color:inherit;text-decoration:none}.target-theme-apparel .wrap{max-width:none;padding:0}.target-theme-apparel .asi-shell{width:min(1180px,calc(100vw - 48px));margin:0 auto}.target-theme-apparel header{position:static;border:0;background:transparent}.target-theme-apparel main.wrap{max-width:none;padding:0}.target-theme-apparel .asi-topline{background:var(--asi-green);color:#fbf6ea;font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase}.target-theme-apparel .asi-topline-row{display:flex;justify-content:space-between;gap:24px;padding:9px 0}.target-theme-apparel .asi-masthead{border-bottom:1px solid var(--asi-line);background:rgba(255,253,248,.97)}.target-theme-apparel .asi-masthead-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:22px;padding:24px 0 22px}.target-theme-apparel .asi-brand{display:grid;gap:8px;min-width:0}.target-theme-apparel .asi-brand-kicker{color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;letter-spacing:.09em;line-height:1.4;text-transform:uppercase}.target-theme-apparel .asi-brand-name{max-width:820px;font-size:clamp(34px,5vw,62px);font-weight:700;letter-spacing:0;line-height:.95;overflow-wrap:anywhere}.target-theme-apparel .asi-search{display:grid;grid-template-columns:minmax(120px,1fr) auto;align-items:center;width:min(340px,36vw);border:1px solid var(--asi-line);border-radius:999px;background:#fff;padding:5px}.target-theme-apparel .asi-search input{min-width:0;border:0;background:transparent;color:var(--asi-ink);font-family:"Segoe UI",Tahoma,sans-serif;font-size:14px;outline:none;padding:8px 12px}.target-theme-apparel .asi-search button{border:0;border-radius:999px;background:var(--asi-green);color:#fffdf8;font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;font-weight:700;padding:8px 14px}.target-theme-apparel .asi-nav{display:flex;justify-content:center;gap:24px;border-top:1px solid var(--asi-line);padding:12px 0;color:#394548;font-family:"Segoe UI",Tahoma,sans-serif;font-size:14px;overflow-x:auto}.target-theme-apparel .asi-nav a{border-bottom:2px solid transparent;padding:2px 0;white-space:nowrap}.target-theme-apparel .asi-nav a:hover,.target-theme-apparel .asi-nav .is-active{border-color:var(--asi-brass);color:var(--asi-green)}.target-theme-apparel .asi-page{padding:34px 0 54px}.target-theme-apparel .asi-hero{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:28px;align-items:stretch}.target-theme-apparel .asi-lead{display:grid;grid-template-rows:minmax(290px,1fr) auto;min-height:510px;border-bottom:1px solid var(--asi-ink)}.target-theme-apparel .asi-visual{position:relative;display:block;overflow:hidden;border-radius:6px;background:#e7dfd2;min-height:110px}.target-theme-apparel .asi-visual img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.01);transition:transform .35s ease}.target-theme-apparel .asi-visual:hover img{transform:scale(1.05)}.target-theme-apparel .asi-visual-pattern{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,rgba(36,72,63,.18),rgba(168,118,40,.2)),repeating-linear-gradient(90deg,rgba(29,37,39,.08) 0 1px,transparent 1px 32px),repeating-linear-gradient(0deg,rgba(29,37,39,.06) 0 1px,transparent 1px 26px),#efe8dc}.target-theme-apparel .asi-visual-pattern span{display:grid;place-items:center;width:74px;height:74px;border:1px solid rgba(36,72,63,.22);border-radius:50%;background:rgba(255,253,248,.82);color:var(--asi-green);font-family:"Segoe UI",Tahoma,sans-serif;font-size:32px;font-weight:800}.target-theme-apparel .asi-lead-visual{min-height:320px;box-shadow:var(--asi-shadow)}.target-theme-apparel .asi-visual-badge{position:absolute;left:18px;bottom:18px;max-width:calc(100% - 36px);border:1px solid rgba(217,211,199,.88);border-radius:6px;background:rgba(255,253,248,.94);font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;letter-spacing:.08em;line-height:1.4;overflow-wrap:anywhere;padding:10px 12px;text-transform:uppercase}.target-theme-apparel .asi-lead-copy{padding-top:22px}.target-theme-apparel .asi-kicker,.target-theme-apparel .asi-panel-kicker,.target-theme-apparel .asi-article-section{color:var(--asi-red);font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;font-weight:800;letter-spacing:.1em;line-height:1.5;text-transform:uppercase}.target-theme-apparel .asi-lead h1,.target-theme-apparel .asi-article-head h1{margin:0;font-size:clamp(36px,4vw,58px);font-weight:700;letter-spacing:0;line-height:.99;overflow-wrap:anywhere}.target-theme-apparel .asi-lead h1{margin-top:12px;max-width:720px}.target-theme-apparel .asi-lead p,.target-theme-apparel .asi-article-head p{max-width:680px;margin:16px 0 0;color:#465153;font-family:"Segoe UI",Tahoma,sans-serif;font-size:17px;line-height:1.58}.target-theme-apparel .asi-hero-rail{display:grid;grid-template-rows:auto 1fr;gap:18px}.target-theme-apparel .asi-briefing,.target-theme-apparel .asi-briefing-panel{background:var(--asi-green);color:#fffaf0}.target-theme-apparel .asi-briefing{display:grid;align-content:space-between;min-height:172px;border-radius:6px;padding:22px}.target-theme-apparel .asi-briefing span,.target-theme-apparel .asi-briefing small{font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase}.target-theme-apparel .asi-briefing strong{display:block;margin-top:18px;font-size:28px;line-height:1.05}.target-theme-apparel .asi-briefing div{display:grid;grid-template-columns:1fr auto;gap:18px;border-top:1px solid rgba(255,255,255,.24);margin-top:20px;padding-top:16px}.target-theme-apparel .asi-headline-stack,.target-theme-apparel .asi-feed-section,.target-theme-apparel .asi-panel{border:1px solid var(--asi-line);border-radius:6px;background:var(--asi-paper)}.target-theme-apparel .asi-headline-stack{overflow:hidden}.target-theme-apparel .asi-mini-story{display:grid;grid-template-columns:112px minmax(0,1fr);gap:16px;min-height:128px;border-bottom:1px solid var(--asi-line);padding:18px}.target-theme-apparel .asi-mini-story:last-child{border-bottom:0}.target-theme-apparel .asi-mini-visual{min-height:92px}.target-theme-apparel .asi-mini-story h2{margin:0;font-size:20px;letter-spacing:0;line-height:1.12;overflow-wrap:anywhere}.target-theme-apparel .asi-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;font-size:12px;letter-spacing:.04em;line-height:1.5;text-transform:uppercase}.target-theme-apparel .asi-meta a,.target-theme-apparel .asi-meta span:first-child{color:var(--asi-red);font-weight:800}.target-theme-apparel .asi-content-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:34px;align-items:start;margin-top:38px}.target-theme-apparel .asi-feed-section{border-top:3px solid var(--asi-ink);overflow:hidden}.target-theme-apparel .asi-section-head,.target-theme-apparel .asi-panel-head{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--asi-line);margin:0 18px;padding:18px 0}.target-theme-apparel .asi-section-head span,.target-theme-apparel .asi-panel-head h2{margin:0;color:var(--asi-ink);font-family:"Segoe UI",Tahoma,sans-serif;font-size:18px;font-weight:800;letter-spacing:.08em;line-height:1.25;text-transform:uppercase}.target-theme-apparel .asi-feed-list{display:grid}.target-theme-apparel .asi-card{display:grid;grid-template-columns:150px minmax(0,1fr);gap:20px;align-items:start;border-bottom:1px solid var(--asi-line);padding:20px 18px}.target-theme-apparel .asi-card:last-child{border-bottom:0}.target-theme-apparel .asi-card-visual{aspect-ratio:4/3;min-height:112px}.target-theme-apparel .asi-card h2{margin:6px 0 0;font-size:25px;font-weight:700;letter-spacing:0;line-height:1.14;overflow-wrap:anywhere}.target-theme-apparel .asi-card p{margin:9px 0 0;color:#4d595b;font-family:"Segoe UI",Tahoma,sans-serif;font-size:14px;line-height:1.6}.target-theme-apparel .asi-sidebar{display:grid;gap:22px}.target-theme-apparel .asi-panel{padding-bottom:18px}.target-theme-apparel .asi-briefing-panel{border-color:var(--asi-green);padding:22px}.target-theme-apparel .asi-briefing-panel h2{margin:14px 0 0;font-size:28px;line-height:1.08}.target-theme-apparel .asi-briefing-panel p{color:rgba(255,250,240,.78);font-family:"Segoe UI",Tahoma,sans-serif;line-height:1.6}.target-theme-apparel .asi-rank-list{display:grid}.target-theme-apparel .asi-rank-item{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;border-bottom:1px solid var(--asi-line);padding:14px 18px}.target-theme-apparel .asi-rank-item:last-child{border-bottom:0}.target-theme-apparel .asi-rank-item span{color:var(--asi-brass);font-size:24px;font-weight:700}.target-theme-apparel .asi-rank-item strong{font-size:17px;line-height:1.22}.target-theme-apparel .asi-article-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:34px;padding:34px 0 56px}.target-theme-apparel .asi-breadcrumb{display:flex;gap:8px;margin-bottom:18px;color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;text-transform:uppercase}.target-theme-apparel .asi-article{border-top:3px solid var(--asi-ink);background:var(--asi-paper);border:1px solid var(--asi-line);border-radius:6px;padding:30px}.target-theme-apparel .asi-article-head{border-bottom:1px solid var(--asi-line);padding-bottom:24px}.target-theme-apparel .asi-post-info{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;text-transform:uppercase}.target-theme-apparel .asi-article-visual{aspect-ratio:16/9;margin:28px 0;min-height:280px}.target-theme-apparel .content,.target-theme-apparel .asi-prose{font-size:18px;line-height:1.92;color:#263033}.target-theme-apparel .content h2,.target-theme-apparel .asi-prose h2{font-size:28px;line-height:1.18;margin:1.6em 0 .65em}.target-theme-apparel .tags,.target-theme-apparel .asi-tag-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px;padding-top:22px;border-top:1px solid var(--asi-line)}.target-theme-apparel .tags span,.target-theme-apparel .asi-tag-list span{display:inline-flex;border:1px solid var(--asi-line);border-radius:999px;background:#fff;color:#394548;font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;font-weight:700;padding:7px 11px}.target-theme-apparel footer{border-top:1px solid var(--asi-line);background:var(--asi-paper);color:var(--asi-muted);font-family:"Segoe UI",Tahoma,sans-serif;padding:28px 0}@media(max-width:900px){.target-theme-apparel .asi-shell{width:min(100% - 32px,1180px)}.target-theme-apparel .asi-topline-row,.target-theme-apparel .asi-masthead-row{display:grid;gap:10px}.target-theme-apparel .asi-search{width:100%}.target-theme-apparel .asi-hero,.target-theme-apparel .asi-content-grid,.target-theme-apparel .asi-article-layout{grid-template-columns:1fr}.target-theme-apparel .asi-card{grid-template-columns:1fr}.target-theme-apparel .asi-card-visual{min-height:200px}.target-theme-apparel .asi-mini-story{grid-template-columns:96px minmax(0,1fr)}.target-theme-apparel .asi-article{padding:22px}}
 body.target-theme-fashion{font-family:"Segoe UI",Tahoma,sans-serif;background:#faf6f0;color:#1f1a17}.target-theme-fashion .wrap{max-width:1280px;padding:0 32px}.target-theme-fashion header{position:fixed;left:0;right:0;top:0;background:rgba(250,246,240,.82);border-bottom:1px solid rgba(239,235,228,.78);backdrop-filter:blur(14px);z-index:20}.target-theme-fashion header .bar{height:76px}.target-theme-fashion .brand{font-family:Georgia,"Times New Roman",serif;font-size:25px;font-weight:600;letter-spacing:.08em}.target-theme-fashion nav a{color:rgba(31,26,23,.62);font-size:13px}.target-theme-fashion main.wrap{padding-top:76px}.target-theme-fashion .fashion-hero{position:relative;text-align:center;overflow:hidden;padding:88px 0 112px}.target-theme-fashion .fashion-wordmark{position:absolute;left:50%;top:4px;transform:translateX(-50%);font-family:Georgia,"Times New Roman",serif;font-size:clamp(96px,16vw,220px);font-weight:800;letter-spacing:.08em;line-height:.85;color:rgba(239,235,228,.68);pointer-events:none;user-select:none}.target-theme-fashion .fashion-hero-inner{position:relative;z-index:1;max-width:820px;margin:0 auto}.target-theme-fashion .fashion-kicker{display:inline-flex;padding-bottom:9px;border-bottom:1px solid rgba(197,168,128,.34);color:#c5a880;text-transform:uppercase;letter-spacing:.25em;font-size:10px;font-weight:700}.target-theme-fashion .fashion-hero h1{margin:36px 0 22px;font-family:Georgia,"Times New Roman",serif;font-size:clamp(44px,7vw,88px);line-height:1.03;font-weight:800;letter-spacing:0}.target-theme-fashion .fashion-hero p{margin:0 auto;max-width:720px;color:rgba(31,26,23,.62);text-transform:uppercase;letter-spacing:.24em;font-size:13px;line-height:1.85;font-weight:600}.target-theme-fashion .fashion-search{display:flex;gap:14px;max-width:700px;margin:38px auto 0}.target-theme-fashion .fashion-search input{flex:1;min-width:0;border:1px solid #efebe4;border-radius:18px;background:rgba(255,255,255,.66);padding:16px 22px;font-size:13px;color:#1f1a17;outline:none}.target-theme-fashion .fashion-search button{border:0;border-radius:18px;background:#1f1a17;color:#fff;padding:0 38px;text-transform:uppercase;letter-spacing:.2em;font-size:12px;font-weight:800;box-shadow:0 14px 28px rgba(31,26,23,.18)}.target-theme-fashion .fashion-section{margin-bottom:84px}.target-theme-fashion .fashion-section-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(239,235,228,.82);padding-bottom:18px;margin-bottom:40px}.target-theme-fashion .fashion-section-head h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-size:28px;letter-spacing:0}.target-theme-fashion .fashion-section-head span{font-size:10px;text-transform:uppercase;letter-spacing:.25em;color:rgba(31,26,23,.5);font-weight:700}.target-theme-fashion .fashion-feature-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(320px,5fr);gap:32px;align-items:stretch}.target-theme-fashion .fashion-feature-card{position:relative;min-height:540px;overflow:hidden;border:1px solid rgba(239,235,228,.72);border-radius:26px;background:linear-gradient(135deg,#1f1a17,#c5a88066);box-shadow:0 20px 52px rgba(31,26,23,.08)}.target-theme-fashion .fashion-feature-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.target-theme-fashion .fashion-feature-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(31,26,23,.94),rgba(31,26,23,.55),rgba(31,26,23,.08))}.target-theme-fashion .fashion-feature-content{position:absolute;left:44px;right:44px;bottom:38px;color:#fff}.target-theme-fashion .fashion-feature-content>span{display:inline-flex;border-radius:999px;background:#c5a880;color:#1f1a17;padding:6px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.18em;font-weight:800}.target-theme-fashion .fashion-feature-content h3{font-family:Georgia,"Times New Roman",serif;font-size:clamp(30px,4vw,48px);line-height:1.06;margin:20px 0 14px}.target-theme-fashion .fashion-feature-content a{color:inherit;text-decoration:none}.target-theme-fashion .fashion-feature-content p{max-width:680px;color:rgba(255,255,255,.82);font-size:14px;line-height:1.8}.target-theme-fashion .fashion-feature-content div{display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.2);padding-top:18px;margin-top:22px}.target-theme-fashion .fashion-feature-content time{font-size:11px;letter-spacing:.14em;color:rgba(255,255,255,.55)}.target-theme-fashion .fashion-feature-content div a,.target-theme-fashion .fashion-feature-side article>a{font-size:10px;text-transform:uppercase;letter-spacing:.22em;font-weight:800}.target-theme-fashion .fashion-feature-side{display:flex;flex-direction:column;gap:24px}.target-theme-fashion .fashion-feature-side article{flex:1;border:1px solid rgba(239,235,228,.72);border-radius:24px;background:rgba(255,255,255,.42);padding:28px;display:flex;flex-direction:column;justify-content:space-between;transition:background .25s,box-shadow .25s}.target-theme-fashion .fashion-feature-side article:hover,.target-theme-fashion .fashion-card:hover{background:rgba(255,255,255,.78);box-shadow:0 18px 42px rgba(31,26,23,.08)}.target-theme-fashion .fashion-feature-side article div,.target-theme-fashion .fashion-card-meta{display:flex;justify-content:space-between;gap:16px;color:rgba(31,26,23,.54);font-size:10px;text-transform:uppercase;letter-spacing:.18em;font-weight:700}.target-theme-fashion .fashion-feature-side span,.target-theme-fashion .fashion-card-meta span{color:#c5a880}.target-theme-fashion .fashion-feature-side h3,.target-theme-fashion .fashion-card h3{font-family:Georgia,"Times New Roman",serif;line-height:1.15;letter-spacing:0}.target-theme-fashion .fashion-feature-side h3{font-size:24px;margin:18px 0 12px}.target-theme-fashion .fashion-feature-side a,.target-theme-fashion .fashion-card a{color:#1f1a17;text-decoration:none}.target-theme-fashion .fashion-feature-side a:hover,.target-theme-fashion .fashion-card a:hover{color:#c5a880}.target-theme-fashion .fashion-feature-side p,.target-theme-fashion .fashion-card p{color:rgba(31,26,23,.68);font-size:13px;line-height:1.75}.target-theme-fashion .fashion-feature-placeholder{align-items:center;text-align:center;color:rgba(31,26,23,.42);text-transform:uppercase;letter-spacing:.24em;font-size:12px}.target-theme-fashion .fashion-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px}.target-theme-fashion .fashion-card{border:1px solid rgba(239,235,228,.72);border-radius:24px;background:rgba(255,255,255,.42);padding:22px;display:flex;flex-direction:column;transition:background .25s,box-shadow .25s}.target-theme-fashion .fashion-card-media{display:block;aspect-ratio:4/3;border-radius:18px;overflow:hidden;background:linear-gradient(135deg,#faf6f0,#efebe4);margin-bottom:20px}.target-theme-fashion .fashion-card-media img{width:100%;height:100%;object-fit:cover;transition:transform .45s}.target-theme-fashion .fashion-card:hover img{transform:scale(1.04)}.target-theme-fashion .fashion-card h3{font-size:25px;margin:16px 0 10px}.target-theme-fashion .fashion-card-foot{margin-top:auto;border-top:1px solid rgba(239,235,228,.75);padding-top:18px;text-align:right}.target-theme-fashion .fashion-card-foot a{font-size:10px;text-transform:uppercase;letter-spacing:.22em;font-weight:800}.target-theme-fashion .fashion-empty{border:1px solid #efebe4;border-radius:26px;background:rgba(255,255,255,.34);padding:64px;text-align:center;max-width:760px;margin:0 auto 80px}.target-theme-fashion .fashion-empty h2{font-family:Georgia,"Times New Roman",serif;font-size:28px}.target-theme-fashion .detail{max-width:900px;margin:28px auto 76px;border:1px solid rgba(239,235,228,.8);border-radius:26px;background:rgba(255,255,255,.72);padding:48px;box-shadow:0 20px 52px rgba(31,26,23,.06)}.target-theme-fashion .detail h1{font-size:clamp(38px,5vw,64px);line-height:1.08;letter-spacing:0;margin:16px 0 18px}.target-theme-fashion .fashion-article-kicker{display:flex;gap:14px;color:#c5a880;text-transform:uppercase;letter-spacing:.2em;font-size:11px;font-weight:800}.target-theme-fashion .summary{font-size:16px;line-height:1.85;color:rgba(31,26,23,.6);margin-bottom:30px}.target-theme-fashion .content{font-family:Georgia,"Times New Roman",serif;font-size:18px;line-height:1.95}.target-theme-fashion .back{margin-top:32px}.target-theme-fashion footer{border-top-color:#efebe4;padding:44px 0 52px}@media(max-width:900px){.target-theme-fashion .wrap{padding:0 20px}.target-theme-fashion .fashion-search{flex-direction:column}.target-theme-fashion .fashion-search button{padding:15px 28px}.target-theme-fashion .fashion-feature-grid,.target-theme-fashion .fashion-card-grid{grid-template-columns:1fr}.target-theme-fashion .fashion-feature-card{min-height:420px}.target-theme-fashion .fashion-feature-content{left:26px;right:26px}.target-theme-fashion .fashion-section-head{align-items:flex-start;gap:12px;flex-direction:column}.target-theme-fashion .detail{padding:30px 22px}}
 body.target-theme-boutique{background:#f8f1e6;color:#221b14;font-family:"Segoe UI",Tahoma,sans-serif}.target-theme-boutique header{background:rgba(255,252,246,.96);border-bottom-color:#d6b879}.target-theme-boutique .brand,.target-theme-boutique h2 a:hover,.target-theme-boutique .read{color:#8a6326}.target-theme-boutique .hero h1,.target-theme-boutique .detail h1{font-family:Georgia,"Times New Roman",serif}.target-theme-boutique .chip{border-color:#d6b879;background:#fff7e8;color:#7c5520}.target-theme-boutique .card{border-color:#ead8b7;background:#fffaf2;box-shadow:0 18px 45px rgba(75,48,18,.1)}
+@media(max-width:820px){.homepage-split,.homepage-metrics,.homepage-features,.homepage-article-grid{grid-template-columns:1fr}.homepage-carousel-track{grid-template-columns:1fr}.homepage-module-inner{padding:22px}}
 CSS;
     }
 
@@ -623,6 +871,219 @@ function normalizeArticleTextAds(mixed $ads, bool $enabledOnly = false, int $max
     return array_slice(array_values($normalized), 0, max(0, $maxModules));
 }
 
+function frontendSupportedModules(): array
+{
+    return [
+        'hero',
+        'rich_text',
+        'image_band',
+        'metric_band',
+        'chart_band',
+        'feature_grid',
+        'article_collection',
+        'cta_band',
+        'custom_html',
+    ];
+}
+
+function normalizeHomepageHexColor(string $color): string
+{
+    $color = trim($color);
+    if (preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $color) !== 1) {
+        return '';
+    }
+
+    $hex = ltrim(strtolower($color), '#');
+    if (strlen($hex) === 3) {
+        $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+    }
+
+    return '#'.$hex;
+}
+
+function normalizeHomepageUrl(string $url, bool $allowRelative = true): string
+{
+    $normalized = trim($url);
+    if ($normalized === '' || str_starts_with($normalized, '//')) {
+        return '';
+    }
+
+    if ($allowRelative && str_starts_with($normalized, '/')) {
+        return $normalized;
+    }
+
+    if (preg_match('#^https?://#i', $normalized) === 1) {
+        return $normalized;
+    }
+
+    if (preg_match('#^[a-z][a-z0-9+.-]*:#i', $normalized) === 1) {
+        return '';
+    }
+
+    return $allowRelative ? '/'.ltrim($normalized, '/') : '';
+}
+
+function normalizeHomepageStyle(mixed $style): array
+{
+    $style = is_array($style) ? $style : [];
+    $defaults = [
+        'accent_color' => '#2563eb',
+        'background_color' => '#ffffff',
+        'surface_color' => '#ffffff',
+        'text_color' => '#111827',
+        'muted_color' => '#6b7280',
+        'container_width' => 'default',
+        'section_spacing' => 'normal',
+        'radius' => 'soft',
+    ];
+
+    foreach (['accent_color', 'background_color', 'surface_color', 'text_color', 'muted_color'] as $field) {
+        $color = normalizeHomepageHexColor((string) ($style[$field] ?? ''));
+        if ($color !== '') {
+            $defaults[$field] = $color;
+        }
+    }
+    foreach ([
+        'container_width' => ['narrow', 'default', 'wide'],
+        'section_spacing' => ['compact', 'normal', 'relaxed'],
+        'radius' => ['none', 'soft', 'round'],
+    ] as $field => $allowed) {
+        $value = (string) ($style[$field] ?? $defaults[$field]);
+        if (in_array($value, $allowed, true)) {
+            $defaults[$field] = $value;
+        }
+    }
+
+    return $defaults;
+}
+
+function sanitizeHomepageCustomHtml(string $html): string
+{
+    $html = trim($html);
+    if ($html === '') {
+        return '';
+    }
+
+    $html = preg_replace('#<\s*(script|style|iframe|object|embed|form)\b[^>]*>.*?<\s*/\s*\1\s*>#is', '', $html) ?? '';
+    $html = preg_replace('#<\s*(script|style|iframe|object|embed|form)\b[^>]*\/?>#is', '', $html) ?? '';
+    $html = preg_replace('/\son[a-z]+\s*=\s*(".*?"|\'.*?\'|[^\s>]+)/iu', '', $html) ?? '';
+    $html = preg_replace('/javascript\s*:/iu', '', $html) ?? '';
+
+    return mb_substr($html, 0, 4000);
+}
+
+function normalizeHomepageModules(mixed $modules, bool $enabledOnly = true, int $maxModules = 30): array
+{
+    if (! is_array($modules)) {
+        return [];
+    }
+    if (! array_is_list($modules)) {
+        $modules = $modules['modules']
+            ?? $modules['homepage_modules']
+            ?? $modules['sections']
+            ?? $modules['blocks']
+            ?? [];
+    }
+    if (! is_array($modules)) {
+        return [];
+    }
+
+    $normalized = [];
+    foreach (array_values($modules) as $item) {
+        if (! is_array($item) || count($normalized) >= $maxModules) {
+            continue;
+        }
+
+        $type = (string) ($item['type'] ?? 'rich_text');
+        if (! in_array($type, frontendSupportedModules(), true)) {
+            $type = 'rich_text';
+        }
+        $enabled = array_key_exists('enabled', $item) ? ! empty($item['enabled']) : true;
+        if ($enabledOnly && ! $enabled) {
+            continue;
+        }
+        $layout = (string) ($item['layout'] ?? 'single');
+        if (! in_array($layout, ['single', 'split', 'grid', 'compact'], true)) {
+            $layout = 'single';
+        }
+        $dataSource = (string) ($item['data_source'] ?? 'latest');
+        if (! in_array($dataSource, ['featured', 'hot', 'latest'], true)) {
+            $dataSource = 'latest';
+        }
+        $alignment = (string) ($item['alignment'] ?? 'left');
+        if (! in_array($alignment, ['left', 'center'], true)) {
+            $alignment = 'left';
+        }
+
+        $normalized[] = [
+            'id' => trim((string) ($item['id'] ?? 'module_'.md5(json_encode($item)))) ?: 'module_'.count($normalized),
+            'type' => $type,
+            'layout' => $layout,
+            'data_source' => $dataSource,
+            'limit' => min(12, max(1, (int) ($item['limit'] ?? 4))),
+            'sort_order' => min(10000, max(0, (int) ($item['sort_order'] ?? ((count($normalized) + 1) * 10)))),
+            'alignment' => $alignment,
+            'accent_color' => normalizeHomepageHexColor((string) ($item['accent_color'] ?? '')),
+            'surface_color' => normalizeHomepageHexColor((string) ($item['surface_color'] ?? '')),
+            'text_color' => normalizeHomepageHexColor((string) ($item['text_color'] ?? '')),
+            'muted_color' => normalizeHomepageHexColor((string) ($item['muted_color'] ?? '')),
+            'title' => mb_substr(trim((string) ($item['title'] ?? '')), 0, 120),
+            'subtitle' => mb_substr(trim((string) ($item['subtitle'] ?? '')), 0, 180),
+            'body' => mb_substr(trim((string) ($item['body'] ?? '')), 0, 1200),
+            'image_url' => normalizeHomepageUrl((string) ($item['image_url'] ?? ''), true),
+            'link_text' => mb_substr(trim((string) ($item['link_text'] ?? '')), 0, 80),
+            'link_url' => normalizeHomepageUrl((string) ($item['link_url'] ?? ''), true),
+            'custom_html' => sanitizeHomepageCustomHtml((string) ($item['custom_html'] ?? '')),
+            'enabled' => $enabled,
+        ];
+    }
+
+    usort($normalized, static function (array $a, array $b): int {
+        $order = ((int) $a['sort_order']) <=> ((int) $b['sort_order']);
+
+        return $order !== 0 ? $order : strcmp((string) $a['title'], (string) $b['title']);
+    });
+
+    return array_values($normalized);
+}
+
+function normalizeHomeCarouselSlides(mixed $slides): array
+{
+    if (! is_array($slides)) {
+        return [];
+    }
+
+    $normalized = [];
+    foreach (array_values($slides) as $slide) {
+        if (! is_array($slide)) {
+            continue;
+        }
+
+        $imageUrl = normalizeHomepageUrl((string) ($slide['image_url'] ?? ''), true);
+        $title = mb_substr(trim((string) ($slide['title'] ?? '')), 0, 120);
+        $linkUrl = normalizeHomepageUrl((string) ($slide['link_url'] ?? ''), true);
+        if ($imageUrl === '' && $title === '' && $linkUrl === '') {
+            continue;
+        }
+        if ($imageUrl === '') {
+            continue;
+        }
+
+        $normalized[] = [
+            'image_url' => $imageUrl,
+            'title' => $title,
+            'link_url' => $linkUrl,
+            'enabled' => ! empty($slide['enabled']),
+        ];
+
+        if (count($normalized) >= 3) {
+            break;
+        }
+    }
+
+    return $normalized;
+}
+
 function normalizeSiteSettings(array $settings, array $config = []): array
 {
     $siteName = trim((string) ($settings['site_name'] ?? $config['site_name'] ?? 'GEOFlow Target Site'));
@@ -642,6 +1103,12 @@ function normalizeSiteSettings(array $settings, array $config = []): array
         'seo_description_template' => trim((string) ($settings['seo_description_template'] ?? $config['seo_description_template'] ?? '{description}')),
         'featured_limit' => min(100, max(1, (int) ($settings['featured_limit'] ?? $config['featured_limit'] ?? 6))),
         'per_page' => min(200, max(1, (int) ($settings['per_page'] ?? $config['per_page'] ?? 12))),
+        'homepage_style' => normalizeHomepageStyle($settings['homepage_style'] ?? $config['homepage_style'] ?? []),
+        'homepage_modules' => normalizeHomepageModules($settings['homepage_modules'] ?? $config['homepage_modules'] ?? [], false),
+        'home_carousel_slides' => normalizeHomeCarouselSlides($settings['home_carousel_slides'] ?? $config['home_carousel_slides'] ?? []),
+        'frontend_experience_mode' => in_array((string) ($settings['frontend_experience_mode'] ?? $config['frontend_experience_mode'] ?? 'custom'), ['custom', 'inherit_default', 'snapshot_default'], true)
+            ? (string) ($settings['frontend_experience_mode'] ?? $config['frontend_experience_mode'] ?? 'custom')
+            : 'custom',
         'article_text_ads' => normalizeArticleTextAds($settings['article_text_ads'] ?? $config['article_text_ads'] ?? []),
         'active_theme' => trim((string) ($settings['active_theme'] ?? $config['active_theme'] ?? '')),
         'front_mode' => $frontMode,
@@ -1733,16 +2200,263 @@ function apparelPageHeader(array $config, array $settings, string $title, array 
     echo '</nav></div></header><main class="wrap">';
 }
 
+function homepageHref(array $config, string $url): string
+{
+    $url = normalizeHomepageUrl($url, true);
+    if ($url === '') {
+        return '';
+    }
+
+    return str_starts_with($url, '/') ? frontSitePath($config, $url) : $url;
+}
+
+function homepageStyleAttribute(array $settings): string
+{
+    $style = normalizeHomepageStyle($settings['homepage_style'] ?? []);
+    $radius = match ($style['radius']) {
+        'none' => '0px',
+        'round' => '20px',
+        default => '8px',
+    };
+
+    return sprintf(
+        '--homepage-accent:%s;--homepage-bg:%s;--homepage-surface:%s;--homepage-text:%s;--homepage-muted:%s;--homepage-radius:%s',
+        $style['accent_color'],
+        $style['background_color'],
+        $style['surface_color'],
+        $style['text_color'],
+        $style['muted_color'],
+        $radius
+    );
+}
+
+function homepageModuleStyleAttribute(array $module): string
+{
+    $styles = [];
+    foreach ([
+        'accent_color' => '--module-accent',
+        'surface_color' => '--module-surface',
+        'text_color' => '--module-text',
+        'muted_color' => '--module-muted',
+    ] as $field => $variable) {
+        $color = normalizeHomepageHexColor((string) ($module[$field] ?? ''));
+        if ($color !== '') {
+            $styles[] = $variable.':'.$color;
+        }
+    }
+
+    return implode(';', $styles);
+}
+
+function homepageModuleRows(string $body): array
+{
+    $rows = [];
+    foreach (preg_split('/\r?\n/u', trim($body)) ?: [] as $line) {
+        $line = trim((string) $line);
+        if ($line === '') {
+            continue;
+        }
+
+        $rows[] = array_map(static fn (string $part): string => trim($part), explode('|', $line));
+    }
+
+    return $rows;
+}
+
+function homepageArticlePool(array $articles, string $source): array
+{
+    return array_values(array_filter($articles, static function (array $article) use ($source): bool {
+        if ($source === 'featured') {
+            return ! empty($article['is_featured']);
+        }
+        if ($source === 'hot') {
+            return ! empty($article['is_hot']);
+        }
+
+        return true;
+    }));
+}
+
+function renderHomepageModuleHeading(array $module, string $headingTag = 'h2'): void
+{
+    if ((string) $module['subtitle'] !== '') {
+        echo '<div class="module-kicker">'.h((string) $module['subtitle']).'</div>';
+    }
+    if ((string) $module['title'] !== '') {
+        echo '<'.$headingTag.'>'.h((string) $module['title']).'</'.$headingTag.'>';
+    }
+    if ((string) $module['body'] !== '' && ! in_array((string) $module['type'], ['metric_band', 'chart_band', 'feature_grid'], true)) {
+        echo '<p>'.nl2br(h((string) $module['body'])).'</p>';
+    }
+}
+
+function renderHomepageAction(array $config, array $module): void
+{
+    $url = homepageHref($config, (string) $module['link_url']);
+    $text = (string) $module['link_text'];
+    if ($url !== '' && $text !== '') {
+        echo '<a class="module-action" href="'.h($url).'">'.h($text).'</a>';
+    }
+}
+
+function renderHomepageArticleCard(array $config, array $article): void
+{
+    $slug = (string) ($article['slug'] ?? '');
+    if ($slug === '') {
+        return;
+    }
+
+    $title = (string) ($article['title'] ?? 'Untitled Article');
+    $url = frontSitePath($config, '/article/'.rawurlencode($slug));
+    $summary = articleSummary($article, 120);
+    echo '<article class="homepage-article-card">';
+    echo '<h3><a href="'.h($url).'">'.h($title).'</a></h3>';
+    if ($summary !== '') {
+        echo '<p>'.h($summary).'</p>';
+    }
+    echo '</article>';
+}
+
+function renderHomepageModule(array $config, array $module, array $articles): void
+{
+    $type = (string) $module['type'];
+    $class = 'homepage-module homepage-'.$type.' align-'.(string) $module['alignment'];
+    $style = homepageModuleStyleAttribute($module);
+    echo '<section class="'.h($class).'"'.($style !== '' ? ' style="'.h($style).'"' : '').'>';
+
+    if ($type === 'image_band') {
+        echo '<div class="homepage-module-inner">';
+        if ((string) $module['image_url'] !== '') {
+            echo '<img src="'.h(homepageHref($config, (string) $module['image_url'])).'" alt="'.h((string) $module['title']).'">';
+        }
+        echo '<div class="module-copy">';
+        renderHomepageModuleHeading($module);
+        renderHomepageAction($config, $module);
+        echo '</div></div></section>';
+
+        return;
+    }
+
+    echo '<div class="homepage-module-inner'.(((string) $module['layout']) === 'split' ? ' homepage-split' : '').'">';
+    echo '<div>';
+    renderHomepageModuleHeading($module, $type === 'hero' ? 'h1' : 'h2');
+    renderHomepageAction($config, $module);
+    echo '</div>';
+
+    if ($type === 'hero' && (string) $module['image_url'] !== '') {
+        echo '<div class="homepage-media"><img src="'.h(homepageHref($config, (string) $module['image_url'])).'" alt="'.h((string) $module['title']).'"></div>';
+    } elseif ($type === 'metric_band') {
+        echo '<div class="homepage-metrics">';
+        foreach (array_slice(homepageModuleRows((string) $module['body']), 0, 6) as $row) {
+            echo '<div class="metric-item"><span>'.h((string) ($row[0] ?? '')).'</span><strong>'.h((string) ($row[1] ?? '')).'</strong>';
+            if ((string) ($row[2] ?? '') !== '') {
+                echo '<span>'.h((string) $row[2]).'</span>';
+            }
+            echo '</div>';
+        }
+        echo '</div>';
+    } elseif ($type === 'chart_band') {
+        echo '<div class="homepage-chart-bars">';
+        foreach (array_slice(homepageModuleRows((string) $module['body']), 0, 8) as $row) {
+            $label = (string) ($row[0] ?? '');
+            $value = min(100, max(0, (int) ($row[1] ?? 0)));
+            echo '<div class="chart-row"><strong>'.h($label).'</strong><div class="chart-bar"><i style="--bar-width:'.$value.'%"></i></div><span>'.$value.'%</span></div>';
+        }
+        echo '</div>';
+    } elseif ($type === 'feature_grid') {
+        echo '<div class="homepage-features">';
+        foreach (array_slice(homepageModuleRows((string) $module['body']), 0, 9) as $row) {
+            $url = homepageHref($config, (string) ($row[2] ?? ''));
+            echo '<div class="feature-item"><h3>';
+            echo $url !== '' ? '<a href="'.h($url).'">'.h((string) ($row[0] ?? '')).'</a>' : h((string) ($row[0] ?? ''));
+            echo '</h3><p>'.h((string) ($row[1] ?? '')).'</p></div>';
+        }
+        echo '</div>';
+    } elseif ($type === 'article_collection') {
+        $pool = array_slice(homepageArticlePool($articles, (string) $module['data_source']), 0, (int) $module['limit']);
+        echo '<div class="homepage-article-grid">';
+        foreach ($pool as $article) {
+            renderHomepageArticleCard($config, $article);
+        }
+        echo '</div>';
+    } elseif ($type === 'custom_html') {
+        echo '<div class="homepage-custom-html">'.(string) $module['custom_html'].'</div>';
+    }
+
+    echo '</div></section>';
+}
+
+function renderHomeCarouselSlides(array $config, array $settings): bool
+{
+    $slides = array_values(array_filter(
+        normalizeHomeCarouselSlides($settings['home_carousel_slides'] ?? []),
+        static fn (array $slide): bool => ! empty($slide['enabled'])
+    ));
+    if ($slides === []) {
+        return false;
+    }
+
+    echo '<section class="homepage-carousel" style="'.h(homepageStyleAttribute($settings)).'"><div class="homepage-carousel-track">';
+    foreach ($slides as $slide) {
+        $imageUrl = homepageHref($config, (string) $slide['image_url']);
+        if ($imageUrl === '') {
+            continue;
+        }
+
+        $title = (string) $slide['title'];
+        $linkUrl = homepageHref($config, (string) $slide['link_url']);
+        echo '<article class="homepage-slide">';
+        echo $linkUrl !== '' ? '<a class="homepage-slide-media" href="'.h($linkUrl).'">' : '<div class="homepage-slide-media">';
+        echo '<img src="'.h($imageUrl).'" alt="'.h($title).'">';
+        echo $linkUrl !== '' ? '</a>' : '</div>';
+        if ($title !== '') {
+            echo '<div class="homepage-slide-copy">';
+            echo $linkUrl !== '' ? '<a href="'.h($linkUrl).'">'.h($title).'</a>' : h($title);
+            echo '</div>';
+        }
+        echo '</article>';
+    }
+    echo '</div></section>';
+
+    return true;
+}
+
+function renderHomepageModules(array $config, array $settings, array $articles): bool
+{
+    $modules = normalizeHomepageModules($settings['homepage_modules'] ?? [], true);
+    if ($modules === []) {
+        return false;
+    }
+
+    echo '<section class="homepage-modules" style="'.h(homepageStyleAttribute($settings)).'">';
+    foreach ($modules as $module) {
+        renderHomepageModule($config, $module, $articles);
+    }
+    echo '</section>';
+
+    return true;
+}
+
+function hasHomepageExperience(array $settings): bool
+{
+    $slides = array_values(array_filter(
+        normalizeHomeCarouselSlides($settings['home_carousel_slides'] ?? []),
+        static fn (array $slide): bool => ! empty($slide['enabled'])
+    ));
+
+    return $slides !== [] || normalizeHomepageModules($settings['homepage_modules'] ?? [], true) !== [];
+}
+
 function renderHomePage(array $config): void
 {
     $settings = siteSettings($config);
-    if (themeClass($settings) === 'target-theme-apparel') {
+    if (! hasHomepageExperience($settings) && themeClass($settings) === 'target-theme-apparel') {
         renderApparelHomePage($config, $settings);
 
         return;
     }
 
-    if (themeClass($settings) === 'target-theme-fashion') {
+    if (! hasHomepageExperience($settings) && themeClass($settings) === 'target-theme-fashion') {
         renderFashionHomePage($config, $settings);
 
         return;
@@ -1758,7 +2472,11 @@ function renderHomePage(array $config): void
         "url"=>frontSiteUrl($config, '/'),
         "description"=>(string) $settings['site_description'],
     ]);
-    echo '<section class="hero"><h1>'.h($siteName).'</h1><p>'.h((string) $settings['site_description']).'</p></section>';
+    $hasCarouselSlides = renderHomeCarouselSlides($config, $settings);
+    $hasHomepageModules = renderHomepageModules($config, $settings, $articles);
+    if (! $hasCarouselSlides && ! $hasHomepageModules) {
+        echo '<section class="hero"><h1>'.h($siteName).'</h1><p>'.h((string) $settings['site_description']).'</p></section>';
+    }
     if ($articles === []) {
         echo '<div class="card empty">暂无文章。请先从 GEOFlow 发布一篇绑定此渠道的文章。</div>';
         pageFooter($config);
@@ -2139,6 +2857,54 @@ function handleHealth(array $config, string $method, string $path, string $body)
     ]);
 }
 
+function handleFrontendCapabilities(array $config, string $method, string $path, string $body): void
+{
+    $verified = verifySignedRequest($config, $method, $path, $body);
+    if (! in_array($verified['event'], ['frontend.capabilities', 'health.check'], true)) {
+        jsonResponse(422, ['ok' => false, 'error' => 'unsupported_event']);
+    }
+
+    $settings = siteSettings($config);
+    $homepageModules = normalizeHomepageModules($settings['homepage_modules'] ?? [], false);
+    $homepageStyle = normalizeHomepageStyle($settings['homepage_style'] ?? []);
+    $carouselSlides = normalizeHomeCarouselSlides($settings['home_carousel_slides'] ?? []);
+    $articleTextAds = normalizeArticleTextAds($settings['article_text_ads'] ?? [], false);
+    jsonResponse(200, [
+        'ok' => true,
+        'service' => 'geoflow-target-site',
+        'capability_version' => '1.2',
+        'package_version' => (string) ($config['package_version'] ?? ''),
+        'event' => $verified['event'],
+        'active_theme' => activeTheme($settings),
+        'front_mode' => (string) $settings['front_mode'],
+        'frontend_experience_mode' => (string) $settings['frontend_experience_mode'],
+        'current_settings' => [
+            'active_theme' => activeTheme($settings),
+            'front_mode' => (string) $settings['front_mode'],
+            'frontend_experience_mode' => (string) $settings['frontend_experience_mode'],
+            'homepage_modules_count' => count($homepageModules),
+            'homepage_module_types' => array_values(array_unique(array_map(static fn (array $module): string => (string) ($module['type'] ?? ''), $homepageModules))),
+            'home_carousel_slides_count' => count($carouselSlides),
+            'article_text_ads_count' => count($articleTextAds),
+            'homepage_style_keys' => array_keys($homepageStyle),
+        ],
+        'supported_modules' => frontendSupportedModules(),
+        'supported_routes' => [
+            '/',
+            '/article/{slug}',
+            '/llms.txt',
+            '/sitemap.txt',
+            '/geoflow-agent/v1/health',
+            '/geoflow-agent/v1/site-settings',
+            '/geoflow-agent/v1/frontend-capabilities',
+        ],
+        'supports_homepage_style' => true,
+        'supports_home_carousel_slides' => true,
+        'supports_article_text_ads' => true,
+        'supports_static_generation' => ! empty($config['static_publish_enabled']),
+    ]);
+}
+
 function handleArticlePublish(array $config, string $method, string $path, string $body): void
 {
     $verified = verifySignedRequest($config, $method, $path, $body);
@@ -2277,6 +3043,9 @@ $body = is_string($body) ? $body : '';
 
 if ($method === 'GET' && $path === '/geoflow-agent/v1/health') {
     handleHealth($config, $method, $path, $body);
+}
+if ($method === 'GET' && $path === '/geoflow-agent/v1/frontend-capabilities') {
+    handleFrontendCapabilities($config, $method, $path, $body);
 }
 if ($method === 'POST' && $path === '/geoflow-agent/v1/articles') {
     handleArticlePublish($config, $method, $path, $body);

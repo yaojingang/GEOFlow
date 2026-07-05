@@ -13,6 +13,19 @@
     $genericConfig = $channel->resolvedGenericHttpConfig();
     $articleTextAdPolicy = \App\Models\DistributionChannel::normalizeArticleTextAdPolicy($articleTextAdPolicy ?? $channel->resolvedArticleTextAdPolicy());
     $effectiveArticleTextAds = is_array($effectiveArticleTextAds ?? null) ? $effectiveArticleTextAds : $channel->effectiveArticleTextAds();
+    $frontendExperienceReport = is_array($frontendExperienceReport ?? null) ? $frontendExperienceReport : [];
+    $frontendPreview = is_array($frontendExperienceReport['sync_preview'] ?? null) ? $frontendExperienceReport['sync_preview'] : [];
+    $frontendSummary = is_array($frontendPreview['summary'] ?? null) ? $frontendPreview['summary'] : [];
+    $remoteTarget = is_array($frontendExperienceReport['remote_target'] ?? null) ? $frontendExperienceReport['remote_target'] : [];
+    $remoteStatus = (string) ($remoteTarget['status'] ?? 'not_checked');
+    $remoteStatusCopy = [
+        'ok' => ['label' => '已检查', 'class' => 'border-emerald-200 bg-emerald-50 text-emerald-800'],
+        'not_checked' => ['label' => '未检查', 'class' => 'border-gray-200 bg-gray-50 text-gray-700'],
+        'missing_secret' => ['label' => '缺少密钥', 'class' => 'border-amber-200 bg-amber-50 text-amber-800'],
+        'unsupported_or_not_found' => ['label' => '旧包或未暴露', 'class' => 'border-amber-200 bg-amber-50 text-amber-800'],
+        'unavailable' => ['label' => '不可达', 'class' => 'border-red-200 bg-red-50 text-red-800'],
+        'not_applicable' => ['label' => '不适用', 'class' => 'border-gray-200 bg-gray-50 text-gray-700'],
+    ][$remoteStatus] ?? ['label' => $remoteStatus, 'class' => 'border-gray-200 bg-gray-50 text-gray-700'];
     $articleTextAdCounts = ['content_top' => 0, 'content_bottom' => 0];
     foreach ($effectiveArticleTextAds as $textAd) {
         $placement = (string) ($textAd['placement'] ?? '');
@@ -87,13 +100,19 @@
                         {{ __('admin.distribution.button.health') }}
                     </button>
                 </form>
-                <form method="POST" action="{{ route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]) }}">
-                    @csrf
-                    <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                        <i data-lucide="settings" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.distribution.button.sync_settings') }}
-                    </button>
-                </form>
+                @if ($channel->isGeoFlowAgent())
+                    <form method="POST" action="{{ route('admin.distribution.frontend-capabilities.refresh', ['channelId' => (int) $channel->id]) }}">
+                        @csrf
+                        <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                            <i data-lucide="radar" class="mr-2 h-4 w-4"></i>
+                            刷新远端能力
+                        </button>
+                    </form>
+                @endif
+                <a href="{{ route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <i data-lucide="scan-search" class="mr-2 h-4 w-4"></i>
+                    同步预览
+                </a>
             </div>
         </div>
 
@@ -207,6 +226,43 @@
                         </div>
                     @endif
                 @endif
+            </div>
+        </div>
+
+        <div class="rounded-lg bg-white p-6 shadow">
+            <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                    <h2 class="text-lg font-medium text-gray-900">前台体验状态</h2>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">展示当前将同步到目标站的前台配置，以及最近一次缓存的远端能力。</p>
+                </div>
+                <a href="{{ route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <i data-lucide="scan-search" class="mr-2 h-4 w-4"></i>
+                    查看同步预览
+                </a>
+            </div>
+            <div class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4">
+                    <div class="text-xs font-medium text-gray-500">体验模式</div>
+                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ $frontendSummary['frontend_experience_mode'] ?? $channel->frontendExperienceMode() }}</div>
+                    <div class="mt-2 text-xs leading-5 text-gray-500">{{ ($frontendSummary['active_theme'] ?? '') !== '' ? $frontendSummary['active_theme'] : '默认主题' }} · {{ $frontendSummary['front_mode'] ?? $channel->frontMode() }}</div>
+                </div>
+                <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4">
+                    <div class="text-xs font-medium text-gray-500">模块 / 轮播 / 文字广告</div>
+                    <div class="mt-1 text-sm font-semibold text-gray-900">{{ (int) ($frontendSummary['homepage_modules_count'] ?? 0) }} / {{ (int) ($frontendSummary['home_carousel_slides_count'] ?? 0) }} / {{ (int) ($frontendSummary['article_text_ads_count'] ?? 0) }}</div>
+                    <div class="mt-2 text-xs leading-5 text-gray-500">样式 token {{ count($frontendSummary['homepage_style_keys'] ?? []) }} 个</div>
+                </div>
+                <div class="rounded-lg border {{ $remoteStatusCopy['class'] }} px-4 py-4">
+                    <div class="text-xs font-medium opacity-75">远端能力缓存</div>
+                    <div class="mt-1 text-sm font-semibold">{{ $remoteStatusCopy['label'] }}</div>
+                    <div class="mt-2 text-xs leading-5">
+                        {{ ($remoteTarget['checked_at'] ?? '') !== '' ? '最后检查 '.$remoteTarget['checked_at'] : '尚未检查远端能力' }}
+                    </div>
+                    @if ($remoteStatus === 'ok')
+                        <div class="mt-2 text-xs leading-5">能力 {{ $remoteTarget['capability_version'] ?: '-' }} · 包 {{ $remoteTarget['package_version'] ?: '-' }}</div>
+                    @elseif ($remoteStatus === 'unsupported_or_not_found')
+                        <div class="mt-2 text-xs leading-5">建议重新下载并覆盖目标站点包。</div>
+                    @endif
+                </div>
             </div>
         </div>
 

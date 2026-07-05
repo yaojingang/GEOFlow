@@ -589,6 +589,16 @@
                                     </div>
                                 </div>
                                 <div class="mt-4">
+                                    <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_lead_form') }}</label>
+                                    <select name="homepage_modules[{{ $index }}][lead_form_slug]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option value="">{{ __('admin.site_settings.homepage.lead_form_none') }}</option>
+                                        @foreach ($leadForms as $leadForm)
+                                            <option value="{{ $leadForm->slug }}" @selected(($module['lead_form_slug'] ?? '') === $leadForm->slug)>{{ $leadForm->name }} (/forms/{{ $leadForm->slug }})</option>
+                                        @endforeach
+                                    </select>
+                                    <p class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.homepage.lead_form_help') }}</p>
+                                </div>
+                                <div class="mt-4">
                                     <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_custom_html') }}</label>
                                     <textarea name="homepage_modules[{{ $index }}][custom_html]" rows="3" class="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="<p>HTML snippet</p>">{{ $module['custom_html'] ?? '' }}</textarea>
                                 </div>
@@ -1106,6 +1116,16 @@
                     <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_link_url') }}</label>
                     <input type="text" name="homepage_modules[__INDEX__][link_url]" value="" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="/category/demo">
                 </div>
+            </div>
+            <div class="mt-4">
+                <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_lead_form') }}</label>
+                <select name="homepage_modules[__INDEX__][lead_form_slug]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    <option value="">{{ __('admin.site_settings.homepage.lead_form_none') }}</option>
+                    @foreach ($leadForms as $leadForm)
+                        <option value="{{ $leadForm->slug }}">{{ $leadForm->name }} (/forms/{{ $leadForm->slug }})</option>
+                    @endforeach
+                </select>
+                <p class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.homepage.lead_form_help') }}</p>
             </div>
             <div class="mt-4">
                 <label class="mb-2 block text-xs font-medium text-gray-600">{{ __('admin.site_settings.homepage.field_custom_html') }}</label>

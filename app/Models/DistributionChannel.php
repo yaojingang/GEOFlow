@@ -3,6 +3,9 @@
 namespace App\Models;
 
 use App\Support\Site\ArticleTextAdPicker;
+use App\Support\Site\HomepageModuleBuilder;
+use App\Support\Site\SiteSettingsBag;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,6 +14,29 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class DistributionChannel extends Model
 {
     public const MAX_CUSTOM_TEXT_AD_MODULES_PER_PLACEMENT = 5;
+
+    public const FRONTEND_EXPERIENCE_CUSTOM = 'custom';
+
+    public const FRONTEND_EXPERIENCE_INHERIT_DEFAULT = 'inherit_default';
+
+    public const FRONTEND_EXPERIENCE_SNAPSHOT_DEFAULT = 'snapshot_default';
+
+    public const FRONTEND_EXPERIENCE_MODES = [
+        self::FRONTEND_EXPERIENCE_CUSTOM,
+        self::FRONTEND_EXPERIENCE_INHERIT_DEFAULT,
+        self::FRONTEND_EXPERIENCE_SNAPSHOT_DEFAULT,
+    ];
+
+    public const FRONTEND_CAPABILITIES_CACHE_KEY = 'frontend_capabilities_cache';
+
+    public const FRONTEND_CAPABILITIES_CACHE_STATUSES = [
+        'not_checked',
+        'ok',
+        'missing_secret',
+        'unsupported_or_not_found',
+        'unavailable',
+        'not_applicable',
+    ];
 
     protected $fillable = [
         'name',
@@ -51,7 +77,10 @@ class DistributionChannel extends Model
      *   seo_title_template:string,
      *   seo_description_template:string,
      *   featured_limit:int,
-     *   per_page:int
+     *   per_page:int,
+     *   homepage_style:array<string,string>,
+     *   homepage_modules:list<array<string,mixed>>,
+     *   home_carousel_slides:list<array<string,mixed>>
      * }
      */
     public function resolvedSiteSettings(): array
@@ -72,7 +101,7 @@ class DistributionChannel extends Model
             'seo_description_template' => trim((string) ($stored['seo_description_template'] ?? '{description}')),
             'featured_limit' => min(100, max(1, (int) ($stored['featured_limit'] ?? 6))),
             'per_page' => min(200, max(1, (int) ($stored['per_page'] ?? 12))),
-        ];
+        ] + $this->resolvedFrontendExperienceSettings();
     }
 
     /**
@@ -83,8 +112,289 @@ class DistributionChannel extends Model
         return $this->resolvedSiteSettings() + [
             'active_theme' => (string) ($this->template_key ?? ''),
             'front_mode' => $this->frontMode(),
+            'frontend_experience_mode' => $this->frontendExperienceMode(),
             'article_text_ads' => $this->effectiveArticleTextAds(),
         ];
+    }
+
+    public function frontendExperienceMode(): string
+    {
+        $stored = is_array($this->channel_config) ? $this->channel_config : [];
+
+        return self::normalizeFrontendExperienceMode($stored['frontend_experience_mode'] ?? null);
+    }
+
+    /**
+     * @return array{
+     *   status:string,
+     *   checked_at:string,
+     *   message:string,
+     *   reachable:bool,
+     *   package_version:string,
+     *   capability_version:string,
+     *   active_theme:string,
+     *   front_mode:string,
+     *   frontend_experience_mode:string,
+     *   supported_modules:list<string>,
+     *   supported_routes:list<string>,
+     *   supports_homepage_style:bool,
+     *   supports_home_carousel_slides:bool,
+     *   supports_article_text_ads:bool,
+     *   supports_static_generation:bool,
+     *   agent_base_url:string
+     * }
+     */
+    public function frontendCapabilitiesCache(): array
+    {
+        $stored = is_array($this->channel_config) ? $this->channel_config : [];
+
+        return self::normalizeFrontendCapabilitiesCache($stored[self::FRONTEND_CAPABILITIES_CACHE_KEY] ?? null);
+    }
+
+    /**
+     * @param  array<string,mixed>  $cache
+     */
+    public function fillFrontendCapabilitiesCache(array $cache): self
+    {
+        $config = is_array($this->channel_config) ? $this->channel_config : [];
+        $config[self::FRONTEND_CAPABILITIES_CACHE_KEY] = self::normalizeFrontendCapabilitiesCache($cache);
+
+        return $this->forceFill(['channel_config' => $config]);
+    }
+
+    /**
+     * @return array{
+     *   status:string,
+     *   checked_at:string,
+     *   message:string,
+     *   reachable:bool,
+     *   package_version:string,
+     *   capability_version:string,
+     *   active_theme:string,
+     *   front_mode:string,
+     *   frontend_experience_mode:string,
+     *   supported_modules:list<string>,
+     *   supported_routes:list<string>,
+     *   supports_homepage_style:bool,
+     *   supports_home_carousel_slides:bool,
+     *   supports_article_text_ads:bool,
+     *   supports_static_generation:bool,
+     *   agent_base_url:string
+     * }
+     */
+    public static function normalizeFrontendCapabilitiesCache(mixed $cache): array
+    {
+        $default = [
+            'status' => 'not_checked',
+            'checked_at' => '',
+            'message' => '尚未检查远端前台能力。',
+            'reachable' => false,
+            'package_version' => '',
+            'capability_version' => '',
+            'active_theme' => '',
+            'front_mode' => '',
+            'frontend_experience_mode' => '',
+            'supported_modules' => [],
+            'supported_routes' => [],
+            'supports_homepage_style' => false,
+            'supports_home_carousel_slides' => false,
+            'supports_article_text_ads' => false,
+            'supports_static_generation' => false,
+            'agent_base_url' => '',
+        ];
+
+        if (! is_array($cache)) {
+            return $default;
+        }
+
+        $status = trim((string) ($cache['status'] ?? 'not_checked'));
+        if (! in_array($status, self::FRONTEND_CAPABILITIES_CACHE_STATUSES, true)) {
+            $status = 'unavailable';
+        }
+
+        $checkedAt = $cache['checked_at'] ?? '';
+        if ($checkedAt instanceof DateTimeInterface) {
+            $checkedAt = $checkedAt->format(DATE_ATOM);
+        } else {
+            $checkedAt = trim((string) $checkedAt);
+        }
+
+        return [
+            'status' => $status,
+            'checked_at' => $checkedAt,
+            'message' => trim((string) ($cache['message'] ?? $default['message'])),
+            'reachable' => (bool) ($cache['reachable'] ?? false),
+            'package_version' => trim((string) ($cache['package_version'] ?? '')),
+            'capability_version' => trim((string) ($cache['capability_version'] ?? '')),
+            'active_theme' => trim((string) ($cache['active_theme'] ?? '')),
+            'front_mode' => trim((string) ($cache['front_mode'] ?? '')),
+            'frontend_experience_mode' => trim((string) ($cache['frontend_experience_mode'] ?? '')),
+            'supported_modules' => self::normalizeFrontendCapabilityStrings($cache['supported_modules'] ?? []),
+            'supported_routes' => self::normalizeFrontendCapabilityStrings($cache['supported_routes'] ?? []),
+            'supports_homepage_style' => (bool) ($cache['supports_homepage_style'] ?? false),
+            'supports_home_carousel_slides' => (bool) ($cache['supports_home_carousel_slides'] ?? false),
+            'supports_article_text_ads' => (bool) ($cache['supports_article_text_ads'] ?? false),
+            'supports_static_generation' => (bool) ($cache['supports_static_generation'] ?? false),
+            'agent_base_url' => trim((string) ($cache['agent_base_url'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function normalizeFrontendCapabilityStrings(mixed $values): array
+    {
+        if (! is_array($values)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($values as $value) {
+            $value = trim((string) $value);
+            if ($value === '' || in_array($value, $normalized, true)) {
+                continue;
+            }
+
+            $normalized[] = $value;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function frontendExperienceModes(): array
+    {
+        return self::FRONTEND_EXPERIENCE_MODES;
+    }
+
+    public static function normalizeFrontendExperienceMode(mixed $mode): string
+    {
+        $mode = trim((string) ($mode ?? self::FRONTEND_EXPERIENCE_CUSTOM));
+
+        return in_array($mode, self::FRONTEND_EXPERIENCE_MODES, true)
+            ? $mode
+            : self::FRONTEND_EXPERIENCE_CUSTOM;
+    }
+
+    /**
+     * @return array{
+     *   homepage_style:array<string,string>,
+     *   homepage_modules:list<array<string,mixed>>,
+     *   home_carousel_slides:list<array<string,mixed>>
+     * }
+     */
+    public function resolvedFrontendExperienceSettings(): array
+    {
+        if ($this->frontendExperienceMode() === self::FRONTEND_EXPERIENCE_INHERIT_DEFAULT) {
+            return self::defaultFrontendExperienceSettings();
+        }
+
+        $stored = is_array($this->site_settings) ? $this->site_settings : [];
+        $defaults = self::defaultFrontendExperienceSettings();
+
+        return [
+            'homepage_style' => self::normalizeHomepageStyle($stored['homepage_style'] ?? $defaults['homepage_style']),
+            'homepage_modules' => self::normalizeHomepageModules($stored['homepage_modules'] ?? $defaults['homepage_modules']),
+            'home_carousel_slides' => self::normalizeHomeCarouselSlides($stored['home_carousel_slides'] ?? $defaults['home_carousel_slides']),
+        ];
+    }
+
+    /**
+     * @return array{
+     *   homepage_style:array<string,string>,
+     *   homepage_modules:list<array<string,mixed>>,
+     *   home_carousel_slides:list<array<string,mixed>>
+     * }
+     */
+    public static function defaultFrontendExperienceSettings(): array
+    {
+        $settings = SiteSettingsBag::all();
+
+        return [
+            'homepage_style' => HomepageModuleBuilder::styleFromRaw((string) ($settings['homepage_style'] ?? '{}')),
+            'homepage_modules' => HomepageModuleBuilder::fromRaw((string) ($settings['homepage_modules'] ?? '[]'), false),
+            'home_carousel_slides' => self::normalizeHomeCarouselSlides(self::decodeJsonSetting($settings['home_carousel_slides'] ?? [], [])),
+        ];
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    public static function normalizeHomepageStyle(mixed $style): array
+    {
+        if (is_string($style)) {
+            return HomepageModuleBuilder::styleFromRaw($style);
+        }
+
+        return HomepageModuleBuilder::normalizeStyle(is_array($style) ? $style : []);
+    }
+
+    /**
+     * @return list<array<string,mixed>>
+     */
+    public static function normalizeHomepageModules(mixed $modules): array
+    {
+        if (is_string($modules)) {
+            return HomepageModuleBuilder::fromRaw($modules, false);
+        }
+
+        return HomepageModuleBuilder::normalizeModules(is_array($modules) ? $modules : [], false, HomepageModuleBuilder::MAX_MODULES);
+    }
+
+    /**
+     * @return list<array{image_url:string,title:string,link_url:string,enabled:bool}>
+     */
+    public static function normalizeHomeCarouselSlides(mixed $slides): array
+    {
+        if (is_string($slides)) {
+            $slides = self::decodeJsonSetting($slides, []);
+        }
+        if (! is_array($slides)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($slides as $slide) {
+            if (! is_array($slide)) {
+                continue;
+            }
+
+            $imageUrl = HomepageModuleBuilder::normalizeUrl((string) ($slide['image_url'] ?? ''), true);
+            $title = mb_substr(trim((string) ($slide['title'] ?? '')), 0, 120);
+            $linkUrl = HomepageModuleBuilder::normalizeUrl((string) ($slide['link_url'] ?? ''), true);
+            if ($imageUrl === '' && $title === '' && $linkUrl === '') {
+                continue;
+            }
+            if ($imageUrl === '') {
+                continue;
+            }
+
+            $normalized[] = [
+                'image_url' => $imageUrl,
+                'title' => $title,
+                'link_url' => $linkUrl,
+                'enabled' => ! empty($slide['enabled']),
+            ];
+
+            if (count($normalized) >= 3) {
+                break;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private static function decodeJsonSetting(mixed $value, mixed $fallback): mixed
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        $decoded = json_decode($value, true);
+
+        return json_last_error() === JSON_ERROR_NONE ? $decoded : $fallback;
     }
 
     public function frontMode(): string
@@ -389,7 +699,6 @@ class DistributionChannel extends Model
     }
 
     /**
-     * @param  mixed  $value
      * @return list<int>
      */
     private function genericSuccessStatuses(mixed $value): array

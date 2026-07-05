@@ -19,17 +19,22 @@ use App\Models\Prompt;
 use App\Models\SiteSetting;
 use App\Models\Task;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\DistributionHttpClient;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPayloadBuilder;
 use App\Services\GeoFlow\DistributionRetryPolicy;
 use App\Services\GeoFlow\DistributionSigningService;
+use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
+use App\Services\GeoFlow\FrontendExperienceInspector;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 use ZipArchive;
 
@@ -43,6 +48,45 @@ class AdminDistributionPageTest extends TestCase
             ->get(route('admin.distribution.index'))
             ->assertOk()
             ->assertSee(__('admin.distribution.page_heading'));
+    }
+
+    public function test_distribution_index_selected_sync_modal_shows_frontend_sync_summary(): void
+    {
+        DistributionChannel::query()->create([
+            'name' => '批量预览渠道',
+            'domain' => 'preview.example.com',
+            'endpoint_url' => 'https://preview.example.com',
+            'channel_type' => 'geoflow_agent',
+            'front_mode' => 'rewrite',
+            'template_key' => 'default',
+            'site_settings' => [
+                'homepage_modules' => [
+                    [
+                        'type' => 'hero',
+                        'title' => '批量预览 Hero',
+                        'body' => '批量预览正文',
+                        'enabled' => true,
+                        'sort_order' => 10,
+                    ],
+                ],
+                'home_carousel_slides' => [
+                    [
+                        'image_url' => '/storage/preview.jpg',
+                        'title' => '批量预览轮播',
+                        'link_url' => '/preview',
+                        'enabled' => true,
+                    ],
+                ],
+            ],
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.index'))
+            ->assertOk()
+            ->assertSee('批量预览渠道')
+            ->assertSee('custom · default · rewrite')
+            ->assertSee('模块 1 · 轮播 1 · 文字广告 0');
     }
 
     public function test_distribution_index_recent_logs_are_paginated_with_jump_input(): void
@@ -816,9 +860,9 @@ class AdminDistributionPageTest extends TestCase
             ->assertSee('伪静态模式')
             ->assertSee('默认前台模板')
             ->assertSee('Toutiao News Inspired')
-            ->assertSee('更新目标站点')
+            ->assertSee('查看同步预览')
             ->assertSee('覆盖新版站点包后')
-            ->assertSee(route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]), false);
+            ->assertSee(route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]), false);
 
         $this->actingAs($admin, 'admin')
             ->put(route('admin.distribution.update', ['channelId' => (int) $channel->id]), [
@@ -855,7 +899,7 @@ class AdminDistributionPageTest extends TestCase
         ]);
 
         $channel->refresh();
-        $this->assertSame([
+        $basicSiteSettings = [
             'site_name' => '目标门户',
             'site_subtitle' => '远程站点副标题',
             'site_description' => '远程站点描述',
@@ -867,7 +911,11 @@ class AdminDistributionPageTest extends TestCase
             'seo_description_template' => '{description} - {site_name}',
             'featured_limit' => 8,
             'per_page' => 16,
-        ], $channel->site_settings);
+        ];
+        $this->assertSame($basicSiteSettings, array_intersect_key($channel->site_settings, $basicSiteSettings));
+        $this->assertArrayHasKey('homepage_style', $channel->site_settings);
+        $this->assertArrayHasKey('homepage_modules', $channel->site_settings);
+        $this->assertArrayHasKey('home_carousel_slides', $channel->site_settings);
     }
 
     public function test_distribution_channel_article_text_ad_policy_is_saved_and_reflected_in_payload(): void
@@ -1032,6 +1080,646 @@ class AdminDistributionPageTest extends TestCase
         $this->assertSame('渠道独立统计链接', $payload['article_text_ads'][0]['links'][0]['text']);
     }
 
+    public function test_distribution_channel_frontend_experience_settings_are_saved_to_target_payload(): void
+    {
+        $admin = $this->admin();
+        $channel = DistributionChannel::query()->create([
+            'name' => '前台体验渠道',
+            'domain' => 'frontend.example.com',
+            'endpoint_url' => 'https://frontend.example.com',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.distribution.update', ['channelId' => (int) $channel->id]), [
+                'name' => '前台体验渠道',
+                'domain' => 'frontend.example.com',
+                'endpoint_url' => 'https://frontend.example.com',
+                'front_mode' => 'static',
+                'template_key' => 'default',
+                'status' => 'active',
+                'description' => '',
+                'site_name' => '前台体验站',
+                'site_subtitle' => '渠道首页',
+                'site_description' => '渠道首页描述',
+                'site_keywords' => 'frontend,channel',
+                'copyright_info' => '© 2026 前台体验站',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
+                'homepage_style_json' => json_encode([
+                    'accent_color' => '#0f766e',
+                    'background_color' => '#ffffff',
+                    'surface_color' => '#f8fafc',
+                    'text_color' => '#111827',
+                    'muted_color' => '#64748b',
+                    'container_width' => 'wide',
+                    'section_spacing' => 'relaxed',
+                    'radius' => 'soft',
+                ], JSON_UNESCAPED_UNICODE),
+                'homepage_modules_json' => json_encode([
+                    [
+                        'type' => 'hero',
+                        'title' => '渠道 Hero',
+                        'subtitle' => 'CHANNEL',
+                        'body' => '渠道站点首页主视觉。',
+                        'link_text' => '查看文章',
+                        'link_url' => '/article/demo',
+                        'enabled' => true,
+                        'sort_order' => 10,
+                    ],
+                    [
+                        'type' => 'article_collection',
+                        'title' => '热门文章',
+                        'data_source' => 'hot',
+                        'limit' => 3,
+                        'enabled' => true,
+                        'sort_order' => 20,
+                    ],
+                ], JSON_UNESCAPED_UNICODE),
+                'home_carousel_slides_json' => json_encode([
+                    [
+                        'image_url' => '/storage/channel-hero.jpg',
+                        'title' => '渠道轮播',
+                        'link_url' => '/article/demo',
+                        'enabled' => true,
+                    ],
+                ], JSON_UNESCAPED_UNICODE),
+            ])
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]));
+
+        $channel->refresh();
+        $this->assertSame(DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM, $channel->frontendExperienceMode());
+
+        $payload = $channel->targetSiteSettingsPayload();
+        $this->assertSame(DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM, $payload['frontend_experience_mode']);
+        $this->assertSame('#0f766e', $payload['homepage_style']['accent_color']);
+        $this->assertCount(2, $payload['homepage_modules']);
+        $this->assertSame('hero', $payload['homepage_modules'][0]['type']);
+        $this->assertSame('hot', $payload['homepage_modules'][1]['data_source']);
+        $this->assertSame('/storage/channel-hero.jpg', $payload['home_carousel_slides'][0]['image_url']);
+    }
+
+    public function test_distribution_channel_inherit_default_mode_uses_default_frontend_snapshot_when_saved(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_modules'],
+            ['setting_value' => json_encode([
+                [
+                    'type' => 'hero',
+                    'title' => '默认站 Hero',
+                    'body' => '默认站首页正文',
+                    'enabled' => true,
+                    'sort_order' => 10,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_style'],
+            ['setting_value' => json_encode([
+                'accent_color' => '#2563eb',
+                'background_color' => '#ffffff',
+                'surface_color' => '#ffffff',
+                'text_color' => '#111827',
+                'muted_color' => '#6b7280',
+                'container_width' => 'default',
+                'section_spacing' => 'normal',
+                'radius' => 'soft',
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'home_carousel_slides'],
+            ['setting_value' => json_encode([
+                [
+                    'image_url' => '/storage/default-slide.jpg',
+                    'title' => '默认站轮播',
+                    'link_url' => '/default',
+                    'enabled' => true,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $channel = DistributionChannel::query()->create([
+            'name' => '切换默认站渠道',
+            'domain' => 'inherit.example.com',
+            'endpoint_url' => 'https://inherit.example.com',
+            'channel_type' => 'geoflow_agent',
+            'site_settings' => [
+                'homepage_modules' => [
+                    [
+                        'type' => 'hero',
+                        'title' => '旧渠道 Hero',
+                        'body' => '旧渠道正文',
+                        'enabled' => true,
+                        'sort_order' => 10,
+                    ],
+                ],
+            ],
+            'channel_config' => [
+                'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
+            ],
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->put(route('admin.distribution.update', ['channelId' => (int) $channel->id]), [
+                'name' => '切换默认站渠道',
+                'domain' => 'inherit.example.com',
+                'endpoint_url' => 'https://inherit.example.com',
+                'front_mode' => 'static',
+                'template_key' => '',
+                'status' => 'active',
+                'description' => '',
+                'site_name' => '切换默认站渠道',
+                'site_subtitle' => '',
+                'site_description' => '描述',
+                'site_keywords' => '',
+                'copyright_info' => '© 2026',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_INHERIT_DEFAULT,
+            ])
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]));
+
+        $channel->refresh();
+        $payload = $channel->targetSiteSettingsPayload();
+        $this->assertSame(DistributionChannel::FRONTEND_EXPERIENCE_INHERIT_DEFAULT, $payload['frontend_experience_mode']);
+        $this->assertSame('默认站 Hero', $payload['homepage_modules'][0]['title']);
+        $this->assertSame('/storage/default-slide.jpg', $payload['home_carousel_slides'][0]['image_url']);
+        SiteSettingsBag::forget();
+    }
+
+    public function test_distribution_channel_snapshot_default_mode_keeps_saved_default_frontend_copy(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_modules'],
+            ['setting_value' => json_encode([
+                [
+                    'type' => 'hero',
+                    'title' => '快照默认 Hero',
+                    'body' => '快照默认正文',
+                    'enabled' => true,
+                    'sort_order' => 10,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $channel = DistributionChannel::query()->create([
+            'name' => '快照默认站渠道',
+            'domain' => 'snapshot.example.com',
+            'endpoint_url' => 'https://snapshot.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->put(route('admin.distribution.update', ['channelId' => (int) $channel->id]), [
+                'name' => '快照默认站渠道',
+                'domain' => 'snapshot.example.com',
+                'endpoint_url' => 'https://snapshot.example.com',
+                'front_mode' => 'static',
+                'template_key' => '',
+                'status' => 'active',
+                'description' => '',
+                'site_name' => '快照默认站渠道',
+                'site_subtitle' => '',
+                'site_description' => '描述',
+                'site_keywords' => '',
+                'copyright_info' => '© 2026',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_SNAPSHOT_DEFAULT,
+            ])
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]));
+
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'homepage_modules'],
+            ['setting_value' => json_encode([
+                [
+                    'type' => 'hero',
+                    'title' => '后续默认站 Hero',
+                    'body' => '后续默认正文',
+                    'enabled' => true,
+                    'sort_order' => 10,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $channel->refresh();
+        $payload = $channel->targetSiteSettingsPayload();
+        $this->assertSame(DistributionChannel::FRONTEND_EXPERIENCE_SNAPSHOT_DEFAULT, $payload['frontend_experience_mode']);
+        $this->assertSame('快照默认 Hero', $payload['homepage_modules'][0]['title']);
+        SiteSettingsBag::forget();
+    }
+
+    public function test_frontend_experience_inspector_command_reports_channel_capabilities(): void
+    {
+        $channel = DistributionChannel::query()->create([
+            'name' => '盘点渠道',
+            'domain' => 'inspect.example.com',
+            'endpoint_url' => 'https://inspect.example.com',
+            'channel_type' => 'geoflow_agent',
+            'channel_config' => [
+                'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_INHERIT_DEFAULT,
+            ],
+            'status' => 'active',
+        ]);
+
+        $report = app(FrontendExperienceInspector::class)->inspect($channel->fresh(), true);
+        $this->assertSame(DistributionChannel::FRONTEND_EXPERIENCE_INHERIT_DEFAULT, $report['channel']['frontend_experience_mode']);
+        $this->assertContains('hero', $report['target_package']['supported_modules']);
+        $this->assertSame('not_checked', $report['remote_target']['status']);
+        $this->assertArrayHasKey('sync_summary', $report['channel']);
+        $this->assertSame('missing_secret', app(FrontendExperienceInspector::class)->inspect($channel->fresh(), true, true)['remote_target']['status']);
+
+        $this->artisan('geoflow:frontend-experience', [
+            'channel' => (string) $channel->id,
+            '--json' => true,
+        ])
+            ->expectsOutputToContain('"target_package"')
+            ->assertExitCode(0);
+
+        $this->artisan('geoflow:frontend-experience', [
+            'channel' => (string) $channel->id,
+        ])
+            ->expectsOutputToContain('Sync summary: modules=')
+            ->expectsOutputToContain('Remote capabilities: not_checked')
+            ->assertExitCode(0);
+
+        $this->artisan('geoflow:frontend-experience', [
+            'channel' => (string) $channel->id,
+            '--live-remote' => true,
+        ])
+            ->expectsOutputToContain('Remote capabilities: missing_secret')
+            ->assertExitCode(0);
+    }
+
+    public function test_distribution_channel_edit_shows_frontend_experience_summary_and_remote_capabilities(): void
+    {
+        Http::fake();
+
+        $channel = DistributionChannel::query()->create([
+            'name' => '前台摘要渠道',
+            'domain' => 'frontend.example.com',
+            'endpoint_url' => 'https://frontend.example.com',
+            'channel_type' => 'geoflow_agent',
+            'front_mode' => 'static',
+            'template_key' => 'default',
+            'channel_config' => [
+                DistributionChannel::FRONTEND_CAPABILITIES_CACHE_KEY => [
+                    'status' => 'ok',
+                    'checked_at' => '2026-06-29T08:00:00+00:00',
+                    'message' => 'cached ok',
+                    'reachable' => true,
+                    'capability_version' => '1.2',
+                    'package_version' => '2026.06',
+                    'active_theme' => 'remote-theme',
+                    'front_mode' => 'rewrite',
+                    'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
+                    'supported_modules' => HomepageModuleBuilder::TYPES,
+                    'supported_routes' => ['/', '/article/{slug}', '/geoflow-agent/v1/frontend-capabilities'],
+                    'supports_homepage_style' => true,
+                    'supports_home_carousel_slides' => true,
+                    'supports_article_text_ads' => true,
+                    'supports_static_generation' => true,
+                ],
+            ],
+            'site_settings' => [
+                'homepage_style' => [
+                    'accent_color' => '#0f766e',
+                    'background_color' => '#ffffff',
+                    'surface_color' => '#f8fafc',
+                    'text_color' => '#111827',
+                    'muted_color' => '#64748b',
+                    'container_width' => 'wide',
+                    'section_spacing' => 'relaxed',
+                    'radius' => 'soft',
+                ],
+                'homepage_modules' => [
+                    [
+                        'type' => 'hero',
+                        'title' => '渠道 Hero',
+                        'body' => '渠道站点首页主视觉。',
+                        'enabled' => true,
+                        'sort_order' => 10,
+                    ],
+                ],
+                'home_carousel_slides' => [
+                    [
+                        'image_url' => '/storage/channel-hero.jpg',
+                        'title' => '渠道轮播',
+                        'link_url' => '/article/demo',
+                        'enabled' => true,
+                    ],
+                ],
+            ],
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'gfk_frontend_summary',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_frontend_summary_secret'),
+            'status' => 'active',
+            'scopes' => ['frontend.capabilities'],
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.edit', ['channelId' => (int) $channel->id]))
+            ->assertOk()
+            ->assertSee('前台体验')
+            ->assertSee('远端能力状态：已检查')
+            ->assertSee('同步前差异摘要')
+            ->assertSee('首页模块')
+            ->assertSee('文字广告')
+            ->assertSee('目标包 2026.06')
+            ->assertSee('最近检查 2026-06-29T08:00:00+00:00')
+            ->assertSee('remote-theme')
+            ->assertSee('远端 front_mode 为 rewrite');
+
+        Http::assertNothingSent();
+    }
+
+    public function test_frontend_experience_inspector_reports_remote_capability_states(): void
+    {
+        $inspector = app(FrontendExperienceInspector::class);
+
+        Http::fake([
+            'https://ok.example.com/geoflow-agent/v1/frontend-capabilities' => Http::response([
+                'capability_version' => '1.1',
+                'package_version' => 'ok-package',
+                'active_theme' => 'default',
+                'front_mode' => 'static',
+                'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_INHERIT_DEFAULT,
+                'supported_modules' => ['hero', 'rich_text'],
+                'supported_routes' => ['/', '/geoflow-agent/v1/frontend-capabilities'],
+                'supports_homepage_style' => true,
+                'supports_home_carousel_slides' => true,
+                'supports_article_text_ads' => true,
+                'supports_static_generation' => true,
+            ]),
+            'https://failed.example.com/geoflow-agent/v1/frontend-capabilities' => Http::response(['ok' => false], 500),
+            'https://old.example.com/geoflow-agent/v1/frontend-capabilities' => Http::response('<h1>Not Found</h1>', 404),
+            'https://old.example.com/index.php/geoflow-agent/v1/frontend-capabilities' => Http::response('<h1>Not Found</h1>', 404),
+            'https://down.example.com/geoflow-agent/v1/frontend-capabilities' => Http::failedConnection('connection refused'),
+            'https://down.example.com/index.php/geoflow-agent/v1/frontend-capabilities' => Http::failedConnection('connection refused'),
+        ]);
+
+        $ok = $this->frontendCapabilityChannel('ok.example.com');
+        $failed = $this->frontendCapabilityChannel('failed.example.com');
+        $old = $this->frontendCapabilityChannel('old.example.com');
+        $down = $this->frontendCapabilityChannel('down.example.com');
+        $missingSecret = DistributionChannel::query()->create([
+            'name' => '缺少密钥',
+            'domain' => 'missing.example.com',
+            'endpoint_url' => 'https://missing.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+
+        $this->assertSame('ok', $inspector->inspect($ok, true, true)['remote_target']['status']);
+        $this->assertSame('unavailable', $inspector->inspect($failed, true, true)['remote_target']['status']);
+        $this->assertSame('unsupported_or_not_found', $inspector->inspect($old, true, true)['remote_target']['status']);
+        $this->assertSame('unavailable', $inspector->inspect($down, true, true)['remote_target']['status']);
+        $this->assertSame('missing_secret', $inspector->inspect($missingSecret, true, true)['remote_target']['status']);
+    }
+
+    public function test_admin_can_refresh_frontend_capabilities_cache_for_success_and_failure_states(): void
+    {
+        $admin = $this->admin();
+
+        Http::fake([
+            'https://refresh-ok.example.com/geoflow-agent/v1/frontend-capabilities' => Http::response([
+                'capability_version' => '1.2',
+                'package_version' => 'refresh-package',
+                'active_theme' => 'default',
+                'front_mode' => 'static',
+                'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
+                'supported_modules' => HomepageModuleBuilder::TYPES,
+                'supported_routes' => ['/', '/article/{slug}', '/geoflow-agent/v1/frontend-capabilities'],
+                'supports_homepage_style' => true,
+                'supports_home_carousel_slides' => true,
+                'supports_article_text_ads' => true,
+                'supports_static_generation' => true,
+                'current_settings' => [
+                    'active_theme' => 'default',
+                    'front_mode' => 'static',
+                    'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
+                ],
+            ]),
+            'https://refresh-old.example.com/geoflow-agent/v1/frontend-capabilities' => Http::response('<h1>Not Found</h1>', 404),
+            'https://refresh-old.example.com/index.php/geoflow-agent/v1/frontend-capabilities' => Http::response('<h1>Not Found</h1>', 404),
+            'https://refresh-down.example.com/geoflow-agent/v1/frontend-capabilities' => Http::failedConnection('connection refused'),
+        ]);
+
+        $ok = $this->frontendCapabilityChannel('refresh-ok.example.com');
+        $old = $this->frontendCapabilityChannel('refresh-old.example.com');
+        $down = $this->frontendCapabilityChannel('refresh-down.example.com');
+        $missingSecret = DistributionChannel::query()->create([
+            'name' => '刷新缺少密钥',
+            'domain' => 'refresh-missing.example.com',
+            'endpoint_url' => 'https://refresh-missing.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.frontend-capabilities.refresh', ['channelId' => (int) $ok->id]))
+            ->assertRedirect()
+            ->assertSessionHas('message');
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.frontend-capabilities.refresh', ['channelId' => (int) $old->id]))
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.frontend-capabilities.refresh', ['channelId' => (int) $down->id]))
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.frontend-capabilities.refresh', ['channelId' => (int) $missingSecret->id]))
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+
+        $this->assertSame('ok', $ok->fresh()->frontendCapabilitiesCache()['status']);
+        $this->assertSame('1.2', $ok->fresh()->frontendCapabilitiesCache()['capability_version']);
+        $this->assertSame('refresh-package', $ok->fresh()->frontendCapabilitiesCache()['package_version']);
+        $this->assertSame('unsupported_or_not_found', $old->fresh()->frontendCapabilitiesCache()['status']);
+        $this->assertSame('unavailable', $down->fresh()->frontendCapabilitiesCache()['status']);
+        $this->assertSame('missing_secret', $missingSecret->fresh()->frontendCapabilitiesCache()['status']);
+    }
+
+    public function test_sync_settings_preview_soft_blocks_risky_channel_until_confirmed(): void
+    {
+        $admin = $this->admin();
+
+        Http::fake([
+            'https://preview-risk.example.com/geoflow-agent/v1/site-settings' => Http::response([
+                'ok' => true,
+                'updated' => true,
+            ]),
+        ]);
+
+        $channel = DistributionChannel::query()->create([
+            'name' => '预览风险渠道',
+            'domain' => 'preview-risk.example.com',
+            'endpoint_url' => 'https://preview-risk.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'gfk_preview_risk',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_preview_risk_secret'),
+            'status' => 'active',
+            'scopes' => ['site.settings.update'],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]))
+            ->assertRedirect(route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]))
+            ->assertSessionHasErrors();
+
+        Http::assertNothingSent();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]))
+            ->assertOk()
+            ->assertSee('前台体验同步预览')
+            ->assertSee('需要确认后同步')
+            ->assertSee('not_checked')
+            ->assertSee('即将发送的 settings JSON')
+            ->assertSee('frontend_sync_confirmed', false);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]), [
+                'frontend_sync_confirmed' => '1',
+            ])
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]))
+            ->assertSessionHas('message', __('admin.distribution.message.settings_synced'));
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://preview-risk.example.com/geoflow-agent/v1/site-settings'
+            && $request->hasHeader('X-GEOFlow-Event', 'site.settings.update'));
+    }
+
+    public function test_sync_settings_preview_pages_cover_all_and_selected_channels(): void
+    {
+        $admin = $this->admin();
+
+        $first = DistributionChannel::query()->create([
+            'name' => '预览一号站',
+            'domain' => 'preview-one.example.com',
+            'endpoint_url' => 'https://preview-one.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+        $second = DistributionChannel::query()->create([
+            'name' => '预览二号站',
+            'domain' => 'preview-two.example.com',
+            'endpoint_url' => 'https://preview-two.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+        DistributionChannel::query()->create([
+            'name' => '预览暂停站',
+            'domain' => 'preview-paused.example.com',
+            'endpoint_url' => 'https://preview-paused.example.com',
+            'channel_type' => 'geoflow_agent',
+            'status' => 'paused',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.distribution.sync-settings-all.preview'))
+            ->assertOk()
+            ->assertSee('预览一号站')
+            ->assertSee('预览二号站')
+            ->assertDontSee('预览暂停站')
+            ->assertSee('确认并同步');
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.sync-settings-selected.preview'), [
+                'channel_ids' => [(int) $second->id],
+            ])
+            ->assertOk()
+            ->assertDontSee('预览一号站')
+            ->assertSee('预览二号站')
+            ->assertSee('name="channel_ids[]"', false);
+
+        $this->assertNotNull($first->id);
+    }
+
+    public function test_frontend_experience_command_defaults_to_cache_and_live_remote_does_not_persist_cache(): void
+    {
+        $channel = $this->frontendCapabilityChannel('live-cache.example.com');
+        $channel->fillFrontendCapabilitiesCache([
+            'status' => 'ok',
+            'checked_at' => now()->toISOString(),
+            'message' => 'cached',
+            'reachable' => true,
+            'capability_version' => '1.2',
+            'package_version' => 'cached-package',
+            'active_theme' => 'cached-theme',
+            'front_mode' => 'static',
+            'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
+            'supported_modules' => HomepageModuleBuilder::TYPES,
+            'supported_routes' => ['/', '/geoflow-agent/v1/frontend-capabilities'],
+            'supports_homepage_style' => true,
+            'supports_home_carousel_slides' => true,
+            'supports_article_text_ads' => true,
+            'supports_static_generation' => true,
+        ])->save();
+
+        Http::fake([
+            'https://live-cache.example.com/geoflow-agent/v1/frontend-capabilities' => Http::response([
+                'capability_version' => '1.2',
+                'package_version' => 'live-package',
+                'active_theme' => 'live-theme',
+                'front_mode' => 'rewrite',
+                'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
+                'supported_modules' => ['hero'],
+                'supported_routes' => ['/'],
+                'supports_homepage_style' => true,
+                'supports_home_carousel_slides' => true,
+                'supports_article_text_ads' => true,
+                'supports_static_generation' => true,
+            ]),
+        ]);
+
+        $this->artisan('geoflow:frontend-experience', [
+            'channel' => (string) $channel->id,
+            '--json' => true,
+        ])
+            ->expectsOutputToContain('cached-package')
+            ->assertExitCode(0);
+        Http::assertNothingSent();
+
+        $this->artisan('geoflow:frontend-experience', [
+            'channel' => (string) $channel->id,
+            '--json' => true,
+            '--live-remote' => true,
+        ])
+            ->expectsOutputToContain('live-package')
+            ->assertExitCode(0);
+
+        $this->assertSame('cached-package', $channel->fresh()->frontendCapabilitiesCache()['package_version']);
+    }
+
     public function test_distribution_channel_rejects_invalid_custom_article_text_ad_modules(): void
     {
         $admin = $this->admin();
@@ -1109,6 +1797,25 @@ class AdminDistributionPageTest extends TestCase
             'domain' => 'example.com',
             'endpoint_url' => 'https://example.com',
             'template_key' => 'default',
+            'channel_config' => [
+                DistributionChannel::FRONTEND_CAPABILITIES_CACHE_KEY => [
+                    'status' => 'ok',
+                    'checked_at' => now()->toISOString(),
+                    'message' => 'ok',
+                    'reachable' => true,
+                    'capability_version' => '1.2',
+                    'package_version' => 'test-package',
+                    'active_theme' => 'netease-news-20260507',
+                    'front_mode' => 'static',
+                    'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
+                    'supported_modules' => HomepageModuleBuilder::TYPES,
+                    'supported_routes' => ['/', '/article/{slug}', '/geoflow-agent/v1/frontend-capabilities'],
+                    'supports_homepage_style' => true,
+                    'supports_home_carousel_slides' => true,
+                    'supports_article_text_ads' => true,
+                    'supports_static_generation' => true,
+                ],
+            ],
             'status' => 'active',
         ]);
         DistributionChannelSecret::query()->create([
@@ -1150,10 +1857,66 @@ class AdminDistributionPageTest extends TestCase
             && $request['settings']['front_mode'] === 'static'
             && $request['settings']['per_page'] === 12);
 
+        $this->assertSame('test-package', $channel->fresh()->frontendCapabilitiesCache()['package_version']);
+
         $this->assertDatabaseHas('distribution_logs', [
             'distribution_channel_id' => (int) $channel->id,
             'event' => 'site.settings.synced',
         ]);
+    }
+
+    public function test_update_distribution_channel_saves_but_does_not_auto_sync_when_frontend_preview_needs_confirmation(): void
+    {
+        Http::fake([
+            'https://needs-preview.example.com/geoflow-agent/v1/site-settings' => Http::response([
+                'ok' => true,
+                'updated' => true,
+            ]),
+        ]);
+
+        $admin = $this->admin();
+        $channel = DistributionChannel::query()->create([
+            'name' => '待预览渠道',
+            'domain' => 'needs-preview.example.com',
+            'endpoint_url' => 'https://needs-preview.example.com',
+            'template_key' => 'default',
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'gfk_update_preview',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_update_preview_secret'),
+            'status' => 'active',
+            'scopes' => ['site.settings.update'],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.distribution.update', ['channelId' => (int) $channel->id]), [
+                'name' => '待预览渠道已保存',
+                'domain' => 'needs-preview.example.com',
+                'endpoint_url' => 'https://needs-preview.example.com',
+                'front_mode' => 'static',
+                'template_key' => 'default',
+                'status' => 'active',
+                'description' => '保存但不自动同步',
+                'site_name' => '待预览门户',
+                'site_subtitle' => '',
+                'site_description' => '待预览描述',
+                'site_keywords' => '',
+                'copyright_info' => '© 2026 待预览门户',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+            ])
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]))
+            ->assertSessionHas('message', __('admin.distribution.message.updated'))
+            ->assertSessionHasErrors();
+
+        $this->assertSame('待预览渠道已保存', $channel->fresh()->name);
+        Http::assertNothingSent();
     }
 
     public function test_site_settings_sync_falls_back_to_index_php_entry_when_rewrite_is_missing(): void
@@ -1182,7 +1945,9 @@ class AdminDistributionPageTest extends TestCase
         ]);
 
         $this->actingAs($this->admin(), 'admin')
-            ->post(route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]))
+            ->post(route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]), [
+                'frontend_sync_confirmed' => '1',
+            ])
             ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]))
             ->assertSessionHas('message', __('admin.distribution.message.settings_synced'));
 
@@ -1290,7 +2055,9 @@ class AdminDistributionPageTest extends TestCase
         ]);
 
         $this->actingAs($this->admin(), 'admin')
-            ->post(route('admin.distribution.sync-settings-all'))
+            ->post(route('admin.distribution.sync-settings-all'), [
+                'frontend_sync_confirmed' => '1',
+            ])
             ->assertRedirect()
             ->assertSessionHas('message', __('admin.distribution.message.settings_synced_all', [
                 'success' => 2,
@@ -1403,6 +2170,7 @@ class AdminDistributionPageTest extends TestCase
 
         $this->actingAs($this->admin(), 'admin')
             ->post(route('admin.distribution.sync-settings-selected'), [
+                'frontend_sync_confirmed' => '1',
                 'channel_ids' => [
                     (int) $first->id,
                     (int) $second->id,
@@ -1506,6 +2274,36 @@ class AdminDistributionPageTest extends TestCase
                 'seo_description_template' => '{description} - {site_name}',
                 'featured_limit' => 7,
                 'per_page' => 14,
+                'homepage_style' => [
+                    'accent_color' => '#0f766e',
+                    'background_color' => '#ffffff',
+                    'surface_color' => '#f8fafc',
+                    'text_color' => '#111827',
+                    'muted_color' => '#64748b',
+                    'container_width' => 'wide',
+                    'section_spacing' => 'relaxed',
+                    'radius' => 'soft',
+                ],
+                'homepage_modules' => [
+                    [
+                        'type' => 'hero',
+                        'title' => 'Package Hero',
+                        'body' => 'Package homepage module.',
+                        'enabled' => true,
+                        'sort_order' => 10,
+                    ],
+                ],
+                'home_carousel_slides' => [
+                    [
+                        'image_url' => '/storage/package-hero.jpg',
+                        'title' => 'Package Slide',
+                        'link_url' => '/article/package',
+                        'enabled' => true,
+                    ],
+                ],
+            ],
+            'channel_config' => [
+                'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
             ],
             'status' => 'active',
         ]);
@@ -1804,6 +2602,90 @@ class AdminDistributionPageTest extends TestCase
                 'seo_description_template' => '{description} - {site_name}',
                 'featured_limit' => 7,
                 'per_page' => 14,
+                'home_carousel_slides' => [
+                    [
+                        'image_url' => '/storage/slides/package.jpg',
+                        'title' => 'Package hero slide',
+                        'link_url' => '/package-offer',
+                        'enabled' => true,
+                    ],
+                ],
+                'homepage_modules' => [
+                    [
+                        'type' => 'hero',
+                        'layout' => 'split',
+                        'title' => 'Remote Hero Module',
+                        'subtitle' => 'Remote hero subtitle',
+                        'body' => 'Remote hero body',
+                        'image_url' => '/storage/modules/hero.jpg',
+                        'link_text' => 'Hero CTA',
+                        'link_url' => '/hero-cta',
+                        'enabled' => true,
+                        'sort_order' => 10,
+                    ],
+                    [
+                        'type' => 'rich_text',
+                        'title' => 'Remote Rich Text',
+                        'body' => 'Remote rich text body',
+                        'enabled' => true,
+                        'sort_order' => 20,
+                    ],
+                    [
+                        'type' => 'image_band',
+                        'title' => 'Remote Image Band',
+                        'body' => 'Remote image band body',
+                        'image_url' => '/storage/modules/image-band.jpg',
+                        'link_text' => 'Image CTA',
+                        'link_url' => '/image-band',
+                        'enabled' => true,
+                        'sort_order' => 30,
+                    ],
+                    [
+                        'type' => 'metric_band',
+                        'title' => 'Remote Metrics',
+                        'body' => "Metric One|42|units\nMetric Two|88|score",
+                        'enabled' => true,
+                        'sort_order' => 40,
+                    ],
+                    [
+                        'type' => 'chart_band',
+                        'title' => 'Remote Chart',
+                        'body' => "Chart A|64\nChart B|92",
+                        'enabled' => true,
+                        'sort_order' => 50,
+                    ],
+                    [
+                        'type' => 'feature_grid',
+                        'title' => 'Remote Features',
+                        'body' => "Feature One|Feature one body|/feature-one\nFeature Two|Feature two body|/feature-two",
+                        'enabled' => true,
+                        'sort_order' => 60,
+                    ],
+                    [
+                        'type' => 'article_collection',
+                        'title' => 'Remote Articles',
+                        'data_source' => 'featured',
+                        'limit' => 3,
+                        'enabled' => true,
+                        'sort_order' => 70,
+                    ],
+                    [
+                        'type' => 'cta_band',
+                        'title' => 'Remote CTA Band',
+                        'body' => 'Remote CTA body',
+                        'link_text' => 'CTA Link',
+                        'link_url' => '/cta',
+                        'enabled' => true,
+                        'sort_order' => 80,
+                    ],
+                    [
+                        'type' => 'custom_html',
+                        'title' => 'Remote Custom HTML',
+                        'custom_html' => '<section><h3>Remote custom heading</h3><p>Remote custom body</p></section>',
+                        'enabled' => true,
+                        'sort_order' => 90,
+                    ],
+                ],
             ],
             'status' => 'active',
         ]);
@@ -1842,6 +2724,11 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString("'copyright_info' => '© 2026 远程门户'", $config);
         $this->assertStringContainsString("'active_theme' => 'toutiao-news-20260426'", $config);
         $this->assertStringContainsString("'per_page' => 14", $config);
+        $this->assertStringContainsString("'package_version' => '".config('geoflow.app_version')."'", $config);
+        $this->assertStringContainsString("'homepage_style' =>", $config);
+        $this->assertStringContainsString("'homepage_modules' =>", $config);
+        $this->assertStringContainsString("'home_carousel_slides' =>", $config);
+        $this->assertStringContainsString("'frontend_experience_mode' => 'custom'", $config);
         $this->assertStringContainsString("'article_text_ads' =>", $config);
         $this->assertStringContainsString("'Package CTA'", $config);
 
@@ -1860,6 +2747,29 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('<meta property="og:url" content="https://example.com/">', $staticIndex);
         $this->assertStringContainsString('<meta property="og:site_name" content="远程门户">', $staticIndex);
         $this->assertStringContainsString('<link rel="icon" href="https://example.com/favicon.ico">', $staticIndex);
+        $this->assertStringContainsString('class="homepage-carousel"', $staticIndex);
+        $this->assertStringContainsString('/storage/slides/package.jpg', $staticIndex);
+        $this->assertStringContainsString('Package hero slide', $staticIndex);
+        $this->assertStringContainsString('class="homepage-modules"', $staticIndex);
+        $this->assertStringContainsString('homepage-hero', $staticIndex);
+        $this->assertStringContainsString('Remote Hero Module', $staticIndex);
+        $this->assertStringContainsString('/storage/modules/hero.jpg', $staticIndex);
+        $this->assertStringContainsString('homepage-rich_text', $staticIndex);
+        $this->assertStringContainsString('Remote Rich Text', $staticIndex);
+        $this->assertStringContainsString('homepage-image_band', $staticIndex);
+        $this->assertStringContainsString('/storage/modules/image-band.jpg', $staticIndex);
+        $this->assertStringContainsString('homepage-metric_band', $staticIndex);
+        $this->assertStringContainsString('Metric One', $staticIndex);
+        $this->assertStringContainsString('homepage-chart_band', $staticIndex);
+        $this->assertStringContainsString('Chart A', $staticIndex);
+        $this->assertStringContainsString('homepage-feature_grid', $staticIndex);
+        $this->assertStringContainsString('Feature One', $staticIndex);
+        $this->assertStringContainsString('homepage-article_collection', $staticIndex);
+        $this->assertStringContainsString('homepage-article-grid', $staticIndex);
+        $this->assertStringContainsString('homepage-cta_band', $staticIndex);
+        $this->assertStringContainsString('Remote CTA Band', $staticIndex);
+        $this->assertStringContainsString('homepage-custom_html', $staticIndex);
+        $this->assertStringContainsString('Remote custom heading', $staticIndex);
         $this->assertStringContainsString('暂无文章', $staticIndex);
         $this->assertStringContainsString('assets/css/site.css', $staticIndex);
         $this->assertStringContainsString('class="target-theme-toutiao"', $staticIndex);
@@ -1871,6 +2781,7 @@ class AdminDistributionPageTest extends TestCase
 
         $siteCss = (string) $zip->getFromName('assets/css/site.css');
         $siteJs = (string) $zip->getFromName('assets/js/site.js');
+        $frontController = (string) $zip->getFromName('public/index.php');
         $channel->refresh();
         $expectedAssetVersion = substr(hash('sha256', implode('|', [
             (string) ($channel->template_key ?? ''),
@@ -1881,6 +2792,23 @@ class AdminDistributionPageTest extends TestCase
         ])), 0, 12);
         $this->assertStringContainsString('assets/css/site.css?v='.$expectedAssetVersion, $staticIndex);
         $this->assertStringContainsString('assets/js/site.js?v='.$expectedAssetVersion, $staticIndex);
+        $this->assertStringContainsString('.homepage-carousel', $siteCss);
+        $this->assertStringContainsString('.homepage-modules', $siteCss);
+        $this->assertStringContainsString('function renderHomeCarouselSlides', $frontController);
+        $this->assertStringContainsString('function renderHomepageModules', $frontController);
+        $this->assertStringContainsString('function renderHomepageModule', $frontController);
+        $this->assertStringContainsString("'capability_version' => '1.2'", $frontController);
+        $this->assertStringContainsString("'package_version' => (string) (\$config['package_version'] ?? '')", $frontController);
+        $this->assertStringContainsString("'current_settings' => [", $frontController);
+        $this->assertStringContainsString("'homepage_modules_count' => count(\$homepageModules)", $frontController);
+        $this->assertStringContainsString("'home_carousel_slides_count' => count(\$carouselSlides)", $frontController);
+        $this->assertStringContainsString("'article_text_ads_count' => count(\$articleTextAds)", $frontController);
+        $this->assertStringContainsString("'metric_band'", $frontController);
+        $this->assertStringContainsString("'chart_band'", $frontController);
+        $this->assertStringContainsString("'feature_grid'", $frontController);
+        $this->assertStringContainsString("'article_collection'", $frontController);
+        $this->assertStringContainsString("'custom_html'", $frontController);
+        $this->assertStringContainsString('/geoflow-agent/v1/frontend-capabilities', $frontController);
         $this->assertStringContainsString('.content img', $siteCss);
         $this->assertStringContainsString('data-copy-target', $siteJs);
         $this->assertStringContainsString('body.target-theme-toutiao', $siteCss);
@@ -1958,6 +2886,8 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString("str_starts_with(\$path, '/index.php/')", $frontController);
         $this->assertStringContainsString('handleSiteSettingsUpdate', $frontController);
         $this->assertStringContainsString('renderHomePage', $frontController);
+        $this->assertStringContainsString('function hasHomepageExperience', $frontController);
+        $this->assertStringContainsString("! hasHomepageExperience(\$settings) && themeClass(\$settings) === 'target-theme-fashion'", $frontController);
         $this->assertStringContainsString('renderArticlePage', $frontController);
         $this->assertStringContainsString('function staticPublishEnabled', $frontController);
         $this->assertStringContainsString('function staticSitePath', $frontController);
@@ -1995,6 +2925,93 @@ class AdminDistributionPageTest extends TestCase
 
         $zip->close();
         unlink($zipPath);
+    }
+
+    public function test_target_site_package_runtime_capabilities_settings_sync_and_homepage_rendering(): void
+    {
+        $port = $this->freeTcpPort();
+        $baseUrl = 'http://127.0.0.1:'.$port;
+        $extractPath = sys_get_temp_dir().'/geoflow-runtime-'.uniqid();
+
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Runtime Target',
+            'domain' => '127.0.0.1',
+            'endpoint_url' => $baseUrl,
+            'channel_type' => 'geoflow_agent',
+            'front_mode' => 'static',
+            'template_key' => 'default',
+            'site_settings' => [
+                'site_name' => 'Runtime Portal',
+                'site_description' => 'Runtime target package test',
+                'home_carousel_slides' => [
+                    [
+                        'image_url' => '/storage/runtime-slide.jpg',
+                        'title' => 'Runtime slide',
+                        'link_url' => '/',
+                        'enabled' => true,
+                    ],
+                ],
+                'homepage_modules' => $this->runtimeHomepageModules(),
+            ],
+            'status' => 'active',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'gfk_runtime',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_runtime_secret'),
+            'status' => 'active',
+            'scopes' => ['frontend.capabilities', 'site.settings.update'],
+        ]);
+
+        $package = app(DistributionTargetSitePackageBuilder::class)->build($channel, 'gfk_runtime', 'gfsec_runtime_secret');
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($package['path']));
+        $this->assertTrue($zip->extractTo($extractPath));
+        $zip->close();
+
+        $staticIndex = (string) file_get_contents($extractPath.'/index.html');
+        $this->assertStringContainsString('homepage-hero', $staticIndex);
+        $this->assertStringContainsString('homepage-custom_html', $staticIndex);
+        $this->assertStringContainsString('Runtime slide', $staticIndex);
+
+        $server = new Process([PHP_BINARY, '-S', '127.0.0.1:'.$port, '-t', $extractPath.'/public'], $extractPath);
+        $server->start();
+
+        try {
+            $this->waitForHttpServer($baseUrl);
+
+            $httpClient = app(DistributionHttpClient::class);
+            $capabilities = $httpClient->frontendCapabilities($channel->fresh());
+            $this->assertSame('1.2', $capabilities['capability_version']);
+            $this->assertSame(9, (int) ($capabilities['current_settings']['homepage_modules_count'] ?? 0));
+            $this->assertSame(1, (int) ($capabilities['current_settings']['home_carousel_slides_count'] ?? 0));
+            $this->assertContains('custom_html', $capabilities['current_settings']['homepage_module_types'] ?? []);
+
+            $syncResult = $httpClient->syncSiteSettings($channel->fresh());
+            $this->assertTrue((bool) ($syncResult['updated'] ?? false));
+
+            $runtimeHome = Http::timeout(3)->get($baseUrl.'/')->body();
+            foreach ([
+                'homepage-hero',
+                'homepage-rich_text',
+                'homepage-image_band',
+                'homepage-metric_band',
+                'homepage-chart_band',
+                'homepage-feature_grid',
+                'homepage-article_collection',
+                'homepage-cta_band',
+                'homepage-custom_html',
+            ] as $moduleClass) {
+                $this->assertStringContainsString($moduleClass, $runtimeHome);
+            }
+            $this->assertStringContainsString('Runtime Custom Heading', $runtimeHome);
+        } finally {
+            $server->stop(0);
+            if (is_file($package['path'])) {
+                unlink($package['path']);
+            }
+            $this->removeDirectory($extractPath);
+        }
     }
 
     public function test_fashion_target_site_package_is_self_contained_without_google_fonts(): void
@@ -2150,7 +3167,7 @@ class AdminDistributionPageTest extends TestCase
 
         $frontController = (string) $zip->getFromName('public/index.php');
         $this->assertStringContainsString('function frontVersionedAssetPath', $frontController);
-        $this->assertStringNotContainsString("foreach (array_slice(siteCategories(\$config), 0, 7)", $frontController);
+        $this->assertStringNotContainsString('foreach (array_slice(siteCategories($config), 0, 7)', $frontController);
         $this->assertStringNotContainsString("frontSitePath(\$config, '/')\">'.h((string) \$category['name'])", $frontController);
 
         $zip->close();
@@ -2247,7 +3264,9 @@ class AdminDistributionPageTest extends TestCase
         ]);
 
         $this->actingAs($this->admin(), 'admin')
-            ->post(route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]))
+            ->post(route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]), [
+                'frontend_sync_confirmed' => '1',
+            ])
             ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]));
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://example.com/geoflow-agent/v1/site-settings'
@@ -2310,6 +3329,7 @@ class AdminDistributionPageTest extends TestCase
             'review_status' => 'approved',
             'published_at' => now(),
         ]);
+
         $distribution = ArticleDistribution::query()->create([
             'article_id' => (int) $article->id,
             'distribution_channel_id' => (int) $channel->id,
@@ -2327,7 +3347,9 @@ class AdminDistributionPageTest extends TestCase
         ]);
 
         $this->actingAs($this->admin(), 'admin')
-            ->post(route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]))
+            ->post(route('admin.distribution.sync-settings', ['channelId' => (int) $channel->id]), [
+                'frontend_sync_confirmed' => '1',
+            ])
             ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]))
             ->assertSessionHas('message', __('admin.distribution.message.settings_synced_with_content_refresh', ['count' => 1]));
 
@@ -2997,8 +4019,14 @@ MD,
             'author_id' => $fixtures['author']->id,
             'status' => 'published',
             'review_status' => 'approved',
+            'is_featured' => true,
+            'is_hot' => true,
             'published_at' => now(),
         ]);
+        $builtPayload = app(DistributionPayloadBuilder::class)->build($article->fresh());
+        $this->assertTrue($builtPayload['article']['is_featured']);
+        $this->assertTrue($builtPayload['article']['is_hot']);
+
         $distribution = ArticleDistribution::query()->create([
             'article_id' => (int) $article->id,
             'distribution_channel_id' => (int) $channel->id,
@@ -3703,6 +4731,150 @@ MD,
         $this->assertSame(1, (int) $distribution->attempt_count);
         $this->assertNotNull($distribution->next_retry_at);
         Queue::assertPushed(ProcessArticleDistributionJob::class);
+    }
+
+    private function frontendCapabilityChannel(string $domain): DistributionChannel
+    {
+        $channel = DistributionChannel::query()->create([
+            'name' => '远端能力 '.$domain,
+            'domain' => $domain,
+            'endpoint_url' => 'https://'.$domain,
+            'channel_type' => 'geoflow_agent',
+            'status' => 'active',
+        ]);
+
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'gfk_'.str_replace(['.', '-'], '_', $domain),
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_'.$domain),
+            'status' => 'active',
+            'scopes' => ['frontend.capabilities'],
+        ]);
+
+        return $channel;
+    }
+
+    /**
+     * @return list<array<string,mixed>>
+     */
+    private function runtimeHomepageModules(): array
+    {
+        return [
+            [
+                'type' => 'hero',
+                'title' => 'Runtime Hero',
+                'body' => 'Runtime hero body',
+                'image_url' => '/storage/runtime-hero.jpg',
+                'link_text' => 'Open',
+                'link_url' => '/',
+                'enabled' => true,
+                'sort_order' => 10,
+            ],
+            [
+                'type' => 'rich_text',
+                'title' => 'Runtime Rich Text',
+                'body' => 'Runtime rich text body',
+                'enabled' => true,
+                'sort_order' => 20,
+            ],
+            [
+                'type' => 'image_band',
+                'title' => 'Runtime Image Band',
+                'body' => 'Runtime image band body',
+                'image_url' => '/storage/runtime-image.jpg',
+                'enabled' => true,
+                'sort_order' => 30,
+            ],
+            [
+                'type' => 'metric_band',
+                'title' => 'Runtime Metrics',
+                'body' => "Metric A|42|pts\nMetric B|88|pts",
+                'enabled' => true,
+                'sort_order' => 40,
+            ],
+            [
+                'type' => 'chart_band',
+                'title' => 'Runtime Chart',
+                'body' => "Chart A|64\nChart B|92",
+                'enabled' => true,
+                'sort_order' => 50,
+            ],
+            [
+                'type' => 'feature_grid',
+                'title' => 'Runtime Features',
+                'body' => "Feature A|Feature body|/\nFeature B|Feature body|/",
+                'enabled' => true,
+                'sort_order' => 60,
+            ],
+            [
+                'type' => 'article_collection',
+                'title' => 'Runtime Articles',
+                'data_source' => 'latest',
+                'limit' => 3,
+                'enabled' => true,
+                'sort_order' => 70,
+            ],
+            [
+                'type' => 'cta_band',
+                'title' => 'Runtime CTA',
+                'body' => 'Runtime CTA body',
+                'link_text' => 'Continue',
+                'link_url' => '/',
+                'enabled' => true,
+                'sort_order' => 80,
+            ],
+            [
+                'type' => 'custom_html',
+                'title' => 'Runtime Custom',
+                'custom_html' => '<section><h3>Runtime Custom Heading</h3><p>Runtime custom body</p></section>',
+                'enabled' => true,
+                'sort_order' => 90,
+            ],
+        ];
+    }
+
+    private function freeTcpPort(): int
+    {
+        $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+        $this->assertIsResource($server, $errstr);
+        $address = (string) stream_socket_get_name($server, false);
+        fclose($server);
+
+        return (int) substr(strrchr($address, ':'), 1);
+    }
+
+    private function waitForHttpServer(string $baseUrl): void
+    {
+        for ($attempt = 0; $attempt < 50; $attempt++) {
+            try {
+                $response = Http::timeout(1)->get($baseUrl.'/');
+                if ($response->status() < 500) {
+                    return;
+                }
+            } catch (\Throwable) {
+                usleep(100000);
+            }
+        }
+
+        $this->fail('PHP runtime target server did not start.');
+    }
+
+    private function removeDirectory(string $path): void
+    {
+        if (! is_dir($path)) {
+            return;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            $item->isDir() ? rmdir((string) $item->getPathname()) : unlink((string) $item->getPathname());
+        }
+
+        rmdir($path);
     }
 
     private function admin(): Admin
