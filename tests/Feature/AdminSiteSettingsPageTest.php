@@ -12,6 +12,7 @@ use App\Support\AdminWeb;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminSiteSettingsPageTest extends TestCase
@@ -36,6 +37,27 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertSee(__('admin.site_settings.section_home_carousel'))
             ->assertSee(__('admin.site_settings.module_sensitive_words'))
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
+    }
+
+    public function test_site_settings_page_renders_before_lead_forms_table_is_migrated(): void
+    {
+        Schema::dropIfExists('lead_submissions');
+        Schema::dropIfExists('lead_forms');
+
+        $admin = Admin::query()->create([
+            'username' => 'site_settings_no_leads_admin',
+            'password' => 'secret-123',
+            'email' => 'site-settings-no-leads-admin@example.com',
+            'display_name' => 'Site Settings No Leads Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.index'))
+            ->assertOk()
+            ->assertSee(__('admin.site_settings.page_title'))
+            ->assertSee(__('admin.site_settings.homepage.lead_form_none'));
     }
 
     public function test_apple_support_theme_is_listed_without_becoming_active_theme(): void

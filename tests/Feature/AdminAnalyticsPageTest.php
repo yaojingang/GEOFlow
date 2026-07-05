@@ -94,6 +94,20 @@ class AdminAnalyticsPageTest extends TestCase
         $this->assertStringContainsString('text-blue-600 font-medium', $html);
     }
 
+    public function test_analytics_page_renders_before_lead_tables_are_migrated(): void
+    {
+        Schema::dropIfExists('lead_submissions');
+        Schema::dropIfExists('lead_forms');
+
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics'))
+            ->assertOk()
+            ->assertSee(__('admin.analytics.heading'))
+            ->assertSee(__('admin.growth_center.priority.no_form_title'))
+            ->assertSee(__('admin.growth_center.inbox.empty'))
+            ->assertSee(__('admin.growth_center.source.empty'));
+    }
+
     public function test_analytics_page_applies_date_filters_to_content_metrics(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));

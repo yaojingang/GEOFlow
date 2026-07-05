@@ -36,11 +36,13 @@ class HomeController extends Controller
         $homepageCarouselSlides = $this->parseHomepageCarouselSlides((string) ($map['home_carousel_slides'] ?? '[]'));
         $homepageModules = HomepageModuleBuilder::fromRaw((string) ($map['homepage_modules'] ?? '[]'));
         $homepageStyle = HomepageModuleBuilder::styleFromRaw((string) ($map['homepage_style'] ?? '{}'));
-        $leadForms = LeadForm::query()
-            ->where('status', LeadForm::STATUS_ACTIVE)
-            ->orderBy('name')
-            ->get()
-            ->keyBy('slug');
+        $leadForms = Schema::hasTable('lead_forms')
+            ? LeadForm::query()
+                ->where('status', LeadForm::STATUS_ACTIVE)
+                ->orderBy('name')
+                ->get()
+                ->keyBy('slug')
+            : collect();
 
         $category = null;
         $categoryMissing = false;
