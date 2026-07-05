@@ -1803,6 +1803,7 @@ return [
             'checkbox' => 'Checkbox',
         ],
         'options_placeholder' => "One option per line\nExample: Consulting",
+        'options_placeholder_inline' => 'Separate with commas, e.g. Consulting, Demo',
         'defaults' => [
             'name' => 'Name',
             'phone' => 'Phone',

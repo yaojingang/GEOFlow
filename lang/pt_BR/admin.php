@@ -4892,6 +4892,7 @@ return array_replace_recursive($base, [
         ],
         'type' => ['text' => 'Texto', 'phone' => 'Telefone', 'email' => 'Email', 'textarea' => 'Área de Texto', 'select' => 'Seleção', 'checkbox' => 'Checkbox'],
         'options_placeholder' => "Uma opção por linha\nExemplo: Consultoria",
+        'options_placeholder_inline' => 'Separe por vírgulas, ex.: Consultoria, Demo',
         'defaults' => ['name' => 'Nome', 'phone' => 'Telefone', 'email' => 'Email', 'message' => 'Mensagem', 'checkbox_option' => 'Concordo em enviar estas informações', 'select_option' => 'Opção padrão'],
         'error' => [
             'fields_required' => 'Configure pelo menos um campo válido',

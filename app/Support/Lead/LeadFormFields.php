@@ -129,7 +129,7 @@ final class LeadFormFields
     private static function normalizeOptions(mixed $options): array
     {
         if (is_string($options)) {
-            $options = preg_split('/\R/u', $options) ?: [];
+            $options = preg_split('/\R|[|,，、]+/u', $options) ?: [];
         }
 
         if (! is_array($options)) {
