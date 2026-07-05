@@ -107,42 +107,57 @@ class AnalyticsController extends Controller
                 ->count();
         }
 
-        $formsTotal = LeadForm::query()->count();
-        $activeForms = LeadForm::query()->where('status', LeadForm::STATUS_ACTIVE)->count();
-        $submissionsTotal = LeadSubmission::query()->count();
-        $newLeads = LeadSubmission::query()->where('status', LeadSubmission::STATUS_NEW)->count();
-        $pendingFollowups = LeadSubmission::query()
-            ->whereIn('status', [LeadSubmission::STATUS_NEW, LeadSubmission::STATUS_CONTACTED])
-            ->count();
-        $handledLeads = LeadSubmission::query()
-            ->whereIn('status', [
-                LeadSubmission::STATUS_CONTACTED,
-                LeadSubmission::STATUS_QUALIFIED,
-                LeadSubmission::STATUS_CONVERTED,
-            ])
-            ->count();
+        $leadFormsReady = Schema::hasTable('lead_forms');
+        $leadSubmissionsReady = Schema::hasTable('lead_submissions');
 
-        $recentSubmissions = LeadSubmission::query()
-            ->with('form:id,name,slug')
-            ->orderByDesc('created_at')
-            ->limit(5)
-            ->get();
+        $formsTotal = $leadFormsReady ? LeadForm::query()->count() : 0;
+        $activeForms = $leadFormsReady ? LeadForm::query()->where('status', LeadForm::STATUS_ACTIVE)->count() : 0;
+        $submissionsTotal = $leadSubmissionsReady ? LeadSubmission::query()->count() : 0;
+        $newLeads = $leadSubmissionsReady ? LeadSubmission::query()->where('status', LeadSubmission::STATUS_NEW)->count() : 0;
+        $pendingFollowups = $leadSubmissionsReady
+            ? LeadSubmission::query()
+                ->whereIn('status', [LeadSubmission::STATUS_NEW, LeadSubmission::STATUS_CONTACTED])
+                ->count()
+            : 0;
+        $handledLeads = $leadSubmissionsReady
+            ? LeadSubmission::query()
+                ->whereIn('status', [
+                    LeadSubmission::STATUS_CONTACTED,
+                    LeadSubmission::STATUS_QUALIFIED,
+                    LeadSubmission::STATUS_CONVERTED,
+                ])
+                ->count()
+            : 0;
 
-        $sourceSummary = LeadSubmission::query()
-            ->select(['source_url', 'status'])
-            ->orderByDesc('created_at')
-            ->limit(500)
-            ->get()
-            ->groupBy(fn (LeadSubmission $submission): string => trim((string) $submission->source_url) !== '' ? (string) $submission->source_url : __('admin.growth_center.direct_source'))
-            ->map(fn ($rows, string $source): array => [
-                'source' => $source,
-                'count' => $rows->count(),
-                'converted' => $rows->where('status', LeadSubmission::STATUS_CONVERTED)->count(),
-            ])
-            ->sortByDesc('count')
-            ->values()
-            ->take(6)
-            ->all();
+        $recentSubmissions = collect();
+        if ($leadSubmissionsReady) {
+            $recentSubmissionsQuery = LeadSubmission::query()
+                ->orderByDesc('created_at')
+                ->limit(5);
+            if ($leadFormsReady) {
+                $recentSubmissionsQuery->with('form:id,name,slug');
+            }
+
+            $recentSubmissions = $recentSubmissionsQuery->get();
+        }
+
+        $sourceSummary = $leadSubmissionsReady
+            ? LeadSubmission::query()
+                ->select(['source_url', 'status'])
+                ->orderByDesc('created_at')
+                ->limit(500)
+                ->get()
+                ->groupBy(fn (LeadSubmission $submission): string => trim((string) $submission->source_url) !== '' ? (string) $submission->source_url : __('admin.growth_center.direct_source'))
+                ->map(fn ($rows, string $source): array => [
+                    'source' => $source,
+                    'count' => $rows->count(),
+                    'converted' => $rows->where('status', LeadSubmission::STATUS_CONVERTED)->count(),
+                ])
+                ->sortByDesc('count')
+                ->values()
+                ->take(6)
+                ->all()
+            : [];
 
         return [
             'stats' => [

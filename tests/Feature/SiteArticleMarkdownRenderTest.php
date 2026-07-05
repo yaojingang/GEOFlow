@@ -9,6 +9,7 @@ use App\Models\SiteSetting;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class SiteArticleMarkdownRenderTest extends TestCase
@@ -37,6 +38,16 @@ MD);
         $this->assertStringContainsString('src="/storage/uploads/images/2026/04/demo.png"', $html);
         $this->assertStringNotContainsString('333.png', $html);
         $this->assertStringContainsString('type="checkbox"', $html);
+    }
+
+    public function test_homepage_renders_before_lead_forms_table_is_migrated(): void
+    {
+        Schema::dropIfExists('lead_submissions');
+        Schema::dropIfExists('lead_forms');
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee(__('site.home_latest'));
     }
 
     public function test_published_article_page_outputs_normalized_image_url(): void
