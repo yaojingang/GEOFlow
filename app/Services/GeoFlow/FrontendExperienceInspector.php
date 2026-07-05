@@ -413,7 +413,7 @@ class FrontendExperienceInspector
                 'code' => 'missing_modules',
                 'area' => 'remote_modules',
                 'severity' => 'warning',
-                'message' => '远端目标包未声明支持全部 9 类首页模块：'.implode('、', $missingModules).'。请重新下载并覆盖目标站点包，或确认后继续同步。',
+                'message' => '远端目标包未声明支持全部 '.count(HomepageModuleBuilder::TYPES).' 类首页模块：'.implode('、', $missingModules).'。请重新下载并覆盖目标站点包，或确认后继续同步。',
                 'requires_confirmation' => true,
             ];
         }

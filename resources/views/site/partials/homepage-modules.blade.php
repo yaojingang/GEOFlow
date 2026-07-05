@@ -19,6 +19,7 @@
         'hot' => collect($hotArticles ?? []),
         'latest' => collect($latestArticleCollection),
     ];
+    $leadFormsBySlug = collect($leadForms ?? [])->keyBy(fn ($form) => (string) ($form->slug ?? ''));
 
     $parseRows = static function (string $body): array {
         return collect(preg_split('/\R/u', trim($body)) ?: [])
@@ -90,6 +91,8 @@
                 $imageUrl = trim((string) ($module['image_url'] ?? ''));
                 $linkText = trim((string) ($module['link_text'] ?? ''));
                 $linkUrl = trim((string) ($module['link_url'] ?? ''));
+                $leadFormSlug = trim((string) ($module['lead_form_slug'] ?? ''));
+                $selectedLeadForm = $type === 'lead_form' && $leadFormSlug !== '' ? $leadFormsBySlug->get($leadFormSlug) : null;
                 $moduleArticles = $articleCollections[(string) ($module['data_source'] ?? 'latest')] ?? collect();
                 $moduleArticles = collect($moduleArticles)->take(max(1, min(12, (int) ($module['limit'] ?? 4))));
                 $rows = $parseRows($body);
@@ -109,6 +112,7 @@
                 }
                 $moduleStyle = implode('; ', $moduleStyleParts);
             @endphp
+            @continue($type === 'lead_form' && !$selectedLeadForm)
 
             <div class="{{ $moduleClass }}" @if($moduleStyle !== '') style="{{ $moduleStyle }}" @endif>
                 @if(in_array($type, ['hero', 'rich_text', 'image_band', 'cta_band'], true))
@@ -236,6 +240,13 @@
                             </a>
                         @endforeach
                     </div>
+                @elseif($type === 'lead_form')
+                    @include('site.partials.lead-form', [
+                        'leadForm' => $selectedLeadForm,
+                        'embedded' => true,
+                        'title' => $title !== '' ? $title : $selectedLeadForm->name,
+                        'description' => $body !== '' ? $body : $selectedLeadForm->description,
+                    ])
                 @elseif($type === 'custom_html')
                     @if($title !== '')
                         <div class="geo-home-module__header">

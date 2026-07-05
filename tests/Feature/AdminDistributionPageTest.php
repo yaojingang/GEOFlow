@@ -28,6 +28,7 @@ use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
 use App\Services\GeoFlow\FrontendExperienceInspector;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1390,17 +1391,7 @@ class AdminDistributionPageTest extends TestCase
                     'active_theme' => 'remote-theme',
                     'front_mode' => 'rewrite',
                     'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
-                    'supported_modules' => [
-                        'hero',
-                        'rich_text',
-                        'image_band',
-                        'metric_band',
-                        'chart_band',
-                        'feature_grid',
-                        'article_collection',
-                        'cta_band',
-                        'custom_html',
-                    ],
+                    'supported_modules' => HomepageModuleBuilder::TYPES,
                     'supported_routes' => ['/', '/article/{slug}', '/geoflow-agent/v1/frontend-capabilities'],
                     'supports_homepage_style' => true,
                     'supports_home_carousel_slides' => true,
@@ -1518,17 +1509,7 @@ class AdminDistributionPageTest extends TestCase
                 'active_theme' => 'default',
                 'front_mode' => 'static',
                 'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
-                'supported_modules' => [
-                    'hero',
-                    'rich_text',
-                    'image_band',
-                    'metric_band',
-                    'chart_band',
-                    'feature_grid',
-                    'article_collection',
-                    'cta_band',
-                    'custom_html',
-                ],
+                'supported_modules' => HomepageModuleBuilder::TYPES,
                 'supported_routes' => ['/', '/article/{slug}', '/geoflow-agent/v1/frontend-capabilities'],
                 'supports_homepage_style' => true,
                 'supports_home_carousel_slides' => true,
@@ -1696,17 +1677,7 @@ class AdminDistributionPageTest extends TestCase
             'active_theme' => 'cached-theme',
             'front_mode' => 'static',
             'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
-            'supported_modules' => [
-                'hero',
-                'rich_text',
-                'image_band',
-                'metric_band',
-                'chart_band',
-                'feature_grid',
-                'article_collection',
-                'cta_band',
-                'custom_html',
-            ],
+            'supported_modules' => HomepageModuleBuilder::TYPES,
             'supported_routes' => ['/', '/geoflow-agent/v1/frontend-capabilities'],
             'supports_homepage_style' => true,
             'supports_home_carousel_slides' => true,
@@ -1837,17 +1808,7 @@ class AdminDistributionPageTest extends TestCase
                     'active_theme' => 'netease-news-20260507',
                     'front_mode' => 'static',
                     'frontend_experience_mode' => DistributionChannel::FRONTEND_EXPERIENCE_CUSTOM,
-                    'supported_modules' => [
-                        'hero',
-                        'rich_text',
-                        'image_band',
-                        'metric_band',
-                        'chart_band',
-                        'feature_grid',
-                        'article_collection',
-                        'cta_band',
-                        'custom_html',
-                    ],
+                    'supported_modules' => HomepageModuleBuilder::TYPES,
                     'supported_routes' => ['/', '/article/{slug}', '/geoflow-agent/v1/frontend-capabilities'],
                     'supports_homepage_style' => true,
                     'supports_home_carousel_slides' => true,

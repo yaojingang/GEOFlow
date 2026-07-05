@@ -15,6 +15,7 @@ final class HomepageModuleBuilder
         'feature_grid',
         'article_collection',
         'cta_band',
+        'lead_form',
         'custom_html',
     ];
 
@@ -452,12 +453,13 @@ final class HomepageModuleBuilder
             $imageUrl = self::normalizeUrl((string) ($item['image_url'] ?? ''), allowRelative: true);
             $linkText = self::limitText(trim((string) ($item['link_text'] ?? '')), 80);
             $linkUrl = self::normalizeUrl((string) ($item['link_url'] ?? ''), allowRelative: true);
+            $leadFormSlug = self::normalizeSlug((string) ($item['lead_form_slug'] ?? ''));
             $accentColor = self::normalizeHexColor((string) ($item['accent_color'] ?? ''));
             $surfaceColor = self::normalizeHexColor((string) ($item['surface_color'] ?? ''));
             $textColor = self::normalizeHexColor((string) ($item['text_color'] ?? ''));
             $mutedColor = self::normalizeHexColor((string) ($item['muted_color'] ?? ''));
 
-            if ($title === '' && $subtitle === '' && $body === '' && $customHtml === '' && $imageUrl === '' && $linkText === '' && $linkUrl === '') {
+            if ($title === '' && $subtitle === '' && $body === '' && $customHtml === '' && $imageUrl === '' && $linkText === '' && $linkUrl === '' && $leadFormSlug === '') {
                 continue;
             }
 
@@ -509,6 +511,7 @@ final class HomepageModuleBuilder
                 'image_url' => $imageUrl,
                 'link_text' => $linkText,
                 'link_url' => $linkUrl,
+                'lead_form_slug' => $leadFormSlug,
                 'limit' => max(1, min(12, (int) $limit)),
                 'custom_html' => $customHtml,
                 'accent_color' => $accentColor,
@@ -563,7 +566,7 @@ final class HomepageModuleBuilder
     }
 
     /**
-     * @param array<string,mixed> $item
+     * @param  array<string,mixed>  $item
      * @return array<string,mixed>
      */
     private static function mapModuleAliases(array $item): array
@@ -579,6 +582,7 @@ final class HomepageModuleBuilder
             'image_url' => ['image', 'imageUrl', 'media_url', 'media', 'cover', 'cover_url'],
             'link_text' => ['cta_label', 'button_text', 'linkLabel', 'action_text'],
             'link_url' => ['cta_url', 'button_url', 'url', 'href', 'action_url'],
+            'lead_form_slug' => ['form_slug', 'lead_form', 'form', 'conversion_form'],
             'limit' => ['count', 'article_limit', 'items'],
             'sort_order' => ['order', 'position', 'sort'],
             'custom_html' => ['html', 'markup'],
@@ -611,7 +615,7 @@ final class HomepageModuleBuilder
             $mapped['enabled'] = true;
         }
 
-        foreach (['title', 'subtitle', 'body', 'image_url', 'link_text', 'link_url', 'custom_html', 'accent_color', 'surface_color', 'text_color', 'muted_color', 'alignment'] as $textField) {
+        foreach (['title', 'subtitle', 'body', 'image_url', 'link_text', 'link_url', 'lead_form_slug', 'custom_html', 'accent_color', 'surface_color', 'text_color', 'muted_color', 'alignment'] as $textField) {
             if (array_key_exists($textField, $mapped) && is_array($mapped[$textField])) {
                 $mapped[$textField] = self::stringifyDesignValue($mapped[$textField]);
             }
@@ -621,7 +625,7 @@ final class HomepageModuleBuilder
     }
 
     /**
-     * @param array<mixed> $value
+     * @param  array<mixed>  $value
      */
     private static function stringifyDesignValue(array $value): string
     {
@@ -629,6 +633,7 @@ final class HomepageModuleBuilder
         foreach ($value as $item) {
             if (is_scalar($item)) {
                 $lines[] = trim((string) $item);
+
                 continue;
             }
 
@@ -662,13 +667,14 @@ final class HomepageModuleBuilder
             'feature', 'features', 'cards', 'feature_cards' => 'feature_grid',
             'article', 'articles', 'post_list', 'feed', 'collection', 'article_list' => 'article_collection',
             'cta', 'call_to_action', 'conversion' => 'cta_band',
+            'form', 'lead', 'lead_form', 'conversion_form', 'contact_form' => 'lead_form',
             'html', 'custom', 'raw_html' => 'custom_html',
             default => $normalized,
         };
     }
 
     /**
-     * @param array<string,mixed> $style
+     * @param  array<string,mixed>  $style
      * @return array<string,mixed>
      */
     private static function mapStyleAliases(array $style): array
@@ -723,6 +729,14 @@ final class HomepageModuleBuilder
         return $allowRelative ? '/'.ltrim($normalized, '/') : '';
     }
 
+    public static function normalizeSlug(string $slug): string
+    {
+        $normalized = strtolower(trim($slug));
+        $normalized = preg_replace('/[^a-z0-9_-]+/', '-', $normalized) ?? '';
+
+        return trim($normalized, '-_');
+    }
+
     public static function normalizeHexColor(string $color): string
     {
         $color = trim($color);
@@ -739,7 +753,7 @@ final class HomepageModuleBuilder
     }
 
     /**
-     * @param array{style:array<string,mixed>,modules:list<array<string,mixed>>} $preset
+     * @param  array{style:array<string,mixed>,modules:list<array<string,mixed>>}  $preset
      * @return array{style:array<string,string>,modules:list<array<string,mixed>>}
      */
     private static function normalizePreset(array $preset): array
