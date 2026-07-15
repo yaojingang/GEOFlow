@@ -151,7 +151,7 @@ class AdminLeadFormsTest extends TestCase
         $form = $this->leadForm();
         $otherForm = $this->leadForm('partner', '合作咨询');
 
-        $alice = LeadSubmission::query()->create([
+        $alice = LeadSubmission::query()->forceCreate([
             'lead_form_id' => $form->id,
             'status' => LeadSubmission::STATUS_NEW,
             'payload' => ['name' => 'Alice', 'email' => 'alice@example.com'],
@@ -159,7 +159,7 @@ class AdminLeadFormsTest extends TestCase
             'ip_address' => '127.0.0.1',
             'created_at' => '2026-07-05 10:00:00',
         ]);
-        LeadSubmission::query()->create([
+        LeadSubmission::query()->forceCreate([
             'lead_form_id' => $otherForm->id,
             'status' => LeadSubmission::STATUS_INVALID,
             'payload' => ['name' => 'Bob'],

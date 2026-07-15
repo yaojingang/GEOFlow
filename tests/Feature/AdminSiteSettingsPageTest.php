@@ -8,11 +8,15 @@ use App\Models\Author;
 use App\Models\Category;
 use App\Models\SensitiveWord;
 use App\Models\SiteSetting;
+use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Support\AdminWeb;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 use Tests\TestCase;
 
 class AdminSiteSettingsPageTest extends TestCase
@@ -211,7 +215,7 @@ class AdminSiteSettingsPageTest extends TestCase
             'password' => 'secret-123',
             'email' => 'site-sensitive-admin@example.com',
             'display_name' => 'Site Sensitive Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
 
@@ -241,6 +245,216 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertRedirect(route('admin.site-settings.sensitive-words'));
 
         $this->assertDatabaseMissing('sensitive_words', ['word' => '测试敏感词']);
+    }
+
+    public function test_standard_admin_can_view_sensitive_words_but_cannot_mutate_rules(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $rule = SensitiveWord::query()->create([
+            'word' => 'read-only rule',
+            'severity' => 'blocked',
+        ]);
+        $admin = Admin::query()->create([
+            'username' => 'sensitive_words_read_only_admin',
+            'password' => 'secret-123',
+            'email' => 'sensitive-words-read-only@example.com',
+            'display_name' => 'Sensitive Words Read Only Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.sensitive-words'))
+            ->assertOk()
+            ->assertSee('read-only rule')
+            ->assertDontSee(route('admin.site-settings.sensitive-words.store'), false)
+            ->assertDontSee(route('admin.site-settings.sensitive-words.update', ['wordId' => $rule->id]), false)
+            ->assertDontSee(route('admin.site-settings.sensitive-words.delete', ['wordId' => $rule->id]), false);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.sensitive-words.store'), ['words' => 'forbidden rule'])
+            ->assertForbidden();
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.site-settings.sensitive-words.update', ['wordId' => $rule->id]), [
+                'word' => 'mutated rule',
+                'severity' => 'warning',
+                'category' => 'sensitive',
+                'is_enabled' => '1',
+            ])
+            ->assertForbidden();
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.sensitive-words.delete', ['wordId' => $rule->id]))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('sensitive_words', [
+            'id' => $rule->id,
+            'word' => 'read-only rule',
+            'severity' => 'blocked',
+        ]);
+        $this->assertDatabaseMissing('sensitive_words', ['word' => 'forbidden rule']);
+    }
+
+    public function test_sensitive_word_rules_can_be_created_and_updated_with_risk_metadata(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'risk_rule_admin',
+            'password' => 'secret-123',
+            'email' => 'risk-rule-admin@example.com',
+            'display_name' => 'Risk Rule Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.sensitive-words.store'), [
+                'words' => "绝对第一\n永久有效",
+                'severity' => 'blocked',
+                'category' => 'absolute_claim',
+                'is_enabled' => '1',
+                'suggestion' => '改为有数据依据的限定表述',
+                'applies_to' => ['title', 'content'],
+            ])
+            ->assertRedirect(route('admin.site-settings.sensitive-words'));
+
+        $rule = SensitiveWord::query()->where('word', '绝对第一')->firstOrFail();
+        $this->assertSame('blocked', $rule->severity);
+        $this->assertSame('absolute_claim', $rule->category);
+        $this->assertTrue($rule->is_enabled);
+        $this->assertSame(['title', 'content'], $rule->applies_to);
+        $this->assertSame('改为有数据依据的限定表述', $rule->suggestion);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.site-settings.sensitive-words.update', ['wordId' => $rule->id]), [
+                'word' => '绝对领先',
+                'severity' => 'warning',
+                'category' => 'marketing_claim',
+                'is_enabled' => '0',
+                'suggestion' => '补充数据来源',
+                'applies_to' => ['excerpt'],
+            ])
+            ->assertRedirect(route('admin.site-settings.sensitive-words'));
+
+        $rule->refresh();
+        $this->assertSame('绝对领先', $rule->word);
+        $this->assertSame('warning', $rule->severity);
+        $this->assertSame('marketing_claim', $rule->category);
+        $this->assertFalse($rule->is_enabled);
+        $this->assertSame(['excerpt'], $rule->applies_to);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.sensitive-words'))
+            ->assertOk()
+            ->assertSee('绝对领先')
+            ->assertSee('补充数据来源');
+    }
+
+    public function test_sensitive_word_batch_validation_is_atomic_and_matches_schema_lengths(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'risk_rule_length_admin',
+            'password' => 'secret-123',
+            'email' => 'risk-rule-length-admin@example.com',
+            'display_name' => 'Risk Rule Length Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $tooLongWord = str_repeat('敏', 256);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.sensitive-words.store'), [
+                'words' => "must-not-persist\n{$tooLongWord}",
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('words');
+
+        $this->assertDatabaseMissing('sensitive_words', ['word' => 'must-not-persist']);
+
+        $maximumLengthWord = str_repeat('词', 255);
+        $longCategory = str_repeat('c', 100);
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.sensitive-words.store'), [
+                'words' => $maximumLengthWord,
+                'category' => $longCategory,
+            ])
+            ->assertRedirect(route('admin.site-settings.sensitive-words'))
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseHas('sensitive_words', [
+            'word' => $maximumLengthWord,
+            'category' => $longCategory,
+        ]);
+    }
+
+    public function test_sensitive_word_mutations_invalidate_the_article_risk_scanner_cache(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'risk_cache_admin',
+            'password' => 'secret-123',
+            'email' => 'risk-cache-admin@example.com',
+            'display_name' => 'Risk Cache Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $scanner = app(ArticleRiskScanner::class);
+        $scanner->clearRuleCache();
+
+        $this->assertSame('clean', $scanner->scan(['content' => 'cache boundary term'])['status']);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.sensitive-words.store'), [
+                'words' => 'cache boundary term',
+            ])
+            ->assertRedirect(route('admin.site-settings.sensitive-words'));
+
+        $this->assertSame('warning', $scanner->scan(['content' => 'cache boundary term'])['status']);
+
+        $word = SensitiveWord::query()->where('word', 'cache boundary term')->firstOrFail();
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.site-settings.sensitive-words.update', ['wordId' => $word->id]), [
+                'word' => 'updated cache boundary term',
+                'severity' => 'warning',
+                'category' => 'sensitive',
+                'is_enabled' => '1',
+                'suggestion' => '',
+                'applies_to' => [],
+            ])
+            ->assertRedirect(route('admin.site-settings.sensitive-words'));
+
+        $this->assertSame('clean', $scanner->scan(['content' => 'cache boundary term'])['status']);
+        $this->assertSame('warning', $scanner->scan(['content' => 'updated cache boundary term'])['status']);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.sensitive-words.delete', ['wordId' => $word->id]))
+            ->assertRedirect(route('admin.site-settings.sensitive-words'));
+
+        $this->assertSame('clean', $scanner->scan(['content' => 'cache boundary term'])['status']);
+    }
+
+    public function test_rolled_back_sensitive_word_mutation_does_not_advance_the_rule_cache_version(): void
+    {
+        Cache::forget(SensitiveWord::RULE_CACHE_VERSION_KEY);
+        $initialVersion = SensitiveWord::ruleCacheVersion();
+
+        try {
+            DB::transaction(function (): void {
+                SensitiveWord::query()->create(['word' => 'rolled back cache term']);
+
+                throw new RuntimeException('force rollback');
+            });
+        } catch (RuntimeException) {
+            // Expected: the transaction and its after-commit callback are discarded together.
+        }
+
+        $this->assertDatabaseMissing('sensitive_words', ['word' => 'rolled back cache term']);
+        $this->assertSame($initialVersion, SensitiveWord::ruleCacheVersion());
     }
 
     public function test_admin_base_path_rejects_unsafe_value(): void

@@ -84,21 +84,22 @@ Route::prefix('v1')
 
             // articles:* — 文章 CRUD、审核、发布、软删
             Route::get('articles', [ArticleController::class, 'index'])->middleware('api.scope:articles:read');
-            Route::post('articles', [ArticleController::class, 'store'])->middleware('api.scope:articles:write');
+            Route::post('articles', [ArticleController::class, 'store'])
+                ->middleware(['api.scope:articles:write', 'throttle:60,1']);
             Route::get('articles/{article}', [ArticleController::class, 'show'])
                 ->whereNumber('article')
                 ->middleware('api.scope:articles:read');
             Route::patch('articles/{article}', [ArticleController::class, 'update'])
                 ->whereNumber('article')
-                ->middleware('api.scope:articles:write');
+                ->middleware(['api.scope:articles:write', 'throttle:60,1']);
             Route::post('articles/{article}/review', [ArticleController::class, 'review'])
                 ->whereNumber('article')
-                ->middleware('api.scope:articles:publish');
+                ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
             Route::post('articles/{article}/publish', [ArticleController::class, 'publish'])
                 ->whereNumber('article')
-                ->middleware('api.scope:articles:publish');
+                ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
             Route::post('articles/{article}/trash', [ArticleController::class, 'trash'])
                 ->whereNumber('article')
-                ->middleware('api.scope:articles:write');
+                ->middleware(['api.scope:articles:write', 'throttle:60,1']);
         });
     });

@@ -57,6 +57,16 @@
         'has_author' => trim((string) $formData['author_id']) !== '',
         'has_source_task' => trim((string) $formData['task_name']) !== '',
     ];
+    $riskDisplayStatus = ! $isEdit
+        ? 'unscanned'
+        : (($riskScan['state'] ?? null) === 'stale' ? 'stale' : (string) ($riskScan['status'] ?? 'unscanned'));
+    $riskStatusPresentation = [
+        'clean' => ['label' => __('admin.articles.quality_scorecard.risk_status_clean'), 'class' => 'bg-emerald-50 text-emerald-700 ring-emerald-100', 'icon' => 'shield-check'],
+        'warning' => ['label' => __('admin.articles.quality_scorecard.risk_status_warning'), 'class' => 'bg-amber-50 text-amber-700 ring-amber-100', 'icon' => 'shield-alert'],
+        'blocked' => ['label' => __('admin.articles.quality_scorecard.risk_status_blocked'), 'class' => 'bg-red-50 text-red-700 ring-red-100', 'icon' => 'shield-x'],
+        'stale' => ['label' => __('admin.articles.quality_scorecard.risk_status_stale'), 'class' => 'bg-slate-100 text-slate-700 ring-slate-200', 'icon' => 'refresh-cw'],
+        'unscanned' => ['label' => __('admin.articles.quality_scorecard.risk_status_unscanned'), 'class' => 'bg-slate-100 text-slate-600 ring-slate-200', 'icon' => 'scan-search'],
+    ][$riskDisplayStatus];
     $qualityFieldChecks = [
         [
             'label' => __('admin.articles.quality_scorecard.check_excerpt'),
@@ -109,7 +119,10 @@
             'desc' => __('admin.articles.quality_scorecard.risk_desc'),
             'icon' => 'shield-alert',
             'class' => 'bg-amber-50 text-amber-600 ring-amber-100',
-            'passed' => $qualityChecks['is_reviewed'],
+            'passed' => $riskDisplayStatus === 'clean' || ($riskDisplayStatus === 'warning' && ! empty($riskScan['is_overridden'])),
+            'status_label' => $riskStatusPresentation['label'],
+            'status_class' => $riskStatusPresentation['class'],
+            'status_icon' => $riskStatusPresentation['icon'],
         ],
         [
             'title' => __('admin.articles.quality_scorecard.attribution_title'),
@@ -295,8 +308,8 @@
                         </div>
                         <div class="grid grid-cols-1 gap-3 px-6 py-4 md:grid-cols-2 xl:grid-cols-5">
                             @foreach ($qualityScorecard as $scorecardItem)
-                                @php($scoreStatusClass = $scorecardItem['passed'] ? 'bg-emerald-50 text-emerald-700 ring-emerald-100' : 'bg-amber-50 text-amber-700 ring-amber-100')
-                                @php($scoreStatusIcon = $scorecardItem['passed'] ? 'check' : 'circle-alert')
+                                @php($scoreStatusClass = $scorecardItem['status_class'] ?? ($scorecardItem['passed'] ? 'bg-emerald-50 text-emerald-700 ring-emerald-100' : 'bg-amber-50 text-amber-700 ring-amber-100'))
+                                @php($scoreStatusIcon = $scorecardItem['status_icon'] ?? ($scorecardItem['passed'] ? 'check' : 'circle-alert'))
                                 <div class="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
                                     <div class="flex h-full flex-col gap-3">
                                         <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 {{ $scorecardItem['class'] }}">
@@ -308,12 +321,69 @@
                                         </div>
                                         <span class="mt-auto inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $scoreStatusClass }}">
                                             <i data-lucide="{{ $scoreStatusIcon }}" class="mr-1.5 h-3.5 w-3.5"></i>
-                                            {{ $scorecardItem['passed'] ? __('admin.articles.quality_scorecard.ready_label') : __('admin.articles.quality_scorecard.pending_label') }}
+                                            {{ $scorecardItem['status_label'] ?? ($scorecardItem['passed'] ? __('admin.articles.quality_scorecard.ready_label') : __('admin.articles.quality_scorecard.pending_label')) }}
                                         </span>
                                     </div>
                                 </div>
                             @endforeach
                         </div>
+                        @if($isEdit)
+                            <div class="border-t border-gray-100 px-6 py-5">
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <h4 class="text-sm font-semibold text-gray-900">{{ __('admin.articles.quality_scorecard.risk_details_title') }}</h4>
+                                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $riskStatusPresentation['class'] }}">
+                                                <i data-lucide="{{ $riskStatusPresentation['icon'] }}" class="mr-1.5 h-3.5 w-3.5"></i>
+                                                {{ $riskStatusPresentation['label'] }}
+                                            </span>
+                                        </div>
+                                        <p class="mt-1 text-xs text-gray-500">
+                                            {{ __('admin.articles.quality_scorecard.risk_match_summary', ['count' => (int) ($riskScan['match_count'] ?? 0)]) }}
+                                            @if(! empty($riskScan['scanned_at'])) · {{ $riskScan['scanned_at'] }} @endif
+                                        </p>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <a href="{{ route('admin.site-settings.sensitive-words') }}" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                                            <i data-lucide="settings-2" class="mr-1.5 h-4 w-4"></i>
+                                            {{ __('admin.articles.quality_scorecard.manage_rules') }}
+                                        </a>
+                                        <button type="submit" form="article-risk-recheck-form" class="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800">
+                                            <i data-lucide="refresh-cw" class="mr-1.5 h-4 w-4"></i>
+                                            {{ __('admin.articles.quality_scorecard.risk_recheck') }}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                @if($riskDisplayStatus === 'stale')
+                                    <p class="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">{{ __('admin.articles.quality_scorecard.risk_stale_help') }}</p>
+                                @elseif(empty($riskScan))
+                                    <p class="mt-4 rounded-lg border border-dashed border-gray-300 px-3 py-4 text-center text-xs text-gray-500">{{ __('admin.articles.quality_scorecard.risk_unscanned_help') }}</p>
+                                @elseif(empty($riskScan['matches']))
+                                    <p class="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{{ __('admin.articles.quality_scorecard.risk_clean_help') }}</p>
+                                @else
+                                    <div class="mt-4 grid gap-3 lg:grid-cols-2">
+                                        @foreach($riskScan['matches'] as $match)
+                                            <div class="rounded-lg border {{ ($match['severity'] ?? '') === 'blocked' ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60' }} p-3">
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <span class="text-sm font-semibold text-gray-900">{{ $match['word'] ?? '' }}</span>
+                                                    <span class="rounded-full bg-white px-2 py-0.5 text-xs text-gray-600 ring-1 ring-gray-200">{{ __('admin.security.field_'.($match['field'] ?? 'content')) }}</span>
+                                                    <span class="text-xs text-gray-500">× {{ (int) ($match['count'] ?? 0) }}</span>
+                                                </div>
+                                                <p class="mt-2 break-words text-xs leading-5 text-gray-700">{{ $match['snippet'] ?? '' }}</p>
+                                                @if(! empty($match['suggestion']))
+                                                    <p class="mt-2 text-xs font-medium text-blue-700">{{ __('admin.articles.quality_scorecard.risk_suggestion') }}：{{ $match['suggestion'] }}</p>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
+
+                                @if(! empty($riskScan['is_overridden']))
+                                    <p class="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">{{ __('admin.articles.quality_scorecard.risk_overridden') }}：{{ $riskScan['override_reason'] }}</p>
+                                @endif
+                            </div>
+                        @endif
                     </section>
 
                     <div class="bg-white shadow rounded-lg">
@@ -356,6 +426,11 @@
                                     <option value="auto_approved" @selected($formData['review_status'] === 'auto_approved')>{{ __('admin.articles.review.auto_approved') }}</option>
                                 </select>
                                 <p class="mt-2 text-xs text-gray-500">{{ __($i18nRoot.'.help.review_status') }}</p>
+                            </div>
+                            <div>
+                                <label for="risk_override_reason" class="block text-sm font-medium text-gray-700">{{ __('admin.articles.quality_scorecard.risk_override_reason') }}</label>
+                                <textarea id="risk_override_reason" name="risk_override_reason" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" placeholder="{{ __('admin.articles.quality_scorecard.risk_override_placeholder') }}">{{ old('risk_override_reason') }}</textarea>
+                                <p class="mt-2 text-xs text-gray-500">{{ __('admin.articles.quality_scorecard.risk_override_help') }}</p>
                             </div>
                             <div class="rounded-lg border border-blue-100 bg-blue-50/70 p-4">
                                 <div class="text-sm font-medium text-gray-900">{{ __($i18nRoot.'.section.recommendation_title') }}</div>
@@ -431,6 +506,11 @@
                 </div>
             </div>
         </form>
+        @if($isEdit)
+            <form id="article-risk-recheck-form" method="POST" action="{{ route('admin.articles.risk-scan', ['articleId' => (int) $articleId]) }}" class="hidden">
+                @csrf
+            </form>
+        @endif
     </div>
 @endsection
 
