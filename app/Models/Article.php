@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Article extends Model
@@ -71,6 +72,16 @@ class Article extends Model
     public function reviews(): HasMany
     {
         return $this->hasMany(ArticleReview::class, 'article_id');
+    }
+
+    public function riskScans(): HasMany
+    {
+        return $this->hasMany(ArticleRiskScan::class, 'article_id');
+    }
+
+    public function latestRiskScan(): HasOne
+    {
+        return $this->hasOne(ArticleRiskScan::class, 'article_id')->latestOfMany('scanned_at');
     }
 
     public function taskRuns(): HasMany

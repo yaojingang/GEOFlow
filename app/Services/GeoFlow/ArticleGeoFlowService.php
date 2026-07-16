@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Exceptions\ApiException;
+use App\Exceptions\ArticleRiskGateException;
 use App\Models\Article;
 use App\Models\ArticleImage;
 use App\Models\ArticleReview;
@@ -14,6 +15,11 @@ use Illuminate\Support\Facades\DB;
 
 class ArticleGeoFlowService
 {
+    public function __construct(
+        private readonly ArticleRiskScanner $articleRiskScanner,
+        private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
+    ) {}
+
     public function listArticles(int $page = 1, int $perPage = 20, array $filters = []): array
     {
         $page = max(1, $page);
@@ -58,7 +64,7 @@ class ArticleGeoFlowService
         ];
     }
 
-    public function createArticle(array $data): array
+    public function createArticle(array $data, int $auditAdminId): array
     {
         $normalized = $this->normalizeCreateInput($data);
         $workflowState = ArticleWorkflow::normalizeState(
@@ -68,21 +74,62 @@ class ArticleGeoFlowService
         $slug = $normalized['slug'] ?: ArticleWorkflow::generateUniqueSlug($normalized['title']);
         $excerpt = $normalized['excerpt'] !== '' ? $normalized['excerpt'] : mb_substr(strip_tags($normalized['content']), 0, 200);
 
-        $article = Article::query()->create([
-            'title' => $normalized['title'],
-            'slug' => $slug,
-            'content' => $normalized['content'],
-            'excerpt' => $excerpt,
-            'keywords' => $normalized['keywords'],
-            'meta_description' => $normalized['meta_description'],
-            'category_id' => $normalized['category_id'],
-            'author_id' => $normalized['author_id'],
-            'task_id' => $normalized['task_id'],
-            'status' => $workflowState['status'],
-            'review_status' => $workflowState['review_status'],
-            'is_ai_generated' => $normalized['is_ai_generated'],
-            'published_at' => $workflowState['published_at'],
-        ]);
+        $fallbackWorkflowState = ArticleWorkflow::normalizeState('draft', 'pending');
+        $creation = DB::transaction(function () use (
+            $normalized,
+            $slug,
+            $excerpt,
+            $fallbackWorkflowState,
+            $auditAdminId,
+            $workflowState,
+        ): array {
+            $article = Article::query()->create([
+                'title' => $normalized['title'],
+                'slug' => $slug,
+                'content' => $normalized['content'],
+                'excerpt' => $excerpt,
+                'keywords' => $normalized['keywords'],
+                'meta_description' => $normalized['meta_description'],
+                'category_id' => $normalized['category_id'],
+                'author_id' => $normalized['author_id'],
+                'task_id' => $normalized['task_id'],
+                'status' => $fallbackWorkflowState['status'],
+                'review_status' => $fallbackWorkflowState['review_status'],
+                'is_ai_generated' => $normalized['is_ai_generated'],
+                'published_at' => $fallbackWorkflowState['published_at'],
+            ]);
+
+            $this->articleRiskScanner->record($article, 'api_save', $auditAdminId);
+
+            $gateRejection = null;
+            if (
+                $workflowState['status'] === 'published'
+                || in_array($workflowState['review_status'], ['approved', 'auto_approved'], true)
+            ) {
+                $isAutomaticApproval = $workflowState['review_status'] === 'auto_approved';
+
+                try {
+                    $this->articleWorkflowTransitionService->transition(
+                        $article,
+                        $workflowState,
+                        'api_create',
+                        $auditAdminId,
+                        $isAutomaticApproval ? null : $normalized['risk_override_reason'],
+                        ! $isAutomaticApproval,
+                        $fallbackWorkflowState,
+                    );
+                } catch (ArticleRiskGateException $exception) {
+                    $gateRejection = $exception;
+                }
+            }
+
+            return ['article' => $article, 'gate_rejection' => $gateRejection];
+        });
+
+        $article = $creation['article'];
+        if ($creation['gate_rejection'] instanceof ArticleRiskGateException) {
+            throw $this->riskBlockedException($article, $creation['gate_rejection']);
+        }
 
         return $this->getArticle((int) $article->id);
     }
@@ -134,7 +181,7 @@ class ArticleGeoFlowService
         ];
     }
 
-    public function updateArticle(int $articleId, array $data): array
+    public function updateArticle(int $articleId, array $data, int $auditAdminId): array
     {
         $existing = $this->getArticleRecord($articleId);
         $normalized = $this->normalizeUpdateInput($data, $existing);
@@ -142,20 +189,57 @@ class ArticleGeoFlowService
             throw new ApiException('validation_failed', '没有可更新的字段', 422);
         }
 
+        foreach ($normalized as $field => $value) {
+            if ((string) ($existing[$field] ?? '') === (string) ($value ?? '')) {
+                unset($normalized[$field]);
+            }
+        }
+
+        if ($normalized === []) {
+            return $this->getArticle($articleId);
+        }
+
+        $riskRelevantFields = ['title', 'excerpt', 'content', 'keywords', 'meta_description'];
+        $hasRiskRelevantChanges = array_intersect($riskRelevantFields, array_keys($normalized)) !== [];
+
+        if ($hasRiskRelevantChanges) {
+            $fallbackWorkflowState = ArticleWorkflow::normalizeState('draft', 'pending');
+            $normalized = array_merge($normalized, $fallbackWorkflowState);
+        }
+
         $normalized['updated_at'] = now();
 
-        Article::query()->whereKey($articleId)->update($normalized);
+        if ($hasRiskRelevantChanges) {
+            DB::transaction(function () use ($articleId, $normalized, $auditAdminId): void {
+                Article::query()->whereKey($articleId)->update($normalized);
+                $article = Article::query()->findOrFail($articleId);
+                $this->articleRiskScanner->record($article, 'api_save', $auditAdminId);
+            });
+        } else {
+            Article::query()->whereKey($articleId)->update($normalized);
+        }
 
         return $this->getArticle($articleId);
     }
 
-    public function reviewArticle(int $articleId, string $reviewStatus, string $reviewNote, int $auditAdminId): array
-    {
+    public function reviewArticle(
+        int $articleId,
+        string $reviewStatus,
+        string $reviewNote,
+        string $riskOverrideReason,
+        int $auditAdminId,
+    ): array {
         $article = $this->getArticleRecord($articleId);
         $reviewStatus = trim($reviewStatus);
+        $riskOverrideReason = trim($riskOverrideReason);
         if (! in_array($reviewStatus, ['pending', 'approved', 'rejected', 'auto_approved'], true)) {
             throw new ApiException('validation_failed', '审核状态无效', 422, [
                 'field_errors' => ['review_status' => '审核状态无效'],
+            ]);
+        }
+        if (mb_strlen($riskOverrideReason, 'UTF-8') > 1000) {
+            throw new ApiException('validation_failed', '参数校验失败', 422, [
+                'field_errors' => ['risk_override_reason' => '风险放行原因不能超过 1000 个字符'],
             ]);
         }
 
@@ -173,51 +257,100 @@ class ArticleGeoFlowService
             }
         }
 
-        $workflowState = ArticleWorkflow::normalizeState(
-            $desiredStatus,
-            $reviewStatus,
-            $article['published_at'] ?? null
-        );
+        $workflowState = ArticleWorkflow::normalizeState($desiredStatus, $reviewStatus, $article['published_at'] ?? null);
 
-        DB::transaction(function () use ($articleId, $workflowState, $reviewStatus, $reviewNote, $auditAdminId) {
-            Article::query()->whereKey($articleId)->update([
-                'status' => $workflowState['status'],
-                'review_status' => $workflowState['review_status'],
-                'published_at' => $workflowState['published_at'],
-                'updated_at' => now(),
-            ]);
+        if (in_array($reviewStatus, ['approved', 'auto_approved'], true)) {
+            $fallbackWorkflowState = ArticleWorkflow::normalizeState('draft', 'pending');
+            $isAutomaticApproval = $reviewStatus === 'auto_approved';
 
-            ArticleReview::query()->create([
-                'article_id' => $articleId,
-                'admin_id' => $auditAdminId,
-                'review_status' => $reviewStatus,
-                'review_note' => trim($reviewNote),
-            ]);
-        });
+            $gateRejection = DB::transaction(function () use (
+                $articleId,
+                $workflowState,
+                $auditAdminId,
+                $isAutomaticApproval,
+                $reviewNote,
+                $riskOverrideReason,
+                $fallbackWorkflowState,
+                $reviewStatus,
+            ): ?ArticleRiskGateException {
+                try {
+                    $this->articleWorkflowTransitionService->transition(
+                        Article::query()->findOrFail($articleId),
+                        $workflowState,
+                        'api_review',
+                        $auditAdminId,
+                        $isAutomaticApproval ? null : $riskOverrideReason,
+                        ! $isAutomaticApproval,
+                        $fallbackWorkflowState,
+                    );
+                } catch (ArticleRiskGateException $exception) {
+                    return $exception;
+                }
+
+                ArticleReview::query()->create([
+                    'article_id' => $articleId,
+                    'admin_id' => $auditAdminId,
+                    'review_status' => $reviewStatus,
+                    'review_note' => trim($reviewNote),
+                ]);
+
+                return null;
+            });
+
+            if ($gateRejection instanceof ArticleRiskGateException) {
+                throw $this->riskBlockedException(Article::query()->findOrFail($articleId), $gateRejection);
+            }
+        } else {
+            DB::transaction(function () use ($articleId, $workflowState, $reviewStatus, $reviewNote, $auditAdminId) {
+                Article::query()->whereKey($articleId)->update([
+                    'status' => $workflowState['status'],
+                    'review_status' => $workflowState['review_status'],
+                    'published_at' => $workflowState['published_at'],
+                    'updated_at' => now(),
+                ]);
+
+                ArticleReview::query()->create([
+                    'article_id' => $articleId,
+                    'admin_id' => $auditAdminId,
+                    'review_status' => $reviewStatus,
+                    'review_note' => trim($reviewNote),
+                ]);
+            });
+        }
 
         return $this->getArticle($articleId);
     }
 
-    public function publishArticle(int $articleId): array
+    public function publishArticle(int $articleId, int $auditAdminId): array
     {
-        $article = $this->getArticleRecord($articleId);
-        $reviewStatus = $article['review_status'] ?? 'pending';
+        $article = Article::query()->whereKey($articleId)->first();
+        if ($article === null) {
+            throw new ApiException('article_not_found', '文章不存在', 404);
+        }
+
+        $reviewStatus = (string) ($article->review_status ?? 'pending');
         if (! in_array($reviewStatus, ['approved', 'auto_approved'], true)) {
             throw new ApiException('article_not_publishable', '当前文章状态不允许直接发布', 409);
         }
 
-        $workflowState = ArticleWorkflow::normalizeState(
-            'published',
-            $reviewStatus,
-            $article['published_at'] ?? null
-        );
-
-        Article::query()->whereKey($articleId)->update([
-            'status' => $workflowState['status'],
-            'review_status' => $workflowState['review_status'],
-            'published_at' => $workflowState['published_at'],
-            'updated_at' => now(),
-        ]);
+        try {
+            $this->articleWorkflowTransitionService->transition(
+                $article,
+                ArticleWorkflow::normalizeState('published', $reviewStatus, $article->published_at),
+                'api_publish',
+                $auditAdminId,
+                null,
+                $reviewStatus === 'approved',
+                ArticleWorkflow::normalizeState('draft', 'pending'),
+                static function (Article $lockedArticle) use ($reviewStatus): void {
+                    if ((string) $lockedArticle->review_status !== $reviewStatus) {
+                        throw new ApiException('article_not_publishable', '当前文章状态不允许直接发布', 409);
+                    }
+                },
+            );
+        } catch (ArticleRiskGateException $exception) {
+            throw $this->riskBlockedException(Article::query()->findOrFail($articleId), $exception);
+        }
 
         return $this->getArticle($articleId);
     }
@@ -241,26 +374,47 @@ class ArticleGeoFlowService
     {
         $title = trim((string) ($data['title'] ?? ''));
         $content = trim((string) ($data['content'] ?? ''));
-        if ($title === '' || $content === '') {
-            $errors = [];
-            if ($title === '') {
-                $errors['title'] = '文章标题不能为空';
-            }
-            if ($content === '') {
-                $errors['content'] = '文章内容不能为空';
-            }
+        $excerpt = trim((string) ($data['excerpt'] ?? ''));
+        $keywords = trim((string) ($data['keywords'] ?? ''));
+        $metaDescription = trim((string) ($data['meta_description'] ?? ''));
+        $riskOverrideReason = trim((string) ($data['risk_override_reason'] ?? ''));
+        $errors = [];
+        if ($title === '') {
+            $errors['title'] = '文章标题不能为空';
+        } elseif (mb_strlen($title, 'UTF-8') > 255) {
+            $errors['title'] = '文章标题不能超过 255 个字符';
+        }
+        if ($content === '') {
+            $errors['content'] = '文章内容不能为空';
+        } elseif (mb_strlen($content, 'UTF-8') > ArticleRiskScanner::MAX_CONTENT_CHARACTERS) {
+            $errors['content'] = '文章内容超过扫描长度上限';
+        }
+        if (mb_strlen($excerpt, 'UTF-8') > ArticleRiskScanner::MAX_EXCERPT_CHARACTERS) {
+            $errors['excerpt'] = '文章摘要超过扫描长度上限';
+        }
+        if (mb_strlen($keywords, 'UTF-8') > 500) {
+            $errors['keywords'] = '关键词不能超过 500 个字符';
+        }
+        if (mb_strlen($metaDescription, 'UTF-8') > 500) {
+            $errors['meta_description'] = 'Meta 描述不能超过 500 个字符';
+        }
+        if (mb_strlen($riskOverrideReason, 'UTF-8') > 1000) {
+            $errors['risk_override_reason'] = '风险放行原因不能超过 1000 个字符';
+        }
+        if ($errors !== []) {
             throw new ApiException('validation_failed', '参数校验失败', 422, ['field_errors' => $errors]);
         }
 
         $normalized = [
             'title' => $title,
             'content' => $content,
-            'excerpt' => trim((string) ($data['excerpt'] ?? '')),
-            'keywords' => trim((string) ($data['keywords'] ?? '')),
-            'meta_description' => trim((string) ($data['meta_description'] ?? '')),
+            'excerpt' => $excerpt,
+            'keywords' => $keywords,
+            'meta_description' => $metaDescription,
             'status' => trim((string) ($data['status'] ?? 'draft')),
             'review_status' => trim((string) ($data['review_status'] ?? 'pending')),
             'is_ai_generated' => $this->toFlag($data['is_ai_generated'] ?? 0),
+            'risk_override_reason' => $riskOverrideReason,
         ];
 
         $normalized['slug'] = null;
@@ -289,6 +443,8 @@ class ArticleGeoFlowService
             $title = trim((string) $data['title']);
             if ($title === '') {
                 $fieldErrors['title'] = '文章标题不能为空';
+            } elseif (mb_strlen($title, 'UTF-8') > 255) {
+                $fieldErrors['title'] = '文章标题不能超过 255 个字符';
             } else {
                 $normalized['title'] = $title;
             }
@@ -298,6 +454,8 @@ class ArticleGeoFlowService
             $content = trim((string) $data['content']);
             if ($content === '') {
                 $fieldErrors['content'] = '文章内容不能为空';
+            } elseif (mb_strlen($content, 'UTF-8') > ArticleRiskScanner::MAX_CONTENT_CHARACTERS) {
+                $fieldErrors['content'] = '文章内容超过扫描长度上限';
             } else {
                 $normalized['content'] = $content;
             }
@@ -306,6 +464,14 @@ class ArticleGeoFlowService
         foreach (['excerpt', 'keywords', 'meta_description'] as $field) {
             if (array_key_exists($field, $data)) {
                 $normalized[$field] = trim((string) $data[$field]);
+            }
+        }
+        if (isset($normalized['excerpt']) && mb_strlen($normalized['excerpt'], 'UTF-8') > ArticleRiskScanner::MAX_EXCERPT_CHARACTERS) {
+            $fieldErrors['excerpt'] = '文章摘要超过扫描长度上限';
+        }
+        foreach (['keywords', 'meta_description'] as $field) {
+            if (isset($normalized[$field]) && mb_strlen($normalized[$field], 'UTF-8') > 500) {
+                $fieldErrors[$field] = "{$field} 不能超过 500 个字符";
             }
         }
 
@@ -427,5 +593,15 @@ class ArticleGeoFlowService
         }
 
         return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true) ? 1 : 0;
+    }
+
+    private function riskBlockedException(Article $article, ArticleRiskGateException $exception): ApiException
+    {
+        return new ApiException('article_risk_blocked', '文章风险检查未通过', 409, [
+            'article_id' => (int) $article->getKey(),
+            'risk_status' => $exception->riskStatus,
+            'match_count' => (int) $exception->scan->match_count,
+            'matches' => $exception->scan->matches ?? [],
+        ]);
     }
 }

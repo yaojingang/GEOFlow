@@ -173,6 +173,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{articleId}/restore', [ArticleController::class, 'restore'])->name('restore')->whereNumber('articleId');
             Route::post('{articleId}/force-delete', [ArticleController::class, 'forceDelete'])->name('force-delete')->whereNumber('articleId');
             Route::get('{articleId}/edit', [ArticleController::class, 'edit'])->name('edit');
+            Route::post('{articleId}/risk-scan', [ArticleController::class, 'recheckRisk'])->name('risk-scan')->whereNumber('articleId');
             Route::post('{articleId}/editor/images/upload', [ArticleEditorAssetController::class, 'uploadImage'])->name('editor.images.upload')->whereNumber('articleId');
             Route::put('{articleId}', [ArticleController::class, 'update'])->name('update');
         });
@@ -381,15 +382,26 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('article-detail-ads', [SiteSettingsController::class, 'updateArticleDetailAds'])->name('ads');
             Route::post('article-detail-text-ads', [SiteSettingsController::class, 'updateArticleDetailTextAds'])->name('text-ads');
             Route::get('sensitive-words', [SecuritySettingsController::class, 'index'])->name('sensitive-words');
-            Route::post('sensitive-words', [SecuritySettingsController::class, 'storeSensitiveWords'])->name('sensitive-words.store');
+            Route::post('sensitive-words', [SecuritySettingsController::class, 'storeSensitiveWords'])
+                ->middleware('admin.super')
+                ->name('sensitive-words.store');
+            Route::put('sensitive-words/{wordId}', [SecuritySettingsController::class, 'updateSensitiveWord'])
+                ->middleware('admin.super')
+                ->name('sensitive-words.update')
+                ->whereNumber('wordId');
             Route::post('sensitive-words/{wordId}/delete', [SecuritySettingsController::class, 'destroySensitiveWord'])
+                ->middleware('admin.super')
                 ->name('sensitive-words.delete')
                 ->whereNumber('wordId');
         });
         Route::prefix('security-settings')->name('security-settings.')->group(function () {
             Route::get('/', fn () => redirect()->route('admin.site-settings.sensitive-words'))->name('index');
-            Route::post('sensitive-words', [SecuritySettingsController::class, 'storeSensitiveWords'])->name('words.store');
-            Route::post('sensitive-words/{wordId}/delete', [SecuritySettingsController::class, 'destroySensitiveWord'])->name('words.delete');
+            Route::post('sensitive-words', [SecuritySettingsController::class, 'storeSensitiveWords'])
+                ->middleware('admin.super')
+                ->name('words.store');
+            Route::post('sensitive-words/{wordId}/delete', [SecuritySettingsController::class, 'destroySensitiveWord'])
+                ->middleware('admin.super')
+                ->name('words.delete');
             Route::post('password', [SecuritySettingsController::class, 'updatePassword'])->name('password.update');
         });
 

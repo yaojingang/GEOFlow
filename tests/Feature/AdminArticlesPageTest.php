@@ -11,8 +11,10 @@ use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\Image;
 use App\Models\ImageLibrary;
+use App\Models\SensitiveWord;
 use App\Models\SiteSetting;
 use App\Models\Task;
+use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -222,6 +224,88 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee('ClipboardItem', false)
             ->assertSee(__('admin.article_editor.quick_actions.image'), false)
             ->assertSee(__('admin.article_editor.quick_actions.heading'), false);
+    }
+
+    public function test_article_edit_scorecard_shows_persisted_risk_findings_and_recheck_action(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'article_risk_ui_admin',
+            'password' => 'secret-123',
+            'email' => 'article-risk-ui@example.com',
+            'display_name' => 'Article Risk UI Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '风险界面分类',
+            'slug' => 'risk-ui-category',
+        ]);
+        $author = Author::query()->create(['name' => 'Risk UI Author']);
+        $article = Article::query()->create([
+            'title' => '宣称绝对第一的文章',
+            'slug' => 'risk-ui-article',
+            'excerpt' => '摘要',
+            'content' => '正文包含绝对第一的表述。',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+        SensitiveWord::query()->create([
+            'word' => '绝对第一',
+            'severity' => 'blocked',
+            'category' => 'absolute_claim',
+            'suggestion' => '改为有数据依据的限定表述',
+            'applies_to' => ['title', 'content'],
+        ]);
+        app(ArticleRiskScanner::class)->record($article, 'admin_save', (int) $admin->id);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertSee(__('admin.articles.quality_scorecard.risk_status_blocked'))
+            ->assertSee('绝对第一')
+            ->assertSee('改为有数据依据的限定表述')
+            ->assertSee(route('admin.articles.risk-scan', ['articleId' => $article->id]), false)
+            ->assertSee('name="risk_override_reason"', false);
+    }
+
+    public function test_admin_can_manually_recheck_article_risk_from_the_edit_page(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'article_risk_recheck_admin',
+            'password' => 'secret-123',
+            'email' => 'article-risk-recheck@example.com',
+            'display_name' => 'Article Risk Recheck Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '风险复检分类',
+            'slug' => 'risk-recheck-category',
+        ]);
+        $author = Author::query()->create(['name' => 'Risk Recheck Author']);
+        $article = Article::query()->create([
+            'title' => '待复检文章',
+            'slug' => 'risk-recheck-article',
+            'excerpt' => '摘要',
+            'content' => '安全正文。',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.articles.risk-scan', ['articleId' => $article->id]))
+            ->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]));
+
+        $this->assertDatabaseHas('article_risk_scans', [
+            'article_id' => (int) $article->id,
+            'status' => 'clean',
+            'trigger' => 'admin_recheck',
+            'admin_id' => (int) $admin->id,
+        ]);
     }
 
     public function test_admin_can_export_article_editor_wechat_html(): void

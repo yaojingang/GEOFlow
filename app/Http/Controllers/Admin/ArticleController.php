@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ArticleRiskGateException;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\Task;
+use App\Services\GeoFlow\ArticleRiskScanner;
+use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ArticleWorkflow;
@@ -16,6 +19,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Throwable;
 
@@ -27,7 +31,11 @@ use Throwable;
  */
 class ArticleController extends Controller
 {
-    public function __construct(private readonly DistributionOrchestrator $distributionOrchestrator) {}
+    public function __construct(
+        private readonly DistributionOrchestrator $distributionOrchestrator,
+        private readonly ArticleRiskScanner $articleRiskScanner,
+        private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
+    ) {}
 
     /**
      * 文章管理首页：渲染筛选与列表。
@@ -62,13 +70,14 @@ class ArticleController extends Controller
      */
     public function batchUpdateStatus(Request $request): RedirectResponse
     {
+        $riskOverrideReason = $this->validateRiskOverrideReason($request);
         $articleIds = $this->extractArticleIds($request);
         if (empty($articleIds)) {
             return back()->withErrors(__('admin.articles.message.select_articles'));
         }
 
         try {
-            return $this->handleBatchUpdateStatus($request, $articleIds);
+            return $this->handleBatchUpdateStatus($request, $articleIds, $riskOverrideReason);
         } catch (Throwable $e) {
             return back()->withErrors($e->getMessage());
         }
@@ -79,13 +88,14 @@ class ArticleController extends Controller
      */
     public function batchUpdateReview(Request $request): RedirectResponse
     {
+        $riskOverrideReason = $this->validateRiskOverrideReason($request);
         $articleIds = $this->extractArticleIds($request);
         if (empty($articleIds)) {
             return back()->withErrors(__('admin.articles.message.select_articles'));
         }
 
         try {
-            return $this->handleBatchUpdateReview($request, $articleIds);
+            return $this->handleBatchUpdateReview($request, $articleIds, $riskOverrideReason);
         } catch (Throwable $e) {
             return back()->withErrors($e->getMessage());
         }
@@ -204,6 +214,7 @@ class ArticleController extends Controller
             'isEdit' => false,
             'articleId' => null,
             'articleForm' => null,
+            'riskScan' => null,
             'formOptions' => $this->loadFormOptions(),
         ]);
     }
@@ -218,27 +229,57 @@ class ArticleController extends Controller
             $payload['status'],
             $payload['review_status']
         );
+        $article = null;
 
         try {
-            $article = Article::query()->create([
-                'title' => $payload['title'],
-                'slug' => ArticleWorkflow::generateUniqueSlug($payload['title']),
-                'content' => $payload['content'],
-                'excerpt' => $payload['excerpt'] !== '' ? $payload['excerpt'] : mb_substr(strip_tags($payload['content']), 0, 200, 'UTF-8'),
-                'keywords' => $payload['keywords'],
-                'meta_description' => $payload['meta_description'],
-                'category_id' => (int) $payload['category_id'],
-                'author_id' => (int) $payload['author_id'],
-                'status' => $workflowState['status'],
-                'review_status' => $workflowState['review_status'],
-                'published_at' => $workflowState['published_at'],
-                'is_ai_generated' => 0,
-                'is_hot' => (bool) ($payload['is_hot'] ?? false),
-                'is_featured' => (bool) ($payload['is_featured'] ?? false),
-            ]);
-            if ($workflowState['status'] === 'published') {
+            $adminId = $this->authenticatedAdminId($request);
+            $gateRejection = DB::transaction(function () use (&$article, $payload, $workflowState, $adminId): ?ArticleRiskGateException {
+                $article = Article::query()->create([
+                    'title' => $payload['title'],
+                    'slug' => ArticleWorkflow::generateUniqueSlug($payload['title']),
+                    'content' => $payload['content'],
+                    'excerpt' => $payload['excerpt'] !== '' ? $payload['excerpt'] : mb_substr(strip_tags($payload['content']), 0, 200, 'UTF-8'),
+                    'keywords' => $payload['keywords'],
+                    'meta_description' => $payload['meta_description'],
+                    'category_id' => (int) $payload['category_id'],
+                    'author_id' => (int) $payload['author_id'],
+                    'status' => 'draft',
+                    'review_status' => 'pending',
+                    'published_at' => null,
+                    'is_ai_generated' => 0,
+                    'is_hot' => (bool) ($payload['is_hot'] ?? false),
+                    'is_featured' => (bool) ($payload['is_featured'] ?? false),
+                ]);
+
+                $this->articleRiskScanner->record($article, 'admin_save', $adminId);
+                if ($this->requiresRiskGate($payload)) {
+                    try {
+                        $article = $this->transitionGatedArticle($article, $workflowState, $payload, 'admin_save', $adminId);
+                    } catch (ArticleRiskGateException $exception) {
+                        return $exception;
+                    }
+                } else {
+                    $article->update([
+                        'status' => $workflowState['status'],
+                        'review_status' => $workflowState['review_status'],
+                        'published_at' => $workflowState['published_at'],
+                    ]);
+                }
+
+                return null;
+            });
+
+            if ($gateRejection instanceof ArticleRiskGateException) {
+                throw $gateRejection;
+            }
+            if ($article->status === 'published') {
                 $this->distributionOrchestrator->enqueueForArticle($article);
             }
+        } catch (ArticleRiskGateException $e) {
+            return redirect()
+                ->route('admin.articles.edit', ['articleId' => (int) $article?->id])
+                ->withInput()
+                ->withErrors($e->getMessage());
         } catch (Throwable $e) {
             return back()->withInput()->withErrors(__('admin.article_create.error.create_exception', ['message' => $e->getMessage()]));
         }
@@ -280,8 +321,48 @@ class ArticleController extends Controller
                 'is_hot' => (bool) ($article->is_hot ?? false),
                 'is_featured' => (bool) ($article->is_featured ?? false),
             ],
+            'riskScan' => $this->riskScanViewData($article),
             'formOptions' => $this->loadFormOptions(),
         ]);
+    }
+
+    /**
+     * 从编辑页手动重新执行当前文章的风险扫描。
+     */
+    public function recheckRisk(Request $request, int $articleId): RedirectResponse
+    {
+        $adminId = $this->authenticatedAdminId($request);
+        $downgraded = DB::transaction(function () use ($articleId, $adminId): bool {
+            $article = Article::query()->whereKey($articleId)->lockForUpdate()->firstOrFail();
+            $scan = $article->latestRiskScan()->first();
+
+            if ($scan === null || ! $this->articleRiskScanner->isFresh($article, $scan)) {
+                $scan = $this->articleRiskScanner->record($article, 'admin_recheck', $adminId);
+            }
+
+            $requiresDowngrade = $scan->status !== 'clean'
+                && ! ($scan->status === 'warning' && $scan->is_overridden)
+                && $this->workflowStateRequiresRiskGate([
+                    'status' => (string) $article->status,
+                    'review_status' => (string) $article->review_status,
+                    'published_at' => $article->published_at,
+                ]);
+
+            if ($requiresDowngrade) {
+                $fallback = ArticleWorkflow::normalizeState('draft', 'pending');
+                $article->update($fallback);
+            }
+
+            return $requiresDowngrade;
+        });
+
+        $response = redirect()
+            ->route('admin.articles.edit', ['articleId' => $articleId])
+            ->with('message', __('admin.articles.quality_scorecard.risk_recheck_success'));
+
+        return $downgraded
+            ? $response->withErrors(__('admin.articles.quality_scorecard.risk_recheck_downgraded'))
+            : $response;
     }
 
     /**
@@ -299,26 +380,82 @@ class ArticleController extends Controller
         );
 
         try {
-            $article->fill([
-                'title' => $payload['title'],
-                'slug' => $payload['title'] === $article->title
-                    ? $article->slug
-                    : ArticleWorkflow::generateUniqueSlug($payload['title'], (int) $article->id),
-                'content' => $payload['content'],
-                'excerpt' => $payload['excerpt'] !== '' ? $payload['excerpt'] : mb_substr(strip_tags($payload['content']), 0, 200, 'UTF-8'),
-                'keywords' => $payload['keywords'],
-                'meta_description' => $payload['meta_description'],
-                'category_id' => (int) $payload['category_id'],
-                'author_id' => (int) $payload['author_id'],
-                'status' => $workflowState['status'],
-                'review_status' => $workflowState['review_status'],
-                'published_at' => $workflowState['published_at'],
-                'is_hot' => (bool) ($payload['is_hot'] ?? false),
-                'is_featured' => (bool) ($payload['is_featured'] ?? false),
-            ])->save();
-            if ($workflowState['status'] === 'published') {
+            $adminId = $this->authenticatedAdminId($request);
+            $gateRejection = DB::transaction(function () use (&$article, $payload, $workflowState, $adminId): ?ArticleRiskGateException {
+                $lockedArticle = Article::query()->whereKey($article->id)->lockForUpdate()->firstOrFail();
+                $slug = $payload['title'] === $lockedArticle->title
+                    ? $lockedArticle->slug
+                    : ArticleWorkflow::generateUniqueSlug($payload['title'], (int) $lockedArticle->id);
+                $excerpt = $payload['excerpt'] !== '' ? $payload['excerpt'] : mb_substr(strip_tags($payload['content']), 0, 200, 'UTF-8');
+                $currentRiskHash = $this->articleRiskScanner->contentHash([
+                    'title' => $lockedArticle->title,
+                    'excerpt' => $lockedArticle->excerpt,
+                    'content' => $lockedArticle->content,
+                    'keywords' => $lockedArticle->keywords,
+                    'meta_description' => $lockedArticle->meta_description,
+                ]);
+                $nextRiskHash = $this->articleRiskScanner->contentHash([
+                    'title' => $payload['title'],
+                    'excerpt' => $excerpt,
+                    'content' => $payload['content'],
+                    'keywords' => $payload['keywords'],
+                    'meta_description' => $payload['meta_description'],
+                ]);
+                $lockedArticle->fill([
+                    'title' => $payload['title'],
+                    'slug' => $slug,
+                    'content' => $payload['content'],
+                    'excerpt' => $excerpt,
+                    'keywords' => $payload['keywords'],
+                    'meta_description' => $payload['meta_description'],
+                    'category_id' => (int) $payload['category_id'],
+                    'author_id' => (int) $payload['author_id'],
+                    'status' => 'draft',
+                    'review_status' => 'pending',
+                    'published_at' => null,
+                    'is_hot' => (bool) ($payload['is_hot'] ?? false),
+                    'is_featured' => (bool) ($payload['is_featured'] ?? false),
+                ])->save();
+
+                $latestScan = $lockedArticle->latestRiskScan()->first();
+                if (
+                    ! hash_equals($currentRiskHash, $nextRiskHash)
+                    || $latestScan === null
+                    || ! $this->articleRiskScanner->isFresh($lockedArticle, $latestScan)
+                ) {
+                    $this->articleRiskScanner->record($lockedArticle, 'admin_save', $adminId);
+                }
+                if ($this->requiresRiskGate($payload)) {
+                    try {
+                        $lockedArticle = $this->transitionGatedArticle($lockedArticle, $workflowState, $payload, 'admin_save', $adminId);
+                    } catch (ArticleRiskGateException $exception) {
+                        $article = $lockedArticle;
+
+                        return $exception;
+                    }
+                } else {
+                    $lockedArticle->update([
+                        'status' => $workflowState['status'],
+                        'review_status' => $workflowState['review_status'],
+                        'published_at' => $workflowState['published_at'],
+                    ]);
+                }
+                $article = $lockedArticle;
+
+                return null;
+            });
+
+            if ($gateRejection instanceof ArticleRiskGateException) {
+                throw $gateRejection;
+            }
+            if ($article->status === 'published') {
                 $this->distributionOrchestrator->enqueueForArticle($article);
             }
+        } catch (ArticleRiskGateException $e) {
+            return redirect()
+                ->route('admin.articles.edit', ['articleId' => $articleId])
+                ->withInput()
+                ->withErrors($e->getMessage());
         } catch (Throwable $e) {
             return back()->withInput()->withErrors(__('admin.article_edit.error.update_exception', ['message' => $e->getMessage()]));
         }
@@ -618,7 +755,8 @@ class ArticleController extends Controller
      *     category_id: int,
      *     author_id: int,
      *     status: string,
-     *     review_status: string
+     *     review_status: string,
+     *     risk_override_reason: ?string,
      *     is_hot: bool,
      *     is_featured: bool
      * }
@@ -629,14 +767,15 @@ class ArticleController extends Controller
 
         return $request->validate([
             'title' => ['required', 'string', 'max:255'],
-            'excerpt' => ['nullable', 'string'],
-            'content' => ['required', 'string'],
+            'excerpt' => ['nullable', 'string', 'max:'.ArticleRiskScanner::MAX_EXCERPT_CHARACTERS],
+            'content' => ['required', 'string', 'max:'.ArticleRiskScanner::MAX_CONTENT_CHARACTERS],
             'keywords' => ['nullable', 'string', 'max:500'],
             'meta_description' => ['nullable', 'string', 'max:500'],
             'category_id' => ['required', 'integer', 'min:1'],
             'author_id' => ['required', 'integer', 'min:1'],
             'status' => ['required', 'string', 'in:draft,published,private'],
             'review_status' => ['required', 'string', 'in:pending,approved,rejected,auto_approved'],
+            'risk_override_reason' => ['nullable', 'string', 'max:1000'],
             'is_hot' => ['nullable', 'boolean'],
             'is_featured' => ['nullable', 'boolean'],
         ], [
@@ -647,6 +786,79 @@ class ArticleController extends Controller
             'author_id.required' => __($keyPrefix.'.author_required'),
             'author_id.min' => __($keyPrefix.'.author_required'),
         ]);
+    }
+
+    /**
+     * @return array{state:string,status:string,match_count:int,matches:array<int,array<string,mixed>>,is_overridden:bool,override_reason:string,scanned_at:string}|null
+     */
+    private function riskScanViewData(Article $article): ?array
+    {
+        $scan = $article->latestRiskScan()->first();
+        if ($scan === null) {
+            return null;
+        }
+
+        return [
+            'state' => $this->articleRiskScanner->isFresh($article, $scan) ? 'fresh' : 'stale',
+            'status' => (string) $scan->status,
+            'match_count' => (int) $scan->match_count,
+            'matches' => is_array($scan->matches) ? $scan->matches : [],
+            'is_overridden' => (bool) $scan->is_overridden,
+            'override_reason' => (string) ($scan->override_reason ?? ''),
+            'scanned_at' => (string) ($scan->scanned_at?->format('Y-m-d H:i:s') ?? ''),
+        ];
+    }
+
+    private function validateRiskOverrideReason(Request $request): ?string
+    {
+        $validated = $request->validate([
+            'risk_override_reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $reason = trim((string) ($validated['risk_override_reason'] ?? ''));
+
+        return $reason === '' ? null : $reason;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function requiresRiskGate(array $payload): bool
+    {
+        return $payload['status'] === 'published'
+            || in_array($payload['review_status'], ['approved', 'auto_approved'], true);
+    }
+
+    /**
+     * @param  array{status: string, review_status: string, published_at: mixed}  $workflowState
+     * @param  array<string, mixed>  $payload
+     */
+    private function transitionGatedArticle(
+        Article $article,
+        array $workflowState,
+        array $payload,
+        string $trigger,
+        int $adminId,
+    ): Article {
+        $allowsOverride = $payload['review_status'] === 'approved';
+
+        return $this->articleWorkflowTransitionService->transition(
+            $article,
+            $workflowState,
+            $trigger,
+            $allowsOverride ? $adminId : null,
+            $allowsOverride ? ($payload['risk_override_reason'] ?? null) : null,
+            $allowsOverride,
+        );
+    }
+
+    private function authenticatedAdminId(Request $request): int
+    {
+        return (int) $request->user('admin')->getAuthIdentifier();
+    }
+
+    /** @param array{status: string, review_status: string, published_at: mixed} $workflowState */
+    private function workflowStateRequiresRiskGate(array $workflowState): bool
+    {
+        return in_array($workflowState['status'], ['published', 'private'], true)
+            || in_array($workflowState['review_status'], ['approved', 'auto_approved'], true);
     }
 
     /**
@@ -664,7 +876,7 @@ class ArticleController extends Controller
     /**
      * @param  array<int, int>  $articleIds
      */
-    private function handleBatchUpdateStatus(Request $request, array $articleIds): RedirectResponse
+    private function handleBatchUpdateStatus(Request $request, array $articleIds, ?string $riskOverrideReason): RedirectResponse
     {
         $newStatus = (string) $request->input('new_status', '');
         if (! in_array($newStatus, ['draft', 'published', 'private'], true)) {
@@ -675,6 +887,10 @@ class ArticleController extends Controller
             ->select(['id', 'review_status', 'published_at'])
             ->whereIn('id', $articleIds)
             ->get();
+        $adminId = $this->authenticatedAdminId($request);
+        $rejectedCount = 0;
+        $allowedCount = 0;
+        $rejectedWorkflowState = ArticleWorkflow::normalizeState('draft', 'pending');
 
         foreach ($articles as $article) {
             $workflowState = ArticleWorkflow::normalizeState(
@@ -683,24 +899,48 @@ class ArticleController extends Controller
                 $article->published_at?->format('Y-m-d H:i:s')
             );
 
-            Article::query()->whereKey((int) $article->id)->update([
-                'status' => $workflowState['status'],
-                'review_status' => $workflowState['review_status'],
-                'published_at' => $workflowState['published_at'],
-            ]);
+            try {
+                if (in_array($workflowState['status'], ['published', 'private'], true)) {
+                    $allowsOverride = $workflowState['review_status'] === 'approved';
+                    $article = $this->articleWorkflowTransitionService->transition(
+                        $article,
+                        $workflowState,
+                        'admin_batch_status',
+                        $allowsOverride ? $adminId : null,
+                        $allowsOverride ? $riskOverrideReason : null,
+                        $allowsOverride,
+                        $rejectedWorkflowState,
+                    );
+                } else {
+                    Article::query()->whereKey((int) $article->id)->update([
+                        'status' => $workflowState['status'],
+                        'review_status' => $workflowState['review_status'],
+                        'published_at' => $workflowState['published_at'],
+                    ]);
+                }
+            } catch (ArticleRiskGateException) {
+                $rejectedCount++;
+
+                continue;
+            }
 
             if ($workflowState['status'] === 'published') {
-                $this->distributionOrchestrator->enqueueForArticle((int) $article->id);
+                $this->distributionOrchestrator->enqueueForArticle($article);
             }
+            $allowedCount++;
         }
 
-        return back()->with('message', __('admin.articles.message.batch_status_updated', ['count' => count($articleIds)]));
+        $response = back()->with('message', __('admin.articles.message.batch_status_updated', ['count' => $allowedCount]));
+
+        return $rejectedCount > 0
+            ? $response->withErrors("Risk gate rejected {$rejectedCount} article(s).")
+            : $response;
     }
 
     /**
      * @param  array<int, int>  $articleIds
      */
-    private function handleBatchUpdateReview(Request $request, array $articleIds): RedirectResponse
+    private function handleBatchUpdateReview(Request $request, array $articleIds, ?string $riskOverrideReason): RedirectResponse
     {
         $reviewStatus = (string) $request->input('review_status', '');
         if (! in_array($reviewStatus, ['pending', 'approved', 'rejected', 'auto_approved'], true)) {
@@ -712,6 +952,10 @@ class ArticleController extends Controller
             ->select(['id', 'status', 'review_status', 'published_at', 'task_id'])
             ->whereIn('id', $articleIds)
             ->get();
+        $adminId = $this->authenticatedAdminId($request);
+        $rejectedCount = 0;
+        $allowedCount = 0;
+        $rejectedWorkflowState = ArticleWorkflow::normalizeState('draft', 'pending');
 
         foreach ($articles as $article) {
             $desiredStatus = (string) ($article->status ?? 'draft');
@@ -726,18 +970,42 @@ class ArticleController extends Controller
                 $article->published_at?->format('Y-m-d H:i:s')
             );
 
-            Article::query()->whereKey((int) $article->id)->update([
-                'status' => $workflowState['status'],
-                'review_status' => $workflowState['review_status'],
-                'published_at' => $workflowState['published_at'],
-            ]);
+            try {
+                if ($this->workflowStateRequiresRiskGate($workflowState)) {
+                    $allowsOverride = $workflowState['review_status'] === 'approved';
+                    $article = $this->articleWorkflowTransitionService->transition(
+                        $article,
+                        $workflowState,
+                        'admin_batch_review',
+                        $allowsOverride ? $adminId : null,
+                        $allowsOverride ? $riskOverrideReason : null,
+                        $allowsOverride,
+                        $rejectedWorkflowState,
+                    );
+                } else {
+                    Article::query()->whereKey((int) $article->id)->update([
+                        'status' => $workflowState['status'],
+                        'review_status' => $workflowState['review_status'],
+                        'published_at' => $workflowState['published_at'],
+                    ]);
+                }
+            } catch (ArticleRiskGateException) {
+                $rejectedCount++;
+
+                continue;
+            }
 
             if ($workflowState['status'] === 'published') {
-                $this->distributionOrchestrator->enqueueForArticle((int) $article->id);
+                $this->distributionOrchestrator->enqueueForArticle($article);
             }
+            $allowedCount++;
         }
 
-        return back()->with('message', __('admin.articles.message.batch_review_updated', ['count' => count($articleIds)]));
+        $response = back()->with('message', __('admin.articles.message.batch_review_updated', ['count' => $allowedCount]));
+
+        return $rejectedCount > 0
+            ? $response->withErrors("Risk gate rejected {$rejectedCount} article(s).")
+            : $response;
     }
 
     /**

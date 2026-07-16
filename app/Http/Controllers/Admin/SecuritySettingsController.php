@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\SensitiveWord;
+use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
 use Throwable;
@@ -43,8 +46,16 @@ class SecuritySettingsController extends Controller
      */
     public function storeSensitiveWords(Request $request): RedirectResponse
     {
+        $this->ensureCanManageSensitiveWords();
+
         $payload = $request->validate([
-            'words' => ['required', 'string'],
+            'words' => ['required', 'string', 'max:50000'],
+            'severity' => ['nullable', 'string', 'in:warning,blocked'],
+            'category' => ['nullable', 'string', 'max:100'],
+            'is_enabled' => ['nullable', 'boolean'],
+            'suggestion' => ['nullable', 'string', 'max:255'],
+            'applies_to' => ['nullable', 'array'],
+            'applies_to.*' => ['string', 'in:title,excerpt,content,keywords,meta_description'],
         ], [
             'words.required' => __('admin.security.error.words_required'),
         ]);
@@ -65,31 +76,95 @@ class SecuritySettingsController extends Controller
             if ($submittedWords->isEmpty()) {
                 return back()->withErrors(__('admin.security.error.words_required'));
             }
+            if ($submittedWords->count() > 200) {
+                return back()->withInput()->withErrors([
+                    'words' => __('admin.security.error.too_many_words', ['max' => 200]),
+                ]);
+            }
+            if ($submittedWords->contains(static fn (string $word): bool => mb_strlen($word, 'UTF-8') > 255)) {
+                return back()->withInput()->withErrors([
+                    'words' => __('admin.security.error.word_too_long', ['max' => 255]),
+                ]);
+            }
 
-            $existingWords = SensitiveWord::query()
-                ->whereIn('word', $submittedWords->all())
-                ->pluck('word')
-                ->all();
+            $result = Cache::lock('geoflow:sensitive-word-rules:mutation', 15)->block(5, function () use ($payload, $submittedWords): array {
+                return DB::transaction(function () use ($payload, $submittedWords): array {
+                    $existingWords = SensitiveWord::query()
+                        ->whereIn('word', $submittedWords->all())
+                        ->pluck('word')
+                        ->all();
 
-            $wordsToInsert = $submittedWords
-                ->reject(static fn (string $word): bool => in_array($word, $existingWords, true))
-                ->map(static fn (string $word): array => [
-                    'word' => $word,
-                    'created_at' => now(),
-                ])
-                ->values()
-                ->all();
+                    $wordsToInsert = $submittedWords
+                        ->reject(static fn (string $word): bool => in_array($word, $existingWords, true))
+                        ->map(static fn (string $word): array => [
+                            'word' => $word,
+                            'severity' => (string) ($payload['severity'] ?? 'warning'),
+                            'category' => trim((string) ($payload['category'] ?? '')) ?: 'sensitive',
+                            'is_enabled' => (bool) ($payload['is_enabled'] ?? true),
+                            'suggestion' => trim((string) ($payload['suggestion'] ?? '')) ?: null,
+                            'applies_to' => json_encode(array_values($payload['applies_to'] ?? []), JSON_UNESCAPED_UNICODE),
+                            'created_at' => now(),
+                        ])
+                        ->values()
+                        ->all();
 
-            if (! empty($wordsToInsert)) {
-                SensitiveWord::query()->insert($wordsToInsert);
+                    if (SensitiveWord::query()->count() + count($wordsToInsert) > ArticleRiskScanner::MAX_RULE_COUNT) {
+                        return ['limit_reached' => true, 'inserted' => 0];
+                    }
+
+                    if ($wordsToInsert !== []) {
+                        SensitiveWord::query()->insert($wordsToInsert);
+                        DB::afterCommit(static fn (): int => SensitiveWord::bumpRuleCacheVersion());
+                    }
+
+                    return ['limit_reached' => false, 'inserted' => count($wordsToInsert)];
+                });
+            });
+
+            if ($result['limit_reached']) {
+                return back()->withInput()->withErrors([
+                    'words' => __('admin.security.error.rule_limit_reached', ['max' => ArticleRiskScanner::MAX_RULE_COUNT]),
+                ]);
             }
 
             return redirect()
                 ->route('admin.site-settings.sensitive-words')
-                ->with('message', __('admin.security.message.words_added', ['count' => count($wordsToInsert)]));
+                ->with('message', __('admin.security.message.words_added', ['count' => $result['inserted']]));
         } catch (Throwable $exception) {
             return back()->withErrors(__('admin.security.message.words_add_error', ['message' => $exception->getMessage()]));
         }
+    }
+
+    /**
+     * 更新单个敏感词规则及其扫描范围。
+     */
+    public function updateSensitiveWord(Request $request, int $wordId): RedirectResponse
+    {
+        $this->ensureCanManageSensitiveWords();
+
+        $rule = SensitiveWord::query()->whereKey($wordId)->firstOrFail();
+        $payload = $request->validate([
+            'word' => ['required', 'string', 'max:255', 'unique:sensitive_words,word,'.$wordId],
+            'severity' => ['required', 'string', 'in:warning,blocked'],
+            'category' => ['required', 'string', 'max:100'],
+            'is_enabled' => ['required', 'boolean'],
+            'suggestion' => ['nullable', 'string', 'max:255'],
+            'applies_to' => ['nullable', 'array'],
+            'applies_to.*' => ['string', 'in:title,excerpt,content,keywords,meta_description'],
+        ]);
+
+        $rule->fill([
+            'word' => trim((string) $payload['word']),
+            'severity' => (string) $payload['severity'],
+            'category' => trim((string) $payload['category']),
+            'is_enabled' => (bool) $payload['is_enabled'],
+            'suggestion' => trim((string) ($payload['suggestion'] ?? '')) ?: null,
+            'applies_to' => array_values($payload['applies_to'] ?? []),
+        ])->save();
+
+        return redirect()
+            ->route('admin.site-settings.sensitive-words')
+            ->with('message', __('admin.security.message.word_updated'));
     }
 
     /**
@@ -97,15 +172,18 @@ class SecuritySettingsController extends Controller
      */
     public function destroySensitiveWord(int $wordId): RedirectResponse
     {
+        $this->ensureCanManageSensitiveWords();
+
         if ($wordId <= 0) {
             return back()->withErrors(__('admin.security.error.invalid_word_id'));
         }
 
         try {
-            $deleted = SensitiveWord::query()->whereKey($wordId)->delete();
-            if ($deleted <= 0) {
+            $rule = SensitiveWord::query()->whereKey($wordId)->first();
+            if ($rule === null) {
                 return back()->withErrors(__('admin.security.message.word_delete_failed'));
             }
+            $rule->delete();
 
             return redirect()->route('admin.site-settings.sensitive-words')->with('message', __('admin.security.message.word_deleted'));
         } catch (Throwable $exception) {
@@ -159,18 +237,23 @@ class SecuritySettingsController extends Controller
     }
 
     /**
-     * @return array<int, array{id:int,word:string,created_at:string}>
+     * @return array<int, array{id:int,word:string,severity:string,category:string,is_enabled:bool,suggestion:string,applies_to:array<int,string>,created_at:string}>
      */
     private function loadSensitiveWords(): array
     {
         return SensitiveWord::query()
-            ->select(['id', 'word', 'created_at'])
+            ->select(['id', 'word', 'severity', 'category', 'is_enabled', 'suggestion', 'applies_to', 'created_at'])
             ->orderBy('word')
             ->get()
             ->map(static function (SensitiveWord $word): array {
                 return [
                     'id' => (int) $word->id,
                     'word' => (string) $word->word,
+                    'severity' => (string) $word->severity,
+                    'category' => (string) $word->category,
+                    'is_enabled' => (bool) $word->is_enabled,
+                    'suggestion' => (string) ($word->suggestion ?? ''),
+                    'applies_to' => is_array($word->applies_to) ? $word->applies_to : [],
                     'created_at' => (string) ($word->created_at?->format('Y-m-d') ?? ''),
                 ];
             })
@@ -183,5 +266,13 @@ class SecuritySettingsController extends Controller
     private function isSuperAdmin(?Admin $admin): bool
     {
         return $admin instanceof Admin && $admin->isSuperAdmin();
+    }
+
+    private function ensureCanManageSensitiveWords(): void
+    {
+        /** @var Admin|null $admin */
+        $admin = Auth::guard('admin')->user();
+
+        abort_unless($this->isSuperAdmin($admin), 403);
     }
 }

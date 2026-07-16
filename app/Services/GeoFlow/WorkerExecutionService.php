@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Exceptions\ArticleRiskGateException;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleImage;
@@ -37,7 +38,9 @@ class WorkerExecutionService
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
         private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
-        private readonly DistributionOrchestrator $distributionOrchestrator
+        private readonly DistributionOrchestrator $distributionOrchestrator,
+        private readonly ArticleRiskScanner $articleRiskScanner,
+        private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
     ) {}
 
     /**
@@ -110,6 +113,7 @@ class WorkerExecutionService
                 throw new RuntimeException($generationBlockReason);
             }
 
+            $pendingWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
             $article = Article::query()->create([
                 'title' => (string) $titleRow->title,
                 'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
@@ -121,12 +125,30 @@ class WorkerExecutionService
                 'original_keyword' => $keyword,
                 'keywords' => $keyword,
                 'meta_description' => mb_substr($excerpt, 0, 120),
-                'status' => $workflow['status'],
-                'review_status' => $workflow['review_status'],
+                'status' => $pendingWorkflow['status'],
+                'review_status' => $pendingWorkflow['review_status'],
                 'is_ai_generated' => 1,
-                'published_at' => $workflow['published_at'],
+                'published_at' => $pendingWorkflow['published_at'],
                 'view_count' => 0,
             ]);
+
+            $this->articleRiskScanner->record($article, 'worker_generation');
+
+            if ($workflow['review_status'] === 'approved') {
+                try {
+                    $this->articleWorkflowTransitionService->transition(
+                        $article,
+                        $workflow,
+                        'worker_generation',
+                        null,
+                        null,
+                        false,
+                        $pendingWorkflow,
+                    );
+                } catch (ArticleRiskGateException) {
+                    // 风险扫描和待审状态随当前生成事务一并保留。
+                }
+            }
             if ($selectedImages !== []) {
                 foreach ($selectedImages as $position => $image) {
                     ArticleImage::query()->create([
@@ -217,13 +239,23 @@ class WorkerExecutionService
 
             $publishScope = (string) ($freshTask->publish_scope ?? 'local_and_distribution');
             $targetStatus = $publishScope === 'distribution_only' ? 'private' : 'published';
-            $workflow = ArticleWorkflow::normalizeState($targetStatus, (string) ($article->review_status ?: 'approved'));
-            Article::query()->whereKey((int) $article->id)->update([
-                'status' => $workflow['status'],
-                'review_status' => $workflow['review_status'],
-                'published_at' => $workflow['published_at'],
-                'updated_at' => now(),
-            ]);
+            $reviewStatus = (string) ($article->review_status ?: 'approved');
+            $workflow = ArticleWorkflow::normalizeState($targetStatus, $reviewStatus);
+            $fallbackWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
+
+            try {
+                $this->articleWorkflowTransitionService->transition(
+                    $article,
+                    $workflow,
+                    'worker_publish',
+                    null,
+                    null,
+                    $reviewStatus !== 'auto_approved',
+                    $fallbackWorkflow,
+                );
+            } catch (ArticleRiskGateException) {
+                return null;
+            }
 
             $publishInterval = $this->normalizePublishInterval($freshTask);
             Task::query()->whereKey((int) $freshTask->id)->update([

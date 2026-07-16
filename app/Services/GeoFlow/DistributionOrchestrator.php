@@ -2,6 +2,7 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Exceptions\ArticleRiskGateException;
 use App\Jobs\ProcessArticleDistributionJob;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
@@ -9,6 +10,7 @@ use App\Models\DistributionChannel;
 use App\Models\DistributionLog;
 use App\Models\Task;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class DistributionOrchestrator
@@ -16,7 +18,8 @@ class DistributionOrchestrator
     public function __construct(
         private readonly DistributionPayloadBuilder $payloadBuilder,
         private readonly DistributionPublisherManager $publisherManager,
-        private readonly TaskDistributionChannelSelector $channelSelector
+        private readonly TaskDistributionChannelSelector $channelSelector,
+        private readonly ArticleRiskGate $articleRiskGate,
     ) {}
 
     /**
@@ -87,7 +90,9 @@ class DistributionOrchestrator
                 return;
             }
 
-            $payload = $this->payloadBuilder->build($articleModel);
+            $payload = $action === 'delete'
+                ? $this->payloadBuilder->build($articleModel)
+                : $this->buildVerifiedPayload($articleModel, 'distribution_enqueue');
             $payloadHash = hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
 
             foreach ($channels as $channel) {
@@ -137,17 +142,19 @@ class DistributionOrchestrator
             throw new \RuntimeException('分发记录缺少文章或渠道');
         }
 
+        $payload = (string) $distribution->action === 'delete'
+            ? []
+            : $this->buildVerifiedPayload($article, 'distribution_send');
+        if ((string) $distribution->action === 'update') {
+            $payload['event'] = 'article.update';
+        }
+
         $distribution->forceFill([
             'status' => 'sending',
             'attempt_count' => (int) $distribution->attempt_count + 1,
             'last_attempt_at' => now(),
             'last_error_message' => null,
         ])->save();
-
-        $payload = $this->payloadBuilder->build($article);
-        if ((string) $distribution->action === 'update') {
-            $payload['event'] = 'article.update';
-        }
 
         $publisher = $this->publisherManager->forChannel($channel);
         $response = match ((string) $distribution->action) {
@@ -259,7 +266,7 @@ class DistributionOrchestrator
             throw new \RuntimeException('分发记录缺少文章或渠道');
         }
 
-        $payload = $action === 'delete' ? [] : $this->payloadBuilder->build($article);
+        $payload = $action === 'delete' ? [] : $this->buildVerifiedPayload($article, 'distribution_send');
         if ($action === 'update') {
             $payload['event'] = 'article.update';
         }
@@ -302,5 +309,63 @@ class DistributionOrchestrator
             (int) $article->id,
             ['event' => 'article.'.$action, 'remote_result' => $response]
         );
+    }
+
+    /**
+     * Build an immutable payload from the row-locked article snapshot that passed the risk gate.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildVerifiedPayload(Article $article, string $trigger): array
+    {
+        $result = DB::transaction(function () use ($article, $trigger): Article|ArticleRiskGateException {
+            $lockedArticle = Article::query()
+                ->whereKey($article->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $lockedArticle->load([
+                'category:id,name,slug',
+                'author:id,name',
+                'task:id,name,publish_scope',
+                'articleImages.image',
+            ]);
+            if (! $this->isDistributableSnapshot($lockedArticle)) {
+                throw new \RuntimeException('文章当前状态不允许分发');
+            }
+
+            try {
+                $this->articleRiskGate->check($lockedArticle, $trigger);
+            } catch (ArticleRiskGateException $exception) {
+                return $exception;
+            }
+
+            return clone $lockedArticle;
+        });
+
+        if ($result instanceof ArticleRiskGateException) {
+            throw $result;
+        }
+
+        return $this->payloadBuilder->build($result);
+    }
+
+    private function isDistributableSnapshot(Article $article): bool
+    {
+        if ($article->task === null) {
+            return in_array((string) $article->status, ['published', 'private'], true);
+        }
+
+        if (! in_array((string) $article->review_status, ['approved', 'auto_approved'], true)) {
+            return false;
+        }
+
+        $publishScope = (string) ($article->task->publish_scope ?? 'local_and_distribution');
+        if ($publishScope === 'local_only') {
+            return false;
+        }
+
+        return $article->status === 'published'
+            || ($publishScope === 'distribution_only' && $article->status === 'private');
     }
 }
