@@ -9,15 +9,25 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class SiteThemeReplication extends Model
 {
     public const STATUS_QUEUED = 'queued';
+
     public const STATUS_FETCHING = 'fetching';
+
     public const STATUS_EXTRACTING = 'extracting';
+
     public const STATUS_ANALYZING = 'analyzing';
+
     public const STATUS_GENERATING = 'generating';
+
     public const STATUS_SCANNING = 'scanning';
+
     public const STATUS_ITERATING = 'iterating';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_READY = 'ready';
+
     public const STATUS_PUBLISHED = 'published';
+
     public const STATUS_ARCHIVED = 'archived';
 
     protected $fillable = [
@@ -91,6 +101,27 @@ class SiteThemeReplication extends Model
     {
         return (string) $this->status === self::STATUS_READY
             && (string) $this->compliance_status === 'passed';
+    }
+
+    public function canPackage(): bool
+    {
+        $manifest = $this->generated_files_json;
+        $files = is_array($manifest) ? ($manifest['files'] ?? null) : null;
+        $complianceReport = $this->compliance_report_json;
+
+        return in_array((string) $this->status, [
+            self::STATUS_READY,
+            self::STATUS_PUBLISHED,
+            self::STATUS_ARCHIVED,
+        ], true)
+            && (int) $this->current_version > 0
+            && is_array($manifest)
+            && $manifest !== []
+            && is_array($files)
+            && $files !== []
+            && (string) $this->compliance_status === 'passed'
+            && is_array($complianceReport)
+            && ($complianceReport['passed'] ?? null) === true;
     }
 
     public function canBeArchived(): bool

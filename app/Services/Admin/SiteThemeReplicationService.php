@@ -307,25 +307,6 @@ class SiteThemeReplicationService
     }
 
     /**
-     * @return array<string, mixed>
-     */
-    public function deploymentDiagnostics(): array
-    {
-        $viewsPath = resource_path('views/theme');
-        $assetsPath = public_path('themes');
-        $viewsWritable = is_dir($viewsPath) && is_writable($viewsPath);
-        $assetsWritable = is_dir($assetsPath) && is_writable($assetsPath);
-
-        return [
-            'views_path' => $viewsPath,
-            'assets_path' => $assetsPath,
-            'views_writable' => $viewsWritable,
-            'assets_writable' => $assetsWritable,
-            'can_publish_directly' => $viewsWritable && $assetsWritable,
-        ];
-    }
-
-    /**
      * @return Collection<int, SiteThemeReplication>
      */
     public function recent(int $limit = 3): Collection

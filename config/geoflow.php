@@ -75,6 +75,12 @@ return [
     // 系统更新任务超过该时间仍处于 queued/running 时，在更新中心提示为可能卡住。
     'update_run_stale_minutes' => max(1, (int) env('GEOFLOW_UPDATE_RUN_STALE_MINUTES', 15)),
 
+    // 复刻主题审查包的资源上限。
+    'theme_replication_package_max_files' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_MAX_FILES', 500)),
+    'theme_replication_package_max_file_bytes' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_MAX_FILE_BYTES', 5 * 1024 * 1024)),
+    'theme_replication_package_max_total_bytes' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_MAX_TOTAL_BYTES', 25 * 1024 * 1024)),
+    'theme_replication_package_lock_timeout_milliseconds' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_LOCK_TIMEOUT_MS', 5000)),
+
     // 前台列表每页条数
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),
     // 后台列表每页条数

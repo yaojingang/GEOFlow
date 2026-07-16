@@ -29,7 +29,6 @@ use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
-use App\Http\Controllers\Admin\SiteThemeEditorController;
 use App\Http\Controllers\Admin\SiteThemeReplicationController;
 use App\Http\Controllers\Admin\SystemUpdateController;
 use App\Http\Controllers\Admin\TaskController;
@@ -325,26 +324,6 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('homepage-modules/preset', [SiteSettingsController::class, 'applyHomepageModulePreset'])->name('homepage-modules.preset');
             Route::post('homepage-modules/import', [SiteSettingsController::class, 'importHomepageModuleDesign'])->name('homepage-modules.import');
             Route::middleware('admin.super')->group(function () {
-                Route::get('theme-editor/{themeId}/{page}', [SiteThemeEditorController::class, 'edit'])
-                    ->name('theme-editor.edit')
-                    ->where('themeId', '[A-Za-z0-9_-]+')
-                    ->whereIn('page', ['home', 'category', 'article']);
-                Route::get('theme-editor/{themeId}/{page}/preview', [SiteThemeEditorController::class, 'preview'])
-                    ->name('theme-editor.preview')
-                    ->where('themeId', '[A-Za-z0-9_-]+')
-                    ->whereIn('page', ['home', 'category', 'article']);
-                Route::post('theme-editor/{themeId}/{page}/draft', [SiteThemeEditorController::class, 'draft'])
-                    ->name('theme-editor.draft')
-                    ->where('themeId', '[A-Za-z0-9_-]+')
-                    ->whereIn('page', ['home', 'category', 'article']);
-                Route::post('theme-editor/{themeId}/{page}/publish', [SiteThemeEditorController::class, 'publish'])
-                    ->name('theme-editor.publish')
-                    ->where('themeId', '[A-Za-z0-9_-]+')
-                    ->whereIn('page', ['home', 'category', 'article']);
-                Route::post('theme-editor/{themeId}/{page}/discard', [SiteThemeEditorController::class, 'discard'])
-                    ->name('theme-editor.discard')
-                    ->where('themeId', '[A-Za-z0-9_-]+')
-                    ->whereIn('page', ['home', 'category', 'article']);
                 Route::get('theme-replications/create', [SiteThemeReplicationController::class, 'create'])->name('theme-replications.create');
                 Route::post('theme-replications', [SiteThemeReplicationController::class, 'store'])->name('theme-replications.store');
                 Route::get('theme-replications/{replicationId}', [SiteThemeReplicationController::class, 'show'])
@@ -357,10 +336,6 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                     ->name('theme-replications.preview')
                     ->whereNumber('replicationId')
                     ->whereIn('page', ['home', 'category', 'article']);
-                Route::get('theme-replications/{replicationId}/assets/{assetPath}', [SiteThemeReplicationController::class, 'asset'])
-                    ->name('theme-replications.assets')
-                    ->whereNumber('replicationId')
-                    ->where('assetPath', '.*');
                 Route::post('theme-replications/{replicationId}/retry', [SiteThemeReplicationController::class, 'retry'])
                     ->name('theme-replications.retry')
                     ->whereNumber('replicationId');

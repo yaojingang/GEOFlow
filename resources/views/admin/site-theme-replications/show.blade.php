@@ -15,6 +15,7 @@
         'failed' => 'bg-red-50 text-red-700 ring-red-200',
     ][$replication->status] ?? 'bg-gray-50 text-gray-700 ring-gray-200';
     $canPreview = $replication->isPreviewReady();
+    $canPackage = $replication->canPackage();
     $fileDiff = $fileDiff ?? ['rows' => [], 'counts' => ['added' => 0, 'modified' => 0, 'removed' => 0, 'unchanged' => 0]];
     $diffBadgeClass = [
         'added' => 'bg-green-50 text-green-700 ring-green-200',
@@ -338,7 +339,7 @@
                                         title="{{ $label }}"
                                         class="h-[360px] w-full bg-white"
                                         loading="lazy"
-                                        sandbox="allow-same-origin"
+                                        sandbox=""
                                         data-preview-iframe
                                     ></iframe>
                                 </div>
@@ -428,35 +429,23 @@
 
                 <section class="rounded-lg bg-white p-6 shadow">
                     <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.theme_replication.deployment.title') }}</h2>
-                    <div class="mt-4 space-y-3">
-                        <div class="rounded-lg bg-gray-50 p-3">
-                            <div class="text-xs text-gray-500">{{ __('admin.theme_replication.deployment.views_path') }}</div>
-                            <div class="mt-1 truncate font-mono text-xs text-gray-900">{{ $deploymentDiagnostics['views_path'] }}</div>
-                        </div>
-                        <div class="rounded-lg bg-gray-50 p-3">
-                            <div class="text-xs text-gray-500">{{ __('admin.theme_replication.deployment.assets_path') }}</div>
-                            <div class="mt-1 truncate font-mono text-xs text-gray-900">{{ $deploymentDiagnostics['assets_path'] }}</div>
-                        </div>
-                    </div>
-                    <div class="mt-4 rounded-lg {{ $deploymentDiagnostics['can_publish_directly'] ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700' }} p-3 text-sm">
-                        {{ $deploymentDiagnostics['can_publish_directly'] ? __('admin.theme_replication.deployment.writable_ready') : __('admin.theme_replication.deployment.readonly_hint') }}
-                    </div>
+                    <div class="mt-4 rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-800">{{ __('admin.theme_replication.deployment.package_only_hint') }}</div>
                 </section>
 
                 <section class="rounded-lg bg-white p-6 shadow">
                     <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.theme_replication.section.publish') }}</h2>
                     <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.theme_replication.section.publish_desc') }}</p>
                     <div class="mt-5 space-y-3">
-                        @if($replication->canPublish())
+                        @if($replication->canPublish() && $canPackage)
                             <form method="POST" action="{{ route('admin.site-settings.theme-replications.publish', ['replicationId' => (int) $replication->id]) }}">
                                 @csrf
                                 <button type="submit" class="inline-flex w-full items-center justify-center rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700">
                                     <i data-lucide="check-circle-2" class="mr-2 h-4 w-4"></i>
-                                    {{ $deploymentDiagnostics['can_publish_directly'] ? __('admin.theme_replication.button.publish') : __('admin.theme_replication.button.make_package') }}
+                                    {{ __('admin.theme_replication.button.make_package') }}
                                 </button>
                             </form>
                         @endif
-                        @if($canPreview)
+                        @if($canPackage)
                             <a href="{{ route('admin.site-settings.theme-replications.package', ['replicationId' => (int) $replication->id]) }}" class="inline-flex w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
                                 <i data-lucide="package-down" class="mr-2 h-4 w-4"></i>
                                 {{ __('admin.theme_replication.button.download_package') }}

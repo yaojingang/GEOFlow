@@ -6,134 +6,107 @@ use App\Models\Admin;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Route;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class AdminSiteThemeEditorTest extends TestCase
 {
     use RefreshDatabase;
 
-    private string $themeId = 'test-live-editor';
-
-    protected function setUp(): void
+    public function test_online_theme_editor_routes_and_production_code_are_removed(): void
     {
-        parent::setUp();
+        $routeNames = collect(Route::getRoutes()->getRoutes())
+            ->map(static fn ($route): ?string => $route->getName())
+            ->filter()
+            ->values();
 
-        File::ensureDirectoryExists(resource_path("views/theme/{$this->themeId}"));
-        File::ensureDirectoryExists(public_path("themes/{$this->themeId}"));
-        File::put(resource_path("views/theme/{$this->themeId}/manifest.json"), json_encode([
-            'name' => 'Test Live Editor',
-            'version' => 'v1.0.0',
-            'description' => 'Theme used by live editor tests.',
-        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-        File::put(resource_path("views/theme/{$this->themeId}/home.blade.php"), '<!doctype html><html><head><meta charset="utf-8"><title>{{ $siteTitle }}</title></head><body><main id="home-preview">{{ $siteTitle }} {{ $articles->count() }}</main></body></html>');
-        File::put(resource_path("views/theme/{$this->themeId}/category.blade.php"), '<!doctype html><html><head><meta charset="utf-8"><title>{{ $category->name }}</title></head><body><main id="category-preview">{{ $category->name }}</main></body></html>');
-        File::put(resource_path("views/theme/{$this->themeId}/article.blade.php"), '<!doctype html><html><head><meta charset="utf-8"><title>{{ $article->title }}</title></head><body><article id="article-preview">{{ $article->title }} {!! $contentHtml !!}</article></body></html>');
-        File::put(public_path("themes/{$this->themeId}/theme.css"), 'body{background:#fff;}');
+        $this->assertFalse($routeNames->contains(
+            static fn (string $name): bool => str_starts_with($name, 'admin.site-settings.theme-editor.')
+        ));
+        $this->assertFileDoesNotExist(app_path('Http/Controllers/Admin/SiteThemeEditorController.php'));
+        $this->assertFileDoesNotExist(app_path('Services/Admin/SiteThemeEditorService.php'));
+        $this->assertFileDoesNotExist(resource_path('views/admin/site-theme-editor/edit.blade.php'));
+
+        $routes = File::get(base_path('routes/web.php'));
+        $this->assertStringNotContainsString('SiteThemeEditorController', $routes);
+        $this->assertStringNotContainsString('theme-editor', $routes);
     }
 
-    protected function tearDown(): void
-    {
-        File::deleteDirectory(resource_path("views/theme/{$this->themeId}"));
-        File::deleteDirectory(public_path("themes/{$this->themeId}"));
-        Storage::disk('local')->deleteDirectory("theme-editor/drafts/{$this->themeId}");
-        Storage::disk('local')->deleteDirectory("theme-editor/backups/{$this->themeId}");
-
-        parent::tearDown();
-    }
-
-    public function test_super_admin_can_open_live_theme_editor(): void
-    {
-        $this->actingAs($this->createAdmin('theme_editor_root', 'super_admin'), 'admin')
-            ->get(route('admin.site-settings.theme-editor.edit', ['themeId' => $this->themeId, 'page' => 'home']))
-            ->assertOk()
-            ->assertSee(__('admin.theme_editor.heading'))
-            ->assertSee($this->themeId)
-            ->assertSee('id="theme-editor-preview"', false)
-            ->assertSee('id="theme-editor-blade"', false)
-            ->assertSee('id="theme-editor-css"', false);
-    }
-
-    public function test_standard_admin_cannot_open_live_theme_editor(): void
-    {
-        $this->actingAs($this->createAdmin('theme_editor_admin', 'admin'), 'admin')
-            ->get(route('admin.site-settings.theme-editor.edit', ['themeId' => $this->themeId, 'page' => 'home']))
-            ->assertForbidden();
-    }
-
-    public function test_editor_saves_draft_and_preview_uses_draft_source(): void
+    public function test_legacy_editor_urls_cannot_execute_or_change_live_theme_files(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
-        $blade = '<!doctype html><html><head><meta charset="utf-8"></head><body><main>Draft Preview Marker</main></body></html>';
-        $css = '.draft-marker{color:#123456;}';
+        $admin = $this->createAdmin('theme_editor_disabled', 'super_admin');
+        $marker = storage_path('framework/testing/theme-editor-executed.php');
+        File::delete($marker);
 
-        $this->actingAs($this->createAdmin('theme_editor_draft', 'super_admin'), 'admin')
-            ->postJson(route('admin.site-settings.theme-editor.draft', ['themeId' => $this->themeId, 'page' => 'home']), [
-                'blade' => $blade,
-                'css' => $css,
-            ])
-            ->assertOk()
-            ->assertJsonPath('ok', true);
+        $viewsBefore = $this->directorySnapshot(resource_path('views/theme'));
+        $assetsBefore = $this->directorySnapshot(public_path('themes'));
+        $base = '/'.trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/').'/site-settings/theme-editor/default/home';
+        $payload = [
+            'blade' => "@php(file_put_contents('{$marker}', 'executed'))",
+            'css' => '@import url("https://external.example/theme.css");',
+        ];
 
-        $this->actingAs($this->createAdmin('theme_editor_preview', 'super_admin'), 'admin')
-            ->get(route('admin.site-settings.theme-editor.preview', ['themeId' => $this->themeId, 'page' => 'home']))
-            ->assertOk()
-            ->assertSee('Draft Preview Marker')
-            ->assertSee('.draft-marker{color:#123456;}', false);
+        foreach ([$base, $base.'/preview'] as $url) {
+            $this->actingAs($admin, 'admin')->get($url)->assertNotFound();
+        }
+
+        foreach ([$base.'/draft', $base.'/publish', $base.'/discard'] as $url) {
+            $this->actingAs($admin, 'admin')->postJson($url, $payload)->assertNotFound();
+        }
+
+        $this->assertFileDoesNotExist($marker);
+        $this->assertSame($viewsBefore, $this->directorySnapshot(resource_path('views/theme')));
+        $this->assertSame($assetsBefore, $this->directorySnapshot(public_path('themes')));
     }
 
-    public function test_editor_preview_shows_error_panel_for_invalid_draft(): void
+    public function test_site_settings_page_has_no_theme_editor_or_preview_entry(): void
     {
-        $this->withoutMiddleware(ValidateCsrfToken::class);
-
-        $this->actingAs($this->createAdmin('theme_editor_invalid_draft', 'super_admin'), 'admin')
-            ->postJson(route('admin.site-settings.theme-editor.draft', ['themeId' => $this->themeId, 'page' => 'home']), [
-                'blade' => '<!doctype html><html><body>@php($broken = )</body></html>',
-                'css' => '',
-            ])
-            ->assertOk()
-            ->assertJsonPath('ok', true);
-
-        $this->actingAs($this->createAdmin('theme_editor_invalid_preview', 'super_admin'), 'admin')
-            ->get(route('admin.site-settings.theme-editor.preview', ['themeId' => $this->themeId, 'page' => 'home']))
-            ->assertOk()
-            ->assertSee(__('admin.theme_editor.preview_error_title'))
-            ->assertSee('box', false);
-    }
-
-    public function test_editor_publish_backs_up_and_writes_theme_files(): void
-    {
-        $this->withoutMiddleware(ValidateCsrfToken::class);
-
-        $blade = '<!doctype html><html><head><meta charset="utf-8"></head><body><main>Published Theme Marker</main></body></html>';
-        $css = 'body{background:#ffffff}.published-marker{display:block;}';
-
-        $this->actingAs($this->createAdmin('theme_editor_publish', 'super_admin'), 'admin')
-            ->postJson(route('admin.site-settings.theme-editor.publish', ['themeId' => $this->themeId, 'page' => 'home']), [
-                'blade' => $blade,
-                'css' => $css,
-            ])
-            ->assertOk()
-            ->assertJsonPath('ok', true)
-            ->assertJsonStructure(['backup_dir']);
-
-        $this->assertSame($blade, (string) file_get_contents(resource_path("views/theme/{$this->themeId}/home.blade.php")));
-        $this->assertSame($css, (string) file_get_contents(public_path("themes/{$this->themeId}/theme.css")));
-        $this->assertNotEmpty(Storage::disk('local')->allFiles("theme-editor/backups/{$this->themeId}"));
-    }
-
-    public function test_site_settings_page_exposes_editor_links_to_super_admin(): void
-    {
-        $response = $this->actingAs($this->createAdmin('theme_editor_links', 'super_admin'), 'admin')
+        $this->actingAs($this->createAdmin('theme_editor_links_removed', 'super_admin'), 'admin')
             ->get(route('admin.site-settings.index'))
-            ->assertOk();
+            ->assertOk()
+            ->assertDontSee('/theme-editor/', false);
+    }
 
-        $response
-            ->assertSee('Test Live Editor')
-            ->assertSee(route('admin.site-settings.theme-editor.edit', ['themeId' => $this->themeId, 'page' => 'home'], false), false)
-            ->assertSee(route('admin.site-settings.theme-editor.edit', ['themeId' => $this->themeId, 'page' => 'category'], false), false)
-            ->assertSee(route('admin.site-settings.theme-editor.edit', ['themeId' => $this->themeId, 'page' => 'article'], false), false);
+    #[DataProvider('supportedAdminLocales')]
+    public function test_removed_theme_editor_has_no_orphaned_translations(string $locale): void
+    {
+        $messages = require lang_path($locale.'/admin.php');
+
+        $this->assertArrayNotHasKey('theme_editor', $messages);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function supportedAdminLocales(): array
+    {
+        return [
+            'English' => ['en'],
+            'Simplified Chinese' => ['zh_CN'],
+            'Brazilian Portuguese' => ['pt_BR'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function directorySnapshot(string $path): array
+    {
+        if (! is_dir($path)) {
+            return [];
+        }
+
+        $snapshot = [];
+        foreach (File::allFiles($path) as $file) {
+            $snapshot[$file->getRelativePathname()] = hash_file('sha256', $file->getPathname());
+        }
+
+        ksort($snapshot);
+
+        return $snapshot;
     }
 
     private function createAdmin(string $username, string $role): Admin

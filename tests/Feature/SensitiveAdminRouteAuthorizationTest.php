@@ -20,7 +20,6 @@ class SensitiveAdminRouteAuthorizationTest extends TestCase
             ->filter(static fn (?string $name): bool => is_string($name) && (
                 str_starts_with($name, 'admin.distribution.')
                 || str_starts_with($name, 'admin.url-import')
-                || str_starts_with($name, 'admin.site-settings.theme-editor.')
                 || str_starts_with($name, 'admin.site-settings.theme-replications.')
             ))
             ->values();
@@ -41,7 +40,6 @@ class SensitiveAdminRouteAuthorizationTest extends TestCase
             route('admin.distribution.index'),
             route('admin.url-import'),
             route('admin.site-settings.theme-replications.create'),
-            route('admin.site-settings.theme-editor.edit', ['themeId' => 'default', 'page' => 'home']),
         ] as $url) {
             $this->actingAs($admin, 'admin')->get($url)->assertForbidden();
         }

@@ -49,7 +49,6 @@ class SiteSettingsController extends Controller
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
             'availableThemes' => $this->siteThemeCatalog->all(),
             'recentThemeReplications' => $this->themeReplicationService->recent(3),
-            'themeReplicationDeployment' => $this->themeReplicationService->deploymentDiagnostics(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'homepageModules' => $this->parseHomepageModules((string) ($settings['homepage_modules'] ?? '[]')),
             'homepageStyle' => $this->parseHomepageStyle((string) ($settings['homepage_style'] ?? '{}')),
