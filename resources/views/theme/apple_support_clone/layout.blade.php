@@ -28,9 +28,7 @@
             ],
         ];
     @endphp
-    <script type="application/ld+json">
-        {!! json_encode($websiteSchema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) !!}
-    </script>
+    <x-json-ld :data="$websiteSchema" />
 </head>
 <body class="as-body">
     @include('site.partials.header')

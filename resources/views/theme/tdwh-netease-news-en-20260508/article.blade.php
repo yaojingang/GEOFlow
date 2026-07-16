@@ -35,9 +35,7 @@
     @if($article->category)
         <meta property="article:section" content="{{ $article->category->name }}">
     @endif
-    <script type="application/ld+json">
-        {!! json_encode($articleSchema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) !!}
-    </script>
+    <x-json-ld :data="$articleSchema" />
 @endpush
 
 @section('content')
