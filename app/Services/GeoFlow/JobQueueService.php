@@ -7,6 +7,7 @@ use App\Models\Task;
 use App\Models\TaskRun;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -123,7 +124,7 @@ class JobQueueService
                     'max_attempts' => $maxAttempts,
                     'available_at' => $availableAtValue->toDateTimeString(),
                 ],
-                'started_at' => $availableAtValue,
+                'started_at' => null,
                 'finished_at' => null,
             ]);
         });
@@ -132,7 +133,8 @@ class JobQueueService
         }
 
         // 完全使用 Laravel Queue 执行。
-        $this->dispatchLaravelQueueJob((int) $run->id, $run->started_at);
+        $runMeta = $this->normalizeMeta($run->meta);
+        $this->dispatchLaravelQueueJob((int) $run->id, $runMeta['available_at'] ?? null);
         $this->broadcastOverviewUpdate();
 
         return (int) $run->id;
@@ -323,16 +325,17 @@ class JobQueueService
     }
 
     /**
-     * 恢复超时未完成的 running 记录。
+     * 恢复失去队列消息的超时记录。
      *
-     * 兜底场景：worker 异常退出、超时杀进程、心跳抛错等导致 `handle()` 未回写完成态。
-     * 处理方式：将仍卡在 running 的记录回退为 pending，并立即重新投递队列，避免「面板显示待执行但 Redis 里已无对应 Job」。
+     * - running：worker 异常退出、超时杀进程、心跳抛错等导致 `handle()` 未回写完成态；
+     * - pending：数据库已提交，但 after-commit 队列发布失败或 Redis 消息丢失。
      *
-     * @return int 成功回退并重新投递的记录数
+     * @return int 成功重新投递的记录数
      */
     public function recoverStaleJobs(int $timeoutSeconds = 600): int
     {
         $threshold = now()->subSeconds(max(60, $timeoutSeconds));
+        $recovered = $this->recoverStalePendingJobs($threshold);
         $candidateIds = TaskRun::query()
             ->where('status', 'running')
             ->where('started_at', '<', $threshold)
@@ -341,44 +344,66 @@ class JobQueueService
             ->map(static fn (mixed $id): int => (int) $id)
             ->all();
 
-        $recovered = 0;
         foreach ($candidateIds as $jobId) {
-            /** @var TaskRun|null $run */
-            $run = TaskRun::query()
-                ->with('task:id,status,schedule_enabled')
-                ->whereKey($jobId)
-                ->where('status', 'running')
-                ->first();
+            $dispatchToken = (string) Str::uuid();
+            try {
+                $redispatched = DB::transaction(function () use ($jobId, $threshold, $dispatchToken): bool {
+                    $run = TaskRun::query()
+                        ->with('task:id,status,schedule_enabled')
+                        ->whereKey($jobId)
+                        ->where('status', 'running')
+                        ->where('started_at', '<', $threshold)
+                        ->lockForUpdate()
+                        ->first();
+                    if (! $run) {
+                        return false;
+                    }
 
-            if (! $run) {
+                    $task = $run->task;
+                    if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
+                        TaskRun::query()
+                            ->whereKey($jobId)
+                            ->where('status', 'running')
+                            ->where('started_at', '<', $threshold)
+                            ->update([
+                                'status' => 'cancelled',
+                                'finished_at' => now(),
+                                'error_message' => '任务未启用，已取消超时执行记录',
+                            ]);
+
+                        return false;
+                    }
+
+                    $meta = $this->normalizeMeta($run->meta);
+                    $affected = TaskRun::query()
+                        ->whereKey($jobId)
+                        ->where('status', 'running')
+                        ->where('started_at', '<', $threshold)
+                        ->update([
+                            'status' => 'pending',
+                            'finished_at' => null,
+                            'error_message' => '',
+                            'meta' => array_merge($meta, [
+                                'recovery_dispatched_at' => now()->toDateTimeString(),
+                                'recovery_dispatch_token' => $dispatchToken,
+                            ]),
+                        ]);
+                    if ($affected !== 1) {
+                        return false;
+                    }
+
+                    $this->dispatchLaravelQueueJob($jobId);
+
+                    return true;
+                });
+            } catch (Throwable $exception) {
+                $this->clearFailedPendingRecoveryAttempt($jobId, $dispatchToken);
+                report($exception);
+
                 continue;
             }
 
-            $task = $run->task;
-            if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
-                TaskRun::query()
-                    ->whereKey($jobId)
-                    ->where('status', 'running')
-                    ->update([
-                        'status' => 'cancelled',
-                        'finished_at' => now(),
-                        'error_message' => '任务未启用，已取消超时执行记录',
-                    ]);
-
-                continue;
-            }
-
-            $affected = TaskRun::query()
-                ->whereKey($jobId)
-                ->where('status', 'running')
-                ->update([
-                    'status' => 'pending',
-                    'finished_at' => null,
-                    'error_message' => '',
-                ]);
-
-            if ($affected === 1) {
-                $this->dispatchLaravelQueueJob($jobId);
+            if ($redispatched) {
                 $recovered++;
             }
         }
@@ -386,26 +411,158 @@ class JobQueueService
         return $recovered;
     }
 
+    private function recoverStalePendingJobs(Carbon $threshold): int
+    {
+        $candidateIds = TaskRun::query()
+            ->where('status', 'pending')
+            ->where('created_at', '<', $threshold)
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+
+        $recovered = 0;
+        foreach ($candidateIds as $jobId) {
+            $dispatchToken = (string) Str::uuid();
+            try {
+                $redispatched = DB::transaction(function () use ($jobId, $threshold, $dispatchToken): bool {
+                    $run = TaskRun::query()
+                        ->with('task:id,status,schedule_enabled')
+                        ->whereKey($jobId)
+                        ->where('status', 'pending')
+                        ->lockForUpdate()
+                        ->first();
+                    if (! $run) {
+                        return false;
+                    }
+
+                    $task = $run->task;
+                    if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
+                        TaskRun::query()
+                            ->whereKey($jobId)
+                            ->where('status', 'pending')
+                            ->update([
+                                'status' => 'cancelled',
+                                'finished_at' => now(),
+                                'error_message' => '任务未启用，已取消待执行记录',
+                            ]);
+
+                        return false;
+                    }
+
+                    $meta = $this->normalizeMeta($run->meta);
+                    $availableAt = $this->parseMetaDate($meta['available_at'] ?? null);
+                    if ($availableAt instanceof Carbon && $availableAt->greaterThan(now())) {
+                        return false;
+                    }
+
+                    $staleReference = collect([
+                        $run->created_at,
+                        $availableAt,
+                        $this->parseMetaDate($meta['recovery_dispatched_at'] ?? null),
+                    ])->filter()->max();
+                    if (! $staleReference instanceof Carbon || ! $staleReference->lessThan($threshold)) {
+                        return false;
+                    }
+
+                    $affected = TaskRun::query()
+                        ->whereKey($jobId)
+                        ->where('status', 'pending')
+                        ->update([
+                            'meta' => array_merge($meta, [
+                                'recovery_dispatched_at' => now()->toDateTimeString(),
+                                'recovery_dispatch_token' => $dispatchToken,
+                            ]),
+                        ]);
+                    if ($affected !== 1) {
+                        return false;
+                    }
+
+                    $this->dispatchLaravelQueueJob($jobId);
+
+                    return true;
+                });
+            } catch (Throwable $exception) {
+                $this->clearFailedPendingRecoveryAttempt($jobId, $dispatchToken);
+                report($exception);
+
+                continue;
+            }
+
+            if ($redispatched) {
+                $recovered++;
+            }
+        }
+
+        return $recovered;
+    }
+
+    private function clearFailedPendingRecoveryAttempt(int $jobId, string $dispatchToken): void
+    {
+        try {
+            DB::transaction(function () use ($jobId, $dispatchToken): void {
+                $run = TaskRun::query()
+                    ->whereKey($jobId)
+                    ->where('status', 'pending')
+                    ->lockForUpdate()
+                    ->first();
+                if (! $run) {
+                    return;
+                }
+
+                $meta = $this->normalizeMeta($run->meta);
+                if (! hash_equals($dispatchToken, (string) ($meta['recovery_dispatch_token'] ?? ''))) {
+                    return;
+                }
+
+                unset($meta['recovery_dispatched_at'], $meta['recovery_dispatch_token']);
+                TaskRun::query()
+                    ->whereKey($jobId)
+                    ->where('status', 'pending')
+                    ->update(['meta' => $meta]);
+            });
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function parseMetaDate(mixed $value): ?Carbon
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     /**
      * 将 task_runs 执行记录投递到 Laravel 队列。
      */
     private function dispatchLaravelQueueJob(int $taskRunId, mixed $availableAt = null): void
     {
-        $dispatch = ProcessGeoFlowTaskJob::dispatch($taskRunId)->onQueue('geoflow');
+        DB::afterCommit(function () use ($taskRunId, $availableAt): void {
+            $dispatch = ProcessGeoFlowTaskJob::dispatch($taskRunId)
+                ->onQueue('geoflow')
+                ->afterCommit();
 
-        if ($availableAt instanceof Carbon) {
-            $dispatch->delay($availableAt);
+            if ($availableAt instanceof Carbon) {
+                $dispatch->delay($availableAt);
 
-            return;
-        }
-
-        if (is_string($availableAt) && trim($availableAt) !== '') {
-            try {
-                $dispatch->delay(Carbon::parse($availableAt));
-            } catch (Throwable) {
-                // ignore invalid datetime
+                return;
             }
-        }
+
+            if (is_string($availableAt) && trim($availableAt) !== '') {
+                try {
+                    $dispatch->delay(Carbon::parse($availableAt));
+                } catch (Throwable) {
+                    // ignore invalid datetime
+                }
+            }
+        });
     }
 
     /**
@@ -478,10 +635,12 @@ class JobQueueService
      */
     private function broadcastOverviewUpdate(): void
     {
-        try {
-            app(TaskRealtimeBroadcastService::class)->broadcastOverview();
-        } catch (Throwable) {
-            // ignore
-        }
+        DB::afterCommit(function (): void {
+            try {
+                app(TaskRealtimeBroadcastService::class)->broadcastOverview();
+            } catch (Throwable) {
+                // ignore
+            }
+        });
     }
 }

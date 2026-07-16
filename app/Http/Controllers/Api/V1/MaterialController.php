@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Requests\Api\StoreMaterialItemRequest;
 use App\Services\Api\IdempotencyService;
 use App\Services\GeoFlow\MaterialLibraryService;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -42,12 +44,11 @@ class MaterialController extends BaseApiController
      */
     public function store(Request $request, string $type, MaterialLibraryService $materials): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /materials/{type}');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $materials->create($type, $request->all()), 201, 'POST /materials/{type}');
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /materials/{type}',
+            fn (): JsonResponse => $this->success($request, $materials->create($type, $request->all()), 201),
+        );
     }
 
     /**
@@ -63,12 +64,11 @@ class MaterialController extends BaseApiController
      */
     public function update(Request $request, string $type, int $id, MaterialLibraryService $materials): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'PATCH /materials/{type}/{id}');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $materials->update($type, $id, $request->all()), 200, 'PATCH /materials/{type}/{id}');
+        return IdempotencyService::executeJson(
+            $request,
+            'PATCH /materials/{type}/{id}',
+            fn (): JsonResponse => $this->success($request, $materials->update($type, $id, $request->all())),
+        );
     }
 
     /**
@@ -76,12 +76,7 @@ class MaterialController extends BaseApiController
      */
     public function destroy(Request $request, string $type, int $id, MaterialLibraryService $materials): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'DELETE /materials/{type}/{id}');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $materials->delete($type, $id), 200, 'DELETE /materials/{type}/{id}');
+        return $this->success($request, $materials->delete($type, $id));
     }
 
     /**
@@ -100,14 +95,23 @@ class MaterialController extends BaseApiController
     /**
      * 新增素材库条目。
      */
-    public function storeItem(Request $request, string $type, int $id, MaterialLibraryService $materials): JsonResponse
+    public function storeItem(StoreMaterialItemRequest $request, string $type, int $id, MaterialLibraryService $materials): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /materials/{type}/{id}/items');
-        if ($cached !== null) {
-            return $cached;
-        }
+        $routeKey = 'POST /materials/{type}/{id}/items';
+        $image = $request->file('image');
+        $payload = $request->except('image');
+        $operation = function () use ($request, $type, $id, $materials, $image, $payload): JsonResponse {
+            $result = $image !== null
+                ? $materials->createUploadedImageItem($type, $id, $image)
+                : $materials->createItem($type, $id, $payload);
 
-        return $this->success($request, $materials->createItem($type, $id, $request->all()), 201, 'POST /materials/{type}/{id}/items');
+            return $this->success($request, $result, 201);
+        };
+        $operationGuard = $image !== null
+            ? fn (Closure $callback): JsonResponse => $materials->withUploadedImagePathLock($type, $image, $callback)
+            : fn (Closure $callback): JsonResponse => $materials->withLegacyImagePathLock($type, $payload, $callback);
+
+        return IdempotencyService::executeJson($request, $routeKey, $operation, $operationGuard);
     }
 
     /**
@@ -115,11 +119,6 @@ class MaterialController extends BaseApiController
      */
     public function destroyItems(Request $request, string $type, int $id, MaterialLibraryService $materials): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'DELETE /materials/{type}/{id}/items');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $materials->deleteItems($type, $id, $request->all()), 200, 'DELETE /materials/{type}/{id}/items');
+        return $this->success($request, $materials->deleteItems($type, $id, $request->all()));
     }
 }

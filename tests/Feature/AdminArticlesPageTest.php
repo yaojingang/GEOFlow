@@ -384,6 +384,10 @@ class AdminArticlesPageTest extends TestCase
         $this->assertStringStartsWith('/storage/uploads/images/', $url);
         $this->assertSame(1, ImageLibrary::query()->where('name', '文章编辑器图片')->count());
         $this->assertSame(1, Image::query()->where('original_name', 'GEOFlow 编辑器截图')->count());
+        $this->assertMatchesRegularExpression(
+            '/^[a-f0-9]{64}$/',
+            (string) Image::query()->where('original_name', 'GEOFlow 编辑器截图')->value('managed_path_hash'),
+        );
         $this->assertSame(1, ArticleImage::query()->where('article_id', (int) $article->id)->count());
 
         Storage::disk('public')->assertExists(ltrim(substr($url, strlen('/storage/')), '/'));

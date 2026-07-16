@@ -14,6 +14,7 @@ use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
+use App\Services\GeoFlow\ManagedImageFileService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1342,6 +1343,8 @@ class AdminMaterialsPagesTest extends TestCase
             'original_name' => 'demo.png',
             'file_name' => 'demo.png',
             'file_path' => 'storage/uploads/images/demo.png',
+            'managed_path_hash' => app(ManagedImageFileService::class)
+                ->pathHash('storage/uploads/images/demo.png'),
             'file_size' => 1024,
             'mime_type' => 'image/png',
             'width' => 100,
@@ -1475,6 +1478,7 @@ class AdminMaterialsPagesTest extends TestCase
             ->where('original_name', 'banner.png')
             ->firstOrFail();
         $this->assertStringStartsWith('storage/uploads/images/', (string) $storedImage->file_path);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', (string) $storedImage->managed_path_hash);
         Storage::disk('public')->assertExists(str_replace('storage/', '', (string) $storedImage->file_path));
 
         $knowledgeFile = UploadedFile::fake()->createWithContent('manual.md', "# 标题\n内容段落");

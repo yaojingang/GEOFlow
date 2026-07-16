@@ -108,6 +108,10 @@ return [
     'upload_url' => env('GEOFLOW_UPLOAD_URL', '/assets/images/'),
     // 单文件上传最大字节数
     'max_upload_bytes' => (int) env('GEOFLOW_MAX_UPLOAD_BYTES', 2 * 1024 * 1024),
+    // 兼容旧客户端直接提交已存在图片路径；默认关闭，建议使用 multipart 上传。
+    'legacy_image_path_input' => filter_var(env('GEOFLOW_LEGACY_IMAGE_PATH_INPUT', false), FILTER_VALIDATE_BOOLEAN),
+    // 升级门禁：确认旧 worker 已全部退出且图片路径哈希回填完成后，才允许物理文件删除。
+    'managed_image_deletion_enabled' => filter_var(env('GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
 
     // 是否启用 GEOFlow 业务层缓存
     'cache_enabled' => filter_var(env('GEOFLOW_CACHE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),

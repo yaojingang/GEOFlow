@@ -43,13 +43,7 @@
 - 不支持绕过本地代码变更强制覆盖。
 - 不承诺所有私有改造版都能自动升级。
 
-生产 Docker 镜像部署更适合通过外部部署脚本、CI/CD 或人工执行：
-
-```bash
-git pull
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec app php artisan migrate --force
-```
+生产 Docker 镜像部署更适合通过外部部署脚本、CI/CD 或人工执行。已有部署必须遵循 [`deployment/DEPLOYMENT.md` 3.1 节](deployment/DEPLOYMENT.md#31-受管图片删除升级门禁)的停机排空、安全迁移和 readiness 流程，禁止用 `git pull`、`up -d --build` 和直接迁移命令替代该流程。
 
 后台更新中心可以展示这些命令和风险提示，但不建议第一版直接执行宿主机 Docker 操作。
 

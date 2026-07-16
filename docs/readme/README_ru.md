@@ -198,7 +198,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 - Фронт и админка идут через `web` (Nginx), PHP — контейнер `app` (php-fpm).
-- **Первая установка:** production-сервис `init` запускает миграции, а затем `php artisan geoflow:install`. Эта команда создаёт начальную admin-учётную запись только на пустой базе; если данные уже есть, она записывает маркер установки и не добавляет повторно категории, статьи, настройки сайта, рекламу или prompts.
+- **Первая установка:** production-сервис `init` запускает миграции, а затем `php artisan geoflow:install`. Эта последовательность предназначена для пустой базы. Для экземпляров с данными или историей миграций обязателен протокол остановки и дренирования из раздела 3.1 `../../docs/deployment/DEPLOYMENT.md`.
 - Подробности — в **`../../docs/deployment/DEPLOYMENT.md`**.
 
 ### Вариант 2: локальный PHP
@@ -212,7 +212,7 @@ cp .env.example .env
 composer install --no-interaction --prefer-dist
 php artisan key:generate
 
-php artisan migrate --force
+GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
 php artisan geoflow:install
 php artisan storage:link
 

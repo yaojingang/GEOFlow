@@ -10,7 +10,13 @@ use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\JobQueueService;
+use App\Services\GeoFlow\TaskLifecycleService;
+use App\Services\GeoFlow\TaskMonitoringQueryService;
+use App\Services\GeoFlow\TaskRealtimeBroadcastService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Mockery;
 use Tests\TestCase;
 
 /**
@@ -387,6 +393,38 @@ class ApiV1ContractTest extends TestCase
             'task_id' => $taskId,
             'knowledge_base_id' => (int) $legacyKnowledgeBase->id,
         ]);
+    }
+
+    public function test_task_lifecycle_failure_after_inner_commit_preserves_outer_transaction_ownership(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Outer transaction owner',
+            'status' => 'paused',
+        ]);
+        $monitoring = Mockery::mock(TaskMonitoringQueryService::class);
+        $monitoring->shouldReceive('getTaskMonitoringDetail')
+            ->once()
+            ->andThrow(new \RuntimeException('post-inner-read-failure'));
+        $realtime = Mockery::mock(TaskRealtimeBroadcastService::class);
+        $realtime->shouldReceive('broadcastOverview')->never();
+        $service = new TaskLifecycleService(
+            app(JobQueueService::class),
+            $monitoring,
+            $realtime,
+        );
+
+        $baselineTransactionLevel = DB::transactionLevel();
+        DB::beginTransaction();
+        try {
+            $service->updateTask((int) $task->id, ['name' => 'Updated inside outer transaction']);
+            $this->fail('The monitoring failure should escape the lifecycle service.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('post-inner-read-failure', $exception->getMessage());
+        }
+
+        $this->assertSame($baselineTransactionLevel + 1, DB::transactionLevel());
+        DB::rollBack();
+        $this->assertSame('Outer transaction owner', $task->fresh()->name);
     }
 
     public function test_material_api_cannot_delete_knowledge_base_referenced_by_task_pivot(): void

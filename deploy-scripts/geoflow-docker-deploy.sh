@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# GEOFlow production Docker one-click deployment helper.
+# GEOFlow production Docker first-install helper for a fresh empty database.
 # It performs host preflight checks, prepares .env.prod, deploys the
 # docker-compose.prod.yml stack, seeds the default admin, and runs a healthcheck.
 

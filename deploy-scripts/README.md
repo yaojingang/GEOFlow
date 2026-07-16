@@ -8,7 +8,7 @@
 
 | 脚本 | 用途 |
 | --- | --- |
-| `geoflow-docker-deploy.sh` | 生产 Docker 一键部署脚本。会自检服务器、准备 `.env.prod`、部署 PostgreSQL、Redis、Web、App、队列、调度和 Reverb，并在最后执行健康检查。 |
+| `geoflow-docker-deploy.sh` | 生产 Docker 首次空库一键部署脚本。会自检服务器、准备 `.env.prod`、部署 PostgreSQL、Redis、Web、App、队列、调度和 Reverb，并在最后执行健康检查。 |
 | `geoflow-healthcheck.sh` | 部署后健康检查脚本。可单独检查容器状态、Laravel 健康端点和数据库连接。 |
 | `start-docker-pull-tunnel.sh` | **本机 Mac**：SSH 反向隧道，把 Clash HTTP 代理暴露给 ECS。 |
 | `pull-images-once-via-tunnel.sh` | **ECS 一次性拉镜像**：经隧道 + `skopeo`，**不重启 docker**，不影响运行中容器。 |
@@ -35,12 +35,14 @@
 
 ## 一键部署
 
-在新服务器执行：
+仅在全新空数据库的服务器执行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
 bash geoflow-docker-deploy.sh
 ```
+
+已有数据的实例禁止使用该脚本升级，也禁止滚动升级。请执行 `docs/deployment/DEPLOYMENT.md` 3.1 节的 down、停止并排空全部旧进程和在途请求、一次性确认、迁移、全量启动新版本、readiness、启用删除门禁流程。
 
 脚本会要求确认：
 
@@ -143,7 +145,7 @@ This folder contains reference scripts for technical operators who want a faster
 
 | Script | Purpose |
 | --- | --- |
-| `geoflow-docker-deploy.sh` | Production Docker one-click deployment. It checks the server, prepares `.env.prod`, deploys PostgreSQL, Redis, web, app, queue, scheduler and Reverb, then runs a healthcheck. |
+| `geoflow-docker-deploy.sh` | First install on a fresh empty production database. It checks the server, prepares `.env.prod`, deploys PostgreSQL, Redis, web, app, queue, scheduler and Reverb, then runs a healthcheck. |
 | `geoflow-healthcheck.sh` | Post-deployment healthcheck. It validates Docker Compose services, the Laravel health endpoint and database connectivity. |
 
 ## Recommended Server Profile
@@ -164,14 +166,16 @@ Recommended for production:
 - Reverse proxy or cloud load balancer for HTTPS
 - PostgreSQL and Redis ports not exposed to the public Internet
 
-## One-Command Deployment
+## One-Command First Install
 
-On a fresh server, run:
+On a fresh server with an empty database, run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
 bash geoflow-docker-deploy.sh
 ```
+
+Do not use this script to upgrade an existing deployment, and do not perform a rolling upgrade. Follow the stopped-and-drained upgrade protocol in section 3.1 of `docs/deployment/DEPLOYMENT.md`.
 
 The script will ask for:
 

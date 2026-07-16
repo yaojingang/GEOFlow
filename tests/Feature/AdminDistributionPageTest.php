@@ -26,6 +26,7 @@ use App\Services\GeoFlow\DistributionRetryPolicy;
 use App\Services\GeoFlow\DistributionSigningService;
 use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
 use App\Services\GeoFlow\FrontendExperienceInspector;
+use App\Services\GeoFlow\ManagedImageFileService;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\Site\HomepageModuleBuilder;
@@ -4181,6 +4182,8 @@ MD,
             'original_name' => 'hero-demo.png',
             'file_name' => 'hero-demo.png',
             'file_path' => 'storage/uploads/images/2026/05/hero-demo.png',
+            'managed_path_hash' => app(ManagedImageFileService::class)
+                ->pathHash('storage/uploads/images/2026/05/hero-demo.png'),
             'file_size' => 67,
             'mime_type' => 'image/png',
             'width' => 1,

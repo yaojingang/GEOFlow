@@ -70,19 +70,16 @@ class ArticleController extends BaseApiController
             ]);
         }
 
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /articles');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        try {
-            return $this->success($request, $articles->createArticle(
-                $request->all(),
-                $this->auth($request)->auditAdminId
-            ), 201, 'POST /articles');
-        } catch (ApiException $exception) {
-            return $this->riskBlockedResponse($request, 'POST /articles', $exception);
-        }
+        return IdempotencyService::executeJson($request, 'POST /articles', function () use ($request, $articles): JsonResponse {
+            try {
+                return $this->success($request, $articles->createArticle(
+                    $request->all(),
+                    $this->auth($request)->auditAdminId
+                ), 201);
+            } catch (ApiException $exception) {
+                return $this->riskBlockedResponse($request, $exception);
+            }
+        });
     }
 
     /**
@@ -98,16 +95,15 @@ class ArticleController extends BaseApiController
      */
     public function update(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'PATCH /articles/{id}');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $articles->updateArticle(
-            $article,
-            $request->all(),
-            $this->auth($request)->auditAdminId
-        ), 200, 'PATCH /articles/{id}');
+        return IdempotencyService::executeJson(
+            $request,
+            'PATCH /articles/{id}',
+            fn (): JsonResponse => $this->success($request, $articles->updateArticle(
+                $article,
+                $request->all(),
+                $this->auth($request)->auditAdminId
+            )),
+        );
     }
 
     /**
@@ -117,24 +113,21 @@ class ArticleController extends BaseApiController
      */
     public function review(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /articles/{id}/review');
-        if ($cached !== null) {
-            return $cached;
-        }
-
         $body = $request->all();
 
-        try {
-            return $this->success($request, $articles->reviewArticle(
-                $article,
-                trim((string) ($body['review_status'] ?? '')),
-                trim((string) ($body['review_note'] ?? '')),
-                trim((string) ($body['risk_override_reason'] ?? '')),
-                $this->auth($request)->auditAdminId
-            ), 200, 'POST /articles/{id}/review');
-        } catch (ApiException $exception) {
-            return $this->riskBlockedResponse($request, 'POST /articles/{id}/review', $exception);
-        }
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/review', function () use ($request, $article, $articles, $body): JsonResponse {
+            try {
+                return $this->success($request, $articles->reviewArticle(
+                    $article,
+                    trim((string) ($body['review_status'] ?? '')),
+                    trim((string) ($body['review_note'] ?? '')),
+                    trim((string) ($body['risk_override_reason'] ?? '')),
+                    $this->auth($request)->auditAdminId
+                ));
+            } catch (ApiException $exception) {
+                return $this->riskBlockedResponse($request, $exception);
+            }
+        });
     }
 
     /**
@@ -142,19 +135,16 @@ class ArticleController extends BaseApiController
      */
     public function publish(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /articles/{id}/publish');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        try {
-            return $this->success($request, $articles->publishArticle(
-                $article,
-                $this->auth($request)->auditAdminId
-            ), 200, 'POST /articles/{id}/publish');
-        } catch (ApiException $exception) {
-            return $this->riskBlockedResponse($request, 'POST /articles/{id}/publish', $exception);
-        }
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/publish', function () use ($request, $article, $articles): JsonResponse {
+            try {
+                return $this->success($request, $articles->publishArticle(
+                    $article,
+                    $this->auth($request)->auditAdminId
+                ));
+            } catch (ApiException $exception) {
+                return $this->riskBlockedResponse($request, $exception);
+            }
+        });
     }
 
     /**
@@ -162,15 +152,14 @@ class ArticleController extends BaseApiController
      */
     public function trash(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /articles/{id}/trash');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $articles->trashArticle($article), 200, 'POST /articles/{id}/trash');
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /articles/{id}/trash',
+            fn (): JsonResponse => $this->success($request, $articles->trashArticle($article)),
+        );
     }
 
-    private function riskBlockedResponse(Request $request, string $routeKey, ApiException $exception): JsonResponse
+    private function riskBlockedResponse(Request $request, ApiException $exception): JsonResponse
     {
         if ($exception->getErrorCode() !== 'article_risk_blocked') {
             throw $exception;
@@ -184,7 +173,6 @@ class ArticleController extends BaseApiController
             $exception->getHttpStatus(),
             $exception->getDetails(),
         )->withHeaders(['X-Request-Id' => $requestId]);
-        IdempotencyService::rememberFromResponse($request, $routeKey, $response);
 
         return $response;
     }

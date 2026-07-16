@@ -18,6 +18,7 @@ class Image extends Model
         'original_name',
         'file_name',
         'file_path',
+        'managed_path_hash',
         'file_size',
         'mime_type',
         'width',

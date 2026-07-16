@@ -17,7 +17,6 @@ use App\Models\TitleLibrary;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Throwable;
 
 /**
  * 任务生命周期服务。
@@ -75,8 +74,7 @@ class TaskLifecycleService
     {
         $normalized = $this->normalizeTaskInput($data, false);
 
-        DB::beginTransaction();
-        try {
+        $taskId = DB::transaction(function () use ($normalized): int {
             $task = Task::query()->create([
                 'name' => $normalized['name'],
                 'title_library_id' => $normalized['title_library_id'],
@@ -119,16 +117,13 @@ class TaskLifecycleService
                 ]);
             }
 
-            DB::commit();
-            $this->taskRealtimeBroadcastService->broadcastOverview();
+            return $taskId;
+        });
 
-            return $this->getTask($taskId);
-        } catch (Throwable $e) {
-            if (DB::transactionLevel() > 0) {
-                DB::rollBack();
-            }
-            throw $e;
-        }
+        $task = $this->getTask($taskId);
+        $this->broadcastOverviewAfterCommit();
+
+        return $task;
     }
 
     /**
@@ -171,8 +166,7 @@ class TaskLifecycleService
         $knowledgeBaseIds = $knowledgeBaseIdsProvided ? $normalized['knowledge_base_ids'] : [];
         unset($normalized['knowledge_base_ids']);
 
-        DB::beginTransaction();
-        try {
+        DB::transaction(function () use ($normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId): void {
             if (! empty($normalized)) {
                 Task::query()->whereKey($taskId)->update($normalized);
             }
@@ -187,16 +181,12 @@ class TaskLifecycleService
                 $this->pauseTask($taskId, '任务已暂停');
             }
 
-            DB::commit();
-            $this->taskRealtimeBroadcastService->broadcastOverview();
+        });
 
-            return $this->getTask($taskId);
-        } catch (Throwable $e) {
-            if (DB::transactionLevel() > 0) {
-                DB::rollBack();
-            }
-            throw $e;
-        }
+        $task = $this->getTask($taskId);
+        $this->broadcastOverviewAfterCommit();
+
+        return $task;
     }
 
     /**
@@ -238,7 +228,7 @@ class TaskLifecycleService
             Task::query()->whereKey($taskId)->delete();
         });
 
-        $this->taskRealtimeBroadcastService->broadcastOverview();
+        $this->broadcastOverviewAfterCommit();
 
         return [
             'id' => $taskId,
@@ -256,8 +246,7 @@ class TaskLifecycleService
     public function startTask(int $taskId, bool $enqueueNow = false): array
     {
         $this->ensureTaskExists($taskId);
-        DB::beginTransaction();
-        try {
+        $jobId = DB::transaction(function () use ($taskId, $enqueueNow): ?int {
             // 手动“立即执行”场景下，不把 next_run_at 强行置为 now，
             // 避免与手动入队叠加导致一次点击触发两次执行。
             $this->activateTask($taskId, ! $enqueueNow);
@@ -271,20 +260,17 @@ class TaskLifecycleService
                     ]);
                 }
             }
-            DB::commit();
-            $task = $this->getTask($taskId);
-            if ($jobId !== null) {
-                $task['started_job_id'] = $jobId;
-            }
-            $this->taskRealtimeBroadcastService->broadcastOverview();
 
-            return $task;
-        } catch (Throwable $e) {
-            if (DB::transactionLevel() > 0) {
-                DB::rollBack();
-            }
-            throw $e;
+            return $jobId;
+        });
+
+        $task = $this->getTask($taskId);
+        if ($jobId !== null) {
+            $task['started_job_id'] = $jobId;
         }
+        $this->broadcastOverviewAfterCommit();
+
+        return $task;
     }
 
     /**
@@ -300,26 +286,21 @@ class TaskLifecycleService
     public function stopTask(int $taskId): array
     {
         $this->ensureTaskExists($taskId);
-        DB::beginTransaction();
-        try {
+        [$cancelledJobs, $runningJobs] = DB::transaction(function () use ($taskId): array {
             $cancelledJobs = $this->pauseTask($taskId, '任务已暂停');
             $runningJobs = TaskRun::query()
                 ->where('task_id', $taskId)
                 ->where('status', 'running')
                 ->count();
-            DB::commit();
-            $task = $this->getTask($taskId);
-            $task['cancelled_jobs'] = $cancelledJobs;
-            $task['running_jobs'] = $runningJobs;
-            $this->taskRealtimeBroadcastService->broadcastOverview();
 
-            return $task;
-        } catch (Throwable $e) {
-            if (DB::transactionLevel() > 0) {
-                DB::rollBack();
-            }
-            throw $e;
-        }
+            return [$cancelledJobs, $runningJobs];
+        });
+        $task = $this->getTask($taskId);
+        $task['cancelled_jobs'] = $cancelledJobs;
+        $task['running_jobs'] = $runningJobs;
+        $this->broadcastOverviewAfterCommit();
+
+        return $task;
     }
 
     /**
@@ -688,6 +669,11 @@ class TaskLifecycleService
         if (! Task::query()->whereKey($taskId)->exists()) {
             throw new ApiException('task_not_found', '任务不存在', 404);
         }
+    }
+
+    private function broadcastOverviewAfterCommit(): void
+    {
+        DB::afterCommit(fn () => $this->taskRealtimeBroadcastService->broadcastOverview());
     }
 
     /**

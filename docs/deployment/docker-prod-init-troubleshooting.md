@@ -175,11 +175,13 @@ $COMPOSE_PROD logs --tail=200 init
 $COMPOSE_PROD up -d app web queue scheduler reverb
 ```
 
-如果希望一次性启动，也可以执行：
+仅在全新空库首次安装时，可以一次性启动：
 
 ```bash
 $COMPOSE_PROD up -d --build
 ```
+
+已有数据或迁移历史的实例禁止使用该命令升级。请执行 [`DEPLOYMENT.md` 3.1 节](DEPLOYMENT.md#31-受管图片删除升级门禁)的 down、停止排空、一次性确认、迁移、全量新版本启动和 readiness 流程。
 
 首次部署后，如果修改了 `.env.prod`，建议至少重建应用相关容器：
 

@@ -43,12 +43,11 @@ class TaskController extends BaseApiController
      */
     public function store(Request $request, TaskLifecycleService $tasks): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /tasks');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $tasks->createTask($request->all()), 201, 'POST /tasks');
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /tasks',
+            fn (): JsonResponse => $this->success($request, $tasks->createTask($request->all()), 201),
+        );
     }
 
     /**
@@ -66,12 +65,11 @@ class TaskController extends BaseApiController
      */
     public function update(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'PATCH /tasks/{id}');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $tasks->updateTask($task, $request->all()), 200, 'PATCH /tasks/{id}');
+        return IdempotencyService::executeJson(
+            $request,
+            'PATCH /tasks/{id}',
+            fn (): JsonResponse => $this->success($request, $tasks->updateTask($task, $request->all())),
+        );
     }
 
     /**
@@ -79,12 +77,7 @@ class TaskController extends BaseApiController
      */
     public function destroy(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'DELETE /tasks/{id}');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $tasks->deleteTask($task), 200, 'DELETE /tasks/{id}');
+        return $this->success($request, $tasks->deleteTask($task));
     }
 
     /**
@@ -94,14 +87,13 @@ class TaskController extends BaseApiController
      */
     public function start(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /tasks/{id}/start');
-        if ($cached !== null) {
-            return $cached;
-        }
-
         $enqueueNow = ! empty($request->input('enqueue_now'));
 
-        return $this->success($request, $tasks->startTask($task, $enqueueNow), 200, 'POST /tasks/{id}/start');
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /tasks/{id}/start',
+            fn (): JsonResponse => $this->success($request, $tasks->startTask($task, $enqueueNow)),
+        );
     }
 
     /**
@@ -111,12 +103,11 @@ class TaskController extends BaseApiController
      */
     public function stop(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /tasks/{id}/stop');
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        return $this->success($request, $tasks->stopTask($task), 200, 'POST /tasks/{id}/stop');
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /tasks/{id}/stop',
+            fn (): JsonResponse => $this->success($request, $tasks->stopTask($task)),
+        );
     }
 
     /**
@@ -126,17 +117,16 @@ class TaskController extends BaseApiController
      */
     public function enqueue(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        $cached = IdempotencyService::maybeReplayJson($request, 'POST /tasks/{id}/enqueue');
-        if ($cached !== null) {
-            return $cached;
-        }
-
         $body = $request->all();
         $jobType = trim((string) ($body['job_type'] ?? 'generate_article'));
         $payload = $body;
         unset($payload['job_type']);
 
-        return $this->success($request, $tasks->enqueueTask($task, $jobType, $payload), 201, 'POST /tasks/{id}/enqueue');
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /tasks/{id}/enqueue',
+            fn (): JsonResponse => $this->success($request, $tasks->enqueueTask($task, $jobType, $payload), 201),
+        );
     }
 
     /**
