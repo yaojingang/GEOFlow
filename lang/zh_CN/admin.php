@@ -3600,8 +3600,8 @@ return [
             'compliance_ack' => '请先确认合规使用说明',
         ],
         'error' => [
-            'fetch_failed' => '抓取对标页面失败：:url 返回 HTTP :status',
-            'html_too_large' => '对标页面体积过大：:url',
+            'fetch_failed' => '抓取对标页面失败，HTTP :status',
+            'html_too_large' => '对标页面体积过大',
             'compliance_failed' => '生成文件未通过安全扫描',
             'compliance_violation' => ':path 触发安全规则 :rule',
             'job_failed' => '模板复刻任务执行失败',

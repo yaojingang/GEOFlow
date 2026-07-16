@@ -4,6 +4,8 @@ namespace App\Services\GeoFlow;
 
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
+use App\Services\Outbound\SafeOutboundHttpClient;
+use App\Services\Outbound\SafeOutboundRequest;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -11,7 +13,10 @@ use RuntimeException;
 
 class GenericHttpRequestFactory
 {
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly SafeOutboundHttpClient $safeHttp,
+    ) {}
 
     /**
      * @param  array<string,mixed>  $config
@@ -24,7 +29,7 @@ class GenericHttpRequestFactory
         string $body,
         string $event,
         string $idempotencyKey
-    ): PendingRequest {
+    ): SafeOutboundRequest {
         $headers = [
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
@@ -39,18 +44,29 @@ class GenericHttpRequestFactory
 
         $authType = (string) $config['generic_auth_type'];
         if ($authType === 'none') {
-            return $request;
+            return $this->safeRequest($request);
         }
 
         [$keyId, $secret] = $this->activeSecret($channel);
 
-        return match ($authType) {
+        $request = match ($authType) {
             'bearer' => $request->withToken($secret),
             'basic' => $this->withBasicAuth($request, (string) $config['generic_basic_username'], $secret),
             'header_key' => $request->withHeaders([(string) $config['generic_header_name'] => $secret]),
             'hmac' => $request->withHeaders($this->hmacHeaders($config, $keyId, $secret, $method, $endpoint, $body)),
             default => throw new RuntimeException('不支持的通用 API 鉴权方式：'.$authType),
         };
+
+        return $this->safeRequest($request);
+    }
+
+    private function safeRequest(PendingRequest $request): SafeOutboundRequest
+    {
+        return new SafeOutboundRequest(
+            $this->safeHttp,
+            $request->connectTimeout(5),
+            (int) config('geoflow.outbound_json_max_bytes', 4 * 1024 * 1024),
+        );
     }
 
     /**

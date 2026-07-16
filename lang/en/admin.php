@@ -3600,8 +3600,8 @@ return [
             'compliance_ack' => 'Confirm the compliance notice first.',
         ],
         'error' => [
-            'fetch_failed' => 'Failed to fetch reference page: :url returned HTTP :status.',
-            'html_too_large' => 'Reference page is too large: :url.',
+            'fetch_failed' => 'Failed to fetch reference page. HTTP :status.',
+            'html_too_large' => 'Reference page is too large.',
             'compliance_failed' => 'Generated files did not pass the safety scan.',
             'compliance_violation' => ':path triggered safety rule :rule.',
             'job_failed' => 'Template cloning job failed.',

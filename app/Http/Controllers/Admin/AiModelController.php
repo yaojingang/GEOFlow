@@ -6,14 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\SiteSetting;
+use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Throwable;
@@ -32,7 +33,11 @@ class AiModelController extends Controller
     /**
      * 注入统一 API Key 加解密工具，避免控制器内重复维护密钥兼容逻辑。
      */
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly SafeOutboundHttpClient $safeHttp,
+        private readonly Factory $http,
+    ) {}
 
     /**
      * AI 模型列表页。
@@ -205,15 +210,21 @@ class AiModelController extends Controller
                 return $this->modelTestResponse(false, __('admin.ai_models.test_error_model_missing'), $startedAt, $modelType, $endpoint);
             }
 
-            $request = Http::acceptJson()
+            $request = $this->http->acceptJson()
                 ->asJson()
+                ->connectTimeout(8)
                 ->timeout(45);
 
             $request = $isGemini
                 ? $request->withHeaders(['x-goog-api-key' => $apiKey])
                 : $request->withToken($apiKey);
 
-            $response = $request->post($endpoint, $this->buildTestPayload($modelName, $modelType, $isGemini));
+            $response = $this->safeHttp->post(
+                $request,
+                $endpoint,
+                $this->buildTestPayload($modelName, $modelType, $isGemini),
+                (int) config('geoflow.outbound_ai_max_bytes', 8 * 1024 * 1024),
+            );
 
             $json = $response->json();
             if (! $response->successful()) {
@@ -221,7 +232,7 @@ class AiModelController extends Controller
                     false,
                     __('admin.ai_models.test_failed_with_status', [
                         'status' => (string) $response->status(),
-                        'message' => $this->previewResponseBody($response->body()),
+                        'message' => $this->redactedRemoteDetail(),
                     ]),
                     $startedAt,
                     $modelType,
@@ -234,7 +245,7 @@ class AiModelController extends Controller
                 return $this->modelTestResponse(
                     false,
                     __('admin.ai_models.test_invalid_response', [
-                        'message' => $this->previewResponseBody($response->body()),
+                        'message' => $this->redactedRemoteDetail(),
                     ]),
                     $startedAt,
                     $modelType,
@@ -254,7 +265,7 @@ class AiModelController extends Controller
         } catch (Throwable $exception) {
             return $this->modelTestResponse(
                 false,
-                __('admin.ai_models.test_exception', ['message' => $this->previewResponseBody($exception->getMessage())]),
+                __('admin.ai_models.test_exception', ['message' => $this->redactedRemoteDetail()]),
                 $startedAt,
                 $this->normalizeModelType((string) ($model->model_type ?? 'chat'))
             );
@@ -564,7 +575,7 @@ class AiModelController extends Controller
             $row = DB::selectOne("SELECT extname FROM pg_extension WHERE extname = 'vector' LIMIT 1");
 
             return $row !== null;
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return false;
         }
     }
@@ -754,15 +765,13 @@ class AiModelController extends Controller
                 'model_type' => $modelType,
                 'http_status' => $httpStatus,
                 'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
-                'endpoint' => $endpoint,
+                'endpoint' => $success ? $endpoint : '',
             ],
         ], $success ? 200 : 422);
     }
 
-    private function previewResponseBody(string $body): string
+    private function redactedRemoteDetail(): string
     {
-        $body = trim(preg_replace('/\s+/u', ' ', $body) ?: $body);
-
-        return mb_strlen($body, 'UTF-8') > 240 ? mb_substr($body, 0, 240, 'UTF-8').'...' : $body;
+        return 'Upstream response details are hidden.';
     }
 }

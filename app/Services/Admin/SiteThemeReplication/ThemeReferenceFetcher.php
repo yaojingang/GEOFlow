@@ -3,7 +3,9 @@
 namespace App\Services\Admin\SiteThemeReplication;
 
 use App\Models\SiteThemeReplication;
-use Illuminate\Support\Facades\Http;
+use App\Services\Outbound\OutboundRequestBlockedException;
+use App\Services\Outbound\SafeOutboundHttpClient;
+use Illuminate\Http\Client\Factory;
 use RuntimeException;
 
 class ThemeReferenceFetcher
@@ -13,6 +15,11 @@ class ThemeReferenceFetcher
     private const MAX_CSS_BYTES = 262_144;
 
     private const MAX_CSS_FILES_PER_PAGE = 3;
+
+    public function __construct(
+        private readonly SafeOutboundHttpClient $safeHttp,
+        private readonly Factory $http,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -39,31 +46,35 @@ class ThemeReferenceFetcher
      */
     private function fetchPage(string $type, string $url): array
     {
-        if ($this->isBlockedUrl($url)) {
-            throw new RuntimeException(__('admin.theme_replication.validation.url_private'));
-        }
-
-        $response = Http::timeout(20)
+        $request = $this->http->timeout(20)
+            ->connectTimeout(8)
             ->withHeaders([
                 'User-Agent' => 'GEOFlow Theme Replication/2.0',
                 'Accept' => 'text/html,application/xhtml+xml,text/plain;q=0.8,*/*;q=0.5',
-            ])
-            ->get($url);
+            ]);
+        try {
+            $response = $this->safeHttp->get($request, $url, self::MAX_HTML_BYTES, 3);
+        } catch (OutboundRequestBlockedException $exception) {
+            if ($exception->reasonCode === 'response_too_large') {
+                throw new RuntimeException(__('admin.theme_replication.error.html_too_large'), 0, $exception);
+            }
+
+            throw new RuntimeException(__('admin.theme_replication.validation.url_private'), 0, $exception);
+        }
 
         if (! $response->successful()) {
             throw new RuntimeException(__('admin.theme_replication.error.fetch_failed', [
-                'url' => $url,
                 'status' => $response->status(),
             ]));
         }
 
         if ((int) $response->header('Content-Length', 0) > self::MAX_HTML_BYTES) {
-            throw new RuntimeException(__('admin.theme_replication.error.html_too_large', ['url' => $url]));
+            throw new RuntimeException(__('admin.theme_replication.error.html_too_large'));
         }
 
         $html = (string) $response->body();
         if (strlen($html) > self::MAX_HTML_BYTES) {
-            throw new RuntimeException(__('admin.theme_replication.error.html_too_large', ['url' => $url]));
+            throw new RuntimeException(__('admin.theme_replication.error.html_too_large'));
         }
 
         $cssLinks = $this->extractStylesheetUrls($html, $url);
@@ -106,7 +117,7 @@ class ThemeReferenceFetcher
             }
 
             $url = $this->resolveUrl($hrefMatch[1], $baseUrl);
-            if ($url === null || $this->isBlockedUrl($url)) {
+            if ($url === null) {
                 continue;
             }
 
@@ -122,12 +133,13 @@ class ThemeReferenceFetcher
     private function fetchCssSample(string $url): ?array
     {
         try {
-            $response = Http::timeout(10)
+            $request = $this->http->timeout(10)
+                ->connectTimeout(5)
                 ->withHeaders([
                     'User-Agent' => 'GEOFlow Theme Replication/2.0',
                     'Accept' => 'text/css,*/*;q=0.5',
-                ])
-                ->get($url);
+                ]);
+            $response = $this->safeHttp->get($request, $url, self::MAX_CSS_BYTES, 3);
         } catch (\Throwable) {
             return null;
         }
@@ -261,41 +273,5 @@ class ThemeReferenceFetcher
         $directory = rtrim(str_replace('\\', '/', dirname($path)), '/');
 
         return $scheme.'://'.$host.($directory !== '' ? $directory.'/' : '/').$url;
-    }
-
-    private function isBlockedUrl(string $url): bool
-    {
-        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
-        if (! in_array($scheme, ['http', 'https'], true)) {
-            return true;
-        }
-
-        $host = trim(strtolower((string) parse_url($url, PHP_URL_HOST)), " \t\n\r\0\x0B.[]");
-        if (
-            $host === ''
-            || $host === 'localhost'
-            || str_ends_with($host, '.localhost')
-            || str_ends_with($host, '.local')
-            || ! str_contains($host, '.')
-        ) {
-            return true;
-        }
-
-        if (filter_var($host, FILTER_VALIDATE_IP)) {
-            return ! filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
-        }
-
-        $resolvedIps = gethostbynamel($host);
-        if ($resolvedIps === false || $resolvedIps === []) {
-            return true;
-        }
-
-        foreach ($resolvedIps as $ip) {
-            if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

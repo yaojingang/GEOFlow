@@ -7,10 +7,12 @@ use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\SiteSetting;
+use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Ai\Embeddings;
@@ -32,7 +34,11 @@ class KnowledgeChunkSyncService
     /**
      * 复用统一 API Key 解密组件，保证 embedding 调用与模型配置页完全一致。
      */
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly SafeOutboundHttpClient $safeHttp,
+        private readonly Factory $http,
+    ) {}
 
     /**
      * 将知识库正文重建为 chunks，并同步向量相关字段。
@@ -276,6 +282,7 @@ class KnowledgeChunkSyncService
                     $inFence = false;
                     $fenceMarker = '';
                 }
+
                 continue;
             }
 
@@ -285,11 +292,13 @@ class KnowledgeChunkSyncService
                 $fenceMarker = (string) $fenceMatch[1];
                 $bufferType = 'code';
                 $buffer[] = (string) $line;
+
                 continue;
             }
 
             if ($trimmed === '') {
                 $flushBuffer();
+
                 continue;
             }
 
@@ -301,6 +310,7 @@ class KnowledgeChunkSyncService
                     'heading_level' => strlen((string) $headingMatch[1]),
                     'heading_text' => trim((string) $headingMatch[2]),
                 ];
+
                 continue;
             }
 
@@ -398,6 +408,7 @@ class KnowledgeChunkSyncService
             $candidate = $buffer === '' ? $line : $buffer."\n".$line;
             if (mb_strlen($candidate, 'UTF-8') <= $maxChars) {
                 $buffer = $candidate;
+
                 continue;
             }
 
@@ -633,7 +644,7 @@ class KnowledgeChunkSyncService
         return array_values($models);
     }
 
-    private function semanticChunkingModelQuery(): \Illuminate\Database\Eloquent\Builder
+    private function semanticChunkingModelQuery(): Builder
     {
         return AiModel::query()
             ->where('status', 'active')
@@ -978,8 +989,7 @@ class KnowledgeChunkSyncService
         ?array $embeddingMetadata,
         bool $requireRealEmbedding = false,
         ?string $documentTitle = null
-    ): array
-    {
+    ): array {
         if ($chunks === []) {
             return [];
         }
@@ -1114,7 +1124,7 @@ class KnowledgeChunkSyncService
      *
      * @param  list<string>  $inputs
      * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
-     * @return array<int,mixed>  与 $inputs 顺序对应的原始向量数组
+     * @return array<int,mixed> 与 $inputs 顺序对应的原始向量数组
      */
     private function requestEmbeddingVectors(array $inputs, array $embeddingMetadata, string $providerName): array
     {
@@ -1132,7 +1142,7 @@ class KnowledgeChunkSyncService
     /**
      * 直连 OpenAI 兼容 /embeddings 接口，仅发送 model + input。
      *
-     * 出站代理由全局 {@see \App\Support\GeoFlow\OutboundHttpProxy} 中间件按域名注入，无需在此重复配置。
+     * 请求通过统一安全出站网关校验并固定目标地址。
      *
      * @param  list<string>  $inputs
      * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
@@ -1142,21 +1152,26 @@ class KnowledgeChunkSyncService
     {
         $endpoint = rtrim((string) $embeddingMetadata['api_url'], '/').'/embeddings';
 
-        $response = Http::acceptJson()
+        $request = $this->http->acceptJson()
             ->asJson()
             ->withToken((string) $embeddingMetadata['api_key'])
-            ->timeout(45)
-            ->post($endpoint, [
-                'model' => (string) $embeddingMetadata['model_name'],
-                'input' => $inputs,
-            ]);
+            ->connectTimeout(8)
+            ->timeout(45);
+        $response = $this->safeHttp->post($request, $endpoint, [
+            'model' => (string) $embeddingMetadata['model_name'],
+            'input' => $inputs,
+        ], (int) config('geoflow.outbound_ai_max_bytes', 8 * 1024 * 1024));
 
         if (! $response->successful()) {
-            // 保留服务商原始报文，使 batch size 等可识别错误仍能命中后续降级逻辑。
+            $error = data_get($response->json(), 'error.message');
+            $message = is_string($error) && $this->isEmbeddingBatchSizeError($error)
+                ? 'Embedding provider rejected batch size.'
+                : 'Embedding provider request failed.';
+
             throw new \RuntimeException(sprintf(
                 'HTTP request returned status code %d: %s',
                 $response->status(),
-                trim($response->body())
+                $message,
             ));
         }
 

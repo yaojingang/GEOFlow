@@ -237,7 +237,7 @@ class GenericHttpApiPublisher implements DistributionPublisherInterface
             : $request->withBody($wireBody, 'application/json')->send($method, $endpoint);
 
         $this->markSecretUsed($channel, $config);
-        $this->throwIfUnexpectedStatus($response, $operationLabel, $endpoint, $config);
+        $this->throwIfUnexpectedStatus($response, $operationLabel, $config);
 
         return [
             'endpoint' => $endpoint,
@@ -250,17 +250,13 @@ class GenericHttpApiPublisher implements DistributionPublisherInterface
     /**
      * @param  array<string,mixed>  $config
      */
-    private function throwIfUnexpectedStatus(Response $response, string $operationLabel, string $endpoint, array $config): void
+    private function throwIfUnexpectedStatus(Response $response, string $operationLabel, array $config): void
     {
         if (in_array($response->status(), $config['generic_success_statuses'], true)) {
             return;
         }
 
-        $body = html_entity_decode(strip_tags((string) $response->body()), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $body = preg_replace('/\s+/', ' ', trim($body));
-        $summary = is_string($body) && mb_strlen($body) > 300 ? mb_substr($body, 0, 300).'...' : (string) $body;
-
-        throw new RuntimeException($operationLabel.'失败：HTTP '.$response->status().' '.$endpoint.($summary !== '' ? ' '.$summary : ''));
+        throw new RuntimeException($operationLabel.'失败：HTTP '.$response->status());
     }
 
     /**

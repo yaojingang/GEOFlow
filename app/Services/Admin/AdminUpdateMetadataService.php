@@ -2,14 +2,20 @@
 
 namespace App\Services\Admin;
 
+use App\Services\Outbound\SafeOutboundHttpClient;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 
 /**
  * Checks upstream GEOFlow release metadata for admin update notifications.
  */
 class AdminUpdateMetadataService
 {
+    public function __construct(
+        private readonly SafeOutboundHttpClient $safeHttp,
+        private readonly Factory $http,
+    ) {}
+
     /**
      * @return array{
      *   current_version: string,
@@ -154,7 +160,12 @@ class AdminUpdateMetadataService
             $checkedAt = now()->toDateTimeString();
 
             try {
-                $response = Http::timeout(5)->acceptJson()->get($url);
+                $request = $this->http->timeout(5)->connectTimeout(3)->acceptJson();
+                $response = $this->safeHttp->get(
+                    $request,
+                    $url,
+                    (int) config('geoflow.outbound_metadata_max_bytes', 1024 * 1024),
+                );
             } catch (\Throwable) {
                 return [
                     'status' => 'error',

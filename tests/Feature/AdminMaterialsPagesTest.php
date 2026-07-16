@@ -155,13 +155,11 @@ class AdminMaterialsPagesTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.url-import'))
-            ->assertOk()
-            ->assertSee(__('admin.url_import.page_title'));
+            ->assertForbidden();
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.url-import.history'))
-            ->assertOk()
-            ->assertSee(__('admin.url_import_history.page_title'));
+            ->assertForbidden();
     }
 
     public function test_materials_page_counts_high_risk_unreviewed_knowledge_as_pending(): void
@@ -745,7 +743,7 @@ class AdminMaterialsPagesTest extends TestCase
             'password' => 'secret-123',
             'email' => 'url-import-admin@example.com',
             'display_name' => 'Url Import Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
         $this->createReadyUrlImportAiModel();
@@ -798,7 +796,7 @@ class AdminMaterialsPagesTest extends TestCase
             'password' => 'secret-123',
             'email' => 'url-import-no-model@example.com',
             'display_name' => 'Url Import No Model Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
 
@@ -876,7 +874,7 @@ class AdminMaterialsPagesTest extends TestCase
             'password' => 'secret-123',
             'email' => 'url-import-runner@example.com',
             'display_name' => 'Url Import Runner',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
         $this->createReadyUrlImportAiModel();
@@ -1025,7 +1023,7 @@ class AdminMaterialsPagesTest extends TestCase
             'password' => 'secret-123',
             'email' => 'url-import-ai-runner@example.com',
             'display_name' => 'Url Import AI Runner',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
 
@@ -1084,7 +1082,7 @@ class AdminMaterialsPagesTest extends TestCase
             'password' => 'secret-123',
             'email' => 'url-import-wrapped-json@example.com',
             'display_name' => 'Url Import Wrapped Json Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
         $this->createReadyUrlImportAiModel();
@@ -1142,7 +1140,7 @@ class AdminMaterialsPagesTest extends TestCase
             'password' => 'secret-123',
             'email' => 'url-import-plain-list@example.com',
             'display_name' => 'Url Import Plain List Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
         $this->createReadyUrlImportAiModel();
@@ -1201,7 +1199,7 @@ class AdminMaterialsPagesTest extends TestCase
             'password' => 'secret-123',
             'email' => 'url-import-failover@example.com',
             'display_name' => 'Url Import Failover Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
 
@@ -1280,7 +1278,7 @@ class AdminMaterialsPagesTest extends TestCase
             'password' => 'secret-123',
             'email' => 'url-import-retry@example.com',
             'display_name' => 'Url Import Retry Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
         $this->createReadyUrlImportAiModel();

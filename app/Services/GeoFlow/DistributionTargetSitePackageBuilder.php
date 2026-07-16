@@ -1943,16 +1943,6 @@ function localizeArticleAssets(array $config, array $article, array $assets): ar
             if ($content !== '' && strlen($content) > $maxBytes) {
                 $content = '';
             }
-        } elseif (preg_match('~^https?://~i', $sourceUrl) === 1) {
-            $context = stream_context_create([
-                'http' => ['timeout' => 5, 'follow_location' => 1],
-                'https' => ['timeout' => 5, 'follow_location' => 1],
-            ]);
-            $remote = @file_get_contents($sourceUrl, false, $context, 0, $maxBytes + 1);
-            $content = is_string($remote) ? $remote : '';
-            if ($content !== '' && strlen($content) > $maxBytes) {
-                $content = '';
-            }
         }
 
         if ($content !== '' && file_put_contents($target, $content) !== false) {

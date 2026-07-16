@@ -915,7 +915,7 @@ class AdminSiteThemeReplicationTest extends TestCase
             'password' => 'secret-123',
             'email' => uniqid('theme-replication-admin-').'@example.com',
             'display_name' => 'Theme Replication Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
     }

@@ -162,11 +162,7 @@ class WordPressRestPublisher implements DistributionPublisherInterface
             return;
         }
 
-        $body = html_entity_decode(strip_tags((string) $response->body()), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $body = preg_replace('/\s+/', ' ', trim($body));
-        $summary = is_string($body) && mb_strlen($body) > 300 ? mb_substr($body, 0, 300).'...' : (string) $body;
-
-        throw new RuntimeException($operation.'失败：HTTP '.$response->status().($summary !== '' ? ' '.$summary : ''));
+        throw new RuntimeException($operation.'失败：HTTP '.$response->status());
     }
 
     /**

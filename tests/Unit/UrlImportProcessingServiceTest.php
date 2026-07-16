@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Services\GeoFlow\UrlImportProcessingService;
-use App\Support\GeoFlow\ApiKeyCrypto;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -15,7 +14,7 @@ class UrlImportProcessingServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new UrlImportProcessingService(new ApiKeyCrypto);
+        $this->service = app(UrlImportProcessingService::class);
     }
 
     public function test_it_accepts_valid_public_url(): void

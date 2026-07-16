@@ -1907,8 +1907,8 @@ return array_replace_recursive($base, [
             'compliance_ack' => 'Confirme primeiro o aviso de conformidade.',
         ],
         'error' => [
-            'fetch_failed' => 'Falha ao buscar página de referência: :url retornou HTTP :status.',
-            'html_too_large' => 'A página de referência é grande demais: :url.',
+            'fetch_failed' => 'Falha ao buscar página de referência. HTTP :status.',
+            'html_too_large' => 'A página de referência é grande demais.',
             'compliance_failed' => 'Os arquivos gerados não passaram na verificação de segurança.',
             'compliance_violation' => ':path acionou a regra de segurança :rule.',
             'job_failed' => 'A tarefa de clonagem de tema falhou.',
