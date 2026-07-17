@@ -8,6 +8,8 @@ use Throwable;
 
 class SecurityAuditService
 {
+    private const AUDIT_CHUNK_SIZE = 100;
+
     private const SEVERITIES = ['critical', 'high', 'medium', 'low'];
 
     /**
@@ -35,7 +37,7 @@ class SecurityAuditService
             $registryReady = $this->checkSchema(
                 $findings,
                 'managed_image_paths',
-                ['id', 'path_hash', 'content_sha256', 'state', 'updated_at'],
+                ['id', 'path_hash', 'file_path', 'content_sha256', 'state', 'lock_version', 'created_at', 'updated_at'],
                 'SECURITY_SCHEMA_MANAGED_IMAGE_PATHS_INCOMPLETE',
                 'The managed image registry schema is incomplete.',
                 'Run the v2.1.1 database migrations while physical image deletion remains disabled.',
@@ -85,7 +87,9 @@ class SecurityAuditService
 
                 $unsafeReferences = DB::table('images as images')
                     ->join('managed_image_paths as registry', 'registry.path_hash', '=', 'images.managed_path_hash')
-                    ->where('registry.state', '<>', 'present')
+                    ->where(static function ($query): void {
+                        $query->whereNull('registry.state')->orWhere('registry.state', '<>', 'present');
+                    })
                     ->count();
                 $this->add(
                     $findings,
@@ -123,7 +127,9 @@ class SecurityAuditService
                 $readinessBlockers += $staleDeleting;
 
                 $invalidState = DB::table('managed_image_paths')
-                    ->whereNotIn('state', ['present', 'missing', 'deleting'])
+                    ->where(static function ($query): void {
+                        $query->whereNull('state')->orWhereNotIn('state', ['present', 'missing', 'deleting']);
+                    })
                     ->count();
                 $this->add(
                     $findings,
@@ -181,7 +187,9 @@ class SecurityAuditService
 
             if ($idempotencyReady) {
                 $invalidStates = DB::table('api_idempotency_keys')
-                    ->whereNotIn('state', ['completed', 'in_progress'])
+                    ->where(static function ($query): void {
+                        $query->whereNull('state')->orWhereNotIn('state', ['completed', 'in_progress']);
+                    })
                     ->count();
                 $this->add(
                     $findings,
@@ -192,12 +200,12 @@ class SecurityAuditService
                     'Quarantine and reconcile the affected records before accepting related retries.',
                 );
 
-                $invalidFingerprints = $this->countInvalidFingerprints();
+                $rowAudit = $this->auditIdempotencyRows();
                 $this->add(
                     $findings,
                     'IDEMPOTENCY_INVALID_FINGERPRINT',
                     'high',
-                    $invalidFingerprints,
+                    $rowAudit['invalid_fingerprints'],
                     'API idempotency records contain an invalid request fingerprint.',
                     'Reconcile or remove corrupted records after confirming the business operation result.',
                 );
@@ -214,12 +222,11 @@ class SecurityAuditService
                     'Let legacy keys expire or reconcile them manually; clients must use new idempotency keys.',
                 );
 
-                $invalidReservations = $this->countInvalidReservations();
                 $this->add(
                     $findings,
                     'IDEMPOTENCY_INVALID_RESERVATION',
                     'high',
-                    $invalidReservations,
+                    $rowAudit['invalid_reservations'],
                     'API idempotency owner, lease, state, and response fields form an invalid combination.',
                     'Confirm the operation result before repairing or removing the affected reservation.',
                 );
@@ -333,31 +340,14 @@ class SecurityAuditService
         $findings[] = compact('code', 'severity', 'count', 'message', 'remediation');
     }
 
-    private function countInvalidFingerprints(): int
-    {
-        $count = 0;
-        foreach (DB::table('api_idempotency_keys')
-            ->select(['fingerprint_version', 'request_hash'])
-            ->orderBy('id')
-            ->cursor() as $row) {
-            if (! in_array((int) $row->fingerprint_version, [1, 2], true)
-                || preg_match('/^[a-f0-9]{64}$/D', (string) $row->request_hash) !== 1) {
-                $count++;
-            }
-        }
-
-        return $count;
-    }
-
     private function countInvalidRegistryContentHashes(): int
     {
         $count = 0;
         foreach (DB::table('managed_image_paths')
             ->whereNotNull('content_sha256')
             ->where('content_sha256', '<>', '')
-            ->select('content_sha256')
-            ->orderBy('id')
-            ->cursor() as $row) {
+            ->select(['id', 'content_sha256'])
+            ->lazyById(self::AUDIT_CHUNK_SIZE) as $row) {
             if (preg_match('/^[a-f0-9]{64}$/D', (string) $row->content_sha256) !== 1) {
                 $count++;
             }
@@ -366,13 +356,21 @@ class SecurityAuditService
         return $count;
     }
 
-    private function countInvalidReservations(): int
+    /**
+     * @return array{invalid_fingerprints:int,invalid_reservations:int}
+     */
+    private function auditIdempotencyRows(): array
     {
-        $count = 0;
+        $invalidFingerprints = 0;
+        $invalidReservations = 0;
         foreach (DB::table('api_idempotency_keys')
-            ->select(['state', 'fingerprint_version', 'owner_token', 'lease_expires_at', 'response_status'])
-            ->orderBy('id')
-            ->cursor() as $row) {
+            ->select(['id', 'state', 'fingerprint_version', 'request_hash', 'owner_token', 'lease_expires_at', 'response_status'])
+            ->lazyById(self::AUDIT_CHUNK_SIZE) as $row) {
+            if (! in_array((int) $row->fingerprint_version, [1, 2], true)
+                || preg_match('/^[a-f0-9]{64}$/D', (string) $row->request_hash) !== 1) {
+                $invalidFingerprints++;
+            }
+
             $invalid = $row->state === 'in_progress'
                 ? (int) $row->fingerprint_version !== 2
                     || preg_match('/^[a-f0-9]{64}$/D', (string) $row->owner_token) !== 1
@@ -382,11 +380,14 @@ class SecurityAuditService
                     && ($row->owner_token !== null || $row->lease_expires_at !== null));
 
             if ($invalid) {
-                $count++;
+                $invalidReservations++;
             }
         }
 
-        return $count;
+        return [
+            'invalid_fingerprints' => $invalidFingerprints,
+            'invalid_reservations' => $invalidReservations,
+        ];
     }
 
     /**

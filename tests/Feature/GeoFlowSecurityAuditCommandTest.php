@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Contracts\Outbound\HostResolver;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -143,6 +144,23 @@ class GeoFlowSecurityAuditCommandTest extends TestCase
         $this->assertStringNotContainsString('no such table', strtolower($output));
     }
 
+    public function test_missing_managed_registry_security_column_is_reported_before_data_queries(): void
+    {
+        Schema::table('managed_image_paths', static function (Blueprint $table): void {
+            $table->dropColumn('file_path');
+        });
+
+        [$exitCode, $output] = $this->runAudit(true);
+
+        $this->assertSame(1, $exitCode);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertContains(
+            'SECURITY_SCHEMA_MANAGED_IMAGE_PATHS_INCOMPLETE',
+            array_column($report['findings'], 'code'),
+        );
+        $this->assertStringNotContainsString('SQLSTATE', $output);
+    }
+
     public function test_audit_performs_no_mutating_sql_http_dns_or_subprocess_work(): void
     {
         Http::preventStrayRequests();
@@ -246,6 +264,142 @@ class GeoFlowSecurityAuditCommandTest extends TestCase
         );
     }
 
+    public function test_invalid_hash_and_reservation_counts_cross_multiple_read_only_chunks(): void
+    {
+        $registryRows = [];
+        $idempotencyRows = [];
+        for ($index = 0; $index < 205; $index++) {
+            $registryRows[] = [
+                'path_hash' => hash('sha256', 'registry-path-'.$index),
+                'file_path' => 'storage/uploads/images/audit/chunk-'.$index.'.png',
+                'content_sha256' => str_repeat('z', 64),
+                'state' => 'missing',
+                'lock_version' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+            $idempotencyRows[] = [
+                'idempotency_key' => 'chunk-key-'.$index,
+                'route_key' => 'POST /audit/chunk',
+                'request_hash' => str_repeat('z', 64),
+                'response_body' => '{}',
+                'response_status' => 0,
+                'fingerprint_version' => 2,
+                'state' => 'in_progress',
+                'owner_token' => str_repeat('g', 64),
+                'lease_expires_at' => now()->addHour(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        foreach (array_chunk($registryRows, 40) as $chunk) {
+            DB::table('managed_image_paths')->insert($chunk);
+        }
+        foreach (array_chunk($idempotencyRows, 40) as $chunk) {
+            DB::table('api_idempotency_keys')->insert($chunk);
+        }
+
+        [$exitCode, $output] = $this->runAudit(true);
+
+        $this->assertSame(1, $exitCode);
+        $findings = collect(json_decode($output, true, flags: JSON_THROW_ON_ERROR)['findings']);
+        $this->assertSame(205, $findings->firstWhere('code', 'MANAGED_REGISTRY_INVALID_CONTENT_HASH')['count']);
+        $this->assertSame(205, $findings->firstWhere('code', 'IDEMPOTENCY_INVALID_FINGERPRINT')['count']);
+        $this->assertSame(205, $findings->firstWhere('code', 'IDEMPOTENCY_INVALID_RESERVATION')['count']);
+
+        $source = (string) file_get_contents(app_path('Services/Security/SecurityAuditService.php'));
+        $this->assertStringContainsString('->lazyById(', $source);
+        $this->assertStringNotContainsString('->cursor()', $source);
+    }
+
+    public function test_null_registry_and_idempotency_states_are_counted_as_unsafe(): void
+    {
+        Schema::drop('managed_image_paths');
+        Schema::create('managed_image_paths', static function (Blueprint $table): void {
+            $table->id();
+            $table->char('path_hash', 64)->unique();
+            $table->text('file_path');
+            $table->char('content_sha256', 64)->nullable()->index();
+            $table->string('state', 20)->nullable()->index();
+            $table->unsignedBigInteger('lock_version')->default(0);
+            $table->timestamps();
+        });
+        Schema::drop('api_idempotency_keys');
+        Schema::create('api_idempotency_keys', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('idempotency_key', 120);
+            $table->string('route_key', 120);
+            $table->string('request_hash', 64);
+            $table->text('response_body');
+            $table->integer('response_status');
+            $table->unsignedTinyInteger('fingerprint_version')->default(1);
+            $table->string('state', 20)->nullable()->index();
+            $table->char('owner_token', 64)->nullable();
+            $table->timestamp('lease_expires_at')->nullable()->index();
+            $table->timestamps();
+            $table->unique(['idempotency_key', 'route_key']);
+        });
+
+        $pathHash = hash('sha256', 'null-state-path');
+        DB::table('managed_image_paths')->insert([
+            'path_hash' => $pathHash,
+            'file_path' => 'storage/uploads/images/audit/null-state.png',
+            'content_sha256' => hash('sha256', 'null-state-content'),
+            'state' => null,
+            'lock_version' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $libraryId = DB::table('image_libraries')->insertGetId([
+            'name' => 'Null state fixture',
+            'description' => null,
+            'image_count' => 1,
+            'used_task_count' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('images')->insert([
+            'library_id' => $libraryId,
+            'filename' => 'null-state.png',
+            'original_name' => 'null-state.png',
+            'file_name' => 'null-state.png',
+            'file_path' => 'storage/uploads/images/audit/null-state.png',
+            'managed_path_hash' => $pathHash,
+            'file_size' => 1,
+            'mime_type' => 'image/png',
+            'width' => 1,
+            'height' => 1,
+            'tags' => null,
+            'used_count' => 0,
+            'usage_count' => 0,
+            'created_at' => now(),
+        ]);
+        DB::table('api_idempotency_keys')->insert([
+            'idempotency_key' => 'null-state-idempotency',
+            'route_key' => 'POST /audit/null-state',
+            'request_hash' => hash('sha256', 'null-state-request'),
+            'response_body' => '{}',
+            'response_status' => 200,
+            'fingerprint_version' => 2,
+            'state' => null,
+            'owner_token' => null,
+            'lease_expires_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        [$exitCode, $output] = $this->runAudit(true);
+
+        $this->assertSame(1, $exitCode);
+        $codes = array_column(
+            json_decode($output, true, flags: JSON_THROW_ON_ERROR)['findings'],
+            'code',
+        );
+        $this->assertContains('IMAGE_REGISTRY_UNSAFE_STATE', $codes);
+        $this->assertContains('MANAGED_REGISTRY_INVALID_STATE', $codes);
+        $this->assertContains('IDEMPOTENCY_INVALID_STATE', $codes);
+    }
+
     public function test_deleting_and_orphan_findings_use_separate_short_and_long_thresholds(): void
     {
         DB::table('managed_image_paths')->insert([
@@ -296,11 +450,16 @@ class GeoFlowSecurityAuditCommandTest extends TestCase
         $combinedOutput = $jsonOutput.$humanOutput;
 
         foreach ([
-            'storage/uploads/images/secret-customer/private.png',
+            'storage/uploads/images/secret-customer/secret-missing-registry.png',
             'private-token-host.example',
+            'expired-secret-key',
+            'POST /secret',
+            'plain-text-secret-token',
             str_repeat('a', 64),
             str_repeat('b', 64),
             str_repeat('c', 64),
+            str_repeat('1', 64),
+            str_repeat('2', 64),
         ] as $secret) {
             $this->assertStringNotContainsString($secret, $combinedOutput);
         }
