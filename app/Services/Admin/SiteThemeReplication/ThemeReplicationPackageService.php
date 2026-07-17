@@ -19,6 +19,8 @@ class ThemeReplicationPackageService
     public function __construct(
         private readonly SiteThemeReplicationService $replicationService,
         private readonly ThemeReplicationPackagePathGuard $pathGuard,
+        private readonly ThemeReplicationStorageGuard $storageGuard,
+        private readonly ThemeReplicationStorageLock $storageLock,
     ) {}
 
     /**
@@ -27,14 +29,11 @@ class ThemeReplicationPackageService
     public function createPackage(SiteThemeReplication $replication): array
     {
         $replicationId = $this->pathGuard->positiveInteger($replication->getKey());
-        $lockHandle = $this->acquirePackageLock($replicationId);
 
-        try {
-            return $this->createPackageWhileLocked($replication, $replicationId);
-        } finally {
-            @flock($lockHandle, LOCK_UN);
-            fclose($lockHandle);
-        }
+        return $this->storageLock->run(
+            $replicationId,
+            fn (): array => $this->createPackageWhileLocked($replication, $replicationId),
+        );
     }
 
     /**
@@ -45,6 +44,10 @@ class ThemeReplicationPackageService
         $packageDir = "geoflow-theme-replications/{$replicationId}/packages";
         $zip = new ZipArchive;
         $zipIsOpen = false;
+        $temporaryPath = null;
+        $relativePath = null;
+        $backupPath = null;
+        $finalPackageWritten = false;
 
         try {
             $replication = $replication->fresh();
@@ -58,6 +61,7 @@ class ThemeReplicationPackageService
             $packageName = "{$themeId}-v{$versionNumber}.zip";
             $relativePath = "{$packageDir}/{$packageName}";
             $temporaryPath = $packageDir.'/.'.$packageName.'.'.Str::random(20).'.tmp';
+            $this->storageGuard->ensureStorageDirectory($packageDir);
             $absolutePath = Storage::disk('local')->path($relativePath);
             $temporaryAbsolutePath = Storage::disk('local')->path($temporaryPath);
             $draftRoot = "geoflow-theme-replications/{$replicationId}/draft/{$versionNumber}";
@@ -77,7 +81,6 @@ class ThemeReplicationPackageService
                 $themeId,
             );
 
-            Storage::disk('local')->makeDirectory($packageDir);
             if ($zip->open($temporaryAbsolutePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
                 throw new RuntimeException(__('admin.theme_replication.error.package_create_failed'));
             }
@@ -94,9 +97,19 @@ class ThemeReplicationPackageService
             }
             $zipIsOpen = false;
 
+            if (@lstat($absolutePath) !== false) {
+                if (is_link($absolutePath) || ! is_file($absolutePath)) {
+                    $this->reject();
+                }
+                $backupPath = $packageDir.'/.'.$packageName.'.'.Str::random(20).'.bak';
+                if (! @rename($absolutePath, Storage::disk('local')->path($backupPath))) {
+                    throw new RuntimeException(__('admin.theme_replication.error.package_create_failed'));
+                }
+            }
             if (! @rename($temporaryAbsolutePath, $absolutePath)) {
                 throw new RuntimeException(__('admin.theme_replication.error.package_create_failed'));
             }
+            $finalPackageWritten = true;
 
             clearstatcache(true, $absolutePath);
             $packageBytes = @filesize($absolutePath);
@@ -115,6 +128,9 @@ class ThemeReplicationPackageService
                 'package' => $packageName,
                 'bytes' => $result['bytes'],
             ]);
+            if (is_string($backupPath)) {
+                $this->storageGuard->deleteStorageFile($backupPath);
+            }
 
             return $result;
         } catch (Throwable $exception) {
@@ -123,7 +139,22 @@ class ThemeReplicationPackageService
             }
             unset($zip);
 
-            Storage::disk('local')->deleteDirectory($packageDir);
+            foreach ([$temporaryPath, $finalPackageWritten ? $relativePath : null] as $cleanupPath) {
+                if (! is_string($cleanupPath)) {
+                    continue;
+                }
+                try {
+                    $this->storageGuard->deleteStorageFile($cleanupPath);
+                } catch (Throwable) {
+                    // Preserve the original failure while cleanup remains fail-closed.
+                }
+            }
+            if (is_string($backupPath)) {
+                $backupAbsolutePath = Storage::disk('local')->path($backupPath);
+                if (@lstat($backupAbsolutePath) !== false && is_string($relativePath)) {
+                    @rename($backupAbsolutePath, Storage::disk('local')->path($relativePath));
+                }
+            }
 
             if ($exception instanceof RuntimeException) {
                 throw $exception;
@@ -302,85 +333,6 @@ class ThemeReplicationPackageService
     private function configuredLimit(string $key): int
     {
         return $this->pathGuard->positiveInteger(config($key));
-    }
-
-    /**
-     * @return resource
-     */
-    private function acquirePackageLock(int $replicationId)
-    {
-        $disk = Storage::disk('local');
-        $lockDirectory = 'geoflow-theme-replication-package-locks';
-        $timeoutMilliseconds = $this->configuredLimit('geoflow.theme_replication_package_lock_timeout_milliseconds');
-        if ($timeoutMilliseconds > 60_000) {
-            $this->reject();
-        }
-        $disk->makeDirectory($lockDirectory);
-        $storageRootAbsolute = rtrim($disk->path(''), DIRECTORY_SEPARATOR);
-        $storageRootReal = $this->canonicalDirectory($storageRootAbsolute);
-        $lockDirectoryAbsolute = $disk->path($lockDirectory);
-        $this->assertNoSymbolicLinkComponents($lockDirectoryAbsolute, $storageRootAbsolute);
-        $lockDirectoryReal = $this->canonicalDirectory($lockDirectoryAbsolute, $storageRootReal);
-        $lockAbsolutePath = $disk->path($lockDirectory.'/'.$replicationId.'.lock');
-        if (is_link($lockAbsolutePath)) {
-            $this->reject();
-        }
-
-        $handle = @fopen($lockAbsolutePath, 'c+b');
-        if ($handle === false) {
-            throw new RuntimeException(__('admin.theme_replication.error.package_create_failed'));
-        }
-
-        $lockStat = @lstat($lockAbsolutePath);
-        $handleStat = fstat($handle);
-        $lockRealPath = realpath($lockAbsolutePath);
-        if (
-            $lockStat === false
-            || $handleStat === false
-            || is_link($lockAbsolutePath)
-            || ($lockStat['mode'] & 0170000) !== 0100000
-            || ($handleStat['mode'] & 0170000) !== 0100000
-            || $lockStat['dev'] !== $handleStat['dev']
-            || $lockStat['ino'] !== $handleStat['ino']
-            || ! is_string($lockRealPath)
-            || ! $this->isWithinDirectory($lockRealPath, $lockDirectoryReal)
-        ) {
-            fclose($handle);
-            $this->reject();
-        }
-
-        $deadline = hrtime(true) + ($timeoutMilliseconds * 1_000_000);
-        do {
-            if (@flock($handle, LOCK_EX | LOCK_NB)) {
-                $lockedPathStat = @lstat($lockAbsolutePath);
-                $lockedHandleStat = fstat($handle);
-                $lockedRealPath = realpath($lockAbsolutePath);
-                if (
-                    $lockedPathStat === false
-                    || $lockedHandleStat === false
-                    || is_link($lockAbsolutePath)
-                    || $lockedPathStat['dev'] !== $lockedHandleStat['dev']
-                    || $lockedPathStat['ino'] !== $lockedHandleStat['ino']
-                    || ! is_string($lockedRealPath)
-                    || ! $this->isWithinDirectory($lockedRealPath, $lockDirectoryReal)
-                ) {
-                    @flock($handle, LOCK_UN);
-                    fclose($handle);
-                    $this->reject();
-                }
-
-                return $handle;
-            }
-
-            $remainingMicroseconds = intdiv(max(0, $deadline - hrtime(true)), 1000);
-            if ($remainingMicroseconds > 0) {
-                usleep(min(10_000, $remainingMicroseconds));
-            }
-        } while (hrtime(true) < $deadline);
-
-        fclose($handle);
-
-        throw new RuntimeException(__('admin.theme_replication.error.package_create_failed'));
     }
 
     private function canonicalDirectory(string $absolutePath, ?string $allowedRoot = null): string

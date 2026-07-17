@@ -265,6 +265,7 @@
             </div>
         </section>
 
+        @if ($canManageProtectedWorkflows)
         <section class="rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
             <div class="border-b border-gray-100 px-6 py-4">
                 <div class="flex items-center justify-between">
@@ -309,6 +310,7 @@
                 </div>
             </div>
         </section>
+        @endif
     </div>
 
     <div class="mt-6">

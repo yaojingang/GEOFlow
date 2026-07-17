@@ -105,7 +105,8 @@ class AdminMaterialsPagesTest extends TestCase
             ])
             ->assertSee(__('admin.materials.foundation_title'))
             ->assertSee(__('admin.materials.author_manage_title'))
-            ->assertSee(__('admin.materials.url_import'));
+            ->assertDontSee(__('admin.materials.url_import'))
+            ->assertDontSee(route('admin.url-import'), false);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.authors.index'))

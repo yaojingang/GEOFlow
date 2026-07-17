@@ -8,7 +8,7 @@ class SystemUpdateArchiveValidator
 {
     public function assertAllowedArchiveUrl(string $archiveUrl): void
     {
-        $archive = $this->parseUrl($archiveUrl);
+        $archive = $this->parseUnambiguousHttpsUrl($archiveUrl);
         $scheme = strtolower((string) ($archive['scheme'] ?? ''));
         if ($scheme !== 'https') {
             throw new RuntimeException(__('admin.system_updates.error.archive_repository_mismatch'));
@@ -22,7 +22,7 @@ class SystemUpdateArchiveValidator
             $allowedRepository = 'https://'.$allowedRepository;
         }
 
-        $allowed = $this->parseUrl($allowedRepository);
+        $allowed = $this->parseUnambiguousHttpsUrl($allowedRepository);
         if (strtolower((string) ($allowed['scheme'] ?? '')) !== 'https') {
             throw new RuntimeException(__('admin.system_updates.error.archive_repository_mismatch'));
         }
@@ -46,11 +46,40 @@ class SystemUpdateArchiveValidator
     /**
      * @return array<string, mixed>
      */
-    private function parseUrl(string $url): array
+    private function parseUnambiguousHttpsUrl(string $url): array
     {
-        $parts = parse_url($url);
-        if (! is_array($parts) || empty($parts['host'])) {
+        if (
+            $url === ''
+            || $url !== trim($url)
+            || preg_match('/[\x00-\x1F\x7F]/', $url) === 1
+            || str_contains($url, '\\')
+            || str_contains($url, '%')
+        ) {
             throw new RuntimeException(__('admin.system_updates.error.archive_repository_mismatch'));
+        }
+
+        $parts = parse_url($url);
+        if (
+            ! is_array($parts)
+            || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+            || empty($parts['host'])
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || isset($parts['query'])
+            || isset($parts['fragment'])
+            || (isset($parts['port']) && (int) $parts['port'] !== 443)
+        ) {
+            throw new RuntimeException(__('admin.system_updates.error.archive_repository_mismatch'));
+        }
+
+        $path = (string) ($parts['path'] ?? '/');
+        if (str_contains($path, '//')) {
+            throw new RuntimeException(__('admin.system_updates.error.archive_repository_mismatch'));
+        }
+        foreach (explode('/', trim($path, '/')) as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                throw new RuntimeException(__('admin.system_updates.error.archive_repository_mismatch'));
+            }
         }
 
         return $parts;

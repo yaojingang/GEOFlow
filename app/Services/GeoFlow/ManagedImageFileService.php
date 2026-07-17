@@ -123,13 +123,15 @@ class ManagedImageFileService extends ManagedImagePathHasherV1
     }
 
     /**
-     * @return array{processed:int,resolved:int,terminal:int,remaining:int,deletion_enabled:bool,ready:bool}
+     * @return array{processed:int,resolved:int,terminal:int,remaining:int,registry_reconciled:int,registry_failed:int,deletion_enabled:bool,ready:bool}
      */
-    public function managedPathHashReadiness(): array
+    public function managedPathHashReadiness(bool $reconcileRegistry = true): array
     {
         $processed = 0;
         $resolved = 0;
         $terminal = 0;
+        $registryReconciled = 0;
+        $registryFailed = 0;
 
         Image::query()
             ->whereNull('managed_path_hash')
@@ -160,6 +162,65 @@ class ManagedImageFileService extends ManagedImagePathHasherV1
                 }
             });
 
+        if ($reconcileRegistry) {
+            $reconciledPaths = [];
+
+            Image::query()
+                ->select(['id', 'file_path', 'managed_path_hash'])
+                ->chunkById(200, function ($images) use (&$terminal, &$registryReconciled, &$registryFailed, &$reconciledPaths): void {
+                    foreach ($images as $image) {
+                        $filePath = (string) $image->file_path;
+
+                        try {
+                            $managed = $this->resolve($filePath, false);
+                        } catch (InvalidArgumentException) {
+                            $terminal++;
+
+                            continue;
+                        }
+
+                        $storedPathHash = (string) $image->managed_path_hash;
+                        if ($storedPathHash === '' || ! hash_equals($managed['path_hash'], $storedPathHash)) {
+                            $registryFailed++;
+
+                            continue;
+                        }
+                        if (isset($reconciledPaths[$managed['path_hash']])) {
+                            continue;
+                        }
+                        $reconciledPaths[$managed['path_hash']] = true;
+
+                        if (! $managed['exists']) {
+                            try {
+                                $this->withPathLock($managed['db_path'], function () use ($managed): void {
+                                    $this->markRegistry($managed['db_path'], 'missing');
+                                });
+                            } catch (\Throwable) {
+                                // The failure count below keeps deletion disabled until an operator resolves the path.
+                            }
+                            $registryFailed++;
+
+                            continue;
+                        }
+
+                        try {
+                            $this->withPathLock($managed['db_path'], function () use ($managed): void {
+                                $current = $this->resolve($managed['db_path'], true);
+                                $contentSha256 = hash_file('sha256', $current['absolute_path']);
+                                if (! is_string($contentSha256)) {
+                                    throw new RuntimeException('managed_image_content_hash_failed');
+                                }
+
+                                $this->markRegistry($current['db_path'], 'present', $contentSha256);
+                            });
+                            $registryReconciled++;
+                        } catch (\Throwable) {
+                            $registryFailed++;
+                        }
+                    }
+                });
+        }
+
         $remaining = Image::query()->whereNull('managed_path_hash')->count();
         $deletionEnabled = (bool) config('geoflow.managed_image_deletion_enabled', false);
 
@@ -168,8 +229,13 @@ class ManagedImageFileService extends ManagedImagePathHasherV1
             'resolved' => $resolved,
             'terminal' => $terminal,
             'remaining' => $remaining,
+            'registry_reconciled' => $registryReconciled,
+            'registry_failed' => $registryFailed,
             'deletion_enabled' => $deletionEnabled,
-            'ready' => $deletionEnabled && $remaining === 0,
+            'ready' => $deletionEnabled
+                && $remaining === 0
+                && $terminal === 0
+                && $registryFailed === 0,
         ];
     }
 
@@ -247,7 +313,7 @@ class ManagedImageFileService extends ManagedImagePathHasherV1
 
     private function deleteUnreferencedWithFence(string $path): bool
     {
-        $readiness = $this->managedPathHashReadiness();
+        $readiness = $this->managedPathHashReadiness(false);
         if (! $readiness['deletion_enabled']) {
             throw new RuntimeException('managed_image_deletion_rollout_gate_closed');
         }

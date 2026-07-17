@@ -35,6 +35,8 @@ class DashboardController extends Controller
 {
     public function index(): View
     {
+        $canManageProtectedWorkflows = auth('admin')->user()?->canManageProtectedWorkflows() === true;
+
         return view('admin.dashboard', [
             'pageTitle' => __('admin.dashboard.page_title'),
             'activeMenu' => 'dashboard',
@@ -44,8 +46,9 @@ class DashboardController extends Controller
             'taskHealth' => $this->buildTaskHealth(),
             'materialHealth' => $this->buildMaterialHealth(),
             'aiHealth' => $this->buildAiHealth(),
-            'distributionHealth' => $this->buildDistributionHealth(),
-            'urlImportHealth' => $this->buildUrlImportHealth(),
+            'canManageProtectedWorkflows' => $canManageProtectedWorkflows,
+            'distributionHealth' => $canManageProtectedWorkflows ? $this->buildDistributionHealth() : [],
+            'urlImportHealth' => $canManageProtectedWorkflows ? $this->buildUrlImportHealth() : [],
         ]);
     }
 

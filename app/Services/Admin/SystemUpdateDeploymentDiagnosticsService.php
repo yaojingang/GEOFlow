@@ -285,8 +285,7 @@ class SystemUpdateDeploymentDiagnosticsService
             ];
         }
 
-        $lines = @file($path, FILE_IGNORE_NEW_LINES) ?: [];
-        $recent = array_slice($lines, -200);
+        $recent = $this->tailLines($path, 200);
         $errorLines = array_values(array_filter($recent, static function (string $line): bool {
             $line = strtolower($line);
 
@@ -302,6 +301,61 @@ class SystemUpdateDeploymentDiagnosticsService
             'path' => $path,
             'lines' => array_map(fn (string $line): string => $this->shorten($line, 260), array_slice($errorLines, -8)),
         ];
+    }
+
+    /** @return list<string> */
+    private function tailLines(string $path, int $limit): array
+    {
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            return [];
+        }
+
+        $position = 0;
+        $buffer = '';
+        try {
+            if (fseek($handle, 0, SEEK_END) !== 0) {
+                return [];
+            }
+            $end = ftell($handle);
+            if (! is_int($end)) {
+                return [];
+            }
+            $position = $end;
+            $bytesRead = 0;
+            $maxBytes = 2 * 1024 * 1024;
+
+            while ($position > 0 && substr_count($buffer, "\n") <= $limit && $bytesRead < $maxBytes) {
+                $length = min(8192, $position, $maxBytes - $bytesRead);
+                $position -= $length;
+                if (fseek($handle, $position) !== 0) {
+                    break;
+                }
+                $chunk = fread($handle, $length);
+                if (! is_string($chunk) || $chunk === '') {
+                    break;
+                }
+                $buffer = $chunk.$buffer;
+                $bytesRead += strlen($chunk);
+            }
+        } finally {
+            fclose($handle);
+        }
+
+        if ($position > 0) {
+            $firstLineBreak = strpos($buffer, "\n");
+            if ($firstLineBreak === false) {
+                return [];
+            }
+            $buffer = substr($buffer, $firstLineBreak + 1);
+        }
+
+        $lines = preg_split('/\r\n|\n|\r/', $buffer) ?: [];
+        if ($lines !== [] && end($lines) === '') {
+            array_pop($lines);
+        }
+
+        return array_values(array_slice($lines, -max(1, $limit)));
     }
 
     /**

@@ -62,9 +62,15 @@ final class SafeOutboundHttpClient
     ) {}
 
     /** @param array<string, mixed> $query */
-    public function get(PendingRequest $request, string $url, int $maxBytes, int $maxRedirects = 0, array $query = []): Response
-    {
-        return $this->send($request, 'GET', $url, $query, $maxBytes, $maxRedirects);
+    public function get(
+        PendingRequest $request,
+        string $url,
+        int $maxBytes,
+        int $maxRedirects = 0,
+        array $query = [],
+        ?callable $redirectValidator = null,
+    ): Response {
+        return $this->send($request, 'GET', $url, $query, $maxBytes, $maxRedirects, $redirectValidator);
     }
 
     /** @param array<string, mixed> $data */
@@ -89,6 +95,7 @@ final class SafeOutboundHttpClient
         array $data,
         int $maxBytes,
         int $maxRedirects = 0,
+        ?callable $redirectValidator = null,
     ): Response {
         if ($maxBytes < 1 || $maxRedirects < 0 || $maxRedirects > 3) {
             throw new OutboundRequestBlockedException('invalid_request_policy');
@@ -132,8 +139,13 @@ final class SafeOutboundHttpClient
                 throw new OutboundRequestBlockedException('redirect_limit_exceeded');
             }
 
+            $redirectUrl = $this->redirectUrl($target->url, $location);
+            if ($redirectValidator !== null) {
+                $redirectValidator($redirectUrl);
+            }
+
             $previousTarget = $target;
-            $currentUrl = $this->redirectUrl($target->url, $location);
+            $currentUrl = $redirectUrl;
             $redirects++;
             $status = $response->status();
             if ($status === 303 || (in_array($status, [301, 302], true) && $method === 'POST')) {

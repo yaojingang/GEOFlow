@@ -55,6 +55,7 @@
                 <label class="mb-1 block text-sm font-medium text-gray-700">{{ __('admin.analytics.filters.date_to') }}</label>
                 <input type="date" name="date_to" value="{{ $filterData['date_to'] }}" data-analytics-custom-date class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
             </div>
+            @if ($canManageProtectedWorkflows)
             <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">{{ __('admin.analytics.filters.channel') }}</label>
                 <select name="channel_id" class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
@@ -64,6 +65,7 @@
                     @endforeach
                 </select>
             </div>
+            @endif
             <div>
                 <label class="mb-1 block text-sm font-medium text-gray-700">{{ __('admin.analytics.filters.task') }}</label>
                 <select name="task_id" class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">

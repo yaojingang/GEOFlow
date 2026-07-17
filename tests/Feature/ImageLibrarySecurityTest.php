@@ -18,6 +18,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -61,8 +62,11 @@ class ImageLibrarySecurityTest extends TestCase
 
     public function test_hash_migration_depends_only_on_the_versioned_hasher_contract(): void
     {
-        $source = file_get_contents(database_path('migrations/2026_07_17_000403_add_managed_path_hash_to_images_table.php'));
-        $this->assertIsString($source);
+        $migrationSource = file_get_contents(database_path('migrations/2026_07_17_000403_add_managed_path_hash_to_images_table.php'));
+        $gateSource = file_get_contents(app_path('Support/GeoFlow/SecurityUpgradeMigrationGate.php'));
+        $this->assertIsString($migrationSource);
+        $this->assertIsString($gateSource);
+        $source = $migrationSource.$gateSource;
         $this->assertStringContainsString('ManagedImagePathHasherV1', $source);
         $this->assertStringContainsString('GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED', $source);
         $this->assertStringContainsString('GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED', $source);
@@ -376,8 +380,62 @@ class ImageLibrarySecurityTest extends TestCase
         config()->set('geoflow.managed_image_deletion_enabled', false);
 
         $this->artisan('geoflow:managed-images:readiness')
-            ->expectsOutputToContain('Backfill is complete')
+            ->expectsOutputToContain('Backfill and registry reconciliation are complete')
             ->assertSuccessful();
+    }
+
+    public function test_readiness_reconciles_historical_images_before_the_security_audit(): void
+    {
+        Storage::fake('public');
+        config()->set('geoflow.managed_image_deletion_enabled', false);
+        config()->set('geoflow.legacy_image_path_input', false);
+        config()->set('geoflow.outbound_private_targets', []);
+        $path = 'storage/uploads/images/2026/07/historical.png';
+        $diskPath = substr($path, strlen('storage/'));
+        Storage::disk('public')->put($diskPath, 'historical-image');
+        $image = $this->createImage($this->createImageLibrary(), $path);
+
+        $this->assertDatabaseMissing('managed_image_paths', [
+            'path_hash' => $image->managed_path_hash,
+        ]);
+
+        $this->artisan('geoflow:managed-images:readiness')
+            ->expectsOutputToContain('Backfill and registry reconciliation are complete')
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('managed_image_paths', [
+            'path_hash' => $image->managed_path_hash,
+            'file_path' => $path,
+            'content_sha256' => hash('sha256', 'historical-image'),
+            'state' => 'present',
+        ]);
+        $this->assertSame(0, Artisan::call('geoflow:security-audit', ['--json' => true]));
+    }
+
+    public function test_readiness_fails_closed_for_a_terminal_historical_path(): void
+    {
+        config()->set('geoflow.managed_image_deletion_enabled', false);
+        $library = $this->createImageLibrary();
+        $path = 'storage/uploads/images/2026/07/../terminal.png';
+        DB::table('images')->insert([
+            'library_id' => $library->id,
+            'filename' => 'terminal.png',
+            'original_name' => 'terminal.png',
+            'file_name' => 'terminal.png',
+            'file_path' => $path,
+            'managed_path_hash' => app(ManagedImageFileService::class)->terminalHashV1($path),
+            'file_size' => 5,
+            'mime_type' => 'image/png',
+            'width' => 1,
+            'height' => 1,
+            'tags' => '',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+
+        $this->artisan('geoflow:managed-images:readiness')
+            ->expectsOutputToContain('Managed image readiness is incomplete')
+            ->assertFailed();
     }
 
     public function test_case_sensitive_paths_keep_distinct_registry_identities(): void

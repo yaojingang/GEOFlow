@@ -72,6 +72,11 @@ class Admin extends Authenticatable
         return in_array($role, ['super_admin', 'superadmin'], true);
     }
 
+    public function canManageProtectedWorkflows(): bool
+    {
+        return $this->isSuperAdmin();
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(self::class, 'created_by');

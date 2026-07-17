@@ -262,10 +262,12 @@
                             <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
                             {{ __('admin.materials.knowledge_hub_refresh_chunks') }}
                         </a>
+                        @if ($canManageProtectedWorkflows)
                         <a href="{{ route('admin.url-import') }}" class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">
                             <i data-lucide="globe" class="mr-2 h-4 w-4"></i>
                             {{ __('admin.materials.knowledge_hub_import_from_url') }}
                         </a>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -301,6 +303,7 @@
             </div>
         </section>
 
+        @if ($canManageProtectedWorkflows)
         <section class="mb-8 overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
             <div class="p-6 lg:p-8">
                 <div class="max-w-5xl">
@@ -351,5 +354,6 @@
                 </div>
             </div>
         </section>
+        @endif
     </div>
 @endsection

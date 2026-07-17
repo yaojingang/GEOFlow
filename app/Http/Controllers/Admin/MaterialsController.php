@@ -35,6 +35,7 @@ class MaterialsController extends Controller
             'pageTitle' => __('admin.materials.page_title'),
             'activeMenu' => 'materials',
             'adminSiteName' => AdminWeb::siteName(),
+            'canManageProtectedWorkflows' => auth('admin')->user()?->canManageProtectedWorkflows() === true,
             'stats' => $this->loadStats(),
         ]);
     }

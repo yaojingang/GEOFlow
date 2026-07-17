@@ -3,18 +3,24 @@
 namespace App\Services\Admin\SiteThemeReplication;
 
 use App\Models\SiteThemeReplication;
-use Illuminate\Support\Facades\Storage;
 
 class ThemeScaffoldWriter
 {
+    public function __construct(
+        private readonly ThemeReplicationStorageGuard $storageGuard,
+        private readonly ThemeReplicationPackagePathGuard $pathGuard,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $blueprint
      * @return array<string, mixed>
      */
     public function write(SiteThemeReplication $replication, int $version, array $blueprint): array
     {
-        $themeId = (string) $replication->theme_id;
-        $root = "geoflow-theme-replications/{$replication->id}/draft/{$version}";
+        $themeId = $this->pathGuard->validatedThemeId((string) $replication->theme_id);
+        $replicationId = $this->pathGuard->positiveInteger($replication->id);
+        $version = $this->pathGuard->positiveInteger($version);
+        $root = "geoflow-theme-replications/{$replicationId}/draft/{$version}";
         $viewsPath = $root.'/views';
         $assetsPath = $root.'/assets';
 
@@ -54,7 +60,7 @@ class ThemeScaffoldWriter
         $fileRecords = [];
         foreach ($files as $relative => $content) {
             $path = $root.'/'.$relative;
-            Storage::disk('local')->put($path, $content);
+            $this->storageGuard->writeStorageFile($path, $content);
             $fileRecords[] = [
                 'path' => $relative,
                 'storage_path' => $path,

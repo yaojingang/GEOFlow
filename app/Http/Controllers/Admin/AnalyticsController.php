@@ -29,19 +29,23 @@ class AnalyticsController extends Controller
     public function index(Request $request): View
     {
         $filter = AnalyticsFilter::fromRequest($request->query());
+        $canManageProtectedWorkflows = auth('admin')->user()?->canManageProtectedWorkflows() === true;
 
         return view('admin.analytics.index', [
             'pageTitle' => __('admin.analytics.page_title'),
             'activeMenu' => 'analytics',
             'adminSiteName' => AdminWeb::siteName(),
             'filters' => $filter,
-            'filterOptions' => $this->filterOptions(),
+            'canManageProtectedWorkflows' => $canManageProtectedWorkflows,
+            'filterOptions' => $this->filterOptions($canManageProtectedWorkflows),
             'globalOverview' => $this->overviewService->globalOverview(),
-            'kpis' => $this->overviewService->kpis($filter),
+            'kpis' => $this->overviewService->kpis($filter, $canManageProtectedWorkflows),
             'publicationTrend' => $this->overviewService->publicationTrend($filter),
             'taskTrend' => $this->overviewService->taskTrend($filter),
             'contentFunnel' => $this->overviewService->contentFunnel($filter),
-            'distributionSummary' => $this->overviewService->distributionSummary($filter),
+            'distributionSummary' => $canManageProtectedWorkflows
+                ? $this->overviewService->distributionSummary($filter)
+                : [],
             'topContent' => $this->overviewService->topContent($filter),
             'aiUsageSummary' => $this->overviewService->aiUsageSummary($filter),
             'categoryDistribution' => $this->overviewService->categoryDistribution($filter),
@@ -50,7 +54,9 @@ class AnalyticsController extends Controller
             'taskHealth' => $this->overviewService->taskHealth($filter),
             'materialHealth' => $this->overviewService->materialHealth(),
             'aiHealth' => $this->overviewService->aiHealth(),
-            'urlImportHealth' => $this->overviewService->urlImportHealth($filter),
+            'urlImportHealth' => $canManageProtectedWorkflows
+                ? $this->overviewService->urlImportHealth($filter)
+                : [],
             'logSummary' => $this->logQueryService->summary($filter),
             'growthOverview' => $this->growthOverview(),
         ]);
@@ -59,13 +65,12 @@ class AnalyticsController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function filterOptions(): array
+    private function filterOptions(bool $canManageProtectedWorkflows): array
     {
         return [
-            'channels' => DistributionChannel::query()
-                ->orderBy('name')
-                ->select('id', 'name')
-                ->get(),
+            'channels' => $canManageProtectedWorkflows
+                ? DistributionChannel::query()->orderBy('name')->select('id', 'name')->get()
+                : collect(),
             'tasks' => Task::query()
                 ->orderByDesc('created_at')
                 ->select('id', 'name')

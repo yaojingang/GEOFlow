@@ -68,7 +68,14 @@ class SystemUpdatePlanService
     private function downloadArchive(string $archiveUrl, string $downloadPath, string $expectedSha256): void
     {
         $request = $this->http->timeout(45)->connectTimeout(8);
-        $response = $this->safeHttp->get($request, $archiveUrl, $this->archiveMaxBytes());
+        $response = $this->safeHttp->get(
+            $request,
+            $archiveUrl,
+            $this->archiveMaxBytes(),
+            1,
+            [],
+            fn (string $redirectUrl) => $this->archiveValidator->assertAllowedArchiveUrl($redirectUrl),
+        );
         if (! $response->successful()) {
             throw new RuntimeException(__('admin.system_updates.error.archive_download_failed', ['status' => $response->status()]));
         }

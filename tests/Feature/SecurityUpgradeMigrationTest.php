@@ -112,6 +112,25 @@ class SecurityUpgradeMigrationTest extends TestCase
         ]);
     }
 
+    public function test_preflight_blocks_the_complete_security_migration_sequence_before_schema_changes(): void
+    {
+        DB::table('images')->insert([
+            'file_path' => 'storage/uploads/images/2026/07/existing.png',
+        ]);
+        $preflight = require database_path('migrations/2026_07_17_000400_security_upgrade_preflight.php');
+
+        try {
+            $preflight->up();
+            $this->fail('The security migration sequence must stop before its first schema change.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('blocked before schema changes', $exception->getMessage());
+        }
+
+        $this->assertFalse(Schema::hasColumn('api_idempotency_keys', 'state'));
+        $this->assertFalse(Schema::hasTable('managed_image_paths'));
+        $this->assertFalse(Schema::hasColumn('images', 'managed_path_hash'));
+    }
+
     public function test_confirmed_existing_upgrade_supports_up_down_and_up_again(): void
     {
         $imageId = DB::table('images')->insertGetId([

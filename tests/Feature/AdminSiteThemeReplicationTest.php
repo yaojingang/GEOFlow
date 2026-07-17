@@ -13,6 +13,9 @@ use App\Services\Admin\SiteThemeReplication\ThemeComplianceGuard;
 use App\Services\Admin\SiteThemeReplication\ThemeReplicationPackagePathGuard;
 use App\Services\Admin\SiteThemeReplication\ThemeReplicationPackageService;
 use App\Services\Admin\SiteThemeReplication\ThemeReplicationPublishService;
+use App\Services\Admin\SiteThemeReplication\ThemeReplicationStorageGuard;
+use App\Services\Admin\SiteThemeReplication\ThemeReplicationStorageLock;
+use App\Services\Admin\SiteThemeReplication\ThemeScaffoldWriter;
 use App\Services\Admin\SiteThemeReplicationService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -843,6 +846,8 @@ class AdminSiteThemeReplicationTest extends TestCase
         $packageService = new ThemeReplicationPackageService(
             $loggingService,
             app(ThemeReplicationPackagePathGuard::class),
+            app(ThemeReplicationStorageGuard::class),
+            app(ThemeReplicationStorageLock::class),
         );
 
         try {
@@ -853,7 +858,10 @@ class AdminSiteThemeReplicationTest extends TestCase
         }
 
         $packageDirectory = 'geoflow-theme-replications/'.(int) $replication->id.'/packages';
-        $this->assertSame([], Storage::disk('local')->allFiles($packageDirectory));
+        $this->assertSame(
+            [(string) $existingPackage['relative_path']],
+            Storage::disk('local')->allFiles($packageDirectory),
+        );
     }
 
     public function test_concurrent_package_request_times_out_without_deleting_the_existing_final_package(): void
@@ -1038,6 +1046,159 @@ class AdminSiteThemeReplicationTest extends TestCase
         $this->assertThemePackageRejectedAndCleaned($replication);
     }
 
+    public function test_theme_replication_package_rejects_a_symbolic_link_package_directory(): void
+    {
+        if (! function_exists('symlink')) {
+            $this->markTestSkipped('Symbolic links are not available on this platform.');
+        }
+
+        Storage::fake('local');
+
+        $replication = $this->replicationWithDraftFiles('symlink-package-directory-theme');
+        $externalDirectory = Storage::disk('local')->path('private/external-package-directory');
+        File::ensureDirectoryExists($externalDirectory);
+        $sentinel = $externalDirectory.'/sentinel.txt';
+        File::put($sentinel, 'preserve-me');
+        $packageDirectory = Storage::disk('local')->path(
+            'geoflow-theme-replications/'.(int) $replication->id.'/packages'
+        );
+
+        if (! @symlink($externalDirectory, $packageDirectory)) {
+            $this->markTestSkipped('The filesystem does not permit symbolic links.');
+        }
+
+        try {
+            app(ThemeReplicationPackageService::class)->createPackage($replication);
+            $this->fail('Package creation accepted a symbolic link package directory.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(__('admin.theme_replication.error.invalid_package_path'), $exception->getMessage());
+        } finally {
+            if (is_link($packageDirectory)) {
+                unlink($packageDirectory);
+            }
+        }
+
+        $this->assertFileExists($sentinel);
+        $this->assertSame('preserve-me', File::get($sentinel));
+        $this->assertSame(['sentinel.txt'], array_values(array_map('basename', File::files($externalDirectory))));
+    }
+
+    public function test_theme_replication_writer_rejects_a_symbolic_link_draft_directory(): void
+    {
+        if (! function_exists('symlink')) {
+            $this->markTestSkipped('Symbolic links are not available on this platform.');
+        }
+
+        Storage::fake('local');
+
+        $replication = $this->replicationWithDraftFiles('symlink-writer-directory-theme');
+        $externalDirectory = Storage::disk('local')->path('private/external-writer-directory');
+        File::ensureDirectoryExists($externalDirectory);
+        $sentinel = $externalDirectory.'/sentinel.txt';
+        File::put($sentinel, 'preserve-me');
+        $draftDirectory = Storage::disk('local')->path(
+            'geoflow-theme-replications/'.(int) $replication->id.'/draft/2'
+        );
+
+        if (! @symlink($externalDirectory, $draftDirectory)) {
+            $this->markTestSkipped('The filesystem does not permit symbolic links.');
+        }
+
+        try {
+            app(ThemeScaffoldWriter::class)->write($replication, 2, []);
+            $this->fail('Theme writer accepted a symbolic link draft directory.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(__('admin.theme_replication.error.invalid_package_path'), $exception->getMessage());
+        } finally {
+            if (is_link($draftDirectory)) {
+                unlink($draftDirectory);
+            }
+        }
+
+        $this->assertFileExists($sentinel);
+        $this->assertSame(['sentinel.txt'], array_values(array_map('basename', File::files($externalDirectory))));
+    }
+
+    public function test_delete_drafts_rejects_a_symbolic_link_replication_root(): void
+    {
+        if (! function_exists('symlink')) {
+            $this->markTestSkipped('Symbolic links are not available on this platform.');
+        }
+
+        Storage::fake('local');
+
+        $replication = $this->replicationWithDraftFiles('symlink-delete-directory-theme');
+        $replication->forceFill(['status' => SiteThemeReplication::STATUS_ARCHIVED])->save();
+        $replicationRoot = Storage::disk('local')->path('geoflow-theme-replications/'.(int) $replication->id);
+        $relocatedRoot = Storage::disk('local')->path('private/relocated-replication-root');
+        File::ensureDirectoryExists(dirname($relocatedRoot));
+        File::moveDirectory($replicationRoot, $relocatedRoot);
+        $externalDirectory = Storage::disk('local')->path('private/external-delete-directory');
+        File::ensureDirectoryExists($externalDirectory);
+        $sentinel = $externalDirectory.'/sentinel.txt';
+        File::put($sentinel, 'preserve-me');
+
+        if (! @symlink($externalDirectory, $replicationRoot)) {
+            $this->markTestSkipped('The filesystem does not permit symbolic links.');
+        }
+
+        try {
+            app(SiteThemeReplicationService::class)->deleteDrafts($replication);
+            $this->fail('Draft deletion accepted a symbolic link replication root.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(__('admin.theme_replication.error.invalid_package_path'), $exception->getMessage());
+        } finally {
+            if (is_link($replicationRoot)) {
+                unlink($replicationRoot);
+            }
+        }
+
+        $this->assertFileExists($sentinel);
+        $this->assertSame('preserve-me', File::get($sentinel));
+    }
+
+    public function test_delete_drafts_preserves_an_existing_review_package(): void
+    {
+        Storage::fake('local');
+
+        $replication = $this->replicationWithDraftFiles('preserved-review-package-theme');
+        $package = app(ThemeReplicationPackageService::class)->createPackage($replication);
+        $replication->forceFill(['status' => SiteThemeReplication::STATUS_ARCHIVED])->save();
+
+        app(SiteThemeReplicationService::class)->deleteDrafts($replication);
+
+        $this->assertFileExists((string) $package['absolute_path']);
+        Storage::disk('local')->assertMissing('geoflow-theme-replications/'.(int) $replication->id.'/draft');
+    }
+
+    public function test_delete_drafts_uses_the_same_replication_lock_as_package_creation(): void
+    {
+        Storage::fake('local');
+
+        $replication = $this->replicationWithDraftFiles('delete-drafts-lock-theme');
+        $replication->forceFill(['status' => SiteThemeReplication::STATUS_ARCHIVED])->save();
+        $lockDirectory = 'geoflow-theme-replication-package-locks';
+        Storage::disk('local')->makeDirectory($lockDirectory);
+        $lockHandle = fopen(
+            Storage::disk('local')->path($lockDirectory.'/'.(int) $replication->id.'.lock'),
+            'c+b',
+        );
+        $this->assertIsResource($lockHandle);
+        $this->assertTrue(flock($lockHandle, LOCK_EX | LOCK_NB));
+        config()->set('geoflow.theme_replication_package_lock_timeout_milliseconds', 25);
+
+        try {
+            $this->expectException(RuntimeException::class);
+            app(SiteThemeReplicationService::class)->deleteDrafts($replication);
+        } finally {
+            flock($lockHandle, LOCK_UN);
+            fclose($lockHandle);
+            Storage::disk('local')->assertExists(
+                'geoflow-theme-replications/'.(int) $replication->id.'/draft/1/views/home.blade.php'
+            );
+        }
+    }
+
     public function test_theme_replication_package_rejects_a_symbolic_link_in_the_canonical_root_chain(): void
     {
         if (! function_exists('symlink')) {
@@ -1148,7 +1309,10 @@ class AdminSiteThemeReplicationTest extends TestCase
         }
 
         $packageDirectory = 'geoflow-theme-replications/'.(int) $replication->id.'/packages';
-        $this->assertSame([], Storage::disk('local')->allFiles($packageDirectory));
+        $this->assertSame(
+            [(string) $existingPackage['relative_path']],
+            Storage::disk('local')->allFiles($packageDirectory),
+        );
     }
 
     #[DataProvider('mismatchedDraftRoots')]
@@ -1194,7 +1358,10 @@ class AdminSiteThemeReplicationTest extends TestCase
         }
 
         $packageDirectory = 'geoflow-theme-replications/'.(int) $replication->id.'/packages';
-        $this->assertSame([], Storage::disk('local')->allFiles($packageDirectory));
+        $this->assertSame(
+            [(string) $existingPackage['relative_path']],
+            Storage::disk('local')->allFiles($packageDirectory),
+        );
         Storage::disk('local')->assertExists($secretPath);
         $this->assertSame('must-not-enter-package', Storage::disk('local')->get($secretPath));
     }
@@ -1540,6 +1707,9 @@ class AdminSiteThemeReplicationTest extends TestCase
 
     private function assertThemePackageRejectedAndCleaned(SiteThemeReplication $replication): void
     {
+        $packageDirectory = 'geoflow-theme-replications/'.(int) $replication->id.'/packages';
+        $existingFiles = Storage::disk('local')->allFiles($packageDirectory);
+
         try {
             app(ThemeReplicationPackageService::class)->createPackage($replication->fresh() ?? $replication);
             $this->fail('Package creation accepted an invalid security boundary.');
@@ -1547,8 +1717,10 @@ class AdminSiteThemeReplicationTest extends TestCase
             $this->assertSame(__('admin.theme_replication.error.invalid_package_path'), $exception->getMessage());
         }
 
-        $packageDirectory = 'geoflow-theme-replications/'.(int) $replication->id.'/packages';
-        $this->assertSame([], Storage::disk('local')->allFiles($packageDirectory));
+        $this->assertSame($existingFiles, Storage::disk('local')->allFiles($packageDirectory));
+        foreach (Storage::disk('local')->allFiles($packageDirectory) as $path) {
+            $this->assertFalse(str_ends_with($path, '.tmp'));
+        }
     }
 
     private function admin(): Admin

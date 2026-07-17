@@ -635,6 +635,7 @@
                         <div class="text-xs text-gray-500">{{ __('admin.site_settings.theme.current_help') }}</div>
                     </div>
 
+                    @if ($canManageProtectedWorkflows)
                     <div class="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5">
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                             <div class="min-w-0">
@@ -666,6 +667,7 @@
                             </div>
                         @endif
                     </div>
+                    @endif
 
                     <div class="space-y-4">
                         <label class="flex items-start gap-4 rounded-2xl border border-gray-200 bg-gray-50/70 p-4">

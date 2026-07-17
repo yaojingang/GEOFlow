@@ -135,7 +135,7 @@ $COMPOSE_PROD up init
 # GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED=false
 $COMPOSE_PROD up -d app web queue scheduler reverb
 
-# 6. 回填并检查受管图片身份；remaining 必须为 0。
+# 6. 回填并检查受管图片身份；remaining、terminal、registry_failed 必须都为 0。
 $COMPOSE_PROD run --rm app php artisan geoflow:managed-images:readiness
 
 # 7. 运行只读安全审计，并逐项处理或确认 finding。
@@ -145,7 +145,7 @@ $COMPOSE_PROD run --rm app php artisan geoflow:security-audit
 $COMPOSE_PROD exec app php artisan up
 ```
 
-readiness 命令会回填已有图片路径哈希；永久无效的历史路径会写入稳定终态哈希。确认输出表格的 `remaining` 列为 `0`，再运行 `geoflow:security-audit`。该审计命令严格只读，不回填哈希、不修改数据库、不访问 HTTP/DNS，也不启动外部进程。人工可读模式和 JSON 模式使用相同 finding 集合：
+readiness 命令会回填已有图片路径哈希，并在路径锁内对账注册表、文件状态和内容哈希。永久无效的历史路径会保留稳定终态哈希，并计入 `terminal`；文件缺失、身份不一致或无法安全读取会计入 `registry_failed`。确认输出表格的 `remaining`、`terminal`、`registry_failed` 都为 `0`，再运行 `geoflow:security-audit`。该审计命令严格只读，不回填哈希、不修改数据库、不访问 HTTP/DNS，也不启动外部进程。人工可读模式和 JSON 模式使用相同 finding 集合：
 
 ```bash
 # 人工检查
