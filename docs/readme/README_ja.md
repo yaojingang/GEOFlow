@@ -4,7 +4,7 @@
 
 > GEOFlow は GEO（Generative Engine Optimization）向けのオープンソース・コンテンツエンジニアリング／マルチサイト配信システムです。ナレッジベース、素材ライブラリ、プロンプト、AI 生成タスク、レビューと公開、データ分析、GEOFlow Agent ターゲットサイトパッケージ、WordPress REST チャネル、汎用 HTTP API チャネル、リモート静的ページ配信を一つの運用フローに統合し、信頼できる資料を追跡可能で公開・配信しやすい GEO コンテンツ資産へ変換します。
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
@@ -203,7 +203,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 ### 方法 2：ローカル PHP
 
-**前提:** PHP **8.2+**（`pdo_pgsql`、`redis` 等）、**PostgreSQL**、**Redis**、**Composer 2.x**。
+**前提:** PHP **8.3+**（`pdo_pgsql`、`redis` 等）、**PostgreSQL**、**Redis**、**Composer 2.x**。
 
 ```bash
 git clone https://github.com/yaojingang/GEOFlow.git
@@ -235,7 +235,7 @@ php artisan reverb:start
 
 | 項目 | メモ |
 |------|------|
-| PHP | **8.2+**（Docker は 8.4 の場合あり） |
+| PHP | **8.3+**（Docker は 8.4 の場合あり） |
 | DB | **PostgreSQL**（**pgvector** 推奨） |
 | Redis | キュー用（ローカル検証のみ `QUEUE_CONNECTION=sync` 可） |
 

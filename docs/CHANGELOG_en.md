@@ -21,6 +21,9 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Added a read-only security audit:
   - `php artisan geoflow:security-audit` emits a human-readable report, while `--json` emits a stable schema. Any finding or incomplete audit returns exit code `1`.
   - Checks cover security migrations, the managed image registry, deletion gates, API idempotency state, legacy image path input, and private outbound exceptions without HTTP, DNS, or repair operations.
+- Updated the dependency security baseline:
+  - Upgraded Laravel, Guzzle, PSR-7, and Symfony security patches; the lock file has no known advisories in the dependency audit.
+  - The minimum PHP version is now consistently 8.3 to match the current `laravel/ai` requirement; Docker continues to default to PHP 8.4.
 
 ## 2026-06-26
 

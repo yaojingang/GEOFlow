@@ -4,7 +4,7 @@
 
 > GEOFlow é um sistema open source de engenharia de conteúdo GEO (Generative Engine Optimization) e distribuição multi-site. Ele conecta bases de conhecimento, bibliotecas de materiais, prompts, tarefas de geração por IA, revisão e publicação, analytics, pacotes de sites-alvo GEOFlow Agent, canais WordPress REST, canais HTTP API genéricos e distribuição remota de páginas estáticas para transformar materiais confiáveis em ativos GEO publicáveis, rastreáveis e distribuíveis.
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)

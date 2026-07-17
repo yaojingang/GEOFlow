@@ -4,7 +4,7 @@
 
 > GEOFlow 是一套专门面向 GEO（生成式引擎优化）的开源智能内容工程与多站点分发系统。它把知识库、素材库、提示词、AI 生成任务、审核发布、数据分析、GEOFlow Agent 目标站点包、WordPress REST 渠道、通用 HTTP API 渠道和远端静态页面分发串联为一条可持续运营的工作链路，目标是帮助团队把可信资料沉淀为可管理、可发布、可追踪、可同步到多端的 GEO 内容资产。
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
@@ -233,7 +233,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 ### 方式二：本地 PHP 服务器
 
-**前置要求：** PHP **8.2+**，启用 `pdo_pgsql`、`redis` 等 Laravel 常用扩展；本机已安装 **PostgreSQL** 与 **Redis**；已安装 **Composer 2.x**。
+**前置要求：** PHP **8.3+**，启用 `pdo_pgsql`、`redis` 等 Laravel 常用扩展；本机已安装 **PostgreSQL** 与 **Redis**；已安装 **Composer 2.x**。
 
 ```bash
 # 1. 克隆仓库
@@ -273,7 +273,7 @@ php artisan reverb:start
 
 | 组件 | 说明 |
 |------|------|
-| PHP | **8.2+**（Docker 镜像可为 8.4） |
+| PHP | **8.3+**（Docker 镜像可为 8.4） |
 | 扩展 | Laravel 常规扩展；PostgreSQL 需 `pdo_pgsql`；Redis 队列需 `redis` |
 | Composer | 2.x |
 | 数据库 | **PostgreSQL**（推荐 **pgvector**，与 `docker-compose.yml` 中镜像一致） |

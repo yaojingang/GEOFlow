@@ -21,6 +21,9 @@
 - 新增只读安全审计：
   - `php artisan geoflow:security-audit` 提供人工可读结果，`--json` 提供稳定 schema；任意 finding 或审计无法完成时返回退出码 `1`。
   - 审计覆盖安全迁移、受管图片注册表、删除门禁、API 幂等状态、旧图片路径输入和私网出站例外，不发起网络请求、DNS 查询或数据修复。
+- 更新依赖安全基线：
+  - 升级 Laravel、Guzzle、PSR-7 和 Symfony 安全补丁，锁文件依赖审计无已知公告。
+  - 项目最低 PHP 版本统一为 8.3，与当前 `laravel/ai` 要求一致；Docker 默认继续使用 PHP 8.4。
 
 ## 2026-06-26
 

@@ -4,7 +4,7 @@
 
 > GEOFlow — открытая система контент-инжиниринга GEO (Generative Engine Optimization) и мультисайтовой дистрибуции. Она объединяет базы знаний, библиотеки материалов, промпты, AI-задачи, ревью и публикацию, аналитику, пакеты целевых сайтов GEOFlow Agent, каналы WordPress REST, универсальные HTTP API-каналы и удалённую статическую публикацию в единый управляемый поток, который превращает достоверные материалы в публикуемые, отслеживаемые и распределяемые GEO-активы.
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
@@ -203,7 +203,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 ### Вариант 2: локальный PHP
 
-**Требования:** PHP **8.2+** (`pdo_pgsql`, `redis` и др.), **PostgreSQL**, **Redis**, **Composer 2.x**.
+**Требования:** PHP **8.3+** (`pdo_pgsql`, `redis` и др.), **PostgreSQL**, **Redis**, **Composer 2.x**.
 
 ```bash
 git clone https://github.com/yaojingang/GEOFlow.git

@@ -4,7 +4,7 @@
 
 > GEOFlow is an open-source GEO (Generative Engine Optimization) content engineering and multi-site distribution system. It connects knowledge bases, material libraries, prompts, AI generation tasks, review and publishing, analytics, GEOFlow Agent target-site packages, WordPress REST channels, Generic HTTP API channels, and remote static-page distribution into one maintainable workflow for turning trustworthy source material into trackable, publishable, multi-channel GEO content assets.
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
@@ -224,7 +224,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 ### Option 2: Local PHP stack
 
-**Prerequisites:** PHP **8.2+** with `pdo_pgsql`, `redis`, and other typical Laravel extensions; local **PostgreSQL** and **Redis**; **Composer 2.x**.
+**Prerequisites:** PHP **8.3+** with `pdo_pgsql`, `redis`, and other typical Laravel extensions; local **PostgreSQL** and **Redis**; **Composer 2.x**.
 
 ```bash
 git clone https://github.com/yaojingang/GEOFlow.git
@@ -259,7 +259,7 @@ php artisan reverb:start
 
 | Component | Notes |
 |-----------|--------|
-| PHP | **8.2+** (Docker image may use 8.4) |
+| PHP | **8.3+** (Docker image may use 8.4) |
 | Extensions | Standard Laravel set; `pdo_pgsql` for Postgres; `redis` for queues |
 | Composer | 2.x |
 | Database | **PostgreSQL** (recommended: **pgvector**, same as Compose image) |
