@@ -138,11 +138,26 @@ $COMPOSE_PROD up -d app web queue scheduler reverb
 # 6. 回填并检查受管图片身份；remaining 必须为 0。
 $COMPOSE_PROD run --rm app php artisan geoflow:managed-images:readiness
 
-# 7. 退出维护模式并恢复流量。
+# 7. 运行只读安全审计，并逐项处理或确认 finding。
+$COMPOSE_PROD run --rm app php artisan geoflow:security-audit
+
+# 8. 退出维护模式并恢复流量。
 $COMPOSE_PROD exec app php artisan up
 ```
 
-readiness 命令会回填已有图片路径哈希；永久无效的历史路径会写入稳定终态哈希。确认输出表格的 `remaining` 列为 `0`，再次确认运行中的容器全部来自新镜像，然后将 `GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=true` 写入生产环境配置，并重新创建会执行图片清理的新版本进程：
+readiness 命令会回填已有图片路径哈希；永久无效的历史路径会写入稳定终态哈希。确认输出表格的 `remaining` 列为 `0`，再运行 `geoflow:security-audit`。该审计命令严格只读，不回填哈希、不修改数据库、不访问 HTTP/DNS，也不启动外部进程。人工可读模式和 JSON 模式使用相同 finding 集合：
+
+```bash
+# 人工检查
+$COMPOSE_PROD run --rm app php artisan geoflow:security-audit
+
+# 自动化检查；JSON schema_version 固定为 1
+$COMPOSE_PROD run --rm app php artisan geoflow:security-audit --json
+```
+
+退出码 `0` 表示没有 finding；退出码 `1` 表示发现问题、需要复核的私网出站例外，或审计无法安全完成。JSON 包含 `schema_version`、`status`、按 severity 汇总的 `summary` 和按稳定 code 排序的 `findings`，不会输出路径、URL、token、owner 或哈希原文。该命令用于 GEOFlow 运行数据与安全配置检查，依赖漏洞检查仍需单独执行 `composer audit`。
+
+完成审计处理，再次确认运行中的容器全部来自新镜像，然后将 `GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=true` 写入生产环境配置，并重新创建会执行图片清理的新版本进程：
 
 ```bash
 $COMPOSE_PROD up -d --force-recreate app queue scheduler

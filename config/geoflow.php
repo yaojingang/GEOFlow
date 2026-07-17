@@ -15,7 +15,7 @@ $versionManifest = is_file($versionManifestPath)
     ? json_decode((string) file_get_contents($versionManifestPath), true)
     : [];
 $appVersion = is_array($versionManifest) ? trim((string) ($versionManifest['version'] ?? '')) : '';
-$appVersion = $appVersion !== '' ? $appVersion : '2.1.0';
+$appVersion = $appVersion !== '' ? $appVersion : '2.1.1';
 
 return [
 
@@ -113,6 +113,10 @@ return [
     'legacy_image_path_input' => filter_var(env('GEOFLOW_LEGACY_IMAGE_PATH_INPUT', false), FILTER_VALIDATE_BOOLEAN),
     // 升级门禁：确认旧 worker 已全部退出且图片路径哈希回填完成后，才允许物理文件删除。
     'managed_image_deletion_enabled' => filter_var(env('GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    // 删除准备完成后短时间内仍未收敛的记录视为 stale，便于发现崩溃或中断。
+    'security_audit_deleting_stale_minutes' => max(1, (int) env('GEOFLOW_SECURITY_AUDIT_DELETING_STALE_MINUTES', 15)),
+    // present 且长期没有图片引用的注册表记录才视为 orphan，避免误报正常上传窗口。
+    'security_audit_orphan_age_hours' => max(1, (int) env('GEOFLOW_SECURITY_AUDIT_ORPHAN_AGE_HOURS', 24)),
 
     // 是否启用 GEOFlow 业务层缓存
     'cache_enabled' => filter_var(env('GEOFLOW_CACHE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
