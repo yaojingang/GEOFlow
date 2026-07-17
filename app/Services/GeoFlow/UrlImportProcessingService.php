@@ -12,13 +12,15 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
+use App\Services\Outbound\OutboundRequestBlockedException;
+use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use DOMDocument;
 use DOMXPath;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -26,7 +28,11 @@ final class UrlImportProcessingService
 {
     private const AI_ANALYSIS_MAX_ATTEMPTS = 3;
 
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly SafeOutboundHttpClient $safeHttp,
+        private readonly Factory $http,
+    ) {}
 
     /**
      * @return array{url:string,host:string}
@@ -42,19 +48,15 @@ final class UrlImportProcessingService
             $candidate = 'https://'.$candidate;
         }
 
-        $parts = parse_url($candidate);
-        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
-        $host = strtolower((string) ($parts['host'] ?? ''));
-
-        if (! in_array($scheme, ['http', 'https'], true) || $host === '') {
+        try {
+            $target = $this->safeHttp->resolveTarget($candidate);
+        } catch (OutboundRequestBlockedException) {
             throw new \InvalidArgumentException(__('admin.url_import.error.invalid_url'));
         }
 
-        $this->guardAgainstPrivateTargets($host);
-
         return [
-            'url' => $candidate,
-            'host' => $host,
+            'url' => $target->url,
+            'host' => $target->host,
         ];
     }
 
@@ -300,55 +302,23 @@ final class UrlImportProcessingService
         return is_array($decoded) ? $decoded : [];
     }
 
-    private function guardAgainstPrivateTargets(string $host): void
-    {
-        if (in_array($host, ['localhost', '127.0.0.1', '0.0.0.0'], true) || str_ends_with($host, '.local')) {
-            throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
-        }
-
-        $records = @dns_get_record($host, DNS_A + DNS_AAAA);
-        $allowMixedDns = (bool) config('geoflow.url_import_allow_mixed_dns', false);
-
-        foreach ($records ?: [] as $record) {
-            $ip = (string) ($record['ip'] ?? $record['ipv6'] ?? '');
-            if ($ip === '') {
-                continue;
-            }
-
-            // 默认严格阻断所有私有/保留地址。该开关仅用于明确受控的混合 DNS 环境。
-            if ($allowMixedDns && self::isUlaAddress($ip)) {
-                continue;
-            }
-
-            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-                throw new \InvalidArgumentException(__('admin.url_import.error.private_url'));
-            }
-        }
-    }
-
-    private static function isUlaAddress(string $ip): bool
-    {
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
-            return false;
-        }
-
-        $bin = @inet_pton($ip);
-
-        return $bin !== false && (ord($bin[0]) & 0xfe) === 0xfc;
-    }
-
     /**
      * @return array{html:string,status:int}
      */
     private function fetchPage(string $url): array
     {
-        $response = Http::timeout(20)
+        $request = $this->http->timeout(20)
             ->connectTimeout(8)
             ->withHeaders([
                 'User-Agent' => 'GEOFlow URL Importer/1.0',
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            ])
-            ->get($url);
+            ]);
+        $response = $this->safeHttp->get(
+            $request,
+            $url,
+            (int) config('geoflow.outbound_import_max_bytes', 5 * 1024 * 1024),
+            3,
+        );
 
         if (! $response->successful()) {
             throw new \RuntimeException(__('admin.url_import.error.fetch_failed', ['status' => $response->status()]));

@@ -62,6 +62,8 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env.prod
+    environment:
+      GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED: "true"
     command: ["php", "artisan", "about"]
     volumes:
       - ./.env.prod:/var/www/html/.env

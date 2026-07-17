@@ -2,6 +2,7 @@
 
 @section('content')
     @php
+        $canManageProtectedWorkflows = $canManageProtectedWorkflows ?? false;
         $statusStyles = [
             'ready' => 'bg-emerald-100 text-emerald-700',
             'running' => 'bg-blue-100 text-blue-700',
@@ -369,6 +370,33 @@
                 ],
             ],
         ];
+
+        if (!$canManageProtectedWorkflows) {
+            $demoJourney = array_values(array_filter(
+                $demoJourney,
+                static fn (array $item): bool => $item['href'] !== route('admin.distribution.index'),
+            ));
+            $flowNodes = array_values(array_filter(
+                $flowNodes,
+                static fn (array $item): bool => $item['title'] !== __('admin.dashboard.automation.node_authority_distribution_title'),
+            ));
+            $recommendations = array_values(array_filter(
+                $recommendations,
+                static fn (array $item): bool => $item['href'] !== route('admin.distribution.jobs'),
+            ));
+            $activeRecommendations = array_values(array_filter(
+                $recommendations,
+                static fn (array $recommendation): bool => (int) $recommendation['count'] > 0,
+            ));
+            $healthCards = array_values(array_filter(
+                $healthCards,
+                static fn (array $item): bool => $item['title'] !== __('admin.dashboard.automation.health_distribution_title'),
+            ));
+            $lanes = array_values(array_filter(
+                $lanes,
+                static fn (array $item): bool => $item['title'] !== __('admin.dashboard.automation.lane_multi_title'),
+            ));
+        }
 
         $skillResourceCards = [
             [

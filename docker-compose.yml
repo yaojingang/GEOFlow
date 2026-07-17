@@ -48,6 +48,8 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env
+    environment:
+      GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED: "true"
     # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / geoflow:install）
     command: ["php", "artisan", "about"]
     volumes:

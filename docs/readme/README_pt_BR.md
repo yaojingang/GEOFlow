@@ -4,7 +4,7 @@
 
 > GEOFlow é um sistema open source de engenharia de conteúdo GEO (Generative Engine Optimization) e distribuição multi-site. Ele conecta bases de conhecimento, bibliotecas de materiais, prompts, tarefas de geração por IA, revisão e publicação, analytics, pacotes de sites-alvo GEOFlow Agent, canais WordPress REST, canais HTTP API genéricos e distribuição remota de páginas estáticas para transformar materiais confiáveis em ativos GEO publicáveis, rastreáveis e distribuíveis.
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
@@ -186,7 +186,7 @@ docker compose up -d
 
 Acesse `http://localhost:18080` (frontend) e `http://localhost:18080/geo_admin` (admin).
 
-Para produção, configure `.env.prod` e use `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d`. O serviço `init` de produção executa as migrações e depois `php artisan geoflow:install`. Esse comando só cria a conta admin padrão quando o banco está vazio; se detectar dados existentes, apenas grava o marcador de instalação e não reinsere categorias, artigos, configurações do site, anúncios nem prompts.
+Para a primeira instalação em um banco vazio, configure `.env.prod` e use `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d`. O serviço `init` executa as migrações e depois `php artisan geoflow:install`. Instâncias com dados ou histórico de migrações devem seguir o protocolo de parada e drenagem da seção 3.1 em `../deployment/DEPLOYMENT.md`.
 
 ### portas
 
@@ -247,7 +247,7 @@ php artisan geoflow:admin-unlock <username>
 
 Para produção, use a pilha **`docker-compose.prod.yml`** com Nginx + php-fpm e consulte `../deployment/DEPLOYMENT.md`.
 
-**Atualização:** `git pull` → `docker compose build` → `docker compose up -d`.
+**Atualização de uma instalação existente:** não execute diretamente `git pull` → `build` → `up -d`. Siga o protocolo de parada, drenagem, migração e readiness da [seção 3.1 de deployment](../deployment/DEPLOYMENT.md#31-受管图片删除升级门禁).
 
 ---
 

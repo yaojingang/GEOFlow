@@ -31,6 +31,21 @@ class DistributionQueueConfigurationTest extends TestCase
         );
     }
 
+    public function test_compose_init_services_scope_the_fresh_install_confirmation(): void
+    {
+        $root = dirname(__DIR__, 2);
+
+        foreach (['docker-compose.yml', 'docker-compose.prod.yml'] as $composeFile) {
+            $contents = file_get_contents($root.'/'.$composeFile);
+            $this->assertIsString($contents);
+            $this->assertStringContainsString(
+                'GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED: "true"',
+                $contents,
+                $composeFile.' must scope fresh-install intent to its one-shot init service.'
+            );
+        }
+    }
+
     public function test_documented_production_compose_commands_use_env_file(): void
     {
         $root = dirname(__DIR__, 2);

@@ -11,6 +11,7 @@ use App\Models\SystemState;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class GeoFlowInstallCommandTest extends TestCase
@@ -23,6 +24,10 @@ class GeoFlowInstallCommandTest extends TestCase
 
         $this->artisan('geoflow:install')
             ->assertExitCode(0);
+
+        $this->assertTrue(Schema::hasColumns('api_idempotency_keys', ['fingerprint_version', 'state', 'owner_token', 'lease_expires_at']));
+        $this->assertTrue(Schema::hasTable('managed_image_paths'));
+        $this->assertTrue(Schema::hasColumn('images', 'managed_path_hash'));
 
         $admin = Admin::query()->where('username', 'admin')->first();
         $this->assertNotNull($admin);

@@ -4,7 +4,7 @@
 
 > GEOFlow 是一套专门面向 GEO（生成式引擎优化）的开源智能内容工程与多站点分发系统。它把知识库、素材库、提示词、AI 生成任务、审核发布、数据分析、GEOFlow Agent 目标站点包、WordPress REST 渠道、通用 HTTP API 渠道和远端静态页面分发串联为一条可持续运营的工作链路，目标是帮助团队把可信资料沉淀为可管理、可发布、可追踪、可同步到多端的 GEO 内容资产。
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
@@ -207,7 +207,7 @@ docker compose up -d
 
 生产环境建议使用 **`docker-compose.prod.yml`**，改为 **`Nginx + php-fpm`**，而不是 `php artisan serve`。
 
-如果希望在常见云服务器上自动完成环境自检、Docker 检测、`.env.prod` 生成、容器部署和部署后健康检查，可以使用参考部署脚本：
+全新空库首次部署时，如果希望在常见云服务器上自动完成环境自检、Docker 检测、`.env.prod` 生成、容器部署和部署后健康检查，可以使用参考部署脚本：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
@@ -228,12 +228,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - 前台 / 后台统一经 `web`（Nginx）访问
 - PHP 由 `app`（php-fpm）解析
-- **首次安装**：生产 `init` 服务会先执行迁移，再运行 `php artisan geoflow:install`。该命令只在空库首次安装时写入默认后台账号；已有数据的旧库只补安装标记，不会重复写入分类、文章、网站设置、广告或提示词。
+- **首次安装**：生产 `init` 服务会先执行迁移，再运行 `php artisan geoflow:install`。该流程仅用于全新空库；已有数据或迁移历史的实例必须执行 `docs/deployment/DEPLOYMENT.md` 3.1 节的停机排空升级协议。
 - 详细说明见 `docs/deployment/DEPLOYMENT.md`
 
 ### 方式二：本地 PHP 服务器
 
-**前置要求：** PHP **8.2+**，启用 `pdo_pgsql`、`redis` 等 Laravel 常用扩展；本机已安装 **PostgreSQL** 与 **Redis**；已安装 **Composer 2.x**。
+**前置要求：** PHP **8.3+**，启用 `pdo_pgsql`、`redis` 等 Laravel 常用扩展；本机已安装 **PostgreSQL** 与 **Redis**；已安装 **Composer 2.x**。
 
 ```bash
 # 1. 克隆仓库
@@ -248,8 +248,8 @@ composer install --no-interaction --prefer-dist
 php artisan key:generate
 
 # 3. 数据库与存储
-php artisan migrate --force
-php artisan geoflow:install                                            # 首次空库安装；旧库只补初始化标记
+GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
+php artisan geoflow:install                                            # 首次空库安装
 php artisan storage:link
 
 # 4. 开发用 HTTP（仅本地调试；生产请用 Nginx + PHP-FPM，站点根目录 public/）
@@ -273,7 +273,7 @@ php artisan reverb:start
 
 | 组件 | 说明 |
 |------|------|
-| PHP | **8.2+**（Docker 镜像可为 8.4） |
+| PHP | **8.3+**（Docker 镜像可为 8.4） |
 | 扩展 | Laravel 常规扩展；PostgreSQL 需 `pdo_pgsql`；Redis 队列需 `redis` |
 | Composer | 2.x |
 | 数据库 | **PostgreSQL**（推荐 **pgvector**，与 `docker-compose.yml` 中镜像一致） |
@@ -339,7 +339,7 @@ php artisan geoflow:admin-unlock admin
 | 变量 | 默认 | 含义 |
 |------|------|------|
 | `COMPOSER_ON_START` | `true` | 容器启动时执行 `composer install` |
-| `AUTO_MIGRATE` | `true` | 每次启动执行 `php artisan migrate --force` |
+| `AUTO_MIGRATE` | `true` | 启动时执行 `php artisan migrate --force`；已有部署遇到安全迁移时仍须先完成停机排空协议 |
 | `AUTO_INIT_ONCE` | 仅 `init` 为 `true` | 执行 `migrate` + `geoflow:install`，由安装命令判断是否空库 |
 | `AUTO_INSTALL_ONCE` | `false` | 已完成迁移后单独执行一次 `geoflow:install`，常驻服务不建议开启 |
 
@@ -347,7 +347,7 @@ php artisan geoflow:admin-unlock admin
 
 Compose 将 **`./storage`** 与 **`./.env`** 挂载进容器；应用代码在镜像内。若要用于正式生产，请改用仓库新增的 **`docker-compose.prod.yml`**（`Nginx + php-fpm`），并参见 `docs/deployment/DEPLOYMENT.md`。
 
-**升级建议：** `git pull` → `docker compose build` → `docker compose up -d`。
+**已有部署升级：** 禁止直接执行 `git pull` → `build` → `up -d`。请完整执行 [`docs/deployment/DEPLOYMENT.md` 3.1 节](docs/deployment/DEPLOYMENT.md#31-受管图片删除升级门禁)的停机排空、安全迁移和 readiness 流程。
 
 ---
 

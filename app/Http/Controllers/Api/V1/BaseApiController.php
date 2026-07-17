@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\V1;
 use App\Exceptions\ApiException;
 use App\Http\ApiAuthContext;
 use App\Http\Controllers\Controller;
-use App\Services\Api\IdempotencyService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +14,7 @@ use Illuminate\Support\Str;
  * API v1 控制器基类。
  *
  * 统一封装：请求 ID（{@see requestId}）、已认证上下文（{@see auth}）、
- * 成功 JSON 信封（{@see success}）及写操作幂等缓存写入。
+ * 成功 JSON 信封（{@see success}）。写操作幂等由控制器在 mutation 前调用 IdempotencyService。
  */
 abstract class BaseApiController extends Controller
 {
@@ -41,18 +40,12 @@ abstract class BaseApiController extends Controller
     }
 
     /**
-     * 返回统一成功响应；若提供 $idempotencyRouteKey，则在响应体确定后写入幂等缓存。
+     * 返回统一成功响应。
      *
      * @param  array<string, mixed>  $data  置于 JSON 的 data 字段
-     * @param  string|null  $idempotencyRouteKey  与 {@see IdempotencyService} 中 route_key 一致，如 POST /tasks
      */
-    protected function success(Request $request, array $data, int $status = 200, ?string $idempotencyRouteKey = null): JsonResponse
+    protected function success(Request $request, array $data, int $status = 200): JsonResponse
     {
-        $response = ApiResponse::success($data, $this->requestId($request), $status);
-        if ($idempotencyRouteKey !== null) {
-            IdempotencyService::rememberFromResponse($request, $idempotencyRouteKey, $response);
-        }
-
-        return $response;
+        return ApiResponse::success($data, $this->requestId($request), $status);
     }
 }

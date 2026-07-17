@@ -40,16 +40,19 @@ class SiteSettingsController extends Controller
     public function index(): View
     {
         $settings = $this->loadSettings();
+        $canManageProtectedWorkflows = auth('admin')->user()?->canManageProtectedWorkflows() === true;
 
         return view('admin.site-settings.index', [
             'pageTitle' => __('admin.site_settings.page_title'),
             'activeMenu' => 'site_settings',
             'adminSiteName' => AdminWeb::siteName(),
             'settings' => $settings,
-            'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
+            'canEditAnalytics' => $canManageProtectedWorkflows,
+            'canManageProtectedWorkflows' => $canManageProtectedWorkflows,
             'availableThemes' => $this->siteThemeCatalog->all(),
-            'recentThemeReplications' => $this->themeReplicationService->recent(3),
-            'themeReplicationDeployment' => $this->themeReplicationService->deploymentDiagnostics(),
+            'recentThemeReplications' => $canManageProtectedWorkflows
+                ? $this->themeReplicationService->recent(3)
+                : collect(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'homepageModules' => $this->parseHomepageModules((string) ($settings['homepage_modules'] ?? '[]')),
             'homepageStyle' => $this->parseHomepageStyle((string) ($settings['homepage_style'] ?? '{}')),

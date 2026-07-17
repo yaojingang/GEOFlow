@@ -7,6 +7,7 @@ use App\Models\ArticleImage;
 use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\Task;
+use App\Services\GeoFlow\ManagedImageFileService;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,7 +15,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\File;
 use Illuminate\View\View;
 
@@ -24,6 +24,8 @@ use Illuminate\View\View;
 class ImageLibraryController extends Controller
 {
     private const DETAIL_PER_PAGE = 24;
+
+    public function __construct(private readonly ManagedImageFileService $managedImages) {}
 
     /**
      * 列表页。
@@ -99,7 +101,9 @@ class ImageLibraryController extends Controller
             'images' => ['required', 'array', 'min:1'],
             'images.*' => [
                 'required',
-                File::types(['jpg', 'jpeg', 'png', 'gif', 'webp'])->max(10 * 1024),
+                File::image()
+                    ->types(['jpg', 'jpeg', 'png', 'gif', 'webp'])
+                    ->max(max(1, (int) ceil((int) config('geoflow.max_upload_bytes', 2 * 1024 * 1024) / 1024))),
             ],
         ], [
             'images.required' => __('admin.image_detail.error.select_images'),
@@ -114,38 +118,44 @@ class ImageLibraryController extends Controller
         $uploadedCount = 0;
         $skippedCount = 0;
         $uploadErrors = [];
-        DB::transaction(function () use ($uploadedFiles, $libraryId, &$uploadedCount, &$skippedCount, &$uploadErrors): void {
-            foreach ($uploadedFiles as $uploadedFile) {
-                try {
-                    $stored = $this->storeUploadedImageFile($uploadedFile);
-                    Image::query()->create([
-                        'library_id' => $libraryId,
-                        'filename' => $stored['filename'],
-                        'original_name' => $stored['original_name'],
-                        'file_name' => $stored['file_name'],
-                        'file_path' => $stored['file_path'],
-                        'file_size' => $stored['file_size'],
-                        'mime_type' => $stored['mime_type'],
-                        'width' => $stored['width'],
-                        'height' => $stored['height'],
-                        'tags' => '',
-                        'used_count' => 0,
-                        'usage_count' => 0,
-                    ]);
-                    $uploadedCount++;
-                } catch (\Throwable $exception) {
-                    $skippedCount++;
-                    $uploadErrors[] = $exception->getMessage();
-                    Log::warning('geoflow.image_upload_failed', [
-                        'library_id' => $libraryId,
-                        'original_name' => $uploadedFile->getClientOriginalName(),
-                        'error' => $exception->getMessage(),
-                    ]);
+        foreach ($uploadedFiles as $uploadedFile) {
+            $stored = null;
+            try {
+                $this->managedImages->withUploadedImagePathLock($uploadedFile, function () use ($uploadedFile, $libraryId, &$stored): void {
+                    $stored = $this->managedImages->storeUploadedImage($uploadedFile);
+                    DB::transaction(function () use ($stored, $libraryId): void {
+                        Image::query()->create([
+                            'library_id' => $libraryId,
+                            'filename' => $stored['filename'],
+                            'original_name' => $stored['original_name'],
+                            'file_name' => $stored['file_name'],
+                            'file_path' => $stored['file_path'],
+                            'managed_path_hash' => $stored['managed_path_hash'],
+                            'file_size' => $stored['file_size'],
+                            'mime_type' => $stored['mime_type'],
+                            'width' => $stored['width'],
+                            'height' => $stored['height'],
+                            'tags' => '',
+                            'used_count' => 0,
+                            'usage_count' => 0,
+                        ]);
+                        $this->refreshImageLibraryCount($libraryId);
+                    });
+                });
+                $uploadedCount++;
+            } catch (\Throwable $exception) {
+                if (is_array($stored) && isset($stored['file_path'])) {
+                    $this->managedImages->discardStoredUpload((string) $stored['file_path']);
                 }
+                $skippedCount++;
+                $uploadErrors[] = $exception->getMessage();
+                Log::warning('geoflow.image_upload_failed', [
+                    'library_id' => $libraryId,
+                    'original_name' => $uploadedFile->getClientOriginalName(),
+                    'error' => $exception->getMessage(),
+                ]);
             }
-
-            $this->refreshImageLibraryCount($libraryId);
-        });
+        }
 
         if ($uploadedCount <= 0) {
             $firstError = trim((string) ($uploadErrors[0] ?? ''));
@@ -180,24 +190,28 @@ class ImageLibraryController extends Controller
             return back()->withErrors(__('admin.image_detail.error.select_delete'));
         }
 
-        $filePaths = Image::query()
-            ->where('library_id', $libraryId)
-            ->whereIn('id', $imageIds->all())
-            ->pluck('file_path')
-            ->filter()
-            ->values()
-            ->all();
+        [$filePaths, $deletedCount] = DB::transaction(function () use ($libraryId, $imageIds): array {
+            $filePaths = Image::query()
+                ->where('library_id', $libraryId)
+                ->whereIn('id', $imageIds->all())
+                ->pluck('file_path')
+                ->filter()
+                ->values()
+                ->all();
 
-        ArticleImage::query()
-            ->whereIn('image_id', $imageIds->all())
-            ->delete();
+            ArticleImage::query()
+                ->whereIn('image_id', $imageIds->all())
+                ->delete();
 
-        $deletedCount = Image::query()
-            ->where('library_id', $libraryId)
-            ->whereIn('id', $imageIds->all())
-            ->delete();
-        $this->refreshImageLibraryCount($libraryId);
-        $cleanupFailed = $this->cleanupFiles($filePaths);
+            $deletedCount = Image::query()
+                ->where('library_id', $libraryId)
+                ->whereIn('id', $imageIds->all())
+                ->delete();
+            $this->refreshImageLibraryCount($libraryId);
+
+            return [$filePaths, $deletedCount];
+        });
+        $cleanupFailed = $this->managedImages->cleanupUnreferenced($filePaths);
 
         $message = __('admin.image_detail.message.delete_success', ['count' => $deletedCount]);
         if ($cleanupFailed > 0) {
@@ -298,11 +312,15 @@ class ImageLibraryController extends Controller
             return back()->withErrors(__('admin.image_libraries.error.in_use', ['count' => $taskCount]));
         }
 
-        $filePaths = Image::query()->where('library_id', $libraryId)->pluck('file_path')->filter()->values()->all();
-        Image::query()->where('library_id', $libraryId)->delete();
+        $filePaths = DB::transaction(function () use ($library, $libraryId): array {
+            $images = Image::query()->where('library_id', $libraryId)->get(['id', 'file_path']);
+            ArticleImage::query()->whereIn('image_id', $images->pluck('id')->all())->delete();
+            Image::query()->where('library_id', $libraryId)->delete();
+            $library->delete();
 
-        $library->delete();
-        $cleanupFailed = $this->cleanupFiles($filePaths);
+            return $images->pluck('file_path')->filter()->values()->all();
+        });
+        $cleanupFailed = $this->managedImages->cleanupUnreferenced($filePaths);
 
         $message = __('admin.image_libraries.message.delete_success');
         if ($cleanupFailed > 0) {
@@ -354,54 +372,6 @@ class ImageLibraryController extends Controller
     }
 
     /**
-     * 删除磁盘文件（仅清理本地相对路径）。
-     *
-     * @param  list<string>  $paths
-     */
-    private function cleanupFiles(array $paths): int
-    {
-        $failed = 0;
-        foreach ($paths as $path) {
-            $path = trim($path);
-            if ($path === '') {
-                continue;
-            }
-
-            /**
-             * 新上传文件统一落在 public 磁盘（storage/app/public）；
-             * 这里优先按 Laravel Storage 删除，兼容旧路径再做兜底 unlink。
-             */
-            if (str_starts_with($path, 'storage/')) {
-                $relativePublicPath = ltrim(substr($path, strlen('storage/')), '/');
-                if ($relativePublicPath === '') {
-                    continue;
-                }
-                if (! Storage::disk('public')->delete($relativePublicPath) && Storage::disk('public')->exists($relativePublicPath)) {
-                    $failed++;
-                }
-
-                continue;
-            }
-
-            if (str_starts_with($path, 'uploads/')) {
-                $legacyPublicAbsolutePath = public_path($path);
-                if (is_file($legacyPublicAbsolutePath) && ! @unlink($legacyPublicAbsolutePath)) {
-                    $failed++;
-                }
-
-                continue;
-            }
-
-            $legacyAbsolutePath = base_path($path);
-            if (is_file($legacyAbsolutePath) && ! @unlink($legacyAbsolutePath)) {
-                $failed++;
-            }
-        }
-
-        return $failed;
-    }
-
-    /**
      * @return array{name:string,description:string}
      */
     private function emptyForm(): array
@@ -440,51 +410,5 @@ class ImageLibraryController extends Controller
         ImageLibrary::query()->whereKey($libraryId)->update([
             'image_count' => $count,
         ]);
-    }
-
-    /**
-     * @return array{filename:string,file_name:string,original_name:string,file_path:string,file_size:int,mime_type:string,width:int,height:int}
-     */
-    private function storeUploadedImageFile(UploadedFile $file): array
-    {
-        $uploadDirectory = 'images/'.date('Y/m');
-        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: 'jpg');
-        $filename = bin2hex(random_bytes(16)).'.'.$extension;
-        $directory = 'uploads/'.$uploadDirectory;
-        if (! Storage::disk('public')->exists($directory) && ! Storage::disk('public')->makeDirectory($directory)) {
-            throw new \RuntimeException('创建图片上传目录失败：storage/app/public/'.$directory);
-        }
-
-        $storedRelativePath = Storage::disk('public')->putFileAs($directory, $file, $filename);
-        if (! is_string($storedRelativePath) || $storedRelativePath === '') {
-            throw new \RuntimeException('保存图片失败');
-        }
-
-        if (! Storage::disk('public')->exists($storedRelativePath)) {
-            throw new \RuntimeException('图片文件写入后未找到：storage/app/public/'.$storedRelativePath);
-        }
-
-        $targetPath = Storage::disk('public')->path($storedRelativePath);
-        if (! is_file($targetPath)) {
-            throw new \RuntimeException('图片文件路径不可访问：'.$targetPath);
-        }
-
-        $fileSize = filesize($targetPath);
-        if ($fileSize === false) {
-            throw new \RuntimeException('无法读取图片文件大小：'.$targetPath);
-        }
-
-        $imageInfo = @getimagesize($targetPath) ?: [0, 0, null, null, 'mime' => (string) $file->getMimeType()];
-
-        return [
-            'filename' => $filename,
-            'file_name' => $filename,
-            'original_name' => (string) $file->getClientOriginalName(),
-            'file_path' => 'storage/'.$storedRelativePath,
-            'file_size' => (int) $fileSize,
-            'mime_type' => (string) ($imageInfo['mime'] ?? $file->getMimeType() ?? ''),
-            'width' => (int) ($imageInfo[0] ?? 0),
-            'height' => (int) ($imageInfo[1] ?? 0),
-        ];
     }
 }

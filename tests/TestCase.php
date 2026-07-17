@@ -2,8 +2,10 @@
 
 namespace Tests;
 
+use App\Contracts\Outbound\HostResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Tests\Support\FakeHostResolver;
 
 /**
  * 测试基类：Feature 测试如需数据库可在用例中 use {@see RefreshDatabase}。
@@ -19,6 +21,7 @@ abstract class TestCase extends BaseTestCase
         $app['config']->set('database.default', 'sqlite');
         $app['config']->set('database.connections.sqlite.database', ':memory:');
         $app['config']->set('database.connections.pgsql.url', null);
+        $app->singleton(HostResolver::class, FakeHostResolver::class);
 
         return $app;
     }

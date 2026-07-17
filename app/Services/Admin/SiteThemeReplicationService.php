@@ -7,12 +7,15 @@ use App\Models\SiteThemeReplication;
 use App\Models\SiteThemeReplicationLog;
 use App\Models\SiteThemeReplicationVersion;
 use App\Services\Admin\SiteThemeReplication\ThemeComplianceGuard;
+use App\Services\Admin\SiteThemeReplication\ThemeReplicationStorageGuard;
+use App\Services\Admin\SiteThemeReplication\ThemeReplicationStorageLock;
 use App\Services\Admin\SiteThemeReplication\ThemeScaffoldWriter;
+use App\Services\Outbound\OutboundRequestBlockedException;
+use App\Services\Outbound\OutboundRequestFailedException;
+use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
@@ -23,6 +26,9 @@ class SiteThemeReplicationService
         private readonly SiteThemeCatalog $themeCatalog,
         private readonly ThemeScaffoldWriter $writer,
         private readonly ThemeComplianceGuard $guard,
+        private readonly ThemeReplicationStorageGuard $storageGuard,
+        private readonly ThemeReplicationStorageLock $storageLock,
+        private readonly SafeOutboundHttpClient $safeHttp,
     ) {}
 
     /**
@@ -207,18 +213,27 @@ class SiteThemeReplicationService
             throw new RuntimeException(__('admin.theme_replication.message.delete_drafts_unavailable'));
         }
 
-        Storage::disk('local')->deleteDirectory('geoflow-theme-replications/'.(int) $replication->id);
-        Storage::disk('local')->deleteDirectory('geoflow-theme-replications-preview/'.(int) $replication->id);
-        File::deleteDirectory(storage_path('framework/geoflow-theme-replications-preview/'.(int) $replication->id));
+        $replicationId = $this->storageGuard->positiveInteger($replication->id);
 
-        $replication->forceFill([
-            'generated_files_json' => null,
-            'preview_snapshot_json' => null,
-        ])->save();
+        return $this->storageLock->run($replicationId, function () use ($replication, $replicationId): SiteThemeReplication {
+            $current = $replication->fresh();
+            if (! $current instanceof SiteThemeReplication || ! $current->canDeleteDrafts()) {
+                throw new RuntimeException(__('admin.theme_replication.message.delete_drafts_unavailable'));
+            }
 
-        $this->log($replication, 'info', 'drafts_deleted', __('admin.theme_replication.log.drafts_deleted'));
+            $this->storageGuard->deleteStorageDirectory("geoflow-theme-replications/{$replicationId}/draft");
+            $this->storageGuard->deleteStorageDirectory("geoflow-theme-replications-preview/{$replicationId}");
+            $this->storageGuard->deleteFrameworkDirectory("geoflow-theme-replications-preview/{$replicationId}");
 
-        return $replication->fresh(['logs', 'aiModel', 'versions']) ?? $replication;
+            $current->forceFill([
+                'generated_files_json' => null,
+                'preview_snapshot_json' => null,
+            ])->save();
+
+            $this->log($current, 'info', 'drafts_deleted', __('admin.theme_replication.log.drafts_deleted'));
+
+            return $current->fresh(['logs', 'aiModel', 'versions']) ?? $current;
+        });
     }
 
     /**
@@ -304,25 +319,6 @@ class SiteThemeReplicationService
             ->orderBy('name')
             ->orderByDesc('id')
             ->get(['id', 'name', 'model_id', 'model_type']);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function deploymentDiagnostics(): array
-    {
-        $viewsPath = resource_path('views/theme');
-        $assetsPath = public_path('themes');
-        $viewsWritable = is_dir($viewsPath) && is_writable($viewsPath);
-        $assetsWritable = is_dir($assetsPath) && is_writable($assetsPath);
-
-        return [
-            'views_path' => $viewsPath,
-            'assets_path' => $assetsPath,
-            'views_writable' => $viewsWritable,
-            'assets_writable' => $assetsWritable,
-            'can_publish_directly' => $viewsWritable && $assetsWritable,
-        ];
     }
 
     /**
@@ -570,8 +566,9 @@ class SiteThemeReplicationService
             throw new InvalidArgumentException(__('admin.theme_replication.validation.url_scheme'));
         }
 
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        if ($this->isBlockedHost($host)) {
+        try {
+            $this->safeHttp->resolveTarget($url);
+        } catch (OutboundRequestBlockedException|OutboundRequestFailedException) {
             throw new InvalidArgumentException(__('admin.theme_replication.validation.url_private'));
         }
 
@@ -599,37 +596,6 @@ class SiteThemeReplicationService
             ))),
             'created_at' => now()->toIso8601String(),
         ];
-    }
-
-    private function isBlockedHost(string $host): bool
-    {
-        $host = trim($host, " \t\n\r\0\x0B.");
-        if ($host === '') {
-            return true;
-        }
-
-        if ($host === 'localhost' || str_ends_with($host, '.localhost') || str_ends_with($host, '.local')) {
-            return true;
-        }
-
-        if (! str_contains($host, '.')) {
-            return true;
-        }
-
-        if (filter_var($host, FILTER_VALIDATE_IP)) {
-            return ! filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
-        }
-
-        $resolved = function_exists('gethostbynamel') ? @gethostbynamel($host) : false;
-        if (is_array($resolved)) {
-            foreach ($resolved as $ip) {
-                if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     /**

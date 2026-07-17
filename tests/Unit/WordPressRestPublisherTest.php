@@ -13,6 +13,7 @@ use App\Services\GeoFlow\WordPressRestPublisher;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Tests\TestCase;
 
 class WordPressRestPublisherTest extends TestCase
@@ -171,6 +172,23 @@ class WordPressRestPublisherTest extends TestCase
         $this->assertSame('synced', (string) $distribution->status);
         $this->assertSame('123', (string) $distribution->remote_id);
         $this->assertSame(123, $distribution->remote_meta['wordpress_post_id'] ?? null);
+    }
+
+    public function test_remote_wordpress_error_body_is_redacted(): void
+    {
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/posts' => Http::response('password=super-secret target=10.0.0.9', 500),
+        ]);
+        [, $distribution] = $this->makeDistribution();
+
+        try {
+            app(WordPressRestPublisher::class)->publish($distribution, ['article' => [], 'assets' => []]);
+            $this->fail('Expected publisher failure.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringNotContainsString('super-secret', $exception->getMessage());
+            $this->assertStringNotContainsString('10.0.0.9', $exception->getMessage());
+            $this->assertStringContainsString('HTTP 500', $exception->getMessage());
+        }
     }
 
     /**

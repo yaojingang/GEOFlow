@@ -2,9 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Models\Admin;
+use App\Contracts\Outbound\HostResolver;
 use App\Jobs\ProcessSystemUpdateApplyJob;
+use App\Models\Admin;
+use App\Models\SystemUpdateBackup;
+use App\Models\SystemUpdateRun;
 use App\Services\Admin\SystemUpdateDeploymentDiagnosticsService;
+use App\Services\Admin\SystemUpdateStateService;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -104,7 +108,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->assertSee(AdminWeb::routePath('admin.system-updates.plan'), false)
             ->assertSee('可以生成计划的更新摘要');
 
-        $summary = app(\App\Services\Admin\SystemUpdateStateService::class)->summary();
+        $summary = app(SystemUpdateStateService::class)->summary();
 
         $this->assertTrue($summary['can_plan']);
         $this->assertSame('ready', $summary['plan_status']['key'] ?? null);
@@ -152,6 +156,35 @@ class AdminSystemUpdatesPageTest extends TestCase
         $this->assertStringContainsString('$COMPOSE_PROD run --rm app php artisan geoflow:install', $commands);
         $this->assertStringNotContainsString('$COMPOSE_PROD run --rm app php artisan db:seed --force', $commands);
         $this->assertStringContainsString('$COMPOSE_PROD logs --tail=200 app', $commands);
+    }
+
+    public function test_deployment_diagnostics_reads_a_bounded_tail_from_large_logs(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'geoflow-diagnostics-log-');
+        $this->assertIsString($path);
+        $handle = fopen($path, 'wb');
+        $this->assertIsResource($handle);
+
+        try {
+            for ($line = 1; $line <= 30_000; $line++) {
+                fwrite($handle, sprintf("[%05d] normal diagnostic line %s\n", $line, str_repeat('x', 64)));
+            }
+            fwrite($handle, "[final] production.ERROR bounded tail marker\n");
+            fclose($handle);
+            $handle = null;
+
+            $method = new \ReflectionMethod(SystemUpdateDeploymentDiagnosticsService::class, 'tailLines');
+            $lines = $method->invoke(app(SystemUpdateDeploymentDiagnosticsService::class), $path, 200);
+
+            $this->assertCount(200, $lines);
+            $this->assertStringContainsString('bounded tail marker', $lines[199]);
+            $this->assertStringNotContainsString('[00001]', implode("\n", $lines));
+        } finally {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+            @unlink($path);
+        }
     }
 
     public function test_update_center_can_be_disabled_completely(): void
@@ -301,6 +334,145 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->assertSee(__('admin.system_updates.preflight.backup_warn'));
     }
 
+    public function test_update_plan_follows_the_single_github_codeload_redirect(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+
+        $admin = $this->createAdmin();
+        $archive = $this->buildReleaseArchive([
+            'app/Support/AdminWelcome/intro_copy.php' => "<?php\nreturn ['updated' => true];\n",
+        ]);
+        $githubArchiveUrl = 'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.1.1.zip';
+        $codeloadArchiveUrl = 'https://codeload.github.com/yaojingang/GEOFlow/zip/refs/tags/v2.1.1';
+
+        config([
+            'geoflow.app_version' => '2.1.0',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => 'https://github.com/yaojingang/GEOFlow/raw/refs/heads/main/version.json',
+            'geoflow.update_allowed_repository' => 'https://github.com/yaojingang/GEOFlow',
+            'geoflow.update_archive_apply_enabled' => true,
+        ]);
+        $this->app->instance(HostResolver::class, new class implements HostResolver
+        {
+            public function resolve(string $host): array
+            {
+                return ['93.184.216.34'];
+            }
+        });
+
+        Http::fake([
+            'https://github.com/yaojingang/GEOFlow/raw/refs/heads/main/version.json' => Http::response([
+                'version' => '2.1.1',
+                'commit' => 'abc123',
+                'archive_url' => $githubArchiveUrl,
+                'archive_sha256' => hash_file('sha256', $archive),
+            ]),
+            $githubArchiveUrl => Http::response('', 302, [
+                'Location' => $codeloadArchiveUrl,
+            ]),
+            $codeloadArchiveUrl => Http::response(file_get_contents($archive), 200, [
+                'Content-Type' => 'application/zip',
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.plan'))
+            ->assertRedirect(route('admin.system-updates.index'))
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseHas('system_update_runs', [
+            'action' => 'plan',
+            'status' => 'succeeded',
+            'target_version' => '2.1.1',
+        ]);
+        Http::assertSent(fn ($request): bool => (string) $request->url() === $githubArchiveUrl);
+        Http::assertSent(fn ($request): bool => (string) $request->url() === $codeloadArchiveUrl);
+    }
+
+    public function test_update_plan_rejects_repository_traversal_in_the_archive_url(): void
+    {
+        Storage::fake('local');
+
+        $admin = $this->createAdmin();
+        $traversalUrl = 'https://github.com/yaojingang/GEOFlow/../../tw93/Waza/archive/refs/heads/main.zip';
+
+        config([
+            'geoflow.app_version' => '2.1.0',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => 'https://example.test/version.json',
+            'geoflow.update_allowed_repository' => 'https://github.com/yaojingang/GEOFlow',
+            'geoflow.update_archive_apply_enabled' => true,
+        ]);
+        Http::fake([
+            'https://example.test/version.json' => Http::response([
+                'version' => '2.1.1',
+                'commit' => 'abc123',
+                'archive_url' => $traversalUrl,
+                'archive_sha256' => str_repeat('0', 64),
+            ]),
+            '*' => Http::response('must not download', 200),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.plan'))
+            ->assertRedirect(route('admin.system-updates.index'))
+            ->assertSessionHasErrors();
+
+        Http::assertNotSent(fn ($request): bool => (string) $request->url() === $traversalUrl);
+        $this->assertDatabaseMissing('system_update_runs', [
+            'action' => 'plan',
+            'status' => 'succeeded',
+        ]);
+    }
+
+    public function test_update_plan_revalidates_the_repository_on_redirect(): void
+    {
+        Storage::fake('local');
+
+        $admin = $this->createAdmin();
+        $githubArchiveUrl = 'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.1.1.zip';
+        $foreignCodeloadUrl = 'https://codeload.github.com/tw93/Waza/zip/refs/heads/main';
+
+        config([
+            'geoflow.app_version' => '2.1.0',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => 'https://example.test/version.json',
+            'geoflow.update_allowed_repository' => 'https://github.com/yaojingang/GEOFlow',
+            'geoflow.update_archive_apply_enabled' => true,
+        ]);
+        $this->app->instance(HostResolver::class, new class implements HostResolver
+        {
+            public function resolve(string $host): array
+            {
+                return ['93.184.216.34'];
+            }
+        });
+        Http::fake([
+            'https://example.test/version.json' => Http::response([
+                'version' => '2.1.1',
+                'commit' => 'abc123',
+                'archive_url' => $githubArchiveUrl,
+                'archive_sha256' => str_repeat('0', 64),
+            ]),
+            $githubArchiveUrl => Http::response('', 302, [
+                'Location' => $foreignCodeloadUrl,
+            ]),
+            $foreignCodeloadUrl => Http::response('must not download', 200),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.plan'))
+            ->assertRedirect(route('admin.system-updates.index'))
+            ->assertSessionHasErrors();
+
+        Http::assertNotSent(fn ($request): bool => (string) $request->url() === $foreignCodeloadUrl);
+        $this->assertDatabaseMissing('system_update_runs', [
+            'action' => 'plan',
+            'status' => 'succeeded',
+        ]);
+    }
+
     public function test_update_plan_commands_can_be_marked_as_executed(): void
     {
         Storage::fake('local');
@@ -334,7 +506,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->post(route('admin.system-updates.plan'))
             ->assertRedirect(route('admin.system-updates.index'));
 
-        $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+        $run = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
         $plan = is_array($run->plan_json) ? $run->plan_json : [];
 
         $this->assertSame('recommended', $plan['manual_commands'][0]['level'] ?? null);
@@ -399,7 +571,7 @@ class AdminSystemUpdatesPageTest extends TestCase
 
         $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
 
-        $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+        $run = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
             ->post(route('admin.system-updates.backup'), [
@@ -414,7 +586,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'status' => 'available',
         ]);
 
-        $backup = \App\Models\SystemUpdateBackup::query()->firstOrFail();
+        $backup = SystemUpdateBackup::query()->firstOrFail();
         Storage::disk('local')->assertExists($backup->manifest_path);
         Storage::disk('local')->assertExists($backup->files_archive_path);
 
@@ -710,7 +882,7 @@ class AdminSystemUpdatesPageTest extends TestCase
 
         $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
 
-        $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+        $run = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
             ->post(route('admin.system-updates.backup'), [
@@ -725,7 +897,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'status' => 'not_required',
         ]);
 
-        $backup = \App\Models\SystemUpdateBackup::query()->firstOrFail();
+        $backup = SystemUpdateBackup::query()->firstOrFail();
         Storage::disk('local')->assertExists($backup->manifest_path);
         $this->assertNull($backup->files_archive_path);
     }
@@ -737,7 +909,7 @@ class AdminSystemUpdatesPageTest extends TestCase
         $admin = $this->createAdmin();
         $oldRunUuid = 'old-plan-run';
 
-        \App\Models\SystemUpdateRun::query()->create([
+        SystemUpdateRun::query()->create([
             'run_uuid' => $oldRunUuid,
             'action' => 'plan',
             'status' => 'succeeded',
@@ -784,7 +956,7 @@ class AdminSystemUpdatesPageTest extends TestCase
 
         $admin = $this->createAdmin();
 
-        \App\Models\SystemUpdateRun::query()->create([
+        SystemUpdateRun::query()->create([
             'run_uuid' => 'stale-plan-run',
             'action' => 'plan',
             'status' => 'succeeded',
@@ -855,7 +1027,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->post(route('admin.system-updates.plan'))
             ->assertRedirect(route('admin.system-updates.index'));
 
-        $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+        $run = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
         $plan = is_array($run->plan_json) ? $run->plan_json : [];
         $changes = is_array($plan['changes'] ?? null) ? $plan['changes'] : [];
 
@@ -911,7 +1083,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ]);
 
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
-            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $run = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
                 'run_uuid' => $run->run_uuid,
             ]);
@@ -973,7 +1145,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ]);
 
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
-            $planRun = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $planRun = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
                 'run_uuid' => $planRun->run_uuid,
             ]);
@@ -1041,7 +1213,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ]);
 
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
-            $planRun = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $planRun = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
                 'run_uuid' => $planRun->run_uuid,
             ]);
@@ -1061,7 +1233,7 @@ class AdminSystemUpdatesPageTest extends TestCase
                 ->assertSessionHasErrors();
 
             Queue::assertPushed(ProcessSystemUpdateApplyJob::class, 1);
-            $this->assertSame(1, \App\Models\SystemUpdateRun::query()->where('action', 'apply')->count());
+            $this->assertSame(1, SystemUpdateRun::query()->where('action', 'apply')->count());
         } finally {
             File::delete($localPath);
         }
@@ -1106,12 +1278,12 @@ class AdminSystemUpdatesPageTest extends TestCase
             ]);
 
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
-            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $run = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
                 'run_uuid' => $run->run_uuid,
             ]);
 
-            $backup = \App\Models\SystemUpdateBackup::query()->firstOrFail();
+            $backup = SystemUpdateBackup::query()->firstOrFail();
 
             $this->actingAs($admin, 'admin')
                 ->get(route('admin.system-updates.index'))
@@ -1131,7 +1303,7 @@ class AdminSystemUpdatesPageTest extends TestCase
                 'action' => 'apply',
                 'status' => 'succeeded',
             ]);
-            $applyRun = \App\Models\SystemUpdateRun::query()
+            $applyRun = SystemUpdateRun::query()
                 ->where('action', 'apply')
                 ->where('status', 'succeeded')
                 ->firstOrFail();
@@ -1160,7 +1332,7 @@ class AdminSystemUpdatesPageTest extends TestCase
                 'action' => 'rollback',
                 'status' => 'succeeded',
             ]);
-            $rollbackRun = \App\Models\SystemUpdateRun::query()
+            $rollbackRun = SystemUpdateRun::query()
                 ->where('action', 'rollback')
                 ->where('status', 'succeeded')
                 ->firstOrFail();
@@ -1214,11 +1386,11 @@ class AdminSystemUpdatesPageTest extends TestCase
             ]);
 
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
-            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $run = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
                 'run_uuid' => $run->run_uuid,
             ]);
-            $backup = \App\Models\SystemUpdateBackup::query()->firstOrFail();
+            $backup = SystemUpdateBackup::query()->firstOrFail();
 
             $this->actingAs($admin, 'admin')
                 ->post(route('admin.system-updates.apply'), [
@@ -1293,11 +1465,11 @@ class AdminSystemUpdatesPageTest extends TestCase
             ]);
 
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
-            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $run = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
                 'run_uuid' => $run->run_uuid,
             ]);
-            $backup = \App\Models\SystemUpdateBackup::query()->firstOrFail();
+            $backup = SystemUpdateBackup::query()->firstOrFail();
 
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.apply'), [
                 'run_uuid' => $run->run_uuid,
@@ -1353,7 +1525,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ],
         ], JSON_THROW_ON_ERROR));
 
-        $run = \App\Models\SystemUpdateRun::query()->create([
+        $run = SystemUpdateRun::query()->create([
             'run_uuid' => 'unsupported-action-plan',
             'action' => 'plan',
             'status' => 'succeeded',
@@ -1364,7 +1536,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'finished_at' => now(),
         ]);
 
-        $backup = \App\Models\SystemUpdateBackup::query()->create([
+        $backup = SystemUpdateBackup::query()->create([
             'backup_uuid' => 'unsupported-action-backup',
             'run_id' => $run->id,
             'from_version' => '2.0.2',
@@ -1429,7 +1601,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ],
         ], JSON_THROW_ON_ERROR));
 
-        $run = \App\Models\SystemUpdateRun::query()->create([
+        $run = SystemUpdateRun::query()->create([
             'run_uuid' => 'added-missing-plan',
             'action' => 'plan',
             'status' => 'succeeded',
@@ -1440,7 +1612,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'finished_at' => now(),
         ]);
 
-        $backup = \App\Models\SystemUpdateBackup::query()->create([
+        $backup = SystemUpdateBackup::query()->create([
             'backup_uuid' => 'added-missing-backup',
             'run_id' => $run->id,
             'from_version' => '2.0.2',
@@ -1458,7 +1630,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ->post(route('admin.system-updates.rollback', ['backupUuid' => $backup->backup_uuid]))
             ->assertRedirect(route('admin.system-updates.index'));
 
-        $rollback = \App\Models\SystemUpdateRun::query()
+        $rollback = SystemUpdateRun::query()
             ->where('action', 'rollback')
             ->where('status', 'succeeded')
             ->firstOrFail();
@@ -1513,7 +1685,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             ]);
 
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
-            $run = \App\Models\SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
+            $run = SystemUpdateRun::query()->where('action', 'plan')->firstOrFail();
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.backup'), [
                 'run_uuid' => $run->run_uuid,
             ]);
@@ -1550,7 +1722,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'geoflow.update_require_admin_password' => false,
         ]);
 
-        $run = \App\Models\SystemUpdateRun::query()->create([
+        $run = SystemUpdateRun::query()->create([
             'run_uuid' => 'failed-apply-detail-run',
             'action' => 'apply',
             'status' => 'failed',
@@ -1619,7 +1791,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'geoflow.update_run_stale_minutes' => 15,
         ]);
 
-        $run = \App\Models\SystemUpdateRun::query()->create([
+        $run = SystemUpdateRun::query()->create([
             'run_uuid' => 'stale-queued-run',
             'action' => 'apply',
             'status' => 'queued',
@@ -1649,7 +1821,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'geoflow.update_run_stale_minutes' => 15,
         ]);
 
-        $run = \App\Models\SystemUpdateRun::query()->create([
+        $run = SystemUpdateRun::query()->create([
             'run_uuid' => 'stale-run-to-mark-failed',
             'action' => 'apply',
             'status' => 'queued',
@@ -1693,7 +1865,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'geoflow.update_require_admin_password' => false,
         ]);
 
-        $planRun = \App\Models\SystemUpdateRun::query()->create([
+        $planRun = SystemUpdateRun::query()->create([
             'run_uuid' => 'retry-source-plan-run',
             'action' => 'plan',
             'status' => 'succeeded',
@@ -1713,7 +1885,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'finished_at' => now()->subMinutes(4),
         ]);
 
-        $backup = \App\Models\SystemUpdateBackup::query()->create([
+        $backup = SystemUpdateBackup::query()->create([
             'backup_uuid' => 'retry-source-backup',
             'run_id' => $planRun->id,
             'from_version' => '2.0.2',
@@ -1726,7 +1898,7 @@ class AdminSystemUpdatesPageTest extends TestCase
             'created_by_admin_id' => $admin->id,
         ]);
 
-        $failedRun = \App\Models\SystemUpdateRun::query()->create([
+        $failedRun = SystemUpdateRun::query()->create([
             'run_uuid' => 'failed-apply-run-to-retry',
             'action' => 'apply',
             'status' => 'failed',
@@ -1755,7 +1927,7 @@ class AdminSystemUpdatesPageTest extends TestCase
 
         Queue::assertPushed(ProcessSystemUpdateApplyJob::class);
 
-        $queuedRun = \App\Models\SystemUpdateRun::query()
+        $queuedRun = SystemUpdateRun::query()
             ->where('action', 'apply')
             ->where('status', 'queued')
             ->where('run_uuid', '!=', $failedRun->run_uuid)
@@ -1771,7 +1943,7 @@ class AdminSystemUpdatesPageTest extends TestCase
     {
         $admin = $this->createAdmin('standard_update_run_admin', 'admin');
 
-        $run = \App\Models\SystemUpdateRun::query()->create([
+        $run = SystemUpdateRun::query()->create([
             'run_uuid' => 'standard-forbidden-run',
             'action' => 'apply',
             'status' => 'failed',
@@ -1796,7 +1968,7 @@ class AdminSystemUpdatesPageTest extends TestCase
     {
         $admin = $this->createAdmin();
 
-        $run = \App\Models\SystemUpdateRun::query()->create([
+        $run = SystemUpdateRun::query()->create([
             'run_uuid' => 'plan-run-not-detail',
             'action' => 'plan',
             'status' => 'succeeded',
@@ -1833,7 +2005,7 @@ class AdminSystemUpdatesPageTest extends TestCase
         @unlink($path);
         $zipPath = $path.'.zip';
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $zip->open($zipPath, ZipArchive::CREATE);
         foreach ($files as $relativePath => $contents) {
             $zip->addFromString('GEOFlow-main/'.$relativePath, $contents);
@@ -1849,7 +2021,7 @@ class AdminSystemUpdatesPageTest extends TestCase
         @unlink($path);
         $zipPath = $path.'.zip';
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $zip->open($zipPath, ZipArchive::CREATE);
         $zip->addFromString('GEOFlow-main/../../outside.php', "<?php\nreturn 'unsafe';\n");
         $zip->close();
@@ -1863,7 +2035,7 @@ class AdminSystemUpdatesPageTest extends TestCase
         @unlink($path);
         $zipPath = $path.'.zip';
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $zip->open($zipPath, ZipArchive::CREATE);
         $zip->addFromString('GEOFlow-main/app//UnsafePath.php', "<?php\nreturn 'unsafe';\n");
         $zip->close();

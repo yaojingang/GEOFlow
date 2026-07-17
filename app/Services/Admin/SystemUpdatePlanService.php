@@ -4,8 +4,9 @@ namespace App\Services\Admin;
 
 use App\Models\Admin;
 use App\Models\SystemUpdateRun;
+use App\Services\Outbound\SafeOutboundHttpClient;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -18,6 +19,8 @@ class SystemUpdatePlanService
         private readonly SystemUpdateDeploymentDetector $deploymentDetector,
         private readonly SystemUpdateArchiveValidator $archiveValidator,
         private readonly SystemUpdatePathGuard $pathGuard,
+        private readonly SafeOutboundHttpClient $safeHttp,
+        private readonly Factory $http,
     ) {}
 
     public function createPlan(Admin $admin): SystemUpdateRun
@@ -64,7 +67,15 @@ class SystemUpdatePlanService
 
     private function downloadArchive(string $archiveUrl, string $downloadPath, string $expectedSha256): void
     {
-        $response = Http::timeout(45)->get($archiveUrl);
+        $request = $this->http->timeout(45)->connectTimeout(8);
+        $response = $this->safeHttp->get(
+            $request,
+            $archiveUrl,
+            $this->archiveMaxBytes(),
+            1,
+            [],
+            fn (string $redirectUrl) => $this->archiveValidator->assertAllowedArchiveUrl($redirectUrl),
+        );
         if (! $response->successful()) {
             throw new RuntimeException(__('admin.system_updates.error.archive_download_failed', ['status' => $response->status()]));
         }
@@ -100,7 +111,7 @@ class SystemUpdatePlanService
         $targetPath = Storage::disk('local')->path($extractPath);
         File::ensureDirectoryExists($targetPath);
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         if ($zip->open($zipPath) !== true) {
             throw new RuntimeException(__('admin.system_updates.error.archive_open_failed'));
         }

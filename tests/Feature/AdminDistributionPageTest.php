@@ -26,6 +26,7 @@ use App\Services\GeoFlow\DistributionRetryPolicy;
 use App\Services\GeoFlow\DistributionSigningService;
 use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
 use App\Services\GeoFlow\FrontendExperienceInspector;
+use App\Services\GeoFlow\ManagedImageFileService;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\Site\HomepageModuleBuilder;
@@ -2413,8 +2414,7 @@ class AdminDistributionPageTest extends TestCase
             ->post(route('admin.distribution.reveal-secret', ['channelId' => (int) $channel->id]), [
                 'password' => 'secret-123',
             ])
-            ->assertRedirect()
-            ->assertSessionHasErrors('password')
+            ->assertForbidden()
             ->assertSessionMissing('distribution_secret');
     }
 
@@ -2913,7 +2913,7 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('function renderLlmsText', $frontController);
         $this->assertStringContainsString('function renderSitemapText', $frontController);
         $this->assertStringContainsString('function maxAssetBytes', $frontController);
-        $this->assertStringContainsString('stream_context_create', $frontController);
+        $this->assertStringNotContainsString('stream_context_create', $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'llms.txt'", $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'sitemap.txt'", $frontController);
         $this->assertStringContainsString('textResponse(renderLlmsText($config))', $frontController);
@@ -2976,6 +2976,7 @@ class AdminDistributionPageTest extends TestCase
 
         $server = new Process([PHP_BINARY, '-S', '127.0.0.1:'.$port, '-t', $extractPath.'/public'], $extractPath);
         $server->start();
+        config(['geoflow.outbound_private_targets' => ['127.0.0.1:'.$port]]);
 
         try {
             $this->waitForHttpServer($baseUrl);
@@ -4181,6 +4182,8 @@ MD,
             'original_name' => 'hero-demo.png',
             'file_name' => 'hero-demo.png',
             'file_path' => 'storage/uploads/images/2026/05/hero-demo.png',
+            'managed_path_hash' => app(ManagedImageFileService::class)
+                ->pathHash('storage/uploads/images/2026/05/hero-demo.png'),
             'file_size' => 67,
             'mime_type' => 'image/png',
             'width' => 1,

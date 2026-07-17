@@ -13,6 +13,7 @@ use App\Services\GeoFlow\GenericHttpApiPublisher;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Tests\TestCase;
 
 class GenericHttpApiPublisherTest extends TestCase
@@ -174,6 +175,24 @@ class GenericHttpApiPublisherTest extends TestCase
         $this->assertSame('synced', (string) $distribution->status);
         $this->assertSame('remote-999', (string) $distribution->remote_id);
         $this->assertSame(201, $distribution->remote_meta['generic_http']['status_code'] ?? null);
+    }
+
+    public function test_remote_error_bodies_and_target_details_are_redacted(): void
+    {
+        Http::fake([
+            'https://api.example.com/articles' => Http::response('token=super-secret target=10.0.0.9', 500),
+        ]);
+        [, $distribution] = $this->makeDistribution();
+
+        try {
+            app(GenericHttpApiPublisher::class)->publish($distribution, ['article' => []]);
+            $this->fail('Expected publisher failure.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringNotContainsString('super-secret', $exception->getMessage());
+            $this->assertStringNotContainsString('10.0.0.9', $exception->getMessage());
+            $this->assertStringNotContainsString('api.example.com', $exception->getMessage());
+            $this->assertStringContainsString('HTTP 500', $exception->getMessage());
+        }
     }
 
     /**

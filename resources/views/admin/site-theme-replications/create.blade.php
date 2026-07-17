@@ -132,17 +132,7 @@
 
                 <div class="rounded-lg bg-white p-6 shadow">
                     <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.theme_replication.deployment.title') }}</h2>
-                    <dl class="mt-4 space-y-3 text-sm">
-                        <div class="flex items-center justify-between gap-4">
-                            <dt class="text-gray-500">{{ __('admin.theme_replication.deployment.views_path') }}</dt>
-                            <dd class="font-medium {{ $deploymentDiagnostics['views_writable'] ? 'text-green-700' : 'text-amber-700' }}">{{ $deploymentDiagnostics['views_writable'] ? __('admin.common.yes') : __('admin.common.no') }}</dd>
-                        </div>
-                        <div class="flex items-center justify-between gap-4">
-                            <dt class="text-gray-500">{{ __('admin.theme_replication.deployment.assets_path') }}</dt>
-                            <dd class="font-medium {{ $deploymentDiagnostics['assets_writable'] ? 'text-green-700' : 'text-amber-700' }}">{{ $deploymentDiagnostics['assets_writable'] ? __('admin.common.yes') : __('admin.common.no') }}</dd>
-                        </div>
-                    </dl>
-                    <p class="mt-4 rounded-lg bg-gray-50 p-3 text-xs leading-6 text-gray-600">{{ __('admin.theme_replication.deployment.hint') }}</p>
+                    <p class="mt-4 rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-800">{{ __('admin.theme_replication.deployment.package_only_hint') }}</p>
                 </div>
             </aside>
         </div>

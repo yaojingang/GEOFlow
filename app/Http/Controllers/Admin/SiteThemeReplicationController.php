@@ -13,9 +13,9 @@ use App\Services\Admin\SiteThemeReplicationService;
 use App\Support\AdminWeb;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use InvalidArgumentException;
@@ -34,7 +34,6 @@ class SiteThemeReplicationController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'availableThemes' => $themeCatalog->all(),
             'activeChatModels' => $replicationService->activeChatModels(),
-            'deploymentDiagnostics' => $replicationService->deploymentDiagnostics(),
             'schemaReady' => $replicationService->isSchemaReady(),
         ]);
     }
@@ -151,7 +150,6 @@ class SiteThemeReplicationController extends Controller
             'progress' => $replicationService->progressSnapshot($replication, $timelineLogs),
             'fileDiff' => $hasCurrentDraft ? $replicationService->versionDiff($replication) : $emptyFileDiff,
             'failureAdvice' => $replicationService->failureAdvice($replication),
-            'deploymentDiagnostics' => $replicationService->deploymentDiagnostics(),
         ]);
     }
 
@@ -185,24 +183,14 @@ class SiteThemeReplicationController extends Controller
             ->with('message', __('admin.theme_replication.message.retried'));
     }
 
-    public function preview(int $replicationId, string $page, ThemePreviewRenderer $renderer): View
+    public function preview(int $replicationId, string $page, ThemePreviewRenderer $renderer): Response
     {
         $replication = SiteThemeReplication::query()->findOrFail($replicationId);
         if (! $replication->isPreviewReady()) {
             abort(404, __('admin.theme_replication.error.preview_unavailable'));
         }
 
-        return $renderer->render($replication, $page);
-    }
-
-    public function asset(int $replicationId, string $assetPath, ThemePreviewRenderer $renderer): Response
-    {
-        $replication = SiteThemeReplication::query()->findOrFail($replicationId);
-        if (! $replication->isPreviewReady()) {
-            abort(404, __('admin.theme_replication.error.preview_unavailable'));
-        }
-
-        return $renderer->assetResponse($replication, $assetPath);
+        return $renderer->render($page);
     }
 
     public function iterate(int $replicationId, Request $request, SiteThemeReplicationService $replicationService): RedirectResponse
@@ -318,10 +306,10 @@ class SiteThemeReplicationController extends Controller
         ThemeReplicationPackageService $packageService
     ): BinaryFileResponse|RedirectResponse {
         $replication = SiteThemeReplication::query()->findOrFail($replicationId);
-        if (! $replication->isPreviewReady()) {
+        if (! $replication->canPackage()) {
             return redirect()
                 ->route('admin.site-settings.theme-replications.show', ['replicationId' => $replicationId])
-                ->withErrors(__('admin.theme_replication.error.preview_unavailable'));
+                ->withErrors(__('admin.theme_replication.message.publish_unavailable'));
         }
 
         try {

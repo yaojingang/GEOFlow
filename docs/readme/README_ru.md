@@ -4,7 +4,7 @@
 
 > GEOFlow — открытая система контент-инжиниринга GEO (Generative Engine Optimization) и мультисайтовой дистрибуции. Она объединяет базы знаний, библиотеки материалов, промпты, AI-задачи, ревью и публикацию, аналитику, пакеты целевых сайтов GEOFlow Agent, каналы WordPress REST, универсальные HTTP API-каналы и удалённую статическую публикацию в единый управляемый поток, который превращает достоверные материалы в публикуемые, отслеживаемые и распределяемые GEO-активы.
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
@@ -198,12 +198,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 - Фронт и админка идут через `web` (Nginx), PHP — контейнер `app` (php-fpm).
-- **Первая установка:** production-сервис `init` запускает миграции, а затем `php artisan geoflow:install`. Эта команда создаёт начальную admin-учётную запись только на пустой базе; если данные уже есть, она записывает маркер установки и не добавляет повторно категории, статьи, настройки сайта, рекламу или prompts.
+- **Первая установка:** production-сервис `init` запускает миграции, а затем `php artisan geoflow:install`. Эта последовательность предназначена для пустой базы. Для экземпляров с данными или историей миграций обязателен протокол остановки и дренирования из раздела 3.1 `../../docs/deployment/DEPLOYMENT.md`.
 - Подробности — в **`../../docs/deployment/DEPLOYMENT.md`**.
 
 ### Вариант 2: локальный PHP
 
-**Требования:** PHP **8.2+** (`pdo_pgsql`, `redis` и др.), **PostgreSQL**, **Redis**, **Composer 2.x**.
+**Требования:** PHP **8.3+** (`pdo_pgsql`, `redis` и др.), **PostgreSQL**, **Redis**, **Composer 2.x**.
 
 ```bash
 git clone https://github.com/yaojingang/GEOFlow.git
@@ -212,7 +212,7 @@ cp .env.example .env
 composer install --no-interaction --prefer-dist
 php artisan key:generate
 
-php artisan migrate --force
+GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
 php artisan geoflow:install
 php artisan storage:link
 

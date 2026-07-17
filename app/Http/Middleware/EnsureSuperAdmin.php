@@ -17,7 +17,7 @@ class EnsureSuperAdmin
     public function handle(Request $request, Closure $next): Response
     {
         $admin = $request->user('admin');
-        if (! $admin || ! method_exists($admin, 'isSuperAdmin') || ! $admin->isSuperAdmin()) {
+        if (! $admin || ! method_exists($admin, 'canManageProtectedWorkflows') || ! $admin->canManageProtectedWorkflows()) {
             abort(403, 'Forbidden');
         }
 

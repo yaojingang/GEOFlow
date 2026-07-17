@@ -70,23 +70,27 @@ class AnalyticsOverviewService
     /**
      * @return array<string, int>
      */
-    public function kpis(AnalyticsFilter $filter): array
+    public function kpis(AnalyticsFilter $filter, bool $includeDistribution = true): array
     {
         $articles = $this->filteredArticles($filter);
         $published = $this->publishedArticlesBetween($filter, $filter->start(), $filter->end());
         $taskRuns = $this->filteredTaskRuns($filter);
-        $distributions = $this->filteredDistributions($filter);
-
-        return [
+        $kpis = [
             'articles' => (int) $articles->count(),
             'published' => (int) $published->count(),
             'running_tasks' => (int) (clone $taskRuns)->where('status', 'running')->count(),
             'failed_tasks' => (int) (clone $taskRuns)->where('status', 'failed')->count(),
             'ai_calls' => (int) AiModel::query()->sum('used_today'),
-            'distribution_failed' => (int) (clone $distributions)->where('status', 'failed')->count(),
-            'distribution_pending' => (int) (clone $distributions)->whereIn('status', ['queued', 'sending'])->count(),
             'total_views' => $this->filteredViewCount($filter),
         ];
+
+        if ($includeDistribution) {
+            $distributions = $this->filteredDistributions($filter);
+            $kpis['distribution_failed'] = (int) (clone $distributions)->where('status', 'failed')->count();
+            $kpis['distribution_pending'] = (int) (clone $distributions)->whereIn('status', ['queued', 'sending'])->count();
+        }
+
+        return $kpis;
     }
 
     /**

@@ -2,6 +2,29 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-07-17
+
+### v2.1.1 (release preparation)
+
+- Hardened frontend structured data:
+  - Every theme now emits JSON-LD through Laravel `Js::encode`, blocking executable-context payloads such as `</script>` while preserving valid Schema data.
+- Tightened managed image and API idempotency boundaries:
+  - Image uploads now use content-addressed names and managed-root validation. The new `images.managed_path_hash` identity and `managed_image_paths` registry track state and fencing data to prevent external-path, symlink, and concurrent-deletion escapes.
+  - API idempotency records now carry durable state, owner leases, and a fingerprint version. Legacy and expired `in_progress` records enter explicit manual-recovery paths.
+  - Physical image deletion stays disabled by default. Upgrades must drain old processes, confirm the migration, complete the `managed_path_hash` backfill, and pass readiness checks before enabling deletion.
+- Unified outbound request security and sensitive admin authorization:
+  - Distribution, URL import, theme reference fetching, AI, update metadata, and archive downloads now use the safe outbound gateway with URL normalization, complete DNS-candidate validation, IP pinning, redirect controls, response limits, and redacted errors, closing SSRF bypass paths.
+  - Sensitive Distribution, URL Import, theme, and replication management routes now require super-admin authorization.
+- Isolated generated theme code:
+  - Live theme editing routes and UI that wrote Blade or CSS are disabled. Theme replication preview uses a trusted deterministic page, never compiles generated Blade, and applies a sandbox CSP that blocks scripts and external resources.
+  - Theme replication publication is package-only and no longer writes generated files into live theme directories.
+- Added a read-only security audit:
+  - `php artisan geoflow:security-audit` emits a human-readable report, while `--json` emits a stable schema. Any finding or incomplete audit returns exit code `1`.
+  - Checks cover security migrations, the managed image registry, deletion gates, API idempotency state, legacy image path input, and private outbound exceptions without HTTP, DNS, or repair operations.
+- Updated the dependency security baseline:
+  - Upgraded Laravel, Guzzle, PSR-7, and Symfony security patches; the lock file has no known advisories in the dependency audit.
+  - The minimum PHP version is now consistently 8.3 to match the current `laravel/ai` requirement; Docker continues to default to PHP 8.4.
+
 ## 2026-06-26
 
 ### v2.1.0
@@ -17,7 +40,7 @@ This document tracks user-facing updates in the public repository. For future Gi
   - Knowledge-base detail pages can resubmit semantic chunking and safely return to the detail page after the action.
   - The materials page now links into the Enterprise Knowledge builder, making standard knowledge bases, material libraries, and Enterprise Knowledge drafts easier to connect.
 - Expanded themes, templates, and frontend output:
-  - Added live theme-template editing from the admin, with test coverage for the editing flow.
+  - Added live theme-template editing from the admin, with test coverage for the editing flow. Live theme editing is disabled in v2.1.1; the current security flow uses isolated previews and package-only review archives.
   - Site settings now support homepage module configuration and custom styling, and target-site packages can sync richer homepage structures.
   - Added the APIHot recommendation frontend theme with home, category, archive, article pages, and bundled assets.
   - Unified frontend SEO metadata output so themes share the same SEO head logic and avoid inconsistent titles, Open Graph data, and structured data.

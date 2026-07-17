@@ -4,7 +4,7 @@
 
 > GEOFlow は GEO（Generative Engine Optimization）向けのオープンソース・コンテンツエンジニアリング／マルチサイト配信システムです。ナレッジベース、素材ライブラリ、プロンプト、AI 生成タスク、レビューと公開、データ分析、GEOFlow Agent ターゲットサイトパッケージ、WordPress REST チャネル、汎用 HTTP API チャネル、リモート静的ページ配信を一つの運用フローに統合し、信頼できる資料を追跡可能で公開・配信しやすい GEO コンテンツ資産へ変換します。
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
@@ -198,12 +198,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 - フロント／管理は `web`（Nginx）経由、PHP は `app`（php-fpm）。
-- **初回インストール:** 本番の `init` サービスはマイグレーション後に `php artisan geoflow:install` を実行します。このコマンドは空のデータベースでのみ既定の管理者を作成します。既存データを検出した場合はインストール済みマーカーだけを書き込み、カテゴリ、記事、サイト設定、広告、プロンプトを再投入しません。
+- **初回インストール:** 本番の `init` サービスはマイグレーション後に `php artisan geoflow:install` を実行します。この手順は空のデータベース専用です。データまたはマイグレーション履歴がある環境では、`../../docs/deployment/DEPLOYMENT.md` 3.1 節の停止・ドレイン手順を実行してください。
 - 手順の詳細は **`../../docs/deployment/DEPLOYMENT.md`** を参照してください。
 
 ### 方法 2：ローカル PHP
 
-**前提:** PHP **8.2+**（`pdo_pgsql`、`redis` 等）、**PostgreSQL**、**Redis**、**Composer 2.x**。
+**前提:** PHP **8.3+**（`pdo_pgsql`、`redis` 等）、**PostgreSQL**、**Redis**、**Composer 2.x**。
 
 ```bash
 git clone https://github.com/yaojingang/GEOFlow.git
@@ -212,7 +212,7 @@ cp .env.example .env
 composer install --no-interaction --prefer-dist
 php artisan key:generate
 
-php artisan migrate --force
+GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
 php artisan geoflow:install
 php artisan storage:link
 
@@ -235,7 +235,7 @@ php artisan reverb:start
 
 | 項目 | メモ |
 |------|------|
-| PHP | **8.2+**（Docker は 8.4 の場合あり） |
+| PHP | **8.3+**（Docker は 8.4 の場合あり） |
 | DB | **PostgreSQL**（**pgvector** 推奨） |
 | Redis | キュー用（ローカル検証のみ `QUEUE_CONNECTION=sync` 可） |
 

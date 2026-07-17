@@ -4,7 +4,7 @@
 
 > GEOFlow is an open-source GEO (Generative Engine Optimization) content engineering and multi-site distribution system. It connects knowledge bases, material libraries, prompts, AI generation tasks, review and publishing, analytics, GEOFlow Agent target-site packages, WordPress REST channels, Generic HTTP API channels, and remote static-page distribution into one maintainable workflow for turning trustworthy source material into trackable, publishable, multi-channel GEO content assets.
 
-[![PHP](https://img.shields.io/badge/PHP-8.2%2B-blue)](https://www.php.net/)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
@@ -198,7 +198,7 @@ Under **`docker-compose.yml`**, the **`init`** service runs first-time migration
 
 For production, use **`docker-compose.prod.yml`** with **Nginx + php-fpm** instead of `php artisan serve`.
 
-For common cloud servers, you can use the reference deployment script to run host checks, prepare `.env.prod`, deploy containers, and run post-deployment health checks:
+For a first install on a fresh empty database, you can use the reference deployment script to run host checks, prepare `.env.prod`, deploy containers, and run post-deployment health checks:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yaojingang/GEOFlow/main/deploy-scripts/geoflow-docker-deploy.sh -o geoflow-docker-deploy.sh
@@ -219,12 +219,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - Frontend and admin both enter through `web` (Nginx)
 - PHP is executed by `app` (php-fpm)
-- **First install:** the production `init` service runs migrations and then `php artisan geoflow:install`. The install command only seeds the default admin on a fresh empty database; existing deployments without an install marker are marked as installed and are not seeded again.
+- **First install:** the production `init` service runs migrations and then `php artisan geoflow:install`. This sequence is limited to a fresh empty database. Deployments with data or migration history must follow the stopped-and-drained upgrade protocol in section 3.1 of `../../docs/deployment/DEPLOYMENT.md`.
 - See `../../docs/deployment/DEPLOYMENT.md` for details
 
 ### Option 2: Local PHP stack
 
-**Prerequisites:** PHP **8.2+** with `pdo_pgsql`, `redis`, and other typical Laravel extensions; local **PostgreSQL** and **Redis**; **Composer 2.x**.
+**Prerequisites:** PHP **8.3+** with `pdo_pgsql`, `redis`, and other typical Laravel extensions; local **PostgreSQL** and **Redis**; **Composer 2.x**.
 
 ```bash
 git clone https://github.com/yaojingang/GEOFlow.git
@@ -235,8 +235,8 @@ cp .env.example .env
 composer install --no-interaction --prefer-dist
 php artisan key:generate
 
-php artisan migrate --force
-php artisan geoflow:install                                            # first install; existing data is only marked as installed
+GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
+php artisan geoflow:install                                            # first install on an empty database
 php artisan storage:link
 
 php artisan serve --host=127.0.0.1 --port=8080
@@ -259,7 +259,7 @@ php artisan reverb:start
 
 | Component | Notes |
 |-----------|--------|
-| PHP | **8.2+** (Docker image may use 8.4) |
+| PHP | **8.3+** (Docker image may use 8.4) |
 | Extensions | Standard Laravel set; `pdo_pgsql` for Postgres; `redis` for queues |
 | Composer | 2.x |
 | Database | **PostgreSQL** (recommended: **pgvector**, same as Compose image) |
@@ -323,7 +323,7 @@ Optional localhost-only DB/Redis host ports: see `DB_EXPOSE_PORT` and `REDIS_EXP
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `COMPOSER_ON_START` | `true` | Run `composer install` on container start |
-| `AUTO_MIGRATE` | `true` | Run `php artisan migrate --force` on each start |
+| `AUTO_MIGRATE` | `true` | Run `php artisan migrate --force` on start; existing deployments still require the stopped-and-drained protocol for security migrations |
 | `AUTO_INIT_ONCE` | `true` on `init` only | Run `migrate` + `geoflow:install`; the installer decides whether the DB is empty |
 | `AUTO_INSTALL_ONCE` | `false` | Run `geoflow:install` after migrations; do not enable on long-running services |
 
@@ -331,7 +331,7 @@ The entrypoint automatically runs `key:generate --force` when `.env` does not co
 
 `./storage` and `./.env` are mounted; application code lives in the image. For production, use the new **`docker-compose.prod.yml`** stack (`Nginx + php-fpm`) and see `../../docs/deployment/DEPLOYMENT.md`.
 
-**Upgrade:** `git pull` → `docker compose build` → `docker compose up -d`.
+**Existing deployment upgrades:** do not run `git pull` → `build` → `up -d` directly. Follow the stopped-and-drained migration and readiness protocol in [deployment section 3.1](../deployment/DEPLOYMENT.md#31-受管图片删除升级门禁).
 
 ---
 
