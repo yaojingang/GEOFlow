@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "reviewed_at": "2026-07-19",
+  "capabilities": {
+    "network": {
+      "decision": "approved",
+      "reviewer": "GEOFlow maintainer, user-authorized merge review",
+      "scope": "Task-scoped read-only preflight and capability inventory against the operator-selected GEOFlow instance or channel target declared in security/network_policy.json.",
+      "reason": "Running-system and channel work needs current capability evidence before mutation; host, protocol, response-size, timeout, credential, and output boundaries are explicitly constrained.",
+      "expires_at": "2027-07-19",
+      "evidence": [
+        "security/network_policy.json",
+        "scripts/geoflow_preflight.sh",
+        "references/channel-frontend-contract.md"
+      ],
+      "target_enforcement": {
+        "openai": "SKILL.md discovery-first guardrail plus security/network_policy.json",
+        "claude": "SKILL.md discovery-first guardrail plus security/network_policy.json",
+        "agent-skills": "SKILL.md discovery-first guardrail plus security/network_policy.json",
+        "generic": "SKILL.md discovery-first guardrail plus security/network_policy.json",
+        "vscode": "SKILL.md discovery-first guardrail plus security/network_policy.json"
+      }
+    },
+    "file_write": {
+      "decision": "approved",
+      "reviewer": "GEOFlow maintainer, user-authorized merge review",
+      "scope": "User-selected discovery report output; preview, publish-as-new, or confirmed replace operations inside a resolved GEOFlow theme workspace; Laravel backups under storage/app/private; legacy backups in a dedicated mode-0700 child of an explicitly selected persistent parent outside the web workspace; temporary preflight response files; and exact-contract Codex Skill staging with persistent backup of the current and retired Skill directories.",
+      "reason": "The unified skill needs bounded local writes for capability reports, theme edit sessions, redacted preflight processing, and clean installation; theme identifiers and filesystem entries are validated, replacements require confirmation and rollback-capable staging, and persistent backups precede live replacement or Skill switching.",
+      "expires_at": "2027-07-19",
+      "evidence": [
+        "references/theme-edit-workflow.md",
+        "references/operation-boundary.md",
+        "evals/test_geoflow_scripts.py",
+        "scripts/geoflow_preflight.sh",
+        "scripts/install_codex_skill.sh",
+        "scripts/finalize_theme_edit_session.py"
+      ],
+      "target_enforcement": {
+        "openai": "SKILL.md guardrails and explicit CLI confirmation contract",
+        "claude": "SKILL.md guardrails and explicit CLI confirmation contract",
+        "agent-skills": "SKILL.md guardrails and explicit CLI confirmation contract",
+        "generic": "SKILL.md guardrails and explicit CLI confirmation contract",
+        "vscode": "SKILL.md guardrails and explicit CLI confirmation contract"
+      }
+    },
+    "subprocess": {
+      "decision": "approved",
+      "reviewer": "GEOFlow maintainer, user-authorized merge review",
+      "scope": "Argument-list invocation of local php artisan geoflow:frontend-experience for read-only channel capability and sync-preview reports.",
+      "reason": "Channel frontend comparison requires current application evidence; subprocess calls use fixed command arguments, capture JSON output, and do not use a shell.",
+      "expires_at": "2027-07-19",
+      "evidence": [
+        "references/channel-frontend-contract.md",
+        "scripts/build_sync_preview_report.py",
+        "scripts/compare_default_vs_channel_frontend.py"
+      ],
+      "target_enforcement": {
+        "openai": "SKILL.md discovery-first contract and fixed argument-list subprocess",
+        "claude": "SKILL.md discovery-first contract and fixed argument-list subprocess",
+        "agent-skills": "SKILL.md discovery-first contract and fixed argument-list subprocess",
+        "generic": "SKILL.md discovery-first contract and fixed argument-list subprocess",
+        "vscode": "SKILL.md discovery-first contract and fixed argument-list subprocess"
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "optimizer_hints": {
+    "capability": "Develop and operate GEOFlow across product code, admin, CLI/API, default frontend, themes, visitor flows, and channel sites",
+    "inputs": ["GEOFlow workspace", "running instance", "resource ids", "reference URL", "channel id", "legacy template package"],
+    "trigger_actions": ["implement GEOFlow features", "operate GEOFlow", "edit GEOFlow frontend", "manage channel frontend", "migrate legacy templates"],
+    "exclusions": ["unrelated Laravel work", "generic website design", "GEO content strategy", "geographic information systems", "summary-only requests"],
+    "artifacts": ["code change", "operation result", "capability snapshot", "frontend preview", "channel sync preview", "migration plan"]
+  },
+  "fallback_positive_concepts": ["geoflow_full_stack"],
+  "positive_concepts": {
+    "geoflow_full_stack": {
+      "weight": 1.0,
+      "phrases": [
+        "geoflow", "geo flow", "geoflow agent", "homepage-design.json", "frontend-capabilities",
+        "渠道目标包", "渠道站", "旧 geoflow", "geoflow 后台", "geoflow api", "geoflow cli"
+      ]
+    }
+  },
+  "negative_concepts": {
+    "unrelated_generic": {
+      "weight": 0.95,
+      "exclusive": true,
+      "phrases": ["与 geoflow 无关", "不需要 geoflow", "without geoflow contracts", "站点没有接入 geoflow", "未接入 geoflow", "普通 laravel 博客"]
+    },
+    "geo_content_work": {
+      "weight": 0.9,
+      "exclusive": true,
+      "phrases": ["品牌全景诊断", "竞品可见性报告", "优化一篇", "文章内容优化", "geo 文章内容"]
+    },
+    "geographic_system": {
+      "weight": 1.0,
+      "exclusive": true,
+      "phrases": ["地理信息系统", "geographic information system", "河流矢量"]
+    },
+    "explanation_only": {
+      "weight": 0.9,
+      "exclusive": true,
+      "phrases": ["只总结", "只解释", "不需要检查工作区", "不要修改或操作", "summary only"]
+    },
+    "copy_only": {
+      "weight": 0.9,
+      "exclusive": true,
+      "phrases": ["产品发布新闻", "只需要营销文案", "marketing copy only"]
+    }
+  }
+}

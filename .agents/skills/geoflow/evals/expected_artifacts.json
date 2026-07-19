@@ -1,0 +1,113 @@
+{
+  "skill_id": "geoflow",
+  "required_package_files": [
+    ".gitignore",
+    "README.md",
+    "SKILL.md",
+    "agents/interface.yaml",
+    "agents/openai.yaml",
+    "manifest.json",
+    "templates/brief-template.md",
+    "evals/expected_artifacts.json",
+    "evals/failure_cases.md",
+    "evals/rubric.md",
+    "evals/semantic_config.json",
+    "evals/test_geoflow_scripts.py",
+    "evals/trigger_cases.json",
+    "examples/README.md",
+    "examples/channel-frontend-report.json",
+    "examples/qiaomu-editorial-20260418/archive.html",
+    "examples/qiaomu-editorial-20260418/article.html",
+    "examples/qiaomu-editorial-20260418/assets/app.js",
+    "examples/qiaomu-editorial-20260418/assets/theme.css",
+    "examples/qiaomu-editorial-20260418/category.html",
+    "examples/qiaomu-editorial-20260418/index.html",
+    "references/backend-connection-workflow.md",
+    "references/channel-frontend-contract.md",
+    "references/command-map.md",
+    "references/design-optimization-playbook.md",
+    "references/development-workflow.md",
+    "references/distribution-target-site-map.md",
+    "references/frontend-resource-index.md",
+    "references/geoflow-current-capability-map.md",
+    "references/geoflow-frontend-map.md",
+    "references/homepage-composition-guide.md",
+    "references/laravel-api-v1-docker.md",
+    "references/laravel-theme-contract.md",
+    "references/legacy-skill-id-migration.md",
+    "references/legacy-template-migration.md",
+    "references/operation-boundary.md",
+    "references/system-capability-discovery.md",
+    "references/template-boundary.md",
+    "references/theme-edit-workflow.md",
+    "references/theme-package-contract.md",
+    "reports/conformance_matrix.md",
+    "reports/output_quality_scorecard.md",
+    "reports/security_trust_report.md",
+    "reports/skill-ir.json",
+    "scripts/build_sync_preview_report.py",
+    "scripts/channel_endpoint_safety.py",
+    "scripts/compare_default_vs_channel_frontend.py",
+    "scripts/discover_frontend_surfaces.py",
+    "scripts/discover_geoflow_workspace.py",
+    "scripts/discover_themes.py",
+    "scripts/finalize_theme_edit_session.py",
+    "scripts/geoflow_preflight.sh",
+    "scripts/install_codex_skill.sh",
+    "scripts/prepare_theme_edit_session.py",
+    "scripts/serve_preview.py",
+    "scripts/validate_homepage_design_payload.py",
+    "security/network_policy.json",
+    "security/permission_policy.json",
+    "templates/homepage-design-template.json"
+  ],
+  "mode_outputs": {
+    "development": ["changed-files", "contract-impact", "verification-result"],
+    "operations": ["surface-used", "resource-readback", "final-state"],
+    "public_frontend": ["target-theme-or-payload", "preview-evidence", "contract-check"],
+    "channel_frontend": ["capability-status", "sync-preview", "rollback-note"],
+    "legacy_migration": ["legacy-inventory", "laravel-mapping", "migration-handoff"]
+  },
+  "required_report_fields": [
+    "selected-mode",
+    "source-of-truth",
+    "targets-touched",
+    "verification",
+    "final-state",
+    "remaining-risks"
+  ],
+  "quality_expectations": {
+    "development": [
+      "discover current code and route contracts before editing",
+      "include focused tests for changed backend, admin, API, CLI, queue, or frontend behavior"
+    ],
+    "operations": [
+      "use a supported CLI, API v1, or authenticated admin surface",
+      "run preflight before mutation and read back persisted state"
+    ],
+    "public_frontend": [
+      "preserve Laravel theme, route, SEO, article-data, and lead-form contracts",
+      "use preview-first theme staging and require confirmation for live replacement"
+    ],
+    "channel_frontend": [
+      "compare default, packaged, cached, and live target capabilities before sync",
+      "surface unsupported modules, confirmation requirements, and rollback guidance"
+    ],
+    "legacy_migration": [
+      "inventory old PHP entrypoints and data contracts before mapping",
+      "store replacement backups outside a legacy web root and verify the Laravel target"
+    ],
+    "package": [
+      "retain every required file across source, archive, and installed skill roots",
+      "exclude caches, local logs, screenshots, credentials, and temporary outputs"
+    ]
+  },
+  "forbidden_behaviors": [
+    "invented-routes-or-cli-commands",
+    "direct-production-sql-shortcuts",
+    "authentication-or-csrf-bypass",
+    "secret-or-personal-data-exposure",
+    "unreviewed-live-theme-or-channel-publication",
+    "unsupported-remote-module-sync"
+  ]
+}
