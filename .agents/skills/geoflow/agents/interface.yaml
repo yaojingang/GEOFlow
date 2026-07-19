@@ -1,0 +1,24 @@
+interface:
+  display_name: "GEOFlow"
+  short_description: "Build and operate GEOFlow across backend, admin, public frontend, themes, and channel sites"
+  default_prompt: "Use $geoflow for GEOFlow-specific development and operations. Discover the real workspace or instance first, select development, operations, public_frontend, channel_frontend, or legacy_migration mode, preserve current contracts, verify the result, and separate preview from high-risk activation or publication."
+compatibility:
+  canonical_format: "agent-skills"
+  adapter_targets:
+    - "openai"
+    - "claude"
+    - "generic"
+  activation:
+    mode: "manual"
+    paths: []
+  execution:
+    context: "inline"
+    shell: "bash"
+  trust:
+    source_tier: "local"
+    remote_inline_execution: "forbid"
+    remote_metadata_policy: "allow-metadata-only"
+  degradation:
+    openai: "metadata-adapter"
+    claude: "neutral-source-plus-adapter"
+    generic: "neutral-source"

@@ -1,0 +1,41 @@
+{
+  "name": "geoflow",
+  "version": "1.0.0",
+  "owner": "Yao Team",
+  "updated_at": "2026-07-19",
+  "status": "active",
+  "catalog_maturity": "beta",
+  "maturity_tier": "production",
+  "lifecycle_stage": "active",
+  "context_budget_tier": "production",
+  "review_cadence": "monthly",
+  "skill_archetype": "production",
+  "target_platforms": [
+    "openai",
+    "claude",
+    "agent-skills",
+    "vscode",
+    "generic"
+  ],
+  "factory_components": [
+    "references",
+    "scripts",
+    "evals",
+    "examples",
+    "templates",
+    "reports",
+    "security"
+  ],
+  "supersedes": [
+    "yao-geoflow-cli",
+    "yao-geoflow-design",
+    "yao-geoflow-template"
+  ],
+  "mode_maturity": {
+    "development": "beta",
+    "operations": "stable",
+    "public_frontend": "beta",
+    "channel_frontend": "beta",
+    "legacy_migration": "beta"
+  }
+}

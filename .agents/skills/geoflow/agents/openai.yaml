@@ -1,0 +1,4 @@
+interface:
+  display_name: "GEOFlow"
+  short_description: "Build and operate GEOFlow across backend, admin, public frontend, themes, and channel sites"
+  default_prompt: "Use for GEOFlow development or operations across Laravel product code, admin, API/CLI, default-site themes, visitor flows, and GeoFlow Agent channel sites. Discover current capabilities, preserve contracts, verify changes, and require review before live or destructive actions."

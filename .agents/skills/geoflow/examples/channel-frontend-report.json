@@ -1,0 +1,57 @@
+{
+  "default_site": {
+    "supported_modules": ["hero", "feature_grid", "article_collection", "lead_form"]
+  },
+  "channel": {
+    "id": 7,
+    "name": "Synthetic GEOFlow Agent Channel",
+    "type": "geoflow_agent",
+    "supports_first_party_frontend": true,
+    "frontend_experience_mode": "snapshot_default",
+    "supported_modules": ["hero", "feature_grid", "article_collection"],
+    "sync_summary": {
+      "frontend_experience_mode": "snapshot_default",
+      "active_theme": "default",
+      "front_mode": "static",
+      "homepage_modules_count": 4,
+      "homepage_module_types": ["hero", "feature_grid", "article_collection", "lead_form"],
+      "home_carousel_slides_count": 1,
+      "home_carousel_slide_titles": ["Synthetic preview"],
+      "homepage_style_keys": ["accent_color", "container_width"],
+      "article_text_ads_count": 1
+    }
+  },
+  "target_package": {
+    "supported_modules": ["hero", "feature_grid", "article_collection"]
+  },
+  "remote_target": {
+    "status": "ok",
+    "source": "cache",
+    "checked_at": "2026-07-19T00:00:00Z",
+    "is_stale": false,
+    "package_version": "2.1.0",
+    "capability_version": "1.2",
+    "supported_modules": ["hero", "feature_grid", "article_collection"],
+    "supported_routes": ["/", "/article/{slug}", "/category/{slug}"]
+  },
+  "sync_preview": {
+    "requires_confirmation": true,
+    "warnings": [
+      {
+        "code": "missing_modules",
+        "message": "The synthetic target package does not advertise lead_form."
+      }
+    ],
+    "summary": {
+      "frontend_experience_mode": "snapshot_default",
+      "active_theme": "default",
+      "front_mode": "static",
+      "homepage_modules_count": 4,
+      "homepage_module_types": ["hero", "feature_grid", "article_collection", "lead_form"],
+      "home_carousel_slides_count": 1,
+      "home_carousel_slide_titles": ["Synthetic preview"],
+      "homepage_style_keys": ["accent_color", "container_width"],
+      "article_text_ads_count": 1
+    }
+  }
+}

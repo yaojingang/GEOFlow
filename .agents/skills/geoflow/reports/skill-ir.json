@@ -1,0 +1,157 @@
+{
+  "schema_version": "2.0.0",
+  "name": "geoflow",
+  "title": "GEOFlow",
+  "job_to_be_done": "Develop or operate GEOFlow across Laravel backend/admin/API/CLI, the default site, themes, leads, and GeoFlow Agent channel sites. Use for code changes, running-system operations, frontend or template edits, channel capability sync, legacy PHP migration, or retired yao-geoflow-cli, yao-geoflow-design, and yao-geoflow-template IDs. Discover real routes first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, raw copying, and unapproved live or destructive actions.",
+  "trigger_surface": {
+    "description": "Develop or operate GEOFlow across Laravel backend/admin/API/CLI, the default site, themes, leads, and GeoFlow Agent channel sites. Use for code changes, running-system operations, frontend or template edits, channel capability sync, legacy PHP migration, or retired yao-geoflow-cli, yao-geoflow-design, and yao-geoflow-template IDs. Discover real routes first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, raw copying, and unapproved live or destructive actions.",
+    "should_trigger": [
+      "给 GEOFlow 后台新增一个 AI 来源管理模块，包含迁移、模型、控制器、页面和测试。",
+      "修改 GEOFlow API v1，让任务接口支持新的发布策略，并补齐权限和回归测试。",
+      "修复 GEOFlow worker 重试后重复发布的问题，先找根因再改服务和测试。",
+      "在当前 GEOFlow 增加一个可配置的后台页面，但要继续支持自定义后台路径。",
+      "用 geoflow CLI 创建任务、入队，检查 job，然后审核并发布文章。",
+      "Laravel 版 GEOFlow 没有本地 CLI，用 API v1 创建关键词库和标题条目。",
+      "登录 GEOFlow 后台导出今天的线索，并把个人信息做脱敏汇总。",
+      "进入 GEOFlow 系统更新中心生成计划和备份，先保留在 apply 前。",
+      "把当前 GEOFlow Blade 主题首页改成企业门户，生成预览并保留 SEO 和文章数据契约。",
+      "为 GEOFlow 首页生成包含 hero、lead_form 和 article_collection 的 homepage-design.json。",
+      "给 GEOFlow 文章详情页增加新的文本广告样式和移动端布局，并补页面测试。",
+      "比较默认站与 GeoFlow Agent 渠道站支持的首页模块，生成同步预览。",
+      "升级 GEOFlow 渠道目标包，让 frontend-capabilities 返回新模块并补签名请求测试。",
+      "把默认站首页设置同步到指定渠道站，先检查 target package 能力和回滚方案。",
+      "把旧 GEOFlow 的 index.php、article.php 和 tokens.json 迁移成当前 Laravel 主题方案。",
+      "以前用 $yao-geoflow-design 修改主题，现在请用合并后的入口继续完成渠道站前台升级。"
+    ],
+    "should_not_trigger": [
+      "给一个普通 Laravel 博客写用户登录教程，与 GEOFlow 无关。",
+      "从零设计一个品牌官网，不需要 GEOFlow 主题或数据契约。",
+      "帮我做 GEO 品牌全景诊断和竞品可见性报告。",
+      "分析一个地理信息系统里的河流矢量数据。",
+      "只总结这篇 GEOFlow 新闻，不要检查代码或操作系统。",
+      "给 WordPress 独立站写一个主题，站点没有接入 GEOFlow 分发。"
+    ],
+    "edge_cases": [
+      "解释 GEOFlow 的架构概念，不需要检查工作区，也不要修改或操作。",
+      "优化一篇准备发布到 GEOFlow 的 GEO 文章内容。",
+      "设计一个叫 GeoFlow 的地理信息系统，用来管理河流矢量数据。",
+      "写一份 GEOFlow 产品发布新闻，只需要营销文案。",
+      "为未接入 GEOFlow 的 WordPress 站点复刻参考站主题。"
+    ]
+  },
+  "workflow": {
+    "steps": [
+      "Discover the current GEOFlow workspace, routes, commands, contracts, or authenticated runtime surface.",
+      "Select development, operations, public_frontend, channel_frontend, or legacy_migration as the active mode.",
+      "Implement or operate through the supported surface while preserving authorization, data, theme, and channel contracts.",
+      "Run focused tests, preview or readback checks, and record every unverified runtime layer.",
+      "Finalize only the user-approved target and report evidence, rollback boundary, final state, and remaining risks."
+    ],
+    "decision_points": [
+      "Choose source-work discovery or running-instance preflight from the target supplied by the user.",
+      "Split mixed requests into ordered mode phases when implementation crosses into authenticated operation.",
+      "Use an isolated theme preview or reviewed homepage payload before live activation or replacement.",
+      "Compare default-site, packaged, cached, and live channel capabilities before sync.",
+      "Stop for exact target approval before destructive, live, activation, publication, update-apply, or broad channel actions."
+    ],
+    "failure_modes": [
+      "Use of a remembered route or command without current discovery evidence.",
+      "Treating an unavailable API or admin capability as supported.",
+      "Crossing from code or design work into runtime mutation without an operations phase.",
+      "Editing an active theme in place when preview staging is available.",
+      "Syncing a module that the target package does not support.",
+      "Adding fields or modules without migrations, validation, localization, permissions, or tests.",
+      "Exposing secrets, credentials, or personal lead data in output.",
+      "Claiming completion without tests, rendering, persisted readback, or capability evidence."
+    ]
+  },
+  "resources": {
+    "references": [
+      "references/backend-connection-workflow.md",
+      "references/channel-frontend-contract.md",
+      "references/command-map.md",
+      "references/design-optimization-playbook.md",
+      "references/development-workflow.md",
+      "references/distribution-target-site-map.md",
+      "references/frontend-resource-index.md",
+      "references/geoflow-current-capability-map.md",
+      "references/geoflow-frontend-map.md",
+      "references/homepage-composition-guide.md",
+      "references/laravel-api-v1-docker.md",
+      "references/laravel-theme-contract.md",
+      "references/legacy-skill-id-migration.md",
+      "references/legacy-template-migration.md",
+      "references/operation-boundary.md",
+      "references/system-capability-discovery.md",
+      "references/template-boundary.md",
+      "references/theme-edit-workflow.md",
+      "references/theme-package-contract.md"
+    ],
+    "scripts": [
+      "scripts/build_sync_preview_report.py",
+      "scripts/channel_endpoint_safety.py",
+      "scripts/compare_default_vs_channel_frontend.py",
+      "scripts/discover_frontend_surfaces.py",
+      "scripts/discover_geoflow_workspace.py",
+      "scripts/discover_themes.py",
+      "scripts/finalize_theme_edit_session.py",
+      "scripts/geoflow_preflight.sh",
+      "scripts/install_codex_skill.sh",
+      "scripts/prepare_theme_edit_session.py",
+      "scripts/serve_preview.py",
+      "scripts/validate_homepage_design_payload.py"
+    ],
+    "assets": [
+      "templates/brief-template.md",
+      "templates/homepage-design-template.json"
+    ],
+    "reports": [
+      "reports/output_quality_scorecard.md",
+      "reports/conformance_matrix.md",
+      "reports/security_trust_report.md"
+    ]
+  },
+  "eval_plan": {
+    "trigger": [
+      "evals/expected_artifacts.json",
+      "evals/semantic_config.json",
+      "evals/trigger_cases.json"
+    ],
+    "output": [
+      "evals/rubric.md",
+      "reports/output_quality_scorecard.md"
+    ],
+    "adversarial": [
+      "evals/failure_cases.md",
+      "security/network_policy.json",
+      "security/permission_policy.json"
+    ],
+    "baseline": "without_skill"
+  },
+  "risk": {
+    "output_risk": "low",
+    "execution_risk": "medium",
+    "trust_boundary": "team"
+  },
+  "governance": {
+    "owner": "Yao Team",
+    "maturity": "production",
+    "review_cadence": "monthly",
+    "review_due": ""
+  },
+  "targets": [
+    "openai",
+    "claude",
+    "agent-skills",
+    "vscode",
+    "generic"
+  ],
+  "source_files": [
+    "SKILL.md",
+    "manifest.json",
+    "agents/interface.yaml",
+    "evals/trigger_cases.json",
+    "evals/failure_cases.md",
+    "evals/rubric.md"
+  ]
+}
