@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\ArticleDistribution;
+use App\Models\DistributionChannel;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionRetryPolicy;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -27,15 +28,25 @@ class ProcessArticleDistributionJob implements ShouldQueue
         }
 
         try {
-            $orchestrator->process($distribution);
+            if (! $orchestrator->process($distribution)) {
+                return;
+            }
         } catch (Throwable $e) {
-            $distribution->loadMissing(['article.task.distributionChannels']);
+            $distribution = ArticleDistribution::query()->whereKey($this->distributionId)->first();
+            if (! $distribution) {
+                return;
+            }
+            $distribution->loadMissing(['article.task.distributionChannels', 'channel']);
             $attemptCount = (int) $distribution->attempt_count;
             $maxAttempts = (int) ($distribution->article?->task?->distributionChannels
                 ?->firstWhere('id', (int) $distribution->distribution_channel_id)
                 ?->pivot?->max_attempts ?? 3);
             $shouldRetry = $retryPolicy->shouldRetry($e, $attemptCount, $maxAttempts);
             $retryAt = $shouldRetry ? $retryPolicy->retryAt($attemptCount) : null;
+            if ((string) $distribution->channel?->status !== DistributionChannel::STATUS_ACTIVE) {
+                $shouldRetry = false;
+                $retryAt = null;
+            }
 
             $distribution->forceFill([
                 'status' => $shouldRetry ? 'queued' : 'failed',

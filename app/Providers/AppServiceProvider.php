@@ -20,7 +20,10 @@ use App\Services\Outbound\SystemHostResolver;
 use App\View\Composers\SiteLayoutComposer;
 use Closure;
 use GuzzleHttp\Utils;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -64,6 +67,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('admin-sensitive', function (Request $request): array {
+            $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
+
+            return [
+                Limit::perMinute(5)->by('admin-sensitive:admin:'.$adminId),
+                Limit::perMinute(5)->by('admin-sensitive:admin-ip:'.$adminId.'|'.$request->ip()),
+            ];
+        });
         View::composer(['site.layout', 'theme.*.layout'], SiteLayoutComposer::class);
 
         View::composer('admin.layouts.app', function ($view): void {

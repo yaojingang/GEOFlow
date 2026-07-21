@@ -143,6 +143,10 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::put('jobs/{distributionId}', [DistributionController::class, 'updateArticle'])->name('article.update')->whereNumber('distributionId');
             Route::post('jobs/{distributionId}/delete', [DistributionController::class, 'deleteArticle'])->name('article.delete')->whereNumber('distributionId');
             Route::post('jobs/{distributionId}/retry', [DistributionController::class, 'retry'])->name('retry')->whereNumber('distributionId');
+            Route::get('{channelId}/delete', [DistributionController::class, 'deletePreview'])->middleware('admin.super')->name('delete')->whereNumber('channelId');
+            Route::post('{channelId}/delete/prepare', [DistributionController::class, 'prepareDelete'])->middleware('admin.super')->name('delete.prepare')->whereNumber('channelId');
+            Route::post('{channelId}/delete/cancel', [DistributionController::class, 'cancelDelete'])->middleware('admin.super')->name('delete.cancel')->whereNumber('channelId');
+            Route::delete('{channelId}', [DistributionController::class, 'destroy'])->middleware(['admin.super', 'throttle:admin-sensitive'])->name('destroy')->whereNumber('channelId');
             Route::get('{channelId}/edit', [DistributionController::class, 'edit'])->name('edit')->whereNumber('channelId');
             Route::put('{channelId}', [DistributionController::class, 'update'])->name('update')->whereNumber('channelId');
             Route::post('{channelId}/pause', [DistributionController::class, 'pause'])->name('pause')->whereNumber('channelId');

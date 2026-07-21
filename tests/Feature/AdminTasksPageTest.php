@@ -13,8 +13,10 @@ use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -381,6 +383,7 @@ class AdminTasksPageTest extends TestCase
             ->put(route('admin.tasks.update', ['taskId' => (int) $task->id]), $this->validTaskPayload($dependencies, [
                 'task_name' => '已更新知识库任务',
                 'knowledge_base_ids' => [(string) $knowledgeBases[2]->id],
+                'task_revision' => app(DistributionOrchestrator::class)->taskRevision($task->fresh()),
             ]))
             ->assertRedirect(route('admin.tasks.index'))
             ->assertSessionHasNoErrors();
@@ -398,6 +401,7 @@ class AdminTasksPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->put(route('admin.tasks.update', ['taskId' => (int) $task->id]), $this->validTaskPayload($dependencies, [
                 'task_name' => '已清空知识库任务',
+                'task_revision' => app(DistributionOrchestrator::class)->taskRevision($task->fresh()),
             ]))
             ->assertRedirect(route('admin.tasks.index'))
             ->assertSessionHasNoErrors();
@@ -405,6 +409,67 @@ class AdminTasksPageTest extends TestCase
         $task->refresh();
         $this->assertNull($task->knowledge_base_id);
         $this->assertSame(0, $task->knowledgeBases()->count());
+    }
+
+    public function test_stale_task_edit_cannot_restore_distribution_state_after_channel_deletion(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_stale_distribution_edit_admin');
+        $dependencies = $this->createTaskFormDependencies();
+        $channel = DistributionChannel::query()->create([
+            'name' => '即将删除的任务渠道',
+            'domain' => 'stale-task-channel.example.com',
+            'endpoint_url' => 'https://stale-task-channel.example.com',
+            'status' => 'active',
+        ]);
+        $task = Task::query()->create([
+            'name' => '待并发保护任务',
+            'title_library_id' => $dependencies['title_library']->id,
+            'prompt_id' => $dependencies['prompt']->id,
+            'ai_model_id' => $dependencies['ai_model']->id,
+            'status' => 'active',
+            'publish_scope' => 'distribution_only',
+            'schedule_enabled' => 1,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+        $task->distributionChannels()->attach($channel->id);
+
+        $editResponse = $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.edit', ['taskId' => (int) $task->id]))
+            ->assertOk();
+        $this->assertSame(
+            1,
+            preg_match('/name="task_revision" value="([a-f0-9]{64})"/', (string) $editResponse->getContent(), $matches)
+        );
+
+        $task->forceFill([
+            'status' => 'paused',
+            'publish_scope' => 'local_only',
+        ])->save();
+        $task->distributionChannels()->detach($channel->id);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.tasks.update', ['taskId' => (int) $task->id]), $this->validTaskPayload($dependencies, [
+                'task_name' => '旧表单不应覆盖任务',
+                'status' => 'active',
+                'publish_scope' => 'distribution_only',
+                'distribution_channel_ids' => [],
+                'task_revision' => $matches[1],
+            ]))
+            ->assertSessionHasErrors();
+
+        $this->get(route('admin.tasks.edit', ['taskId' => (int) $task->id]))
+            ->assertOk()
+            ->assertSee('option value="paused" selected', false)
+            ->assertSee('name="publish_scope" value="local_only" checked', false)
+            ->assertDontSee('name="publish_scope" value="distribution_only" checked', false);
+
+        $this->assertDatabaseHas('tasks', [
+            'id' => (int) $task->id,
+            'status' => 'paused',
+            'publish_scope' => 'local_only',
+        ]);
     }
 
     public function test_task_article_action_links_to_filtered_article_list(): void
@@ -602,11 +667,11 @@ class AdminTasksPageTest extends TestCase
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Collection<int, KnowledgeBase>
+     * @return Collection<int, KnowledgeBase>
      */
-    private function createKnowledgeBases(int $count): \Illuminate\Database\Eloquent\Collection
+    private function createKnowledgeBases(int $count): Collection
     {
-        $knowledgeBases = new \Illuminate\Database\Eloquent\Collection();
+        $knowledgeBases = new Collection;
         for ($index = 1; $index <= $count; $index++) {
             $knowledgeBases->push(KnowledgeBase::query()->create([
                 'name' => '任务知识库 '.$index,

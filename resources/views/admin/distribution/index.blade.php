@@ -3,6 +3,7 @@
 @section('content')
     @php($syncableChannels = $channels->filter(fn ($channel) => $channel->status === 'active' && $channel->channelType() === 'geoflow_agent')->values())
     @php($channelSyncSummaries = $channelSyncSummaries ?? [])
+    @php($canDeleteChannels = auth('admin')->user() instanceof \App\Models\Admin && auth('admin')->user()->isSuperAdmin())
 
     <div class="space-y-8 px-4 sm:px-0">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -171,7 +172,7 @@
                                     </td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{{ $channel->domain }}</td>
                                     <td class="px-6 py-4 text-sm">
-                                        <span class="inline-flex rounded-full px-2 py-1 text-xs font-medium {{ $channel->status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }}">{{ $channelStatusLabel }}</span>
+                                        <span class="inline-flex rounded-full px-2 py-1 text-xs font-medium {{ $channel->status === 'active' ? 'bg-green-100 text-green-800' : ($channel->status === 'deleting' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700') }}">{{ $channelStatusLabel }}</span>
                                     </td>
                                     <td class="px-6 py-4 text-sm text-gray-600">
                                         {{ __('admin.distribution.queue_summary', ['pending' => (int) $channel->pending_count, 'failed' => (int) $channel->failed_count]) }}
@@ -179,7 +180,16 @@
                                     <td class="px-6 py-4 text-sm">
                                         <div class="flex items-center gap-3">
                                             <a href="{{ route('admin.distribution.show', ['channelId' => (int) $channel->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.button.view') }}</a>
-                                            <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="text-gray-600 hover:text-gray-800">{{ __('admin.button.edit') }}</a>
+                                            @if ($channel->status === 'deleting')
+                                                @if ($canDeleteChannels)
+                                                    <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="font-medium text-amber-700 hover:text-amber-900">{{ __('admin.distribution.delete.button.continue') }}</a>
+                                                @endif
+                                            @else
+                                                <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="text-gray-600 hover:text-gray-800">{{ __('admin.button.edit') }}</a>
+                                                @if ($canDeleteChannels)
+                                                    <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="text-red-600 hover:text-red-800">{{ __('admin.distribution.delete.button.open') }}</a>
+                                                @endif
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>

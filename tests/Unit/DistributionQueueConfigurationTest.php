@@ -86,4 +86,44 @@ class DistributionQueueConfigurationTest extends TestCase
         $this->assertStringNotContainsString('php artisan db:seed', $entrypoint);
         $this->assertStringContainsString('php artisan geoflow:install', $entrypoint);
     }
+
+    public function test_production_init_services_preserve_the_operator_migration_gate(): void
+    {
+        $root = dirname(__DIR__, 2);
+
+        foreach (['docker-compose.prod.yml', 'docker-compose.prebuilt.yml'] as $composeFile) {
+            $contents = file_get_contents($root.'/'.$composeFile);
+            $this->assertIsString($contents);
+            $initStart = strpos($contents, "\n  init:\n");
+            $appStart = strpos($contents, "\n  app:\n", $initStart === false ? 0 : $initStart);
+            $this->assertNotFalse($initStart, $composeFile.' must define an init service.');
+            $this->assertNotFalse($appStart, $composeFile.' must define an app service after init.');
+            $initBlock = substr($contents, (int) $initStart, (int) $appStart - (int) $initStart);
+
+            $this->assertStringNotContainsString(
+                'AUTO_MIGRATE: "true"',
+                $initBlock,
+                $composeFile.' must not override the operator-controlled migration gate.'
+            );
+        }
+
+        $entrypoint = file_get_contents($root.'/docker/entrypoint.prod.sh');
+        $this->assertIsString($entrypoint);
+        $this->assertStringContainsString('${AUTO_MIGRATE:-false}', $entrypoint);
+    }
+
+    public function test_deployment_healthcheck_rejects_pending_migrations(): void
+    {
+        $healthcheck = file_get_contents(dirname(__DIR__, 2).'/deploy-scripts/geoflow-healthcheck.sh');
+
+        $this->assertIsString($healthcheck);
+        $this->assertStringContainsString(
+            'php artisan migrate:status --pending=1 --no-interaction',
+            $healthcheck
+        );
+        $this->assertStringContainsString(
+            'fail "Laravel cannot read migration status or still has pending migrations.',
+            $healthcheck
+        );
+    }
 }
