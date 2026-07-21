@@ -13,6 +13,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DistributionChannel extends Model
 {
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_PAUSED = 'paused';
+
+    public const STATUS_DELETING = 'deleting';
+
     public const MAX_CUSTOM_TEXT_AD_MODULES_PER_PLACEMENT = 5;
 
     public const FRONTEND_EXPERIENCE_CUSTOM = 'custom';
@@ -764,6 +770,11 @@ class DistributionChannel extends Model
     public function articleDistributions(): HasMany
     {
         return $this->hasMany(ArticleDistribution::class);
+    }
+
+    public function operations(): HasMany
+    {
+        return $this->hasMany(DistributionChannelOperation::class);
     }
 
     public function logs(): HasMany

@@ -93,6 +93,7 @@
                 @csrf
                 @if ($isEdit)
                     @method('PUT')
+                    <input type="hidden" name="task_revision" value="{{ (string) ($taskForm['task_revision'] ?? '') }}">
                 @endif
 
                 <div class="bg-white shadow rounded-lg xl:col-span-12">

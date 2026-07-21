@@ -7,6 +7,7 @@
     $healthStatusKey = 'admin.distribution.health_status.'.$healthStatus;
     $healthStatusLabel = $healthStatus !== '' && trans()->has($healthStatusKey) ? __($healthStatusKey) : ($healthStatus !== '' ? $healthStatus : __('admin.common.none'));
     $canRevealSecret = auth('admin')->user() instanceof \App\Models\Admin && auth('admin')->user()->isSuperAdmin();
+    $canDeleteChannel = $canRevealSecret;
     $channelType = $channel->channelType();
     $channelTypeLabel = __('admin.distribution.channel_type.'.$channelType);
     $channelConfig = $channel->resolvedChannelConfig();
@@ -73,6 +74,14 @@
                 </div>
             </div>
             <div class="flex flex-wrap items-center justify-end gap-3">
+                @if ($channel->status === \App\Models\DistributionChannel::STATUS_DELETING)
+                    @if ($canDeleteChannel)
+                        <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">
+                            <i data-lucide="shield-alert" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.distribution.delete.button.continue') }}
+                        </a>
+                    @endif
+                @else
                 <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     <i data-lucide="pencil" class="mr-2 h-4 w-4"></i>
                     {{ __('admin.button.edit') }}
@@ -113,9 +122,24 @@
                     <i data-lucide="scan-search" class="mr-2 h-4 w-4"></i>
                     同步预览
                 </a>
+                    @if ($canDeleteChannel)
+                        <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">
+                            <i data-lucide="trash-2" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.distribution.delete.button.open') }}
+                        </a>
+                    @endif
+                @endif
             </div>
         </div>
 
+        @if ($channel->status === \App\Models\DistributionChannel::STATUS_DELETING)
+            <div class="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-950">
+                <div class="font-semibold">{{ __('admin.distribution.delete.deleting_banner_title') }}</div>
+                <p class="mt-1">{{ __('admin.distribution.delete.deleting_banner_desc') }}</p>
+            </div>
+        @endif
+
+        @if ($channel->status !== \App\Models\DistributionChannel::STATUS_DELETING)
         @if (session('distribution_secret'))
             @php($secret = session('distribution_secret'))
             <div class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-4">
@@ -517,5 +541,6 @@
                 </div>
             @endif
         </div>
+        @endif
     </div>
 @endsection

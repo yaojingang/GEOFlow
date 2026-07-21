@@ -183,6 +183,46 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_distribution_send_holds_a_channel_operation_lease_until_the_result_is_saved(): void
+    {
+        [$article, , $channel] = $this->createDistributionArticle('Lease protected content.');
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'queued',
+            'idempotency_key' => 'lease-protected-distribution',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => $channel->id,
+            'key_id' => 'gfk_lease_protected',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_lease_protected_secret'),
+            'status' => 'active',
+            'scopes' => ['article.publish'],
+        ]);
+        Http::fake(function () use ($channel, $distribution) {
+            $this->assertDatabaseHas('distribution_channel_operations', [
+                'distribution_channel_id' => (int) $channel->id,
+                'operation' => 'article_publish',
+            ]);
+            $this->assertDatabaseHas('article_distributions', [
+                'id' => (int) $distribution->id,
+                'status' => 'sending',
+            ]);
+
+            return Http::response([
+                'ok' => true,
+                'remote_id' => 'lease-remote-1',
+                'remote_url' => 'https://risk-target.example.com/articles/lease-remote-1',
+            ]);
+        });
+
+        app(DistributionOrchestrator::class)->process($distribution);
+
+        $this->assertSame('synced', $distribution->fresh()->status);
+        $this->assertDatabaseCount('distribution_channel_operations', 0);
+    }
+
     /** @return array{Article, Task, DistributionChannel} */
     private function createDistributionArticle(string $content): array
     {

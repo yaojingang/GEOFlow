@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\DistributionTaskRevisionMismatch;
 use App\Http\Controllers\Controller;
 use App\Models\AiModel;
 use App\Models\Author;
@@ -20,6 +21,7 @@ use App\Support\AdminWeb;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Throwable;
@@ -151,16 +153,20 @@ class TaskController extends Controller
 
         $payload = $this->validateTaskForm($request);
         $taskData = $this->buildTaskPayload($request, $payload);
+        $channelIds = $this->selectedDistributionChannelIds($request);
 
         try {
-            $createdTask = $this->taskLifecycleService->createTask($taskData);
-            $createdTaskId = (int) ($createdTask['id'] ?? 0);
-            if ($createdTaskId) {
-                $this->distributionOrchestrator->syncTaskChannels(
-                    Task::query()->whereKey((int) $createdTaskId)->firstOrFail(),
-                    $this->selectedDistributionChannelIds($request)
-                );
-            }
+            DB::transaction(function () use ($taskData, $channelIds): void {
+                $this->distributionOrchestrator->lockTaskChannelSelection(null, $channelIds);
+                $createdTask = $this->taskLifecycleService->createTask($taskData);
+                $createdTaskId = (int) ($createdTask['id'] ?? 0);
+                if ($createdTaskId) {
+                    $this->distributionOrchestrator->syncTaskChannels(
+                        Task::query()->whereKey($createdTaskId)->firstOrFail(),
+                        $channelIds
+                    );
+                }
+            });
         } catch (Throwable $e) {
             // 保留输入并回显服务层错误，便于在页面直接修正。
             return back()->withInput()->withErrors($e->getMessage());
@@ -183,6 +189,7 @@ class TaskController extends Controller
         }
 
         $formOptions = $this->loadTaskFormOptions();
+        $taskModel = Task::query()->whereKey($taskId)->firstOrFail();
 
         return view('admin.tasks.form', [
             'pageTitle' => __('admin.task_edit.page_title'),
@@ -204,7 +211,7 @@ class TaskController extends Controller
                 'knowledge_base_id' => (string) (($task['knowledge_base_id'] ?? '') ?: ''),
                 'knowledge_base_ids' => $this->taskKnowledgeBaseIds($taskId, isset($task['knowledge_base_id']) ? (int) $task['knowledge_base_id'] : null),
                 'fixed_category_id' => (string) (($task['fixed_category_id'] ?? '') ?: ''),
-                'status' => (string) ($task['status'] ?? 'active'),
+                'status' => (string) $taskModel->status,
                 'article_limit' => (string) ($task['article_limit'] ?? 10),
                 'draft_limit' => (string) ($task['draft_limit'] ?? 10),
                 'publish_interval' => (string) max(1, (int) (($task['publish_interval'] ?? 3600) / 60)),
@@ -214,9 +221,10 @@ class TaskController extends Controller
                 'is_loop' => (int) ($task['is_loop'] ?? 1),
                 'auto_keywords' => (int) ($task['auto_keywords'] ?? 1),
                 'auto_description' => (int) ($task['auto_description'] ?? 1),
-                'publish_scope' => (string) ($task['publish_scope'] ?? 'local_and_distribution'),
+                'publish_scope' => (string) $taskModel->publish_scope,
                 'distribution_strategy' => (string) ($task['distribution_strategy'] ?? TaskDistributionChannelSelector::STRATEGY_BROADCAST),
                 'distribution_channel_ids' => $this->taskDistributionChannelIds($taskId),
+                'task_revision' => $this->distributionOrchestrator->taskRevision($taskModel),
             ],
         ]);
     }
@@ -234,11 +242,21 @@ class TaskController extends Controller
 
         $payload = $this->validateTaskForm($request);
         $taskData = $this->buildTaskPayload($request, $payload);
+        $channelIds = $this->selectedDistributionChannelIds($request);
+        $taskRevision = (string) $payload['task_revision'];
 
         try {
-            $this->taskLifecycleService->updateTask($taskId, $taskData);
-            $task = Task::query()->whereKey($taskId)->firstOrFail();
-            $this->distributionOrchestrator->syncTaskChannels($task, $this->selectedDistributionChannelIds($request));
+            DB::transaction(function () use ($taskId, $taskData, $channelIds, $taskRevision): void {
+                $this->distributionOrchestrator->lockTaskChannelSelection($taskId, $channelIds);
+                $this->distributionOrchestrator->assertTaskRevision($taskId, $taskRevision);
+                $this->taskLifecycleService->updateTask($taskId, $taskData);
+                $task = Task::query()->whereKey($taskId)->firstOrFail();
+                $this->distributionOrchestrator->syncTaskChannels($task, $channelIds);
+            });
+        } catch (DistributionTaskRevisionMismatch $e) {
+            return redirect()
+                ->route('admin.tasks.edit', ['taskId' => $taskId])
+                ->withErrors($e->getMessage());
         } catch (Throwable $e) {
             return back()->withInput()->withErrors($e->getMessage());
         }
@@ -545,6 +563,7 @@ class TaskController extends Controller
             'distribution_strategy' => ['nullable', 'string', 'in:'.implode(',', TaskDistributionChannelSelector::strategies())],
             'distribution_channel_ids' => ['nullable', 'array'],
             'distribution_channel_ids.*' => ['integer', 'min:1'],
+            'task_revision' => [$request->routeIs('admin.tasks.update') ? 'required' : 'nullable', 'string', 'size:64'],
         ]);
     }
 

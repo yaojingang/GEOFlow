@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\DistributionChannelDeletionBlocked;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\DeleteDistributionChannelRequest;
 use App\Jobs\ProcessArticleDistributionJob;
 use App\Models\Admin;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
+use App\Services\GeoFlow\DistributionChannelDeletionConfirmation;
+use App\Services\GeoFlow\DistributionChannelDeletionService;
+use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPublisherManager;
 use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
@@ -21,6 +26,7 @@ use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -37,6 +43,8 @@ class DistributionController extends Controller
         private readonly DistributionTargetSitePackageBuilder $targetSitePackageBuilder,
         private readonly SiteThemeCatalog $siteThemeCatalog,
         private readonly FrontendExperienceInspector $frontendExperienceInspector,
+        private readonly DistributionChannelDeletionService $channelDeletionService,
+        private readonly DistributionChannelOperationLeaseService $channelOperationLeaseService,
     ) {}
 
     public function index(Request $request): View
@@ -152,6 +160,9 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
+        if ($redirect = $this->deletingChannelRedirect($channel)) {
+            return $redirect;
+        }
 
         return view('admin.distribution.edit', [
             'pageTitle' => __('admin.distribution.edit_title'),
@@ -174,56 +185,86 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
+        if ($redirect = $this->deletingChannelRedirect($channel)) {
+            return $redirect;
+        }
 
         $payload = $this->validateChannel($request);
         $payload['channel_type'] = $channel->channelType();
-        if (($payload['channel_type'] ?? 'geoflow_agent') === 'generic_http_api') {
-            $genericAuthType = (string) ($payload['generic_auth_type'] ?? 'bearer');
-            $hasActiveSecret = DistributionChannelSecret::query()
-                ->where('distribution_channel_id', (int) $channel->id)
-                ->where('status', 'active')
-                ->exists();
-            if ($genericAuthType !== 'none' && ! $hasActiveSecret && ! filled($payload['generic_secret'] ?? null)) {
-                throw ValidationException::withMessages([
-                    'generic_secret' => __('admin.distribution.validation.generic_secret'),
-                ]);
-            }
+        try {
+            $channel = DB::transaction(function () use ($channelId, $payload): ?DistributionChannel {
+                $lockedChannel = DistributionChannel::query()
+                    ->whereKey($channelId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $lockedChannel) {
+                    return null;
+                }
+                if ((string) $lockedChannel->status === DistributionChannel::STATUS_DELETING) {
+                    throw new DistributionChannelDeletionBlocked('operation_blocked');
+                }
+
+                if (($payload['channel_type'] ?? 'geoflow_agent') === 'generic_http_api') {
+                    $genericAuthType = (string) ($payload['generic_auth_type'] ?? 'bearer');
+                    $hasActiveSecret = DistributionChannelSecret::query()
+                        ->where('distribution_channel_id', (int) $lockedChannel->id)
+                        ->where('status', 'active')
+                        ->exists();
+                    if ($genericAuthType !== 'none' && ! $hasActiveSecret && ! filled($payload['generic_secret'] ?? null)) {
+                        throw ValidationException::withMessages([
+                            'generic_secret' => __('admin.distribution.validation.generic_secret'),
+                        ]);
+                    }
+                }
+
+                $lockedChannel->forceFill([
+                    'name' => (string) $payload['name'],
+                    'domain' => $this->normalizeDomain((string) $payload['domain']),
+                    'endpoint_url' => (string) $payload['endpoint_url'],
+                    'channel_type' => (string) $payload['channel_type'],
+                    'front_mode' => (string) ($payload['front_mode'] ?? 'static'),
+                    'template_key' => filled($payload['template_key'] ?? null) ? (string) $payload['template_key'] : null,
+                    'site_settings' => $this->normalizeChannelSiteSettings($payload, $lockedChannel),
+                    'channel_config' => $this->normalizeChannelConfig($payload, $lockedChannel),
+                    'status' => (string) $payload['status'],
+                    'description' => filled($payload['description'] ?? null) ? (string) $payload['description'] : null,
+                ])->save();
+
+                if ($lockedChannel->isWordPressRest() && filled($payload['wordpress_application_password'] ?? null)) {
+                    DistributionChannelSecret::query()
+                        ->where('distribution_channel_id', (int) $lockedChannel->id)
+                        ->where('status', 'active')
+                        ->update(['status' => 'revoked']);
+                    $this->createWordPressSecret($lockedChannel, (string) $payload['wordpress_application_password']);
+                }
+                if (! $lockedChannel->isGenericHttpApi()) {
+                    return $lockedChannel->fresh();
+                }
+
+                $genericAuthType = $lockedChannel->resolvedGenericHttpConfig()['generic_auth_type'];
+                if ($genericAuthType === 'none') {
+                    DistributionChannelSecret::query()
+                        ->where('distribution_channel_id', (int) $lockedChannel->id)
+                        ->where('status', 'active')
+                        ->update(['status' => 'revoked']);
+                } elseif (filled($payload['generic_secret'] ?? null)) {
+                    DistributionChannelSecret::query()
+                        ->where('distribution_channel_id', (int) $lockedChannel->id)
+                        ->where('status', 'active')
+                        ->update(['status' => 'revoked']);
+                    $this->createGenericHttpSecret($lockedChannel, (string) $payload['generic_secret']);
+                }
+
+                return $lockedChannel->fresh();
+            });
+        } catch (DistributionChannelDeletionBlocked) {
+            return redirect()
+                ->route('admin.distribution.delete', ['channelId' => $channelId])
+                ->withErrors(__('admin.distribution.delete.operation_blocked'));
         }
 
-        $channel->forceFill([
-            'name' => (string) $payload['name'],
-            'domain' => $this->normalizeDomain((string) $payload['domain']),
-            'endpoint_url' => (string) $payload['endpoint_url'],
-            'channel_type' => (string) $payload['channel_type'],
-            'front_mode' => (string) ($payload['front_mode'] ?? 'static'),
-            'template_key' => filled($payload['template_key'] ?? null) ? (string) $payload['template_key'] : null,
-            'site_settings' => $this->normalizeChannelSiteSettings($payload, $channel),
-            'channel_config' => $this->normalizeChannelConfig($payload, $channel),
-            'status' => (string) $payload['status'],
-            'description' => filled($payload['description'] ?? null) ? (string) $payload['description'] : null,
-        ])->save();
-
-        if ($channel->isWordPressRest() && filled($payload['wordpress_application_password'] ?? null)) {
-            DistributionChannelSecret::query()
-                ->where('distribution_channel_id', (int) $channel->id)
-                ->where('status', 'active')
-                ->update(['status' => 'revoked']);
-            $this->createWordPressSecret($channel, (string) $payload['wordpress_application_password']);
-        }
-        if ($channel->isGenericHttpApi()) {
-            $genericAuthType = $channel->resolvedGenericHttpConfig()['generic_auth_type'];
-            if ($genericAuthType === 'none') {
-                DistributionChannelSecret::query()
-                    ->where('distribution_channel_id', (int) $channel->id)
-                    ->where('status', 'active')
-                    ->update(['status' => 'revoked']);
-            } elseif (filled($payload['generic_secret'] ?? null)) {
-                DistributionChannelSecret::query()
-                    ->where('distribution_channel_id', (int) $channel->id)
-                    ->where('status', 'active')
-                    ->update(['status' => 'revoked']);
-                $this->createGenericHttpSecret($channel, (string) $payload['generic_secret']);
-            }
+        if (! $channel) {
+            return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
 
         $message = __('admin.distribution.message.updated');
@@ -291,6 +332,99 @@ class DistributionController extends Controller
         ]);
     }
 
+    public function deletePreview(int $channelId): View|RedirectResponse
+    {
+        $channel = DistributionChannel::query()->whereKey($channelId)->first();
+        if (! $channel) {
+            return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if (! $this->channelDeletionService->isSchemaReady()) {
+            return redirect()
+                ->route('admin.distribution.show', ['channelId' => $channelId])
+                ->withErrors(['distribution' => __('admin.distribution.delete.blocked.migration_required')]);
+        }
+
+        return view('admin.distribution.delete', [
+            'pageTitle' => __('admin.distribution.delete.page_title'),
+            'activeMenu' => 'distribution',
+            'adminSiteName' => AdminWeb::siteName(),
+            'channel' => $channel,
+            'impact' => $this->channelDeletionService->inspect($channel),
+        ]);
+    }
+
+    public function prepareDelete(int $channelId): RedirectResponse
+    {
+        $channel = DistributionChannel::query()->whereKey($channelId)->first();
+        if (! $channel) {
+            return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if (! $this->channelDeletionService->isSchemaReady()) {
+            return redirect()
+                ->route('admin.distribution.show', ['channelId' => $channelId])
+                ->withErrors(['distribution' => __('admin.distribution.delete.blocked.migration_required')]);
+        }
+
+        $this->channelDeletionService->prepare($channel);
+
+        return redirect()
+            ->route('admin.distribution.delete', ['channelId' => $channelId])
+            ->with('message', __('admin.distribution.delete.message.prepared'));
+    }
+
+    public function cancelDelete(int $channelId): RedirectResponse
+    {
+        $channel = DistributionChannel::query()->whereKey($channelId)->first();
+        if (! $channel) {
+            return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+
+        $this->channelDeletionService->cancel($channel);
+
+        return redirect()
+            ->route('admin.distribution.show', ['channelId' => $channelId])
+            ->with('message', __('admin.distribution.delete.message.cancelled'));
+    }
+
+    public function destroy(DeleteDistributionChannelRequest $request, int $channelId): RedirectResponse
+    {
+        $channel = $request->channel();
+        if (! $channel) {
+            return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if (! $this->channelDeletionService->isSchemaReady()) {
+            return redirect()
+                ->route('admin.distribution.show', ['channelId' => $channelId])
+                ->withErrors(['distribution' => __('admin.distribution.delete.blocked.migration_required')]);
+        }
+
+        /** @var Admin $admin */
+        $admin = auth('admin')->user();
+        try {
+            $this->channelDeletionService->delete(
+                $channel,
+                $admin,
+                new DistributionChannelDeletionConfirmation(
+                    impactFingerprint: (string) $request->input('impact_fingerprint'),
+                    ackRemoteContent: $request->boolean('ack_remote_content'),
+                    ackTaskChanges: $request->boolean('ack_task_changes'),
+                    ackCredentials: $request->boolean('ack_credentials'),
+                    ackHistory: $request->boolean('ack_history'),
+                    forceStaleSending: $request->boolean('force_stale_sending'),
+                    forceStaleOperations: $request->boolean('force_stale_operations'),
+                ),
+            );
+        } catch (DistributionChannelDeletionBlocked $exception) {
+            $messageKey = 'admin.distribution.delete.blocked.'.$exception->reason;
+
+            return back()->withErrors(trans()->has($messageKey) ? __($messageKey) : __('admin.distribution.delete.blocked.default'));
+        }
+
+        return redirect()
+            ->route('admin.distribution.index')
+            ->with('message', __('admin.distribution.delete.message.deleted', ['channel' => (string) $channel->name]));
+    }
+
     public function jobs(Request $request): View
     {
         $filters = [
@@ -339,20 +473,41 @@ class DistributionController extends Controller
 
     public function rotateSecret(int $channelId): RedirectResponse
     {
-        $channel = DistributionChannel::query()->whereKey($channelId)->first();
-        if (! $channel) {
+        try {
+            $result = DB::transaction(function () use ($channelId): ?array {
+                $channel = DistributionChannel::query()
+                    ->whereKey($channelId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $channel) {
+                    return null;
+                }
+                if ((string) $channel->status === DistributionChannel::STATUS_DELETING) {
+                    throw new DistributionChannelDeletionBlocked('operation_blocked');
+                }
+                if (! $channel->isGeoFlowAgent()) {
+                    throw ValidationException::withMessages([
+                        'channel' => __('admin.distribution.message.secret_rotation_not_available'),
+                    ]);
+                }
+
+                DistributionChannelSecret::query()
+                    ->where('distribution_channel_id', (int) $channel->id)
+                    ->where('status', 'active')
+                    ->update(['status' => 'revoked']);
+
+                return [$channel, $this->createChannelSecret($channel)];
+            });
+        } catch (DistributionChannelDeletionBlocked) {
+            return redirect()
+                ->route('admin.distribution.delete', ['channelId' => $channelId])
+                ->withErrors(__('admin.distribution.delete.operation_blocked'));
+        }
+
+        if (! $result) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
-        if (! $channel->isGeoFlowAgent()) {
-            return back()->withErrors(__('admin.distribution.message.secret_rotation_not_available'));
-        }
-
-        DistributionChannelSecret::query()
-            ->where('distribution_channel_id', (int) $channel->id)
-            ->where('status', 'active')
-            ->update(['status' => 'revoked']);
-
-        $secret = $this->createChannelSecret($channel);
+        [$channel, $secret] = $result;
 
         return redirect()
             ->route('admin.distribution.show', ['channelId' => (int) $channel->id])
@@ -372,6 +527,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($redirect = $this->deletingChannelRedirect($channel)) {
+            return $redirect;
         }
         if ($channel->isWordPressRest()) {
             return back()->withErrors(__('admin.distribution.message.package_not_available_for_wordpress'));
@@ -395,26 +553,41 @@ class DistributionController extends Controller
             ]);
         }
 
-        $secret = $channel->activeSecret;
-        if (! $secret) {
-            return back()->withErrors([
-                'password' => __('admin.distribution.message.active_secret_not_found'),
-            ]);
-        }
+        try {
+            $revealed = $this->channelOperationLeaseService->run(
+                $channel,
+                'secret_reveal',
+                function (DistributionChannel $lockedChannel): array {
+                    $lockedChannel->load('activeSecret');
+                    $secret = $lockedChannel->activeSecret;
+                    if (! $secret) {
+                        throw ValidationException::withMessages([
+                            'password' => __('admin.distribution.message.active_secret_not_found'),
+                        ]);
+                    }
 
-        $plainSecret = $this->apiKeyCrypto->decrypt((string) $secret->secret_ciphertext);
-        if ($plainSecret === '') {
-            return back()->withErrors([
-                'password' => __('admin.distribution.message.secret_decrypt_failed'),
-            ]);
+                    $plainSecret = $this->apiKeyCrypto->decrypt((string) $secret->secret_ciphertext);
+                    if ($plainSecret === '') {
+                        throw ValidationException::withMessages([
+                            'password' => __('admin.distribution.message.secret_decrypt_failed'),
+                        ]);
+                    }
+
+                    return ['key_id' => (string) $secret->key_id, 'secret' => $plainSecret];
+                },
+            );
+        } catch (DistributionChannelDeletionBlocked) {
+            return redirect()
+                ->route('admin.distribution.delete', ['channelId' => (int) $channel->id])
+                ->withErrors(__('admin.distribution.delete.operation_blocked'));
         }
 
         return redirect()
             ->route('admin.distribution.show', ['channelId' => (int) $channel->id])
             ->with('message', __('admin.distribution.message.secret_revealed'))
             ->with('distribution_secret', [
-                'key_id' => (string) $secret->key_id,
-                'secret' => $plainSecret,
+                'key_id' => $revealed['key_id'],
+                'secret' => $revealed['secret'],
                 'endpoint_url' => (string) $channel->endpoint_url,
             ]);
     }
@@ -427,6 +600,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($redirect = $this->deletingChannelRedirect($channel)) {
+            return $redirect;
         }
         if (! $channel->isGeoFlowAgent()) {
             return back()->withErrors(__('admin.distribution.message.package_not_available_for_channel_type'));
@@ -450,21 +626,34 @@ class DistributionController extends Controller
             ]);
         }
 
-        $secret = $channel->activeSecret;
-        if (! $secret) {
-            return back()->withErrors([
-                'package_password' => __('admin.distribution.message.active_secret_not_found'),
-            ]);
-        }
+        try {
+            $package = $this->channelOperationLeaseService->run(
+                $channel,
+                'package_build',
+                function (DistributionChannel $lockedChannel): array {
+                    $lockedChannel->load('activeSecret');
+                    $secret = $lockedChannel->activeSecret;
+                    if (! $secret) {
+                        throw ValidationException::withMessages([
+                            'package_password' => __('admin.distribution.message.active_secret_not_found'),
+                        ]);
+                    }
 
-        $plainSecret = $this->apiKeyCrypto->decrypt((string) $secret->secret_ciphertext);
-        if ($plainSecret === '') {
-            return back()->withErrors([
-                'package_password' => __('admin.distribution.message.secret_decrypt_failed'),
-            ]);
-        }
+                    $plainSecret = $this->apiKeyCrypto->decrypt((string) $secret->secret_ciphertext);
+                    if ($plainSecret === '') {
+                        throw ValidationException::withMessages([
+                            'package_password' => __('admin.distribution.message.secret_decrypt_failed'),
+                        ]);
+                    }
 
-        $package = $this->targetSitePackageBuilder->build($channel, (string) $secret->key_id, $plainSecret);
+                    return $this->targetSitePackageBuilder->build($lockedChannel, (string) $secret->key_id, $plainSecret);
+                },
+            );
+        } catch (DistributionChannelDeletionBlocked) {
+            return redirect()
+                ->route('admin.distribution.delete', ['channelId' => (int) $channel->id])
+                ->withErrors(__('admin.distribution.delete.operation_blocked'));
+        }
 
         return response()->streamDownload(function () use ($package): void {
             echo file_get_contents($package['path']) ?: '';
@@ -476,29 +665,73 @@ class DistributionController extends Controller
 
     public function retry(int $distributionId): RedirectResponse
     {
-        $distribution = ArticleDistribution::query()->whereKey($distributionId)->first();
-        if (! $distribution) {
+        $candidate = ArticleDistribution::query()
+            ->select(['id', 'distribution_channel_id'])
+            ->whereKey($distributionId)
+            ->first();
+        if (! $candidate) {
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
         }
 
-        $distribution->forceFill([
-            'status' => 'queued',
-            'last_error_message' => null,
-            'next_retry_at' => now(),
-        ])->save();
+        $result = DB::transaction(function () use ($candidate): string {
+            $channel = DistributionChannel::query()
+                ->whereKey((int) $candidate->distribution_channel_id)
+                ->lockForUpdate()
+                ->first();
+            $distribution = ArticleDistribution::query()
+                ->whereKey((int) $candidate->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $distribution) {
+                return 'missing';
+            }
+            if (! $channel) {
+                return 'unavailable';
+            }
+            if ((string) $channel->status === DistributionChannel::STATUS_DELETING) {
+                return 'deleting';
+            }
+            if ((string) $channel->status !== DistributionChannel::STATUS_ACTIVE) {
+                return 'unavailable';
+            }
+            if ((string) $distribution->status === 'sending') {
+                return 'sending';
+            }
 
-        $this->distributionOrchestrator->log(
-            'info',
-            '分发任务已手动重新入队',
-            $distribution->distribution_channel_id,
-            $distribution->id,
-            $distribution->article_id,
-            ['event' => 'distribution.retry_queued']
-        );
+            $distribution->forceFill([
+                'status' => 'queued',
+                'last_error_message' => null,
+                'next_retry_at' => now(),
+            ])->save();
+            $this->distributionOrchestrator->log(
+                'info',
+                '分发任务已手动重新入队',
+                (int) $distribution->distribution_channel_id,
+                (int) $distribution->id,
+                (int) $distribution->article_id,
+                ['event' => 'distribution.retry_queued']
+            );
+            ProcessArticleDistributionJob::dispatch((int) $distribution->id)
+                ->onQueue('distribution')
+                ->afterCommit();
 
-        ProcessArticleDistributionJob::dispatch((int) $distribution->id)
-            ->onQueue('distribution')
-            ->afterCommit();
+            return 'queued';
+        });
+
+        if ($result === 'missing') {
+            return back()->withErrors(__('admin.distribution.message.job_not_found'));
+        }
+        if ($result === 'deleting') {
+            return redirect()
+                ->route('admin.distribution.delete', ['channelId' => (int) $candidate->distribution_channel_id])
+                ->withErrors(__('admin.distribution.delete.operation_blocked'));
+        }
+        if ($result === 'sending') {
+            return back()->withErrors(__('admin.distribution.delete.sending_retry_blocked'));
+        }
+        if ($result !== 'queued') {
+            return back()->withErrors(__('admin.distribution.delete.channel_unavailable_error'));
+        }
 
         return back()->with('message', __('admin.distribution.message.retry_queued'));
     }
@@ -512,6 +745,9 @@ class DistributionController extends Controller
 
         if (! $distribution || ! $distribution->article || ! $distribution->channel) {
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
+        }
+        if ($redirect = $this->deletingChannelRedirect($distribution->channel)) {
+            return $redirect;
         }
 
         return view('admin.distribution.article-edit', [
@@ -533,6 +769,9 @@ class DistributionController extends Controller
 
         if (! $distribution || ! $distribution->article || ! $distribution->channel) {
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
+        }
+        if ($redirect = $this->deletingChannelRedirect($distribution->channel)) {
+            return $redirect;
         }
 
         $payload = $request->validate([
@@ -582,6 +821,16 @@ class DistributionController extends Controller
 
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
         }
+        if ((string) $distribution->channel->status === DistributionChannel::STATUS_DELETING) {
+            $message = __('admin.distribution.delete.operation_blocked');
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'message' => $message], 409);
+            }
+
+            return redirect()
+                ->route('admin.distribution.delete', ['channelId' => (int) $distribution->channel->id])
+                ->withErrors($message);
+        }
 
         try {
             $this->distributionOrchestrator->deleteRemoteArticle($distribution);
@@ -621,6 +870,9 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
+        if ($redirect = $this->deletingChannelRedirect($channel)) {
+            return $redirect;
+        }
 
         try {
             $result = $this->distributionOrchestrator->healthCheck($channel);
@@ -655,8 +907,22 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
+        if ($redirect = $this->deletingChannelRedirect($channel)) {
+            return $redirect;
+        }
 
-        $result = $this->frontendExperienceInspector->refreshRemoteCapabilities($channel);
+        try {
+            $result = $this->channelOperationLeaseService->run(
+                $channel,
+                'frontend_capabilities_refresh',
+                fn (DistributionChannel $lockedChannel): array => $this->frontendExperienceInspector
+                    ->refreshRemoteCapabilities($lockedChannel),
+            );
+        } catch (DistributionChannelDeletionBlocked) {
+            return redirect()
+                ->route('admin.distribution.delete', ['channelId' => (int) $channel->id])
+                ->withErrors(__('admin.distribution.delete.operation_blocked'));
+        }
         $message = '远端前台能力已刷新：'.(string) ($result['message'] ?? '');
 
         return (string) ($result['status'] ?? '') === 'ok'
@@ -672,6 +938,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($redirect = $this->deletingChannelRedirect($channel)) {
+            return $redirect;
         }
 
         return $this->syncPreviewView('single', collect([$channel]));
@@ -713,6 +982,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($redirect = $this->deletingChannelRedirect($channel)) {
+            return $redirect;
         }
 
         if (! $request->boolean('frontend_sync_confirmed') && $this->frontendExperienceInspector->requiresSyncConfirmation($channel)) {
@@ -861,34 +1133,40 @@ class DistributionController extends Controller
      */
     private function syncChannelSiteSettings(DistributionChannel $channel): array
     {
-        try {
-            $result = $this->publisherManager->forChannel($channel)->syncSiteSettings($channel);
-            $this->distributionOrchestrator->log(
-                'info',
-                '目标站点设置已同步',
-                (int) $channel->id,
-                null,
-                null,
-                [
-                    'event' => 'site.settings.synced',
-                    'remote_result' => $result,
-                    'sync_summary' => $this->frontendExperienceInspector->syncSummary($channel),
-                ]
-            );
+        return $this->channelOperationLeaseService->run(
+            $channel,
+            'site_settings_sync',
+            function (DistributionChannel $lockedChannel): array {
+                try {
+                    $result = $this->publisherManager->forChannel($lockedChannel)->syncSiteSettings($lockedChannel);
+                    $this->distributionOrchestrator->log(
+                        'info',
+                        '目标站点设置已同步',
+                        (int) $lockedChannel->id,
+                        null,
+                        null,
+                        [
+                            'event' => 'site.settings.synced',
+                            'remote_result' => $result,
+                            'sync_summary' => $this->frontendExperienceInspector->syncSummary($lockedChannel),
+                        ]
+                    );
 
-            return $result;
-        } catch (Throwable $e) {
-            $this->distributionOrchestrator->log(
-                'error',
-                '目标站点设置同步失败：'.$e->getMessage(),
-                (int) $channel->id,
-                null,
-                null,
-                ['event' => 'site.settings.sync_failed']
-            );
+                    return $result;
+                } catch (Throwable $e) {
+                    $this->distributionOrchestrator->log(
+                        'error',
+                        '目标站点设置同步失败：'.$e->getMessage(),
+                        (int) $lockedChannel->id,
+                        null,
+                        null,
+                        ['event' => 'site.settings.sync_failed']
+                    );
 
-            throw $e;
-        }
+                    throw $e;
+                }
+            },
+        );
     }
 
     private function normalizeDomain(string $domain): string
@@ -1600,15 +1878,39 @@ class DistributionController extends Controller
 
     private function setStatus(int $channelId, string $status, string $message): RedirectResponse
     {
-        $channel = DistributionChannel::query()->whereKey($channelId)->first();
+        $channel = DB::transaction(function () use ($channelId, $status): ?DistributionChannel {
+            $channel = DistributionChannel::query()
+                ->whereKey($channelId)
+                ->lockForUpdate()
+                ->first();
+            if (! $channel || (string) $channel->status === DistributionChannel::STATUS_DELETING) {
+                return $channel;
+            }
+
+            $channel->forceFill(['status' => $status])->save();
+
+            return $channel;
+        });
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
-
-        $channel->forceFill(['status' => $status])->save();
+        if ($redirect = $this->deletingChannelRedirect($channel)) {
+            return $redirect;
+        }
 
         return redirect()
             ->route('admin.distribution.show', ['channelId' => (int) $channel->id])
             ->with('message', $message);
+    }
+
+    private function deletingChannelRedirect(DistributionChannel $channel): ?RedirectResponse
+    {
+        if ((string) $channel->status !== DistributionChannel::STATUS_DELETING) {
+            return null;
+        }
+
+        return redirect()
+            ->route('admin.distribution.delete', ['channelId' => (int) $channel->id])
+            ->withErrors(__('admin.distribution.delete.operation_blocked'));
     }
 }

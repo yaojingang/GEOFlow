@@ -83,10 +83,10 @@ main() {
   check_http "$web_port"
 
   log "Checking Laravel database connection."
-  if "${COMPOSE[@]}" exec -T app php artisan migrate:status --no-interaction >/dev/null; then
-    log "Database connection and migration table are reachable."
+  if "${COMPOSE[@]}" exec -T app php artisan migrate:status --pending=1 --no-interaction >/dev/null; then
+    log "Database connection is reachable and no migrations are pending."
   else
-    warn "Laravel cannot read migration status. Check app logs and database settings."
+    fail "Laravel cannot read migration status or still has pending migrations. Run the gated migration step before releasing services."
   fi
 
   log "Recent application logs:"
