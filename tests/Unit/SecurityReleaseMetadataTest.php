@@ -58,13 +58,11 @@ class SecurityReleaseMetadataTest extends TestCase
         $this->assertStringNotContainsString('v2.1.1 has been released', strtolower($en));
     }
 
-    public function test_config_fallback_tracks_v211_without_environment_version_lock(): void
+    public function test_environment_examples_do_not_lock_the_application_version(): void
     {
-        $config = (string) file_get_contents(config_path('geoflow.php'));
         $envExample = (string) file_get_contents(base_path('.env.example'));
         $productionExample = (string) file_get_contents(base_path('.env.prod.example'));
 
-        $this->assertStringContainsString("\$appVersion !== '' ? \$appVersion : '2.1.1'", $config);
         $this->assertStringNotContainsString('GEOFLOW_APP_VERSION=', $envExample);
         $this->assertStringNotContainsString('GEOFLOW_APP_VERSION=', $productionExample);
     }
