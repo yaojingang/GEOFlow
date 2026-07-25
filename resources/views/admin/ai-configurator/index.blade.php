@@ -9,7 +9,7 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="p-6">
                     <div class="flex items-center">
@@ -84,6 +84,31 @@
                     </div>
                 </div>
             </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+                <div class="p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-teal-500 rounded-md flex items-center justify-center">
+                                <i data-lucide="search-check" class="w-5 h-5 text-white"></i>
+                            </div>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 truncate">{{ __('admin.ai_configurator.search_title') }}</dt>
+                                <dd class="text-lg font-medium text-gray-900">{{ __('admin.ai_configurator.search_desc') }}</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-6 py-3">
+                    <div class="text-sm">
+                        <a href="{{ route('admin.ai-source-providers.index') }}" class="font-medium text-teal-600 hover:text-teal-500">
+                            {{ __('admin.ai_configurator.search_action') }} <span aria-hidden="true">&rarr;</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="bg-white shadow rounded-lg">
@@ -91,7 +116,7 @@
                 <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_configurator.overview') }}</h3>
             </div>
             <div class="px-6 py-6">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-6">
                     <div class="text-center">
                         <div class="text-2xl font-bold text-blue-600">{{ (int) ($stats['model_count'] ?? 0) }}</div>
                         <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.active_models') }}</div>
@@ -108,6 +133,14 @@
                         <div class="text-2xl font-bold text-orange-600">{{ number_format((int) ($stats['today_usage'] ?? 0)) }}</div>
                         <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.today_calls') }}</div>
                     </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-teal-600">{{ (int) ($stats['search_provider_count'] ?? 0) }}</div>
+                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.active_search_providers') }}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-rose-600">{{ number_format((int) ($stats['visibility_failed_runs'] ?? 0)) }}</div>
+                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.visibility_failed_runs') }}</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -122,6 +155,7 @@
                     <div class="mt-2 text-sm text-blue-700">
                         <ul class="list-disc list-inside space-y-1">
                             <li>{{ __('admin.ai_configurator.help_models') }}</li>
+                            <li>{{ __('admin.ai_configurator.help_search_providers') }}</li>
                             <li>{{ __('admin.ai_configurator.help_content_prompts') }}</li>
                             <li>{{ __('admin.ai_configurator.help_special_prompts') }}</li>
                             <li>{{ __('admin.ai_configurator.help_pipeline') }}</li>

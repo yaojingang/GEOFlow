@@ -482,6 +482,7 @@ class KnowledgeRetrievalService
                 $candidate = $group[0];
                 $candidate['conflict_merged_count'] = 0;
                 $resolved[] = $candidate;
+
                 continue;
             }
 
@@ -490,6 +491,7 @@ class KnowledgeRetrievalService
                     $candidate['conflict_merged_count'] = 0;
                     $resolved[] = $candidate;
                 }
+
                 continue;
             }
 
@@ -779,6 +781,7 @@ class KnowledgeRetrievalService
                 foreach ($this->cjkTokens($token) as $cjkToken) {
                     $frequencies[$cjkToken] = (int) ($frequencies[$cjkToken] ?? 0) + 1;
                 }
+
                 continue;
             }
 

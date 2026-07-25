@@ -48,4 +48,9 @@ class AiModel extends Model
     {
         return $this->hasMany(Task::class, 'ai_model_id');
     }
+
+    public function visibilityRuns(): HasMany
+    {
+        return $this->hasMany(AiVisibilityRun::class, 'ai_model_id');
+    }
 }

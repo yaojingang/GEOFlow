@@ -40,10 +40,31 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $content = $this->generateContent($model, '写一篇文章。');
 
         $this->assertSame('# 标题'."\n\n".'完整正文。', $content);
+        $this->assertSame(1, (int) $model->fresh()->used_today);
+        $this->assertSame(1, (int) $model->fresh()->total_used);
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
             && ($request['max_tokens'] ?? null) === 8192
             && ! array_key_exists('max_completion_tokens', (array) $request->data()));
+    }
+
+    public function test_generate_content_releases_usage_for_an_empty_response(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response($this->completion('')),
+        ]);
+
+        $model = $this->createChatModel(['daily_limit' => 1]);
+
+        try {
+            $this->generateContent($model, '写一篇文章。');
+            $this->fail('Expected empty content to fail.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('AI返回空正文', $exception->getMessage());
+        }
+
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
     }
 
     public function test_generate_content_falls_back_to_config_default_max_tokens(): void
