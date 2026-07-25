@@ -30,8 +30,7 @@ final class DoubaoSearchCustomClient
 
         $startedAt = hrtime(true);
         $response = $this->httpClientFactory
-            ->jsonRequest($endpoint)
-            ->withToken($apiKey)
+            ->jsonRequest($apiKey)
             ->post($endpoint, $payload);
         $latencyMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
 
