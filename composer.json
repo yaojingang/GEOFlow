@@ -53,6 +53,10 @@
             "@php artisan config:clear --ansi",
             "@php artisan test"
         ],
+        "version:check": [
+            "@php artisan config:clear --ansi",
+            "@php artisan test --compact tests/Unit/ReleaseVersionMappingTest.php"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
