@@ -223,6 +223,7 @@ BLADE;
 <footer class="rep-footer">
     <div class="rep-shell">
         <div>{{ $siteTitle ?? config('app.name') }}</div>
+        @include('site.partials.footer-filing')
     </div>
 </footer>
 BLADE;
