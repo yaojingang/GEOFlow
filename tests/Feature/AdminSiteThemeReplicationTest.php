@@ -427,6 +427,8 @@ class AdminSiteThemeReplicationTest extends TestCase
         $this->assertNotFalse($homeNavPosition);
         $this->assertNotFalse($archivePosition);
         $this->assertLessThan($archivePosition, $homeNavPosition);
+        $footerBlade = Storage::disk('local')->get("geoflow-theme-replications/{$replication->id}/draft/1/views/partials/footer.blade.php");
+        $this->assertStringContainsString("@include('site.partials.footer-filing')", $footerBlade);
         $homeBlade = Storage::disk('local')->get("geoflow-theme-replications/{$replication->id}/draft/1/views/home.blade.php");
         $articleBlade = Storage::disk('local')->get("geoflow-theme-replications/{$replication->id}/draft/1/views/article.blade.php");
         $this->assertStringNotContainsString('style=', $homeBlade.$articleBlade);

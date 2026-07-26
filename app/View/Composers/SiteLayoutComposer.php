@@ -19,6 +19,8 @@ final class SiteLayoutComposer
         $siteLogo = (string) ($map['site_logo'] ?? '');
         $siteFavicon = (string) ($map['site_favicon'] ?? '');
         $copyright = (string) ($map['copyright_info'] ?? '');
+        $filingInfo = trim((string) ($map['filing_info'] ?? ''));
+        $filingUrl = trim((string) ($map['filing_url'] ?? ''));
         $analyticsCode = (string) ($map['analytics_code'] ?? '');
 
         $categories = collect();
@@ -42,6 +44,8 @@ final class SiteLayoutComposer
             'siteLogo' => $siteLogo,
             'siteFavicon' => $siteFavicon,
             'footerCopyright' => $copyright,
+            'footerFilingInfo' => $filingInfo,
+            'footerFilingUrl' => $filingUrl,
             'headAnalyticsCode' => $analyticsCode,
             'navCategories' => $categories,
         ]);
