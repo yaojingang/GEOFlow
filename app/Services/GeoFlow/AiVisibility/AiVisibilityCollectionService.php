@@ -5,18 +5,13 @@ namespace App\Services\GeoFlow\AiVisibility;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
-use App\Models\SiteSetting;
 use RuntimeException;
 
 final class AiVisibilityCollectionService
 {
-    private const ARK_MODEL_SETTING_KEY = 'ai_visibility_ark_model_id';
-
-    private const DEEPSEEK_MODEL_SETTING_KEY = 'ai_visibility_deepseek_analysis_model_id';
-
     public function __construct(
         private readonly AiVisibilityService $visibility,
-        private readonly AiProviderEndpointPolicy $endpointPolicy,
+        private readonly AiVisibilityConfigurationResolver $configuration,
     ) {}
 
     /**
@@ -29,8 +24,8 @@ final class AiVisibilityCollectionService
             throw new RuntimeException('AI 可见性关键词为空');
         }
 
-        $provider = $this->searchProvider();
-        $deepSeek = $this->configuredModel(self::DEEPSEEK_MODEL_SETTING_KEY, 'deepseek');
+        $provider = $this->configuration->searchProvider();
+        $deepSeek = $this->configuration->deepSeekModel();
         if ($provider instanceof AiSourceProvider && $deepSeek instanceof AiModel) {
             return $this->visibility->runDoubaoSearchThenDeepSeekAnalysis(
                 $provider,
@@ -39,7 +34,7 @@ final class AiVisibilityCollectionService
             );
         }
 
-        $ark = $this->configuredModel(self::ARK_MODEL_SETTING_KEY, 'ark');
+        $ark = $this->configuration->arkModel();
         if ($ark instanceof AiModel) {
             return [
                 'ark_run' => $this->visibility->runDoubaoArkResponses($ark, $keyword),
@@ -63,44 +58,5 @@ final class AiVisibilityCollectionService
         }
 
         throw new RuntimeException('没有可用的 AI 可见性模型或搜索源');
-    }
-
-    private function searchProvider(): ?AiSourceProvider
-    {
-        $providers = AiSourceProvider::query()
-            ->where('provider_key', AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM)
-            ->where('status', 'active')
-            ->orderBy('id')
-            ->get();
-
-        return $providers->first(function (AiSourceProvider $provider): bool {
-            return $this->endpointPolicy->acceptsSearchApi((string) $provider->endpoint_url)
-                && trim((string) ($provider->getRawOriginal('api_key') ?? '')) !== '';
-        });
-    }
-
-    private function configuredModel(string $settingKey, string $bindingType): ?AiModel
-    {
-        $modelId = (int) (SiteSetting::query()
-            ->where('setting_key', $settingKey)
-            ->value('setting_value') ?? 0);
-        if ($modelId <= 0) {
-            return null;
-        }
-
-        $model = AiModel::query()->whereKey($modelId)->first();
-        if (! $model instanceof AiModel) {
-            return null;
-        }
-
-        $modelType = trim((string) ($model->model_type ?? ''));
-        if ((string) ($model->status ?? 'inactive') !== 'active'
-            || ($modelType !== '' && $modelType !== 'chat')
-            || trim((string) ($model->getRawOriginal('api_key') ?? '')) === ''
-            || ! $this->endpointPolicy->acceptsModelApi($bindingType, (string) ($model->api_url ?? ''))) {
-            return null;
-        }
-
-        return $model;
     }
 }

@@ -1145,6 +1145,7 @@ return [
         'test_error_api_url_missing' => 'API URL is empty. Please enter the API Base URL first.',
         'test_error_api_key_missing' => 'API key is empty or cannot be decrypted. Please re-enter the key.',
         'test_error_model_missing' => 'Model ID is empty. Please enter the model ID first.',
+        'test_error_daily_limit' => 'This model has reached its daily call limit.',
         'test_failed_with_status' => 'HTTP :status, response: :message',
         'test_invalid_response' => 'The API returned an unrecognized format. Response preview: :message',
         'test_exception' => 'Request exception: :message',

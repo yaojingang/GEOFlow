@@ -2,14 +2,13 @@
 
 namespace App\Services\Admin\Analytics;
 
-use App\Models\AiModel;
-use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
-use App\Models\SiteSetting;
-use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -17,12 +16,8 @@ class AiVisibilityAnalyticsService
 {
     private const DAILY_SAMPLE_TARGET = 5;
 
-    private const ARK_MODEL_SETTING_KEY = 'ai_visibility_ark_model_id';
-
-    private const DEEPSEEK_MODEL_SETTING_KEY = 'ai_visibility_deepseek_analysis_model_id';
-
     public function __construct(
-        private readonly AiProviderEndpointPolicy $endpointPolicy,
+        private readonly AiVisibilityConfigurationResolver $configuration,
     ) {}
 
     /**
@@ -39,32 +34,22 @@ class AiVisibilityAnalyticsService
 
         $start = now()->copy()->startOfDay()->subDays($days - 1);
         $end = now()->copy()->endOfDay();
-        $runs = AiVisibilityRun::query()
-            ->with(['sources' => fn ($query) => $query->orderByRaw('COALESCE(rank, 999999) asc')->orderBy('id')])
-            ->where(function ($query) use ($start, $end): void {
-                $query
-                    ->whereBetween('completed_at', [$start, $end])
-                    ->orWhere(function ($query) use ($start, $end): void {
-                        $query
-                            ->whereNull('completed_at')
-                            ->whereBetween('created_at', [$start, $end]);
-                    });
-            })
-            ->orderBy('created_at')
-            ->get();
-
-        if ($runs->isEmpty()) {
+        $periodRuns = $this->periodRunsQuery($start, $end);
+        $runCount = (int) (clone $periodRuns)->count();
+        if ($runCount === 0) {
             return $this->emptyOverview(true, $days, $configuration);
         }
 
-        $completedRuns = $runs
+        $completedRunCount = (int) (clone $periodRuns)
             ->where('status', AiVisibilityRun::STATUS_COMPLETED)
-            ->values();
-
-        $sampledRuns = $completedRuns
-            ->groupBy(fn (AiVisibilityRun $run): string => $this->runDate($run).'|'.Str::lower(trim((string) $run->keyword)))
-            ->flatMap(fn (Collection $rows): Collection => $rows->sortBy('created_at')->take(self::DAILY_SAMPLE_TARGET))
-            ->values();
+            ->count();
+        $sampledRunIds = $this->sampledRunIds($start, $end);
+        $sampledRuns = AiVisibilityRun::query()
+            ->with(['sources' => fn ($query) => $query->orderByRaw('COALESCE(rank, 999999) asc')->orderBy('id')])
+            ->whereIn('id', $sampledRunIds)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
 
         $brandAliases = $this->brandAliases();
         $ownedHosts = $this->ownedHosts();
@@ -75,14 +60,16 @@ class AiVisibilityAnalyticsService
         $dailyKeywordMetrics = $this->dailyKeywordMetrics($analyzedRuns);
         $kpis = $this->kpis($dailyKeywordMetrics);
         $sourcePreferences = $this->sourcePreferences($analyzedRuns);
-        $todayRuns = $runs->filter(fn (AiVisibilityRun $run): bool => $this->runDate($run) === now()->toDateString());
-        $todayCompletedRuns = $todayRuns->where('status', AiVisibilityRun::STATUS_COMPLETED);
-        $todayKeywordCount = $todayRuns
-            ->pluck('keyword')
-            ->map(fn (mixed $keyword): string => Str::lower(trim((string) $keyword)))
-            ->filter()
-            ->unique()
+        $todayRuns = $this->periodRunsQuery(now()->copy()->startOfDay(), now()->copy()->endOfDay());
+        $todayRunCount = (int) (clone $todayRuns)->count();
+        $todayCompletedRunCount = (int) (clone $todayRuns)
+            ->where('status', AiVisibilityRun::STATUS_COMPLETED)
             ->count();
+        $todayKeywordCount = (int) ((clone $todayRuns)
+            ->whereRaw("TRIM(COALESCE(keyword, '')) <> ''")
+            ->selectRaw('COUNT(DISTINCT LOWER(TRIM(keyword))) as aggregate')
+            ->toBase()
+            ->value('aggregate') ?? 0);
 
         return [
             'ready' => true,
@@ -101,12 +88,12 @@ class AiVisibilityAnalyticsService
             ],
             'kpis' => $kpis,
             'polling' => [
-                'runs' => $runs->count(),
-                'completed_runs' => $completedRuns->count(),
+                'runs' => $runCount,
+                'completed_runs' => $completedRunCount,
                 'sampled_runs' => $sampledRuns->count(),
-                'success_rate' => $this->percent($completedRuns->count(), $runs->count()),
-                'today_runs' => $todayRuns->count(),
-                'today_completed_runs' => $todayCompletedRuns->count(),
+                'success_rate' => $this->percent($completedRunCount, $runCount),
+                'today_runs' => $todayRunCount,
+                'today_completed_runs' => $todayCompletedRunCount,
                 'today_keyword_count' => $todayKeywordCount,
                 'today_target_samples' => $todayKeywordCount * self::DAILY_SAMPLE_TARGET,
             ],
@@ -117,6 +104,43 @@ class AiVisibilityAnalyticsService
             'attention_sources' => $this->attentionSources($sourcePreferences),
             'latest_runs' => $this->latestRuns($analyzedRuns),
         ];
+    }
+
+    private function periodRunsQuery(Carbon $start, Carbon $end): Builder
+    {
+        return AiVisibilityRun::query()
+            ->where(function (Builder $query) use ($start, $end): void {
+                $query
+                    ->whereBetween('completed_at', [$start, $end])
+                    ->orWhere(function (Builder $query) use ($start, $end): void {
+                        $query
+                            ->whereNull('completed_at')
+                            ->whereBetween('created_at', [$start, $end]);
+                    });
+            });
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function sampledRunIds(Carbon $start, Carbon $end): array
+    {
+        $rankedRuns = $this->periodRunsQuery($start, $end)
+            ->where('status', AiVisibilityRun::STATUS_COMPLETED)
+            ->select('id')
+            ->selectRaw(
+                'ROW_NUMBER() OVER (
+                    PARTITION BY DATE(COALESCE(completed_at, created_at)), LOWER(TRIM(keyword))
+                    ORDER BY created_at, id
+                ) AS sample_rank'
+            );
+
+        return DB::query()
+            ->fromSub($rankedRuns, 'ranked_ai_visibility_runs')
+            ->where('sample_rank', '<=', self::DAILY_SAMPLE_TARGET)
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
     }
 
     /**
@@ -863,81 +887,7 @@ class AiVisibilityAnalyticsService
      */
     private function configurationStatus(): array
     {
-        $doubaoSearchConfigured = $this->hasActiveDoubaoSearchProvider();
-        $arkConfigured = $this->hasConfiguredModel(self::ARK_MODEL_SETTING_KEY, 'ark');
-        $deepSeekConfigured = $this->hasConfiguredModel(self::DEEPSEEK_MODEL_SETTING_KEY, 'deepseek');
-
-        return [
-            'configured' => $doubaoSearchConfigured || $arkConfigured || $deepSeekConfigured,
-            'doubao_search_configured' => $doubaoSearchConfigured,
-            'ark_configured' => $arkConfigured,
-            'deepseek_configured' => $deepSeekConfigured,
-        ];
-    }
-
-    private function hasActiveDoubaoSearchProvider(): bool
-    {
-        if (! Schema::hasTable('ai_source_providers')) {
-            return false;
-        }
-
-        $query = AiSourceProvider::query()
-            ->where('provider_key', AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM)
-            ->where('status', 'active')
-            ->whereNotNull('api_key')
-            ->where('api_key', '<>', '');
-
-        if (trim((string) config('geoflow.ai_visibility.doubao_search_endpoint', '')) === '') {
-            $query->whereRaw("TRIM(COALESCE(endpoint_url, '')) <> ''");
-        }
-
-        return $query->exists();
-    }
-
-    private function hasConfiguredModel(string $settingKey, string $bindingType): bool
-    {
-        if (! Schema::hasTable('site_settings') || ! Schema::hasTable('ai_models')) {
-            return false;
-        }
-
-        $modelId = (int) (SiteSetting::query()
-            ->where('setting_key', $settingKey)
-            ->value('setting_value') ?? 0);
-
-        if ($modelId <= 0) {
-            return false;
-        }
-
-        $model = AiModel::query()->whereKey($modelId)->first();
-        if (! $model instanceof AiModel) {
-            return false;
-        }
-
-        return $bindingType === 'ark'
-            ? $this->isCallableArkModel($model)
-            : $this->isCallableDeepSeekModel($model);
-    }
-
-    private function isCallableArkModel(AiModel $model): bool
-    {
-        return $this->isActiveChatModel($model)
-            && $this->endpointPolicy->acceptsModelApi('ark', (string) ($model->api_url ?? ''))
-            && trim((string) ($model->getRawOriginal('api_key') ?? '')) !== '';
-    }
-
-    private function isCallableDeepSeekModel(AiModel $model): bool
-    {
-        return $this->isActiveChatModel($model)
-            && $this->endpointPolicy->acceptsModelApi('deepseek', (string) ($model->api_url ?? ''))
-            && trim((string) ($model->getRawOriginal('api_key') ?? '')) !== '';
-    }
-
-    private function isActiveChatModel(AiModel $model): bool
-    {
-        $modelType = trim((string) ($model->model_type ?? ''));
-
-        return (string) ($model->status ?? 'inactive') === 'active'
-            && ($modelType === '' || $modelType === 'chat');
+        return $this->configuration->status();
     }
 
     private function runDate(AiVisibilityRun $run): string

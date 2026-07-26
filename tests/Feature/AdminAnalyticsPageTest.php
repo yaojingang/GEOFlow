@@ -164,6 +164,46 @@ class AdminAnalyticsPageTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_analytics_reports_only_usage_recorded_for_the_current_day(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-27 12:00:00'));
+
+        AiModel::query()->create([
+            'name' => 'Yesterday Model',
+            'model_id' => 'yesterday-model',
+            'model_type' => 'chat',
+            'used_today' => 9,
+            'usage_date' => '2026-07-26',
+            'total_used' => 20,
+            'status' => 'active',
+        ]);
+        AiModel::query()->create([
+            'name' => 'Today Model',
+            'model_id' => 'today-model',
+            'model_type' => 'chat',
+            'used_today' => 3,
+            'usage_date' => '2026-07-27',
+            'total_used' => 10,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics'));
+
+        $response->assertOk();
+        $this->assertSame(3, (int) $response->viewData('kpis')['ai_calls']);
+        $this->assertSame(3, (int) $response->viewData('aiUsageSummary')['used_today']);
+        $this->assertSame(3, (int) $response->viewData('aiHealth')['used_today']);
+
+        $usageRows = collect($response->viewData('aiUsageSummary')['model_rows']);
+        $this->assertSame(
+            0,
+            (int) $usageRows->firstWhere('model_id', 'yesterday-model')->used_today
+        );
+
+        Carbon::setTestNow();
+    }
+
     public function test_analytics_filter_presets_and_custom_dates_are_usable(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
@@ -657,6 +697,7 @@ class AdminAnalyticsPageTest extends TestCase
             'model_type' => 'chat',
             'api_url' => 'https://api.example.com',
             'used_today' => 9,
+            'usage_date' => Carbon::parse('2026-05-21')->toDateString(),
             'total_used' => 18,
             'status' => 'active',
         ]);

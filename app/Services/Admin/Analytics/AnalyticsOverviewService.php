@@ -80,7 +80,9 @@ class AnalyticsOverviewService
             'published' => (int) $published->count(),
             'running_tasks' => (int) (clone $taskRuns)->where('status', 'running')->count(),
             'failed_tasks' => (int) (clone $taskRuns)->where('status', 'failed')->count(),
-            'ai_calls' => (int) AiModel::query()->sum('used_today'),
+            'ai_calls' => (int) AiModel::query()
+                ->forCurrentUsageDay()
+                ->sum('used_today'),
             'total_views' => $this->filteredViewCount($filter),
         ];
 
@@ -236,15 +238,22 @@ class AnalyticsOverviewService
     public function aiUsageSummary(AnalyticsFilter $filter): array
     {
         return [
-            'used_today' => (int) AiModel::query()->sum('used_today'),
+            'used_today' => (int) AiModel::query()
+                ->forCurrentUsageDay()
+                ->sum('used_today'),
             'total_used' => (int) AiModel::query()->sum('total_used'),
             'active_models' => (int) AiModel::query()->where('status', 'active')->count(),
             'model_rows' => AiModel::query()
                 ->where('status', 'active')
-                ->orderByDesc('used_today')
-                ->select('id', 'name', 'model_id', 'model_type', 'used_today', 'total_used')
+                ->orderByRaw('CASE WHEN usage_date = ? THEN used_today ELSE 0 END DESC', [now()->toDateString()])
+                ->select('id', 'name', 'model_id', 'model_type', 'used_today', 'usage_date', 'total_used')
                 ->limit(5)
                 ->get()
+                ->map(function (AiModel $model): AiModel {
+                    $model->setAttribute('used_today', $model->currentUsage());
+
+                    return $model;
+                })
                 ->all(),
         ];
     }
@@ -396,15 +405,22 @@ class AnalyticsOverviewService
             'embedding_models' => (int) (clone $activeModels)
                 ->where('model_type', 'embedding')
                 ->count(),
-            'used_today' => (int) AiModel::query()->sum('used_today'),
+            'used_today' => (int) AiModel::query()
+                ->forCurrentUsageDay()
+                ->sum('used_today'),
             'total_used' => (int) AiModel::query()->sum('total_used'),
             'active_models' => AiModel::query()
                 ->where('status', 'active')
                 ->orderBy('failover_priority')
                 ->orderBy('id')
-                ->select('id', 'name', 'model_id', 'model_type', 'used_today', 'daily_limit')
+                ->select('id', 'name', 'model_id', 'model_type', 'used_today', 'usage_date', 'daily_limit')
                 ->limit(5)
                 ->get()
+                ->map(function (AiModel $model): AiModel {
+                    $model->setAttribute('used_today', $model->currentUsage());
+
+                    return $model;
+                })
                 ->all(),
         ];
     }

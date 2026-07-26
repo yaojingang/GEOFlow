@@ -288,15 +288,22 @@ class DashboardController extends Controller
             $out['embedding_models'] = (int) (clone $activeModels)
                 ->where('model_type', 'embedding')
                 ->count();
-            $out['used_today'] = (int) AiModel::query()->sum('used_today');
+            $out['used_today'] = (int) AiModel::query()
+                ->forCurrentUsageDay()
+                ->sum('used_today');
             $out['total_used'] = (int) AiModel::query()->sum('total_used');
             $out['active_models'] = AiModel::query()
                 ->where('status', 'active')
                 ->orderBy('failover_priority')
                 ->orderBy('id')
-                ->select('id', 'name', 'model_id', 'model_type', 'used_today', 'daily_limit')
+                ->select('id', 'name', 'model_id', 'model_type', 'used_today', 'usage_date', 'daily_limit')
                 ->limit(5)
                 ->get()
+                ->map(function (AiModel $model): AiModel {
+                    $model->setAttribute('used_today', $model->currentUsage());
+
+                    return $model;
+                })
                 ->all();
         } catch (\Throwable) {
             // ignore
