@@ -46,7 +46,7 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $response = $this->actingAs($this->createAdmin(), 'admin')
             ->post(route('admin.ai-source-providers.store'), [
                 'name' => '豆包搜索 Custom',
-                'endpoint_url' => 'https://search.test/api',
+                'endpoint_url' => 'https://open.feedcoopapi.com/search_api/web_search',
                 'api_key' => 'doubao-secret-key',
                 'daily_limit' => 50,
                 'count' => 3,
@@ -63,13 +63,29 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
         $provider = AiSourceProvider::query()->firstOrFail();
         $this->assertSame(AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM, $provider->provider_key);
-        $this->assertSame('https://search.test/api', $provider->endpoint_url);
+        $this->assertSame('https://open.feedcoopapi.com/search_api/web_search', $provider->endpoint_url);
         $this->assertSame(50, (int) $provider->daily_limit);
         $this->assertSame('doubao-secret-key', app(ApiKeyCrypto::class)->decrypt((string) $provider->getRawOriginal('api_key')));
         $this->assertSame(3, (int) $provider->metadata_json['count']);
         $this->assertTrue((bool) $provider->metadata_json['need_summary']);
         $this->assertFalse((bool) $provider->metadata_json['need_content']);
         $this->assertSame(['geoflow.example', 'example.com'], $provider->metadata_json['sites']);
+    }
+
+    public function test_admin_cannot_save_a_search_provider_on_an_untrusted_host(): void
+    {
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->from(route('admin.ai-source-providers.index'))
+            ->post(route('admin.ai-source-providers.store'), [
+                'name' => 'Untrusted Search',
+                'endpoint_url' => 'https://attacker.example/feedcoopapi.com/search',
+                'api_key' => 'must-not-be-sent',
+            ]);
+
+        $response->assertRedirect(route('admin.ai-source-providers.index'))
+            ->assertSessionHasErrors();
+        $this->assertDatabaseCount('ai_source_providers', 0);
+        $this->assertNull(session()->getOldInput('api_key'));
     }
 
     public function test_admin_can_update_provider_without_rotating_api_key(): void
@@ -79,7 +95,7 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $response = $this->actingAs($this->createAdmin(), 'admin')
             ->put(route('admin.ai-source-providers.update', ['providerId' => (int) $provider->id]), [
                 'name' => 'Updated Doubao Search',
-                'endpoint_url' => 'https://search.test/updated',
+                'endpoint_url' => 'https://open.feedcoopapi.com/search_api/updated',
                 'api_key' => '',
                 'daily_limit' => 20,
                 'count' => 5,
@@ -207,6 +223,52 @@ class AdminAiSourceProvidersPageTest extends TestCase
         );
     }
 
+    public function test_api_key_is_not_flashed_to_the_session_when_model_validation_fails(): void
+    {
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->from(route('admin.ai-source-providers.index'))
+            ->post(route('admin.ai-source-providers.model-bindings.upsert-api'), [
+                'binding_type' => 'deepseek',
+                'name' => 'DeepSeek GEO Analysis',
+                'model_id' => 'deepseek-v4-flash',
+                'api_url' => 'not-a-valid-url',
+                'api_key' => 'must-not-enter-session',
+                'daily_limit' => 30,
+            ]);
+
+        $response->assertRedirect(route('admin.ai-source-providers.index'))
+            ->assertSessionHasErrors('api_url');
+        $this->assertNull(session()->getOldInput('api_key'));
+    }
+
+    public function test_admin_cannot_repoint_a_saved_model_key_to_an_untrusted_host(): void
+    {
+        $model = $this->createAiModel([
+            'name' => 'DeepSeek GEO Analysis',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'ai_visibility_deepseek_analysis_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->from(route('admin.ai-source-providers.index'))
+            ->post(route('admin.ai-source-providers.model-bindings.upsert-api'), [
+                'binding_type' => 'deepseek',
+                'name' => 'DeepSeek GEO Analysis',
+                'model_id' => 'deepseek-v4-flash',
+                'api_url' => 'https://api.deepseek.com.attacker.example/v1',
+                'api_key' => '',
+                'daily_limit' => 30,
+            ]);
+
+        $response->assertRedirect(route('admin.ai-source-providers.index'))
+            ->assertSessionHasErrors();
+        $this->assertSame('https://api.deepseek.com', $model->fresh()->api_url);
+    }
+
     public function test_admin_cannot_bind_non_ark_model_as_ark_search_model(): void
     {
         $model = $this->createAiModel([
@@ -226,11 +288,36 @@ class AdminAiSourceProvidersPageTest extends TestCase
             ->assertSessionHasErrors();
     }
 
-    public function test_admin_can_test_doubao_search_provider_without_incrementing_usage(): void
+    public function test_admin_cannot_bind_a_model_without_an_api_key(): void
+    {
+        $model = $this->createAiModel([
+            'name' => 'DeepSeek Missing Key',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+            'api_key' => '',
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->from(route('admin.ai-source-providers.index'))
+            ->post(route('admin.ai-source-providers.model-bindings'), [
+                'ark_model_id' => 0,
+                'deepseek_model_id' => (int) $model->id,
+            ]);
+
+        $response->assertRedirect(route('admin.ai-source-providers.index'))
+            ->assertSessionHasErrors();
+        $this->assertNull(
+            SiteSetting::query()
+                ->where('setting_key', 'ai_visibility_deepseek_analysis_model_id')
+                ->value('setting_value')
+        );
+    }
+
+    public function test_admin_search_provider_test_counts_against_daily_usage(): void
     {
         Http::preventStrayRequests();
         Http::fake([
-            'https://search.test/api' => Http::response([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
                 'LogId' => 'log_test',
                 'Result' => [
                     'WebResults' => [
@@ -246,7 +333,7 @@ class AdminAiSourceProvidersPageTest extends TestCase
         ]);
 
         $provider = $this->createSearchProvider([
-            'endpoint_url' => 'https://search.test/api',
+            'endpoint_url' => 'https://open.feedcoopapi.com/search_api/web_search',
             'metadata_json' => [
                 'count' => 3,
                 'search_type' => 'web',
@@ -269,9 +356,12 @@ class AdminAiSourceProvidersPageTest extends TestCase
             ->assertJsonPath('meta.source_count', 1)
             ->assertJsonPath('meta.sources.0.domain', 'example.com');
 
-        $this->assertSame(0, (int) $provider->fresh()->used_today);
+        $provider->refresh();
+        $this->assertSame(1, (int) $provider->used_today);
+        $this->assertSame(1, (int) $provider->total_used);
+        $this->assertSame(now()->toDateString(), $provider->usage_date?->toDateString());
 
-        Http::assertSent(fn ($request): bool => $request->url() === 'https://search.test/api'
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://open.feedcoopapi.com/search_api/web_search'
             && $request->hasHeader('Authorization', 'Bearer test-search-key')
             && $request['Query'] === 'GEOFlow'
             && $request['Count'] === 3
@@ -325,6 +415,11 @@ class AdminAiSourceProvidersPageTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer test-model-key')
             && ($request['response_format']['type'] ?? null) === 'json_object'
             && $request['model'] === 'deepseek-v4-flash');
+
+        $model->refresh();
+        $this->assertSame(1, (int) $model->used_today);
+        $this->assertSame(1, (int) $model->total_used);
+        $this->assertSame(now()->toDateString(), $model->usage_date?->toDateString());
     }
 
     public function test_admin_can_test_doubao_ark_structured_output(): void
@@ -413,6 +508,29 @@ class AdminAiSourceProvidersPageTest extends TestCase
             ->assertJsonValidationErrors('query');
 
         Http::assertNothingSent();
+    }
+
+    public function test_provider_connection_test_is_rate_limited(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_rate_limit',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider();
+        $this->actingAs($this->createAdmin(), 'admin');
+
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            $this->postJson(route('admin.ai-source-providers.test', ['providerId' => (int) $provider->id]))
+                ->assertOk();
+        }
+
+        $this->postJson(route('admin.ai-source-providers.test', ['providerId' => (int) $provider->id]))
+            ->assertTooManyRequests();
+        Http::assertSentCount(5);
     }
 
     private function createAdmin(): Admin

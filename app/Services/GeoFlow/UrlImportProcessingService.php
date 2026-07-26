@@ -32,6 +32,7 @@ final class UrlImportProcessingService
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly SafeOutboundHttpClient $safeHttp,
         private readonly Factory $http,
+        private readonly AiUsageQuotaService $usageQuota,
     ) {}
 
     /**
@@ -518,11 +519,6 @@ final class UrlImportProcessingService
                     ->orWhere('model_type', '')
                     ->orWhere('model_type', 'chat');
             })
-            ->where(function ($query): void {
-                $query->whereNull('daily_limit')
-                    ->orWhere('daily_limit', 0)
-                    ->orWhereColumn('used_today', '<', 'daily_limit');
-            })
             ->orderBy('failover_priority')
             ->orderBy('id')
             ->get();
@@ -560,6 +556,12 @@ final class UrlImportProcessingService
     private function requestAiJson(array $runtime, string $systemPrompt, string $userPrompt, ?string $listFallbackKey = null): array
     {
         $agent = new MarkdownContentWriterAgent($systemPrompt);
+        /** @var AiModel $model */
+        $model = $runtime['model'];
+        $reservation = $this->usageQuota->reserveModel($model);
+        if ($reservation === null) {
+            throw new \RuntimeException('AI model has reached its daily usage limit.');
+        }
 
         try {
             $response = $agent->prompt(
@@ -568,38 +570,31 @@ final class UrlImportProcessingService
                 $runtime['provider'],
                 $runtime['model_id']
             );
+            $content = $this->aiResponseTextToString($response->text ?? '');
+            if ($content === '') {
+                throw new \RuntimeException(__('admin.url_import.error.ai_empty_content'));
+            }
+
+            $decoded = $this->decodeAiJson($content);
+            if ($decoded === []) {
+                $fallbackList = $listFallbackKey ? $this->parseAiList($content) : [];
+                if ($fallbackList !== []) {
+                    $decoded = [$listFallbackKey => $fallbackList];
+                }
+            }
+
+            if ($decoded === []) {
+                throw new \RuntimeException(__('admin.url_import.error.ai_invalid_json', [
+                    'preview' => $this->previewAiContent($content),
+                ]));
+            }
         } catch (Throwable $exception) {
-            /** @var AiModel $model */
-            $model = $runtime['model'];
+            $this->usageQuota->releaseModel($reservation);
+
             throw new \RuntimeException($this->normalizeAiErrorMessage($exception, $model), 0, $exception);
         }
 
-        $content = $this->aiResponseTextToString($response->text ?? '');
-        if ($content === '') {
-            throw new \RuntimeException(__('admin.url_import.error.ai_empty_content'));
-        }
-
-        $decoded = $this->decodeAiJson($content);
-        if ($decoded === []) {
-            $fallbackList = $listFallbackKey ? $this->parseAiList($content) : [];
-            if ($fallbackList !== []) {
-                $decoded = [$listFallbackKey => $fallbackList];
-            }
-        }
-
-        if ($decoded === []) {
-            throw new \RuntimeException(__('admin.url_import.error.ai_invalid_json', [
-                'preview' => $this->previewAiContent($content),
-            ]));
-        }
-
-        /** @var AiModel $model */
-        $model = $runtime['model'];
-        AiModel::query()->whereKey((int) $model->id)->update([
-            'used_today' => DB::raw('COALESCE(used_today,0)+1'),
-            'total_used' => DB::raw('COALESCE(total_used,0)+1'),
-            'updated_at' => now(),
-        ]);
+        $this->usageQuota->recordModelSuccess($reservation);
 
         return $decoded;
     }

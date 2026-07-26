@@ -319,11 +319,16 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::get('/', [AiSourceProviderController::class, 'index'])->name('index');
                 Route::post('/', [AiSourceProviderController::class, 'store'])->name('store');
                 Route::put('{providerId}', [AiSourceProviderController::class, 'update'])->name('update')->whereNumber('providerId');
-                Route::post('{providerId}/test', [AiSourceProviderController::class, 'testProvider'])->name('test')->whereNumber('providerId');
+                Route::post('{providerId}/test', [AiSourceProviderController::class, 'testProvider'])
+                    ->middleware('throttle:admin-sensitive')
+                    ->name('test')
+                    ->whereNumber('providerId');
                 Route::post('{providerId}/delete', [AiSourceProviderController::class, 'destroy'])->name('delete')->whereNumber('providerId');
                 Route::post('model-bindings', [AiSourceProviderController::class, 'updateModelBindings'])->name('model-bindings');
                 Route::post('model-bindings/upsert-api', [AiSourceProviderController::class, 'upsertModelApi'])->name('model-bindings.upsert-api');
-                Route::post('model-bindings/test', [AiSourceProviderController::class, 'testModelBinding'])->name('model-bindings.test');
+                Route::post('model-bindings/test', [AiSourceProviderController::class, 'testModelBinding'])
+                    ->middleware('throttle:admin-sensitive')
+                    ->name('model-bindings.test');
             });
             Route::get('ai-prompts', [AiPromptController::class, 'index'])->name('ai-prompts');
             Route::post('ai-prompts/create', [AiPromptController::class, 'store'])->name('ai-prompts.store');

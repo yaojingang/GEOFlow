@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Title extends Model
 {
@@ -33,5 +34,10 @@ class Title extends Model
     public function library(): BelongsTo
     {
         return $this->belongsTo(TitleLibrary::class, 'library_id');
+    }
+
+    public function articles(): HasMany
+    {
+        return $this->hasMany(Article::class, 'source_title_id');
     }
 }

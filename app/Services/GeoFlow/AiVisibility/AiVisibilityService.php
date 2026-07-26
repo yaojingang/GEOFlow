@@ -6,6 +6,8 @@ use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
+use App\Services\GeoFlow\AiUsageQuotaService;
+use App\Services\GeoFlow\AiUsageReservation;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -16,6 +18,8 @@ final class AiVisibilityService
         private readonly DoubaoArkResponsesClient $doubaoArkResponsesClient,
         private readonly DoubaoSearchCustomClient $doubaoSearchCustomClient,
         private readonly DeepSeekAnalysisClient $deepSeekAnalysisClient,
+        private readonly AiUsageQuotaService $usageQuota,
+        private readonly AiProviderEndpointPolicy $endpointPolicy,
     ) {}
 
     /**
@@ -35,12 +39,20 @@ final class AiVisibilityService
             'locale' => (string) ($options['locale'] ?? 'zh_CN'),
         ]);
 
+        $reservation = null;
         try {
-            $this->assertAiModelCallable($model, '豆包 Ark 模型');
+            $this->assertAiModelEnabled($model, 'ark', '豆包 Ark 模型');
+            $reservation = $this->usageQuota->reserveModel($model);
+            if ($reservation === null) {
+                throw new RuntimeException('豆包 Ark 模型已达到每日调用上限');
+            }
             $result = $this->doubaoArkResponsesClient->answerWithWebSearch($model, $prompt, $options);
 
-            return $this->completeRun($run, $result);
+            return $this->completeRun($run, $result, modelReservation: $reservation);
         } catch (Throwable $exception) {
+            if ($reservation !== null) {
+                $this->usageQuota->releaseModel($reservation);
+            }
             $this->failRun($run, $exception);
             throw $exception;
         }
@@ -61,16 +73,24 @@ final class AiVisibilityService
             'locale' => (string) ($options['locale'] ?? 'zh_CN'),
         ]);
 
+        $reservation = null;
         try {
-            $this->assertSourceProviderCallable($provider, '豆包 Search Custom 信源供应商');
+            $this->assertSourceProviderEnabled($provider, '豆包 Search Custom 信源供应商');
+            $reservation = $this->usageQuota->reserveProvider($provider);
+            if ($reservation === null) {
+                throw new RuntimeException('豆包 Search Custom 信源供应商已达到每日调用上限');
+            }
             $result = $this->doubaoSearchCustomClient->search(
                 $provider,
                 $keyword,
                 array_replace($provider->visibilitySearchOptions(), $options),
             );
 
-            return $this->completeRun($run, $result);
+            return $this->completeRun($run, $result, providerReservation: $reservation);
         } catch (Throwable $exception) {
+            if ($reservation !== null) {
+                $this->usageQuota->releaseProvider($reservation);
+            }
             $this->failRun($run, $exception);
             throw $exception;
         }
@@ -93,12 +113,20 @@ final class AiVisibilityService
             'locale' => (string) ($options['locale'] ?? 'zh_CN'),
         ]);
 
+        $reservation = null;
         try {
-            $this->assertAiModelCallable($model, 'DeepSeek 分析模型');
+            $this->assertAiModelEnabled($model, 'deepseek', 'DeepSeek 分析模型');
+            $reservation = $this->usageQuota->reserveModel($model);
+            if ($reservation === null) {
+                throw new RuntimeException('DeepSeek 分析模型已达到每日调用上限');
+            }
             $result = $this->deepSeekAnalysisClient->analyze($model, $prompt, $sources, $options);
 
-            return $this->completeRun($run, $result);
+            return $this->completeRun($run, $result, modelReservation: $reservation);
         } catch (Throwable $exception) {
+            if ($reservation !== null) {
+                $this->usageQuota->releaseModel($reservation);
+            }
             $this->failRun($run, $exception);
             throw $exception;
         }
@@ -143,9 +171,13 @@ final class AiVisibilityService
         ], $attributes));
     }
 
-    private function completeRun(AiVisibilityRun $run, AiVisibilityResult $result): AiVisibilityRun
-    {
-        return DB::transaction(function () use ($run, $result): AiVisibilityRun {
+    private function completeRun(
+        AiVisibilityRun $run,
+        AiVisibilityResult $result,
+        ?AiUsageReservation $modelReservation = null,
+        ?AiUsageReservation $providerReservation = null,
+    ): AiVisibilityRun {
+        return DB::transaction(function () use ($run, $result, $modelReservation, $providerReservation): AiVisibilityRun {
             $run->update([
                 'provider_key' => $result->providerKey ?? $run->provider_key,
                 'model_id' => $result->modelId ?? $run->model_id,
@@ -168,7 +200,12 @@ final class AiVisibilityService
                 ));
             }
 
-            $this->incrementUsageCounters($run);
+            if ($modelReservation !== null) {
+                $this->usageQuota->recordModelSuccess($modelReservation);
+            }
+            if ($providerReservation !== null) {
+                $this->usageQuota->recordProviderSuccess($providerReservation);
+            }
 
             return $run->fresh('sources') ?? $run;
         });
@@ -183,48 +220,21 @@ final class AiVisibilityService
         ]);
     }
 
-    private function incrementUsageCounters(AiVisibilityRun $run): void
+    private function assertAiModelEnabled(AiModel $model, string $bindingType, string $label): void
     {
-        if ((int) ($run->ai_model_id ?? 0) > 0) {
-            AiModel::query()->whereKey((int) $run->ai_model_id)->update([
-                'used_today' => DB::raw('COALESCE(used_today,0)+1'),
-                'total_used' => DB::raw('COALESCE(total_used,0)+1'),
-                'updated_at' => now(),
-            ]);
-        }
-
-        if ((int) ($run->ai_source_provider_id ?? 0) > 0) {
-            AiSourceProvider::query()->whereKey((int) $run->ai_source_provider_id)->update([
-                'used_today' => DB::raw('COALESCE(used_today,0)+1'),
-                'total_used' => DB::raw('COALESCE(total_used,0)+1'),
-                'updated_at' => now(),
-            ]);
+        $modelType = trim((string) ($model->model_type ?? ''));
+        if (($model->status ?? 'inactive') !== 'active'
+            || ($modelType !== '' && $modelType !== 'chat')
+            || ! $this->endpointPolicy->acceptsModelApi($bindingType, (string) ($model->api_url ?? ''))) {
+            throw new RuntimeException($label.'不可用或已停用');
         }
     }
 
-    private function assertAiModelCallable(AiModel $model, string $label): void
+    private function assertSourceProviderEnabled(AiSourceProvider $provider, string $label): void
     {
-        if (($model->status ?? 'inactive') !== 'active') {
+        if (($provider->status ?? 'inactive') !== 'active'
+            || ! $this->endpointPolicy->acceptsSearchApi((string) ($provider->endpoint_url ?? ''))) {
             throw new RuntimeException($label.'不可用或已停用');
-        }
-
-        $dailyLimit = (int) ($model->daily_limit ?? 0);
-        $usedToday = (int) ($model->used_today ?? 0);
-        if ($dailyLimit > 0 && $usedToday >= $dailyLimit) {
-            throw new RuntimeException($label.'已达到每日调用上限');
-        }
-    }
-
-    private function assertSourceProviderCallable(AiSourceProvider $provider, string $label): void
-    {
-        if (($provider->status ?? 'inactive') !== 'active') {
-            throw new RuntimeException($label.'不可用或已停用');
-        }
-
-        $dailyLimit = (int) ($provider->daily_limit ?? 0);
-        $usedToday = (int) ($provider->used_today ?? 0);
-        if ($dailyLimit > 0 && $usedToday >= $dailyLimit) {
-            throw new RuntimeException($label.'已达到每日调用上限');
         }
     }
 

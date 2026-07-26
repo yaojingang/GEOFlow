@@ -199,6 +199,7 @@ class AiVisibilityServiceTest extends TestCase
         $provider = $this->createSearchProvider([
             'daily_limit' => 1,
             'used_today' => 1,
+            'usage_date' => now()->toDateString(),
         ]);
 
         try {
@@ -212,6 +213,30 @@ class AiVisibilityServiceTest extends TestCase
         $this->assertSame(AiVisibilityRun::STATUS_FAILED, $run->status);
         $this->assertStringContainsString('已达到每日调用上限', (string) $run->error_message);
         Http::assertNothingSent();
+    }
+
+    public function test_it_resets_yesterdays_provider_usage_before_calling_search(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_new_day',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider([
+            'daily_limit' => 1,
+            'used_today' => 1,
+            'usage_date' => now()->subDay()->toDateString(),
+        ]);
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow');
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        $provider->refresh();
+        $this->assertSame(now()->toDateString(), $provider->usage_date?->toDateString());
+        $this->assertSame(1, (int) $provider->used_today);
     }
 
     public function test_it_does_not_call_ark_responses_when_model_is_inactive(): void

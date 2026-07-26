@@ -21,6 +21,7 @@ class AiSourceProvider extends Model
         'status',
         'daily_limit',
         'used_today',
+        'usage_date',
         'total_used',
         'metadata_json',
     ];
@@ -30,6 +31,7 @@ class AiSourceProvider extends Model
         return [
             'daily_limit' => 'integer',
             'used_today' => 'integer',
+            'usage_date' => 'date',
             'total_used' => 'integer',
             'metadata_json' => 'array',
         ];

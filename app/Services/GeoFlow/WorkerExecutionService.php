@@ -121,6 +121,7 @@ class WorkerExecutionService
                 'category_id' => $category?->id,
                 'author_id' => $author?->id,
                 'task_id' => (int) $task->id,
+                'source_title_id' => (int) $titleRow->id,
                 'original_keyword' => $keyword,
                 'keywords' => $keyword,
                 'meta_description' => mb_substr($excerpt, 0, 120),
@@ -410,12 +411,6 @@ class WorkerExecutionService
     private function getAiModelUnavailableReason(AiModel $aiModel): ?string
     {
         if (($aiModel->status ?? 'inactive') !== 'active') {
-            return 'AI模型不可用或已达每日限制';
-        }
-
-        $dailyLimit = (int) ($aiModel->daily_limit ?? 0);
-        $usedToday = (int) ($aiModel->used_today ?? 0);
-        if ($dailyLimit > 0 && $usedToday >= $dailyLimit) {
             return 'AI模型不可用或已达每日限制';
         }
 

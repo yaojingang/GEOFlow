@@ -7,6 +7,8 @@ use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\SiteSetting;
+use App\Services\GeoFlow\AiUsageQuotaService;
+use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
 use App\Services\GeoFlow\AiVisibility\AiStructuredOutputHealthCheck;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityResult;
 use App\Services\GeoFlow\AiVisibility\DoubaoSearchCustomClient;
@@ -30,6 +32,8 @@ class AiSourceProviderController extends Controller
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly DoubaoSearchCustomClient $doubaoSearchCustomClient,
         private readonly AiStructuredOutputHealthCheck $structuredOutputHealthCheck,
+        private readonly AiProviderEndpointPolicy $endpointPolicy,
+        private readonly AiUsageQuotaService $usageQuota,
     ) {}
 
     public function index(): View
@@ -55,15 +59,19 @@ class AiSourceProviderController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $payload = $this->validateProviderPayload($request, false);
+        $providerData = $this->providerAttributes($payload, $request);
+        if (! $this->endpointPolicy->acceptsSearchApi((string) $providerData['endpoint_url'])) {
+            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.unsupported_provider'));
+        }
 
         try {
             $encryptedApiKey = $this->apiKeyCrypto->encrypt(trim((string) $payload['api_key']));
         } catch (RuntimeException) {
-            return back()->withInput()->withErrors(__('admin.ai_source_providers.error.crypto_key_missing'));
+            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.crypto_key_missing'));
         }
 
         AiSourceProvider::query()->create(array_merge(
-            $this->providerAttributes($payload, $request),
+            $providerData,
             [
                 'provider_key' => AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM,
                 'api_key' => $encryptedApiKey,
@@ -82,13 +90,20 @@ class AiSourceProviderController extends Controller
         $payload = $this->validateProviderPayload($request, true);
         $updateData = $this->providerAttributes($payload, $request);
         $updateData['status'] = $this->normalizeStatus((string) ($payload['status'] ?? 'active'));
+        if (! $this->endpointPolicy->acceptsSearchApi((string) $updateData['endpoint_url'])) {
+            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.unsupported_provider'));
+        }
 
         $apiKey = trim((string) ($payload['api_key'] ?? ''));
+        if (! $this->endpointPolicy->sameOrigin((string) $provider->endpoint_url, (string) $updateData['endpoint_url'])
+            && $apiKey === '') {
+            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.api_key_required'));
+        }
         if ($apiKey !== '') {
             try {
                 $updateData['api_key'] = $this->apiKeyCrypto->encrypt($apiKey);
             } catch (RuntimeException) {
-                return back()->withInput()->withErrors(__('admin.ai_source_providers.error.crypto_key_missing'));
+                return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.crypto_key_missing'));
             }
         }
 
@@ -148,13 +163,23 @@ class AiSourceProviderController extends Controller
         $apiKey = trim((string) ($payload['api_key'] ?? ''));
 
         if ($model === null && $apiKey === '') {
-            return back()->withInput()->withErrors(__('admin.ai_source_providers.error.api_key_required'));
+            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.api_key_required'));
+        }
+        if ($model instanceof AiModel
+            && $apiKey === ''
+            && trim((string) ($model->getRawOriginal('api_key') ?? '')) === '') {
+            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.api_key_required'));
         }
 
         if (! $this->isCallableModelApiPayload($bindingType, $payload)) {
             $errorKey = $bindingType === 'ark' ? 'ark_model_unavailable' : 'deepseek_model_unavailable';
 
-            return back()->withInput()->withErrors(__('admin.ai_source_providers.error.'.$errorKey));
+            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.'.$errorKey));
+        }
+        if ($model instanceof AiModel
+            && ! $this->endpointPolicy->sameOrigin((string) ($model->api_url ?? ''), (string) $payload['api_url'])
+            && $apiKey === '') {
+            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.api_key_required'));
         }
 
         $modelData = [
@@ -175,7 +200,7 @@ class AiSourceProviderController extends Controller
             try {
                 $modelData['api_key'] = $this->apiKeyCrypto->encrypt($apiKey);
             } catch (RuntimeException) {
-                return back()->withInput()->withErrors(__('admin.ai_source_providers.error.crypto_key_missing'));
+                return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.crypto_key_missing'));
             }
         }
 
@@ -199,14 +224,25 @@ class AiSourceProviderController extends Controller
         $provider = AiSourceProvider::query()->whereKey($providerId)->firstOrFail();
         $query = $this->normalizeTestQuery((string) ($payload['query'] ?? 'GEOFlow'));
 
+        $reservation = null;
         try {
             $this->assertProviderReady($provider);
+            $reservation = $this->usageQuota->reserveProvider($provider);
+            if ($reservation === null) {
+                throw new RuntimeException('搜索源已达到每日调用上限');
+            }
             $result = $this->doubaoSearchCustomClient->search($provider, $query, $this->providerOptions($provider));
+            $this->usageQuota->recordProviderSuccess($reservation);
+            $reservation = null;
 
             return $this->testResultResponse($result, __('admin.ai_source_providers.test_success', [
                 'count' => count($result->sources),
             ]));
         } catch (Throwable $exception) {
+            if ($reservation !== null) {
+                $this->usageQuota->releaseProvider($reservation);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => __('admin.ai_source_providers.test_failed', [
@@ -228,6 +264,7 @@ class AiSourceProviderController extends Controller
         $model = AiModel::query()->whereKey((int) $payload['model_id'])->firstOrFail();
         $query = $this->normalizeTestQuery((string) ($payload['query'] ?? 'GEOFlow'));
 
+        $reservation = null;
         try {
             if ($bindingType === 'ark' && ! $this->isCallableArkModel($model)) {
                 throw new RuntimeException(__('admin.ai_source_providers.error.ark_model_unavailable'));
@@ -235,15 +272,25 @@ class AiSourceProviderController extends Controller
             if ($bindingType === 'deepseek' && ! $this->isCallableDeepSeekModel($model)) {
                 throw new RuntimeException(__('admin.ai_source_providers.error.deepseek_model_unavailable'));
             }
+            $reservation = $this->usageQuota->reserveModel($model);
+            if ($reservation === null) {
+                throw new RuntimeException('模型已达到每日调用上限');
+            }
 
             $result = $bindingType === 'ark'
                 ? $this->structuredOutputHealthCheck->testArkResponsesStructuredOutput($model, $query)
                 : $this->structuredOutputHealthCheck->testDeepSeekJsonOutput($model, $query);
+            $this->usageQuota->recordModelSuccess($reservation);
+            $reservation = null;
 
             return $this->structuredTestResponse($result, __('admin.ai_source_providers.model_test_success', [
                 'provider' => $bindingType === 'ark' ? 'Ark Web Search' : 'DeepSeek',
             ]));
         } catch (Throwable $exception) {
+            if ($reservation !== null) {
+                $this->usageQuota->releaseModel($reservation);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => __('admin.ai_source_providers.test_failed', [
@@ -282,7 +329,9 @@ class AiSourceProviderController extends Controller
                     'masked_api_key' => $this->apiKeyCrypto->mask((string) ($provider->getRawOriginal('api_key') ?? '')),
                     'status' => (string) ($provider->status ?? 'active'),
                     'daily_limit' => (int) ($provider->daily_limit ?? 0),
-                    'used_today' => (int) ($provider->used_today ?? 0),
+                    'used_today' => $provider->usage_date?->toDateString() === now()->toDateString()
+                        ? (int) ($provider->used_today ?? 0)
+                        : 0,
                     'total_used' => (int) ($provider->total_used ?? 0),
                     'visibility_runs_count' => (int) ($provider->visibility_runs_count ?? 0),
                     'metadata' => $metadata,
@@ -389,7 +438,9 @@ class AiSourceProviderController extends Controller
         return [
             'provider_count' => $providerQuery ? (clone $providerQuery)->count() : 0,
             'active_provider_count' => $providerQuery ? (clone $providerQuery)->where('status', 'active')->count() : 0,
-            'provider_today_usage' => $providerQuery ? (int) ((clone $providerQuery)->sum('used_today') ?? 0) : 0,
+            'provider_today_usage' => $providerQuery
+                ? (int) ((clone $providerQuery)->whereDate('usage_date', now()->toDateString())->sum('used_today') ?? 0)
+                : 0,
             'failed_runs' => $runQuery ? (clone $runQuery)->where('status', AiVisibilityRun::STATUS_FAILED)->count() : 0,
         ];
     }
@@ -489,6 +540,9 @@ class AiSourceProviderController extends Controller
         if ((string) ($provider->status ?? 'inactive') !== 'active') {
             throw new RuntimeException(__('admin.ai_source_providers.error.provider_inactive'));
         }
+        if (! $this->endpointPolicy->acceptsSearchApi((string) ($provider->endpoint_url ?? ''))) {
+            throw new RuntimeException(__('admin.ai_source_providers.error.unsupported_provider'));
+        }
     }
 
     private function testResultResponse(AiVisibilityResult $result, string $message): JsonResponse
@@ -555,16 +609,20 @@ class AiSourceProviderController extends Controller
     private function isCallableArkModel(AiModel $model): bool
     {
         return $this->isActiveChatModel($model)
-            && str_contains(strtolower((string) ($model->api_url ?? '')), 'volces.com');
+            && $this->hasStoredApiKey($model)
+            && $this->endpointPolicy->acceptsModelApi('ark', (string) ($model->api_url ?? ''));
     }
 
     private function isCallableDeepSeekModel(AiModel $model): bool
     {
-        $apiUrl = strtolower((string) ($model->api_url ?? ''));
-        $modelId = strtolower((string) ($model->model_id ?? ''));
-
         return $this->isActiveChatModel($model)
-            && (str_contains($apiUrl, 'deepseek.com') || str_starts_with($modelId, 'deepseek'));
+            && $this->hasStoredApiKey($model)
+            && $this->endpointPolicy->acceptsModelApi('deepseek', (string) ($model->api_url ?? ''));
+    }
+
+    private function hasStoredApiKey(AiModel $model): bool
+    {
+        return trim((string) ($model->getRawOriginal('api_key') ?? '')) !== '';
     }
 
     private function isActiveChatModel(AiModel $model): bool
@@ -627,12 +685,10 @@ class AiSourceProviderController extends Controller
      */
     private function isCallableModelApiPayload(string $bindingType, array $payload): bool
     {
-        $apiUrl = strtolower(trim((string) ($payload['api_url'] ?? '')));
-        $modelId = strtolower(trim((string) ($payload['model_id'] ?? '')));
-
-        return $bindingType === 'ark'
-            ? str_contains($apiUrl, 'volces.com')
-            : (str_contains($apiUrl, 'deepseek.com') || str_starts_with($modelId, 'deepseek'));
+        return $this->endpointPolicy->acceptsModelApi(
+            $bindingType,
+            (string) ($payload['api_url'] ?? ''),
+        );
     }
 
     private function supportsModelMaxTokens(): bool

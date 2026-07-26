@@ -7,6 +7,7 @@ use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
 use App\Models\SiteSetting;
+use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -19,6 +20,10 @@ class AiVisibilityAnalyticsService
     private const ARK_MODEL_SETTING_KEY = 'ai_visibility_ark_model_id';
 
     private const DEEPSEEK_MODEL_SETTING_KEY = 'ai_visibility_deepseek_analysis_model_id';
+
+    public function __construct(
+        private readonly AiProviderEndpointPolicy $endpointPolicy,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -916,17 +921,14 @@ class AiVisibilityAnalyticsService
     private function isCallableArkModel(AiModel $model): bool
     {
         return $this->isActiveChatModel($model)
-            && str_contains(Str::lower((string) ($model->api_url ?? '')), 'volces.com')
+            && $this->endpointPolicy->acceptsModelApi('ark', (string) ($model->api_url ?? ''))
             && trim((string) ($model->getRawOriginal('api_key') ?? '')) !== '';
     }
 
     private function isCallableDeepSeekModel(AiModel $model): bool
     {
-        $apiUrl = Str::lower((string) ($model->api_url ?? ''));
-        $modelId = Str::lower((string) ($model->model_id ?? ''));
-
         return $this->isActiveChatModel($model)
-            && (str_contains($apiUrl, 'deepseek.com') || str_starts_with($modelId, 'deepseek'))
+            && $this->endpointPolicy->acceptsModelApi('deepseek', (string) ($model->api_url ?? ''))
             && trim((string) ($model->getRawOriginal('api_key') ?? '')) !== '';
     }
 

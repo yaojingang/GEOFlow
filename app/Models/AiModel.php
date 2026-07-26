@@ -23,6 +23,7 @@ class AiModel extends Model
         'failover_priority',
         'daily_limit',
         'used_today',
+        'usage_date',
         'total_used',
         'status',
         'max_tokens',
@@ -34,6 +35,7 @@ class AiModel extends Model
             'failover_priority' => 'integer',
             'daily_limit' => 'integer',
             'used_today' => 'integer',
+            'usage_date' => 'date',
             'total_used' => 'integer',
             'max_tokens' => 'integer',
         ];

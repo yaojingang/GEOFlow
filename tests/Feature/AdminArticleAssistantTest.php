@@ -17,6 +17,7 @@ use App\Services\GeoFlow\ArticleContentGenerationService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AdminArticleAssistantTest extends TestCase
@@ -161,6 +162,8 @@ class AdminArticleAssistantTest extends TestCase
 
         $article = Article::query()->where('title', $title->title)->firstOrFail();
         $this->assertTrue((bool) $article->is_ai_generated);
+        $this->assertSame((int) $title->id, (int) $article->source_title_id);
+        $this->assertTrue($article->sourceTitle->is($title));
         $this->assertSame(1, (int) $title->fresh()->used_count);
         $this->assertSame(1, (int) $title->fresh()->usage_count);
     }
@@ -243,12 +246,30 @@ class AdminArticleAssistantTest extends TestCase
         $secondSnapshot = $model->fresh();
         $generationService = app(ArticleContentGenerationService::class);
 
-        $this->assertTrue($generationService->reserveDailyUsage($firstSnapshot));
-        $this->assertFalse($generationService->reserveDailyUsage($secondSnapshot));
+        $reservation = $generationService->reserveDailyUsage($firstSnapshot);
+        $this->assertNotNull($reservation);
+        $this->assertNull($generationService->reserveDailyUsage($secondSnapshot));
         $this->assertSame(1, (int) $model->fresh()->used_today);
 
-        $generationService->releaseDailyUsage($model);
+        $generationService->releaseDailyUsage($reservation);
         $this->assertSame(0, (int) $model->fresh()->used_today);
+    }
+
+    public function test_ai_generation_resets_yesterdays_usage_before_reserving_quota(): void
+    {
+        $model = $this->createModel([
+            'daily_limit' => 1,
+            'used_today' => 1,
+        ]);
+        DB::table('ai_models')
+            ->where('id', (int) $model->id)
+            ->update(['usage_date' => now()->subDay()->toDateString()]);
+
+        $this->assertNotNull(app(ArticleContentGenerationService::class)->reserveDailyUsage($model));
+
+        $model->refresh();
+        $this->assertSame(now()->toDateString(), $model->usage_date?->toDateString());
+        $this->assertSame(1, (int) $model->used_today);
     }
 
     public function test_ai_generation_rejects_requests_after_daily_quota_is_used(): void

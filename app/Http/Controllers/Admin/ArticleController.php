@@ -259,6 +259,7 @@ class ArticleController extends Controller
                     'meta_description' => $payload['meta_description'],
                     'category_id' => (int) $payload['category_id'],
                     'author_id' => (int) $payload['author_id'],
+                    'source_title_id' => $sourceTitle?->id,
                     'status' => 'draft',
                     'review_status' => 'pending',
                     'published_at' => null,
@@ -835,11 +836,6 @@ class ArticleController extends Controller
                     $query->whereNull('model_type')
                         ->orWhere('model_type', '')
                         ->orWhere('model_type', 'chat');
-                })
-                ->where(function ($query): void {
-                    $query->whereNull('daily_limit')
-                        ->orWhere('daily_limit', '<=', 0)
-                        ->orWhereColumn('used_today', '<', 'daily_limit');
                 })
                 ->orderBy('failover_priority')
                 ->orderBy('name')

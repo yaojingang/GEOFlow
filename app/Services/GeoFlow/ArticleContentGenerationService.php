@@ -6,8 +6,6 @@ use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Models\AiModel;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\StreamableAgentResponse;
@@ -18,20 +16,22 @@ final class ArticleContentGenerationService
 {
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiUsageQuotaService $usageQuota,
     ) {}
 
     public function generate(AiModel $aiModel, string $prompt): AgentResponse
     {
         [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_content');
 
-        if (! $this->reserveDailyUsage($aiModel)) {
+        $reservation = $this->reserveDailyUsage($aiModel);
+        if ($reservation === null) {
             throw new RuntimeException('AI 模型不可用或已达到今日调用上限');
         }
 
         try {
             $response = $agent->prompt($prompt, [], $providerName, $modelId);
         } catch (Throwable $exception) {
-            $this->releaseDailyUsage($aiModel);
+            $this->releaseDailyUsage($reservation);
 
             throw new RuntimeException(
                 'AI 生成失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl),
@@ -41,12 +41,12 @@ final class ArticleContentGenerationService
         }
 
         if (OpenAiRuntimeProvider::normalizeGeneratedText((string) ($response->text ?? '')) === '') {
-            $this->releaseDailyUsage($aiModel);
+            $this->releaseDailyUsage($reservation);
 
             return $response;
         }
 
-        $this->recordSuccessfulUsage($aiModel);
+        $this->recordSuccessfulUsage($reservation);
 
         return $response;
     }
@@ -55,14 +55,15 @@ final class ArticleContentGenerationService
     {
         [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_editor');
 
-        if (! $this->reserveDailyUsage($aiModel)) {
+        $reservation = $this->reserveDailyUsage($aiModel);
+        if ($reservation === null) {
             throw new RuntimeException('AI 模型不可用或已达到今日调用上限');
         }
 
         try {
             $upstream = $agent->stream($prompt, [], $providerName, $modelId);
         } catch (Throwable $exception) {
-            $this->releaseDailyUsage($aiModel);
+            $this->releaseDailyUsage($reservation);
 
             throw new RuntimeException(
                 'AI 生成失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl),
@@ -73,7 +74,7 @@ final class ArticleContentGenerationService
 
         return new StreamableAgentResponse(
             $upstream->invocationId,
-            function () use ($upstream, $aiModel, $providerUrl): iterable {
+            function () use ($upstream, $reservation, $providerUrl): iterable {
                 $completed = false;
 
                 try {
@@ -90,17 +91,17 @@ final class ArticleContentGenerationService
                     );
                 } finally {
                     if (! $completed) {
-                        $this->releaseDailyUsage($aiModel);
+                        $this->releaseDailyUsage($reservation);
                     }
                 }
 
                 if (OpenAiRuntimeProvider::normalizeGeneratedText((string) ($upstream->text ?? '')) === '') {
-                    $this->releaseDailyUsage($aiModel);
+                    $this->releaseDailyUsage($reservation);
 
                     return;
                 }
 
-                $this->recordSuccessfulUsage($aiModel);
+                $this->recordSuccessfulUsage($reservation);
             },
             new Meta($providerName, $modelId),
         );
@@ -119,51 +120,26 @@ final class ArticleContentGenerationService
     /**
      * 原子预占一次调用额度，避免并发请求同时越过每日上限。
      */
-    public function reserveDailyUsage(AiModel $aiModel): bool
+    public function reserveDailyUsage(AiModel $aiModel): ?AiUsageReservation
     {
-        return AiModel::query()
-            ->whereKey((int) $aiModel->id)
-            ->where('status', 'active')
-            ->where(function (Builder $query): void {
-                $query->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->where(function (Builder $query): void {
-                $query->whereNull('daily_limit')
-                    ->orWhere('daily_limit', '<=', 0)
-                    ->orWhereRaw('COALESCE(used_today, 0) < daily_limit');
-            })
-            ->update([
-                'used_today' => DB::raw('COALESCE(used_today, 0) + 1'),
-                'updated_at' => now(),
-            ]) === 1;
+        return $this->usageQuota->reserveModel($aiModel);
     }
 
     /**
      * 供应商调用启动失败或流式响应异常时释放已预占额度。
      */
-    public function releaseDailyUsage(AiModel $aiModel): void
+    public function releaseDailyUsage(AiUsageReservation $reservation): void
     {
-        AiModel::query()
-            ->whereKey((int) $aiModel->id)
-            ->where('used_today', '>', 0)
-            ->update([
-                'used_today' => DB::raw('COALESCE(used_today, 0) - 1'),
-                'updated_at' => now(),
-            ]);
+        $this->usageQuota->releaseModel($reservation);
     }
 
     /**
      * AI 已完整响应后累计历史调用次数。统计失败不应中断正文交付。
      */
-    private function recordSuccessfulUsage(AiModel $aiModel): void
+    private function recordSuccessfulUsage(AiUsageReservation $reservation): void
     {
         try {
-            AiModel::query()->whereKey((int) $aiModel->id)->update([
-                'total_used' => DB::raw('COALESCE(total_used, 0) + 1'),
-                'updated_at' => now(),
-            ]);
+            $this->usageQuota->recordModelSuccess($reservation);
         } catch (Throwable $exception) {
             report($exception);
         }
