@@ -204,12 +204,16 @@ class LegacyController extends Controller
             'model_count' => AiModel::query()->where('status', 'active')->count(),
             'prompt_count' => Prompt::query()->count(),
             'total_usage' => (int) (AiModel::query()->sum('total_used') ?? 0),
-            'today_usage' => (int) (AiModel::query()->sum('used_today') ?? 0),
+            'today_usage' => (int) (AiModel::query()
+                ->forCurrentUsageDay()
+                ->sum('used_today') ?? 0),
             'search_provider_count' => Schema::hasTable('ai_source_providers')
                 ? AiSourceProvider::query()->where('status', 'active')->count()
                 : 0,
             'search_provider_today_usage' => Schema::hasTable('ai_source_providers')
-                ? (int) (AiSourceProvider::query()->sum('used_today') ?? 0)
+                ? (int) (AiSourceProvider::query()
+                    ->whereDate('usage_date', now()->toDateString())
+                    ->sum('used_today') ?? 0)
                 : 0,
             'visibility_failed_runs' => Schema::hasTable('ai_visibility_runs')
                 ? AiVisibilityRun::query()->where('status', AiVisibilityRun::STATUS_FAILED)->count()

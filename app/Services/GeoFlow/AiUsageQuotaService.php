@@ -4,7 +4,9 @@ namespace App\Services\GeoFlow;
 
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
+use Closure;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 final class AiUsageQuotaService
 {
@@ -25,15 +27,16 @@ final class AiUsageQuotaService
         if ($reservation->resourceType !== 'model') {
             throw new \InvalidArgumentException('Expected an AI model usage reservation.');
         }
-
-        AiModel::query()
-            ->whereKey($reservation->resourceId)
-            ->whereDate('usage_date', $reservation->usageDate)
-            ->where('used_today', '>', 0)
-            ->update([
-                'used_today' => DB::raw('COALESCE(used_today, 0) - 1'),
-                'updated_at' => now(),
-            ]);
+        $this->finalizeReservation($reservation, static function () use ($reservation): void {
+            AiModel::query()
+                ->whereKey($reservation->resourceId)
+                ->whereDate('usage_date', $reservation->usageDate)
+                ->where('used_today', '>', 0)
+                ->update([
+                    'used_today' => DB::raw('COALESCE(used_today, 0) - 1'),
+                    'updated_at' => now(),
+                ]);
+        });
     }
 
     public function recordModelSuccess(AiUsageReservation $reservation): void
@@ -41,11 +44,12 @@ final class AiUsageQuotaService
         if ($reservation->resourceType !== 'model') {
             throw new \InvalidArgumentException('Expected an AI model usage reservation.');
         }
-
-        AiModel::query()->whereKey($reservation->resourceId)->update([
-            'total_used' => DB::raw('COALESCE(total_used, 0) + 1'),
-            'updated_at' => now(),
-        ]);
+        $this->finalizeReservation($reservation, static function () use ($reservation): void {
+            AiModel::query()->whereKey($reservation->resourceId)->update([
+                'total_used' => DB::raw('COALESCE(total_used, 0) + 1'),
+                'updated_at' => now(),
+            ]);
+        });
     }
 
     public function reserveProvider(AiSourceProvider $provider): ?AiUsageReservation
@@ -65,15 +69,16 @@ final class AiUsageQuotaService
         if ($reservation->resourceType !== 'provider') {
             throw new \InvalidArgumentException('Expected an AI source provider usage reservation.');
         }
-
-        AiSourceProvider::query()
-            ->whereKey($reservation->resourceId)
-            ->whereDate('usage_date', $reservation->usageDate)
-            ->where('used_today', '>', 0)
-            ->update([
-                'used_today' => DB::raw('COALESCE(used_today, 0) - 1'),
-                'updated_at' => now(),
-            ]);
+        $this->finalizeReservation($reservation, static function () use ($reservation): void {
+            AiSourceProvider::query()
+                ->whereKey($reservation->resourceId)
+                ->whereDate('usage_date', $reservation->usageDate)
+                ->where('used_today', '>', 0)
+                ->update([
+                    'used_today' => DB::raw('COALESCE(used_today, 0) - 1'),
+                    'updated_at' => now(),
+                ]);
+        });
     }
 
     public function recordProviderSuccess(AiUsageReservation $reservation): void
@@ -81,11 +86,12 @@ final class AiUsageQuotaService
         if ($reservation->resourceType !== 'provider') {
             throw new \InvalidArgumentException('Expected an AI source provider usage reservation.');
         }
-
-        AiSourceProvider::query()->whereKey($reservation->resourceId)->update([
-            'total_used' => DB::raw('COALESCE(total_used, 0) + 1'),
-            'updated_at' => now(),
-        ]);
+        $this->finalizeReservation($reservation, static function () use ($reservation): void {
+            AiSourceProvider::query()->whereKey($reservation->resourceId)->update([
+                'total_used' => DB::raw('COALESCE(total_used, 0) + 1'),
+                'updated_at' => now(),
+            ]);
+        });
     }
 
     private function reserveLockedModel(AiModel $model): ?AiUsageReservation
@@ -129,5 +135,34 @@ final class AiUsageQuotaService
             : trim((string) $storedUsageDate);
 
         return $date === $usageDate ? max(0, $usedToday) : 0;
+    }
+
+    private function finalizeReservation(AiUsageReservation $reservation, Closure $operation): void
+    {
+        if (! $reservation->claimFinalization()) {
+            return;
+        }
+
+        try {
+            $operation();
+        } catch (Throwable $exception) {
+            $reservation->cancelFinalization();
+
+            throw $exception;
+        }
+
+        $connection = DB::connection();
+        if ($connection->transactionLevel() === 0) {
+            $reservation->completeFinalization();
+
+            return;
+        }
+
+        $connection->afterCommit(
+            static fn () => $reservation->completeFinalization()
+        );
+        $connection->afterRollBack(
+            static fn () => $reservation->cancelFinalization()
+        );
     }
 }

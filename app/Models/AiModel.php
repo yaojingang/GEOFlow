@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -54,5 +55,17 @@ class AiModel extends Model
     public function visibilityRuns(): HasMany
     {
         return $this->hasMany(AiVisibilityRun::class, 'ai_model_id');
+    }
+
+    public function currentUsage(): int
+    {
+        return $this->usage_date?->toDateString() === now()->toDateString()
+            ? max(0, (int) ($this->used_today ?? 0))
+            : 0;
+    }
+
+    public function scopeForCurrentUsageDay(Builder $query): Builder
+    {
+        return $query->whereDate('usage_date', now()->toDateString());
     }
 }

@@ -121,6 +121,23 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_configuration_status_rejects_a_search_provider_on_an_untrusted_endpoint(): void
+    {
+        AiSourceProvider::query()->create([
+            'name' => 'Untrusted Search',
+            'provider_key' => AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            'endpoint_url' => 'https://attacker.example.com/search',
+            'api_key' => 'stored-key',
+            'daily_limit' => 10,
+            'status' => 'active',
+        ]);
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview();
+
+        $this->assertFalse($overview['configured']);
+        $this->assertFalse($overview['configuration']['doubao_search_configured']);
+    }
+
     public function test_ai_visibility_analytics_caps_daily_keyword_samples_at_five(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
@@ -145,10 +162,16 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             );
         }
 
+        $retrievedRunIds = [];
+        AiVisibilityRun::retrieved(function (AiVisibilityRun $run) use (&$retrievedRunIds): void {
+            $retrievedRunIds[] = (int) $run->id;
+        });
+
         $overview = app(AiVisibilityAnalyticsService::class)->overview();
 
         $this->assertSame(6, $overview['polling']['completed_runs']);
         $this->assertSame(5, $overview['polling']['sampled_runs']);
+        $this->assertCount(5, array_unique($retrievedRunIds));
         $this->assertSame(0.0, $overview['kpis']['brand_visibility']);
         $this->assertSame(0.0, $overview['kpis']['top1_rate']);
 

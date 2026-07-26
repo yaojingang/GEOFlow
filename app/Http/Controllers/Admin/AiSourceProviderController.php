@@ -10,6 +10,7 @@ use App\Models\SiteSetting;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
 use App\Services\GeoFlow\AiVisibility\AiStructuredOutputHealthCheck;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityResult;
 use App\Services\GeoFlow\AiVisibility\DoubaoSearchCustomClient;
 use App\Support\AdminWeb;
@@ -24,9 +25,9 @@ use Throwable;
 
 class AiSourceProviderController extends Controller
 {
-    private const ARK_MODEL_SETTING_KEY = 'ai_visibility_ark_model_id';
+    private const ARK_MODEL_SETTING_KEY = AiVisibilityConfigurationResolver::ARK_MODEL_SETTING_KEY;
 
-    private const DEEPSEEK_MODEL_SETTING_KEY = 'ai_visibility_deepseek_analysis_model_id';
+    private const DEEPSEEK_MODEL_SETTING_KEY = AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY;
 
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
@@ -34,6 +35,7 @@ class AiSourceProviderController extends Controller
         private readonly AiStructuredOutputHealthCheck $structuredOutputHealthCheck,
         private readonly AiProviderEndpointPolicy $endpointPolicy,
         private readonly AiUsageQuotaService $usageQuota,
+        private readonly AiVisibilityConfigurationResolver $configuration,
     ) {}
 
     public function index(): View
@@ -594,43 +596,22 @@ class AiSourceProviderController extends Controller
 
     private function isCallableArkModelId(int $modelId): bool
     {
-        $model = AiModel::query()->whereKey($modelId)->first();
-
-        return $model instanceof AiModel && $this->isCallableArkModel($model);
+        return $this->configuration->isCallableModelId($modelId, 'ark');
     }
 
     private function isCallableDeepSeekModelId(int $modelId): bool
     {
-        $model = AiModel::query()->whereKey($modelId)->first();
-
-        return $model instanceof AiModel && $this->isCallableDeepSeekModel($model);
+        return $this->configuration->isCallableModelId($modelId, 'deepseek');
     }
 
     private function isCallableArkModel(AiModel $model): bool
     {
-        return $this->isActiveChatModel($model)
-            && $this->hasStoredApiKey($model)
-            && $this->endpointPolicy->acceptsModelApi('ark', (string) ($model->api_url ?? ''));
+        return $this->configuration->isCallableModel($model, 'ark');
     }
 
     private function isCallableDeepSeekModel(AiModel $model): bool
     {
-        return $this->isActiveChatModel($model)
-            && $this->hasStoredApiKey($model)
-            && $this->endpointPolicy->acceptsModelApi('deepseek', (string) ($model->api_url ?? ''));
-    }
-
-    private function hasStoredApiKey(AiModel $model): bool
-    {
-        return trim((string) ($model->getRawOriginal('api_key') ?? '')) !== '';
-    }
-
-    private function isActiveChatModel(AiModel $model): bool
-    {
-        $modelType = trim((string) ($model->model_type ?? ''));
-
-        return (string) ($model->status ?? 'inactive') === 'active'
-            && ($modelType === '' || $modelType === 'chat');
+        return $this->configuration->isCallableModel($model, 'deepseek');
     }
 
     private function modelProviderHint(AiModel $model): string

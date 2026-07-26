@@ -37,9 +37,57 @@ class AdminAiModelsPageTest extends TestCase
             ->assertJsonPath('meta.model_type', 'chat')
             ->assertJsonPath('meta.http_status', 200);
 
+        $this->assertSame(now()->toDateString(), $model->fresh()->usage_date?->toDateString());
+        $this->assertSame(1, (int) $model->fresh()->used_today);
+        $this->assertSame(1, (int) $model->fresh()->total_used);
+
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
             && $request['model'] === 'test-chat-model'
             && $request->hasHeader('Authorization', 'Bearer test-api-key'));
+    }
+
+    public function test_model_connection_tests_are_rate_limited(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'choices' => [
+                    ['message' => ['content' => 'OK']],
+                ],
+            ]),
+        ]);
+
+        $admin = $this->createAdmin();
+        $model = $this->createAiModel('chat');
+
+        foreach (range(1, 5) as $attempt) {
+            $this->actingAs($admin, 'admin')
+                ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+                ->assertOk();
+        }
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertTooManyRequests();
+    }
+
+    public function test_model_connection_test_stops_after_daily_quota_is_used(): void
+    {
+        Http::fake();
+        $model = $this->createAiModel('chat', [
+            'daily_limit' => 1,
+            'used_today' => 1,
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', __('admin.ai_models.test_error_daily_limit'));
+
+        $this->assertSame(1, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+        Http::assertNothingSent();
     }
 
     public function test_admin_models_page_shows_test_action(): void
@@ -51,6 +99,24 @@ class AdminAiModelsPageTest extends TestCase
 
         $response->assertOk()
             ->assertSee(__('admin.ai_models.test'));
+    }
+
+    public function test_admin_models_page_resets_usage_display_after_the_usage_date_changes(): void
+    {
+        $this->travelTo('2026-07-27 09:00:00');
+        $model = $this->createAiModel('chat', [
+            'used_today' => 9,
+            'usage_date' => '2026-07-26',
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-models.index'));
+
+        $modelRow = collect($response->viewData('models'))
+            ->firstWhere('id', (int) $model->id);
+
+        $response->assertOk();
+        $this->assertSame(0, (int) ($modelRow['used_today'] ?? -1));
     }
 
     public function test_admin_models_page_works_before_max_tokens_migration_runs(): void
@@ -335,6 +401,9 @@ class AdminAiModelsPageTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('success', false)
             ->assertJsonPath('meta.http_status', 401);
+
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
     }
 
     private function createAdmin(): Admin

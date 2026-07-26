@@ -22,7 +22,10 @@ class TitleAiGenerationService
     /**
      * 复用统一 API Key 解密组件，避免标题生成链路与其他 AI 链路出现差异。
      */
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiUsageQuotaService $usageQuota,
+    ) {}
 
     /**
      * 生成标题列表。
@@ -41,10 +44,23 @@ class TitleAiGenerationService
         string $style,
         string $customPrompt = ''
     ): array {
+        $reservation = null;
+
         try {
+            $reservation = $this->usageQuota->reserveModel($aiModel);
+            if ($reservation === null) {
+                throw new \RuntimeException('ai_daily_limit_reached');
+            }
+
             $content = $this->requestTitlesFromModel($aiModel, $keywords, $count, $style, $customPrompt);
             $titles = $this->parseGeneratedTitles($content);
             if ($titles !== []) {
+                try {
+                    $this->usageQuota->recordModelSuccess($reservation);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+
                 return [
                     'titles' => $titles,
                     'fallback_used' => false,
@@ -52,11 +68,19 @@ class TitleAiGenerationService
                 ];
             }
         } catch (Throwable $exception) {
+            if ($reservation instanceof AiUsageReservation) {
+                $this->usageQuota->releaseModel($reservation);
+            }
+
             return [
                 'titles' => $this->generateMockTitles($keywords, $count, $style),
                 'fallback_used' => true,
                 'fallback_reason' => $exception->getMessage(),
             ];
+        }
+
+        if ($reservation instanceof AiUsageReservation) {
+            $this->usageQuota->releaseModel($reservation);
         }
 
         return [

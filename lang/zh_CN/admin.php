@@ -1145,6 +1145,7 @@ return [
         'test_error_api_url_missing' => 'API 地址为空，请先填写 API Base URL',
         'test_error_api_key_missing' => 'API 密钥为空或无法解密，请重新填写密钥',
         'test_error_model_missing' => '模型 ID 为空，请先填写模型 ID',
+        'test_error_daily_limit' => '该模型已达到今日调用上限',
         'test_failed_with_status' => 'HTTP :status，返回：:message',
         'test_invalid_response' => '接口返回格式无法识别，返回片段：:message',
         'test_exception' => '请求异常：:message',

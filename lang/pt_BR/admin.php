@@ -2454,6 +2454,7 @@ return array_replace_recursive($base, [
         'test_error_api_url_missing' => 'A URL da API está vazia. Informe primeiro a URL Base da API.',
         'test_error_api_key_missing' => 'A chave da API está vazia ou não pôde ser descriptografada. Informe a chave novamente.',
         'test_error_model_missing' => 'O ID do modelo está vazio. Informe primeiro o ID do modelo.',
+        'test_error_daily_limit' => 'Este modelo atingiu o limite diário de chamadas.',
         'test_failed_with_status' => 'HTTP :status, resposta: :message',
         'test_invalid_response' => 'A API retornou um formato não reconhecido. Prévia da resposta: :message',
         'test_exception' => 'Exceção na requisição: :message',
