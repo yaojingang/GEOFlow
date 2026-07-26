@@ -15,7 +15,7 @@ $versionManifest = is_file($versionManifestPath)
     ? json_decode((string) file_get_contents($versionManifestPath), true)
     : [];
 $appVersion = is_array($versionManifest) ? trim((string) ($versionManifest['version'] ?? '')) : '';
-$appVersion = $appVersion !== '' ? $appVersion : '2.1.1';
+$appVersion = $appVersion !== '' ? $appVersion : '0.0.0-dev';
 
 return [
 
