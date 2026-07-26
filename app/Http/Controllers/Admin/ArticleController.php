@@ -4,11 +4,16 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\ArticleRiskGateException;
 use App\Http\Controllers\Controller;
+use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\KnowledgeBase;
+use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\Title;
+use App\Models\TitleLibrary;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
@@ -215,7 +220,7 @@ class ArticleController extends Controller
             'articleId' => null,
             'articleForm' => null,
             'riskScan' => null,
-            'formOptions' => $this->loadFormOptions(),
+            'formOptions' => $this->loadFormOptions(true),
         ]);
     }
 
@@ -234,6 +239,17 @@ class ArticleController extends Controller
         try {
             $adminId = $this->authenticatedAdminId($request);
             $gateRejection = DB::transaction(function () use (&$article, $payload, $workflowState, $adminId): ?ArticleRiskGateException {
+                $sourceTitle = null;
+                if ((int) ($payload['source_title_id'] ?? 0) > 0) {
+                    $candidate = Title::query()
+                        ->whereKey((int) $payload['source_title_id'])
+                        ->lockForUpdate()
+                        ->first(['id', 'title']);
+                    if ($candidate && trim((string) $candidate->title) === trim((string) $payload['title'])) {
+                        $sourceTitle = $candidate;
+                    }
+                }
+
                 $article = Article::query()->create([
                     'title' => $payload['title'],
                     'slug' => ArticleWorkflow::generateUniqueSlug($payload['title']),
@@ -243,13 +259,21 @@ class ArticleController extends Controller
                     'meta_description' => $payload['meta_description'],
                     'category_id' => (int) $payload['category_id'],
                     'author_id' => (int) $payload['author_id'],
+                    'source_title_id' => $sourceTitle?->id,
                     'status' => 'draft',
                     'review_status' => 'pending',
                     'published_at' => null,
-                    'is_ai_generated' => 0,
+                    'is_ai_generated' => (bool) ($payload['is_ai_generated'] ?? false),
                     'is_hot' => (bool) ($payload['is_hot'] ?? false),
                     'is_featured' => (bool) ($payload['is_featured'] ?? false),
                 ]);
+
+                if ($sourceTitle) {
+                    Title::query()->whereKey((int) $sourceTitle->id)->update([
+                        'used_count' => DB::raw('COALESCE(used_count,0)+1'),
+                        'usage_count' => DB::raw('COALESCE(usage_count,0)+1'),
+                    ]);
+                }
 
                 $this->articleRiskScanner->record($article, 'admin_save', $adminId);
                 if ($this->requiresRiskGate($payload)) {
@@ -322,7 +346,7 @@ class ArticleController extends Controller
                 'is_featured' => (bool) ($article->is_featured ?? false),
             ],
             'riskScan' => $this->riskScanViewData($article),
-            'formOptions' => $this->loadFormOptions(),
+            'formOptions' => $this->loadFormOptions(false),
         ]);
     }
 
@@ -717,13 +741,21 @@ class ArticleController extends Controller
     /**
      * @return array{
      *     categories: array<int, array{id: int, name: string}>,
-     *     authors: array<int, array{id: int, name: string}>
+     *     authors: array<int, array{id: int, name: string}>,
+     *     title_libraries: array<int, array{id: int, name: string, count: int}>,
+     *     knowledge_bases: array<int, array{id: int, name: string}>,
+     *     content_prompts: array<int, array{id: int, name: string}>,
+     *     ai_models: array<int, array{id: int, name: string, model_id: string}>
      * }
      */
-    private function loadFormOptions(): array
+    private function loadFormOptions(bool $includeAssistantOptions): array
     {
         $categories = [];
         $authors = $this->loadAuthorOptions();
+        $titleLibraries = [];
+        $knowledgeBases = [];
+        $contentPrompts = [];
+        $aiModels = [];
 
         try {
             $categories = Category::query()
@@ -739,9 +771,92 @@ class ArticleController extends Controller
             $categories = [];
         }
 
+        if (! $includeAssistantOptions) {
+            return [
+                'categories' => $categories,
+                'authors' => $authors,
+                'title_libraries' => [],
+                'knowledge_bases' => [],
+                'content_prompts' => [],
+                'ai_models' => [],
+            ];
+        }
+
+        try {
+            $titleLibraries = TitleLibrary::query()
+                ->select(['id', 'name'])
+                ->withCount('titles')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (TitleLibrary $library): array => [
+                    'id' => (int) $library->id,
+                    'name' => (string) $library->name,
+                    'count' => (int) $library->titles_count,
+                ])
+                ->all();
+        } catch (QueryException) {
+            $titleLibraries = [];
+        }
+
+        try {
+            $knowledgeBases = KnowledgeBase::query()
+                ->select(['id', 'name'])
+                ->whereHas('chunks')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (KnowledgeBase $knowledgeBase): array => [
+                    'id' => (int) $knowledgeBase->id,
+                    'name' => (string) $knowledgeBase->name,
+                ])
+                ->all();
+        } catch (QueryException) {
+            $knowledgeBases = [];
+        }
+
+        try {
+            $contentPrompts = Prompt::query()
+                ->select(['id', 'name'])
+                ->where('type', 'content')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Prompt $prompt): array => [
+                    'id' => (int) $prompt->id,
+                    'name' => (string) $prompt->name,
+                ])
+                ->all();
+        } catch (QueryException) {
+            $contentPrompts = [];
+        }
+
+        try {
+            $aiModels = AiModel::query()
+                ->select(['id', 'name', 'model_id', 'failover_priority'])
+                ->where('status', 'active')
+                ->where(function ($query): void {
+                    $query->whereNull('model_type')
+                        ->orWhere('model_type', '')
+                        ->orWhere('model_type', 'chat');
+                })
+                ->orderBy('failover_priority')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (AiModel $model): array => [
+                    'id' => (int) $model->id,
+                    'name' => (string) $model->name,
+                    'model_id' => (string) ($model->model_id ?? ''),
+                ])
+                ->all();
+        } catch (QueryException) {
+            $aiModels = [];
+        }
+
         return [
             'categories' => $categories,
             'authors' => $authors,
+            'title_libraries' => $titleLibraries,
+            'knowledge_bases' => $knowledgeBases,
+            'content_prompts' => $contentPrompts,
+            'ai_models' => $aiModels,
         ];
     }
 
@@ -758,7 +873,9 @@ class ArticleController extends Controller
      *     review_status: string,
      *     risk_override_reason: ?string,
      *     is_hot: bool,
-     *     is_featured: bool
+     *     is_featured: bool,
+     *     source_title_id: ?int,
+     *     is_ai_generated: bool
      * }
      */
     private function validateArticleForm(Request $request, bool $isEdit): array
@@ -766,7 +883,7 @@ class ArticleController extends Controller
         $keyPrefix = $isEdit ? 'admin.article_edit.error' : 'admin.article_create.error';
 
         return $request->validate([
-            'title' => ['required', 'string', 'max:255'],
+            'title' => ['required', 'string', 'max:500'],
             'excerpt' => ['nullable', 'string', 'max:'.ArticleRiskScanner::MAX_EXCERPT_CHARACTERS],
             'content' => ['required', 'string', 'max:'.ArticleRiskScanner::MAX_CONTENT_CHARACTERS],
             'keywords' => ['nullable', 'string', 'max:500'],
@@ -778,6 +895,8 @@ class ArticleController extends Controller
             'risk_override_reason' => ['nullable', 'string', 'max:1000'],
             'is_hot' => ['nullable', 'boolean'],
             'is_featured' => ['nullable', 'boolean'],
+            'source_title_id' => ['nullable', 'integer', 'min:1', 'exists:titles,id'],
+            'is_ai_generated' => ['nullable', 'boolean'],
         ], [
             'title.required' => __($keyPrefix.'.title_required'),
             'content.required' => __($keyPrefix.'.content_required'),

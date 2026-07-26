@@ -38,6 +38,7 @@ class KnowledgeChunkSyncService
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly SafeOutboundHttpClient $safeHttp,
         private readonly Factory $http,
+        private readonly AiUsageQuotaService $usageQuota,
     ) {}
 
     /**
@@ -542,6 +543,11 @@ class KnowledgeChunkSyncService
                 continue;
             }
 
+            $reservation = $this->usageQuota->reserveModel($model);
+            if ($reservation === null) {
+                continue;
+            }
+
             try {
                 $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
                 $providerName = OpenAiRuntimeProvider::registerProvider('knowledge_chunking', $driver, $providerUrl, $apiKey);
@@ -556,6 +562,7 @@ class KnowledgeChunkSyncService
                 $plan = $this->decodeSemanticChunkPlan($content);
                 $chunks = $this->chunksFromSemanticPlan($blocks, $plan);
                 if ($chunks === []) {
+                    $this->usageQuota->releaseModel($reservation);
                     Log::info('geoflow.knowledge_semantic_chunking_invalid_response', [
                         'knowledge_base_id' => $knowledgeBaseId,
                         'semantic_model_id' => (int) $model->id,
@@ -567,10 +574,11 @@ class KnowledgeChunkSyncService
                     continue;
                 }
 
-                $this->recordSemanticChunkingUsage((int) $model->id);
+                $this->usageQuota->recordModelSuccess($reservation);
 
                 return $chunks;
             } catch (Throwable $exception) {
+                $this->usageQuota->releaseModel($reservation);
                 Log::info('geoflow.knowledge_semantic_chunking_failed', [
                     'knowledge_base_id' => $knowledgeBaseId,
                     'semantic_model_id' => (int) $model->id,
@@ -652,26 +660,12 @@ class KnowledgeChunkSyncService
                 $query->whereNull('model_type')
                     ->orWhere('model_type', '')
                     ->orWhere('model_type', 'chat');
-            })
-            ->where(function ($query): void {
-                $query->whereNull('daily_limit')
-                    ->orWhere('daily_limit', '<=', 0)
-                    ->orWhereRaw('COALESCE(used_today, 0) < daily_limit');
             });
     }
 
     private function semanticChunkingMaxPromptChars(): int
     {
         return max(1, (int) config('geoflow.semantic_chunking_max_chars', self::SEMANTIC_CHUNKING_MAX_PROMPT_CHARS));
-    }
-
-    private function recordSemanticChunkingUsage(int $modelId): void
-    {
-        AiModel::query()->whereKey($modelId)->update([
-            'used_today' => DB::raw('COALESCE(used_today,0)+1'),
-            'total_used' => DB::raw('COALESCE(total_used,0)+1'),
-            'updated_at' => now(),
-        ]);
     }
 
     private function semanticChunkingSystemPrompt(): string
@@ -886,6 +880,14 @@ class KnowledgeChunkSyncService
             (string) $embeddingMetadata['api_url'],
             (string) $embeddingMetadata['api_key']
         );
+        $model = AiModel::query()->find((int) $embeddingMetadata['model_id']);
+        if (! $model instanceof AiModel) {
+            return [];
+        }
+        $reservation = $this->usageQuota->reserveModel($model);
+        if ($reservation === null) {
+            return [];
+        }
 
         try {
             $embeddings = $this->requestEmbeddingVectors(
@@ -895,13 +897,16 @@ class KnowledgeChunkSyncService
             );
             $rawVector = $this->normalizeEmbeddingVector($embeddings[0] ?? null);
             if ($rawVector === null) {
+                $this->usageQuota->releaseModel($reservation);
+
                 return [];
             }
 
-            $this->recordEmbeddingUsage((int) $embeddingMetadata['model_id']);
+            $this->usageQuota->recordModelSuccess($reservation);
 
             return $rawVector;
         } catch (Throwable $exception) {
+            $this->usageQuota->releaseModel($reservation);
             Log::info('geoflow.knowledge_query_embedding_failed', [
                 'embedding_model_id' => (int) ($embeddingMetadata['model_id'] ?? 0),
                 'model_identifier' => (string) ($embeddingMetadata['model_name'] ?? ''),
@@ -1027,7 +1032,6 @@ class KnowledgeChunkSyncService
                         $results[$chunkIndex] = $embeddingResult;
                     }
 
-                    $this->recordEmbeddingUsage((int) $embeddingMetadata['model_id']);
                     foreach (array_keys($batch) as $chunkIndex) {
                         unset($pendingChunks[$chunkIndex]);
                     }
@@ -1080,28 +1084,45 @@ class KnowledgeChunkSyncService
         bool $canStoreEmbeddingVector,
         ?string $documentTitle = null
     ): array {
+        $model = AiModel::query()->find((int) $embeddingMetadata['model_id']);
+        if (! $model instanceof AiModel) {
+            throw new \RuntimeException('Embedding model is unavailable.');
+        }
+        $reservation = $this->usageQuota->reserveModel($model);
+        if ($reservation === null) {
+            throw new \RuntimeException('Embedding model has reached its daily usage limit.');
+        }
+
         $batchKeys = array_keys($batch);
         $batchInputs = $this->formatEmbeddingDocumentInputs(array_values($batch), $embeddingMetadata, $documentTitle);
-        $embeddings = $this->requestEmbeddingVectors($batchInputs, $embeddingMetadata, $providerName);
+        try {
+            $embeddings = $this->requestEmbeddingVectors($batchInputs, $embeddingMetadata, $providerName);
 
-        $results = [];
-        foreach (array_values($batch) as $position => $_chunkContent) {
-            $rawVector = $this->normalizeEmbeddingVector($embeddings[$position] ?? null);
-            if ($rawVector === null) {
-                throw new \RuntimeException('invalid_embedding_vector');
+            $results = [];
+            foreach (array_values($batch) as $position => $_chunkContent) {
+                $rawVector = $this->normalizeEmbeddingVector($embeddings[$position] ?? null);
+                if ($rawVector === null) {
+                    throw new \RuntimeException('invalid_embedding_vector');
+                }
+
+                $actualDimensions = count($rawVector);
+                $results[$batchKeys[$position]] = [
+                    'model_id' => (int) $embeddingMetadata['model_id'],
+                    'dimensions' => $actualDimensions,
+                    'provider' => (string) $embeddingMetadata['provider'],
+                    'vector' => $rawVector,
+                    'vector_literal' => $canStoreEmbeddingVector
+                        ? $this->vectorLiteral($this->padVector($rawVector, $this->embeddingStorageDimensions()))
+                        : null,
+                ];
             }
+        } catch (Throwable $exception) {
+            $this->usageQuota->releaseModel($reservation);
 
-            $actualDimensions = count($rawVector);
-            $results[$batchKeys[$position]] = [
-                'model_id' => (int) $embeddingMetadata['model_id'],
-                'dimensions' => $actualDimensions,
-                'provider' => (string) $embeddingMetadata['provider'],
-                'vector' => $rawVector,
-                'vector_literal' => $canStoreEmbeddingVector
-                    ? $this->vectorLiteral($this->padVector($rawVector, $this->embeddingStorageDimensions()))
-                    : null,
-            ];
+            throw $exception;
         }
+
+        $this->usageQuota->recordModelSuccess($reservation);
 
         return $results;
     }
@@ -1343,22 +1364,6 @@ class KnowledgeChunkSyncService
         }
 
         return $vector === [] ? null : $vector;
-    }
-
-    /**
-     * 记录 embedding API 成功调用次数。
-     */
-    private function recordEmbeddingUsage(int $modelId): void
-    {
-        if ($modelId <= 0) {
-            return;
-        }
-
-        AiModel::query()->whereKey($modelId)->update([
-            'used_today' => DB::raw('COALESCE(used_today,0)+1'),
-            'total_used' => DB::raw('COALESCE(total_used,0)+1'),
-            'updated_at' => now(),
-        ]);
     }
 
     /**

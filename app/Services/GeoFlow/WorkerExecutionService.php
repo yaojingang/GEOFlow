@@ -2,7 +2,6 @@
 
 namespace App\Services\GeoFlow;
 
-use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Exceptions\ArticleRiskGateException;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -15,7 +14,6 @@ use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
-use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
@@ -32,15 +30,16 @@ use Throwable;
 class WorkerExecutionService
 {
     /**
-     * 复用统一 API Key 解密组件，确保 worker 与后台配置端解密行为一致。
+     * 复用正文提示词和模型调用服务，确保任务生成与单篇生成规则一致。
      */
     public function __construct(
-        private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
         private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly ArticleRiskScanner $articleRiskScanner,
         private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
+        private readonly ArticleContentPromptRenderer $articleContentPromptRenderer,
+        private readonly ArticleContentGenerationService $articleContentGenerationService,
     ) {}
 
     /**
@@ -122,6 +121,7 @@ class WorkerExecutionService
                 'category_id' => $category?->id,
                 'author_id' => $author?->id,
                 'task_id' => (int) $task->id,
+                'source_title_id' => (int) $titleRow->id,
                 'original_keyword' => $keyword,
                 'keywords' => $keyword,
                 'meta_description' => mb_substr($excerpt, 0, 120),
@@ -414,12 +414,6 @@ class WorkerExecutionService
             return 'AI模型不可用或已达每日限制';
         }
 
-        $dailyLimit = (int) ($aiModel->daily_limit ?? 0);
-        $usedToday = (int) ($aiModel->used_today ?? 0);
-        if ($dailyLimit > 0 && $usedToday >= $dailyLimit) {
-            return 'AI模型不可用或已达每日限制';
-        }
-
         return null;
     }
 
@@ -512,143 +506,7 @@ class WorkerExecutionService
      */
     private function buildContentPrompt(string $title, string $keyword, ?string $promptContent, string $knowledgeContext): string
     {
-        $prompt = trim((string) $promptContent);
-        $isFallbackPrompt = false;
-        if ($prompt === '') {
-            $prompt = "请围绕标题“{$title}”和关键词“{$keyword}”生成一篇结构清晰、语言自然的中文文章。";
-            $isFallbackPrompt = true;
-        }
-
-        $hasExplicitContextVariables = $isFallbackPrompt || $this->promptHasKnownContextVariables($prompt);
-        $renderedPrompt = $this->renderPromptTemplate($prompt, [
-            'title' => $title,
-            'keyword' => $keyword,
-            'knowledge' => $knowledgeContext,
-        ]);
-
-        if (! $hasExplicitContextVariables) {
-            $renderedPrompt = $this->appendSmartPromptContext($renderedPrompt, $title, $keyword, $knowledgeContext);
-        }
-
-        $finalInstructions = array_values(array_filter([
-            $this->knowledgeCitationInstruction($renderedPrompt, $knowledgeContext),
-            $this->finalPromptInstruction($renderedPrompt),
-        ], static fn (string $instruction): bool => trim($instruction) !== ''));
-
-        return trim($renderedPrompt)."\n\n".implode("\n", $finalInstructions);
-    }
-
-    private function promptHasKnownContextVariables(string $prompt): bool
-    {
-        return preg_match('/\{\{\s*(title|keyword|knowledge)\s*\}\}/iu', $prompt) === 1
-            || preg_match('/\{\{#if\s+(title|keyword|knowledge)\s*\}\}/iu', $prompt) === 1;
-    }
-
-    /**
-     * 渲染任务上下文变量，兼容 {{Knowledge}} 与 {{knowledge}} 等大小写写法。
-     *
-     * @param  array{title:string, keyword:string, knowledge:string}  $context
-     */
-    private function renderPromptTemplate(string $prompt, array $context): string
-    {
-        $renderedPrompt = preg_replace_callback('/\{\{#if\s+([A-Za-z_][A-Za-z0-9_]*)\s*\}\}(.*?)\{\{\/if\}\}/su', function (array $matches) use ($context): string {
-            $name = (string) ($matches[1] ?? '');
-            if (! $this->isKnownPromptContextName($name)) {
-                return (string) ($matches[0] ?? '');
-            }
-
-            $value = $this->promptContextValue($name, $context);
-
-            return trim($value) !== '' ? (string) ($matches[2] ?? '') : '';
-        }, $prompt) ?? $prompt;
-
-        return preg_replace_callback('/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/u', function (array $matches) use ($context): string {
-            $name = (string) ($matches[1] ?? '');
-            $value = $this->promptContextValue($name, $context);
-
-            return $value !== '' || $this->isKnownPromptContextName($name) ? $value : (string) ($matches[0] ?? '');
-        }, $renderedPrompt) ?? $renderedPrompt;
-    }
-
-    /**
-     * @param  array{title:string, keyword:string, knowledge:string}  $context
-     */
-    private function promptContextValue(string $name, array $context): string
-    {
-        return match (mb_strtolower($name, 'UTF-8')) {
-            'title' => $context['title'],
-            'keyword' => $context['keyword'],
-            'knowledge' => $context['knowledge'],
-            default => '',
-        };
-    }
-
-    private function isKnownPromptContextName(string $name): bool
-    {
-        return in_array(mb_strtolower($name, 'UTF-8'), ['title', 'keyword', 'knowledge'], true);
-    }
-
-    private function appendSmartPromptContext(string $prompt, string $title, string $keyword, string $knowledgeContext): string
-    {
-        if ($this->isLikelyEnglishPrompt($prompt)) {
-            $lines = [
-                'Task context:',
-                '- Article title: '.$title,
-            ];
-            if (trim($keyword) !== '') {
-                $lines[] = '- Core keyword: '.$keyword;
-            }
-            if (trim($knowledgeContext) !== '') {
-                $lines[] = '- Reference knowledge:';
-                $lines[] = $knowledgeContext;
-            }
-
-            return trim($prompt)."\n\n".implode("\n", $lines);
-        }
-
-        $lines = [
-            '【任务上下文】',
-            '- 文章标题：'.$title,
-        ];
-        if (trim($keyword) !== '') {
-            $lines[] = '- 核心关键词：'.$keyword;
-        }
-        if (trim($knowledgeContext) !== '') {
-            $lines[] = '- 参考知识：';
-            $lines[] = $knowledgeContext;
-        }
-
-        return trim($prompt)."\n\n".implode("\n", $lines);
-    }
-
-    private function finalPromptInstruction(string $prompt): string
-    {
-        if ($this->isLikelyEnglishPrompt($prompt)) {
-            return 'Please output only the final article body in Markdown. Do not repeat the prompt or output placeholders.';
-        }
-
-        return '请直接输出最终文章正文（Markdown），不要重复提示词、不要输出占位符。';
-    }
-
-    private function knowledgeCitationInstruction(string $prompt, string $knowledgeContext): string
-    {
-        if (trim($knowledgeContext) === '') {
-            return '';
-        }
-
-        if ($this->isLikelyEnglishPrompt($prompt)) {
-            return 'Knowledge citation rule: when using facts, data, or business judgments from the reference knowledge, cite the evidence ID such as [K1] in the relevant sentence. If the evidence is insufficient, use cautious wording and do not invent sources or conclusions.';
-        }
-
-        return '知识库引用要求：涉及事实、数据或业务判断时，优先依据参考知识中的 [K1] 等证据编号，并在相关句子后标注证据编号；证据不足时不要编造来源或结论。';
-    }
-
-    private function isLikelyEnglishPrompt(string $prompt): bool
-    {
-        preg_match_all('/\p{Han}/u', $prompt, $cjkMatches);
-        preg_match_all('/[A-Za-z]/', $prompt, $latinMatches);
-
-        return count($latinMatches[0] ?? []) > 20 && count($cjkMatches[0] ?? []) <= 3;
+        return $this->articleContentPromptRenderer->renderForWorker($title, $keyword, $promptContent, $knowledgeContext);
     }
 
     /**
@@ -934,25 +792,7 @@ class WorkerExecutionService
      */
     private function generateContent(AiModel $aiModel, string $contentPrompt): string
     {
-        $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($aiModel->api_url ?? ''));
-        if ($providerUrl === '') {
-            throw new RuntimeException('AI 模型 API 地址为空');
-        }
-
-        $apiKey = $this->decryptApiKey((string) ($aiModel->getRawOriginal('api_key') ?? ''));
-        if ($apiKey === '') {
-            throw new RuntimeException('AI 模型密钥为空');
-        }
-
-        $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, (string) ($aiModel->model_id ?? ''));
-        $providerName = OpenAiRuntimeProvider::registerProvider('worker', $driver, $providerUrl, $apiKey);
-        $agent = new MarkdownContentWriterAgent(maxTokens: $this->resolveMaxTokens($aiModel));
-
-        try {
-            $response = $agent->prompt($contentPrompt, [], $providerName, (string) ($aiModel->model_id ?? ''));
-        } catch (Throwable $exception) {
-            throw new RuntimeException('AI 生成失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
-        }
+        $response = $this->articleContentGenerationService->generate($aiModel, $contentPrompt);
 
         $rawContent = (string) ($response->text ?? '');
         $content = OpenAiRuntimeProvider::normalizeGeneratedText($rawContent);
@@ -966,12 +806,6 @@ class WorkerExecutionService
 
         $this->warnIfContentLooksTruncated($content, $aiModel, $response);
 
-        AiModel::query()->whereKey((int) $aiModel->id)->update([
-            'used_today' => DB::raw('COALESCE(used_today,0)+1'),
-            'total_used' => DB::raw('COALESCE(total_used,0)+1'),
-            'updated_at' => now(),
-        ]);
-
         return $content;
     }
 
@@ -980,12 +814,7 @@ class WorkerExecutionService
      */
     private function resolveMaxTokens(AiModel $aiModel): int
     {
-        $configured = (int) ($aiModel->max_tokens ?? 0);
-        if ($configured > 0) {
-            return $configured;
-        }
-
-        return max(256, (int) config('geoflow.content_max_tokens', 8192));
+        return $this->articleContentGenerationService->maxTokens($aiModel);
     }
 
     /**
@@ -1050,14 +879,6 @@ class WorkerExecutionService
         }
 
         return mb_substr($plain, 0, 180);
-    }
-
-    /**
-     * 兼容 enc:v1 历史格式解密 API Key。
-     */
-    private function decryptApiKey(string $storedApiKey): string
-    {
-        return $this->apiKeyCrypto->decrypt($storedApiKey);
     }
 
     /**

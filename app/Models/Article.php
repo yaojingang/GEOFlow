@@ -23,6 +23,7 @@ class Article extends Model
         'category_id',
         'author_id',
         'task_id',
+        'source_title_id',
         'original_keyword',
         'keywords',
         'meta_description',
@@ -41,6 +42,7 @@ class Article extends Model
             'category_id' => 'integer',
             'author_id' => 'integer',
             'task_id' => 'integer',
+            'source_title_id' => 'integer',
             'view_count' => 'integer',
             'is_ai_generated' => 'integer',
             'is_hot' => 'boolean',
@@ -62,6 +64,11 @@ class Article extends Model
     public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class, 'task_id');
+    }
+
+    public function sourceTitle(): BelongsTo
+    {
+        return $this->belongsTo(Title::class, 'source_title_id');
     }
 
     public function articleImages(): HasMany

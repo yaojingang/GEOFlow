@@ -29,6 +29,35 @@
         ['key' => 'list', 'icon' => 'list', 'label' => __('admin.article_editor.quick_actions.list')],
         ['key' => 'divider', 'icon' => 'minus', 'label' => __('admin.article_editor.quick_actions.divider')],
     ];
+    $articleAssistantMessages = [
+        'titleLoadFailed' => __('admin.article_assistant.title_picker.load_failed'),
+        'titleSummary' => __('admin.article_assistant.title_picker.summary'),
+        'titleUsed' => __('admin.article_assistant.title_picker.used_count'),
+        'titleAi' => __('admin.article_assistant.title_picker.ai_label'),
+        'titleKeyword' => __('admin.article_assistant.title_picker.keyword_label'),
+        'titleNoKeyword' => __('admin.article_assistant.title_picker.no_keyword'),
+        'titleNoSelection' => __('admin.article_assistant.title_picker.no_selection'),
+        'titleSelected' => __('admin.article_assistant.title_picker.selected'),
+        'generateButton' => __('admin.article_assistant.generate.button'),
+        'stopButton' => __('admin.article_assistant.generate.stop'),
+        'titleRequired' => __('admin.article_assistant.generate.title_required'),
+        'knowledgeRequired' => __('admin.article_assistant.generate.knowledge_required'),
+        'promptRequired' => __('admin.article_assistant.generate.prompt_required'),
+        'modelRequired' => __('admin.article_assistant.generate.model_required'),
+        'replaceConfirm' => __('admin.article_assistant.generate.replace_confirm'),
+        'preparing' => __('admin.article_assistant.generate.preparing'),
+        'streaming' => __('admin.article_assistant.generate.streaming'),
+        'characters' => __('admin.article_assistant.generate.characters'),
+        'completed' => __('admin.article_assistant.generate.completed'),
+        'stopped' => __('admin.article_assistant.generate.stopped'),
+        'failed' => __('admin.article_assistant.generate.failed'),
+        'emptyContent' => __('admin.article_assistant.generate.empty_content'),
+        'networkFailed' => __('admin.article_assistant.generate.network_failed'),
+    ];
+    $articleAssistantMessagesJson = json_encode(
+        $articleAssistantMessages,
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+    );
     $formData = [
         'title' => old('title', (string) ($articleForm['title'] ?? '')),
         'excerpt' => old('excerpt', (string) ($articleForm['excerpt'] ?? '')),
@@ -44,6 +73,8 @@
         'task_name' => (string) ($articleForm['task_name'] ?? ''),
         'is_hot' => old('is_hot', !empty($articleForm['is_hot']) ? '1' : '0'),
         'is_featured' => old('is_featured', !empty($articleForm['is_featured']) ? '1' : '0'),
+        'source_title_id' => old('source_title_id', ''),
+        'is_ai_generated' => old('is_ai_generated', '0'),
     ];
     $qualityChecks = [
         'has_title' => trim((string) $formData['title']) !== '',
@@ -195,8 +226,36 @@
                         </div>
                         <div class="px-6 py-4 space-y-6">
                             <div>
-                                <label for="title" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.title') }} *</label>
-                                <input id="title" type="text" name="title" required value="{{ $formData['title'] }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __($i18nRoot.'.placeholder.title') }}">
+                                <div class="flex items-center justify-between gap-3">
+                                    <label for="title" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.title') }} *</label>
+                                    @if(! $isEdit)
+                                        <button
+                                            type="button"
+                                            id="article-title-picker-open"
+                                            class="inline-flex shrink-0 items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                        >
+                                            <i data-lucide="library-big" class="mr-1.5 h-4 w-4"></i>
+                                            {{ __('admin.article_assistant.title_picker.open') }}
+                                        </button>
+                                    @endif
+                                </div>
+                                <input id="title" type="text" name="title" maxlength="500" required value="{{ $formData['title'] }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __($i18nRoot.'.placeholder.title') }}">
+                                @if(! $isEdit)
+                                    <input id="article-source-title-id" type="hidden" name="source_title_id" value="{{ $formData['source_title_id'] }}">
+                                    <input id="article-is-ai-generated" type="hidden" name="is_ai_generated" value="{{ $formData['is_ai_generated'] }}">
+                                    <div id="article-selected-title" class="mt-2 hidden items-start justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2">
+                                        <div class="min-w-0">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span class="text-xs font-semibold text-blue-700">{{ __('admin.article_assistant.title_picker.selected_label') }}</span>
+                                                <span id="article-selected-title-library" class="rounded-full bg-white px-2 py-0.5 text-xs text-blue-700 ring-1 ring-blue-100"></span>
+                                            </div>
+                                            <p id="article-selected-title-meta" class="mt-1 truncate text-xs text-gray-600"></p>
+                                        </div>
+                                        <button type="button" id="article-selected-title-clear" class="shrink-0 rounded-md p-1 text-gray-400 hover:bg-white hover:text-gray-700" aria-label="{{ __('admin.article_assistant.title_picker.clear') }}">
+                                            <i data-lucide="x" class="h-4 w-4"></i>
+                                        </button>
+                                    </div>
+                                @endif
                             </div>
                             <div>
                                 <label for="excerpt" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.excerpt') }}</label>
@@ -233,6 +292,90 @@
                         </div>
                         <div class="px-6 py-4">
                             <textarea id="content-textarea" name="content" class="hidden">{{ $formData['content'] }}</textarea>
+                            @if(! $isEdit)
+                                <section
+                                    id="article-create-assistant"
+                                    class="mb-4 overflow-hidden rounded-xl border border-gray-200 bg-gray-50/80 shadow-sm"
+                                    data-titles-url="{{ \App\Support\AdminWeb::routePath('admin.articles.editor.titles') }}"
+                                    data-generate-url="{{ \App\Support\AdminWeb::routePath('admin.articles.editor.generate') }}"
+                                >
+                                    <div class="flex items-start gap-3 px-4 py-4">
+                                        <div class="flex min-w-0 flex-1 items-start gap-3">
+                                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+                                                <i data-lucide="sparkles" class="h-5 w-5"></i>
+                                            </div>
+                                            <div class="min-w-0">
+                                                <h4 class="text-sm font-semibold text-gray-900">{{ __('admin.article_assistant.generate.title') }}</h4>
+                                                <p class="mt-1 text-xs leading-5 text-gray-600">{{ __('admin.article_assistant.generate.desc') }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="grid gap-3 border-t border-gray-200 bg-white/70 px-4 py-4 md:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                                        <div class="min-w-0">
+                                            <label for="article-ai-knowledge-base" class="block text-xs font-semibold text-gray-700">{{ __('admin.article_assistant.generate.knowledge_label') }}</label>
+                                            <div class="relative mt-1">
+                                                <select id="article-ai-knowledge-base" class="block w-full appearance-none truncate rounded-md border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                    <option value="">{{ __('admin.article_assistant.generate.knowledge_placeholder') }}</option>
+                                                    @foreach(($formOptions['knowledge_bases'] ?? []) as $knowledgeBaseOption)
+                                                        <option value="{{ $knowledgeBaseOption['id'] }}">{{ $knowledgeBaseOption['name'] }}</option>
+                                                    @endforeach
+                                                </select>
+                                                <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
+                                            </div>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <label for="article-ai-prompt" class="block text-xs font-semibold text-gray-700">{{ __('admin.article_assistant.generate.prompt_label') }}</label>
+                                            <div class="relative mt-1">
+                                                <select id="article-ai-prompt" class="block w-full appearance-none truncate rounded-md border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                    <option value="">{{ __('admin.article_assistant.generate.prompt_placeholder') }}</option>
+                                                    @foreach(($formOptions['content_prompts'] ?? []) as $promptOption)
+                                                        <option value="{{ $promptOption['id'] }}">{{ $promptOption['name'] }}</option>
+                                                    @endforeach
+                                                </select>
+                                                <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
+                                            </div>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <label for="article-ai-model" class="block text-xs font-semibold text-gray-700">{{ __('admin.article_assistant.generate.model_label') }}</label>
+                                            <div class="relative mt-1">
+                                                <select id="article-ai-model" class="block w-full appearance-none truncate rounded-md border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                    <option value="">{{ __('admin.article_assistant.generate.model_placeholder') }}</option>
+                                                    @foreach(($formOptions['ai_models'] ?? []) as $modelOption)
+                                                        <option value="{{ $modelOption['id'] }}">{{ $modelOption['name'] }}@if($modelOption['model_id'] !== '') · {{ $modelOption['model_id'] }}@endif</option>
+                                                    @endforeach
+                                                </select>
+                                                <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-end md:col-span-3 xl:col-span-1">
+                                            <button
+                                                type="button"
+                                                id="article-ai-generate"
+                                                class="inline-flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 xl:w-auto"
+                                            >
+                                                <i data-lucide="wand-sparkles" class="mr-2 h-4 w-4"></i>
+                                                <span>{{ __('admin.article_assistant.generate.button') }}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div id="article-ai-status-row" class="hidden border-t border-gray-200 bg-white/70 px-4 py-3">
+                                        <div class="flex items-center gap-3">
+                                            <span id="article-ai-status-icon" class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                                                <i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i>
+                                            </span>
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <p id="article-ai-status" class="truncate text-xs font-semibold text-gray-700"></p>
+                                                    <span id="article-ai-character-count" class="shrink-0 text-xs text-gray-500"></span>
+                                                </div>
+                                                <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-blue-100">
+                                                    <div id="article-ai-progress" class="h-full w-1/3 animate-pulse rounded-full bg-blue-500"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+                            @endif
                             <div class="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
                                 <span class="mr-1 text-xs font-medium text-gray-500">{{ __('admin.article_editor.quick_actions.title') }}</span>
                                 @foreach($editorQuickActions as $quickAction)
@@ -506,6 +649,90 @@
                 </div>
             </div>
         </form>
+        @if(! $isEdit)
+            <div id="article-title-picker-modal" class="fixed inset-0 z-[80] hidden items-center justify-center p-4 sm:p-6" aria-hidden="true">
+                <div class="absolute inset-0 bg-slate-950/55 backdrop-blur-[1px]" data-title-picker-close></div>
+                <div class="relative flex max-h-[min(780px,92vh)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="article-title-picker-title">
+                    <div class="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 sm:px-6">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                    <i data-lucide="library-big" class="h-5 w-5"></i>
+                                </span>
+                                <h3 id="article-title-picker-title" class="text-lg font-semibold text-gray-900">{{ __('admin.article_assistant.title_picker.title') }}</h3>
+                            </div>
+                            <p class="mt-2 text-sm text-gray-600">{{ __('admin.article_assistant.title_picker.desc') }}</p>
+                        </div>
+                        <button type="button" class="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" data-title-picker-close aria-label="{{ __('admin.button.cancel') }}">
+                            <i data-lucide="x" class="h-5 w-5"></i>
+                        </button>
+                    </div>
+                    <div class="grid gap-3 border-b border-gray-100 bg-gray-50/80 px-5 py-4 sm:grid-cols-[1fr_1fr_1.2fr] sm:px-6">
+                        <div>
+                            <label for="article-title-library-filter" class="block text-xs font-semibold text-gray-700">{{ __('admin.article_assistant.title_picker.library_label') }}</label>
+                            <select id="article-title-library-filter" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                <option value="">{{ __('admin.article_assistant.title_picker.all_libraries') }}</option>
+                                @foreach(($formOptions['title_libraries'] ?? []) as $libraryOption)
+                                    <option value="{{ $libraryOption['id'] }}">{{ $libraryOption['name'] }} · {{ $libraryOption['count'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label for="article-title-usage-filter" class="block text-xs font-semibold text-gray-700">{{ __('admin.article_assistant.title_picker.usage_label') }}</label>
+                            <select id="article-title-usage-filter" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                <option value="unused">{{ __('admin.article_assistant.title_picker.unused') }}</option>
+                                <option value="all">{{ __('admin.article_assistant.title_picker.all_titles') }}</option>
+                                <option value="used">{{ __('admin.article_assistant.title_picker.used') }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="article-title-search" class="block text-xs font-semibold text-gray-700">{{ __('admin.article_assistant.title_picker.search_label') }}</label>
+                            <div class="relative mt-1">
+                                <i data-lucide="search" class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400"></i>
+                                <input id="article-title-search" type="search" maxlength="200" class="block w-full rounded-md border-gray-300 bg-white pl-9 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.article_assistant.title_picker.search_placeholder') }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
+                        <div id="article-title-picker-loading" class="hidden items-center justify-center py-16 text-sm text-gray-500">
+                            <i data-lucide="loader-2" class="mr-2 h-5 w-5 animate-spin text-blue-600"></i>
+                            {{ __('admin.article_assistant.title_picker.loading') }}
+                        </div>
+                        <div id="article-title-picker-empty" class="hidden py-16 text-center">
+                            <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400">
+                                <i data-lucide="search-x" class="h-6 w-6"></i>
+                            </span>
+                            <p class="mt-3 text-sm font-semibold text-gray-700">{{ __('admin.article_assistant.title_picker.empty') }}</p>
+                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.article_assistant.title_picker.empty_help') }}</p>
+                        </div>
+                        <div id="article-title-picker-error" class="hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+                        <div id="article-title-picker-results" class="space-y-2"></div>
+                    </div>
+                    <div class="border-t border-gray-200 bg-white px-5 py-4 sm:px-6">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p id="article-title-picker-summary" class="text-xs text-gray-500"></p>
+                                <p id="article-title-picker-selection" class="mt-1 max-w-2xl truncate text-sm font-semibold text-gray-900">{{ __('admin.article_assistant.title_picker.no_selection') }}</p>
+                            </div>
+                            <div class="flex items-center justify-end gap-2">
+                                <button type="button" id="article-title-picker-prev" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="{{ __('admin.article_assistant.title_picker.previous') }}">
+                                    <i data-lucide="chevron-left" class="h-4 w-4"></i>
+                                </button>
+                                <button type="button" id="article-title-picker-next" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="{{ __('admin.article_assistant.title_picker.next') }}">
+                                    <i data-lucide="chevron-right" class="h-4 w-4"></i>
+                                </button>
+                                <button type="button" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" data-title-picker-close>{{ __('admin.button.cancel') }}</button>
+                                <button type="button" id="article-title-picker-apply" disabled class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                                    <i data-lucide="check" class="mr-2 h-4 w-4"></i>
+                                    {{ __('admin.article_assistant.title_picker.apply') }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <script type="application/json" id="article-assistant-messages">{!! $articleAssistantMessagesJson !!}</script>
+        @endif
         @if($isEdit)
             <form id="article-risk-recheck-form" method="POST" action="{{ route('admin.articles.risk-scan', ['articleId' => (int) $articleId]) }}" class="hidden">
                 @csrf
@@ -1197,6 +1424,16 @@
                 after: function () {
                     textarea.value = editor.getValue();
                     saveEditorRange();
+                    window.geoArticleEditorAssistantBridge = {
+                        getValue: getCurrentMarkdown,
+                        setValue: function (value) {
+                            const markdown = String(value || '');
+                            editor.setValue(markdown, true);
+                            textarea.value = markdown;
+                        },
+                        tip: showEditorTip,
+                    };
+                    window.dispatchEvent(new CustomEvent('geo-article-editor-ready'));
                     if (window.lucide) {
                         window.lucide.createIcons();
                     }

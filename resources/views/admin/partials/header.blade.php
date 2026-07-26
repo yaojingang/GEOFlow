@@ -95,6 +95,7 @@
         'admin.knowledge-bases.detail.update' => 'materials',
         'admin.url-import' => 'materials',
         'admin.ai-models.index' => 'ai_config',
+        'admin.ai-source-providers.index' => 'ai_config',
         'admin.ai-prompts' => 'ai_config',
         'admin.site-settings.sensitive-words' => 'site_settings',
         'admin.site-settings.sensitive-words.store' => 'site_settings',

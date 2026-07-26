@@ -275,6 +275,8 @@ class AdminAiModelsPageTest extends TestCase
             ->assertSee('MiniMax-M3', false)
             ->assertSee('MiniMax M2.7', false)
             ->assertSee('MiniMax-M2.7-highspeed', false)
+            ->assertSee('deepseek-v4-flash', false)
+            ->assertSee('DeepSeek V4 Pro', false)
             ->assertSee('Gemini', false)
             ->assertSee('Gemini Embedding', false)
             ->assertSee('Doubao Embedding', false)

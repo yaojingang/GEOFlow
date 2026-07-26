@@ -148,7 +148,7 @@ class OpenAiRuntimeProviderTest extends TestCase
 
     public function test_it_resolves_chat_driver_for_deepseek(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.deepseek.com/v1', 'deepseek-chat'));
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.deepseek.com/v1', 'deepseek-v4-flash'));
     }
 
     public function test_it_resolves_chat_driver_by_model_prefix(): void

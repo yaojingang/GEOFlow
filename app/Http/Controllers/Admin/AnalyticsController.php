@@ -9,6 +9,7 @@ use App\Models\DistributionChannel;
 use App\Models\LeadForm;
 use App\Models\LeadSubmission;
 use App\Models\Task;
+use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
 use App\Services\Admin\Analytics\AnalyticsFilter;
 use App\Services\Admin\Analytics\AnalyticsLogQueryService;
 use App\Services\Admin\Analytics\AnalyticsOverviewService;
@@ -24,6 +25,7 @@ class AnalyticsController extends Controller
     public function __construct(
         private readonly AnalyticsOverviewService $overviewService,
         private readonly AnalyticsLogQueryService $logQueryService,
+        private readonly AiVisibilityAnalyticsService $aiVisibilityAnalyticsService,
     ) {}
 
     public function index(Request $request): View
@@ -59,6 +61,7 @@ class AnalyticsController extends Controller
                 : [],
             'logSummary' => $this->logQueryService->summary($filter),
             'growthOverview' => $this->growthOverview(),
+            'aiVisibilityOverview' => $this->aiVisibilityAnalyticsService->overview(60),
         ]);
     }
 
