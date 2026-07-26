@@ -21,7 +21,6 @@ return new class extends Migration
             $table->string('status', 40)->default('active');
             $table->unsignedInteger('daily_limit')->default(0);
             $table->unsignedInteger('used_today')->default(0);
-            $table->date('usage_date')->nullable();
             $table->unsignedBigInteger('total_used')->default(0);
             $table->json('metadata_json')->nullable();
             $table->timestamps();

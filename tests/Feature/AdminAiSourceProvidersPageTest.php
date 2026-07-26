@@ -7,6 +7,7 @@ use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\SiteSetting;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -24,6 +25,25 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $response->assertOk()
             ->assertSee(__('admin.ai_configurator.search_title'))
             ->assertSee(route('admin.ai-source-providers.index'), false);
+    }
+
+    public function test_ai_configuration_pages_tolerate_provider_table_before_usage_date_migration(): void
+    {
+        Schema::table('ai_source_providers', function (Blueprint $table): void {
+            $table->dropColumn('usage_date');
+        });
+        $this->createSearchProvider();
+        $admin = $this->createAdmin();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.ai.configurator'))
+            ->assertOk()
+            ->assertSee(__('admin.ai_configurator.search_title'));
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.ai-source-providers.index'))
+            ->assertOk()
+            ->assertSee('test-search', false);
     }
 
     public function test_admin_can_view_search_source_page(): void

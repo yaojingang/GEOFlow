@@ -37,7 +37,6 @@ return new class extends Migration
 
             $table->index(['provider_type', 'status', 'created_at'], 'ai_visibility_runs_provider_status_created_idx');
             $table->index(['keyword', 'created_at'], 'ai_visibility_runs_keyword_created_idx');
-            $table->index(['status', 'completed_at', 'keyword'], 'ai_visibility_runs_status_completed_keyword_idx');
         });
     }
 

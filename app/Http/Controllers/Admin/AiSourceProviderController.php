@@ -434,13 +434,16 @@ class AiSourceProviderController extends Controller
      */
     private function loadStats(): array
     {
-        $providerQuery = Schema::hasTable('ai_source_providers') ? AiSourceProvider::query() : null;
+        $hasProviderTable = Schema::hasTable('ai_source_providers');
+        $hasProviderUsageDate = $hasProviderTable
+            && Schema::hasColumn('ai_source_providers', 'usage_date');
+        $providerQuery = $hasProviderTable ? AiSourceProvider::query() : null;
         $runQuery = Schema::hasTable('ai_visibility_runs') ? AiVisibilityRun::query() : null;
 
         return [
             'provider_count' => $providerQuery ? (clone $providerQuery)->count() : 0,
             'active_provider_count' => $providerQuery ? (clone $providerQuery)->where('status', 'active')->count() : 0,
-            'provider_today_usage' => $providerQuery
+            'provider_today_usage' => $providerQuery && $hasProviderUsageDate
                 ? (int) ((clone $providerQuery)->whereDate('usage_date', now()->toDateString())->sum('used_today') ?? 0)
                 : 0,
             'failed_runs' => $runQuery ? (clone $runQuery)->where('status', AiVisibilityRun::STATUS_FAILED)->count() : 0,

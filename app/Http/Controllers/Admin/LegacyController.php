@@ -200,6 +200,10 @@ class LegacyController extends Controller
      */
     private function loadAiConfiguratorStats(): array
     {
+        $hasSourceProviderTable = Schema::hasTable('ai_source_providers');
+        $hasSourceProviderUsageDate = $hasSourceProviderTable
+            && Schema::hasColumn('ai_source_providers', 'usage_date');
+
         return [
             'model_count' => AiModel::query()->where('status', 'active')->count(),
             'prompt_count' => Prompt::query()->count(),
@@ -207,10 +211,10 @@ class LegacyController extends Controller
             'today_usage' => (int) (AiModel::query()
                 ->forCurrentUsageDay()
                 ->sum('used_today') ?? 0),
-            'search_provider_count' => Schema::hasTable('ai_source_providers')
+            'search_provider_count' => $hasSourceProviderTable
                 ? AiSourceProvider::query()->where('status', 'active')->count()
                 : 0,
-            'search_provider_today_usage' => Schema::hasTable('ai_source_providers')
+            'search_provider_today_usage' => $hasSourceProviderUsageDate
                 ? (int) (AiSourceProvider::query()
                     ->whereDate('usage_date', now()->toDateString())
                     ->sum('used_today') ?? 0)
