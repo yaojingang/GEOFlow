@@ -190,6 +190,26 @@
                                placeholder="© 2024 Site Name. All rights reserved.">
                     </div>
 
+                    <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div>
+                            <label for="filing_info" class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_filing_info') }}</label>
+                            <input id="filing_info" type="text" name="filing_info"
+                                   value="{{ old('filing_info', $settings['filing_info']) }}"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="{{ __('admin.site_settings.placeholder_filing_info') }}">
+                        </div>
+
+                        <div>
+                            <label for="filing_url" class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_filing_url') }}</label>
+                            <input id="filing_url" type="url" name="filing_url"
+                                   value="{{ old('filing_url', $settings['filing_url']) }}"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="https://beian.miit.gov.cn/">
+                        </div>
+
+                        <p class="-mt-3 text-xs leading-5 text-gray-500 md:col-span-2">{{ __('admin.site_settings.filing_help') }}</p>
+                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_featured_limit') }}</label>
