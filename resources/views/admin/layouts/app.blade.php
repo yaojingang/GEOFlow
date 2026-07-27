@@ -7,6 +7,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    @if (is_array($anonymousUsageTelemetryPayload ?? null))
+        <meta name="geoflow-telemetry-endpoint" content="{{ $anonymousUsageTelemetryPayload['endpoint'] }}">
+        <meta name="geoflow-telemetry-event" content="{{ $anonymousUsageTelemetryPayload['event'] }}">
+        <meta name="geoflow-telemetry-instance" content="{{ $anonymousUsageTelemetryPayload['instance_id'] }}">
+        <meta name="geoflow-telemetry-user" content="{{ $anonymousUsageTelemetryPayload['user_hash'] }}">
+        <meta name="geoflow-telemetry-version" content="{{ $anonymousUsageTelemetryPayload['version'] }}">
+        <meta name="geoflow-telemetry-interval" content="{{ $anonymousUsageTelemetryPayload['interval_seconds'] }}">
+    @endif
     <title>@isset($pageTitle){{ $pageTitle }} — @endisset{{ $adminBrandName }}</title>
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     <script src="{{ asset('js/lucide.min.js') }}"></script>
@@ -37,6 +45,9 @@
 @include('admin.partials.footer')
 @include('admin.partials.welcome-modal')
 @vite('resources/js/app.js')
+@if (is_array($anonymousUsageTelemetryPayload ?? null))
+    <script src="{{ asset('js/geoflow-pulse.js') }}" defer></script>
+@endif
 @stack('scripts')
 </body>
 </html>

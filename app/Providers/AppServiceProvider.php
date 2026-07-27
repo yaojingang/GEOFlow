@@ -7,6 +7,7 @@ use App\Contracts\Outbound\OutboundTransport;
 use App\Models\Admin;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
+use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Services\GeoFlow\HorizonMetricsAdapter;
 use App\Services\GeoFlow\JobQueueService;
@@ -86,6 +87,10 @@ class AppServiceProvider extends ServiceProvider
             $view->with(
                 'adminUpdateNotificationPayload',
                 $admin instanceof Admin ? app(AdminUpdateMetadataService::class)->buildNotificationPayload() : null
+            );
+            $view->with(
+                'anonymousUsageTelemetryPayload',
+                $admin instanceof Admin ? app(AnonymousUsageTelemetry::class)->payload($admin) : null
             );
         });
     }
