@@ -51,6 +51,10 @@ return [
     'initial_admin_password' => (string) env('GEOFLOW_ADMIN_PASSWORD', ''),
     // 欢迎弹窗「介绍」文案版本：变更后所有管理员会再次看到介绍弹窗
     'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '2.1'),
+    // 匿名使用统计：只发送随机实例 ID、管理员摘要、版本和活跃事件；监控地址为空时不会产生请求。
+    'telemetry_enabled' => filter_var(env('GEOFLOW_TELEMETRY_ENABLED', env('APP_ENV') === 'production'), FILTER_VALIDATE_BOOLEAN),
+    'telemetry_endpoint' => trim((string) env('GEOFLOW_TELEMETRY_ENDPOINT', '')),
+    'telemetry_interval_seconds' => max(3600, (int) env('GEOFLOW_TELEMETRY_INTERVAL_SECONDS', 86400)),
     // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
     'update_check_enabled' => filter_var(env('GEOFLOW_UPDATE_CHECK_ENABLED', env('APP_ENV') !== 'testing'), FILTER_VALIDATE_BOOLEAN),
     'update_metadata_url' => $updateMetadataUrl,
