@@ -227,6 +227,7 @@
                             <button type="button" onclick="fillPreset('minimax_m27')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">MiniMax M2.7</button>
                             <button type="button" onclick="fillPreset('minimax_highspeed')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">MiniMax Highspeed</button>
                             <button type="button" onclick="fillPreset('openai')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">OpenAI</button>
+                            <button type="button" onclick="fillPreset('atlascloud')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Atlas Cloud</button>
                             <button type="button" onclick="fillPreset('gemini')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Gemini</button>
                             <button type="button" onclick="fillPreset('deepseek')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">DeepSeek V4 Flash</button>
                             <button type="button" onclick="fillPreset('deepseek_v4_pro')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">DeepSeek V4 Pro</button>
@@ -346,6 +347,7 @@
             minimax_m27: {name: 'MiniMax M2.7', version: 'M2.7', model_id: 'MiniMax-M2.7', api_url: 'https://api.minimax.io', model_type: 'chat'},
             minimax_highspeed: {name: 'MiniMax M2.7 Highspeed', version: 'M2.7', model_id: 'MiniMax-M2.7-highspeed', api_url: 'https://api.minimax.io', model_type: 'chat'},
             openai: {name: 'GPT-4o', version: '', model_id: 'gpt-4o', api_url: 'https://api.openai.com', model_type: 'chat'},
+            atlascloud: {name: 'Atlas Cloud DeepSeek V4 Pro', version: 'v4', model_id: 'deepseek-ai/deepseek-v4-pro', api_url: 'https://api.atlascloud.ai/v1', model_type: 'chat'},
             gemini: {name: 'Gemini 3 Flash Preview', version: 'v1beta', model_id: 'gemini-3-flash-preview', api_url: 'https://generativelanguage.googleapis.com/v1beta', model_type: 'chat'},
             deepseek: {name: 'DeepSeek V4 Flash', version: 'v4', model_id: 'deepseek-v4-flash', api_url: 'https://api.deepseek.com', model_type: 'chat'},
             deepseek_v4_pro: {name: 'DeepSeek V4 Pro', version: 'v4', model_id: 'deepseek-v4-pro', api_url: 'https://api.deepseek.com', model_type: 'chat'},

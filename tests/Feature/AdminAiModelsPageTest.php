@@ -46,6 +46,36 @@ class AdminAiModelsPageTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer test-api-key'));
     }
 
+    public function test_admin_can_test_atlas_cloud_chat_model_connection(): void
+    {
+        Http::fake([
+            'https://api.atlascloud.ai/v1/chat/completions' => Http::response([
+                'choices' => [
+                    ['message' => ['content' => 'OK']],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createAiModel('chat', [
+            'name' => 'Atlas Cloud DeepSeek V4 Pro',
+            'model_id' => 'deepseek-ai/deepseek-v4-pro',
+            'api_url' => 'https://api.atlascloud.ai/v1',
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.model_type', 'chat')
+            ->assertJsonPath('meta.http_status', 200);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://api.atlascloud.ai/v1/chat/completions'
+            && $request['model'] === 'deepseek-ai/deepseek-v4-pro'
+            && $request->hasHeader('Authorization', 'Bearer test-api-key'));
+    }
+
     public function test_model_connection_tests_are_rate_limited(): void
     {
         Http::fake([
@@ -343,6 +373,9 @@ class AdminAiModelsPageTest extends TestCase
             ->assertSee('MiniMax-M2.7-highspeed', false)
             ->assertSee('deepseek-v4-flash', false)
             ->assertSee('DeepSeek V4 Pro', false)
+            ->assertSee('Atlas Cloud', false)
+            ->assertSee('deepseek-ai/deepseek-v4-pro', false)
+            ->assertSee('https://api.atlascloud.ai/v1', false)
             ->assertSee('Gemini', false)
             ->assertSee('Gemini Embedding', false)
             ->assertSee('Doubao Embedding', false)
