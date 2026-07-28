@@ -24,6 +24,8 @@ GEOFlow 支持可关闭的匿名使用统计，用于了解项目部署量、活
 GEOFLOW_TELEMETRY_ENABLED=false
 ```
 
+默认采集地址为 `https://geoflow-telemetry-gateway.pages.dev/api/pulse`，部署方也可以通过 `GEOFLOW_TELEMETRY_ENDPOINT` 替换为自己的兼容 HTTPS 入口。
+
 ---
 
 ## ✨ 你可以用它做什么

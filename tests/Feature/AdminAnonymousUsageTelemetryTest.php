@@ -11,6 +11,14 @@ use Tests\TestCase;
 
 class AdminAnonymousUsageTelemetryTest extends TestCase
 {
+    public function test_official_telemetry_endpoint_is_configured_by_default(): void
+    {
+        $this->assertSame(
+            'https://geoflow-telemetry-gateway.pages.dev/api/pulse',
+            config('geoflow.telemetry_endpoint'),
+        );
+    }
+
     use RefreshDatabase;
 
     public function test_payload_contains_only_anonymous_installation_activity_fields(): void

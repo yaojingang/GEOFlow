@@ -53,7 +53,10 @@ return [
     'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '2.1'),
     // 匿名使用统计：服务端发送随机实例 ID、版本和生命周期事件，后台 Pulse 额外发送管理员匿名摘要。
     'telemetry_enabled' => filter_var(env('GEOFLOW_TELEMETRY_ENABLED', env('APP_ENV') === 'production'), FILTER_VALIDATE_BOOLEAN),
-    'telemetry_endpoint' => trim((string) env('GEOFLOW_TELEMETRY_ENDPOINT', '')),
+    'telemetry_endpoint' => trim((string) env(
+        'GEOFLOW_TELEMETRY_ENDPOINT',
+        'https://geoflow-telemetry-gateway.pages.dev/api/pulse',
+    )),
     'telemetry_interval_seconds' => max(3600, (int) env('GEOFLOW_TELEMETRY_INTERVAL_SECONDS', 86400)),
     // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
     'update_check_enabled' => filter_var(env('GEOFLOW_UPDATE_CHECK_ENABLED', env('APP_ENV') !== 'testing'), FILTER_VALIDATE_BOOLEAN),

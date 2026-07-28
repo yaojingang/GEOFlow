@@ -9,6 +9,7 @@
 - 新增轻量匿名部署统计：
   - 首次安装发送 `installed`，检测到版本变化发送 `updated`，调度器每天最多发送一次 `heartbeat`，用于统计已发现部署、活跃部署和版本分布。
   - 保留后台浏览器 `admin_active` Pulse，继续按“随机实例 ID + 管理员不可逆摘要”统计管理员日活。
+  - 默认通过 Cloudflare Pages Functions HTTPS 入口写入 D1，部署方可替换采集地址或完整关闭统计。
   - 服务端载荷限定为事件类型、随机实例 ID 和版本；网络失败不会改变安装、升级和调度结果，可通过 `GEOFLOW_TELEMETRY_ENABLED=false` 关闭。
 
 - 加固前台结构化数据输出：

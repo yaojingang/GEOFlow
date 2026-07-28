@@ -9,6 +9,7 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Added lightweight anonymous deployment telemetry:
   - First install sends `installed`, version changes send `updated`, and the scheduler sends at most one daily `heartbeat` for discovered-deployment, active-deployment, and version-distribution metrics.
   - The browser `admin_active` Pulse remains in place and measures admin DAU by random instance ID plus an irreversible admin digest.
+  - Events use a Cloudflare Pages Functions HTTPS gateway backed by D1 by default; operators can replace the endpoint or disable telemetry completely.
   - Server payloads contain only event type, random instance ID, and version. Network failures do not change install, update, or scheduler outcomes, and telemetry can be disabled with `GEOFLOW_TELEMETRY_ENABLED=false`.
 
 - Hardened frontend structured data:
