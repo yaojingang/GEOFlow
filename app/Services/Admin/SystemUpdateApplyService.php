@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Models\Admin;
 use App\Models\SystemUpdateBackup;
 use App\Models\SystemUpdateRun;
+use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -16,6 +17,7 @@ class SystemUpdateApplyService
         private readonly SystemUpdatePathGuard $pathGuard,
         private readonly SystemUpdateRunProgressService $progressService,
         private readonly SystemUpdateVerificationService $verificationService,
+        private readonly AnonymousUsageTelemetry $telemetry,
     ) {}
 
     public function apply(SystemUpdateRun $planRun, Admin $admin): SystemUpdateRun
@@ -95,6 +97,12 @@ class SystemUpdateApplyService
             throw $e;
         }
 
+        try {
+            $this->telemetry->reportUpdated((string) $run->target_version);
+        } catch (\Throwable) {
+            // Anonymous telemetry cannot change the outcome of an applied update.
+        }
+
         return $run;
     }
 
@@ -154,6 +162,7 @@ class SystemUpdateApplyService
                 }
                 $report['deleted']++;
                 $report['files'][] = ['path' => $relativePath, 'action' => 'deleted'];
+
                 continue;
             }
 

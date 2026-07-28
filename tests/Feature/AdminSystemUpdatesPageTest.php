@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Contracts\Outbound\HostResolver;
 use App\Jobs\ProcessSystemUpdateApplyJob;
 use App\Models\Admin;
+use App\Models\SystemState;
 use App\Models\SystemUpdateBackup;
 use App\Models\SystemUpdateRun;
 use App\Services\Admin\SystemUpdateDeploymentDiagnosticsService;
@@ -1258,6 +1259,8 @@ class AdminSystemUpdatesPageTest extends TestCase
 
             config([
                 'geoflow.app_version' => '2.0.2',
+                'geoflow.telemetry_enabled' => true,
+                'geoflow.telemetry_endpoint' => 'https://monitor.example/api/pulse',
                 'geoflow.update_check_enabled' => true,
                 'geoflow.update_metadata_url' => 'https://example.test/version.json',
                 'geoflow.update_archive_apply_enabled' => true,
@@ -1275,6 +1278,17 @@ class AdminSystemUpdatesPageTest extends TestCase
                 'https://example.test/geoflow.zip' => Http::response(file_get_contents($archive), 200, [
                     'Content-Type' => 'application/zip',
                 ]),
+                'https://monitor.example/api/pulse' => Http::response(['error' => 'unavailable'], 503),
+            ]);
+            SystemState::query()->create([
+                'key' => 'geoflow.anonymous_usage_telemetry',
+                'value' => [
+                    'instance_id' => '4f6b5c3d-2a10-4bc8-9d11-6f0d3c2b1a09',
+                    'secret' => str_repeat('s', 64),
+                    'created_at' => now()->toIso8601String(),
+                    'last_reported_version' => '2.0.2',
+                    'last_server_activity_date' => now()->subDay()->toDateString(),
+                ],
             ]);
 
             $this->actingAs($admin, 'admin')->post(route('admin.system-updates.plan'));
@@ -1313,6 +1327,9 @@ class AdminSystemUpdatesPageTest extends TestCase
             $this->assertSame('succeeded', $applyPayload['progress_status'] ?? null);
             $this->assertIsArray($applyPayload['verification'] ?? null);
             $this->assertContains('system_updates_route', collect($applyPayload['verification']['items'] ?? [])->pluck('key')->all());
+            Http::assertSent(fn ($request): bool => $request->url() === 'https://monitor.example/api/pulse'
+                && $request->data()['event'] === 'updated'
+                && $request->data()['version'] === '2.0.3');
 
             $this->actingAs($admin, 'admin')
                 ->get(route('admin.system-updates.index'))

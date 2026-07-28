@@ -12,7 +12,7 @@ class SecurityReleaseMetadataTest extends TestCase
         $payload = $manifest['payload'];
 
         $this->assertSame('2.1.1', $manifest['version']);
-        $this->assertSame('2026-07-17', $manifest['release_date']);
+        $this->assertSame('2026-07-28', $manifest['release_date']);
         $this->assertSame('patch', $manifest['release_type']);
         $this->assertSame(
             'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.1.1.zip',

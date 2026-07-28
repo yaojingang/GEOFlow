@@ -112,6 +112,7 @@ class OutboundEntryPointArchitectureTest extends TestCase
             app_path('Services/GeoFlow/KnowledgeChunkSyncService.php'),
             app_path('Services/Admin/AdminUpdateMetadataService.php'),
             app_path('Services/Admin/SystemUpdatePlanService.php'),
+            app_path('Services/GeoFlow/AnonymousUsageTelemetry.php'),
         ];
 
         foreach ($files as $file) {

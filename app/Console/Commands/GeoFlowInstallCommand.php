@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\SystemState;
+use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use Database\Seeders\AdminUserSeeder;
 use Database\Seeders\FrontendDemoSeeder;
 use Illuminate\Console\Command;
@@ -49,7 +50,7 @@ class GeoFlowInstallCommand extends Command
         'active_theme',
     ];
 
-    public function handle(): int
+    public function handle(AnonymousUsageTelemetry $telemetry): int
     {
         if (! Schema::hasTable('system_states')) {
             $this->error('The system_states table is missing. Run php artisan migrate --force before geoflow:install.');
@@ -61,6 +62,7 @@ class GeoFlowInstallCommand extends Command
         $existingState = SystemState::query()->where('key', self::INSTALLATION_STATE_KEY)->first();
 
         if ($existingState instanceof SystemState && ! $force) {
+            $this->reportTelemetry($telemetry, true);
             $this->components->info('GEOFlow has already been initialized; first-install seeders were skipped.');
 
             return self::SUCCESS;
@@ -71,6 +73,7 @@ class GeoFlowInstallCommand extends Command
             $this->markInstalled('backfilled_existing_database', [
                 'detected_tables' => $tablesWithData,
             ]);
+            $this->reportTelemetry($telemetry, false);
 
             $this->components->warn('Existing application data was detected. GEOFlow recorded the installation marker and skipped first-install seeders.');
 
@@ -97,6 +100,11 @@ class GeoFlowInstallCommand extends Command
             $this->markInstalled($force ? 'forced_install' : 'fresh_install', [
                 'seed_frontend_demo' => (bool) config('geoflow.seed_frontend_demo', false),
             ]);
+            if ($existingState instanceof SystemState) {
+                $this->reportTelemetry($telemetry, true);
+            } else {
+                $this->reportTelemetry($telemetry, false);
+            }
         } catch (Throwable $e) {
             $this->error('GEOFlow first-install seeders failed: '.$e->getMessage());
 
@@ -155,5 +163,20 @@ class GeoFlowInstallCommand extends Command
                 ],
             ],
         );
+    }
+
+    private function reportTelemetry(AnonymousUsageTelemetry $telemetry, bool $updated): void
+    {
+        try {
+            if ($updated) {
+                $telemetry->reportUpdated();
+
+                return;
+            }
+
+            $telemetry->reportInstalled();
+        } catch (Throwable) {
+            // Anonymous telemetry cannot change the outcome of installation.
+        }
     }
 }

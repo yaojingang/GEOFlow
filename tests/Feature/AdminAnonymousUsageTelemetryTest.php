@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\SystemState;
 use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class AdminAnonymousUsageTelemetryTest extends TestCase
@@ -173,6 +174,88 @@ class AdminAnonymousUsageTelemetryTest extends TestCase
         } finally {
             $this->app->instance('env', $originalEnvironment);
         }
+    }
+
+    public function test_server_activity_reports_install_update_and_one_daily_heartbeat(): void
+    {
+        $this->enableTelemetry();
+        $this->travelTo(now()->startOfDay()->addHours(4));
+        Http::fake([
+            'https://monitor.example/api/pulse' => Http::response('', 204),
+        ]);
+        $service = app(AnonymousUsageTelemetry::class);
+
+        $this->assertTrue($service->reportInstalled());
+        $this->assertFalse($service->reportInstalled());
+        $this->assertNull($service->reportDailyActivity());
+
+        $this->travel(1)->day();
+        $this->assertSame('heartbeat', $service->reportDailyActivity());
+        $this->assertNull($service->reportDailyActivity());
+
+        config(['geoflow.app_version' => '2.1.2']);
+        $this->assertSame('updated', $service->reportDailyActivity());
+
+        Http::assertSentCount(3);
+        $events = [];
+        Http::assertSent(function ($request) use (&$events): bool {
+            $data = $request->data();
+            $events[] = $data['event'] ?? null;
+
+            $this->assertSame(['event', 'instance_id', 'version'], array_keys($data));
+            $this->assertMatchesRegularExpression(
+                '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/',
+                (string) ($data['instance_id'] ?? ''),
+            );
+
+            return true;
+        });
+        $this->assertSame(['installed', 'heartbeat', 'updated'], $events);
+
+        $state = SystemState::query()->where('key', 'geoflow.anonymous_usage_telemetry')->firstOrFail();
+        $this->assertSame('2.1.2', $state->value['last_reported_version'] ?? null);
+        $this->assertSame('updated', $state->value['last_server_event'] ?? null);
+    }
+
+    public function test_failed_server_activity_is_retried_without_affecting_the_application(): void
+    {
+        $this->enableTelemetry();
+        Http::fake([
+            'https://monitor.example/api/pulse' => Http::sequence()
+                ->push(['error' => 'unavailable'], 503)
+                ->push('', 204),
+        ]);
+        $service = app(AnonymousUsageTelemetry::class);
+
+        $this->assertFalse($service->reportInstalled());
+        $state = SystemState::query()->where('key', 'geoflow.anonymous_usage_telemetry')->firstOrFail();
+        $this->assertArrayNotHasKey('last_reported_version', $state->value);
+
+        $this->assertTrue($service->reportInstalled());
+    }
+
+    public function test_update_without_a_successful_baseline_is_reported_as_installation(): void
+    {
+        $this->enableTelemetry();
+        Http::fake([
+            'https://monitor.example/api/pulse' => Http::response('', 204),
+        ]);
+
+        $this->assertTrue(app(AnonymousUsageTelemetry::class)->reportUpdated('2.1.2'));
+        Http::assertSent(fn ($request): bool => $request->data()['event'] === 'installed'
+            && $request->data()['version'] === '2.1.2');
+    }
+
+    public function test_daily_heartbeat_command_is_safe_when_telemetry_is_unavailable(): void
+    {
+        config([
+            'geoflow.telemetry_enabled' => false,
+            'geoflow.telemetry_endpoint' => '',
+        ]);
+
+        $this->artisan('geoflow:telemetry:heartbeat')
+            ->expectsOutputToContain('already current or telemetry is unavailable')
+            ->assertSuccessful();
     }
 
     private function enableTelemetry(): void

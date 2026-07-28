@@ -11,6 +11,7 @@ use App\Models\SystemState;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -105,5 +106,31 @@ class GeoFlowInstallCommandTest extends TestCase
         $this->assertSame(1, Admin::query()->where('username', 'admin')->count());
         $this->assertGreaterThan(0, Category::query()->where('slug', 'mac')->count());
         $this->assertGreaterThan(0, Article::query()->where('slug', 'how-to-reinstall-macos')->count());
+    }
+
+    public function test_install_command_reports_installation_and_later_version_change(): void
+    {
+        Config::set([
+            'geoflow.seed_frontend_demo' => false,
+            'geoflow.telemetry_enabled' => true,
+            'geoflow.telemetry_endpoint' => 'https://monitor.example/api/pulse',
+            'geoflow.app_version' => '2.1.1',
+        ]);
+        Http::fake([
+            'https://monitor.example/api/pulse' => Http::response('', 204),
+        ]);
+
+        $this->artisan('geoflow:install')->assertSuccessful();
+        Config::set('geoflow.app_version', '2.1.2');
+        $this->artisan('geoflow:install')->assertSuccessful();
+
+        $events = [];
+        Http::assertSent(function ($request) use (&$events): bool {
+            $events[] = $request->data()['event'] ?? null;
+
+            return true;
+        });
+
+        $this->assertSame(['installed', 'updated'], $events);
     }
 }
