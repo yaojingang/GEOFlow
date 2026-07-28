@@ -46,20 +46,27 @@ class TaskController extends Controller
     /**
      * 任务管理首页：渲染列表与运行面板。
      */
-    public function index(): View
+    public function index(Request $request): View
     {
         try {
-            $overview = $this->taskMonitoringQueryService->buildAdminOverview();
+            $overview = $this->taskMonitoringQueryService->buildAdminOverview(
+                max(1, $request->integer('page', 1)),
+                50,
+            );
             $tasks = $overview['tasks'];
             $workers = $overview['worker_overview'];
             $queueStats = $overview['queue_overview'];
             $recentJobs = $overview['recent_runs'];
+            $pagination = $overview['pagination'];
+            $taskSummary = $overview['task_summary'];
             $error = null;
         } catch (Throwable $e) {
             $tasks = [];
             $workers = [];
             $queueStats = ['pending' => 0, 'running' => 0, 'failed' => 0, 'completed' => 0];
             $recentJobs = [];
+            $pagination = ['page' => 1, 'per_page' => 50, 'total' => 0, 'total_pages' => 1];
+            $taskSummary = ['total_tasks' => 0, 'enabled_tasks' => 0, 'total_articles' => 0, 'published_articles' => 0];
             $error = __('admin.tasks.message.query_failed', ['message' => $e->getMessage()]);
         }
 
@@ -71,6 +78,8 @@ class TaskController extends Controller
             'workers' => $workers,
             'queueStats' => $queueStats,
             'recentJobs' => $recentJobs,
+            'pagination' => $pagination,
+            'taskSummary' => $taskSummary,
             'legacyError' => $error,
             'taskI18n' => $this->taskI18n(),
         ]);
@@ -272,7 +281,10 @@ class TaskController extends Controller
     public function healthCheck(Request $request): JsonResponse
     {
         try {
-            $overview = $this->taskMonitoringQueryService->buildAdminOverview();
+            $overview = $this->taskMonitoringQueryService->buildAdminOverview(
+                max(1, $request->integer('page', 1)),
+                50,
+            );
 
             return response()->json([
                 'success' => true,
@@ -280,6 +292,8 @@ class TaskController extends Controller
                 'queue_overview' => $overview['queue_overview'],
                 'worker_overview' => $overview['worker_overview'],
                 'recent_runs' => $overview['recent_runs'],
+                'pagination' => $overview['pagination'],
+                'task_summary' => $overview['task_summary'],
             ]);
         } catch (Throwable $e) {
             return response()->json([

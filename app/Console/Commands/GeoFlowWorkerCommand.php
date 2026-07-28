@@ -74,7 +74,7 @@ class GeoFlowWorkerCommand extends Command
                 [
                     'status' => $status,
                     'last_seen_at' => now(),
-                    'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE),
+                    'meta' => $meta,
                 ]
             );
         } catch (Throwable $e) {

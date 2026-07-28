@@ -219,9 +219,12 @@ class SecuritySettingsController extends Controller
         }
 
         try {
-            $admin->forceFill([
-                'password' => (string) $payload['new_password'],
-            ])->save();
+            DB::transaction(function () use ($admin, $payload): void {
+                $admin->forceFill([
+                    'password' => (string) $payload['new_password'],
+                ])->save();
+                $admin->revokeAuthenticationCredentials();
+            });
 
             // 与 bak 保持一致：密码修改后立即失效当前会话。
             Auth::guard('admin')->logout();

@@ -138,6 +138,18 @@
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
                                             {{ __('admin.knowledge_bases.text_unit', ['count' => number_format((int) $item['word_count'])]) }}
                                         </span>
+                                        @php
+                                            $syncStatus = (string) ($item['chunk_sync_status'] ?? 'idle');
+                                            $syncStatusClass = match ($syncStatus) {
+                                                'pending', 'processing' => 'bg-amber-50 text-amber-700',
+                                                'ready' => 'bg-emerald-50 text-emerald-700',
+                                                'failed' => 'bg-red-50 text-red-700',
+                                                default => 'bg-gray-50 text-gray-600',
+                                            };
+                                        @endphp
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ $syncStatusClass }}">
+                                            {{ __('admin.knowledge_bases.sync_status.'.$syncStatus) }}
+                                        </span>
                                         @if ((int) ($item['chunk_count'] ?? 0) > 0)
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
                                                 {{ __('admin.knowledge_bases.vectorized_summary', [
@@ -149,6 +161,9 @@
                                     </div>
                                     @if ($item['description'] !== '')
                                         <p class="mt-1 text-sm text-gray-600">{{ $item['description'] }}</p>
+                                    @endif
+                                    @if ($syncStatus === 'failed' && ($item['chunk_sync_error'] ?? '') !== '')
+                                        <p class="mt-1 text-sm text-red-600">{{ $item['chunk_sync_error'] }}</p>
                                     @endif
                                     <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                                         <span>

@@ -3,6 +3,8 @@
 namespace Tests;
 
 use App\Contracts\Outbound\HostResolver;
+use App\Models\Admin;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Tests\Support\FakeHostResolver;
@@ -12,6 +14,20 @@ use Tests\Support\FakeHostResolver;
  */
 abstract class TestCase extends BaseTestCase
 {
+    public function actingAs(Authenticatable $user, $guard = null)
+    {
+        parent::actingAs($user, $guard);
+
+        if ($guard === 'admin' && $user instanceof Admin) {
+            $this->app['session']->put(
+                Admin::AUTH_VERSION_SESSION_KEY,
+                (int) $user->auth_version
+            );
+        }
+
+        return $this;
+    }
+
     public function createApplication()
     {
         $this->forceTestingDatabaseEnvironment();

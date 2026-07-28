@@ -161,12 +161,14 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
     private function heartbeat(string $workerId, string $status, array $meta): void
     {
         try {
+            $meta['memory_mb'] = round(memory_get_usage(true) / 1024 / 1024, 2);
+            $meta['peak_memory_mb'] = round(memory_get_peak_usage(true) / 1024 / 1024, 2);
             WorkerHeartbeat::query()->updateOrCreate(
                 ['worker_id' => $workerId],
                 [
                     'status' => $status,
                     'last_seen_at' => now(),
-                    'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE),
+                    'meta' => $meta,
                 ]
             );
         } catch (Throwable) {

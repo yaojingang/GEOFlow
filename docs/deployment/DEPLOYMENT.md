@@ -15,7 +15,9 @@
 
 - `web`: `nginx`
 - `app`: `php-fpm`
-- `queue`: `php artisan queue:work`
+- `queue`: 文章生成、分发、主题复刻与默认任务
+- `knowledge-queue`: 知识库解析与向量化任务
+- `system-update-queue`: 系统更新与回滚任务
 - `scheduler`: `php artisan schedule:work`
 - `reverb`: `php artisan reverb:start`
 - `postgres`: PostgreSQL 16 + pgvector
@@ -65,7 +67,8 @@ vi .env.prod
 
 ```env
 APP_URL=https://your-domain.com
-TRUSTED_PROXIES=*
+SESSION_SECURE_COOKIE=true
+TRUSTED_PROXIES=203.0.113.10
 APP_KEY=base64:replace-with-generated-key
 
 DB_DATABASE=geo_flow
@@ -80,7 +83,8 @@ REVERB_EXPOSE_PORT=18081
 说明：
 
 - `APP_KEY` 可留空：应用容器启动时会 `key:generate` 写回 `.env.prod`（可写挂载）；也可在宿主机执行 `php artisan key:generate --show` 后粘贴。
-- `TRUSTED_PROXIES` 用于反向代理、CDN、负载均衡或一级目录部署。若外层代理会传 `X-Forwarded-Proto` / `X-Forwarded-Host` / `X-Forwarded-Prefix`，生产环境通常可设为 `*` 或具体代理 IP。
+- `SESSION_SECURE_COOKIE` 必须与访问协议一致：HTTPS 使用 `true`，直接通过 `http://IP:端口` 访问使用 `false`，否则浏览器不会回传登录 Cookie。
+- `TRUSTED_PROXIES` 在直连部署中留空；反向代理、CDN、负载均衡或一级目录部署填写实际代理 IP/CIDR。避免使用 `*`，否则直连客户端可伪造转发地址并绕过按 IP 的登录限流。
 - 如果部署在任意一级目录下，例如外部访问路径是 `/wiki`、`/docs`、`/site`，不要把目录写进 `ADMIN_BASE_PATH`；应由反向代理透传 `X-Forwarded-Prefix`，后台路径仍保持 `ADMIN_BASE_PATH=geo_admin`。
 - `AUTO_MIGRATE=true` 由生产 `init` 服务执行迁移；常驻服务不接收 `.env.prod` 作为容器环境变量，重启时不会重复初始化。
 - `AUTO_INSTALL_ONCE=true` 由生产 `init` 服务在迁移后运行 `php artisan geoflow:install`；该命令只在空库首次安装时执行安装填充，旧库只补初始化标记。
@@ -102,7 +106,7 @@ export COMPOSE_PROD='docker compose --env-file .env.prod -f docker-compose.prod.
 $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up -d init
-$COMPOSE_PROD up -d app web queue scheduler reverb
+$COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler reverb
 ```
 
 `init` 服务会把 `GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true` 仅注入该一次性容器。迁移只在单一 fresh migration batch 且业务表为空时接受此标志；已有部署仍需下一节的 drain confirmation。
@@ -116,7 +120,7 @@ $COMPOSE_PROD up -d app web queue scheduler reverb
 ```bash
 # 1. 先进入维护模式，再停止入口和所有旧版常驻进程。
 $COMPOSE_PROD exec app php artisan down
-$COMPOSE_PROD stop web queue scheduler reverb
+$COMPOSE_PROD stop web queue knowledge-queue system-update-queue scheduler reverb
 
 # 2. 等待负载均衡连接、PHP 请求、队列任务和调度任务全部结束；确认零在途后停止 app。
 # 请使用平台连接数、进程列表和队列监控完成确认。
@@ -133,7 +137,7 @@ $COMPOSE_PROD up init
 
 # 5. 迁移成功后立即将一次性确认恢复为 false，再启动全部新版本进程：
 # GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED=false
-$COMPOSE_PROD up -d app web queue scheduler reverb
+$COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler reverb
 
 # 6. 回填并检查受管图片身份；remaining、terminal、registry_failed 必须都为 0。
 $COMPOSE_PROD run --rm app php artisan geoflow:managed-images:readiness
@@ -160,7 +164,7 @@ $COMPOSE_PROD run --rm app php artisan geoflow:security-audit --json
 完成审计处理，再次确认运行中的容器全部来自新镜像，然后将 `GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=true` 写入生产环境配置，并重新创建会执行图片清理的新版本进程：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app queue scheduler
+$COMPOSE_PROD up -d --force-recreate app queue knowledge-queue system-update-queue scheduler
 ```
 
 门禁关闭或回填未完成时，数据库记录仍可删除，物理图片文件会安全保留并记录清理失败日志。

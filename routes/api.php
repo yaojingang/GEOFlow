@@ -22,7 +22,8 @@ Route::prefix('v1')
     ->middleware(['api.request_id'])
     ->group(function (): void {
         // 公开：管理员登录，返回 API Token（无需 Bearer）
-        Route::post('auth/login', [AuthController::class, 'login']);
+        Route::post('auth/login', [AuthController::class, 'login'])
+            ->middleware('throttle:admin-login');
 
         // 需有效 Token + 对应 scope
         Route::middleware(['api.auth'])->group(function (): void {

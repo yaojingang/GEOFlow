@@ -3,11 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\Admin;
-use App\Support\GeoFlow\AdminLoginLockService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
- * 手动解锁被连续登录失败锁定的管理员账号。
+ * 手动解除管理员业务锁定，并撤销旧会话和 Token。
  */
 class GeoFlowUnlockAdminCommand extends Command
 {
@@ -19,13 +19,7 @@ class GeoFlowUnlockAdminCommand extends Command
     /**
      * @var string
      */
-    protected $description = 'Unlock a locked admin account and clear failed login attempts';
-
-    public function __construct(
-        private readonly AdminLoginLockService $adminLoginLockService
-    ) {
-        parent::__construct();
-    }
+    protected $description = 'Unlock a locked admin account and revoke existing credentials';
 
     /**
      * 执行账号解锁。
@@ -47,9 +41,10 @@ class GeoFlowUnlockAdminCommand extends Command
             return self::FAILURE;
         }
 
-        $admin->forceFill(['status' => 'active'])->save();
-        $this->adminLoginLockService->clearFailedAttempts((string) $admin->username);
-
+        DB::transaction(function () use ($admin): void {
+            $admin->forceFill(['status' => 'active'])->save();
+            $admin->revokeAuthenticationCredentials();
+        });
         $this->info('账号已解锁并恢复为 active: '.$username);
 
         return self::SUCCESS;

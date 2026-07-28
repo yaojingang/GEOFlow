@@ -251,7 +251,7 @@ prepare_env() {
   fi
 
   local default_ip current_app_url current_admin_path current_web_port current_reverb_port
-  local app_url admin_path web_port reverb_port db_password redis_password reverb_secret
+  local app_url admin_path web_port reverb_port db_password redis_password reverb_secret session_secure_cookie
   default_ip="$(detect_primary_ip || true)"
   default_ip="${default_ip:-127.0.0.1}"
 
@@ -271,13 +271,18 @@ prepare_env() {
   db_password="${db_password:-$(random_secret)}"
   redis_password="${redis_password:-$(random_secret)}"
   reverb_secret="${reverb_secret:-$(random_secret)}"
+  case "$app_url" in
+    https://*) session_secure_cookie=true ;;
+    *) session_secure_cookie=false ;;
+  esac
+  session_secure_cookie="${GEOFLOW_SESSION_SECURE_COOKIE:-$session_secure_cookie}"
 
   check_ports "$web_port" "$reverb_port"
 
   set_env_value .env.prod APP_ENV production
   set_env_value .env.prod APP_DEBUG false
   set_env_value .env.prod APP_URL "$app_url"
-  set_env_value .env.prod TRUSTED_PROXIES "${GEOFLOW_TRUSTED_PROXIES:-*}"
+  set_env_value .env.prod TRUSTED_PROXIES "${GEOFLOW_TRUSTED_PROXIES:-}"
   set_env_value .env.prod BOOST_BROWSER_LOGS_WATCHER false
   set_env_value .env.prod ADMIN_BASE_PATH "$admin_path"
   set_env_value .env.prod DB_CONNECTION pgsql
@@ -292,6 +297,7 @@ prepare_env() {
   set_env_value .env.prod REVERB_EXPOSE_PORT "$reverb_port"
   set_env_value .env.prod REVERB_APP_SECRET "$reverb_secret"
   set_env_value .env.prod SESSION_LIFETIME 43200
+  set_env_value .env.prod SESSION_SECURE_COOKIE "$session_secure_cookie"
   set_env_value .env.prod GEOFLOW_SESSION_TIMEOUT 2592000
   set_env_value .env.prod AUTO_MIGRATE true
   set_env_value .env.prod AUTO_INSTALL_ONCE true
@@ -314,7 +320,7 @@ deploy_stack() {
   "${COMPOSE[@]}" up init
 
   log "Starting GEOFlow services."
-  "${COMPOSE[@]}" up -d app web queue scheduler reverb
+  "${COMPOSE[@]}" up -d app web queue knowledge-queue system-update-queue scheduler reverb
 
   log "Clearing and rebuilding Laravel caches."
   "${COMPOSE[@]}" run --rm app php artisan optimize:clear

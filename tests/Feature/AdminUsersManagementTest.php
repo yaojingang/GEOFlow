@@ -84,10 +84,57 @@ class AdminUsersManagementTest extends TestCase
         $this->assertTrue(Hash::check('new-secret-123', $standardAdmin->password));
     }
 
+    public function test_updating_an_admin_password_revokes_their_existing_credentials(): void
+    {
+        $superAdmin = $this->createAdmin('root_admin', 'super_admin');
+        $standardAdmin = $this->createAdmin('credential_owner', 'admin');
+        $standardAdmin->forceFill(['remember_token' => 'old-remember-token'])->save();
+        $tokenId = $standardAdmin->createToken('existing-token', ['catalog:read'])->accessToken->id;
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.update', ['adminId' => $standardAdmin->id]), [
+                'username' => 'credential_owner',
+                'display_name' => 'Credential Owner',
+                'email' => 'credential-owner@example.com',
+                'status' => 'active',
+                'password' => 'new-secret-123',
+                'confirm_password' => 'new-secret-123',
+            ])
+            ->assertRedirect(route('admin.admin-users.index'));
+
+        $standardAdmin->refresh();
+
+        $this->assertSame(2, $standardAdmin->auth_version);
+        $this->assertNotSame('old-remember-token', $standardAdmin->remember_token);
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $tokenId]);
+    }
+
+    public function test_toggling_admin_status_revokes_their_existing_credentials(): void
+    {
+        $superAdmin = $this->createAdmin('root_admin', 'super_admin');
+        $standardAdmin = $this->createAdmin('status_owner', 'admin');
+        $standardAdmin->forceFill(['remember_token' => 'old-remember-token'])->save();
+        $tokenId = $standardAdmin->createToken('existing-token', ['catalog:read'])->accessToken->id;
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.toggle-status', ['adminId' => $standardAdmin->id]), [
+                'next_status' => 'inactive',
+            ])
+            ->assertRedirect(route('admin.admin-users.index'));
+
+        $standardAdmin->refresh();
+
+        $this->assertSame('inactive', $standardAdmin->status);
+        $this->assertSame(2, $standardAdmin->auth_version);
+        $this->assertNotSame('old-remember-token', $standardAdmin->remember_token);
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $tokenId]);
+    }
+
     public function test_super_admin_can_delete_standard_admin(): void
     {
         $superAdmin = $this->createAdmin('root_admin', 'super_admin');
         $standardAdmin = $this->createAdmin('editor_admin', 'admin');
+        $tokenId = $standardAdmin->createToken('existing-token', ['catalog:read'])->accessToken->id;
 
         $this->actingAs($superAdmin, 'admin')
             ->post(route('admin.admin-users.delete', ['adminId' => $standardAdmin->id]))
@@ -96,6 +143,7 @@ class AdminUsersManagementTest extends TestCase
         $this->assertDatabaseMissing('admins', [
             'id' => $standardAdmin->id,
         ]);
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $tokenId]);
     }
 
     private function createAdmin(string $username, string $role): Admin

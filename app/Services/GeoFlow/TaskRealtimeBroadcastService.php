@@ -3,19 +3,15 @@
 namespace App\Services\GeoFlow;
 
 use App\Events\Admin\TasksOverviewUpdated;
-use Throwable;
+use Illuminate\Support\Carbon;
 
 /**
  * 任务页实时推送服务。
  *
- * 统一封装“构建总览并广播”的流程，避免在业务服务里重复拼装数据。
+ * 广播只发送轻量刷新信号，任务页按当前分页拉取有界快照。
  */
 class TaskRealtimeBroadcastService
 {
-    public function __construct(
-        private readonly TaskMonitoringQueryService $taskMonitoringQueryService
-    ) {}
-
     /**
      * 推送最新任务监控快照到 Reverb 频道。
      *
@@ -24,9 +20,8 @@ class TaskRealtimeBroadcastService
     public function broadcastOverview(): void
     {
         try {
-            $overview = $this->taskMonitoringQueryService->buildAdminOverview();
-            broadcast(new TasksOverviewUpdated($overview));
-        } catch (Throwable) {
+            broadcast(new TasksOverviewUpdated(Carbon::now()->toIso8601String()));
+        } catch (\Throwable) {
             // Ignore broadcast failure and keep business flow stable.
         }
     }

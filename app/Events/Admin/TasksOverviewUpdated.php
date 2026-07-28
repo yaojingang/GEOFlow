@@ -8,26 +8,15 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * 后台任务总览实时推送事件。
- *
- * 用于把任务列表、队列统计、最近运行记录通过 Reverb 推送给管理页面，
- * 以替代前端定时轮询。
+ * 后台任务状态变更信号。
  */
 class TasksOverviewUpdated implements ShouldBroadcastNow
 {
     use Dispatchable;
     use SerializesModels;
 
-    /**
-     * @param  array{
-     *     tasks:list<array<string,mixed>>,
-     *     queue_overview:array<string,int>,
-     *     worker_overview:list<array<string,mixed>>,
-     *     recent_runs:list<array<string,mixed>>
-     * }  $overview
-     */
     public function __construct(
-        public array $overview
+        public string $changedAt
     ) {}
 
     public function broadcastOn(): PrivateChannel
@@ -40,16 +29,11 @@ class TasksOverviewUpdated implements ShouldBroadcastNow
         return 'tasks.overview.updated';
     }
 
-    /**
-     * @return array{
-     *     tasks:list<array<string,mixed>>,
-     *     queue_overview:array<string,int>,
-     *     worker_overview:list<array<string,mixed>>,
-     *     recent_runs:list<array<string,mixed>>
-     * }
-     */
     public function broadcastWith(): array
     {
-        return $this->overview;
+        return [
+            'refresh_required' => true,
+            'changed_at' => $this->changedAt,
+        ];
     }
 }

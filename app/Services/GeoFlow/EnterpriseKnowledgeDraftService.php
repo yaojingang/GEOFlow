@@ -69,7 +69,7 @@ final class EnterpriseKnowledgeDraftService
 
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
-        private readonly KnowledgeChunkSyncService $chunkSyncService,
+        private readonly KnowledgeChunkSyncCoordinator $chunkSyncCoordinator,
         private readonly AiUsageQuotaService $usageQuota,
     ) {}
 
@@ -250,17 +250,17 @@ final class EnterpriseKnowledgeDraftService
             $knowledgeBase = KnowledgeBase::query()->create($payload);
         }
 
-        $chunkCount = 0;
         $chunkError = null;
         try {
-            $chunkCount = $this->chunkSyncService->sync((int) $knowledgeBase->id, $content);
+            $this->chunkSyncCoordinator->request((int) $knowledgeBase->id, force: true);
         } catch (Throwable $exception) {
+            report($exception);
             $chunkError = $exception->getMessage();
         }
 
         return [
             'knowledge_base' => $knowledgeBase,
-            'chunk_count' => $chunkCount,
+            'chunk_count' => 0,
             'chunk_error' => $chunkError,
         ];
     }

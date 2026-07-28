@@ -521,7 +521,9 @@ class WorkerExecutionService
 
         $knowledgeBases = KnowledgeBase::query()
             ->whereIn('id', $knowledgeBaseIds)
-            ->get(['id', 'content'])
+            ->select(['id'])
+            ->selectRaw('SUBSTR(content, 1, ?) AS content_excerpt', [2400])
+            ->get()
             ->keyBy('id');
         if ($knowledgeBases->isEmpty()) {
             return '';
@@ -535,16 +537,12 @@ class WorkerExecutionService
                 continue;
             }
 
-            $content = trim((string) ($knowledgeBase->content ?? ''));
+            $content = trim((string) ($knowledgeBase->content_excerpt ?? ''));
             if ($content === '') {
                 continue;
             }
 
             $fallbackContents[$knowledgeBaseId] = $content;
-            $chunkCount = KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->count();
-            if ($chunkCount <= 0) {
-                $this->knowledgeChunkSyncService->sync($knowledgeBaseId, $content);
-            }
         }
 
         if ($fallbackContents === []) {

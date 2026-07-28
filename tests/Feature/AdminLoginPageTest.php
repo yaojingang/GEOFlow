@@ -10,17 +10,18 @@ class AdminLoginPageTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_login_page_shows_initial_admin_hint_when_default_credentials_are_still_valid(): void
+    public function test_login_page_never_exposes_configured_initial_admin_password(): void
     {
+        $configuredSecret = 'initial-super-admin-secret';
         config([
             'geoflow.initial_admin_hint_enabled' => true,
             'geoflow.initial_admin_username' => 'admin',
-            'geoflow.initial_admin_password' => 'password',
+            'geoflow.initial_admin_password' => $configuredSecret,
         ]);
 
         Admin::query()->create([
             'username' => 'admin',
-            'password' => 'password',
+            'password' => $configuredSecret,
             'email' => 'admin@example.com',
             'display_name' => 'Administrator',
             'role' => 'super_admin',
@@ -32,8 +33,9 @@ class AdminLoginPageTest extends TestCase
             ->assertOk()
             ->assertSee(__('admin.login.first_login_hint_title'))
             ->assertSee(__('admin.login.first_login_security'))
+            ->assertSee(__('admin.login.first_login_password_from_log'))
             ->assertSee('admin')
-            ->assertSee('password')
+            ->assertDontSee($configuredSecret)
             ->assertSee('id="initial-admin-hint"', false)
             ->assertSee('localStorage.setItem', false);
     }
@@ -62,7 +64,7 @@ class AdminLoginPageTest extends TestCase
             ->assertDontSee('id="initial-admin-hint"', false);
     }
 
-    public function test_login_page_hides_initial_admin_hint_when_configured_password_no_longer_matches(): void
+    public function test_login_page_uses_generic_initial_hint_when_configured_password_no_longer_matches(): void
     {
         config([
             'geoflow.initial_admin_hint_enabled' => true,
@@ -82,8 +84,10 @@ class AdminLoginPageTest extends TestCase
 
         $this->get(route('admin.login'))
             ->assertOk()
-            ->assertDontSee(__('admin.login.first_login_hint_title'))
-            ->assertDontSee('id="initial-admin-hint"', false);
+            ->assertSee(__('admin.login.first_login_hint_title'))
+            ->assertSee(__('admin.login.first_login_password_from_log'))
+            ->assertDontSee('changed-secret-123')
+            ->assertSee('id="initial-admin-hint"', false);
     }
 
     public function test_login_page_points_to_init_log_when_production_password_was_generated(): void

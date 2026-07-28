@@ -37,9 +37,10 @@ class AuthenticateApiToken
         }
 
         $this->tokenService->touchToken((int) $token['id']);
-        $auditAdminId = $this->tokenService->resolveAuditAdminId(
-            isset($token['created_by_admin_id']) ? (int) $token['created_by_admin_id'] : null
-        );
+        $auditAdminId = (int) ($token['created_by_admin_id'] ?? 0);
+        if ($auditAdminId <= 0) {
+            throw new ApiException('unauthorized', 'Token 所属管理员无效', 401);
+        }
 
         $request->attributes->set('api_auth', new ApiAuthContext($token, $auditAdminId));
 

@@ -6,8 +6,6 @@ use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Support\GeoFlow\AdminLoginLockService;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Str;
 
 class ApiAdminAuthService
 {
@@ -35,47 +33,56 @@ class ApiAdminAuthService
             ]);
         }
 
-        $throttleKey = 'api_admin_login:'.sha1(Str::lower($username).'|'.$ipAddress);
-        $maxAttempts = max(1, (int) config('geoflow.api_login_rate_limit_attempts', 10));
-        $decaySeconds = max(1, (int) config('geoflow.api_login_rate_limit_decay_seconds', 60));
-
-        if (RateLimiter::tooManyAttempts($throttleKey, $maxAttempts)) {
+        if ($this->loginLockService->tooManyAttempts($username, $ipAddress)) {
             throw new ApiException('too_many_attempts', '登录尝试过于频繁，请稍后再试', 429, [
-                'retry_after' => RateLimiter::availableIn($throttleKey),
+                'retry_after' => $this->loginLockService->availableIn($username, $ipAddress),
             ]);
         }
 
-        RateLimiter::hit($throttleKey, $decaySeconds);
+        $loginResult = DB::transaction(function () use ($username, $password, $ipAddress): array {
+            $admin = Admin::query()
+                ->where('username', $username)
+                ->lockForUpdate()
+                ->first();
+            if ($admin && $this->loginLockService->isLocked($admin)) {
+                return ['error' => 'account_locked'];
+            }
 
-        $admin = Admin::query()->where('username', $username)->first();
-        if ($admin && $this->loginLockService->isLocked($admin)) {
+            $status = (string) ($admin?->status ?? 'active');
+            $passwordMatches = $admin ? password_verify($password, (string) $admin->password) : false;
+            if (! $admin || $status !== 'active' || ! $passwordMatches) {
+                return ['error' => 'invalid_credentials'];
+            }
+
+            $admin->forceFill(['last_login' => now()])->save();
+            $this->loginLockService->clearFailedAttempts($username, $ipAddress);
+
+            return [
+                'admin' => $admin,
+                'token' => $this->tokenService->createToken(
+                    'CLI Login '.$username.' '.date('Y-m-d H:i:s'),
+                    $this->tokenService->getAvailableScopes(),
+                    (int) $admin->id
+                ),
+            ];
+        });
+        if (($loginResult['error'] ?? null) === 'account_locked') {
             throw new ApiException('account_locked', '账号已被锁定，请联系超级管理员处理', 423);
         }
-
-        $status = (string) ($admin?->status ?? 'active');
-        $passwordMatches = $admin ? password_verify($password, (string) $admin->password) : false;
-        if (! $admin || $status !== 'active' || ! $passwordMatches) {
-            if ($admin && $status === 'active' && ! $passwordMatches) {
-                $locked = $this->loginLockService->recordFailedAttemptAndLock($admin);
-                if ($locked) {
-                    throw new ApiException('account_locked', '密码错误次数过多，账号已被锁定', 423);
-                }
+        if (($loginResult['error'] ?? null) === 'invalid_credentials') {
+            if ($this->loginLockService->recordFailedAttempt($username, $ipAddress)) {
+                throw new ApiException('too_many_attempts', '登录尝试过于频繁，请稍后再试', 429, [
+                    'retry_after' => $this->loginLockService->availableIn($username, $ipAddress),
+                ]);
             }
 
             throw new ApiException('invalid_credentials', '用户名或密码错误，或账号已被停用', 401);
         }
 
-        $tokenResult = DB::transaction(function () use ($admin, $username, $throttleKey) {
-            $admin->forceFill(['last_login' => now()])->save();
-            $this->loginLockService->clearFailedAttempts($username);
-            RateLimiter::clear($throttleKey);
-
-            return $this->tokenService->createToken(
-                'CLI Login '.$username.' '.date('Y-m-d H:i:s'),
-                $this->tokenService->getAvailableScopes(),
-                (int) $admin->id
-            );
-        });
+        /** @var Admin $admin */
+        $admin = $loginResult['admin'];
+        /** @var array<string, mixed> $tokenResult */
+        $tokenResult = $loginResult['token'];
 
         return [
             'token' => $tokenResult['token'],
