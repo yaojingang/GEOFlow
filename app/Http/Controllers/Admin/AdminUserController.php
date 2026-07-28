@@ -95,7 +95,16 @@ class AdminUserController extends Controller
                 $attributes['password'] = (string) $payload['password'];
             }
 
-            $targetAdmin->update($attributes);
+            $credentialsChanged = filled($payload['password'] ?? null)
+                || $attributes['status'] !== (string) $targetAdmin->status;
+
+            DB::transaction(function () use ($targetAdmin, $attributes, $credentialsChanged): void {
+                $targetAdmin->update($attributes);
+
+                if ($credentialsChanged) {
+                    $targetAdmin->revokeAuthenticationCredentials();
+                }
+            });
 
             return redirect()->route('admin.admin-users.index')->with('message', __('admin.admin_users.message.update_success'));
         } catch (Throwable $exception) {
@@ -164,9 +173,12 @@ class AdminUserController extends Controller
         $nextStatus = $requestedNextStatus === 'active' ? 'active' : 'inactive';
 
         try {
-            $targetAdmin->update([
-                'status' => $nextStatus,
-            ]);
+            DB::transaction(function () use ($targetAdmin, $nextStatus): void {
+                $targetAdmin->update([
+                    'status' => $nextStatus,
+                ]);
+                $targetAdmin->revokeAuthenticationCredentials();
+            });
 
             $messageKey = $nextStatus === 'active'
                 ? 'admin.admin_users.message.enabled'
@@ -209,6 +221,7 @@ class AdminUserController extends Controller
                         ->update(['admin_id' => $currentAdminId]);
                 }
 
+                $targetAdmin->revokeAuthenticationCredentials();
                 $targetAdmin->delete();
             });
 

@@ -332,14 +332,21 @@ class JobQueueService
      *
      * @return int 成功重新投递的记录数
      */
-    public function recoverStaleJobs(int $timeoutSeconds = 600): int
+    public function recoverStaleJobs(int $timeoutSeconds = 600, int $limit = 100): int
     {
         $threshold = now()->subSeconds(max(60, $timeoutSeconds));
-        $recovered = $this->recoverStalePendingJobs($threshold);
+        $limit = max(1, min(500, $limit));
+        $recovered = $this->recoverStalePendingJobs($threshold, $limit);
+        $remainingLimit = max(0, $limit - $recovered);
+        if ($remainingLimit === 0) {
+            return $recovered;
+        }
+
         $candidateIds = TaskRun::query()
             ->where('status', 'running')
             ->where('started_at', '<', $threshold)
             ->orderBy('id')
+            ->limit($remainingLimit)
             ->pluck('id')
             ->map(static fn (mixed $id): int => (int) $id)
             ->all();
@@ -411,12 +418,13 @@ class JobQueueService
         return $recovered;
     }
 
-    private function recoverStalePendingJobs(Carbon $threshold): int
+    private function recoverStalePendingJobs(Carbon $threshold, int $limit): int
     {
         $candidateIds = TaskRun::query()
             ->where('status', 'pending')
             ->where('created_at', '<', $threshold)
             ->orderBy('id')
+            ->limit($limit)
             ->pluck('id')
             ->map(static fn (mixed $id): int => (int) $id)
             ->all();

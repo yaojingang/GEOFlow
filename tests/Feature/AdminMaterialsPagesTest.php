@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\PrepareKnowledgeChunkSyncJob;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Image;
@@ -13,13 +14,14 @@ use App\Models\Task;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
-use App\Services\GeoFlow\KnowledgeChunkSyncService;
+use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\ManagedImageFileService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -151,7 +153,7 @@ class AdminMaterialsPagesTest extends TestCase
             ])
             ->assertSee('name="import_action" value="save"', false)
             ->assertSee('name="import_action" value="save_and_chunk"', false)
-            ->assertSee('50MB')
+            ->assertSee('8MB')
             ->assertSee('10');
 
         $this->actingAs($admin, 'admin')
@@ -326,8 +328,8 @@ class AdminMaterialsPagesTest extends TestCase
             'status' => 'active',
         ]);
 
-        $this->mock(KnowledgeChunkSyncService::class, function ($mock): void {
-            $mock->shouldNotReceive('sync');
+        $this->mock(KnowledgeChunkSyncCoordinator::class, function ($mock): void {
+            $mock->shouldNotReceive('request');
         });
 
         $this->actingAs($admin, 'admin')
@@ -345,7 +347,7 @@ class AdminMaterialsPagesTest extends TestCase
         $this->assertSame(0, $knowledgeBase->chunks()->count());
     }
 
-    public function test_create_keeps_knowledge_base_when_chunk_sync_fails(): void
+    public function test_create_keeps_knowledge_base_while_chunk_sync_is_queued(): void
     {
         Storage::fake('local');
 
@@ -358,10 +360,8 @@ class AdminMaterialsPagesTest extends TestCase
             'status' => 'active',
         ]);
 
-        $this->mock(KnowledgeChunkSyncService::class, function ($mock): void {
-            $mock->shouldReceive('sync')
-                ->once()
-                ->andThrow(new \RuntimeException('embedding timeout'));
+        $this->mock(KnowledgeChunkSyncCoordinator::class, function ($mock): void {
+            $mock->shouldReceive('request')->once()->andReturnTrue();
         });
 
         $this->actingAs($admin, 'admin')
@@ -372,7 +372,7 @@ class AdminMaterialsPagesTest extends TestCase
                 'content' => "第一段内容。\n\n第二段内容。",
             ])
             ->assertRedirect(route('admin.knowledge-bases.index'))
-            ->assertSessionHasErrors('chunk_sync');
+            ->assertSessionHas('message', __('admin.knowledge_bases.message.chunk_sync_queued'));
 
         $this->assertDatabaseHas('knowledge_bases', [
             'name' => '已保存但切片失败',
@@ -381,7 +381,44 @@ class AdminMaterialsPagesTest extends TestCase
         $this->assertSame(0, KnowledgeBase::query()->where('name', '已保存但切片失败')->firstOrFail()->chunks()->count());
     }
 
-    public function test_detail_update_keeps_changes_when_chunk_sync_fails(): void
+    public function test_queue_publish_failure_keeps_the_saved_knowledge_file_for_retry(): void
+    {
+        Storage::fake('local');
+
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_queue_failure_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-queue-failure-admin@example.com',
+            'display_name' => 'Knowledge Queue Failure Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $this->mock(KnowledgeChunkSyncCoordinator::class, function ($mock): void {
+            $mock->shouldReceive('request')
+                ->once()
+                ->andThrow(new \RuntimeException('queue unavailable'));
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.knowledge-bases.store'), [
+                'name' => '队列故障知识库',
+                'description' => '',
+                'file_type' => 'markdown',
+                'knowledge_file' => UploadedFile::fake()->createWithContent(
+                    'retry.md',
+                    "# 可重试正文\n\n源文件必须保留。",
+                ),
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.index'))
+            ->assertSessionHasErrors('chunk_sync');
+
+        $knowledgeBase = KnowledgeBase::query()->where('name', '队列故障知识库')->firstOrFail();
+        $storedPath = (string) $knowledgeBase->file_path;
+        $this->assertNotSame('', $storedPath);
+        Storage::disk('local')->assertExists($storedPath);
+    }
+
+    public function test_detail_update_keeps_changes_while_chunk_sync_is_queued(): void
     {
         $admin = Admin::query()->create([
             'username' => 'knowledge_detail_chunk_failure_admin',
@@ -401,10 +438,8 @@ class AdminMaterialsPagesTest extends TestCase
             'word_count' => 4,
         ]);
 
-        $this->mock(KnowledgeChunkSyncService::class, function ($mock): void {
-            $mock->shouldReceive('sync')
-                ->once()
-                ->andThrow(new \RuntimeException('semantic planner timeout'));
+        $this->mock(KnowledgeChunkSyncCoordinator::class, function ($mock): void {
+            $mock->shouldReceive('request')->once()->andReturnTrue();
         });
 
         $this->actingAs($admin, 'admin')
@@ -415,13 +450,54 @@ class AdminMaterialsPagesTest extends TestCase
                 'content' => '更新后的正文内容',
             ])
             ->assertRedirect(route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
-            ->assertSessionHasErrors('chunk_sync');
+            ->assertSessionHas('message', __('admin.knowledge_bases.message.chunk_sync_queued'));
 
         $this->assertDatabaseHas('knowledge_bases', [
             'id' => (int) $knowledgeBase->id,
             'name' => '更新后的知识库',
             'description' => '更新说明',
             'content' => '更新后的正文内容',
+        ]);
+    }
+
+    public function test_detail_update_reports_queue_failure_without_losing_saved_changes(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_detail_queue_failure_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-detail-queue-failure-admin@example.com',
+            'display_name' => 'Knowledge Detail Queue Failure Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '等待更新的知识库',
+            'description' => '',
+            'content' => '原始内容',
+            'character_count' => 4,
+            'file_type' => 'markdown',
+            'word_count' => 4,
+        ]);
+        $this->mock(KnowledgeChunkSyncCoordinator::class, function ($mock): void {
+            $mock->shouldReceive('request')
+                ->once()
+                ->andThrow(new \RuntimeException('queue unavailable'));
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.knowledge-bases.detail.update', ['knowledgeBaseId' => (int) $knowledgeBase->id]), [
+                'name' => '队列故障后已保存',
+                'description' => '等待后台恢复',
+                'file_type' => 'markdown',
+                'content' => '新正文已经入库',
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
+            ->assertSessionHasErrors('chunk_sync');
+
+        $this->assertDatabaseHas('knowledge_bases', [
+            'id' => (int) $knowledgeBase->id,
+            'name' => '队列故障后已保存',
+            'content' => '新正文已经入库',
         ]);
     }
 
@@ -460,7 +536,7 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
     }
 
-    public function test_admin_cannot_upload_knowledge_file_larger_than_fifty_mb(): void
+    public function test_admin_cannot_upload_knowledge_file_larger_than_eight_mb(): void
     {
         Storage::fake('local');
 
@@ -481,7 +557,7 @@ class AdminMaterialsPagesTest extends TestCase
                 'file_type' => 'markdown',
                 'content' => '',
                 'knowledge_files' => [
-                    UploadedFile::fake()->create('large.md', 50 * 1024 + 1, 'text/markdown'),
+                    UploadedFile::fake()->create('large.md', 8 * 1024 + 1, 'text/markdown'),
                 ],
             ])
             ->assertRedirect(route('admin.knowledge-bases.create'))
@@ -489,6 +565,33 @@ class AdminMaterialsPagesTest extends TestCase
 
         $this->assertDatabaseMissing('knowledge_bases', [
             'name' => '超大知识库',
+        ]);
+    }
+
+    public function test_admin_cannot_save_knowledge_content_larger_than_eight_mb(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_content_size_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-content-size-admin@example.com',
+            'display_name' => 'Knowledge Content Size Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.knowledge-bases.create'))
+            ->post(route('admin.knowledge-bases.store'), [
+                'name' => '正文超大知识库',
+                'description' => '',
+                'file_type' => 'markdown',
+                'content' => str_repeat('a', (8 * 1024 * 1024) + 1),
+            ])
+            ->assertRedirect(route('admin.knowledge-bases.create'))
+            ->assertSessionHasErrors('content');
+
+        $this->assertDatabaseMissing('knowledge_bases', [
+            'name' => '正文超大知识库',
         ]);
     }
 
@@ -698,9 +801,10 @@ class AdminMaterialsPagesTest extends TestCase
             ->assertDontSee(__('admin.knowledge_bases.confirm_refresh_chunks', ['name' => '待更新切片知识库']));
     }
 
-    public function test_refresh_knowledge_chunks_requires_embedding_model(): void
+    public function test_refresh_knowledge_chunks_is_queued_without_blocking_the_request(): void
     {
         Http::fake();
+        Queue::fake();
 
         $admin = Admin::query()->create([
             'username' => 'knowledge_no_embedding_admin',
@@ -723,9 +827,10 @@ class AdminMaterialsPagesTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->post(route('admin.knowledge-bases.chunks.refresh', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
             ->assertRedirect(route('admin.knowledge-bases.index'))
-            ->assertSessionHasErrors();
+            ->assertSessionHas('message', __('admin.knowledge_bases.message.chunks_refresh_queued'));
 
         $this->assertSame(0, $knowledgeBase->chunks()->count());
+        Queue::assertPushed(PrepareKnowledgeChunkSyncJob::class);
         Http::assertNothingSent();
     }
 

@@ -11,13 +11,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
 class Admin extends Authenticatable
 {
     use HasApiTokens;
 
+    public const AUTH_VERSION_SESSION_KEY = 'admin_auth_version';
+
     protected $table = 'admins';
+
+    protected $attributes = [
+        'auth_version' => 1,
+    ];
 
     protected $hidden = [
         'password',
@@ -33,6 +41,7 @@ class Admin extends Authenticatable
         'status',
         'created_by',
         'last_login',
+        'auth_version',
         'welcome_seen_version',
         'welcome_dismissed_at',
     ];
@@ -43,6 +52,7 @@ class Admin extends Authenticatable
             'last_login' => 'datetime',
             'welcome_dismissed_at' => 'datetime',
             'created_by' => 'integer',
+            'auth_version' => 'integer',
             'password' => 'hashed',
         ];
     }
@@ -75,6 +85,24 @@ class Admin extends Authenticatable
     public function canManageProtectedWorkflows(): bool
     {
         return $this->isSuperAdmin();
+    }
+
+    public function revokeAuthenticationCredentials(): void
+    {
+        DB::transaction(function (): void {
+            /** @var self $admin */
+            $admin = self::query()
+                ->whereKey($this->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            $admin->forceFill([
+                'auth_version' => (int) $admin->auth_version + 1,
+                'remember_token' => Str::random(60),
+            ])->save();
+            $admin->tokens()->delete();
+
+            $this->setRawAttributes($admin->getAttributes(), true);
+        });
     }
 
     public function creator(): BelongsTo

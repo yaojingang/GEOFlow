@@ -234,6 +234,21 @@
                         </tbody>
                     </table>
                 </div>
+                @if ((int) ($pagination['total_pages'] ?? 1) > 1)
+                    <div class="flex items-center justify-between border-t border-gray-200 px-5 py-4">
+                        <span class="text-sm text-gray-500">
+                            {{ (int) ($pagination['total'] ?? 0) }} · {{ (int) ($pagination['page'] ?? 1) }} / {{ (int) ($pagination['total_pages'] ?? 1) }}
+                        </span>
+                        <div class="flex items-center gap-2">
+                            @if ((int) ($pagination['page'] ?? 1) > 1)
+                                <a href="{{ route('admin.tasks.index', ['page' => (int) $pagination['page'] - 1]) }}" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('pagination.previous') }}</a>
+                            @endif
+                            @if ((int) ($pagination['page'] ?? 1) < (int) ($pagination['total_pages'] ?? 1))
+                                <a href="{{ route('admin.tasks.index', ['page' => (int) $pagination['page'] + 1]) }}" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('pagination.next') }}</a>
+                            @endif
+                        </div>
+                    </div>
+                @endif
             @endif
         </div>
 
@@ -246,7 +261,7 @@
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <div class="text-sm text-gray-500">{{ __('admin.tasks.stats.total_tasks') }}</div>
-                            <div id="stats-total-tasks" class="text-2xl font-semibold text-gray-900">{{ count($tasks) }}</div>
+                            <div id="stats-total-tasks" class="text-2xl font-semibold text-gray-900">{{ (int) ($taskSummary['total_tasks'] ?? 0) }}</div>
                         </div>
                     </div>
                 </div>
@@ -259,7 +274,7 @@
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <div class="text-sm text-gray-500">{{ __('admin.tasks.stats.enabled') }}</div>
-                            <div id="stats-enabled-tasks" class="text-2xl font-semibold text-gray-900">{{ count(array_filter($tasks, static fn (array $row): bool => ($row['status'] ?? '') === 'active')) }}</div>
+                            <div id="stats-enabled-tasks" class="text-2xl font-semibold text-gray-900">{{ (int) ($taskSummary['enabled_tasks'] ?? 0) }}</div>
                         </div>
                     </div>
                 </div>
@@ -272,7 +287,7 @@
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <div class="text-sm text-gray-500">{{ __('admin.tasks.stats.total_articles') }}</div>
-                            <div id="stats-total-articles" class="text-2xl font-semibold text-gray-900">{{ array_sum(array_map(static fn (array $row): int => (int) ($row['total_articles'] ?? 0), $tasks)) }}</div>
+                            <div id="stats-total-articles" class="text-2xl font-semibold text-gray-900">{{ (int) ($taskSummary['total_articles'] ?? 0) }}</div>
                         </div>
                     </div>
                 </div>
@@ -285,7 +300,7 @@
                         </div>
                         <div class="ml-5 w-0 flex-1">
                             <div class="text-sm text-gray-500">{{ __('admin.tasks.stats.total_published') }}</div>
-                            <div id="stats-total-published" class="text-2xl font-semibold text-gray-900">{{ array_sum(array_map(static fn (array $row): int => (int) ($row['published_articles'] ?? 0), $tasks)) }}</div>
+                            <div id="stats-total-published" class="text-2xl font-semibold text-gray-900">{{ (int) ($taskSummary['published_articles'] ?? 0) }}</div>
                         </div>
                     </div>
                 </div>
@@ -307,13 +322,21 @@
                                     <div class="rounded-lg border border-gray-200 px-3 py-3">
                                         <div class="flex items-center justify-between gap-3">
                                             <span class="font-mono text-xs text-gray-700">{{ $worker['worker_id'] ?? '' }}</span>
-                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ ($worker['status'] ?? '') === 'running' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-50 text-gray-700 border border-gray-200' }}">
+                                            <span @class([
+                                                'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border',
+                                                'bg-emerald-50 text-emerald-700 border-emerald-200' => ($worker['status'] ?? '') === 'running',
+                                                'bg-red-50 text-red-700 border-red-200' => ($worker['status'] ?? '') === 'stale',
+                                                'bg-gray-50 text-gray-700 border-gray-200' => ! in_array(($worker['status'] ?? ''), ['running', 'stale'], true),
+                                            ])>
                                                 {{ $worker['status'] ?? 'idle' }}
                                             </span>
                                         </div>
                                         <div class="mt-2 text-xs text-gray-500">
                                             <div>{{ __('admin.tasks.worker.current_job') }}: {{ !empty($worker['current_job_id']) ? '#'.(int) $worker['current_job_id'] : __('admin.tasks.worker.idle') }}</div>
                                             <div>{{ __('admin.tasks.worker.last_seen') }}: {{ (string) ($worker['last_seen_at'] ?? '') }}</div>
+                                            @if (isset($worker['memory_mb']))
+                                                <div>{{ __('admin.tasks.worker.memory') }}: {{ number_format((float) $worker['memory_mb'], 1) }} MB / {{ number_format((float) ($worker['peak_memory_mb'] ?? 0), 1) }} MB</div>
+                                            @endif
                                         </div>
                                     </div>
                                 @endforeach
@@ -395,11 +418,13 @@
         'queue_overview' => $queueStats,
         'worker_overview' => $workers,
         'recent_runs' => $recentJobs,
+        'pagination' => $pagination,
+        'task_summary' => $taskSummary,
     ];
 @endphp
 <script>
 const TASK_I18N = @json($taskI18n, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-const TASK_HEALTH_URL = @js(\App\Support\AdminWeb::routePath('admin.tasks.health'));
+const TASK_HEALTH_URL = @js(\App\Support\AdminWeb::routePath('admin.tasks.health').'?page='.(int) ($pagination['page'] ?? 1));
 const TASK_BATCH_URL = @js(\App\Support\AdminWeb::routePath('admin.tasks.batch'));
 const TASK_INITIAL_OVERVIEW = @json($taskInitialOverview, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
 const TASK_TEXT = {
@@ -407,6 +432,7 @@ const TASK_TEXT = {
     workerCurrentJob: @js(__('admin.tasks.worker.current_job')),
     workerIdle: @js(__('admin.tasks.worker.idle')),
     workerLastSeen: @js(__('admin.tasks.worker.last_seen')),
+    workerMemory: @js(__('admin.tasks.worker.memory')),
     jobsNone: @js(__('admin.tasks.jobs.none')),
     jobsUnknownTask: @js(__('admin.tasks.jobs.unknown_task')),
     jobsTaskPrefix: @js(__('admin.tasks.jobs.task_prefix')),
@@ -540,15 +566,12 @@ function updateQueueOverview(queueOverview) {
     document.getElementById('queue-completed').textContent = String(Number(queueOverview.completed || 0));
 }
 
-function updateTopStats(tasks) {
-    const totalTasks = Array.isArray(tasks) ? tasks.length : 0;
-    const enabledTasks = (Array.isArray(tasks) ? tasks : []).filter(task => task.status === 'active').length;
-    const totalArticles = (Array.isArray(tasks) ? tasks : []).reduce((sum, task) => sum + Number(task.total_articles || 0), 0);
-    const totalPublished = (Array.isArray(tasks) ? tasks : []).reduce((sum, task) => sum + Number(task.published_articles || 0), 0);
-    document.getElementById('stats-total-tasks').textContent = String(totalTasks);
-    document.getElementById('stats-enabled-tasks').textContent = String(enabledTasks);
-    document.getElementById('stats-total-articles').textContent = String(totalArticles);
-    document.getElementById('stats-total-published').textContent = String(totalPublished);
+function updateTopStats(summary) {
+    if (!summary) return;
+    document.getElementById('stats-total-tasks').textContent = String(Number(summary.total_tasks || 0));
+    document.getElementById('stats-enabled-tasks').textContent = String(Number(summary.enabled_tasks || 0));
+    document.getElementById('stats-total-articles').textContent = String(Number(summary.total_articles || 0));
+    document.getElementById('stats-total-published').textContent = String(Number(summary.published_articles || 0));
 }
 
 function renderWorkerOverview(workers) {
@@ -562,8 +585,13 @@ function renderWorkerOverview(workers) {
         const status = String(worker.status || 'idle');
         const statusClasses = status === 'running'
             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-            : 'bg-gray-50 text-gray-700 border border-gray-200';
+            : (status === 'stale'
+                ? 'bg-red-50 text-red-700 border border-red-200'
+                : 'bg-gray-50 text-gray-700 border border-gray-200');
         const currentJob = worker.current_job_id ? `#${Number(worker.current_job_id)}` : escapeHtml(TASK_TEXT.workerIdle);
+        const memoryLine = worker.memory_mb === null || worker.memory_mb === undefined
+            ? ''
+            : `<div>${escapeHtml(TASK_TEXT.workerMemory)}: ${Number(worker.memory_mb).toFixed(1)} MB / ${Number(worker.peak_memory_mb || 0).toFixed(1)} MB</div>`;
         return `<div class="rounded-lg border border-gray-200 px-3 py-3">
             <div class="flex items-center justify-between gap-3">
                 <span class="font-mono text-xs text-gray-700">${escapeHtml(String(worker.worker_id || ''))}</span>
@@ -572,6 +600,7 @@ function renderWorkerOverview(workers) {
             <div class="mt-2 text-xs text-gray-500">
                 <div>${escapeHtml(TASK_TEXT.workerCurrentJob)}: ${currentJob}</div>
                 <div>${escapeHtml(TASK_TEXT.workerLastSeen)}: ${escapeHtml(String(worker.last_seen_at || ''))}</div>
+                ${memoryLine}
             </div>
         </div>`;
     }).join('');
@@ -618,7 +647,7 @@ function applyOverview(overview) {
         updateTaskUI(task);
         updateTaskCounters(task);
     });
-    updateTopStats(overview.tasks);
+    updateTopStats(overview.task_summary);
     if (overview.queue_overview) {
         updateQueueOverview(overview.queue_overview);
     }
@@ -642,8 +671,19 @@ function initTaskRealtime() {
     }
 
     window.Echo.private('admin.tasks').listen('.tasks.overview.updated', (payload) => {
-        applyOverview(payload);
+        scheduleTaskSnapshot();
     });
+}
+
+let taskSnapshotTimer = null;
+function scheduleTaskSnapshot() {
+    if (taskSnapshotTimer !== null) {
+        clearTimeout(taskSnapshotTimer);
+    }
+    taskSnapshotTimer = setTimeout(() => {
+        taskSnapshotTimer = null;
+        requestTaskSnapshot();
+    }, 300);
 }
 
 function startBatchExecution(taskId, taskName) {

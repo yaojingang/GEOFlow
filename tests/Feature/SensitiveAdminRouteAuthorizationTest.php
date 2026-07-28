@@ -46,6 +46,18 @@ class SensitiveAdminRouteAuthorizationTest extends TestCase
     }
 
     #[Test]
+    public function an_admin_403_response_includes_a_traceable_request_id(): void
+    {
+        $admin = $this->admin('admin');
+
+        $this->actingAs($admin, 'admin')
+            ->withHeader('X-Request-Id', 'admin-403-trace')
+            ->get(route('admin.distribution.index'))
+            ->assertForbidden()
+            ->assertHeader('X-Request-Id', 'admin-403-trace');
+    }
+
+    #[Test]
     public function a_super_admin_can_open_distribution_and_url_import_pages(): void
     {
         $admin = $this->admin('super_admin');

@@ -384,7 +384,7 @@
                 const clientErrorMessage = form.querySelector('[data-import-client-error-message]');
                 const allowedExtensions = ['txt', 'md', 'docx'];
                 const maxFiles = 10;
-                const maxFileBytes = 50 * 1024 * 1024;
+                const maxFileBytes = 8 * 1024 * 1024;
                 let importProgressTimer = null;
 
                 const escapeHtml = function (value) {
@@ -468,7 +468,11 @@
                         return false;
                     }
 
-                    return files.every(function (file) {
+                    const totalBytes = files.reduce(function (total, file) {
+                        return total + file.size;
+                    }, 0);
+
+                    return totalBytes <= maxFileBytes && files.every(function (file) {
                         return allowedExtensions.includes(extensionOf(file.name)) && file.size <= maxFileBytes;
                     });
                 };

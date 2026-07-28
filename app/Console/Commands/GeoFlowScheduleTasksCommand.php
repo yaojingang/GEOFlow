@@ -7,6 +7,8 @@ use App\Models\TaskRun;
 use App\Services\GeoFlow\JobQueueService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * GeoFlow 任务调度命令（对齐 bak/bin/cron.php 的入队判定）。
@@ -39,46 +41,60 @@ class GeoFlowScheduleTasksCommand extends Command
         $queuedCount = 0;
         $skippedCount = 0;
 
-        $tasks = Task::query()
+        Task::query()
             ->select(['id', 'name', 'publish_interval', 'draft_limit', 'article_limit', 'created_count', 'next_run_at', 'next_publish_at', 'schedule_enabled'])
             ->where('status', 'active')
-            ->orderBy('updated_at')
             ->orderBy('id')
-            ->get();
+            ->chunkById(200, function (Collection $tasks) use ($now, &$queuedCount, &$skippedCount): void {
+                $this->scheduleTaskBatch($tasks, $now, $queuedCount, $skippedCount);
+            });
 
+        $this->info(sprintf(
+            'GeoFlow scheduler done: queued=%d, skipped=%d, recovered=%d',
+            $queuedCount,
+            $skippedCount,
+            $recoveredCount
+        ));
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * @param  Collection<int, Task>  $tasks
+     */
+    private function scheduleTaskBatch(
+        Collection $tasks,
+        Carbon $now,
+        int &$queuedCount,
+        int &$skippedCount,
+    ): void {
         $taskIds = $tasks->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all();
-        // 批量获取“已有 pending/running 执行记录”的任务集合，减少循环内 exists 查询。
-        $busyTaskLookup = empty($taskIds)
-            ? []
-            : array_fill_keys(
-                TaskRun::query()
-                    ->whereIn('task_id', $taskIds)
-                    ->whereIn('status', ['pending', 'running'])
-                    ->groupBy('task_id')
-                    ->pluck('task_id')
-                    ->map(static fn (mixed $id): int => (int) $id)
-                    ->all(),
-                true
-            );
-
-        $articleStats = empty($taskIds)
-            ? collect()
-            : \Illuminate\Support\Facades\DB::table('articles')
-                ->selectRaw("
-                    task_id,
-                    SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_articles,
-                    SUM(CASE WHEN status = 'draft' AND review_status IN ('approved','auto_approved') THEN 1 ELSE 0 END) AS publishable_drafts
-                ")
+        $busyTaskLookup = array_fill_keys(
+            TaskRun::query()
                 ->whereIn('task_id', $taskIds)
-                ->whereNull('deleted_at')
+                ->whereIn('status', ['pending', 'running'])
                 ->groupBy('task_id')
-                ->get()
-                ->mapWithKeys(static fn (object $row): array => [
-                    (int) $row->task_id => [
-                        'draft_articles' => (int) ($row->draft_articles ?? 0),
-                        'publishable_drafts' => (int) ($row->publishable_drafts ?? 0),
-                    ],
-                ]);
+                ->pluck('task_id')
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->all(),
+            true
+        );
+        $articleStats = DB::table('articles')
+            ->selectRaw("
+                task_id,
+                SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_articles,
+                SUM(CASE WHEN status = 'draft' AND review_status IN ('approved','auto_approved') THEN 1 ELSE 0 END) AS publishable_drafts
+            ")
+            ->whereIn('task_id', $taskIds)
+            ->whereNull('deleted_at')
+            ->groupBy('task_id')
+            ->get()
+            ->mapWithKeys(static fn (object $row): array => [
+                (int) $row->task_id => [
+                    'draft_articles' => (int) ($row->draft_articles ?? 0),
+                    'publishable_drafts' => (int) ($row->publishable_drafts ?? 0),
+                ],
+            ]);
 
         foreach ($tasks as $task) {
             $taskId = (int) $task->id;
@@ -145,14 +161,5 @@ class GeoFlowScheduleTasksCommand extends Command
             ]);
             $queuedCount++;
         }
-
-        $this->info(sprintf(
-            'GeoFlow scheduler done: queued=%d, skipped=%d, recovered=%d',
-            $queuedCount,
-            $skippedCount,
-            $recoveredCount
-        ));
-
-        return self::SUCCESS;
     }
 }

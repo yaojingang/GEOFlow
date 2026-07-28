@@ -25,6 +25,7 @@ class WorkerHeartbeat extends Model
     {
         return [
             'last_seen_at' => 'datetime',
+            'meta' => 'array',
         ];
     }
 }

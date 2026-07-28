@@ -25,6 +25,8 @@ use Throwable;
 
 class EnterpriseKnowledgeController extends Controller
 {
+    private const MAX_KNOWLEDGE_BYTES = 8 * 1024 * 1024;
+
     public function __construct(
         private readonly KnowledgeSourceParser $sourceParser,
         private readonly EnterpriseKnowledgeDraftService $draftService,
@@ -62,13 +64,18 @@ class EnterpriseKnowledgeController extends Controller
             'description' => ['nullable', 'string', 'max:1000'],
             'content' => ['nullable', 'string'],
             'enterprise_files' => ['nullable', 'array', 'max:10'],
-            'enterprise_files.*' => ['file', File::types(['txt', 'md', 'markdown', 'docx'])->max(50 * 1024)],
+            'enterprise_files.*' => ['file', File::types(['txt', 'md', 'markdown', 'docx'])->max(8 * 1024)],
         ], [
             'enterprise_files.max' => __('admin.enterprise_knowledge.error.files_limit'),
         ]);
 
         $manualContent = $this->sourceParser->normalizeKnowledgeText((string) ($payload['content'] ?? ''));
         $uploadedFiles = $this->sourceParser->uploadedFilesFromFields($request, ['enterprise_files']);
+        if (strlen($manualContent) > self::MAX_KNOWLEDGE_BYTES) {
+            throw ValidationException::withMessages([
+                'content' => __('admin.knowledge_bases.error.content_too_large'),
+            ]);
+        }
 
         if ($manualContent === '' && $uploadedFiles === []) {
             throw ValidationException::withMessages([
@@ -354,7 +361,7 @@ class EnterpriseKnowledgeController extends Controller
 
         return redirect()
             ->route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $knowledgeBase->id])
-            ->with('message', __('admin.enterprise_knowledge.message.published', ['count' => (int) $result['chunk_count']]));
+            ->with('message', __('admin.enterprise_knowledge.message.published_queued'));
     }
 
     public function destroy(int $projectId): RedirectResponse

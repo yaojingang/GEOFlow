@@ -7,7 +7,7 @@ use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\Task;
-use App\Services\GeoFlow\KnowledgeChunkSyncService;
+use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Support\AdminWeb;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
@@ -17,8 +17,8 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rules\File;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -26,7 +26,13 @@ use Illuminate\View\View;
  */
 class KnowledgeBaseController extends Controller
 {
-    public function __construct(private readonly KnowledgeChunkSyncService $chunkSyncService) {}
+    private const MAX_KNOWLEDGE_BYTES = 8 * 1024 * 1024;
+
+    private const MAX_DOCX_XML_BYTES = 16 * 1024 * 1024;
+
+    private const MAX_DOCX_COMPRESSION_RATIO = 100;
+
+    public function __construct(private readonly KnowledgeChunkSyncCoordinator $chunkSyncCoordinator) {}
 
     /**
      * 列表页。
@@ -94,6 +100,7 @@ class KnowledgeBaseController extends Controller
         ]);
 
         $content = trim((string) $payload['content']);
+        $this->assertKnowledgeContentSize($content);
         $knowledgeBase->update([
             'name' => trim((string) $payload['name']),
             'description' => trim((string) ($payload['description'] ?? '')),
@@ -105,10 +112,8 @@ class KnowledgeBaseController extends Controller
 
         return $this->redirectAfterChunkSync(
             $knowledgeBase,
-            $content,
             'admin.knowledge-bases.detail',
             ['knowledgeBaseId' => $knowledgeBaseId],
-            'update_success'
         );
     }
 
@@ -117,7 +122,7 @@ class KnowledgeBaseController extends Controller
      */
     public function uploadFile(Request $request): RedirectResponse
     {
-        return $this->createKnowledgeBaseFromRequest($request, 'upload_success', 'upload_error');
+        return $this->createKnowledgeBaseFromRequest($request, 'upload_error');
     }
 
     /**
@@ -125,7 +130,7 @@ class KnowledgeBaseController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        return $this->createKnowledgeBaseFromRequest($request, 'create_success', 'create_error');
+        return $this->createKnowledgeBaseFromRequest($request, 'create_error');
     }
 
     /**
@@ -179,10 +184,8 @@ class KnowledgeBaseController extends Controller
 
         return $this->redirectAfterChunkSync(
             $knowledgeBase,
-            $content,
             'admin.knowledge-bases.index',
             [],
-            'update_success'
         );
     }
 
@@ -216,32 +219,13 @@ class KnowledgeBaseController extends Controller
                 ->withErrors(__('admin.knowledge_bases.error.content_required'));
         }
 
-        try {
-            $chunkCount = $this->chunkSyncService->sync((int) $knowledgeBase->id, $content, true);
-            $stats = $this->loadChunkStats((int) $knowledgeBase->id);
-            $vectorizedCount = (int) ($stats['vectorized_count'] ?? 0);
+        $this->chunkSyncCoordinator->request(
+            (int) $knowledgeBase->id,
+            requireRealEmbedding: true,
+            force: true,
+        );
 
-            if ($chunkCount > 0 && $vectorizedCount < $chunkCount) {
-                return $redirect
-                    ->withErrors(__('admin.knowledge_bases.error.embedding_sync_partial', [
-                        'chunks' => $chunkCount,
-                        'vectorized' => $vectorizedCount,
-                    ]));
-            }
-
-            return $redirect
-                ->with('message', __('admin.knowledge_bases.message.chunks_refreshed', [
-                    'chunks' => $chunkCount,
-                    'vectorized' => $vectorizedCount,
-                ]));
-        } catch (\Throwable $exception) {
-            report($exception);
-
-            return $redirect
-                ->withErrors(__('admin.knowledge_bases.message.chunks_refresh_error', [
-                    'message' => $exception->getMessage(),
-                ]));
-        }
+        return $redirect->with('message', __('admin.knowledge_bases.message.chunks_refresh_queued'));
     }
 
     private function knowledgeChunkRefreshRedirect(Request $request): RedirectResponse
@@ -262,7 +246,19 @@ class KnowledgeBaseController extends Controller
     private function loadKnowledgeBases(): array
     {
         $query = KnowledgeBase::query()
-            ->select(['id', 'name', 'description', 'file_type', 'word_count', 'usage_count', 'created_at', 'updated_at'])
+            ->select([
+                'id',
+                'name',
+                'description',
+                'file_type',
+                'word_count',
+                'usage_count',
+                'chunk_sync_status',
+                'chunk_sync_error',
+                'chunk_synced_at',
+                'created_at',
+                'updated_at',
+            ])
             ->withCount('chunks as chunk_count')
             ->withCount([
                 'chunks as vectorized_chunk_count' => fn ($query) => $query
@@ -281,6 +277,9 @@ class KnowledgeBaseController extends Controller
                 'usage_count' => (int) ($knowledgeBase->usage_count ?? 0),
                 'chunk_count' => (int) ($knowledgeBase->chunk_count ?? 0),
                 'vectorized_chunk_count' => (int) ($knowledgeBase->vectorized_chunk_count ?? 0),
+                'chunk_sync_status' => (string) ($knowledgeBase->chunk_sync_status ?? 'idle'),
+                'chunk_sync_error' => trim((string) ($knowledgeBase->chunk_sync_error ?? '')),
+                'chunk_synced_at' => $knowledgeBase->chunk_synced_at?->format('Y-m-d H:i:s'),
                 'created_at' => $knowledgeBase->created_at?->format('Y-m-d H:i:s'),
                 'updated_at' => $knowledgeBase->updated_at?->format('Y-m-d H:i:s'),
             ];
@@ -318,7 +317,7 @@ class KnowledgeBaseController extends Controller
      */
     private function validateKnowledgeForm(Request $request): array
     {
-        return $request->validate([
+        $payload = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'content' => ['required', 'string'],
@@ -334,6 +333,10 @@ class KnowledgeBaseController extends Controller
             'name.required' => __('admin.knowledge_bases.error.name_required'),
             'content.required' => __('admin.knowledge_bases.error.content_required'),
         ]);
+
+        $this->assertKnowledgeContentSize((string) $payload['content']);
+
+        return $payload;
     }
 
     /**
@@ -356,9 +359,9 @@ class KnowledgeBaseController extends Controller
             'risk_level' => ['nullable', 'in:low,medium,high'],
             'review_status' => ['nullable', 'in:unreviewed,reviewed'],
             'import_action' => ['nullable', 'in:save,save_and_chunk'],
-            'knowledge_file' => ['nullable', File::types(['txt', 'md', 'docx'])->max(50 * 1024)],
+            'knowledge_file' => ['nullable', File::types(['txt', 'md', 'docx'])->max(8 * 1024)],
             'knowledge_files' => ['nullable', 'array', 'max:10'],
-            'knowledge_files.*' => ['file', File::types(['txt', 'md', 'docx'])->max(50 * 1024)],
+            'knowledge_files.*' => ['file', File::types(['txt', 'md', 'docx'])->max(8 * 1024)],
         ], [
             'knowledge_file.mimes' => __('admin.knowledge_bases.error.file_type_invalid'),
             'knowledge_file.max' => __('admin.knowledge_bases.error.file_too_large'),
@@ -415,14 +418,17 @@ class KnowledgeBaseController extends Controller
         );
     }
 
-    private function createKnowledgeBaseFromRequest(Request $request, string $successMessageKey, string $errorMessageKey): RedirectResponse
+    private function createKnowledgeBaseFromRequest(Request $request, string $errorMessageKey): RedirectResponse
     {
         $payload = $this->validateKnowledgeImportForm($request);
         $storedPaths = [];
+        $knowledgeBase = null;
 
         try {
             $manualContent = $this->normalizeKnowledgeText((string) ($payload['content'] ?? ''));
             $uploadedFiles = $this->uploadedKnowledgeFiles($request);
+            $this->assertKnowledgeContentSize($manualContent);
+            $this->assertUploadedKnowledgeTotalSize($uploadedFiles);
 
             if (count($uploadedFiles) > 10) {
                 throw ValidationException::withMessages([
@@ -439,6 +445,7 @@ class KnowledgeBaseController extends Controller
 
             $parsedFiles = $this->parseUploadedKnowledgeFiles($uploadedFiles, $storedPaths);
             $content = $this->mergeKnowledgeSources($manualContent, $parsedFiles);
+            $this->assertKnowledgeContentSize($content);
             if ($content === '') {
                 throw ValidationException::withMessages([
                     'content' => __('admin.knowledge_bases.error.content_required'),
@@ -487,16 +494,24 @@ class KnowledgeBaseController extends Controller
 
             return $this->redirectAfterChunkSync(
                 $knowledgeBase,
-                $content,
                 'admin.knowledge-bases.index',
                 [],
-                $successMessageKey
             );
         } catch (ValidationException $exception) {
             $this->cleanupKnowledgeFiles($storedPaths);
 
             throw $exception;
         } catch (\Throwable $exception) {
+            if ($knowledgeBase instanceof KnowledgeBase) {
+                return redirect()
+                    ->route('admin.knowledge-bases.index')
+                    ->withErrors([
+                        'chunk_sync' => __('admin.knowledge_bases.message.chunk_sync_deferred', [
+                            'message' => $exception->getMessage(),
+                        ]),
+                    ]);
+            }
+
             $this->cleanupKnowledgeFiles($storedPaths);
 
             return back()
@@ -506,19 +521,17 @@ class KnowledgeBaseController extends Controller
     }
 
     /**
-     * 保存知识库后再执行切片同步，避免外部模型调用占用数据库事务。
+     * 保存知识库后提交后台切片任务。
      *
      * @param  array<string, mixed>  $routeParameters
      */
-    private function redirectAfterChunkSync(KnowledgeBase $knowledgeBase, string $content, string $routeName, array $routeParameters, string $successMessageKey): RedirectResponse
+    private function redirectAfterChunkSync(KnowledgeBase $knowledgeBase, string $routeName, array $routeParameters): RedirectResponse
     {
         try {
-            $chunkCount = $this->chunkSyncService->sync((int) $knowledgeBase->id, $content);
-
-            return redirect()
-                ->route($routeName, $routeParameters)
-                ->with('message', __('admin.knowledge_bases.message.'.$successMessageKey, ['count' => $chunkCount]));
+            $this->chunkSyncCoordinator->request((int) $knowledgeBase->id);
         } catch (\Throwable $exception) {
+            report($exception);
+
             return redirect()
                 ->route($routeName, $routeParameters)
                 ->withErrors([
@@ -527,6 +540,10 @@ class KnowledgeBaseController extends Controller
                     ]),
                 ]);
         }
+
+        return redirect()
+            ->route($routeName, $routeParameters)
+            ->with('message', __('admin.knowledge_bases.message.chunk_sync_queued'));
     }
 
     /**
@@ -686,6 +703,7 @@ class KnowledgeBaseController extends Controller
     private function parseUploadedKnowledgeFiles(array $uploadedFiles, array &$storedPaths): array
     {
         $parsedFiles = [];
+        $parsedBytes = 0;
 
         foreach ($uploadedFiles as $uploadedFile) {
             $storedRelativePath = $this->storeUploadedKnowledgeFile($uploadedFile);
@@ -700,6 +718,12 @@ class KnowledgeBaseController extends Controller
                 'file_type' => $parsed['file_type'],
                 'original_name' => (string) $uploadedFile->getClientOriginalName(),
             ];
+            $parsedBytes += strlen((string) $parsed['content']);
+            if ($parsedBytes > self::MAX_KNOWLEDGE_BYTES) {
+                throw ValidationException::withMessages([
+                    'knowledge_files' => __('admin.knowledge_bases.error.content_too_large'),
+                ]);
+            }
         }
 
         return $parsedFiles;
@@ -949,7 +973,7 @@ class KnowledgeBaseController extends Controller
      */
     private function extractDocxContent(string $absolutePath): string
     {
-        if (! class_exists('ZipArchive')) {
+        if (! class_exists('ZipArchive') || ! class_exists('XMLReader')) {
             return '';
         }
 
@@ -958,32 +982,124 @@ class KnowledgeBaseController extends Controller
             return '';
         }
 
-        $xmlContent = $zip->getFromName('word/document.xml');
+        $stat = $zip->statName('word/document.xml');
+        if (! is_array($stat)) {
+            $zip->close();
+
+            return '';
+        }
+
+        $uncompressedSize = max(0, (int) ($stat['size'] ?? 0));
+        $compressedSize = max(1, (int) ($stat['comp_size'] ?? 0));
+        if (
+            $uncompressedSize > self::MAX_DOCX_XML_BYTES
+            || ($uncompressedSize / $compressedSize) > self::MAX_DOCX_COMPRESSION_RATIO
+        ) {
+            $zip->close();
+            throw ValidationException::withMessages([
+                'knowledge_files' => __('admin.knowledge_bases.error.docx_expansion_too_large'),
+            ]);
+        }
+
+        $source = $zip->getStream('word/document.xml');
+        $temporary = tmpfile();
+        if (! is_resource($source) || ! is_resource($temporary)) {
+            if (is_resource($source)) {
+                fclose($source);
+            }
+            if (is_resource($temporary)) {
+                fclose($temporary);
+            }
+            $zip->close();
+
+            return '';
+        }
+
+        $copiedBytes = stream_copy_to_stream($source, $temporary, self::MAX_DOCX_XML_BYTES + 1);
+        fclose($source);
         $zip->close();
-        if (! is_string($xmlContent) || $xmlContent === '') {
+        if (! is_int($copiedBytes) || $copiedBytes > self::MAX_DOCX_XML_BYTES) {
+            fclose($temporary);
+            throw ValidationException::withMessages([
+                'knowledge_files' => __('admin.knowledge_bases.error.docx_expansion_too_large'),
+            ]);
+        }
+
+        $metadata = stream_get_meta_data($temporary);
+        $temporaryPath = (string) ($metadata['uri'] ?? '');
+        $reader = new \XMLReader;
+        if ($temporaryPath === '' || ! @$reader->open($temporaryPath, null, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING)) {
+            fclose($temporary);
+
             return '';
         }
 
-        $dom = new \DOMDocument;
-        $loaded = @$dom->loadXML($xmlContent, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
-        if (! $loaded) {
+        $wordNamespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+        $textOutput = tmpfile();
+        if (! is_resource($textOutput)) {
+            $reader->close();
+            fclose($temporary);
+
             return '';
         }
-
-        $xpath = new \DOMXPath($dom);
-        $xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
-
-        $parts = [];
-        $nodes = $xpath->query('//w:t');
-        if ($nodes !== false) {
-            foreach ($nodes as $node) {
-                $value = trim((string) $node->textContent);
+        $contentBytes = 0;
+        while ($reader->read()) {
+            if (
+                $reader->nodeType === \XMLReader::ELEMENT
+                && $reader->localName === 't'
+                && $reader->namespaceURI === $wordNamespace
+            ) {
+                $value = trim($reader->readString());
                 if ($value !== '') {
-                    $parts[] = $value;
+                    $contentBytes += strlen($value) + 1;
+                    if ($contentBytes > self::MAX_KNOWLEDGE_BYTES) {
+                        $reader->close();
+                        fclose($temporary);
+                        fclose($textOutput);
+                        throw ValidationException::withMessages([
+                            'knowledge_files' => __('admin.knowledge_bases.error.content_too_large'),
+                        ]);
+                    }
+                    fwrite($textOutput, $value."\n");
                 }
             }
         }
+        $reader->close();
+        fclose($temporary);
+        rewind($textOutput);
+        $content = stream_get_contents($textOutput, self::MAX_KNOWLEDGE_BYTES + 1);
+        fclose($textOutput);
 
-        return $this->normalizeKnowledgeText(implode("\n", $parts));
+        return is_string($content) ? $this->normalizeKnowledgeText($content) : '';
+    }
+
+    private function assertKnowledgeContentSize(string $content): void
+    {
+        if (strlen($content) <= self::MAX_KNOWLEDGE_BYTES) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'content' => __('admin.knowledge_bases.error.content_too_large'),
+        ]);
+    }
+
+    /**
+     * @param  array<int, UploadedFile>  $uploadedFiles
+     */
+    private function assertUploadedKnowledgeTotalSize(array $uploadedFiles): void
+    {
+        $totalBytes = 0;
+        foreach ($uploadedFiles as $uploadedFile) {
+            $totalBytes += max(0, (int) $uploadedFile->getSize());
+        }
+
+        if ($totalBytes <= self::MAX_KNOWLEDGE_BYTES) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'knowledge_files' => __('admin.knowledge_bases.error.total_files_too_large'),
+        ]);
     }
 }
