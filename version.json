@@ -1,18 +1,18 @@
 {
-  "version": "2.1.1",
-  "tag": "v2.1.1",
+  "version": "2.1.2",
+  "tag": "v2.1.2",
   "release_date": "2026-07-28",
   "release_type": "patch",
-  "archive_url": "https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.1.1.zip",
+  "archive_url": "https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.1.2.zip",
   "payload": {
-    "title_zh": "GEOFlow v2.1.1",
-    "title_en": "GEOFlow v2.1.1",
-    "summary_zh": "GEOFlow 2.1.1 新增轻量匿名安装、更新、每日心跳和管理员日活统计，并修复结构化数据注入、受管图片文件边界、出站请求 SSRF 与管理权限问题，加入隔离主题预览、package-only 交付和只读安全审计。",
-    "summary_en": "GEOFlow 2.1.1 adds lightweight anonymous install, update, daily heartbeat, and admin-activity metrics; fixes structured-data injection, managed image file-boundary, outbound SSRF, and admin authorization issues; and adds isolated theme previews, package-only delivery, and a read-only security audit.",
+    "title_zh": "GEOFlow v2.1.2",
+    "title_en": "GEOFlow v2.1.2",
+    "summary_zh": "GEOFlow 2.1.2 更新前端依赖安全基线，并配套修正匿名事件去重及部署、管理员日活的统计边界。",
+    "summary_en": "GEOFlow 2.1.2 refreshes the frontend dependency security baseline and ships with corrected anonymous-event deduplication and deployment-versus-admin activity boundaries.",
     "upgrade_tip_zh": "升级时先保持图片删除门禁关闭并停机排空旧进程，设置一次性确认后执行 php artisan migrate；启动新代码，运行 php artisan geoflow:managed-images:readiness 与 php artisan geoflow:security-audit，确认就绪后再启用图片删除门禁并重启 queue worker。",
     "upgrade_tip_en": "Keep the managed image deletion gate disabled, drain old processes, set the one-time confirmation, and run php artisan migrate. Start the new code, run php artisan geoflow:managed-images:readiness and php artisan geoflow:security-audit, then enable deletion only after readiness is confirmed and restart queue workers.",
-    "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v2.1.1",
-    "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/v2.1.1/docs/CHANGELOG.md",
-    "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/v2.1.1/docs/CHANGELOG_en.md"
+    "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v2.1.2",
+    "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/v2.1.2/docs/CHANGELOG.md",
+    "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/v2.1.2/docs/CHANGELOG_en.md"
   }
 }

@@ -1,4 +1,5 @@
 {
+    "name": "geoflow",
     "$schema": "https://www.schemastore.org/package.json",
     "private": true,
     "license": "Apache-2.0",

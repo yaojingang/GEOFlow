@@ -4,6 +4,17 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## 2026-07-28
 
+### v2.1.2
+
+- Refreshed the frontend dependency security baseline:
+  - Updated compatible patch releases for Axios, Vite, esbuild, PostCSS, concurrently, shell-quote, Pusher JS, and related packages.
+  - Removed the legacy `engine.io-client` / `ws` dependency chain, restoring production and development npm audits to zero known vulnerabilities.
+- Corrected anonymous telemetry metric boundaries:
+  - Server-side install, update, and daily heartbeat events exclusively drive deployment totals, active deployments, and version distribution.
+  - Browser `admin_active` Pulse events now contribute only to admin DAU and no longer inflate deployment metrics.
+  - Cloudflare D1 deduplicates lifecycle versions, daily heartbeats, and daily admin digests so network retries do not multiply raw events.
+- Normalized the PHP formatting baseline so the full Pint check passes.
+
 ### v2.1.1
 
 - Added lightweight anonymous deployment telemetry:

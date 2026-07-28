@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Models\Admin;
 use App\Models\SystemUpdateRun;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -150,7 +151,7 @@ class SystemUpdateRunHealthService
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, SystemUpdateRun>
+     * @return Collection<int, SystemUpdateRun>
      */
     private function staleRuns()
     {

@@ -58,6 +58,7 @@ class SystemUpdateBackupService
                     'bytes' => 0,
                     'backed_up' => false,
                 ];
+
                 continue;
             }
 
@@ -87,7 +88,7 @@ class SystemUpdateBackupService
             $archiveDiskPath = Storage::disk('local')->path($filesArchivePath);
             File::ensureDirectoryExists(dirname($archiveDiskPath));
 
-            $zip = new ZipArchive();
+            $zip = new ZipArchive;
             if ($zip->open($archiveDiskPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
                 throw new RuntimeException(__('admin.system_updates.error.backup_archive_failed'));
             }

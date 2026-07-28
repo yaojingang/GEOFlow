@@ -256,7 +256,7 @@ class UrlImportController extends Controller
         return [
             'id' => (int) $job->id,
             'status' => (string) $job->status,
-            'status_label' => __('admin.url_import_history.status.' . $job->status),
+            'status_label' => __('admin.url_import_history.status.'.$job->status),
             'current_step' => $currentStep,
             'stored_step' => $storedStep,
             'progress_percent' => (int) $job->progress_percent,

@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Models\SystemUpdateBackup;
 use App\Models\SystemUpdateRun;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
 class SystemUpdateStateService
@@ -124,7 +125,7 @@ class SystemUpdateStateService
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, SystemUpdateBackup>
+     * @return Collection<int, SystemUpdateBackup>
      */
     private function recentBackups()
     {
@@ -140,7 +141,7 @@ class SystemUpdateStateService
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, SystemUpdateRun>
+     * @return Collection<int, SystemUpdateRun>
      */
     private function recentRuns()
     {

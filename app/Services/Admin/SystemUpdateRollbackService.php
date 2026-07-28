@@ -182,7 +182,7 @@ class SystemUpdateRollbackService
         $restoreDiskPath = Storage::disk('local')->path($restorePath);
         File::ensureDirectoryExists($restoreDiskPath);
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         if ($zip->open(Storage::disk('local')->path($archivePath)) !== true) {
             throw new RuntimeException(__('admin.system_updates.error.backup_archive_open_failed'));
         }
@@ -254,6 +254,7 @@ class SystemUpdateRollbackService
 
                 $report['skipped']++;
                 $report['files'][] = ['path' => $relativePath, 'action' => 'unsupported_action'];
+
                 continue;
             }
 

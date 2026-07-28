@@ -6,28 +6,28 @@ use Tests\TestCase;
 
 class SecurityReleaseMetadataTest extends TestCase
 {
-    public function test_v211_manifest_uses_immutable_release_urls_and_security_upgrade_guidance(): void
+    public function test_v212_manifest_uses_immutable_release_urls_and_security_upgrade_guidance(): void
     {
         $manifest = json_decode((string) file_get_contents(base_path('version.json')), true, flags: JSON_THROW_ON_ERROR);
         $payload = $manifest['payload'];
 
-        $this->assertSame('2.1.1', $manifest['version']);
+        $this->assertSame('2.1.2', $manifest['version']);
         $this->assertSame('2026-07-28', $manifest['release_date']);
         $this->assertSame('patch', $manifest['release_type']);
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.1.1.zip',
+            'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.1.2.zip',
             $manifest['archive_url'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/releases/tag/v2.1.1',
+            'https://github.com/yaojingang/GEOFlow/releases/tag/v2.1.2',
             $payload['release_url'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/blob/v2.1.1/docs/CHANGELOG.md',
+            'https://github.com/yaojingang/GEOFlow/blob/v2.1.2/docs/CHANGELOG.md',
             $payload['changelog_url_zh'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/blob/v2.1.1/docs/CHANGELOG_en.md',
+            'https://github.com/yaojingang/GEOFlow/blob/v2.1.2/docs/CHANGELOG_en.md',
             $payload['changelog_url_en'],
         );
 
@@ -47,7 +47,7 @@ class SecurityReleaseMetadataTest extends TestCase
         $zh = (string) file_get_contents(base_path('docs/CHANGELOG.md'));
         $en = (string) file_get_contents(base_path('docs/CHANGELOG_en.md'));
 
-        foreach (['v2.1.1', 'JSON-LD', 'managed_path_hash', 'SSRF', 'package-only', 'geoflow:security-audit'] as $term) {
+        foreach (['v2.1.2', 'v2.1.1', 'JSON-LD', 'managed_path_hash', 'SSRF', 'package-only', 'geoflow:security-audit'] as $term) {
             $this->assertStringContainsString($term, $zh);
             $this->assertStringContainsString($term, $en);
         }
