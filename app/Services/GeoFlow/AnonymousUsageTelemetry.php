@@ -51,17 +51,52 @@ class AnonymousUsageTelemetry
             'endpoint' => $endpoint,
             'event' => self::ADMIN_EVENT,
             'instance_id' => $installationState['instance_id'],
-            'user_hash' => hash_hmac(
-                'sha256',
-                'admin:'.$admin->getAuthIdentifier(),
-                $installationState['secret'],
-            ),
+            'user_hash' => $this->adminHash($admin, $installationState['secret']),
             'version' => $this->validatedVersion(),
             'interval_seconds' => max(
                 3600,
                 (int) config('geoflow.telemetry_interval_seconds', 86400),
             ),
         ];
+    }
+
+    public function reportAdminLogin(Admin $admin, string $channel): bool
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, ['web', 'api'], true)) {
+            return false;
+        }
+
+        $endpoint = $this->validatedEndpoint();
+        $installationState = $this->installationState();
+        if ($endpoint === null || $installationState === null) {
+            return false;
+        }
+
+        try {
+            $request = $this->http
+                ->timeout(5)
+                ->connectTimeout(3)
+                ->acceptJson()
+                ->asJson();
+            $response = $this->safeHttp->post(
+                $request,
+                $endpoint,
+                [
+                    'event' => 'admin_login',
+                    'event_id' => (string) Str::uuid(),
+                    'instance_id' => $installationState['instance_id'],
+                    'user_hash' => $this->adminHash($admin, $installationState['secret']),
+                    'version' => $this->validatedVersion(),
+                    'channel' => $channel,
+                ],
+                16 * 1024,
+            );
+
+            return $response->successful();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     public function reportInstalled(): bool
@@ -248,6 +283,15 @@ class AnonymousUsageTelemetry
         return preg_match('/^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/', $version) === 1
             ? $version
             : null;
+    }
+
+    private function adminHash(Admin $admin, string $secret): string
+    {
+        return hash_hmac(
+            'sha256',
+            'admin:'.$admin->getAuthIdentifier(),
+            $secret,
+        );
     }
 
     /**

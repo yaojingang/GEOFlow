@@ -1,18 +1,18 @@
 {
-  "version": "2.1.2",
-  "tag": "v2.1.2",
-  "release_date": "2026-07-28",
-  "release_type": "patch",
-  "archive_url": "https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.1.2.zip",
+  "version": "2.2.0",
+  "tag": "v2.2.0",
+  "release_date": "2026-07-29",
+  "release_type": "minor",
+  "archive_url": "https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.2.0.zip",
   "payload": {
-    "title_zh": "GEOFlow v2.1.2",
-    "title_en": "GEOFlow v2.1.2",
-    "summary_zh": "GEOFlow 2.1.2 更新前端依赖安全基线，并配套修正匿名事件去重及部署、管理员日活的统计边界。",
-    "summary_en": "GEOFlow 2.1.2 refreshes the frontend dependency security baseline and ships with corrected anonymous-event deduplication and deployment-versus-admin activity boundaries.",
-    "upgrade_tip_zh": "升级时先保持图片删除门禁关闭并停机排空旧进程，设置一次性确认后执行 php artisan migrate；启动新代码，运行 php artisan geoflow:managed-images:readiness 与 php artisan geoflow:security-audit，确认就绪后再启用图片删除门禁并重启 queue worker。",
-    "upgrade_tip_en": "Keep the managed image deletion gate disabled, drain old processes, set the one-time confirmation, and run php artisan migrate. Start the new code, run php artisan geoflow:managed-images:readiness and php artisan geoflow:security-audit, then enable deletion only after readiness is confirmed and restart queue workers.",
-    "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v2.1.2",
-    "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/v2.1.2/docs/CHANGELOG.md",
-    "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/v2.1.2/docs/CHANGELOG_en.md"
+    "title_zh": "GEOFlow v2.2.0",
+    "title_en": "GEOFlow v2.2.0",
+    "summary_zh": "GEOFlow 2.2.0 新增匿名成功登录统计，覆盖后台 Web 与 API 渠道，并保持登录流程、失败事件和个人信息与中央监控隔离。",
+    "summary_en": "GEOFlow 2.2.0 adds anonymous successful-login telemetry for admin web and API channels while keeping login flow, failed attempts, and personal information isolated from central monitoring.",
+    "upgrade_tip_zh": "本版本未新增业务迁移。升级代码和前端资源后运行 php artisan migrate --force 与 php artisan geoflow:security-audit，并重启 queue worker；从较早版本升级时继续按受管图片 readiness 流程完成删除门禁检查。",
+    "upgrade_tip_en": "This release adds no application migration. Update the code and frontend assets, run php artisan migrate --force and php artisan geoflow:security-audit, then restart queue workers. When upgrading from older versions, complete the managed-image deletion readiness checks.",
+    "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v2.2.0",
+    "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/v2.2.0/docs/CHANGELOG.md",
+    "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/v2.2.0/docs/CHANGELOG_en.md"
   }
 }

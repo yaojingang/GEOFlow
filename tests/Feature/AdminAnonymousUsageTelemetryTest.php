@@ -83,6 +83,116 @@ class AdminAnonymousUsageTelemetryTest extends TestCase
             ->assertDontSee($admin->email, false);
     }
 
+    public function test_successful_admin_login_event_contains_only_anonymous_fields(): void
+    {
+        $this->enableTelemetry();
+        Http::fake([
+            'https://monitor.example/api/pulse' => Http::response('', 204),
+        ]);
+        $admin = $this->createAdmin('telemetry_login_admin');
+
+        $this->assertTrue(
+            app(AnonymousUsageTelemetry::class)->reportAdminLogin($admin, 'web'),
+        );
+
+        Http::assertSent(function ($request) use ($admin): bool {
+            $data = $request->data();
+            $this->assertSame([
+                'event',
+                'event_id',
+                'instance_id',
+                'user_hash',
+                'version',
+                'channel',
+            ], array_keys($data));
+            $this->assertSame('admin_login', $data['event']);
+            $this->assertSame('web', $data['channel']);
+            $this->assertMatchesRegularExpression(
+                '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/',
+                (string) $data['event_id'],
+            );
+            $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', (string) $data['user_hash']);
+            $encoded = json_encode($data, JSON_THROW_ON_ERROR);
+            $this->assertStringNotContainsString((string) $admin->username, $encoded);
+            $this->assertStringNotContainsString((string) $admin->email, $encoded);
+            $this->assertStringNotContainsString('203.0.113.9', $encoded);
+
+            return true;
+        });
+    }
+
+    public function test_web_and_api_successful_logins_report_their_channel_after_the_response(): void
+    {
+        $this->withoutDefer();
+        $this->enableTelemetry();
+        Http::fake([
+            'https://monitor.example/api/pulse' => Http::response('', 204),
+        ]);
+        $admin = $this->createAdmin('telemetry_login_flow_admin');
+
+        $this->post(route('admin.login.attempt'), [
+            'username' => $admin->username,
+            'password' => 'secret-123',
+        ])->assertRedirect(route('admin.dashboard'));
+
+        auth('admin')->logout();
+
+        $this->postJson('/api/v1/auth/login', [
+            'username' => $admin->username,
+            'password' => 'secret-123',
+        ])->assertOk();
+
+        $channels = [];
+        Http::assertSent(function ($request) use (&$channels): bool {
+            $data = $request->data();
+            if (($data['event'] ?? null) === 'admin_login') {
+                $channels[] = $data['channel'] ?? null;
+            }
+
+            return true;
+        });
+        $this->assertSame(['web', 'api'], $channels);
+    }
+
+    public function test_failed_login_does_not_report_central_telemetry(): void
+    {
+        $this->withoutDefer();
+        $this->enableTelemetry();
+        Http::fake();
+        $admin = $this->createAdmin('telemetry_failed_login_admin');
+
+        $this->post(route('admin.login.attempt'), [
+            'username' => $admin->username,
+            'password' => 'wrong-password',
+        ])->assertSessionHasErrors('username');
+
+        Http::assertNothingSent();
+    }
+
+    public function test_collector_failure_does_not_change_web_or_api_login_result(): void
+    {
+        $this->withoutDefer();
+        $this->enableTelemetry();
+        Http::fake([
+            'https://monitor.example/api/pulse' => Http::response(['error' => 'unavailable'], 503),
+        ]);
+        $admin = $this->createAdmin('telemetry_unavailable_collector_admin');
+
+        $this->post(route('admin.login.attempt'), [
+            'username' => $admin->username,
+            'password' => 'secret-123',
+        ])->assertRedirect(route('admin.dashboard'));
+
+        auth('admin')->logout();
+
+        $this->postJson('/api/v1/auth/login', [
+            'username' => $admin->username,
+            'password' => 'secret-123',
+        ])->assertOk();
+
+        Http::assertSentCount(2);
+    }
+
     public function test_telemetry_is_absent_when_disabled_or_endpoint_is_missing(): void
     {
         config([
