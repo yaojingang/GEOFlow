@@ -2424,6 +2424,7 @@ return array_replace_recursive($base, [
             'chunking_model_unavailable' => 'Modelo de fragmentação semântica indisponível',
             'chunking_model_required' => 'Planejamento semântico por LLM exige um modelo de chat disponível',
             'crypto_key_missing' => 'APP_KEY não configurado',
+            'api_key_required_for_origin_change' => 'Informe uma nova chave de API ao alterar o provedor',
         ],
         'message' => [
             'create_success' => 'Modelo criado com sucesso',
@@ -2467,6 +2468,7 @@ return array_replace_recursive($base, [
         'failover_priority_help' => 'Números menores são tentados primeiro como modelos de fallback. O modelo principal sempre é tentado primeiro; o fallback só começa depois de uma falha.',
         'api_key_help_create' => 'Obrigatório ao criar um modelo.',
         'api_key_help_edit' => 'Ao editar, deixe em branco para manter a chave atual. Informe um novo valor apenas ao trocar credenciais.',
+        'api_key_help_origin_change' => 'O provedor da API foi alterado. Informe uma chave emitida pelo novo provedor antes de salvar.',
     ],
     'ai_source_providers' => [
         'page_title' => 'Configuração de Busca de IA e Fontes',

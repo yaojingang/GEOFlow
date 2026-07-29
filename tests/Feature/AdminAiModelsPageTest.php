@@ -46,6 +46,36 @@ class AdminAiModelsPageTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer test-api-key'));
     }
 
+    public function test_admin_can_test_atlas_cloud_chat_model_connection(): void
+    {
+        Http::fake([
+            'https://api.atlascloud.ai/v1/chat/completions' => Http::response([
+                'choices' => [
+                    ['message' => ['content' => 'OK']],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createAiModel('chat', [
+            'name' => 'Atlas Cloud DeepSeek V4 Pro',
+            'model_id' => 'deepseek-ai/deepseek-v4-pro',
+            'api_url' => 'https://api.atlascloud.ai/v1',
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.model_type', 'chat')
+            ->assertJsonPath('meta.http_status', 200);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://api.atlascloud.ai/v1/chat/completions'
+            && $request['model'] === 'deepseek-ai/deepseek-v4-pro'
+            && $request->hasHeader('Authorization', 'Bearer test-api-key'));
+    }
+
     public function test_model_connection_tests_are_rate_limited(): void
     {
         Http::fake([
@@ -169,6 +199,96 @@ class AdminAiModelsPageTest extends TestCase
             ->assertRedirect(route('admin.ai-models.index'));
 
         $this->assertNull(AiModel::query()->where('model_id', 'embedding-model')->value('max_tokens'));
+    }
+
+    public function test_admin_must_rotate_api_key_when_model_origin_changes(): void
+    {
+        $model = $this->createAiModel('chat', [
+            'api_url' => 'https://api.openai.com',
+        ]);
+        $originalEncryptedKey = (string) $model->getRawOriginal('api_key');
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->from(route('admin.ai-models.index'))
+            ->put(route('admin.ai-models.update', ['modelId' => (int) $model->id]), [
+                'name' => 'Atlas Cloud DeepSeek V4 Pro',
+                'version' => 'v4',
+                'api_key' => '',
+                'model_id' => 'deepseek-ai/deepseek-v4-pro',
+                'model_type' => 'chat',
+                'api_url' => 'https://api.atlascloud.ai/v1',
+                'failover_priority' => 100,
+                'daily_limit' => 0,
+                'status' => 'active',
+            ]);
+
+        $response
+            ->assertRedirect(route('admin.ai-models.index'))
+            ->assertSessionHasErrors('api_key');
+
+        $model->refresh();
+        $this->assertSame('https://api.openai.com', $model->api_url);
+        $this->assertSame($originalEncryptedKey, (string) $model->getRawOriginal('api_key'));
+    }
+
+    public function test_admin_can_keep_api_key_when_only_model_endpoint_path_changes(): void
+    {
+        $model = $this->createAiModel('chat', [
+            'api_url' => 'https://api.openai.com',
+        ]);
+        $originalEncryptedKey = (string) $model->getRawOriginal('api_key');
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->put(route('admin.ai-models.update', ['modelId' => (int) $model->id]), [
+                'name' => 'OpenAI Chat',
+                'version' => '',
+                'api_key' => '',
+                'model_id' => 'gpt-4o',
+                'model_type' => 'chat',
+                'api_url' => 'https://api.openai.com/v1',
+                'failover_priority' => 100,
+                'daily_limit' => 0,
+                'status' => 'active',
+            ]);
+
+        $response
+            ->assertRedirect(route('admin.ai-models.index'))
+            ->assertSessionHasNoErrors();
+
+        $model->refresh();
+        $this->assertSame('https://api.openai.com/v1', $model->api_url);
+        $this->assertSame($originalEncryptedKey, (string) $model->getRawOriginal('api_key'));
+    }
+
+    public function test_admin_can_rotate_api_key_when_model_origin_changes(): void
+    {
+        $model = $this->createAiModel('chat', [
+            'api_url' => 'https://api.openai.com',
+        ]);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->put(route('admin.ai-models.update', ['modelId' => (int) $model->id]), [
+                'name' => 'Atlas Cloud DeepSeek V4 Pro',
+                'version' => 'v4',
+                'api_key' => 'atlas-cloud-api-key',
+                'model_id' => 'deepseek-ai/deepseek-v4-pro',
+                'model_type' => 'chat',
+                'api_url' => 'https://api.atlascloud.ai/v1',
+                'failover_priority' => 100,
+                'daily_limit' => 0,
+                'status' => 'active',
+            ]);
+
+        $response
+            ->assertRedirect(route('admin.ai-models.index'))
+            ->assertSessionHasNoErrors();
+
+        $model->refresh();
+        $this->assertSame('https://api.atlascloud.ai/v1', $model->api_url);
+        $this->assertSame(
+            'atlas-cloud-api-key',
+            app(ApiKeyCrypto::class)->decrypt((string) $model->getRawOriginal('api_key'))
+        );
     }
 
     public function test_admin_can_test_embedding_model_connection(): void
@@ -343,6 +463,9 @@ class AdminAiModelsPageTest extends TestCase
             ->assertSee('MiniMax-M2.7-highspeed', false)
             ->assertSee('deepseek-v4-flash', false)
             ->assertSee('DeepSeek V4 Pro', false)
+            ->assertSee('Atlas Cloud', false)
+            ->assertSee('deepseek-ai/deepseek-v4-pro', false)
+            ->assertSee('https://api.atlascloud.ai/v1', false)
             ->assertSee('Gemini', false)
             ->assertSee('Gemini Embedding', false)
             ->assertSee('Doubao Embedding', false)

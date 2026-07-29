@@ -1186,6 +1186,7 @@ return [
         'failover_priority_help' => '数值越小，越优先作为智能模型切换的后备模型。主模型始终先尝试，只有失败时才按优先级切换。',
         'api_key_help_create' => '创建模型时必填。',
         'api_key_help_edit' => '编辑时留空即可保留现有密钥；仅在需要轮换密钥时填写新值。',
+        'api_key_help_origin_change' => 'API 服务商已变更，保存前必须填写新服务商签发的 API Key。',
         'confirm_delete' => '确定要删除模型“:name”吗？此操作不可恢复。',
         'error' => [
             'required_fields' => '模型名称、API密钥和模型ID不能为空',
@@ -1197,6 +1198,7 @@ return [
             'chunking_model_unavailable' => '所选语义切片模型不可用',
             'chunking_model_required' => '选择 LLM 语义规划时必须指定一个可用的聊天模型',
             'crypto_key_missing' => '系统未配置 APP_KEY（应用密钥），无法加密保存 API 密钥',
+            'api_key_required_for_origin_change' => '更换 API 服务商时必须填写新的 API Key',
         ],
         'message' => [
             'create_success' => 'AI模型创建成功',

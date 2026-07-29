@@ -8,6 +8,7 @@ use App\Models\Article;
 use App\Models\SiteSetting;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiUsageReservation;
+use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
 use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -40,6 +41,7 @@ class AiModelController extends Controller
         private readonly SafeOutboundHttpClient $safeHttp,
         private readonly Factory $http,
         private readonly AiUsageQuotaService $usageQuota,
+        private readonly AiProviderEndpointPolicy $endpointPolicy,
     ) {}
 
     /**
@@ -145,6 +147,18 @@ class AiModelController extends Controller
         }
 
         $apiKey = trim((string) ($payload['api_key'] ?? ''));
+        $currentApiUrl = trim((string) ($model->api_url ?? ''));
+        $nextApiUrl = (string) $updateData['api_url'];
+        if ($apiKey === ''
+            && $currentApiUrl !== $nextApiUrl
+            && ! $this->endpointPolicy->sameOrigin($currentApiUrl, $nextApiUrl)) {
+            return back()
+                ->withInput($request->except('api_key'))
+                ->withErrors([
+                    'api_key' => __('admin.ai_models.error.api_key_required_for_origin_change'),
+                ]);
+        }
+
         if ($apiKey !== '') {
             try {
                 $updateData['api_key'] = $this->encryptApiKey($apiKey);
