@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use App\Support\AdminActivityLogger;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\AdminLoginLockService;
@@ -19,7 +20,8 @@ use Throwable;
 class AdminAuthController extends Controller
 {
     public function __construct(
-        private readonly AdminLoginLockService $adminLoginLockService
+        private readonly AdminLoginLockService $adminLoginLockService,
+        private readonly AnonymousUsageTelemetry $anonymousUsageTelemetry,
     ) {}
 
     public function showLoginForm(Request $request): View|RedirectResponse
@@ -80,6 +82,7 @@ class AdminAuthController extends Controller
         AdminActivityLogger::logFromRequest($request, $admin, 'auth:login', [
             'username' => (string) $admin->username,
         ]);
+        defer(fn () => $this->anonymousUsageTelemetry->reportAdminLogin($admin, 'web'));
 
         return redirect()->intended(route('admin.dashboard'));
     }

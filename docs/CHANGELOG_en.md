@@ -2,6 +2,19 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-07-29
+
+### v2.2.0
+
+- Added anonymous successful-login telemetry:
+  - Successful admin web and API logins emit `admin_login` events with the channel, current version, random installation ID, and an irreversible admin digest.
+  - Every successful event carries a unique UUID for deduplication, allowing the central collector to aggregate login counts and anonymous admin activity accurately.
+  - A fixed payload allowlist excludes usernames, email addresses, IP addresses, domains, page paths, failed-login details, content, and secrets.
+- Preserved login availability:
+  - Telemetry runs after the response, so collector timeouts or failures do not change web or API login outcomes.
+  - Failed logins, disabled telemetry, and missing collector endpoints send no central request.
+- Expanded automated coverage for anonymous payloads, web/API channels, silent failed logins, and telemetry network failures.
+
 ## 2026-07-28
 
 ### v2.1.2

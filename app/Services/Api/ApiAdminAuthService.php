@@ -4,6 +4,7 @@ namespace App\Services\Api;
 
 use App\Exceptions\ApiException;
 use App\Models\Admin;
+use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use App\Support\GeoFlow\AdminLoginLockService;
 use Illuminate\Support\Facades\DB;
 
@@ -11,7 +12,8 @@ class ApiAdminAuthService
 {
     public function __construct(
         private ApiTokenService $tokenService,
-        private AdminLoginLockService $loginLockService
+        private AdminLoginLockService $loginLockService,
+        private AnonymousUsageTelemetry $anonymousUsageTelemetry,
     ) {}
 
     /**
@@ -83,6 +85,7 @@ class ApiAdminAuthService
         $admin = $loginResult['admin'];
         /** @var array<string, mixed> $tokenResult */
         $tokenResult = $loginResult['token'];
+        defer(fn () => $this->anonymousUsageTelemetry->reportAdminLogin($admin, 'api'));
 
         return [
             'token' => $tokenResult['token'],
