@@ -1184,6 +1184,7 @@ return [
         'failover_priority_help' => 'Lower numbers are tried first as fallback models. The primary model is always attempted first; failover only starts after it fails.',
         'api_key_help_create' => 'Required when creating a model.',
         'api_key_help_edit' => 'Leave blank while editing to keep the current key. Enter a new value only when rotating credentials.',
+        'api_key_help_origin_change' => 'The API provider changed. Enter a key issued for the new provider before saving.',
         'confirm_delete' => 'Delete model ":name"? This action cannot be undone.',
         'error' => [
             'required_fields' => 'Model name, API key, and model ID are required',
@@ -1195,6 +1196,7 @@ return [
             'chunking_model_unavailable' => 'The selected semantic chunking model is unavailable',
             'chunking_model_required' => 'LLM semantic planning requires an available chat model',
             'crypto_key_missing' => 'APP_KEY is not configured, so API keys cannot be encrypted and saved',
+            'api_key_required_for_origin_change' => 'Enter a new API key when changing the API provider',
         ],
         'message' => [
             'create_success' => 'AI model created successfully',

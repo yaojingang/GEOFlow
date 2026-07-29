@@ -330,6 +330,7 @@
             apiKeyPlaceholderKeep: @json(__('admin.ai_models.placeholder_api_key_keep')),
             apiKeyHelpCreate: @json(__('admin.ai_models.api_key_help_create')),
             apiKeyHelpEdit: @json(__('admin.ai_models.api_key_help_edit')),
+            apiKeyHelpOriginChange: @json(__('admin.ai_models.api_key_help_origin_change')),
             confirmDelete: @json(__('admin.ai_models.confirm_delete', ['name' => '__NAME__'])),
             test: @json(__('admin.ai_models.test')),
             testing: @json(__('admin.ai_models.testing')),
@@ -370,7 +371,9 @@
             document.getElementById('api_key').required = true;
             document.getElementById('api_key').placeholder = AI_MODELS_I18N.apiKeyPlaceholder;
             document.getElementById('apiKeyHelp').textContent = AI_MODELS_I18N.apiKeyHelpCreate;
-            document.getElementById('api_url').value = 'https://api.deepseek.com';
+            const apiUrlField = document.getElementById('api_url');
+            apiUrlField.value = 'https://api.deepseek.com';
+            apiUrlField.dataset.originalOrigin = '';
             document.getElementById('failover_priority').value = 100;
             syncMaxTokensVisibility();
             document.getElementById('modelModal').classList.remove('hidden');
@@ -389,7 +392,9 @@
             document.getElementById('api_key').required = false;
             document.getElementById('api_key').placeholder = AI_MODELS_I18N.apiKeyPlaceholderKeep;
             document.getElementById('apiKeyHelp').textContent = AI_MODELS_I18N.apiKeyHelpEdit;
-            document.getElementById('api_url').value = model.api_url || '';
+            const apiUrlField = document.getElementById('api_url');
+            apiUrlField.value = model.api_url || '';
+            apiUrlField.dataset.originalOrigin = providerOrigin(apiUrlField.value);
             document.getElementById('failover_priority').value = model.failover_priority || 100;
             document.getElementById('daily_limit').value = model.daily_limit || 0;
             document.getElementById('max_tokens').value = model.max_tokens ?? '';
@@ -471,13 +476,47 @@
             if (!preset) {
                 return;
             }
+            const apiUrlField = document.getElementById('api_url');
+            const apiKeyField = document.getElementById('api_key');
+            if (document.getElementById('formMethod').value === 'PUT'
+                && providerOrigin(apiUrlField.value) !== providerOrigin(preset.api_url)) {
+                apiKeyField.value = '';
+            }
             document.getElementById('name').value = preset.name;
             document.getElementById('version').value = preset.version;
             document.getElementById('model_id').value = preset.model_id;
-            document.getElementById('api_url').value = preset.api_url;
+            apiUrlField.value = preset.api_url;
             document.getElementById('model_type').value = preset.model_type;
+            syncApiKeyRequirement();
             syncMaxTokensVisibility();
         }
+
+        function providerOrigin(value) {
+            try {
+                return new URL(String(value || '').trim()).origin.toLowerCase();
+            } catch (error) {
+                return String(value || '').trim().toLowerCase();
+            }
+        }
+
+        function syncApiKeyRequirement() {
+            if (document.getElementById('formMethod').value !== 'PUT') {
+                return;
+            }
+
+            const apiUrlField = document.getElementById('api_url');
+            const apiKeyField = document.getElementById('api_key');
+            const providerChanged = (apiUrlField.dataset.originalOrigin || '') !== providerOrigin(apiUrlField.value);
+            apiKeyField.required = providerChanged;
+            apiKeyField.placeholder = providerChanged
+                ? AI_MODELS_I18N.apiKeyPlaceholder
+                : AI_MODELS_I18N.apiKeyPlaceholderKeep;
+            document.getElementById('apiKeyHelp').textContent = providerChanged
+                ? AI_MODELS_I18N.apiKeyHelpOriginChange
+                : AI_MODELS_I18N.apiKeyHelpEdit;
+        }
+
+        document.getElementById('api_url')?.addEventListener('input', syncApiKeyRequirement);
 
         function syncMaxTokensVisibility() {
             const field = document.getElementById('maxTokensField');
