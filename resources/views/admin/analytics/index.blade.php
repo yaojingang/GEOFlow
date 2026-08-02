@@ -15,7 +15,7 @@
         [
             'key' => 'content',
             'route' => 'admin.analytics.content',
-            'span' => 'lg:col-span-7',
+            'span' => 'lg:col-span-6',
             'tone' => 'bg-blue-600',
             'icon' => 'files',
             'main' => (int) ($cards['content']['published'] ?? 0),
@@ -29,7 +29,7 @@
         [
             'key' => 'traffic',
             'route' => 'admin.analytics.traffic',
-            'span' => 'lg:col-span-5',
+            'span' => 'lg:col-span-6',
             'tone' => 'bg-cyan-600',
             'icon' => 'waypoints',
             'main' => (int) ($cards['traffic']['pv'] ?? 0),
@@ -43,7 +43,7 @@
         [
             'key' => 'ai_visibility',
             'route' => 'admin.analytics.ai-visibility',
-            'span' => 'lg:col-span-5',
+            'span' => 'lg:col-span-6',
             'tone' => 'bg-violet-600',
             'icon' => 'scan-search',
             'main' => number_format((float) ($cards['ai_visibility']['visibility'] ?? 0), 1).'%',
@@ -57,7 +57,7 @@
         [
             'key' => 'leads',
             'route' => 'admin.analytics.leads',
-            'span' => 'lg:col-span-7',
+            'span' => 'lg:col-span-6',
             'tone' => 'bg-amber-500',
             'icon' => 'contact-round',
             'main' => (int) ($cards['leads']['submissions_30d'] ?? 0),
