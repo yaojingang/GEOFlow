@@ -35,6 +35,10 @@ class AdminAnalyticsNavigationTest extends TestCase
             ->assertDontSee('data-ai-visibility-series', false)
             ->assertDontSee('data-analytics-health-grid', false);
 
+        $this->assertSame(4, substr_count($response->getContent(), 'lg:col-span-6'));
+        $this->assertStringNotContainsString('lg:col-span-5', $response->getContent());
+        $this->assertStringNotContainsString('lg:col-span-7', $response->getContent());
+
         foreach (['content', 'traffic', 'ai-visibility', 'leads', 'distribution'] as $page) {
             $this->get(route("admin.analytics.{$page}"))->assertOk();
         }
