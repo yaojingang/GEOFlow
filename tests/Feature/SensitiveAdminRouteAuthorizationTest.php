@@ -19,6 +19,7 @@ class SensitiveAdminRouteAuthorizationTest extends TestCase
             ->map(static fn ($route): ?string => $route->getName())
             ->filter(static fn (?string $name): bool => is_string($name) && (
                 str_starts_with($name, 'admin.distribution.')
+                || $name === 'admin.analytics.distribution'
                 || str_starts_with($name, 'admin.url-import')
                 || str_starts_with($name, 'admin.site-settings.theme-replications.')
             ))
@@ -38,6 +39,7 @@ class SensitiveAdminRouteAuthorizationTest extends TestCase
 
         foreach ([
             route('admin.distribution.index'),
+            route('admin.analytics.distribution'),
             route('admin.url-import'),
             route('admin.site-settings.theme-replications.create'),
         ] as $url) {
@@ -63,6 +65,7 @@ class SensitiveAdminRouteAuthorizationTest extends TestCase
         $admin = $this->admin('super_admin');
 
         $this->actingAs($admin, 'admin')->get(route('admin.distribution.index'))->assertOk();
+        $this->actingAs($admin, 'admin')->get(route('admin.analytics.distribution'))->assertOk();
         $this->actingAs($admin, 'admin')->get(route('admin.url-import'))->assertOk();
     }
 

@@ -3,183 +3,61 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Article;
-use App\Models\Category;
-use App\Models\DistributionChannel;
-use App\Models\LeadForm;
-use App\Models\LeadSubmission;
-use App\Models\Task;
-use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
-use App\Services\Admin\Analytics\AnalyticsFilter;
-use App\Services\Admin\Analytics\AnalyticsLogQueryService;
-use App\Services\Admin\Analytics\AnalyticsOverviewService;
+use App\Services\Admin\Analytics\GrowthOverviewService;
 use App\Support\AdminWeb;
-use App\Support\Analytics\TrafficClassifier;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class AnalyticsController extends Controller
 {
-    public function __construct(
-        private readonly AnalyticsOverviewService $overviewService,
-        private readonly AnalyticsLogQueryService $logQueryService,
-        private readonly AiVisibilityAnalyticsService $aiVisibilityAnalyticsService,
-    ) {}
+    private const TRAFFIC_QUERY_KEYS = [
+        'log_preset',
+        'log_date_from',
+        'log_date_to',
+        'log_traffic_type',
+        'log_source',
+        'traffic_type',
+    ];
 
-    public function index(Request $request): View
+    private const CONTENT_QUERY_KEYS = [
+        'preset',
+        'date_from',
+        'date_to',
+        'task_id',
+        'category_id',
+        'article_id',
+    ];
+
+    public function __construct(private readonly GrowthOverviewService $overview) {}
+
+    public function index(Request $request): View|RedirectResponse
     {
-        $filter = AnalyticsFilter::fromRequest($request->query());
+        if ($request->hasAny(self::TRAFFIC_QUERY_KEYS)) {
+            return redirect()->route('admin.analytics.traffic', $request->query());
+        }
+
+        if ($request->filled('channel_id')) {
+            if ($request->user('admin')?->canManageProtectedWorkflows() !== true) {
+                abort(403);
+            }
+
+            return redirect()->route('admin.analytics.distribution', $request->query());
+        }
+
+        if ($request->hasAny(self::CONTENT_QUERY_KEYS)) {
+            return redirect()->route('admin.analytics.content', $request->query());
+        }
+
         $canManageProtectedWorkflows = auth('admin')->user()?->canManageProtectedWorkflows() === true;
 
         return view('admin.analytics.index', [
             'pageTitle' => __('admin.analytics.page_title'),
             'activeMenu' => 'analytics',
+            'analyticsPage' => 'overview',
             'adminSiteName' => AdminWeb::siteName(),
-            'filters' => $filter,
             'canManageProtectedWorkflows' => $canManageProtectedWorkflows,
-            'filterOptions' => $this->filterOptions($canManageProtectedWorkflows),
-            'globalOverview' => $this->overviewService->globalOverview(),
-            'kpis' => $this->overviewService->kpis($filter, $canManageProtectedWorkflows),
-            'publicationTrend' => $this->overviewService->publicationTrend($filter),
-            'taskTrend' => $this->overviewService->taskTrend($filter),
-            'contentFunnel' => $this->overviewService->contentFunnel($filter),
-            'distributionSummary' => $canManageProtectedWorkflows
-                ? $this->overviewService->distributionSummary($filter)
-                : [],
-            'topContent' => $this->overviewService->topContent($filter),
-            'aiUsageSummary' => $this->overviewService->aiUsageSummary($filter),
-            'categoryDistribution' => $this->overviewService->categoryDistribution($filter),
-            'performanceStats' => $this->overviewService->performanceStats($filter),
-            'latestArticles' => $this->overviewService->latestArticles($filter),
-            'taskHealth' => $this->overviewService->taskHealth($filter),
-            'materialHealth' => $this->overviewService->materialHealth(),
-            'aiHealth' => $this->overviewService->aiHealth(),
-            'urlImportHealth' => $canManageProtectedWorkflows
-                ? $this->overviewService->urlImportHealth($filter)
-                : [],
-            'logSummary' => $this->logQueryService->summary($filter),
-            'growthOverview' => $this->growthOverview(),
-            'aiVisibilityOverview' => $this->aiVisibilityAnalyticsService->overview(60),
+            'overview' => $this->overview->snapshot($canManageProtectedWorkflows),
         ]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function filterOptions(bool $canManageProtectedWorkflows): array
-    {
-        return [
-            'channels' => $canManageProtectedWorkflows
-                ? DistributionChannel::query()->orderBy('name')->select('id', 'name')->get()
-                : collect(),
-            'tasks' => Task::query()
-                ->orderByDesc('created_at')
-                ->select('id', 'name')
-                ->limit(100)
-                ->get(),
-            'categories' => Category::query()
-                ->orderBy('name')
-                ->select('id', 'name')
-                ->get(),
-            'articles' => Article::query()
-                ->whereNull('deleted_at')
-                ->orderByDesc('created_at')
-                ->select('id', 'title')
-                ->limit(100)
-                ->get(),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function growthOverview(): array
-    {
-        $todayVisits = 0;
-        $todayAiVisits = 0;
-        if (Schema::hasTable('view_logs')) {
-            $todayQuery = DB::table('view_logs')->whereDate('created_at', now()->toDateString());
-            if (Schema::hasColumn('view_logs', 'method')) {
-                $todayQuery->where('method', 'GET');
-            }
-
-            $todayVisits = (int) (clone $todayQuery)->count();
-            $todayAiVisits = (int) (clone $todayQuery)
-                ->where(function ($query): void {
-                    foreach (TrafficClassifier::aiBotPatterns() as $pattern) {
-                        $query->orWhereRaw("LOWER(COALESCE(user_agent, '')) LIKE ?", ['%'.$pattern.'%']);
-                    }
-                })
-                ->count();
-        }
-
-        $leadFormsReady = Schema::hasTable('lead_forms');
-        $leadSubmissionsReady = Schema::hasTable('lead_submissions');
-
-        $formsTotal = $leadFormsReady ? LeadForm::query()->count() : 0;
-        $activeForms = $leadFormsReady ? LeadForm::query()->where('status', LeadForm::STATUS_ACTIVE)->count() : 0;
-        $submissionsTotal = $leadSubmissionsReady ? LeadSubmission::query()->count() : 0;
-        $newLeads = $leadSubmissionsReady ? LeadSubmission::query()->where('status', LeadSubmission::STATUS_NEW)->count() : 0;
-        $pendingFollowups = $leadSubmissionsReady
-            ? LeadSubmission::query()
-                ->whereIn('status', [LeadSubmission::STATUS_NEW, LeadSubmission::STATUS_CONTACTED])
-                ->count()
-            : 0;
-        $handledLeads = $leadSubmissionsReady
-            ? LeadSubmission::query()
-                ->whereIn('status', [
-                    LeadSubmission::STATUS_CONTACTED,
-                    LeadSubmission::STATUS_QUALIFIED,
-                    LeadSubmission::STATUS_CONVERTED,
-                ])
-                ->count()
-            : 0;
-
-        $recentSubmissions = collect();
-        if ($leadSubmissionsReady) {
-            $recentSubmissionsQuery = LeadSubmission::query()
-                ->orderByDesc('created_at')
-                ->limit(5);
-            if ($leadFormsReady) {
-                $recentSubmissionsQuery->with('form:id,name,slug');
-            }
-
-            $recentSubmissions = $recentSubmissionsQuery->get();
-        }
-
-        $sourceSummary = $leadSubmissionsReady
-            ? LeadSubmission::query()
-                ->select(['source_url', 'status'])
-                ->orderByDesc('created_at')
-                ->limit(500)
-                ->get()
-                ->groupBy(fn (LeadSubmission $submission): string => trim((string) $submission->source_url) !== '' ? (string) $submission->source_url : __('admin.growth_center.direct_source'))
-                ->map(fn ($rows, string $source): array => [
-                    'source' => $source,
-                    'count' => $rows->count(),
-                    'converted' => $rows->where('status', LeadSubmission::STATUS_CONVERTED)->count(),
-                ])
-                ->sortByDesc('count')
-                ->values()
-                ->take(6)
-                ->all()
-            : [];
-
-        return [
-            'stats' => [
-                'today_visits' => $todayVisits,
-                'today_ai_visits' => $todayAiVisits,
-                'forms_total' => $formsTotal,
-                'active_forms' => $activeForms,
-                'submissions_total' => $submissionsTotal,
-                'new_leads' => $newLeads,
-                'pending_followups' => $pendingFollowups,
-                'handled_leads' => $handledLeads,
-            ],
-            'recent_submissions' => $recentSubmissions,
-            'source_summary' => $sourceSummary,
-        ];
     }
 }

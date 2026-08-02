@@ -8,9 +8,11 @@ use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
 use App\Models\SiteSetting;
+use App\Services\Admin\Analytics\AiVisibilityAnalyticsFilter;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AdminAiVisibilityAnalyticsTest extends TestCase
@@ -58,7 +60,7 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         );
 
         $this->actingAs($this->admin(), 'admin')
-            ->get(route('admin.analytics'))
+            ->get(route('admin.analytics.ai-visibility'))
             ->assertOk()
             ->assertSee(__('admin.growth_center.ai_visibility.title'))
             ->assertSee(__('admin.growth_center.ai_visibility.kpi.visibility'))
@@ -74,9 +76,10 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ->assertSee('data-ai-visibility-metric-definitions', false)
             ->assertSee('data-ai-visibility-definition-item', false)
             ->assertSee('data-ai-visibility-metric-toggle', false)
-            ->assertSee('data-ai-visibility-series="visibility"', false)
-            ->assertSee('data-ai-visibility-series="top1"', false)
-            ->assertSee('data-ai-visibility-series="top3"', false)
+            ->assertSee('data-analytics-series="visibility"', false)
+            ->assertSee('data-analytics-series="top1"', false)
+            ->assertSee('data-analytics-series="top3"', false)
+            ->assertSee('aria-keyshortcuts="ArrowLeft ArrowRight Enter Escape"', false)
             ->assertSee('<polyline points="', false)
             ->assertSee('tabular-nums', false)
             ->assertSee('100.0%', false)
@@ -107,7 +110,7 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         );
 
         $this->actingAs($this->admin(), 'admin')
-            ->get(route('admin.analytics'))
+            ->get(route('admin.analytics.ai-visibility'))
             ->assertOk()
             ->assertSee(__('admin.growth_center.ai_visibility.setup_entry_title'))
             ->assertSee(__('admin.growth_center.ai_visibility.setup_entry_desc'))
@@ -116,7 +119,7 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ->assertDontSee(__('admin.growth_center.ai_visibility.trend_title'))
             ->assertDontSee(__('admin.growth_center.ai_visibility.term_cloud_title'))
             ->assertDontSee('data-ai-visibility-metric-toggle', false)
-            ->assertDontSee('data-ai-visibility-series="visibility"', false);
+            ->assertDontSee('data-analytics-series="visibility"', false);
 
         Carbon::setTestNow();
     }
@@ -136,6 +139,93 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
 
         $this->assertFalse($overview['configured']);
         $this->assertFalse($overview['configuration']['doubao_search_configured']);
+    }
+
+    public function test_visibility_filter_is_applied_before_daily_keyword_sampling(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        $this->completedRun('目标关键词', AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS, 'GEOFlow 可见', 'positive', '2026-07-10 09:00:00', []);
+        $this->completedRun('目标关键词', AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM, '其它结果', 'neutral', '2026-07-10 10:00:00', []);
+        $this->completedRun('其它关键词', AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS, '其它结果', 'neutral', '2026-07-10 11:00:00', []);
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(AiVisibilityAnalyticsFilter::fromRequest([
+            'ai_preset' => 'custom',
+            'ai_date_from' => '2026-07-10',
+            'ai_date_to' => '2026-07-10',
+            'ai_keyword' => '目标关键词',
+            'ai_provider' => AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+        ]));
+
+        $this->assertSame(1, $overview['polling']['runs']);
+        $this->assertSame(1, $overview['polling']['sampled_runs']);
+        $this->assertSame('目标关键词', $overview['keywords'][0]['keyword']);
+        $this->assertSame([AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS], $overview['keywords'][0]['providers']);
+    }
+
+    public function test_ai_visibility_query_count_is_constant_for_fourteen_and_ninety_days(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-02 12:00:00'));
+        $this->completedRun(
+            keyword: 'GEOFlow 查询性能',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'positive',
+            completedAt: '2026-08-02 09:00:00',
+            sources: [],
+        );
+        $service = app(AiVisibilityAnalyticsService::class);
+        $service->overview(AiVisibilityAnalyticsFilter::fromRequest([]));
+
+        $fourteenDays = $this->queryCount(fn () => $service->overview(AiVisibilityAnalyticsFilter::fromRequest(['ai_preset' => '14d'])));
+        $ninetyDays = $this->queryCount(fn () => $service->overview(AiVisibilityAnalyticsFilter::fromRequest(['ai_preset' => '90d'])));
+
+        $this->assertLessThanOrEqual(20, $fourteenDays);
+        $this->assertSame($fourteenDays, $ninetyDays);
+    }
+
+    public function test_analytics_queries_do_not_hydrate_large_raw_ai_payload_columns(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-02 12:00:00'));
+        $run = $this->completedRun(
+            keyword: 'GEOFlow 精简字段',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'positive',
+            completedAt: '2026-08-02 09:00:00',
+            sources: [
+                ['title' => 'GEOFlow 精简信源', 'domain' => 'geoflow.example.com', 'rank' => 1, 'snippet' => '官方来源。'],
+            ],
+        );
+        $run->forceFill([
+            'raw_request_json' => ['large' => str_repeat('x', 1000)],
+            'raw_response_json' => ['large' => str_repeat('y', 1000)],
+        ])->saveQuietly();
+        $run->sources()->firstOrFail()->forceFill([
+            'metadata_json' => ['large' => str_repeat('z', 1000)],
+        ])->saveQuietly();
+
+        $runAttributes = [];
+        $sourceAttributes = [];
+        AiVisibilityRun::retrieved(function (AiVisibilityRun $retrieved) use (&$runAttributes): void {
+            $runAttributes[] = array_keys($retrieved->getAttributes());
+        });
+        AiVisibilitySource::retrieved(function (AiVisibilitySource $retrieved) use (&$sourceAttributes): void {
+            $sourceAttributes[] = array_keys($retrieved->getAttributes());
+        });
+
+        $service = app(AiVisibilityAnalyticsService::class);
+        $service->snapshot(60);
+        $service->overview(AiVisibilityAnalyticsFilter::fromRequest(['ai_preset' => '60d']));
+
+        $this->assertNotEmpty($runAttributes);
+        $this->assertNotEmpty($sourceAttributes);
+        foreach ($runAttributes as $attributes) {
+            $this->assertNotContains('raw_request_json', $attributes);
+            $this->assertNotContains('raw_response_json', $attributes);
+        }
+        foreach ($sourceAttributes as $attributes) {
+            $this->assertNotContains('metadata_json', $attributes);
+        }
     }
 
     public function test_ai_visibility_analytics_caps_daily_keyword_samples_at_five(): void
@@ -357,6 +447,17 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ['setting_key' => 'ai_visibility_deepseek_analysis_model_id'],
             ['setting_value' => (string) $deepSeekModel->id],
         );
+    }
+
+    private function queryCount(callable $callback): int
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $callback();
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
     }
 
     private function admin(): Admin
