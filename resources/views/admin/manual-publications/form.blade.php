@@ -9,6 +9,12 @@
     $selectedAssigneeId = (string) old('assigned_admin_id', $publication?->assigned_admin_id ?? '');
     $selectedPlatform = (string) old('platform', $publication?->platform ?? 'zhihu');
     $content = (string) old('content', $publication?->content ?? $prefilledContent);
+    $articleSearchAction = $isEdit
+        ? route('admin.manual-publications.edit', ['manualPublicationId' => $publication->id])
+        : route('admin.manual-publications.create');
+    $articleSearchReset = $isEdit
+        ? route('admin.manual-publications.edit', ['manualPublicationId' => $publication->id])
+        : route('admin.manual-publications.create', array_filter(['article_id' => $selectedArticleId]));
 @endphp
 
 @section('content')
@@ -23,6 +29,30 @@
             {{ __('admin.manual_publications.button.back') }}
         </a>
     </div>
+
+    <form method="GET" action="{{ $articleSearchAction }}" class="mt-6 flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end">
+        @unless($isEdit)
+            @if($selectedArticleId !== '')
+                <input type="hidden" name="article_id" value="{{ $selectedArticleId }}">
+            @endif
+        @endunless
+        <div class="min-w-0 flex-1">
+            <label for="article_search" class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.field.article') }}</label>
+            <input id="article_search" type="search" name="article_search" value="{{ $articleSearch }}" maxlength="200" class="mt-1 w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.manual_publications.filter.search_placeholder') }}">
+        </div>
+        <div class="flex gap-2">
+            <button type="submit" class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">{{ __('admin.button.search') }}</button>
+            @if($articleSearch !== '')
+                <a href="{{ $articleSearchReset }}" class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">{{ __('admin.button.reset') }}</a>
+            @endif
+        </div>
+    </form>
+
+    @if($articles->hasPages())
+        <div class="mt-3">
+            {{ $articles->onEachSide(1)->links() }}
+        </div>
+    @endif
 
     <form method="POST" action="{{ $isEdit ? route('admin.manual-publications.update', ['manualPublicationId' => $publication->id]) : route('admin.manual-publications.store') }}" class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         @csrf

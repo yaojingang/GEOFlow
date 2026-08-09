@@ -31,6 +31,15 @@ case "$TARGET_ROOT" in
     ;;
 esac
 
+TARGET_ORIGIN=$(git -C "$TARGET_ROOT" remote get-url origin 2>/dev/null || true)
+case "$TARGET_ORIGIN" in
+  https://github.com/yaojingang/GEOFlow|https://github.com/yaojingang/GEOFlow.git|git@github.com:yaojingang/GEOFlow.git|ssh://git@github.com/yaojingang/GEOFlow.git) ;;
+  *)
+    echo "Refusing to sync into a repository that is not the official GEOFlow public remote." >&2
+    exit 1
+    ;;
+esac
+
 if ! git -C "$PROJECT_ROOT" diff --quiet -- \
   || ! git -C "$PROJECT_ROOT" diff --cached --quiet -- \
   || [ -n "$(git -C "$PROJECT_ROOT" ls-files --others --exclude-standard)" ]; then

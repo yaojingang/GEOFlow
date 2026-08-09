@@ -20,6 +20,8 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Added the Manual Publication workspace:
   - Creates post tasks from approved articles and comment tasks for public target URLs, with identity, platform account, assignee, schedule, risk, and duplicate-warning fields.
   - Supports ready, in-progress, completed, failed, skipped, and cancelled transitions, with stable identity and account snapshots, complete status history, completion URLs and notes, filtering, summaries, and CSV exports.
+  - The article picker provides server-side search and pagination while retaining the article linked to the current task. Exact-content, target-URL, and source-article duplicate checks cover the complete 90-day window.
+  - State transitions reauthorize the current assignee inside the database lock, preventing a former assignee from acting after a concurrent reassignment.
   - Standard administrators can only work with assigned tasks. The workspace stores no external platform passwords, cookies, tokens, or OAuth credentials.
 - Updated AI model and outbound request runtimes:
   - Official OpenAI chat models use the Responses API, third-party OpenAI-compatible services use the compatible driver, and new Gemini parameters and Atlas Cloud presets are included.

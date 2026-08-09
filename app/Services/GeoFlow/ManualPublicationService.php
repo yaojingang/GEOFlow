@@ -14,6 +14,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 class ManualPublicationService
 {
@@ -79,9 +80,9 @@ class ManualPublicationService
         ManualPublication $manualPublication,
         string $targetStatus,
         int $expectedRevision,
+        Admin $actor,
         ?string $completionUrl = null,
         ?string $resultNote = null,
-        ?Admin $actor = null,
     ): ManualPublication {
         return DB::transaction(function () use ($manualPublication, $targetStatus, $expectedRevision, $completionUrl, $resultNote, $actor): ManualPublication {
             $current = ManualPublication::query()
@@ -92,6 +93,10 @@ class ManualPublicationService
             if ((int) $current->revision !== $expectedRevision) {
                 throw new ManualPublicationConflictException;
             }
+
+            $ability = $current->isReopenTransition($targetStatus) ? 'reopen' : 'transition';
+            Gate::forUser($actor)->authorize($ability, $current);
+
             if (! $current->canTransitionTo($targetStatus)) {
                 throw new DomainException((string) __('admin.manual_publications.error.invalid_transition'));
             }

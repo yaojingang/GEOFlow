@@ -15,6 +15,7 @@ use App\Models\ManualPublicationPersona;
 use App\Services\GeoFlow\ManualPublicationService;
 use App\Support\AdminWeb;
 use DomainException;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -68,7 +69,7 @@ class ManualPublicationController extends Controller
             ->whereIn('review_status', ['approved', 'auto_approved'])
             ->first(['id', 'title', 'content', 'review_status']);
 
-        return view('admin.manual-publications.form', $this->formViewData(null, $article));
+        return view('admin.manual-publications.form', $this->formViewData($request, null, $article));
     }
 
     public function store(StoreManualPublicationRequest $request): RedirectResponse
@@ -118,7 +119,7 @@ class ManualPublicationController extends Controller
         $publication = ManualPublication::query()->whereKey($manualPublicationId)->firstOrFail();
         Gate::forUser($admin)->authorize('update', $publication);
 
-        return view('admin.manual-publications.form', $this->formViewData($publication));
+        return view('admin.manual-publications.form', $this->formViewData($request, $publication));
     }
 
     public function update(UpdateManualPublicationRequest $request, int $manualPublicationId): RedirectResponse
@@ -157,12 +158,14 @@ class ManualPublicationController extends Controller
                 $publication,
                 $targetStatus,
                 (int) $request->validated('revision'),
+                $admin,
                 $request->validated('completion_url'),
                 $request->validated('result_note'),
-                $admin,
             );
         } catch (DomainException|ManualPublicationConflictException $exception) {
             return back()->withInput()->withErrors($exception->getMessage());
+        } catch (AuthorizationException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
 
@@ -224,10 +227,28 @@ class ManualPublicationController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function formViewData(?ManualPublication $publication, ?Article $selectedArticle = null): array
+    private function formViewData(Request $request, ?ManualPublication $publication, ?Article $selectedArticle = null): array
     {
         if ($publication instanceof ManualPublication) {
             $publication->load($this->relations());
+        }
+
+        $selectedArticle ??= $publication?->article;
+        $articleSearch = trim((string) $request->query('article_search'));
+        $articles = Article::query()
+            ->whereIn('review_status', ['approved', 'auto_approved'])
+            ->when($articleSearch !== '', function (Builder $query) use ($articleSearch): void {
+                $query->where('title', 'like', '%'.$articleSearch.'%');
+            })
+            ->latest('id')
+            ->paginate(50, ['id', 'title', 'review_status'], 'article_page')
+            ->withQueryString();
+
+        if ($selectedArticle instanceof Article
+            && ! $articles->getCollection()->contains(fn (Article $article): bool => $article->is($selectedArticle))) {
+            $articles->setCollection(
+                $articles->getCollection()->prepend($selectedArticle)->unique('id')->values(),
+            );
         }
 
         return [
@@ -241,11 +262,8 @@ class ManualPublicationController extends Controller
             'personas' => ManualPublicationPersona::query()->where('is_active', true)->orderBy('name')->get(),
             'accounts' => ManualPublicationAccount::query()->where('is_active', true)->with('persona:id,name')->orderBy('account_name')->get(),
             'admins' => $this->activeAdmins(),
-            'articles' => Article::query()
-                ->whereIn('review_status', ['approved', 'auto_approved'])
-                ->latest('id')
-                ->limit(500)
-                ->get(['id', 'title', 'review_status']),
+            'articles' => $articles,
+            'articleSearch' => $articleSearch,
             'platforms' => ManualPublicationAccount::PLATFORMS,
             'prefilledContent' => $selectedArticle instanceof Article
                 ? Str::limit((string) $selectedArticle->content, ManualPublication::MAX_CONTENT_CHARACTERS, '')

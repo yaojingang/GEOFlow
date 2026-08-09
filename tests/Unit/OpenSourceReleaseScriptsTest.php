@@ -73,6 +73,43 @@ class OpenSourceReleaseScriptsTest extends TestCase
         $this->assertFalse(File::exists($target.'/source.txt'));
     }
 
+    public function test_release_sync_refuses_an_unrelated_target_repository_without_changing_it(): void
+    {
+        [$root, $source, $target] = $this->releaseRepositories();
+        $this->runProcess([
+            'git', '-C', $target, 'remote', 'set-url', 'origin', 'https://github.com/example/unrelated.git',
+        ]);
+
+        $process = $this->runProcess(
+            ['sh', $source.'/bin/git/prepare-open-source-release.sh', $target],
+            $root,
+            false,
+        );
+
+        $this->assertFalse($process->isSuccessful());
+        $this->assertStringContainsString('not the official GEOFlow public remote', $process->getOutput().$process->getErrorOutput());
+        $this->assertSame("original target content\n", File::get($target.'/protected.txt'));
+    }
+
+    public function test_release_sync_refreshes_a_clean_official_target_and_preserves_git_state(): void
+    {
+        [$root, $source, $target] = $this->releaseRepositories();
+
+        $process = $this->runProcess(
+            ['sh', $source.'/bin/git/prepare-open-source-release.sh', $target],
+            $root,
+        );
+
+        $this->assertTrue($process->isSuccessful());
+        $this->assertSame("original source content\n", File::get($target.'/source.txt'));
+        $this->assertFalse(File::exists($target.'/protected.txt'));
+        $this->assertTrue(File::exists($target.'/.git'));
+        $this->assertSame(
+            'https://github.com/yaojingang/GEOFlow.git',
+            trim($this->runProcess(['git', '-C', $target, 'remote', 'get-url', 'origin'])->getOutput()),
+        );
+    }
+
     /** @return array{string, string, string} */
     private function releaseRepositories(): array
     {
@@ -95,6 +132,9 @@ class OpenSourceReleaseScriptsTest extends TestCase
             $this->runProcess(['git', '-C', $repository, 'add', '-A']);
             $this->runProcess(['git', '-C', $repository, 'commit', '--quiet', '-m', 'fixture']);
         }
+        $this->runProcess([
+            'git', '-C', $target, 'remote', 'add', 'origin', 'https://github.com/yaojingang/GEOFlow.git',
+        ]);
 
         $this->beforeApplicationDestroyed(fn () => File::deleteDirectory($root));
 

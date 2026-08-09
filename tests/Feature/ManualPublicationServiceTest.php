@@ -11,9 +11,12 @@ use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationPersona;
 use App\Models\SensitiveWord;
+use App\Services\GeoFlow\ManualPublicationDuplicateDetector;
 use App\Services\GeoFlow\ManualPublicationService;
 use DomainException;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
 
 class ManualPublicationServiceTest extends TestCase
@@ -92,20 +95,20 @@ class ManualPublicationServiceTest extends TestCase
             'article_id' => $article->getKey(),
         ]), $admin);
 
-        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1);
+        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1, $admin);
         $this->assertSame(2, $publication->revision);
 
         try {
-            $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 1);
+            $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 1, $admin);
             $this->fail('Expected stale revision to be rejected.');
         } catch (ManualPublicationConflictException) {
             $this->assertSame(ManualPublication::STATUS_READY, $publication->refresh()->status);
         }
 
-        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 2);
+        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 2, $admin);
 
         try {
-            $service->transition($publication, ManualPublication::STATUS_COMPLETED, 3);
+            $service->transition($publication, ManualPublication::STATUS_COMPLETED, 3, $admin);
             $this->fail('Expected completion without URL to be rejected.');
         } catch (DomainException) {
             $this->assertSame(ManualPublication::STATUS_IN_PROGRESS, $publication->refresh()->status);
@@ -115,6 +118,7 @@ class ManualPublicationServiceTest extends TestCase
             $publication,
             ManualPublication::STATUS_COMPLETED,
             3,
+            $admin,
             'https://example.com/published/1',
             '发布成功',
         );
@@ -123,6 +127,47 @@ class ManualPublicationServiceTest extends TestCase
         $this->assertSame('https://example.com/published/1', $publication->completion_url);
         $this->assertNotNull($publication->completed_at);
         $this->assertSame(4, $publication->revision);
+    }
+
+    public function test_transition_rechecks_assignee_after_locking_current_revision(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        $originalAssignee = $this->admin();
+        $newAssignee = $this->admin();
+        [$persona, $account] = $this->identity($superAdmin);
+        $article = $this->article('approved');
+        $service = app(ManualPublicationService::class);
+        $publication = $service->create($this->payload($persona, $account, $originalAssignee, [
+            'article_id' => $article->getKey(),
+        ]), $superAdmin);
+        $publication = $service->transition(
+            $publication,
+            ManualPublication::STATUS_READY,
+            1,
+            $originalAssignee,
+        );
+
+        $this->assertTrue(Gate::forUser($originalAssignee)->allows('transition', $publication));
+
+        ManualPublication::query()->whereKey($publication->getKey())->update([
+            'assigned_admin_id' => $newAssignee->getKey(),
+            'revision' => 3,
+        ]);
+
+        try {
+            $service->transition(
+                $publication,
+                ManualPublication::STATUS_IN_PROGRESS,
+                3,
+                $originalAssignee,
+            );
+            $this->fail('Expected the former assignee to be rejected after reassignment.');
+        } catch (AuthorizationException) {
+            $publication->refresh();
+            $this->assertSame($newAssignee->getKey(), $publication->assigned_admin_id);
+            $this->assertSame(ManualPublication::STATUS_READY, $publication->status);
+            $this->assertSame(3, $publication->revision);
+        }
     }
 
     public function test_state_transition_history_keeps_failure_reason_after_reopen(): void
@@ -192,6 +237,40 @@ class ManualPublicationServiceTest extends TestCase
         ]), $admin);
 
         $this->assertSame(1, $similar->duplicate_warning_count);
+    }
+
+    public function test_exact_duplicate_detection_covers_the_full_lookback_window(): void
+    {
+        $detector = app(ManualPublicationDuplicateDetector::class);
+        $duplicateContent = '九十天窗口内的历史完全重复内容';
+        $historicalDuplicate = ManualPublication::query()->create([
+            'type' => ManualPublication::TYPE_COMMENT,
+            'platform' => ManualPublicationAccount::PLATFORM_ZHIHU,
+            'content' => $duplicateContent,
+            'content_fingerprint' => $detector->fingerprint($duplicateContent),
+            'identity_snapshot' => [],
+        ]);
+
+        foreach (range(1, ManualPublicationDuplicateDetector::MAX_SIMILARITY_CANDIDATES) as $sequence) {
+            $content = '近期不同内容 '.$sequence;
+            ManualPublication::query()->create([
+                'type' => ManualPublication::TYPE_COMMENT,
+                'platform' => ManualPublicationAccount::PLATFORM_ZHIHU,
+                'content' => $content,
+                'content_fingerprint' => $detector->fingerprint($content),
+                'identity_snapshot' => [],
+            ]);
+        }
+
+        $matches = $detector->find([
+            'platform' => ManualPublicationAccount::PLATFORM_ZHIHU,
+            'article_id' => null,
+            'target_url_hash' => null,
+            'content' => $duplicateContent,
+            'content_fingerprint' => $detector->fingerprint($duplicateContent),
+        ]);
+
+        $this->assertTrue($matches->contains('id', $historicalDuplicate->getKey()));
     }
 
     public function test_update_persists_casted_scan_data_and_rejects_stale_revision(): void

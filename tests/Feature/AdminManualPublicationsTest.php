@@ -78,6 +78,47 @@ class AdminManualPublicationsTest extends TestCase
             ->assertSee('最终发布文案');
     }
 
+    public function test_article_picker_searches_paginated_results_and_keeps_current_article_selected(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        [$persona, $account] = $this->identity($superAdmin);
+        $currentArticle = $this->article('approved');
+        $currentArticle->update(['title' => '当前工单历史文章']);
+        $searchableArticle = $this->article('approved');
+        $searchableArticle->update(['title' => '归档检索针文章']);
+        $publication = app(ManualPublicationService::class)->create(
+            $this->payload($persona, $account, $superAdmin, ['article_id' => $currentArticle->getKey()]),
+            $superAdmin,
+        );
+
+        foreach (range(1, 55) as $sequence) {
+            Article::query()->create([
+                'title' => '近期已审核文章 '.$sequence,
+                'slug' => 'recent-approved-article-'.$sequence,
+                'excerpt' => '摘要',
+                'content' => '文章正文',
+                'category_id' => $currentArticle->category_id,
+                'author_id' => $currentArticle->author_id,
+                'status' => 'draft',
+                'review_status' => 'approved',
+            ]);
+        }
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.manual-publications.create', ['article_search' => '归档检索针']))
+            ->assertOk()
+            ->assertSee($searchableArticle->title)
+            ->assertViewHas('articles', fn ($articles): bool => $articles->total() === 1);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.manual-publications.edit', ['manualPublicationId' => $publication->getKey()]))
+            ->assertOk()
+            ->assertSee($currentArticle->title)
+            ->assertSee('value="'.$currentArticle->getKey().'" selected', false)
+            ->assertViewHas('articles', fn ($articles): bool => $articles->perPage() === 50
+                && $articles->getCollection()->contains('id', $currentArticle->getKey()));
+    }
+
     public function test_standard_admin_only_sees_assigned_work_and_can_complete_it(): void
     {
         $superAdmin = $this->admin('super_admin');
@@ -285,9 +326,9 @@ class AdminManualPublicationsTest extends TestCase
         ])->assertSessionHasErrors();
         $this->assertSame(ManualPublication::STATUS_DRAFT, $publication->refresh()->status);
 
-        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1);
-        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 2);
-        $publication = $service->transition($publication, ManualPublication::STATUS_FAILED, 3, resultNote: '平台暂时不可用');
+        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1, $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 2, $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_FAILED, 3, $superAdmin, resultNote: '平台暂时不可用');
 
         $this->actingAs($worker, 'admin')->post(route('admin.manual-publications.transition', ['manualPublicationId' => $publication->getKey()]), [
             'target_status' => ManualPublication::STATUS_READY,

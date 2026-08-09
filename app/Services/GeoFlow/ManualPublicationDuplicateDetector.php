@@ -13,7 +13,7 @@ class ManualPublicationDuplicateDetector
 
     public const LOOKBACK_DAYS = 90;
 
-    public const MAX_CANDIDATES = 50;
+    public const MAX_SIMILARITY_CANDIDATES = 50;
 
     public function fingerprint(string $content): string
     {
@@ -33,39 +33,43 @@ class ManualPublicationDuplicateDetector
      */
     public function find(array $attributes, ?int $excludeId = null): Collection
     {
-        $query = ManualPublication::query()
+        $baseQuery = ManualPublication::query()
             ->where('platform', $attributes['platform'])
             ->where('created_at', '>=', now()->subDays(self::LOOKBACK_DAYS))
-            ->when($excludeId !== null, fn (Builder $builder) => $builder->whereKeyNot($excludeId))
+            ->when($excludeId !== null, fn (Builder $builder) => $builder->whereKeyNot($excludeId));
+        $columns = [
+            'id',
+            'article_id',
+            'target_url_hash',
+            'content',
+            'content_fingerprint',
+            'status',
+            'created_at',
+        ];
+        $exactMatches = (clone $baseQuery)
+            ->where(function (Builder $query) use ($attributes): void {
+                $query->where('content_fingerprint', $attributes['content_fingerprint'])
+                    ->when($attributes['target_url_hash'] !== null, fn (Builder $builder) => $builder
+                        ->orWhere('target_url_hash', $attributes['target_url_hash']))
+                    ->when($attributes['article_id'] !== null, fn (Builder $builder) => $builder
+                        ->orWhere('article_id', $attributes['article_id']));
+            })
             ->latest('id')
-            ->limit(self::MAX_CANDIDATES)
-            ->get([
-                'id',
-                'article_id',
-                'target_url_hash',
-                'content',
-                'content_fingerprint',
-                'status',
-                'created_at',
-            ]);
+            ->get($columns);
+        $similarityCandidates = (clone $baseQuery)
+            ->when($exactMatches->isNotEmpty(), fn (Builder $query) => $query->whereKeyNot($exactMatches->modelKeys()))
+            ->latest('id')
+            ->limit(self::MAX_SIMILARITY_CANDIDATES)
+            ->get($columns);
 
         $normalizedContent = $this->normalizeContent($attributes['content']);
-
-        return $query->filter(function (ManualPublication $candidate) use ($attributes, $normalizedContent): bool {
-            if (hash_equals((string) $candidate->content_fingerprint, $attributes['content_fingerprint'])) {
-                return true;
-            }
-            if ($attributes['target_url_hash'] !== null && hash_equals((string) $candidate->target_url_hash, $attributes['target_url_hash'])) {
-                return true;
-            }
-            if ($attributes['article_id'] !== null && (int) $candidate->article_id === $attributes['article_id']) {
-                return true;
-            }
-
+        $similarMatches = $similarityCandidates->filter(function (ManualPublication $candidate) use ($normalizedContent): bool {
             similar_text($normalizedContent, $this->normalizeContent((string) $candidate->content), $similarity);
 
             return $similarity >= self::SIMILARITY_THRESHOLD;
-        })->values();
+        });
+
+        return $exactMatches->concat($similarMatches)->unique('id')->values();
     }
 
     private function normalizeContent(string $content): string
