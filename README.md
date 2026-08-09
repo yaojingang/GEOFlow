@@ -74,6 +74,14 @@ bash .agents/skills/geoflow/scripts/install_codex_skill.sh
 
 ---
 
+## GEOFlow CLI 0.2.0
+
+仓库内置 `bin/geoflow`，用于通过 API v1 管理目录、任务、执行记录、素材和文章。CLI 支持安全配置、登录、JSON 文件或 stdin、删除确认和结构化错误提示。正式支持 macOS、Linux 和 WSL；原生 Windows 的配置文件 ACL 需要手动确认。
+
+[CLI 中文完整文档](docs/GEOFLOW_CLI.md) | [CLI English guide](docs/GEOFLOW_CLI_en.md)
+
+---
+
 ## 🖼 界面预览
 
 <table>

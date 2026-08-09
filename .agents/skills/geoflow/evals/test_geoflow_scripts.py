@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 
+import errno
 import json
 import os
+import pty
+import re
+import select
+import stat
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -395,28 +403,40 @@ class PreflightHttpStatusTest(unittest.TestCase):
             fake_curl = fake_bin / "curl"
             fake_curl.write_text(
                 """#!/usr/bin/env python3
+import json
+import os
 import sys
 from pathlib import Path
 
 args = sys.argv[1:]
-output_flag = "--output" if "--output" in args else "-o"
-output = Path(args[args.index(output_flag) + 1])
-output.write_text(
-    '{"message":"server error","token":"response-token","nested":{"password":"response-password"}}',
-    encoding="utf-8",
-)
-if "--write-out" in args:
-    print("500", end="")
+Path(os.environ["GEOFLOW_FAKE_CURL_ARGS"]).write_text(json.dumps(args), encoding="utf-8")
+header_flag = "--dump-header" if "--dump-header" in args else "-D"
+header_path = Path(args[args.index(header_flag) + 1])
+header_path.write_bytes(b"HTTP/1.1 500 Fixture\\r\\n\\r\\n")
+leaf_secret = os.environ["GEOFLOW_TEST_MESSAGE_SECRET"]
+environment_token = os.environ["GEOFLOW_API_TOKEN"]
+print(json.dumps({
+    "message": (
+        f"server error token={leaf_secret} password={leaf_secret} secret={leaf_secret} "
+        f"api_key={leaf_secret} Authorization: Bearer {leaf_secret} current={environment_token}"
+    ),
+    "nested": [f"secret={leaf_secret}", {"note": f"api_key={leaf_secret}"}],
+}))
 """,
                 encoding="utf-8",
             )
             fake_curl.chmod(0o755)
 
             env = os.environ.copy()
+            curl_args_path = root / "curl-args.json"
+            message_secret = "fixture-message-leaf-secret"
+            environment_token = "fixture-current-environment-token"
             env.update({
                 "PATH": f"{fake_bin}:{env['PATH']}",
                 "GEOFLOW_BASE_URL": "https://geoflow.example.test",
-                "GEOFLOW_API_TOKEN": "test-token",
+                "GEOFLOW_API_TOKEN": environment_token,
+                "GEOFLOW_FAKE_CURL_ARGS": str(curl_args_path),
+                "GEOFLOW_TEST_MESSAGE_SECRET": message_secret,
             })
             completed = subprocess.run(
                 ["bash", str(SCRIPT_DIR / "geoflow_preflight.sh"), str(workspace)],
@@ -429,8 +449,11 @@ if "--write-out" in args:
             self.assertNotEqual(0, completed.returncode)
             self.assertIn("HTTP 500", completed.stderr)
             self.assertIn("[redacted]", completed.stderr)
-            self.assertNotIn("response-token", completed.stdout + completed.stderr)
-            self.assertNotIn("response-password", completed.stdout + completed.stderr)
+            combined = completed.stdout + completed.stderr
+            if message_secret in combined or environment_token in combined:
+                self.fail("preflight printed a credential embedded in a JSON string leaf")
+            curl_args = json.loads(curl_args_path.read_text(encoding="utf-8"))
+            self.assertIn("--globoff", curl_args)
 
     def test_api_fallback_rejects_file_base_url_before_curl(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -455,6 +478,358 @@ if "--write-out" in args:
             self.assertNotEqual(0, completed.returncode)
             self.assertIn("must be an http(s) URL", completed.stderr)
             self.assertNotIn("local-file", completed.stdout + completed.stderr)
+            self.assertNotIn("unbound variable", completed.stderr)
+
+    def test_api_fallback_rejects_brace_glob_before_curl(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workspace = self.make_laravel_workspace(root)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            curl_marker = root / "curl-invoked"
+            fake_curl = fake_bin / "curl"
+            fake_curl.write_text(
+                "#!/usr/bin/env python3\n"
+                "import os\n"
+                "from pathlib import Path\n"
+                'Path(os.environ["GEOFLOW_CURL_MARKER"]).touch()\n',
+                encoding="utf-8",
+            )
+            fake_curl.chmod(0o755)
+            env = os.environ.copy()
+            env.update({
+                "PATH": f"{fake_bin}:{env['PATH']}",
+                "GEOFLOW_BASE_URL": "https://geoflow.example.test/{first,second}",
+                "GEOFLOW_API_TOKEN": "fixture-token",
+                "GEOFLOW_CURL_MARKER": str(curl_marker),
+            })
+
+            completed = subprocess.run(
+                ["bash", str(SCRIPT_DIR / "geoflow_preflight.sh"), str(workspace)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn("curl glob characters", completed.stderr)
+            self.assertFalse(curl_marker.exists(), "curl ran for a rejected brace-glob URL")
+
+    def test_api_fallback_allows_bracketed_loopback_ipv6_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workspace = self.make_laravel_workspace(root)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            call_log = root / "curl-calls.jsonl"
+            fake_curl = fake_bin / "curl"
+            fake_curl.write_text(
+                """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+with Path(os.environ["GEOFLOW_CURL_CALL_LOG"]).open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps(args) + "\\n")
+header = Path(args[args.index("--dump-header") + 1])
+header.write_bytes(b"HTTP/1.1 200 Fixture\\r\\n\\r\\n")
+print('{"success":true,"data":{}}', end="")
+""",
+                encoding="utf-8",
+            )
+            fake_curl.chmod(0o755)
+            env = os.environ.copy()
+            env.update({
+                "PATH": f"{fake_bin}:{env['PATH']}",
+                "GEOFLOW_BASE_URL": "http://[::1]:18080",
+                "GEOFLOW_API_TOKEN": "fixture-token",
+                "GEOFLOW_CURL_CALL_LOG": str(call_log),
+            })
+
+            completed = subprocess.run(
+                ["bash", str(SCRIPT_DIR / "geoflow_preflight.sh"), str(workspace)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            calls = [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(1, len(calls))
+            self.assertIn("--globoff", calls[0])
+            self.assertIn("http://[::1]:18080/api/v1/catalog", calls[0])
+
+
+class PreflightStreamingLimitTest(unittest.TestCase):
+    @staticmethod
+    def make_fake_curl(root: Path) -> tuple[Path, Path]:
+        fake_bin = root / "bin"
+        fake_bin.mkdir()
+        call_log = root / "curl-call.json"
+        fake_curl = fake_bin / "curl"
+        fake_curl.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+Path(os.environ["GEOFLOW_FAKE_CURL_CALL"]).write_text(json.dumps(args), encoding="utf-8")
+header_flag = "--dump-header" if "--dump-header" in args else "-D"
+header_path = Path(args[args.index(header_flag) + 1])
+header_path.write_bytes(
+    b"HTTP/1.1 " + os.environ["GEOFLOW_FAKE_HTTP_STATUS"].encode() + b" Fixture\\r\\n\\r\\n"
+)
+body_text = os.environ.get("GEOFLOW_FAKE_BODY_TEXT")
+body = body_text.encode() if body_text is not None else b"x" * int(os.environ["GEOFLOW_FAKE_BODY_BYTES"])
+sys.stdout.buffer.write(body)
+""",
+            encoding="utf-8",
+        )
+        fake_curl.chmod(0o755)
+        return fake_bin, call_log
+
+    @staticmethod
+    def make_laravel_workspace(root: Path) -> Path:
+        workspace = root / "workspace"
+        (workspace / "routes").mkdir(parents=True)
+        (workspace / "artisan").write_text("#!/usr/bin/env php\n", encoding="utf-8")
+        (workspace / "routes/api.php").write_text("<?php\n", encoding="utf-8")
+        return workspace
+
+    def test_preflight_streaming_limit_stops_curl_that_ignores_max_filesize(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            oversized = b"x" * (5 * 1024 * 1024 + 65536)
+            fake_bin, call_log = self.make_fake_curl(root)
+            workspace = self.make_laravel_workspace(root)
+            env = os.environ.copy()
+            env.update({
+                "PATH": f"{fake_bin}:{env['PATH']}",
+                "GEOFLOW_BASE_URL": "https://geoflow.example.test",
+                "GEOFLOW_API_TOKEN": "fixture-token",
+                "GEOFLOW_FAKE_CURL_CALL": str(call_log),
+                "GEOFLOW_FAKE_HTTP_STATUS": "200",
+                "GEOFLOW_FAKE_BODY_BYTES": str(len(oversized)),
+            })
+
+            completed = subprocess.run(
+                [
+                    "/bin/bash",
+                    str(SCRIPT_DIR / "geoflow_preflight.sh"),
+                    str(workspace),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn("exceeded 5242880 bytes", completed.stderr)
+            self.assertNotIn("x" * 1000, completed.stdout + completed.stderr)
+            curl_args = json.loads(call_log.read_text(encoding="utf-8"))
+            self.assertIn("--dump-header", curl_args)
+            self.assertNotIn("--location", curl_args)
+
+
+class PreflightCliDispatchTest(unittest.TestCase):
+    @staticmethod
+    def make_cli_workspace(root: Path, workspace_name: str = "workspace") -> tuple[Path, Path]:
+        workspace = root / workspace_name
+        cli = workspace / "bin/geoflow"
+        cli.parent.mkdir(parents=True)
+        cli.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+log_path = Path(os.environ["GEOFLOW_FAKE_CLI_LOG"])
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps(args) + "\\n")
+
+command = []
+index = 0
+while index < len(args):
+    if args[index] == "--config":
+        index += 2
+        continue
+    command.append(args[index])
+    index += 1
+
+if command == ["--version"]:
+    print(json.dumps({"name": "geoflow", "version": "0.2.0"}))
+    raise SystemExit(0)
+if command == ["--help"]:
+    print("GEOFlow CLI 0.2.0")
+    print("  geoflow catalog")
+    print("  geoflow material summary")
+    print("  geoflow task list")
+    print("  geoflow article list")
+    raise SystemExit(0)
+if command == ["config", "show"]:
+    print(json.dumps({
+        "base_url": "https://geoflow.example.test",
+        "token_masked": "geo***oken",
+        "credential_binding_valid": True,
+    }))
+    raise SystemExit(0)
+
+status = os.environ.get("GEOFLOW_FAKE_CLI_STATUS", "")
+if command == ["catalog"] and status:
+    code = int(status)
+    messages = {
+        401: "Token invalid",
+        403: "Forbidden",
+        423: "Resource locked",
+        429: "Too many requests",
+    }
+    message = messages[code] + os.environ.get("GEOFLOW_FAKE_CLI_MESSAGE", "")
+    print(json.dumps({
+        "success": False,
+        "status": code,
+        "error": {
+            "code": "fake_error",
+            "message": message,
+            "details": {"retry_after": 17, "token": "fake-response-token"},
+        },
+    }), file=sys.stderr)
+    raise SystemExit(1)
+
+print(json.dumps({"success": True, "data": {"command": command}}))
+""",
+            encoding="utf-8",
+        )
+        cli.chmod(0o755)
+        return workspace, root / "cli.log"
+
+    def test_cli_preflight_dispatches_requested_checks_with_explicit_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workspace, log_path = self.make_cli_workspace(root)
+            config_path = root / "profile.json"
+            env = os.environ.copy()
+            env["GEOFLOW_FAKE_CLI_LOG"] = str(log_path)
+
+            completed = subprocess.run(
+                [
+                    "bash",
+                    str(SCRIPT_DIR / "geoflow_preflight.sh"),
+                    str(workspace),
+                    str(config_path),
+                    "catalog,materials,tasks,articles",
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            calls = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+            prefix = ["--config", str(config_path)]
+            self.assertEqual([
+                prefix + ["--version"],
+                prefix + ["--help"],
+                prefix + ["config", "show"],
+                prefix + ["catalog"],
+                prefix + ["material", "summary"],
+                prefix + ["task", "list", "--per-page", "1"],
+                prefix + ["article", "list", "--per-page", "1"],
+            ], calls)
+
+    def test_cli_preflight_explains_401_and_429_without_leaking_secrets(self) -> None:
+        for status, expected in (("401", "authentication failed"), ("429", "retry_after")):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                workspace, log_path = self.make_cli_workspace(root)
+                env = os.environ.copy()
+                env.update({
+                    "GEOFLOW_FAKE_CLI_LOG": str(log_path),
+                    "GEOFLOW_FAKE_CLI_STATUS": status,
+                })
+
+                completed = subprocess.run(
+                    ["bash", str(SCRIPT_DIR / "geoflow_preflight.sh"), str(workspace)],
+                    text=True,
+                    capture_output=True,
+                    env=env,
+                    check=False,
+                )
+
+                combined = completed.stdout + completed.stderr
+                self.assertNotEqual(0, completed.returncode)
+                self.assertIn(expected, combined)
+                self.assertIn("[redacted]", combined)
+                self.assertNotIn("fake-response-token", combined)
+
+    def test_cli_preflight_redacts_message_secrets_and_quotes_recovery_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workspace_marker = root / "injected_workspace"
+            config_marker = root / "injected_config"
+            workspace, log_path = self.make_cli_workspace(root, "workspace $(touch injected_workspace)")
+            config_path = root / "profile;touch injected_config"
+            leaf_secret = "fixture-cli-message-secret"
+            environment_token = "fixture-cli-environment-token"
+            env = os.environ.copy()
+            env.update({
+                "GEOFLOW_FAKE_CLI_LOG": str(log_path),
+                "GEOFLOW_FAKE_CLI_STATUS": "401",
+                "GEOFLOW_API_TOKEN": environment_token,
+                "GEOFLOW_FAKE_CLI_MESSAGE": (
+                    f" token={leaf_secret} password={leaf_secret} secret={leaf_secret} "
+                    f"api_key={leaf_secret} Authorization: Bearer {leaf_secret} current={environment_token}"
+                ),
+            })
+
+            completed = subprocess.run(
+                [
+                    "bash",
+                    str(SCRIPT_DIR / "geoflow_preflight.sh"),
+                    str(workspace),
+                    str(config_path),
+                    "catalog",
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertNotEqual(0, completed.returncode)
+            combined = completed.stdout + completed.stderr
+            if leaf_secret in combined or environment_token in combined:
+                self.fail("preflight printed a credential embedded in a CLI JSON message")
+            hint_line = next(line for line in completed.stderr.splitlines() if "Refresh the saved token with:" in line)
+            hint = hint_line.split("with:", 1)[1].strip()
+            self.assertNotIn("<", hint)
+            self.assertNotIn(">", hint)
+            self.assertNotIn("URL", hint)
+            self.assertNotIn("USERNAME", hint)
+            self.assertNotIn("--base-url", hint)
+            self.assertNotIn("--username", hint)
+            replay = subprocess.run(
+                ["bash", "-c", hint],
+                cwd=root,
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(0, replay.returncode, replay.stderr)
+            replay_calls = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(["--config", str(config_path), "login", "--force"], replay_calls[-1])
+            self.assertFalse(workspace_marker.exists(), "recovery hint executed workspace metacharacters")
+            self.assertFalse(config_marker.exists(), "recovery hint executed config metacharacters")
 
 
 class StaticPreviewTest(unittest.TestCase):
@@ -492,6 +867,256 @@ class PackageContractTest(unittest.TestCase):
     @property
     def skill_root(self) -> Path:
         return SCRIPT_DIR.parent
+
+    def test_api_fallback_curl_calls_disable_globbing(self) -> None:
+        command_map = (self.skill_root / "references/command-map.md").read_text(encoding="utf-8")
+        self.assertEqual(command_map.count("curl --disable"), command_map.count("curl --disable --globoff"))
+        preflight = (self.skill_root / "scripts/geoflow_preflight.sh").read_text(encoding="utf-8")
+        self.assertIn("curl --disable --globoff --proto", preflight)
+        self.assertIn("curl_args=(--disable --globoff --proto", preflight)
+
+    def test_documented_api_fallback_redacts_error_body_before_stderr(self) -> None:
+        source = (self.skill_root / "references/command-map.md").read_text(encoding="utf-8")
+        login_section = source.split("### API-only fallback", 1)[1].split(
+            "Then run the protected login flow:", 1
+        )[0]
+        transport_script = login_section.split("```bash", 1)[1].split("```", 1)[0]
+        fallback_section = source.split("## API v1 Fallback", 1)[1].split("## Admin Web Boundary", 1)[0]
+        setup_script = fallback_section.split("```bash", 1)[1].split("```", 1)[0]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            fake_bin, call_log = PreflightStreamingLimitTest.make_fake_curl(root)
+            message_secret = "fixture-fallback-message-secret"
+            environment_secret = "fixture-fallback-environment-secret"
+            response = json.dumps({
+                "success": False,
+                "error": {
+                    "message": f"token={message_secret} current={environment_secret}",
+                    "details": {"password": "fixture-fallback-password"},
+                },
+            })
+            env = os.environ.copy()
+            env.update({
+                "PATH": f"{fake_bin}:{env['PATH']}",
+                "GEOFLOW_BASE_URL": "https://geoflow.example.test",
+                "GEOFLOW_API_TOKEN": environment_secret,
+                "GEOFLOW_FAKE_CURL_CALL": str(call_log),
+                "GEOFLOW_FAKE_HTTP_STATUS": "500",
+                "GEOFLOW_FAKE_BODY_TEXT": response,
+            })
+            script = transport_script + "\n" + setup_script + "\ngeoflow_api_request \\\n+  -H 'Accept: application/json' \\\n+  \"$geoflow_api_base_url/api/v1/catalog\"\n"
+
+            completed = subprocess.run(
+                ["/bin/bash", "-c", script],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            combined = completed.stdout + completed.stderr
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn("HTTP 500", combined)
+            self.assertIn("[redacted]", combined)
+            for secret in (message_secret, environment_secret, "fixture-fallback-password"):
+                self.assertNotIn(secret, combined)
+            curl_args = json.loads(call_log.read_text(encoding="utf-8"))
+            self.assertNotIn("--location", curl_args)
+
+    def test_api_only_first_login_keeps_secrets_in_protected_files(self) -> None:
+        source = (self.skill_root / "references/command-map.md").read_text(encoding="utf-8")
+        section = source.split("## First Login", 1)[1].split("## CLI 0.2.0 Command Reference", 1)[0]
+        api_only_section = section.split("### API-only fallback", 1)[1]
+        bash_blocks = re.findall(r"```bash\n(.*?)\n```", api_only_section, flags=re.DOTALL)
+        self.assertGreaterEqual(len(bash_blocks), 2)
+        script = bash_blocks[0] + "\n" + bash_blocks[1]
+        self.assertIn("--globoff", script)
+        self.assertIn('if "{" in value or "}" in value:', script)
+        self.assertNotIn("print(token)", section)
+        self.assertNotIn("export GEOFLOW_API_TOKEN", section)
+        self.assertIn('"--location"', script)
+        self.assertNotIn("curl --disable --globoff --location", section)
+        self.assertNotIn("--insecure", section)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            protected_root = root / "protected"
+            protected_root.mkdir()
+            ready_path = root / "request-response-removed"
+            continue_path = root / "continue"
+            request_path = protected_root / "request"
+            response_path = protected_root / "response"
+            error_path = protected_root / "error"
+            header_path = protected_root / "header"
+
+            fake_mktemp = fake_bin / "mktemp"
+            fake_mktemp.write_text(
+                """#!/usr/bin/env python3
+import os
+from pathlib import Path
+
+root = Path(os.environ["GEOFLOW_TEST_PROTECTED_ROOT"])
+counter = root / "counter"
+index = int(counter.read_text(encoding="utf-8")) if counter.exists() else 0
+names = ("request", "response", "error", "header")
+if index >= len(names):
+    raise SystemExit("unexpected mktemp call")
+path = root / names[index]
+path.touch(mode=0o600, exist_ok=False)
+counter.write_text(str(index + 1), encoding="utf-8")
+print(path)
+""",
+                encoding="utf-8",
+            )
+            fake_mktemp.chmod(0o755)
+
+            fake_rm = fake_bin / "rm"
+            fake_rm.write_text(
+                """#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+targets = [argument for argument in sys.argv[1:] if argument != "-f"]
+subprocess.run(["/bin/rm", "-f", *targets], check=True)
+root = Path(os.environ["GEOFLOW_TEST_PROTECTED_ROOT"])
+request = str(root / "request")
+response = str(root / "response")
+error = str(root / "error")
+header = str(root / "header")
+if request in targets and response in targets and error in targets and header not in targets:
+    Path(os.environ["GEOFLOW_TEST_READY"]).touch()
+    continue_path = Path(os.environ["GEOFLOW_TEST_CONTINUE"])
+    deadline = time.monotonic() + 10
+    while not continue_path.exists():
+        if time.monotonic() >= deadline:
+            raise SystemExit("test continuation timed out")
+        time.sleep(0.01)
+""",
+                encoding="utf-8",
+            )
+            fake_rm.chmod(0o755)
+
+            fixture_password = "fixture-password-value"
+            fixture_token = "fixture-token-value"
+            observed: dict[str, bool] = {}
+
+            class LoginHandler(BaseHTTPRequestHandler):
+                def do_POST(self) -> None:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length))
+                    observed["request_ok"] = payload == {
+                        "username": "admin",
+                        "password": fixture_password,
+                    }
+                    observed["modes_ok"] = all(
+                        path.exists() and stat.S_IMODE(path.stat().st_mode) == 0o600
+                        for path in (request_path, response_path, error_path, header_path)
+                    )
+                    response = json.dumps({"success": True, "data": {"token": fixture_token}}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(response)))
+                    self.end_headers()
+                    self.wfile.write(response)
+
+                def log_message(self, *_args: object) -> None:
+                    return
+
+            server = HTTPServer(("127.0.0.1", 0), LoginHandler)
+            server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+            env = os.environ.copy()
+            env.update({
+                "PATH": f"{fake_bin}:{env['PATH']}",
+                "GEOFLOW_BASE_URL": f"http://127.0.0.1:{server.server_port}",
+                "GEOFLOW_TEST_PROTECTED_ROOT": str(protected_root),
+                "GEOFLOW_TEST_READY": str(ready_path),
+                "GEOFLOW_TEST_CONTINUE": str(continue_path),
+            })
+
+            pid = -1
+            file_descriptor = -1
+            child_status = None
+            output = bytearray()
+            sent_username = False
+            sent_password = False
+            inspected_intermediate_state = False
+            try:
+                pid, file_descriptor = pty.fork()
+                if pid == 0:
+                    os.execve("/bin/bash", ["bash", "-c", script], env)
+                server_thread.start()
+
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    if ready_path.exists() and not inspected_intermediate_state:
+                        self.assertFalse(request_path.exists())
+                        self.assertFalse(response_path.exists())
+                        self.assertFalse(error_path.exists())
+                        self.assertTrue(header_path.is_file())
+                        self.assertEqual(0o600, stat.S_IMODE(header_path.stat().st_mode))
+                        header_is_valid = header_path.read_text(encoding="utf-8").startswith("Authorization: Bearer ")
+                        self.assertTrue(header_is_valid, "protected authorization header was not generated")
+                        inspected_intermediate_state = True
+                        continue_path.touch()
+
+                    ready, _, _ = select.select([file_descriptor], [], [], 0.1)
+                    if ready:
+                        try:
+                            chunk = os.read(file_descriptor, 4096)
+                        except OSError as exc:
+                            if exc.errno == errno.EIO:
+                                break
+                            raise
+                        if not chunk:
+                            break
+                        output.extend(chunk)
+                        if b"Admin username:" in output and not sent_username:
+                            os.write(file_descriptor, b"admin\n")
+                            sent_username = True
+                        if b"Admin password:" in output and not sent_password:
+                            os.write(file_descriptor, fixture_password.encode() + b"\n")
+                            sent_password = True
+
+                    waited_pid, status_value = os.waitpid(pid, os.WNOHANG)
+                    if waited_pid:
+                        child_status = status_value
+                        break
+                if child_status is None:
+                    waited_pid, status_value = os.waitpid(pid, os.WNOHANG)
+                    if waited_pid:
+                        child_status = status_value
+                if child_status is None:
+                    raise AssertionError("API-only login flow timed out")
+            finally:
+                continue_path.touch(exist_ok=True)
+                if pid > 0 and child_status is None:
+                    os.kill(pid, 9)
+                    os.waitpid(pid, 0)
+                if file_descriptor >= 0:
+                    os.close(file_descriptor)
+                server.shutdown()
+                server.server_close()
+                if server_thread.ident is not None:
+                    server_thread.join(timeout=5)
+
+            rendered_output = output.decode("utf-8", errors="replace")
+            safe_output = rendered_output.replace(fixture_password, "[redacted]").replace(fixture_token, "[redacted]")
+            self.assertEqual(0, os.waitstatus_to_exitcode(child_status), safe_output)
+            self.assertTrue(inspected_intermediate_state)
+            self.assertTrue(observed.get("request_ok", False))
+            self.assertTrue(observed.get("modes_ok", False))
+            if fixture_password in rendered_output or fixture_token in rendered_output:
+                self.fail("API-only login flow printed a credential")
+            self.assertFalse(request_path.exists())
+            self.assertFalse(response_path.exists())
+            self.assertFalse(error_path.exists())
+            self.assertFalse(header_path.exists())
 
     def test_lead_form_contract_stays_synchronized(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
