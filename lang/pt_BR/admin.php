@@ -1,8 +1,13 @@
 <?php
 
 $base = require __DIR__.'/../en/admin.php';
+$manualPublicationsPath = __DIR__.'/manual_publications.php';
+if (! is_file($manualPublicationsPath) && function_exists('lang_path')) {
+    $manualPublicationsPath = lang_path('pt_BR/manual_publications.php');
+}
 
 return array_replace_recursive($base, [
+    'manual_publications' => require $manualPublicationsPath,
     'nav' => [
         'dashboard' => 'Painel',
         'tasks' => 'Tarefas',
@@ -1450,6 +1455,11 @@ return array_replace_recursive($base, [
             'badge' => 'Construtor da Página Inicial',
             'section_title' => 'Módulos Personalizados da Página Inicial',
             'section_desc' => 'Componha seções mais ricas sobre o modelo ativo, incluindo hero, blocos de texto, faixas de imagem, métricas, grades de recursos, coleções de artigos e HTML controlado.',
+            'page_title' => 'Módulos Personalizados da Página Inicial',
+            'page_subtitle' => 'Gerencie estilos, predefinições, designs importados e a ordem dos módulos em uma única área',
+            'back_to_settings' => 'Voltar às Configurações do Site',
+            'open_editor' => 'Abrir Construtor da Página Inicial',
+            'configured_count' => ':count módulos configurados',
             'scope_notice_title' => 'Camada Global da Página Inicial',
             'scope_notice_desc' => 'Estes módulos aparecem antes da lista de artigos em todos os temas do frontend, mantendo categorias, artigos, SEO e contratos de conteúdo intactos. Use para páginas de marca, portais de conteúdo, hubs temáticos e páginas de produto.',
             'preset_title' => 'Predefinições da Página Inicial',
@@ -2539,6 +2549,7 @@ return array_replace_recursive($base, [
         'field_api_key' => 'Chave de API *',
         'field_model_id' => 'ID do Modelo',
         'field_max_tokens' => 'Máx. Tokens de Saída',
+        'max_tokens_help' => 'Salvo no modelo de IA e usado pela análise de visibilidade de IA e por outros fluxos de geração que reutilizam esse modelo.',
         'field_count' => 'Quantidade de Resultados',
         'field_content_formats' => 'Formato do Conteúdo',
         'field_status' => 'Status',
@@ -4454,7 +4465,7 @@ return array_replace_recursive($base, [
     'distribution' => [
         'page_title' => 'Distribuição',
         'page_heading' => 'Distribuição',
-        'page_subtitle' => 'Gerencie Agents de sites-alvo, filas de distribuição de artigos e logs de sincronização remota.',
+        'page_subtitle' => 'Gerencie o site padrão, canais externos de distribuição, filas de artigos e logs de sincronização remota.',
         'create_title' => 'Criar Canal de Distribuição',
         'create_heading' => 'Criar Canal de Distribuição',
         'create_subtitle' => 'Crie uma chave de Agent independente para um site-alvo.',
@@ -4465,7 +4476,21 @@ return array_replace_recursive($base, [
         'jobs_title' => 'Fila de Distribuição',
         'jobs_heading' => 'Fila de Distribuição',
         'jobs_subtitle' => 'Acompanhe jobs de sincronização de artigos enviados aos sites-alvo.',
-        'channels_title' => 'Canais de Distribuição',
+        'channels_title' => 'Canais Externos de Distribuição',
+        'channels_desc' => 'Gerencie destinos externos de publicação, como GEOFlow Agent, WordPress e API Genérica.',
+        'default_site' => [
+            'title' => 'Site Padrão',
+            'badge' => 'Canal Padrão',
+            'status_active' => 'Em execução',
+            'desc' => 'Destino de publicação integrado do GEOFlow para conteúdo público e formulários de conversão.',
+            'open_site' => 'Visitar Site',
+            'manage_forms' => 'Gerenciar Formulários',
+            'site_settings' => 'Configurações do Site',
+            'published_articles' => 'Conteúdo Publicado',
+            'forms' => 'Formulários de Conversão',
+            'forms_summary' => ':active ativos / :total no total',
+            'back' => 'Voltar ao Site Padrão',
+        ],
         'recent_logs_title' => 'Logs Recentes de Distribuição',
         'empty_channels_title' => 'Ainda não há canais de distribuição',
         'empty_channels_desc' => 'Crie o primeiro canal Agent de site-alvo para que tarefas possam distribuir artigos após a publicação local.',
@@ -4482,8 +4507,8 @@ return array_replace_recursive($base, [
             'next' => 'Próximo',
         ],
         'stats' => [
-            'total' => 'Total de Canais',
-            'active' => 'Canais Ativos',
+            'total' => 'Canais Externos',
+            'active' => 'Canais Externos Ativos',
             'pending' => 'Distribuições Pendentes',
             'failed' => 'Distribuições com Falha',
         ],
@@ -4512,7 +4537,7 @@ return array_replace_recursive($base, [
             'time' => 'Hora',
         ],
         'button' => [
-            'create' => 'Criar Canal',
+            'create' => 'Criar Canal Externo',
             'jobs' => 'Ver Fila',
             'health' => 'Testar Conexão',
             'save_and_generate_secret' => 'Salvar e Gerar Segredo',
@@ -4523,9 +4548,9 @@ return array_replace_recursive($base, [
             'reveal_secret' => 'Verificar e Mostrar Segredo',
             'download_package' => 'Baixar Pacote do Site',
             'sync_settings' => 'Sincronizar Configurações',
-            'sync_settings_selected' => 'Sincronizar Sites Selecionados',
-            'sync_settings_selected_submit' => 'Sincronizar Selecionados',
-            'sync_settings_all' => 'Sincronizar Todos os Sites',
+            'sync_settings_selected' => 'Sincronizar Sites Externos Selecionados',
+            'sync_settings_selected_submit' => 'Sincronizar Sites Externos Selecionados',
+            'sync_settings_all' => 'Sincronizar Todos os Sites Externos',
             'update_target_site' => 'Atualizar Site Alvo',
             'retry' => 'Tentar Novamente',
             'edit_remote_article' => 'Editar Artigo Remoto',

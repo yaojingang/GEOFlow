@@ -137,9 +137,79 @@
             </div>
         </div>
 
-        <div class="rounded-lg bg-white shadow">
+        <section data-default-site-management class="overflow-hidden rounded-lg bg-white shadow">
+            <div class="flex flex-col gap-5 border-b border-gray-200 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex min-w-0 items-start gap-4">
+                    <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+                        <i data-lucide="house" class="h-5 w-5"></i>
+                    </span>
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.distribution.default_site.title') }}</h2>
+                            <span class="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                                {{ __('admin.distribution.default_site.badge') }}
+                            </span>
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                {{ __('admin.distribution.default_site.status_active') }}
+                            </span>
+                        </div>
+                        <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.default_site.desc') }}</p>
+                        <div class="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                            <span class="max-w-full break-words font-medium text-gray-900">{{ $defaultSite['name'] }}</span>
+                            <span class="inline-flex min-w-0 max-w-full items-center gap-2">
+                                <span class="text-gray-300" aria-hidden="true">·</span>
+                                <a href="{{ $defaultSite['url'] }}" target="_blank" rel="noopener noreferrer" class="min-w-0 break-all text-blue-600 hover:text-blue-700">
+                                    {{ $defaultSite['url'] }}
+                                </a>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+                    <a href="{{ $defaultSite['url'] }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-10 items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                        <i data-lucide="external-link" class="mr-2 h-4 w-4"></i>
+                        {{ __('admin.distribution.default_site.open_site') }}
+                    </a>
+                    <a href="{{ route('admin.lead-forms.index') }}" class="inline-flex min-h-10 items-center rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                        <i data-lucide="clipboard-list" class="mr-2 h-4 w-4"></i>
+                        {{ __('admin.distribution.default_site.manage_forms') }}
+                    </a>
+                    <a href="{{ route('admin.site-settings.index') }}" class="inline-flex min-h-10 items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                        <i data-lucide="settings-2" class="mr-2 h-4 w-4"></i>
+                        {{ __('admin.distribution.default_site.site_settings') }}
+                    </a>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 divide-y divide-gray-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                <div class="flex items-center justify-between gap-4 px-6 py-4">
+                    <div>
+                        <div class="text-sm text-gray-500">{{ __('admin.distribution.default_site.published_articles') }}</div>
+                        <div class="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{{ (int) $defaultSite['published_articles'] }}</div>
+                    </div>
+                    <i data-lucide="file-check-2" class="h-6 w-6 text-gray-400"></i>
+                </div>
+                <div class="flex items-center justify-between gap-4 px-6 py-4">
+                    <div>
+                        <div class="text-sm text-gray-500">{{ __('admin.distribution.default_site.forms') }}</div>
+                        <div class="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
+                            {{ __('admin.distribution.default_site.forms_summary', [
+                                'active' => (int) $defaultSite['forms_active'],
+                                'total' => (int) $defaultSite['forms_total'],
+                            ]) }}
+                        </div>
+                    </div>
+                    <i data-lucide="list-checks" class="h-6 w-6 text-gray-400"></i>
+                </div>
+            </div>
+        </section>
+
+        <div data-external-distribution-channels class="rounded-lg bg-white shadow">
             <div class="border-b border-gray-200 px-6 py-4">
                 <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.channels_title') }}</h2>
+                <p class="mt-1 text-sm text-gray-500">{{ __('admin.distribution.channels_desc') }}</p>
             </div>
             @if ($channels->isEmpty())
                 <div class="px-6 py-10 text-center text-sm text-gray-500">

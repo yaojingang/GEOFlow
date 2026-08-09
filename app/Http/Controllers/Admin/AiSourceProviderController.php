@@ -242,7 +242,7 @@ class AiSourceProviderController extends Controller
             ]));
         } catch (Throwable $exception) {
             if ($reservation !== null) {
-                $this->usageQuota->releaseProvider($reservation);
+                $this->usageQuota->recordProviderAttempt($reservation);
             }
 
             return response()->json([
@@ -290,7 +290,7 @@ class AiSourceProviderController extends Controller
             ]));
         } catch (Throwable $exception) {
             if ($reservation !== null) {
-                $this->usageQuota->releaseModel($reservation);
+                $this->usageQuota->recordModelAttempt($reservation);
             }
 
             return response()->json([

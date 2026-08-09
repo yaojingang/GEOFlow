@@ -1,0 +1,60 @@
+{
+    "id": "geoflow-template-21-enterprise-signature",
+    "data_policy": {
+        "dynamic": [
+            "site settings",
+            "navigation categories",
+            "published articles",
+            "featured articles",
+            "hot articles",
+            "archive records",
+            "active lead forms",
+            "homepage builder modules"
+        ],
+        "demo_only": [
+            "customer names",
+            "case outcomes",
+            "global node coverage",
+            "ecosystem metrics",
+            "industry scenario figures"
+        ],
+        "demo_label": "演示信息"
+    },
+    "modules": {
+        "header": "sticky white enterprise navigation with mobile disclosure",
+        "footer": "global open-source enterprise footer and public filing details",
+        "home.hero": "global GEO positioning plus product control-plane illustration",
+        "home.trust_strip": "text-only fictional organization strip with visible demo label",
+        "home.metric_band": "fictional ecosystem metrics with per-section demo disclosure",
+        "home.platform_grid": "GEOFlow capability grid based on current product surfaces",
+        "home.builder": "existing admin homepage modules rendered inside pure-white theme rules",
+        "home.open_source": "repository CTA and four-stage open-source architecture",
+        "home.solution_tabs": "accessible industry scenario tabs using fictional demo data",
+        "home.case_study": "fictional customer case with visible demo disclosure",
+        "home.global_footprint": "fictional regional node illustration with visible demo disclosure",
+        "home.featured_articles": "featured articles, then demo resource fallback",
+        "home.latest_articles": "latest published GEOFlow articles",
+        "home.lead_form": "first active backend form, then clearly non-submitting demo fallback",
+        "home.search_results": "focused results state without corporate demo modules",
+        "category.article_card": "editorial enterprise resource card",
+        "article.hero": "article metadata and reading introduction",
+        "article.prose_shell": "rendered GEOFlow article HTML",
+        "article.related_articles": "related resource grid",
+        "article.sticky_ad": "existing article CTA contract",
+        "archive.overview_row": "year and month archive ledger",
+        "archive.article_card": "month archive article card"
+    },
+    "unchanged_contracts": [
+        "public route names",
+        "SEO title, description, keywords, canonical URL and schema",
+        "rendered article HTML",
+        "category and article relationships",
+        "pagination",
+        "lead form CSRF and submission route",
+        "footer filing information"
+    ],
+    "runtime_assets": {
+        "css": "public/themes/geoflow-template-21-enterprise-signature/theme.css",
+        "js": "public/themes/geoflow-template-21-enterprise-signature/theme.js"
+    }
+}

@@ -1,6 +1,12 @@
 <?php
 
+$manualPublicationsPath = __DIR__.'/manual_publications.php';
+if (! is_file($manualPublicationsPath) && function_exists('lang_path')) {
+    $manualPublicationsPath = lang_path('en/manual_publications.php');
+}
+
 return [
+    'manual_publications' => require $manualPublicationsPath,
     'nav' => [
         'dashboard' => 'Dashboard',
         'analytics' => 'Growth Center',
@@ -1281,6 +1287,7 @@ return [
         'field_api_key' => 'API Key *',
         'field_model_id' => 'Model ID',
         'field_max_tokens' => 'Max Output Tokens',
+        'max_tokens_help' => 'Saved on the AI model and used by AI visibility analysis and any other generation workflow that reuses this model.',
         'field_count' => 'Result Count',
         'field_content_formats' => 'Content Format',
         'field_status' => 'Status',
@@ -3462,6 +3469,11 @@ return [
             'badge' => 'Homepage Builder',
             'section_title' => 'Custom Homepage Modules',
             'section_desc' => 'Compose richer homepage sections on top of the active template, including heroes, text blocks, image bands, metrics, feature grids, article collections, and controlled HTML snippets',
+            'page_title' => 'Custom Homepage Modules',
+            'page_subtitle' => 'Manage homepage styles, presets, imported designs, and module order in one workspace',
+            'back_to_settings' => 'Back to Site Settings',
+            'open_editor' => 'Open Homepage Builder',
+            'configured_count' => ':count modules currently configured',
             'scope_notice_title' => 'Global Homepage Layer',
             'scope_notice_desc' => 'These modules render before the article feed across all frontend themes while keeping categories, articles, SEO, and content contracts intact. Use them for brand homepages, content portals, topic hubs, and product pages',
             'preset_title' => 'Homepage Presets',
@@ -3989,7 +4001,7 @@ return [
     'distribution' => [
         'page_title' => 'Distribution',
         'page_heading' => 'Distribution',
-        'page_subtitle' => 'Manage target site Agents, article distribution queues, and remote sync logs.',
+        'page_subtitle' => 'Manage the default site, external distribution channels, article queues, and remote sync logs.',
         'create_title' => 'Create Distribution Channel',
         'create_heading' => 'Create Distribution Channel',
         'create_subtitle' => 'Create an independent Agent key for a target site.',
@@ -4000,7 +4012,21 @@ return [
         'jobs_title' => 'Distribution Queue',
         'jobs_heading' => 'Distribution Queue',
         'jobs_subtitle' => 'Track article sync jobs sent to target sites.',
-        'channels_title' => 'Distribution Channels',
+        'channels_title' => 'External Distribution Channels',
+        'channels_desc' => 'Manage external publishing targets such as GEOFlow Agent, WordPress, and Generic API.',
+        'default_site' => [
+            'title' => 'Default Site',
+            'badge' => 'Default Channel',
+            'status_active' => 'Running',
+            'desc' => 'GEOFlow’s built-in publishing destination for public content and conversion forms.',
+            'open_site' => 'Visit Site',
+            'manage_forms' => 'Manage Forms',
+            'site_settings' => 'Site Settings',
+            'published_articles' => 'Published Content',
+            'forms' => 'Conversion Forms',
+            'forms_summary' => ':active active / :total total',
+            'back' => 'Back to Default Site',
+        ],
         'recent_logs_title' => 'Recent Distribution Logs',
         'empty_channels_title' => 'No distribution channels yet',
         'empty_channels_desc' => 'Create the first target site Agent channel so tasks can distribute articles after local publishing.',
@@ -4017,8 +4043,8 @@ return [
             'next' => 'Next',
         ],
         'stats' => [
-            'total' => 'Total Channels',
-            'active' => 'Active Channels',
+            'total' => 'External Channels',
+            'active' => 'Active External Channels',
             'pending' => 'Pending Distributions',
             'failed' => 'Failed Distributions',
         ],
@@ -4047,7 +4073,7 @@ return [
             'time' => 'Time',
         ],
         'button' => [
-            'create' => 'Create Channel',
+            'create' => 'Create External Channel',
             'jobs' => 'View Queue',
             'health' => 'Test Connection',
             'save_and_generate_secret' => 'Save and Generate Secret',
@@ -4058,9 +4084,9 @@ return [
             'reveal_secret' => 'Verify and Show Secret',
             'download_package' => 'Download Site Package',
             'sync_settings' => 'Sync Settings',
-            'sync_settings_selected' => 'Sync Selected Sites',
-            'sync_settings_selected_submit' => 'Sync Selected Sites',
-            'sync_settings_all' => 'Sync All Sites',
+            'sync_settings_selected' => 'Sync Selected External Sites',
+            'sync_settings_selected_submit' => 'Sync Selected External Sites',
+            'sync_settings_all' => 'Sync All External Sites',
             'update_target_site' => 'Update Target Site',
             'retry' => 'Retry',
             'edit_remote_article' => 'Edit Remote Article',

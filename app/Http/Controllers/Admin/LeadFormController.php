@@ -24,9 +24,11 @@ class LeadFormController extends Controller
 
         return view('admin.lead-forms.index', [
             'pageTitle' => __('admin.lead_forms.page_title'),
-            'activeMenu' => 'analytics',
+            'activeMenu' => $this->activeMenu(),
             'adminSiteName' => AdminWeb::siteName(),
             'forms' => $forms,
+            'backUrl' => $this->backUrl(),
+            'backLabel' => $this->backLabel(),
             'stats' => [
                 'total' => LeadForm::query()->count(),
                 'active' => LeadForm::query()->where('status', LeadForm::STATUS_ACTIVE)->count(),
@@ -39,7 +41,7 @@ class LeadFormController extends Controller
     {
         return view('admin.lead-forms.form', [
             'pageTitle' => __('admin.lead_forms.create_title'),
-            'activeMenu' => 'analytics',
+            'activeMenu' => $this->activeMenu(),
             'adminSiteName' => AdminWeb::siteName(),
             'leadForm' => null,
             'fields' => old('fields', LeadFormFields::defaultFields()),
@@ -77,7 +79,7 @@ class LeadFormController extends Controller
 
         return view('admin.lead-forms.form', [
             'pageTitle' => __('admin.lead_forms.edit_title'),
-            'activeMenu' => 'analytics',
+            'activeMenu' => $this->activeMenu(),
             'adminSiteName' => AdminWeb::siteName(),
             'leadForm' => $leadForm,
             'fields' => old('fields', $leadForm->normalizedFields()),
@@ -171,5 +173,26 @@ class LeadFormController extends Controller
         }
 
         return $candidate;
+    }
+
+    private function activeMenu(): string
+    {
+        return auth('admin')->user()?->canManageProtectedWorkflows() === true
+            ? 'distribution'
+            : 'analytics';
+    }
+
+    private function backUrl(): string
+    {
+        return auth('admin')->user()?->canManageProtectedWorkflows() === true
+            ? route('admin.distribution.index')
+            : route('admin.analytics');
+    }
+
+    private function backLabel(): string
+    {
+        return auth('admin')->user()?->canManageProtectedWorkflows() === true
+            ? __('admin.distribution.default_site.back')
+            : __('admin.growth_center.back');
     }
 }

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Models\AiModel;
+use App\Models\Task;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,6 +23,7 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $agent = new MarkdownContentWriterAgent(maxTokens: 8192);
 
         $this->assertSame(['max_tokens' => 8192], $agent->providerOptions('deepseek'));
+        $this->assertSame(['max_tokens' => 8192], $agent->providerOptions('openai-compatible'));
         $this->assertSame(['max_tokens' => 8192], $agent->providerOptions('openrouter'));
         $this->assertSame(['max_output_tokens' => 8192], $agent->providerOptions('openai'));
         $this->assertSame(['max_output_tokens' => 8192], $agent->providerOptions(Lab::OpenAI));
@@ -156,6 +158,39 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $this->generateContent($model, '写一篇文章。');
 
         Log::shouldNotHaveReceived('warning');
+    }
+
+    public function test_smart_failover_uses_an_active_fallback_when_the_primary_model_is_inactive(): void
+    {
+        Http::fake([
+            'https://fallback.test/v1/chat/completions' => Http::response($this->completion('# 标题'."\n\n".'备用模型正文。')),
+        ]);
+
+        $primary = $this->createChatModel([
+            'name' => 'Inactive Primary',
+            'api_url' => 'https://primary.test',
+            'status' => 'inactive',
+        ]);
+        $fallback = $this->createChatModel([
+            'name' => 'Active Fallback',
+            'api_url' => 'https://fallback.test',
+            'failover_priority' => 1,
+        ]);
+        $task = new Task;
+        $task->forceFill([
+            'ai_model_id' => (int) $primary->id,
+            'model_selection_mode' => 'smart_failover',
+        ]);
+
+        $service = app(WorkerExecutionService::class);
+        $method = new ReflectionMethod($service, 'generateContentWithModelSelection');
+        $method->setAccessible(true);
+        $result = $method->invoke($service, $task, '写一篇文章。');
+
+        $this->assertSame((int) $fallback->id, (int) $result['model']->id);
+        $this->assertSame(['skipped', 'success'], array_column($result['attempts'], 'status'));
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://fallback.test/v1/chat/completions');
     }
 
     /**

@@ -325,7 +325,9 @@
                         @if (empty($distributionChannels))
                             <div class="rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
                                 {{ $t('task_create.distribution.empty') }}
-                                <a href="{{ route('admin.distribution.create') }}" class="font-medium text-blue-600 hover:text-blue-700">{{ $t('task_create.distribution.create_link') }}</a>
+                                @if ($canManageProtectedWorkflows ?? false)
+                                    <a href="{{ route('admin.distribution.create') }}" class="font-medium text-blue-600 hover:text-blue-700">{{ $t('task_create.distribution.create_link') }}</a>
+                                @endif
                             </div>
                         @else
                             <fieldset class="mb-5">

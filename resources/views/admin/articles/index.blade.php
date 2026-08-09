@@ -78,12 +78,12 @@
 
 @section('content')
     <div class="px-4 sm:px-0">
-        <div class="mb-8 flex items-center justify-between">
+        <div class="mb-8 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">{{ $pageTitle }}</h1>
                 <p class="mt-1 text-sm text-gray-600">{{ $isTrashView ? __('admin.articles.trash.subtitle') : __('admin.articles.page_subtitle') }}</p>
             </div>
-            <div class="flex flex-wrap gap-2 justify-end">
+            <div class="flex flex-wrap justify-start gap-2 xl:justify-end">
                 @if($isTrashView)
                     <a href="{{ $articlesIndexUrl }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
@@ -97,6 +97,10 @@
                     <a href="{{ route('admin.articles.create') }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
                         {{ __('admin.button.create_article') }}
+                    </a>
+                    <a href="{{ route('admin.manual-publications.index') }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        <i data-lucide="send" class="w-4 h-4 mr-2"></i>
+                        {{ __('admin.manual_publications.nav') }}
                     </a>
                     <a href="{{ $categoryManageUrl }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         <i data-lucide="folder" class="w-4 h-4 mr-2"></i>
@@ -716,6 +720,11 @@
                                             <a href="{{ route('admin.articles.edit', ['articleId' => (int) $article->id]) }}" class="text-green-600 hover:text-green-800" title="{{ __('admin.button.edit') }}">
                                                 <i data-lucide="edit" class="w-4 h-4"></i>
                                             </a>
+                                            @if($canCreateManualPublication && in_array((string) $article->review_status, ['approved', 'auto_approved'], true))
+                                                <a href="{{ route('admin.manual-publications.create', ['article_id' => (int) $article->id]) }}" class="text-purple-600 hover:text-purple-800" title="{{ __('admin.manual_publications.article_action') }}">
+                                                    <i data-lucide="send" class="w-4 h-4"></i>
+                                                </a>
+                                            @endif
                                             @if((string) $article->review_status === 'pending')
                                                 <button type="button" onclick="quickReview({{ (int) $article->id }}, 'approved')" class="text-green-600 hover:text-green-800" title="{{ __('admin.articles.action.approve') }}">
                                                     <i data-lucide="check" class="w-4 h-4"></i>

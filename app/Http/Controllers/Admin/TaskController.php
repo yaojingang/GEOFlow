@@ -146,6 +146,7 @@ class TaskController extends Controller
             'isEdit' => false,
             'taskForm' => null,
             'taskId' => null,
+            'canManageProtectedWorkflows' => auth('admin')->user()?->canManageProtectedWorkflows() === true,
         ]);
     }
 
@@ -209,6 +210,7 @@ class TaskController extends Controller
             'categoryCreateUrl' => route('admin.categories.create'),
             'isEdit' => true,
             'taskId' => $taskId,
+            'canManageProtectedWorkflows' => auth('admin')->user()?->canManageProtectedWorkflows() === true,
             'taskForm' => [
                 'task_name' => (string) ($task['name'] ?? ''),
                 'title_library_id' => (string) ($task['title_library_id'] ?? ''),

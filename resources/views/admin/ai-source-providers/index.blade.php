@@ -87,6 +87,7 @@
                         <div>
                             <label for="deepseek_max_tokens" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_max_tokens') }}</label>
                             <input type="number" name="max_tokens" id="deepseek_max_tokens" min="1" value="{{ $deepSeekApiConfig['max_tokens'] }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_source_providers.max_tokens_help') }}</p>
                         </div>
                     </div>
 
@@ -145,6 +146,7 @@
                         <div>
                             <label for="ark_max_tokens" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_max_tokens') }}</label>
                             <input type="number" name="max_tokens" id="ark_max_tokens" min="1" value="{{ $arkApiConfig['max_tokens'] }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_source_providers.max_tokens_help') }}</p>
                         </div>
                     </div>
 

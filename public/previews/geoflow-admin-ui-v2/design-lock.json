@@ -1,0 +1,43 @@
+{
+  "schema": "geoflow-admin-ui-v2-design-lock/v1",
+  "pageCount": 84,
+  "referencePriority": [
+    {
+      "file": "../geoflow-ai-workspace-prototype.html",
+      "sha256": "8fb6f5ee1e3d3547872e9413dfc922aa6119752a29037f580c73ca888ac25d9c",
+      "owns": ["app-shell", "sidebar", "topbar", "focus-layout", "latest-separator-removal"]
+    },
+    {
+      "file": "../geoflow-sidebar-layout-prototype.html",
+      "sha256": "75019ea35557ea3feb350e7e3c1c0a139361d03cb4c366ab16e1b351112e038d",
+      "owns": ["standard-layout", "content-density", "standard-card", "standard-page-header"]
+    }
+  ],
+  "layout": {
+    "sidebarExpanded": 256,
+    "sidebarCollapsed": 72,
+    "topbarHeight": 64,
+    "desktopPadding": 48,
+    "tabletPadding": 24,
+    "mobilePadding": 16,
+    "standardMaxWidth": 1280,
+    "focusMaxWidth": 768,
+    "mobileBreakpoint": 768
+  },
+  "radii": {
+    "navigation": 6,
+    "control": 8,
+    "standardCard": 8,
+    "focusCard": 16,
+    "pill": 999
+  },
+  "rules": [
+    "The topbar has no bottom border and no shadow.",
+    "The sidebar has one gray-200 right border.",
+    "Standard pages use a gray-50 canvas and white cards.",
+    "The AI workspace uses a white canvas and a 768px focus column.",
+    "All primary actions use blue-600 and blue-700 on hover.",
+    "Gradients and glass effects are not allowed.",
+    "All page files use the shared shell, component, data, and interaction assets."
+  ]
+}

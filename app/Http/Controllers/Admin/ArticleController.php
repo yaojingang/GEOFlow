@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\ArticleRiskGateException;
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\KnowledgeBase;
+use App\Models\ManualPublication;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
@@ -25,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 use Throwable;
 
@@ -67,6 +70,7 @@ class ArticleController extends Controller
             'isTrashView' => $isTrashView,
             'trashI18n' => $this->trashI18n(),
             'articleBatchRoutes' => $this->articleBatchRoutes($isTrashView),
+            'canCreateManualPublication' => $this->canCreateManualPublication($request),
         ]);
     }
 
@@ -210,7 +214,7 @@ class ArticleController extends Controller
     /**
      * 文章创建页：与编辑页共用一个 Blade 模板。
      */
-    public function create(): View
+    public function create(Request $request): View
     {
         return view('admin.articles.form', [
             'pageTitle' => __('admin.article_create.page_title'),
@@ -221,6 +225,7 @@ class ArticleController extends Controller
             'articleForm' => null,
             'riskScan' => null,
             'formOptions' => $this->loadFormOptions(true),
+            'canCreateManualPublication' => $this->canCreateManualPublication($request),
         ]);
     }
 
@@ -316,7 +321,7 @@ class ArticleController extends Controller
     /**
      * 文章编辑页：复用创建页模板并回填现有数据。
      */
-    public function edit(int $articleId): View|RedirectResponse
+    public function edit(Request $request, int $articleId): View|RedirectResponse
     {
         $article = Article::query()
             ->with(['task:id,name', 'author:id,name', 'category:id,name'])
@@ -347,7 +352,16 @@ class ArticleController extends Controller
             ],
             'riskScan' => $this->riskScanViewData($article),
             'formOptions' => $this->loadFormOptions(false),
+            'canCreateManualPublication' => $this->canCreateManualPublication($request),
         ]);
+    }
+
+    private function canCreateManualPublication(Request $request): bool
+    {
+        $admin = $request->user('admin');
+
+        return $admin instanceof Admin
+            && Gate::forUser($admin)->allows('create', ManualPublication::class);
     }
 
     /**

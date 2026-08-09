@@ -11,7 +11,7 @@ use Throwable;
 final class OpenAiRuntimeProvider
 {
     /**
-     * 将历史或自定义 api_url 规范为 Chat Completions 可用的 base（根路径时补全 /v1）。
+     * 将历史或自定义 api_url 规范为聊天 provider 可用的 base（根路径时补全 /v1）。
      */
     public static function resolveChatBaseUrl(string $apiUrl): string
     {
@@ -23,6 +23,10 @@ final class OpenAiRuntimeProvider
         $normalized = rtrim($normalized, '/');
         if (self::isGeminiProviderUrl($normalized)) {
             return self::resolveGeminiBaseUrl($normalized);
+        }
+
+        if (preg_match('#/responses$#', $normalized) === 1) {
+            $normalized = substr($normalized, 0, -strlen('/responses'));
         }
 
         if (preg_match('#/v1/chat/completions$#', $normalized) === 1) {
@@ -71,7 +75,7 @@ final class OpenAiRuntimeProvider
     }
 
     /**
-     * Laravel AI 的 openai driver 默认走 Responses API；多数第三方兼容接口仍只支持 Chat Completions。
+     * 官方服务使用专用驱动，第三方兼容接口使用 Laravel AI 的 OpenAI Compatible 驱动。
      */
     public static function resolveChatDriver(string $apiUrl, string $modelId = ''): string
     {
@@ -95,8 +99,7 @@ final class OpenAiRuntimeProvider
             return 'deepseek';
         }
 
-        // 通用 Chat Completions 兼容接口：复用 DeepSeek driver 的 chat/completions 请求形态。
-        return 'deepseek';
+        return 'openai-compatible';
     }
 
     /**
@@ -108,7 +111,9 @@ final class OpenAiRuntimeProvider
             return 'gemini';
         }
 
-        return 'openai';
+        $host = strtolower((string) (parse_url(trim($apiUrl), PHP_URL_HOST) ?? ''));
+
+        return $host === 'api.openai.com' ? 'openai' : 'openai-compatible';
     }
 
     /**

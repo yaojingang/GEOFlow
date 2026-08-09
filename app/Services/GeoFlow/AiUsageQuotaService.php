@@ -22,6 +22,21 @@ final class AiUsageQuotaService
         });
     }
 
+    /**
+     * 连接诊断允许测试停用模型，同时继续执行每日额度和用量审计。
+     */
+    public function reserveModelForTest(AiModel $model): ?AiUsageReservation
+    {
+        return DB::transaction(function () use ($model): ?AiUsageReservation {
+            $locked = AiModel::query()->lockForUpdate()->find((int) $model->id);
+            if (! $locked instanceof AiModel) {
+                return null;
+            }
+
+            return $this->reserveLockedModel($locked);
+        });
+    }
+
     public function releaseModel(AiUsageReservation $reservation): void
     {
         if ($reservation->resourceType !== 'model') {
@@ -50,6 +65,18 @@ final class AiUsageQuotaService
                 'updated_at' => now(),
             ]);
         });
+    }
+
+    /**
+     * 完成一次模型诊断预占，但不把失败诊断计入成功调用总数。
+     */
+    public function recordModelAttempt(AiUsageReservation $reservation): void
+    {
+        if ($reservation->resourceType !== 'model') {
+            throw new \InvalidArgumentException('Expected an AI model usage reservation.');
+        }
+
+        $this->finalizeReservation($reservation, static function (): void {});
     }
 
     public function reserveProvider(AiSourceProvider $provider): ?AiUsageReservation
@@ -92,6 +119,18 @@ final class AiUsageQuotaService
                 'updated_at' => now(),
             ]);
         });
+    }
+
+    /**
+     * 完成一次信源诊断预占，但不把失败诊断计入成功调用总数。
+     */
+    public function recordProviderAttempt(AiUsageReservation $reservation): void
+    {
+        if ($reservation->resourceType !== 'provider') {
+            throw new \InvalidArgumentException('Expected an AI source provider usage reservation.');
+        }
+
+        $this->finalizeReservation($reservation, static function (): void {});
     }
 
     private function reserveLockedModel(AiModel $model): ?AiUsageReservation

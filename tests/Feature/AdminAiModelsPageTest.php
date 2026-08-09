@@ -76,6 +76,39 @@ class AdminAiModelsPageTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer test-api-key'));
     }
 
+    public function test_official_openai_connection_test_uses_the_same_responses_api_as_runtime(): void
+    {
+        Http::fake([
+            'https://api.openai.com/v1/responses' => Http::response([
+                'id' => 'resp_test',
+                'object' => 'response',
+                'output' => [
+                    [
+                        'type' => 'message',
+                        'content' => [
+                            ['type' => 'output_text', 'text' => 'OK'],
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createAiModel('chat', [
+            'model_id' => 'gpt-5.6-terra',
+            'api_url' => 'https://api.openai.com',
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://api.openai.com/v1/responses'
+            && ($request['model'] ?? null) === 'gpt-5.6-terra'
+            && ($request['input'] ?? null) === 'Reply with OK.'
+            && ! array_key_exists('messages', (array) $request->data()));
+    }
+
     public function test_model_connection_tests_are_rate_limited(): void
     {
         Http::fake([
@@ -452,6 +485,34 @@ class AdminAiModelsPageTest extends TestCase
             && ($request['generationConfig']['maxOutputTokens'] ?? 0) >= 64);
     }
 
+    public function test_gemini_three_six_connection_test_omits_deprecated_sampling_parameters(): void
+    {
+        Http::fake([
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
+                'candidates' => [
+                    ['content' => ['parts' => [['text' => 'OK']]]],
+                ],
+            ]),
+        ]);
+
+        $model = $this->createAiModel('chat', [
+            'name' => 'Gemini 3.6 Flash',
+            'model_id' => 'gemini-3.6-flash',
+            'api_url' => 'https://generativelanguage.googleapis.com/v1beta',
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent'
+            && ($request['generationConfig']['thinkingConfig']['thinkingLevel'] ?? '') === 'low'
+            && ! array_key_exists('temperature', (array) ($request['generationConfig'] ?? []))
+            && ! array_key_exists('topP', (array) ($request['generationConfig'] ?? []))
+            && ! array_key_exists('topK', (array) ($request['generationConfig'] ?? [])));
+    }
+
     public function test_admin_models_page_shows_embedding_quick_fill_presets_and_notice(): void
     {
         $response = $this->actingAs($this->createAdmin(), 'admin')
@@ -466,6 +527,9 @@ class AdminAiModelsPageTest extends TestCase
             ->assertSee('Atlas Cloud', false)
             ->assertSee('deepseek-ai/deepseek-v4-pro', false)
             ->assertSee('https://api.atlascloud.ai/v1', false)
+            ->assertSee('gpt-5.6-terra', false)
+            ->assertSee('gemini-3.6-flash', false)
+            ->assertSee('GLM-5.2', false)
             ->assertSee('Gemini', false)
             ->assertSee('Gemini Embedding', false)
             ->assertSee('Doubao Embedding', false)
@@ -525,8 +589,101 @@ class AdminAiModelsPageTest extends TestCase
             ->assertJsonPath('success', false)
             ->assertJsonPath('meta.http_status', 401);
 
-        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertStringContainsString('API Key invalid', (string) $response->json('message'));
+        $this->assertStringNotContainsString('test-api-key', (string) $response->json('message'));
+
+        $this->assertSame(1, (int) $model->fresh()->used_today);
         $this->assertSame(0, (int) $model->fresh()->total_used);
+    }
+
+    public function test_inactive_model_connection_test_still_enforces_daily_quota(): void
+    {
+        Http::fake();
+        $model = $this->createAiModel('chat', [
+            'status' => 'inactive',
+            'daily_limit' => 1,
+            'used_today' => 1,
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', __('admin.ai_models.test_error_daily_limit'));
+
+        Http::assertNothingSent();
+    }
+
+    public function test_failed_inactive_model_connection_attempt_consumes_daily_quota(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response(['detail' => 'Provider unavailable'], 503),
+        ]);
+        $model = $this->createAiModel('chat', [
+            'status' => 'inactive',
+            'daily_limit' => 1,
+        ]);
+        $admin = $this->createAdmin();
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('meta.http_status', 503);
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', __('admin.ai_models.test_error_daily_limit'));
+
+        $this->assertSame(1, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+        Http::assertSentCount(1);
+    }
+
+    public function test_model_connection_test_extracts_provider_errors_from_sse_responses(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response(
+                'data: {"error":{"message":"This account only permits approved clients."}}'."\n\n",
+                403,
+                ['Content-Type' => 'text/event-stream']
+            ),
+        ]);
+
+        $model = $this->createAiModel('chat');
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]));
+
+        $response->assertUnprocessable()->assertJsonPath('success', false);
+        $this->assertStringContainsString('This account only permits approved clients.', (string) $response->json('message'));
+    }
+
+    public function test_inactive_model_can_be_tested_before_it_is_reenabled(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response($this->chatCompletion('OK')),
+        ]);
+
+        $model = $this->createAiModel('chat', ['status' => 'inactive']);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(1, (int) $model->fresh()->used_today);
+        $this->assertSame(1, (int) $model->fresh()->total_used);
+    }
+
+    /** @return array<string, mixed> */
+    private function chatCompletion(string $content): array
+    {
+        return [
+            'choices' => [
+                ['message' => ['content' => $content]],
+            ],
+        ];
     }
 
     private function createAdmin(): Admin
