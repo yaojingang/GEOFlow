@@ -16,6 +16,17 @@ $versionManifest = is_file($versionManifestPath)
     : [];
 $appVersion = is_array($versionManifest) ? trim((string) ($versionManifest['version'] ?? '')) : '';
 $appVersion = $appVersion !== '' ? $appVersion : '0.0.0-dev';
+$defaultAnalyticsCode = <<<'HTML'
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?1743638f313788caa4cb55e299444a87";
+  var s = document.getElementsByTagName("script")[0];
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+HTML;
 
 return [
 
@@ -37,6 +48,8 @@ return [
     'public_locale' => env('GEOFLOW_PUBLIC_LOCALE', 'zh_CN'),
     // 默认前台主题；后台未显式选择主题时使用
     'default_theme' => env('GEOFLOW_DEFAULT_THEME', 'geoflow-template-21-enterprise-signature'),
+    // 仅在空库首次安装时写入；升级、重复安装和已有站点设置都不会覆盖。
+    'default_analytics_code' => $defaultAnalyticsCode,
     // 是否在手动 db:seed 中导入前台参考内容。geoflow:install 仅在全新空库默认导入。
     'seed_frontend_demo' => filter_var(env('GEOFLOW_SEED_FRONTEND_DEMO', false), FILTER_VALIDATE_BOOLEAN),
     // 参考内容默认只补缺，不覆盖用户已修改的作者、分类和文章；仅重置演示库时显式开启覆盖。

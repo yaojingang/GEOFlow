@@ -303,7 +303,7 @@ php artisan key:generate
 # 3. 数据库与存储
 GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
 php artisan geoflow:install                                            # 首次空库安装
-# 可选极简安装：php artisan geoflow:install --without-demo
+# 跳过主题与参考文章，保留首装基础设置：php artisan geoflow:install --without-demo
 php artisan storage:link
 
 # 4. 开发用 HTTP（仅本地调试；生产请用 Nginx + PHP-FPM，站点根目录 public/）
@@ -352,7 +352,7 @@ chmod -R ug+rwx storage bootstrap/cache
 | 用户名 | `GEOFLOW_ADMIN_USERNAME`，默认 `admin` |
 | 密码 | 本地开发默认 `password`；生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`。若生产环境留空且账号尚不存在，首次安装会生成一次性随机密码并输出到初始化日志 |
 
-补充规则：`geoflow:install` 在空库首次安装时写入默认管理员、21 号主题和 50 篇参考内容；`--without-demo` 会只创建管理员。检测到线上业务数据时，命令会记录安装标记，并保留已有主题、站点设置、作者、分类和文章。`AdminUserSeeder` 本身保持幂等：目标用户名已存在时不会覆盖用户名、邮箱或密码。
+补充规则：`geoflow:install` 在空库首次安装时写入默认管理员、21 号主题、50 篇参考内容和示例百度统计代码；`--without-demo` 会跳过 21 号主题与 50 篇参考内容，同时保留管理员和示例统计代码。该示例会立即从 `hm.baidu.com` 加载脚本，并将前台访问数据发送到示例百度统计账号；生产上线前请在“站点设置 → 统计代码”中替换为自己的统计代码，或清空后关闭。检测到线上业务数据时，命令会记录安装标记，并保留已有主题、站点设置、作者、分类、文章和统计代码。`AdminUserSeeder` 本身保持幂等：目标用户名已存在时不会覆盖用户名、邮箱或密码。
 
 50 篇参考文档位于 `database/seeders/data/frontend-reference-v1/`，其分类、元数据、首次安装和升级保护说明见 [`docs/reference/frontend-reference-content.md`](docs/reference/frontend-reference-content.md)。
 

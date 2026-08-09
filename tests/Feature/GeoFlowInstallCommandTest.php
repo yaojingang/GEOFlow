@@ -21,6 +21,18 @@ class GeoFlowInstallCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const BAIDU_ANALYTICS_EXAMPLE = <<<'HTML'
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?1743638f313788caa4cb55e299444a87";
+  var s = document.getElementsByTagName("script")[0];
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+HTML;
+
     public function test_install_command_seeds_empty_database_once_and_writes_marker(): void
     {
         Config::set('geoflow.seed_frontend_demo', false);
@@ -41,6 +53,17 @@ class GeoFlowInstallCommandTest extends TestCase
             'geoflow-template-21-enterprise-signature',
             SiteSetting::query()->where('setting_key', 'active_theme')->value('setting_value'),
         );
+        $this->assertSame(
+            self::BAIDU_ANALYTICS_EXAMPLE,
+            SiteSetting::query()->where('setting_key', 'analytics_code')->value('setting_value'),
+        );
+        $response = $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('https://hm.baidu.com/hm.js?1743638f313788caa4cb55e299444a87', false);
+        $this->assertSame(
+            1,
+            substr_count($response->getContent(), 'https://hm.baidu.com/hm.js?1743638f313788caa4cb55e299444a87'),
+        );
 
         $state = SystemState::query()->where('key', GeoFlowInstallCommand::INSTALLATION_STATE_KEY)->first();
         $this->assertNotNull($state);
@@ -58,6 +81,10 @@ class GeoFlowInstallCommandTest extends TestCase
             'password' => 'custom-secret',
         ])->save();
         $originalPasswordHash = (string) $admin->password;
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'analytics_code'],
+            ['setting_value' => '<script>userAnalytics()</script>'],
+        );
 
         $this->artisan('geoflow:install')
             ->assertExitCode(0);
@@ -66,6 +93,10 @@ class GeoFlowInstallCommandTest extends TestCase
         $this->assertSame('custom-admin@example.com', $admin->email);
         $this->assertSame($originalPasswordHash, (string) $admin->password);
         $this->assertSame(1, Admin::query()->where('username', 'admin')->count());
+        $this->assertSame(
+            '<script>userAnalytics()</script>',
+            SiteSetting::query()->where('setting_key', 'analytics_code')->value('setting_value'),
+        );
     }
 
     public function test_install_command_backfills_marker_for_existing_database_without_seeding(): void
@@ -77,6 +108,10 @@ class GeoFlowInstallCommandTest extends TestCase
         SiteSetting::query()->where('setting_key', 'active_theme')->update([
             'setting_value' => 'user-owned-theme',
         ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'analytics_code',
+            'setting_value' => '<script>existingAnalytics()</script>',
+        ]);
 
         $this->artisan('geoflow:install')
             ->assertExitCode(0);
@@ -85,6 +120,10 @@ class GeoFlowInstallCommandTest extends TestCase
         $this->assertSame(0, Category::query()->count());
         $this->assertSame('用户线上站点', SiteSetting::query()->where('setting_key', 'site_name')->value('setting_value'));
         $this->assertSame('user-owned-theme', SiteSetting::query()->where('setting_key', 'active_theme')->value('setting_value'));
+        $this->assertSame(
+            '<script>existingAnalytics()</script>',
+            SiteSetting::query()->where('setting_key', 'analytics_code')->value('setting_value'),
+        );
 
         $state = SystemState::query()->where('key', GeoFlowInstallCommand::INSTALLATION_STATE_KEY)->first();
         $this->assertNotNull($state);
@@ -152,6 +191,7 @@ class GeoFlowInstallCommandTest extends TestCase
         $this->assertSame(0, Admin::query()->count());
         $this->assertSame(0, Category::query()->count());
         $this->assertSame(0, Article::query()->count());
+        $this->assertFalse(SiteSetting::query()->where('setting_key', 'analytics_code')->exists());
         $this->assertFalse(SystemState::query()->where('key', GeoFlowInstallCommand::INSTALLATION_STATE_KEY)->exists());
 
         $this->app->bind(FrontendReferenceSeeder::class, fn () => new FrontendReferenceSeeder);
@@ -183,6 +223,10 @@ class GeoFlowInstallCommandTest extends TestCase
             'geoflow-template-21-enterprise-signature',
             SiteSetting::query()->where('setting_key', 'active_theme')->value('setting_value'),
         );
+        $this->assertSame(
+            self::BAIDU_ANALYTICS_EXAMPLE,
+            SiteSetting::query()->where('setting_key', 'analytics_code')->value('setting_value'),
+        );
 
         $state = SystemState::query()->where('key', GeoFlowInstallCommand::INSTALLATION_STATE_KEY)->firstOrFail();
         $this->assertFalse($state->value['seed_frontend_reference'] ?? true);
@@ -197,12 +241,20 @@ class GeoFlowInstallCommandTest extends TestCase
             'setting_key' => 'site_name',
             'setting_value' => '已部署站点',
         ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'analytics_code',
+            'setting_value' => '<script>existingAnalytics()</script>',
+        ]);
 
         $this->artisan('geoflow:install', ['--force' => true])->assertSuccessful();
 
         $this->assertSame(0, Article::query()->count());
         $this->assertSame(0, Category::query()->count());
         $this->assertSame('user-owned-theme', SiteSetting::query()->where('setting_key', 'active_theme')->value('setting_value'));
+        $this->assertSame(
+            '<script>existingAnalytics()</script>',
+            SiteSetting::query()->where('setting_key', 'analytics_code')->value('setting_value'),
+        );
     }
 
     public function test_install_command_reports_installation_and_later_version_change(): void
