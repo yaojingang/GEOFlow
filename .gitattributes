@@ -6,6 +6,10 @@
 *.md diff=markdown
 *.php diff=php
 
+# Generated third-party assets preserve upstream whitespace.
+public/js/filament/** -whitespace
+public/vendor/** -whitespace
+
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore

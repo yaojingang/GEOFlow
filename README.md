@@ -281,7 +281,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 - 前台 / 后台统一经 `web`（Nginx）访问
 - PHP 由 `app`（php-fpm）解析
 - `APP_URL` 使用 `http://` 时设置 `SESSION_SECURE_COOKIE=false`；启用 HTTPS 后设置为 `true`
-- **首次安装**：生产 `init` 服务会先执行迁移，再运行 `php artisan geoflow:install`。该流程仅用于全新空库；已有数据或迁移历史的实例必须执行 `docs/deployment/DEPLOYMENT.md` 3.1 节的停机排空升级协议。
+- **首次安装**：生产 `init` 服务会先执行迁移，再运行 `php artisan geoflow:install`。全新空库会默认启用 21 号企业签名版官网模板，并导入 50 篇版本化参考内容。已有数据或迁移历史的实例保留当前主题和内容，并执行 `docs/deployment/DEPLOYMENT.md` 3.1 节的停机排空升级协议。
 - 详细说明见 `docs/deployment/DEPLOYMENT.md`
 
 ### 方式二：本地 PHP 服务器
@@ -303,6 +303,7 @@ php artisan key:generate
 # 3. 数据库与存储
 GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
 php artisan geoflow:install                                            # 首次空库安装
+# 可选极简安装：php artisan geoflow:install --without-demo
 php artisan storage:link
 
 # 4. 开发用 HTTP（仅本地调试；生产请用 Nginx + PHP-FPM，站点根目录 public/）
@@ -351,7 +352,9 @@ chmod -R ug+rwx storage bootstrap/cache
 | 用户名 | `GEOFLOW_ADMIN_USERNAME`，默认 `admin` |
 | 密码 | 本地开发默认 `password`；生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`。若生产环境留空且账号尚不存在，首次安装会生成一次性随机密码并输出到初始化日志 |
 
-补充规则：`geoflow:install` 只在空库首次安装时执行安装填充；如果检测到线上已有业务数据但没有初始化标记，它只写入标记并跳过填充。`AdminUserSeeder` 本身仍保持幂等：目标用户名已存在时不会覆盖用户名、邮箱或密码。
+补充规则：`geoflow:install` 在空库首次安装时写入默认管理员、21 号主题和 50 篇参考内容；`--without-demo` 会只创建管理员。检测到线上业务数据时，命令会记录安装标记，并保留已有主题、站点设置、作者、分类和文章。`AdminUserSeeder` 本身保持幂等：目标用户名已存在时不会覆盖用户名、邮箱或密码。
+
+50 篇参考文档位于 `database/seeders/data/frontend-reference-v1/`，其分类、元数据、首次安装和升级保护说明见 [`docs/reference/frontend-reference-content.md`](docs/reference/frontend-reference-content.md)。
 
 ### 管理员登录失败锁定与手动解锁
 

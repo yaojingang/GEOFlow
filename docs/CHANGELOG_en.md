@@ -2,12 +2,18 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
-## Unreleased
+## 2026-08-09
+
+### v2.3.0
 
 - Added the `geoflow-template-21-enterprise-signature` frontend theme:
-  - Includes home, category, article, archive, and pagination templates, with dedicated CSS, JavaScript, design tokens, module mappings, and preview notes.
+  - Includes home, category, article, About, archive, and pagination templates, with dedicated CSS, JavaScript, design tokens, module mappings, and preview notes.
   - The homepage supports value proposition, capability, case study, content, and lead form modules. It shows a demo form when no valid form is selected and uses the live submission flow after selection.
-  - Preview coverage includes 1280 px desktop and 375 px and 320 px mobile layouts. The theme appears in the admin theme catalog and still requires explicit administrator activation.
+  - Preview coverage includes 1280 px desktop and 375 px and 320 px mobile layouts. The theme is published and becomes the default after a fresh installation completes.
+- Added the versioned `frontend-reference-v1` website content pack:
+  - Ships 50 Markdown documents with shared JSON metadata, organized into 35 Feature Guide articles and 15 Deployment & Operations articles.
+  - `geoflow:install` imports the pack and activates theme 21 on a pristine database. `--without-demo` remains available for a minimal first install.
+  - Sites with an installation marker or business data skip the import and retain their active theme, settings, authors, categories, and articles.
 - Added a standalone Admin UI V2 prototype:
   - Includes 84 page states across eight groups covering the workspace, content, materials, distribution, analytics, site, AI configuration, and system management.
   - Uses read-only demonstration data isolated from production APIs, with build scripts, a page manifest, a component gallery, and automated verification.

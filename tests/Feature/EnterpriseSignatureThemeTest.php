@@ -45,6 +45,26 @@ class EnterpriseSignatureThemeTest extends TestCase
         $this->assertStringNotContainsString('|演示数据', $metricModule['body']);
     }
 
+    public function test_theme_is_published_with_about_and_archive_pages(): void
+    {
+        $manifest = json_decode(
+            (string) file_get_contents(resource_path('views/theme/'.self::THEME_ID.'/manifest.json')),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+
+        $this->assertSame('published', $manifest['session_state'] ?? null);
+        $this->assertFalse($manifest['requires_admin_activation'] ?? true);
+        $this->assertEqualsCanonicalizing(
+            ['home', 'category', 'article', 'archive-index', 'archive-month', 'about'],
+            $manifest['compatible_pages'] ?? [],
+        );
+        $this->assertContains('/about', $manifest['preview_routes'] ?? []);
+        $this->assertContains('/archive', $manifest['preview_routes'] ?? []);
+        $this->assertContains('/archive/{year}/{month}', $manifest['preview_routes'] ?? []);
+    }
+
     public function test_homepage_visual_rules_avoid_forced_title_breaks_and_dark_feature_panels(): void
     {
         $css = (string) file_get_contents(public_path('themes/'.self::THEME_ID.'/theme.css'));
@@ -194,7 +214,7 @@ class EnterpriseSignatureThemeTest extends TestCase
             ->assertDontSee('action="'.route('site.lead-forms.submit', ['slug' => 'enterprise-geo']).'"', false);
     }
 
-    public function test_category_article_and_archive_pages_render_with_the_theme(): void
+    public function test_category_article_about_and_archive_pages_render_with_the_theme(): void
     {
         $this->activateTheme();
         $article = $this->createPublishedArticle();
@@ -221,6 +241,19 @@ class EnterpriseSignatureThemeTest extends TestCase
             ->assertDontSee('GEOFlow Insight')
             ->assertDontSee('data-ent-copy-url', false);
 
+        $this->get(route('site.about'))
+            ->assertOk()
+            ->assertSee('关于 GEOFlow')
+            ->assertSee('让可信知识进入 AI 答案')
+            ->assertSee('一条完整的内容工作流')
+            ->assertSee('GEOFlow 包含的核心能力')
+            ->assertSee('开放、可部署的技术基础')
+            ->assertSee('从开源仓库开始')
+            ->assertSee('data-ent-article-toc', false)
+            ->assertSee('data-ent-article-content', false)
+            ->assertSee('AboutPage')
+            ->assertSee('https://github.com/yaojingang/GEOFlow');
+
         $this->get(route('site.archive'))
             ->assertOk()
             ->assertSee('Archive ledger');
@@ -232,6 +265,22 @@ class EnterpriseSignatureThemeTest extends TestCase
             ->assertOk()
             ->assertSee($article->title)
             ->assertSee('Monthly archive');
+    }
+
+    public function test_about_page_falls_back_to_the_default_site_view(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'theme-without-about-template'],
+        );
+        SiteSettingsBag::forget();
+
+        $this->get(route('site.about'))
+            ->assertOk()
+            ->assertSee('article-detail-shell', false)
+            ->assertSee('关于 GEOFlow')
+            ->assertSee('一条完整的内容工作流')
+            ->assertSee('https://github.com/yaojingang/GEOFlow');
     }
 
     public function test_article_related_heading_and_footer_use_the_compact_copy(): void

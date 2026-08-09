@@ -216,4 +216,3 @@
         });
     </script>
 @endpush
-

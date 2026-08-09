@@ -120,45 +120,45 @@ Flujo principal: configurar modelos y prompts → preparar conocimiento, título
 
 GEOFlow encaja bien en estos escenarios reales:
 
-- **Sitio GEO independiente**  
+- **Sitio GEO independiente**
   Para operar un sitio centrado en FAQs, contenido de producto, casos y conocimiento de marca. El objetivo es mejorar la visibilidad en búsqueda por IA y la eficiencia operativa, no producir páginas de bajo valor.
-- **Subcanal GEO dentro de un sitio oficial**  
+- **Subcanal GEO dentro de un sitio oficial**
   Para añadir un canal de noticias, conocimiento o soluciones dentro de un sitio ya existente. El objetivo es estructurar mejor el contenido y facilitar su mantenimiento.
-- **Sitio independiente de fuente GEO**  
+- **Sitio independiente de fuente GEO**
   Para acumular guías, rankings, análisis y artículos alrededor de un tema o sector concreto. El objetivo es construir activos de contenido confiables, no contaminar internet con ruido.
-- **Sistema interno de gestión de contenido GEO**  
+- **Sistema interno de gestión de contenido GEO**
   Para usar GEOFlow como backend interno de modelos, materiales, prompts, conocimiento, revisión y publicación. El objetivo es aumentar la eficiencia del equipo.
-- **Despliegue GEO multi-sitio o multi-canal**  
+- **Despliegue GEO multi-sitio o multi-canal**
   Para gestionar varios sitios, canales o temas con un mismo patrón operativo. El objetivo es estandarizar la producción y distribución de contenido.
-- **Gestión automatizada de fuentes y distribución**  
+- **Gestión automatizada de fuentes y distribución**
   Para tratar bases de conocimiento, actualizaciones editoriales y distribución como ingeniería de contenido. El objetivo es que la información valiosa sea más estable, comprensible y recuperable.
 
-El valor del sistema debe basarse en una **base de conocimiento real, de calidad y bien mantenida**.  
+El valor del sistema debe basarse en una **base de conocimiento real, de calidad y bien mantenida**.
 GEOFlow no está pensado para fabricar información falsa ni para saturar la web. Su propósito es mejorar la eficiencia del marketing con IA y de la operación GEO mediante contenido confiable.
 
 ---
 
 ## 🧭 Formas recomendadas de despliegue y uso
 
-- **Como sitio GEO independiente**  
+- **Como sitio GEO independiente**
   Despliega frontend y panel admin completos y úsalo como propiedad editorial independiente.
-- **Como subcanal GEO de un sitio existente**  
+- **Como subcanal GEO de un sitio existente**
   Úsalo bajo un subdominio, directorio o canal especializado sin reconstruir todo el sitio principal.
-- **Como sitio fuente GEO**  
+- **Como sitio fuente GEO**
   Prioriza primero la construcción de la base de conocimiento y después automatiza las actualizaciones mediante tareas.
-- **Como backend interno de contenido GEO**  
+- **Como backend interno de contenido GEO**
   Aprovecha el panel, los modelos, los materiales, la cola, la API y los procesos editoriales como infraestructura interna.
-- **Como sistema multi-sitio o multi-canal**  
+- **Como sistema multi-sitio o multi-canal**
   Reutiliza flujos, plantillas y procesos para varios canales, marcas o experimentos.
-- **Como sistema de gestión automatizada de fuentes**  
+- **Como sistema de gestión automatizada de fuentes**
   Trata bibliotecas de títulos, imágenes y prompts, y la base de conocimiento, como infraestructura a largo plazo.
 
 Orden recomendado:
 
-1. Definir primero el objetivo real y el público real  
-2. Construir primero la base de conocimiento  
-3. Garantizar que el contenido sea verificable y mantenible  
-4. Solo después usar la automatización para ganar eficiencia  
+1. Definir primero el objetivo real y el público real
+2. Construir primero la base de conocimiento
+3. Garantizar que el contenido sea verificable y mantenible
+4. Solo después usar la automatización para ganar eficiencia
 
 Si la base de conocimiento es débil, la automatización solo amplificará el ruido. En GEOFlow, **la calidad de la base de conocimiento debe ir primero**.
 
@@ -178,8 +178,8 @@ docker compose build
 docker compose up -d
 ```
 
-- Sitio: `http://localhost:18080` (puerto **`APP_PORT`**, por defecto `18080`)  
-- Admin: `http://localhost:18080/geo_admin/login` (**`ADMIN_BASE_PATH`**, por defecto `geo_admin`)  
+- Sitio: `http://localhost:18080` (puerto **`APP_PORT`**, por defecto `18080`)
+- Admin: `http://localhost:18080/geo_admin/login` (**`ADMIN_BASE_PATH`**, por defecto `geo_admin`)
 
 Con **`docker-compose.yml`**, el servicio **`init`** ejecuta la migración y `php artisan geoflow:install`; los datos iniciales solo se escriben cuando la base de datos está vacía (admin por defecto: véase más abajo).
 
@@ -240,7 +240,7 @@ Admin: `http://127.0.0.1:8080/geo_admin/login`. **Producción:** Nginx + PHP-FPM
 
 `geoflow:install` solo ejecuta datos iniciales cuando la base está vacía. Si detecta datos de usuario o negocio, solo escribe el marcador de instalación y omite el seed. El seeder de admin sigue siendo idempotente y no sobrescribe usuario, correo ni contraseña existentes.
 
-Si necesitas categorías y artículos demo del frontend, configura `GEOFLOW_SEED_FRONTEND_DEMO=true` y después ejecuta `php artisan db:seed --force`. Los datos demo solo rellenan filas faltantes por defecto y no sobrescriben ajustes del sitio, anuncios, categorías ni artículos existentes. Usa `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` solo para reiniciar una base demo.
+En una base de datos nueva y vacía, `geoflow:install` activa Enterprise Signature 21 e importa el paquete de 50 artículos de referencia. Usa `--without-demo` para una instalación mínima. Los sitios con datos conservan su tema, configuración, autores, categorías y artículos. Para una importación manual, configura `GEOFLOW_SEED_FRONTEND_DEMO=true` y ejecuta `php artisan db:seed --force`; el modo predeterminado solo completa filas ausentes. Reserva `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` para bases demo reiniciables.
 
 ### Bloqueo por intentos fallidos y desbloqueo manual
 
