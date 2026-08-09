@@ -36,6 +36,14 @@ GEOFlow is released under the [Apache License 2.0](../../LICENSE). You may use, 
 
 ---
 
+## GEOFlow CLI 0.2.0
+
+The repository includes `bin/geoflow` for API v1 catalog, task, job, material, and article operations. It supports secure profiles, login, JSON file or stdin input, deletion confirmation, and structured error hints on macOS, Linux, and WSL. Native Windows ACLs require manual verification.
+
+[Full CLI guide](../GEOFLOW_CLI_en.md) | [中文文档](../GEOFLOW_CLI.md)
+
+---
+
 ## 🖼 UI Preview
 
 <table>

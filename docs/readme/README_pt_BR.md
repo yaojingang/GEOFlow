@@ -36,6 +36,14 @@ O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usa
 
 ---
 
+## GEOFlow CLI 0.2.0
+
+O repositório inclui `bin/geoflow` para gerenciar catálogos, tarefas, trabalhos, materiais e artigos pela API v1. O suporte oficial cobre macOS, Linux e WSL. No Windows nativo, confirme manualmente as ACLs do arquivo de configuração.
+
+[Guia completo da CLI em inglês](../GEOFLOW_CLI_en.md)
+
+---
+
 ## 🖼 Preview da Interface
 
 <table>
