@@ -237,7 +237,7 @@ php artisan key:generate
 
 GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
 php artisan geoflow:install                                            # first install on an empty database
-# Optional minimal install: php artisan geoflow:install --without-demo
+# Skip the theme and reference articles while keeping first-install settings: php artisan geoflow:install --without-demo
 php artisan storage:link
 
 php artisan serve --host=127.0.0.1 --port=8080
@@ -281,7 +281,7 @@ chmod -R ug+rwx storage bootstrap/cache
 | Username | `GEOFLOW_ADMIN_USERNAME`, default `admin` |
 | Password | Local/dev default `password`; in production set `GEOFLOW_ADMIN_PASSWORD`. If it is empty and the account does not exist yet, the installer generates a one-time random password in the init / `geoflow:install` logs. |
 
-`geoflow:install` adds the default Enterprise Signature theme and the 50-article reference pack only on a fresh empty database. Use `--without-demo` for an admin-only minimal install. If the command detects existing user/business data, it records the installation marker and retains the current theme, settings, categories, authors, and articles. `AdminUserSeeder` remains idempotent and never overwrites an existing username, email, or password.
+On a fresh empty database, `geoflow:install` adds the default Enterprise Signature theme, the 50-article reference pack, and example Baidu Analytics code. `--without-demo` skips the theme and reference articles while retaining the administrator and example analytics code. The example immediately loads a script from `hm.baidu.com` and sends public-site visit data to the example Baidu Analytics account; before production launch, replace it under Site Settings → Analytics Code with your own code, or clear it to disable analytics. When existing user or business data is detected, the command records the installation marker and preserves the current theme, settings, categories, authors, articles, and analytics code. `AdminUserSeeder` remains idempotent and never overwrites an existing username, email, or password.
 
 ### Admin login lockout and manual unlock
 

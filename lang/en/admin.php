@@ -3450,7 +3450,7 @@ return [
         'seo_title_help' => 'Available variables: {title}, {site_name}, {category}',
         'seo_description_help' => 'Available variables: {description}, {site_name}, {keywords}',
         'section_analytics' => 'Analytics',
-        'analytics_help' => 'This snippet is injected into the page <head> tag',
+        'analytics_help' => 'This snippet is injected into the page <head> tag. This is example code; replace it with your own analytics code',
         'analytics_super_admin_only' => 'Analytics code is injected directly into public pages. Only super admins can edit it.',
         'save_settings' => 'Save Settings',
         'error' => [

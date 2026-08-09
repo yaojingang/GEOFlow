@@ -20,7 +20,7 @@ class GeoFlowInstallCommand extends Command
 
     protected $signature = 'geoflow:install
         {--force : Run first-install seeders even if an installation marker or existing data is present}
-        {--without-demo : Create only the administrator on a fresh install and skip the frontend reference pack}';
+        {--without-demo : Skip the frontend reference pack on a fresh install}';
 
     protected $description = 'Initialize GEOFlow once, including the default frontend reference pack on a fresh database';
 
@@ -108,12 +108,8 @@ class GeoFlowInstallCommand extends Command
                     throw new RuntimeException('Frontend reference seeding returned a failure status.');
                 }
 
-                if ($isPristineDatabase && $seedFrontendReference) {
-                    SiteSetting::query()->updateOrCreate(
-                        ['setting_key' => 'active_theme'],
-                        ['setting_value' => 'geoflow-template-21-enterprise-signature'],
-                    );
-                    SiteSettingsBag::forget();
+                if ($isPristineDatabase) {
+                    $this->seedInitialSiteSettings($seedFrontendReference);
                 }
 
                 $this->markInstalled($force ? 'forced_install' : 'fresh_install', [
@@ -173,6 +169,23 @@ class GeoFlowInstallCommand extends Command
         }
 
         return DB::table($table)->limit(1)->exists();
+    }
+
+    private function seedInitialSiteSettings(bool $seedFrontendReference): void
+    {
+        SiteSetting::query()->firstOrCreate(
+            ['setting_key' => 'analytics_code'],
+            ['setting_value' => (string) config('geoflow.default_analytics_code', '')],
+        );
+
+        if ($seedFrontendReference) {
+            SiteSetting::query()->updateOrCreate(
+                ['setting_key' => 'active_theme'],
+                ['setting_value' => 'geoflow-template-21-enterprise-signature'],
+            );
+        }
+
+        SiteSettingsBag::forget();
     }
 
     /**

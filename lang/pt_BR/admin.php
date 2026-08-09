@@ -1436,7 +1436,7 @@ return array_replace_recursive($base, [
         'seo_title_help' => 'Variáveis disponíveis: {title}, {site_name}, {category}',
         'seo_description_help' => 'Variáveis disponíveis: {description}, {site_name}, {keywords}',
         'section_analytics' => 'Analítica',
-        'analytics_help' => 'Este trecho é injetado na tag <head> da página',
+        'analytics_help' => 'Este trecho é inserido na tag <head> da página. Este é um código de exemplo; substitua-o pelo seu próprio código de análise',
         'analytics_super_admin_only' => 'O código de analítica é injetado diretamente nas páginas públicas. Apenas super-administradores podem editá-lo.',
         'save_settings' => 'Salvar Configurações',
         'error' => [
