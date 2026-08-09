@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\Article;
 use App\Support\Site\ArticleHtmlPresenter;
 use PHPUnit\Framework\TestCase;
 
@@ -36,5 +37,19 @@ MD);
 
         $this->assertStringNotContainsString('<script>', $html);
         $this->assertStringNotContainsString('javascript:', $html);
+    }
+
+    public function test_card_summary_omits_a_leading_markdown_section_heading(): void
+    {
+        $article = new Article([
+            'title' => 'Enterprise GEO Guide',
+            'excerpt' => "## Why GEO matters\n\nA clear answer for enterprise teams.",
+            'content' => '',
+        ]);
+
+        $this->assertSame(
+            'A clear answer for enterprise teams.',
+            ArticleHtmlPresenter::cardSummary($article)
+        );
     }
 }

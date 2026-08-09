@@ -1,6 +1,12 @@
 <?php
 
+$manualPublicationsPath = __DIR__.'/manual_publications.php';
+if (! is_file($manualPublicationsPath) && function_exists('lang_path')) {
+    $manualPublicationsPath = lang_path('zh_CN/manual_publications.php');
+}
+
 return [
+    'manual_publications' => require $manualPublicationsPath,
     'nav' => [
         'dashboard' => '首页',
         'analytics' => '增长中心',
@@ -1281,6 +1287,7 @@ return [
         'field_api_key' => 'API 密钥 *',
         'field_model_id' => '模型 ID',
         'field_max_tokens' => '最大输出 Token',
+        'max_tokens_help' => '该值保存在 AI 模型上，供 AI 可见性分析及其他复用此模型的生成流程共同使用。',
         'field_count' => '返回数量',
         'field_content_formats' => '正文格式',
         'field_status' => '状态',
@@ -3474,6 +3481,11 @@ return [
             'badge' => '首页编排',
             'section_title' => '自定义首页模块',
             'section_desc' => '在当前模板之上编排首页展示层，可添加主视觉、图文模块、指标、功能网格、文章集合和自定义 HTML',
+            'page_title' => '自定义首页模块',
+            'page_subtitle' => '集中设置首页样式、导入和模块顺序',
+            'back_to_settings' => '返回站点设置',
+            'open_editor' => '进入首页编排',
+            'configured_count' => '当前已配置 :count 个模块',
             'scope_notice_title' => '全局首页展示层',
             'scope_notice_desc' => '这些模块会叠加到所有前台主题的首页文章列表前，保留原有分类、文章和 SEO 数据结构；适合做企业官网、内容门户、专题页和产品介绍首页',
             'preset_title' => '首页模块预设',
@@ -4001,7 +4013,7 @@ return [
     'distribution' => [
         'page_title' => '分发管理',
         'page_heading' => '分发管理',
-        'page_subtitle' => '集中管理目标站 Agent、文章分发队列和远程同步日志',
+        'page_subtitle' => '管理默认站点、外部分发渠道、文章分发队列和远程同步日志',
         'create_title' => '新建分发渠道',
         'create_heading' => '新建分发渠道',
         'create_subtitle' => '为目标站创建独立 Agent 接入密钥',
@@ -4012,7 +4024,21 @@ return [
         'jobs_title' => '分发队列',
         'jobs_heading' => '分发队列',
         'jobs_subtitle' => '查看文章同步到目标站的执行状态',
-        'channels_title' => '分发渠道',
+        'channels_title' => '外部分发渠道',
+        'channels_desc' => '管理 GEOFlow Agent、WordPress 和通用 API 等外部发布目标',
+        'default_site' => [
+            'title' => '默认站点',
+            'badge' => '默认渠道',
+            'status_active' => '运行中',
+            'desc' => 'GEOFlow 本站的公开发布出口，负责承载内容展示与转化表单。',
+            'open_site' => '访问站点',
+            'manage_forms' => '表单管理',
+            'site_settings' => '网站设置',
+            'published_articles' => '已发布内容',
+            'forms' => '转化表单',
+            'forms_summary' => ':active 启用 / :total 总数',
+            'back' => '返回默认站点',
+        ],
         'recent_logs_title' => '最近分发日志',
         'empty_channels_title' => '还没有分发渠道',
         'empty_channels_desc' => '创建第一个目标站 Agent 渠道后，任务可以在本地发布后自动分发文章。',
@@ -4029,8 +4055,8 @@ return [
             'next' => '下一页',
         ],
         'stats' => [
-            'total' => '渠道总数',
-            'active' => '活跃渠道',
+            'total' => '外部渠道总数',
+            'active' => '活跃外部渠道',
             'pending' => '待处理分发',
             'failed' => '失败分发',
         ],
@@ -4059,7 +4085,7 @@ return [
             'time' => '时间',
         ],
         'button' => [
-            'create' => '新建渠道',
+            'create' => '新建外部渠道',
             'jobs' => '查看队列',
             'health' => '测试连接',
             'save_and_generate_secret' => '保存并生成密钥',
@@ -4070,9 +4096,9 @@ return [
             'reveal_secret' => '验证并显示密钥',
             'download_package' => '下载站点包',
             'sync_settings' => '同步设置',
-            'sync_settings_selected' => '同步部分站点',
-            'sync_settings_selected_submit' => '同步所选站点',
-            'sync_settings_all' => '同步全部站点',
+            'sync_settings_selected' => '同步部分外部站点',
+            'sync_settings_selected_submit' => '同步所选外部站点',
+            'sync_settings_all' => '同步全部外部站点',
             'update_target_site' => '更新目标站点',
             'retry' => '重试',
             'edit_remote_article' => '编辑远端文章',

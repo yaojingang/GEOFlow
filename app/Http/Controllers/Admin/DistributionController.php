@@ -7,10 +7,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\DeleteDistributionChannelRequest;
 use App\Jobs\ProcessArticleDistributionJob;
 use App\Models\Admin;
+use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
+use App\Models\LeadForm;
 use App\Services\GeoFlow\DistributionChannelDeletionConfirmation;
 use App\Services\GeoFlow\DistributionChannelDeletionService;
 use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
@@ -22,12 +24,14 @@ use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\Site\ArticleTextAdPicker;
 use App\Support\Site\HomepageModuleBuilder;
+use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -65,6 +69,22 @@ class DistributionController extends Controller
             'failed' => ArticleDistribution::query()->where('status', 'failed')->count(),
         ];
 
+        $defaultSiteFormStats = Schema::hasTable('lead_forms')
+            ? LeadForm::query()
+                ->selectRaw(
+                    'COUNT(*) as total, SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as active',
+                    [LeadForm::STATUS_ACTIVE]
+                )
+                ->first()
+            : null;
+        $defaultSite = [
+            'name' => SiteSettingsBag::get('site_name', (string) config('geoflow.site_name', 'GEOFlow')),
+            'url' => route('site.home'),
+            'published_articles' => Article::query()->published()->count(),
+            'forms_total' => (int) ($defaultSiteFormStats?->total ?? 0),
+            'forms_active' => (int) ($defaultSiteFormStats?->active ?? 0),
+        ];
+
         $logsQuery = DistributionLog::query()
             ->with('channel:id,name')
             ->with('article:id,title,slug')
@@ -85,6 +105,7 @@ class DistributionController extends Controller
             'activeMenu' => 'distribution',
             'adminSiteName' => AdminWeb::siteName(),
             'channels' => $channels,
+            'defaultSite' => $defaultSite,
             'channelSyncSummaries' => $channels
                 ->mapWithKeys(fn (DistributionChannel $channel): array => [(int) $channel->id => $this->frontendExperienceInspector->syncSummary($channel)])
                 ->all(),

@@ -1,18 +1,18 @@
 {
-  "version": "2.2.0",
-  "tag": "v2.2.0",
-  "release_date": "2026-07-29",
+  "version": "2.3.0",
+  "tag": "v2.3.0",
+  "release_date": "2026-08-09",
   "release_type": "minor",
-  "archive_url": "https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.2.0.zip",
+  "archive_url": "https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.3.0.zip",
   "payload": {
-    "title_zh": "GEOFlow v2.2.0",
-    "title_en": "GEOFlow v2.2.0",
-    "summary_zh": "GEOFlow 2.2.0 新增匿名成功登录统计，覆盖后台 Web 与 API 渠道，并保持登录流程、失败事件和个人信息与中央监控隔离。",
-    "summary_en": "GEOFlow 2.2.0 adds anonymous successful-login telemetry for admin web and API channels while keeping login flow, failed attempts, and personal information isolated from central monitoring.",
-    "upgrade_tip_zh": "本版本未新增业务迁移。升级代码和前端资源后运行 php artisan migrate --force 与 php artisan geoflow:security-audit，并重启 queue worker；从较早版本升级时继续按受管图片 readiness 流程完成删除门禁检查。",
-    "upgrade_tip_en": "This release adds no application migration. Update the code and frontend assets, run php artisan migrate --force and php artisan geoflow:security-audit, then restart queue workers. When upgrading from older versions, complete the managed-image deletion readiness checks.",
-    "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v2.2.0",
-    "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/v2.2.0/docs/CHANGELOG.md",
-    "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/v2.2.0/docs/CHANGELOG_en.md"
+    "title_zh": "GEOFlow v2.3.0",
+    "title_en": "GEOFlow v2.3.0",
+    "summary_zh": "GEOFlow 2.3.0 发布企业签名版默认官网模板、关于与归档页面，并为全新部署提供 50 篇版本化参考内容。",
+    "summary_en": "GEOFlow 2.3.0 publishes the Enterprise Signature default website theme, About and archive pages, and a versioned 50-article reference pack for fresh deployments.",
+    "upgrade_tip_zh": "已有站点升级会保留原有主题、站点设置、分类与文章；参考内容只在全新空库首次执行 geoflow:install 时导入。升级后运行 php artisan migrate --force、php artisan geoflow:security-audit 并重启 queue worker；从较早安全版本升级时继续完成受管图片 readiness 与删除门禁检查。",
+    "upgrade_tip_en": "Existing sites keep their active theme, settings, categories, and articles. The reference pack is imported only by geoflow:install on a pristine database. After updating, run php artisan migrate --force and php artisan geoflow:security-audit, then restart queue workers. Upgrades from earlier security releases must complete managed-image deletion readiness checks.",
+    "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v2.3.0",
+    "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/v2.3.0/docs/CHANGELOG.md",
+    "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/v2.3.0/docs/CHANGELOG_en.md"
   }
 }

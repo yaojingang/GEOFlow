@@ -37,6 +37,7 @@ GEOFLOW_TELEMETRY_ENABLED=false
 | 🗂 素材与提示词体系 | 标题库、关键词库、图片库、作者库、知识库、正文提示词、特殊提示词集中管理 |
 | 📦 任务自动化 | 支持任务创建、生成数量、草稿池、审核开关、发布节奏、队列执行、失败重试、发布范围控制和任务文章筛选 |
 | 📋 审核与文章管理 | 草稿、审核、发布、回收站、作者、分类、SEO 字段和任务来源统一管理 |
+| ✍️ 人工发布工作台 | 将已审核文章或评论文案编排为人工发布工单，支持身份、账号、执行人、计划时间、风险提示、重复提醒、发布回执和 CSV 导出 |
 | 📡 多站点分发管理 | 支持 GEOFlow Agent、WordPress REST 与通用 HTTP API 渠道、密钥管理、目标站点包、静态模式、伪静态规则、远端文章编辑/删除和队列日志 |
 | 🧾 目标站点包 | 为每个渠道生成预配置 PHP Agent 包，内置首页、详情页、静态资源、sitemap、`llms.txt` / TXT 地图和 Schema |
 | 📊 数据分析 | 集中展示系统总览、单站内容运营、多站分发、访问日志、Top 内容、AI 爬虫识别和趋势图 |
@@ -154,6 +155,20 @@ AI 配置 / 素材库 / 提示词 / 任务配置
 
 ---
 
+## ✍️ 人工发布工作台
+
+后台「人工发布」用于管理需要运营人员在外部平台手动完成的发帖与评论任务：
+
+1. 超级管理员在「身份与账号」中建立发布身份和平台账号引用。
+2. 从已审核文章创建发帖工单，或为公开目标地址创建评论工单。
+3. 设置最终文案、执行人和计划时间，将工单流转到待执行状态。
+4. 执行人复制内容，在外部平台发布并回填实际发布地址和结果备注。
+5. 管理员通过筛选、状态统计、重复提醒和 CSV 导出持续跟踪执行情况。
+
+工作台不保存平台密码、Cookie、Token 或 OAuth 凭证，也不会自动访问外部网站。发布内容、来源文章和身份披露文案按工单保存快照；普通管理员只能查看和处理分配给自己的工单。
+
+---
+
 ## ⚡ 后台三步上手
 
 登录后台后，建议按仪表盘里的「快速开始」完成第一轮验证：
@@ -266,7 +281,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 - 前台 / 后台统一经 `web`（Nginx）访问
 - PHP 由 `app`（php-fpm）解析
 - `APP_URL` 使用 `http://` 时设置 `SESSION_SECURE_COOKIE=false`；启用 HTTPS 后设置为 `true`
-- **首次安装**：生产 `init` 服务会先执行迁移，再运行 `php artisan geoflow:install`。该流程仅用于全新空库；已有数据或迁移历史的实例必须执行 `docs/deployment/DEPLOYMENT.md` 3.1 节的停机排空升级协议。
+- **首次安装**：生产 `init` 服务会先执行迁移，再运行 `php artisan geoflow:install`。全新空库会默认启用 21 号企业签名版官网模板，并导入 50 篇版本化参考内容。已有数据或迁移历史的实例保留当前主题和内容，并执行 `docs/deployment/DEPLOYMENT.md` 3.1 节的停机排空升级协议。
 - 详细说明见 `docs/deployment/DEPLOYMENT.md`
 
 ### 方式二：本地 PHP 服务器
@@ -288,6 +303,7 @@ php artisan key:generate
 # 3. 数据库与存储
 GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
 php artisan geoflow:install                                            # 首次空库安装
+# 可选极简安装：php artisan geoflow:install --without-demo
 php artisan storage:link
 
 # 4. 开发用 HTTP（仅本地调试；生产请用 Nginx + PHP-FPM，站点根目录 public/）
@@ -336,7 +352,9 @@ chmod -R ug+rwx storage bootstrap/cache
 | 用户名 | `GEOFLOW_ADMIN_USERNAME`，默认 `admin` |
 | 密码 | 本地开发默认 `password`；生产环境请设置 `GEOFLOW_ADMIN_PASSWORD`。若生产环境留空且账号尚不存在，首次安装会生成一次性随机密码并输出到初始化日志 |
 
-补充规则：`geoflow:install` 只在空库首次安装时执行安装填充；如果检测到线上已有业务数据但没有初始化标记，它只写入标记并跳过填充。`AdminUserSeeder` 本身仍保持幂等：目标用户名已存在时不会覆盖用户名、邮箱或密码。
+补充规则：`geoflow:install` 在空库首次安装时写入默认管理员、21 号主题和 50 篇参考内容；`--without-demo` 会只创建管理员。检测到线上业务数据时，命令会记录安装标记，并保留已有主题、站点设置、作者、分类和文章。`AdminUserSeeder` 本身保持幂等：目标用户名已存在时不会覆盖用户名、邮箱或密码。
+
+50 篇参考文档位于 `database/seeders/data/frontend-reference-v1/`，其分类、元数据、首次安装和升级保护说明见 [`docs/reference/frontend-reference-content.md`](docs/reference/frontend-reference-content.md)。
 
 ### 管理员登录失败锁定与手动解锁
 

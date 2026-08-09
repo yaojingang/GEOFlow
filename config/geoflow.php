@@ -36,10 +36,10 @@ return [
     // 前台 Blade 使用的 Laravel 翻译 locale（与 APP_LOCALE、后台会话语言独立；对齐旧站中文导航）
     'public_locale' => env('GEOFLOW_PUBLIC_LOCALE', 'zh_CN'),
     // 默认前台主题；后台未显式选择主题时使用
-    'default_theme' => env('GEOFLOW_DEFAULT_THEME', 'toutiao-news-20260426'),
-    // 是否在默认 db:seed 中写入前台演示分类和文章。生产环境默认关闭，避免重启/初始化时污染真实内容。
+    'default_theme' => env('GEOFLOW_DEFAULT_THEME', 'geoflow-template-21-enterprise-signature'),
+    // 是否在手动 db:seed 中导入前台参考内容。geoflow:install 仅在全新空库默认导入。
     'seed_frontend_demo' => filter_var(env('GEOFLOW_SEED_FRONTEND_DEMO', false), FILTER_VALIDATE_BOOLEAN),
-    // 演示数据默认只补缺，不覆盖用户已修改的网站设置、广告、分类和文章；仅调试演示库时才显式开启覆盖。
+    // 参考内容默认只补缺，不覆盖用户已修改的作者、分类和文章；仅重置演示库时显式开启覆盖。
     'seed_frontend_demo_overwrite' => filter_var(env('GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE', false), FILTER_VALIDATE_BOOLEAN),
 
     // 当前系统版本（底部展示、GitHub 更新检查对比）；默认跟随本地 version.json，避免已部署 .env 锁死版本号。

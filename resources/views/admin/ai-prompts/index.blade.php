@@ -195,4 +195,3 @@
         });
     </script>
 @endpush
-

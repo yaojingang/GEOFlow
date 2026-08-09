@@ -186,14 +186,15 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 
 ### 默认管理员（首次安装）
 
-生产 `docker-compose.prod.yml` 的 **`init`** 服务会在迁移完成后执行 `php artisan geoflow:install`。该命令只在空库首次安装时写入默认管理员；如果检测到已有业务数据但没有安装标记，只会补写标记并跳过填充，避免重启、重构或拉取新代码后污染线上网站设置、广告、提示词、分类和文章。常驻的 `app`、`queue`、`scheduler`、`reverb` 服务不会自动 seed。
+生产 `docker-compose.prod.yml` 的 **`init`** 服务会在迁移完成后执行 `php artisan geoflow:install`。全新空库会写入默认管理员、启用 21 号企业签名版主题，并导入 50 篇版本化参考内容。如果检测到已有业务数据但没有安装标记，命令只会补写标记并跳过填充，保留线上网站设置、主题、作者、分类和文章。常驻的 `app`、`queue`、`scheduler`、`reverb` 服务不会自动 seed。
 
 ```bash
 # 如果你没有使用 compose 的 init 服务，可在迁移成功后执行首次安装命令：
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php artisan geoflow:install
+# 可选极简首次安装：在命令末尾加 --without-demo
 ```
 
-账号由 `Database\Seeders\AdminUserSeeder` 在首次空库安装时写入：只在目标用户名不存在时创建，**重复执行不会覆盖**已存在账号的用户名、邮箱或密码。前台演示分类和文章默认不会写入；只有显式设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 且首次空库安装时才会导入演示数据。
+账号由 `Database\Seeders\AdminUserSeeder` 在首次空库安装时写入：只在目标用户名不存在时创建，**重复执行不会覆盖**已存在账号的用户名、邮箱或密码。参考内容包仅在系统确认为全新空库时自动导入；已部署站点的正常升级不会调用该导入路径。
 
 | 项目 | 值 |
 |------|-----|
@@ -204,7 +205,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php 
 
 ### 初始化数据维护规则
 
-后续新增默认站点配置、默认提示词、默认渠道、默认模板、演示分类或演示文章时，必须接入 `php artisan geoflow:install` 的首次空库安装路径，或通过明确的手动修复命令执行。不要把用户可修改的默认数据放到常规容器启动、迁移或每次升级都会自动执行的 seed 流程里，避免覆盖线上用户配置。
+后续新增默认站点配置、默认提示词、默认渠道、默认模板、参考分类或参考文章时，必须接入 `php artisan geoflow:install` 的首次空库安装路径，或通过明确的手动修复命令执行。用户可修改的默认数据不应进入常规容器启动、迁移或每次升级自动执行的 seed 流程，以便保留线上用户配置。
 
 ## 5. 关键差异
 
@@ -278,12 +279,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
 建议按顺序尝试：
 
 1. **直接重试** `docker compose --env-file .env.prod -f docker-compose.prod.yml build`（偶发 Hub 或链路问题）。
-2. **单独拉基础镜像**，确认是拉取问题还是仅 BuildKit 缓存问题：  
-   `docker pull php:8.4-fpm-bookworm`  
+2. **单独拉基础镜像**，确认是拉取问题还是仅 BuildKit 缓存问题：
+   `docker pull php:8.4-fpm-bookworm`
    若此处同样 `not found`，说明当前访问的 registry/加速源缺层，需换源或直连。
 3. **检查本机 `/etc/docker/daemon.json` 的 `registry-mirrors`**：部分公共加速源对 `docker.io` 层同步不完整，可**暂时注释镜像加速**后重启 Docker，再 `docker pull` / `build`；或换成你环境稳定可用的镜像源策略。
-4. **清理构建缓存后再构建**：  
-   `docker builder prune -f`  
+4. **清理构建缓存后再构建**：
+   `docker builder prune -f`
    必要时再 `docker system prune`（注意会删掉未使用镜像，执行前自行确认）。
 
 仍失败时，把 **`docker pull php:8.4-fpm-bookworm` 的完整输出**与 **`daemon.json` 中与 registry 相关的配置**（可打码）一并排查网络与镜像源。

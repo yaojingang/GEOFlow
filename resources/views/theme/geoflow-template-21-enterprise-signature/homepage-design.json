@@ -1,0 +1,91 @@
+{
+    "import_mode": "replace",
+    "apply_state": "review_only",
+    "style": {
+        "accent_color": "#0b57d0",
+        "background_color": "#ffffff",
+        "surface_color": "#ffffff",
+        "text_color": "#0a0b0d",
+        "muted_color": "#626a75",
+        "container_width": "wide",
+        "section_spacing": "relaxed",
+        "radius": "soft"
+    },
+    "modules": [
+        {
+            "id": "enterprise-mission",
+            "type": "rich_text",
+            "layout": "split",
+            "enabled": true,
+            "sort_order": 10,
+            "subtitle": "可由后台维护",
+            "title": "把企业知识变成可验证、可分发、可引用的长期资产",
+            "body": "用于补充首页固定品牌叙事。背景与卡片表面均保持纯白。",
+            "alignment": "left"
+        },
+        {
+            "id": "enterprise-demo-metrics",
+            "type": "metric_band",
+            "layout": "grid",
+            "enabled": true,
+            "sort_order": 20,
+            "title": "生态概览",
+            "subtitle": "以下均为演示数据",
+            "body": "社区节点|41\n支持语言|18\n知识片段|6,420\n交付可观测率|99.94%",
+            "alignment": "left"
+        },
+        {
+            "id": "enterprise-capabilities",
+            "type": "feature_grid",
+            "layout": "grid",
+            "enabled": true,
+            "sort_order": 30,
+            "title": "GEOFlow 企业能力",
+            "subtitle": "开放架构，统一工作流",
+            "body": "知识证据库|连接企业资料并形成可检索的知识证据|/archive\nGEO 内容工作流|从选题、生成、审核到发布形成闭环|/archive\nAI 可见性观测|追踪重点问题、来源与品牌提及|/archive\n多渠道分发|通过可扩展通道完成内容交付|/archive",
+            "alignment": "left"
+        },
+        {
+            "id": "enterprise-featured",
+            "type": "article_collection",
+            "layout": "grid",
+            "data_source": "featured",
+            "enabled": true,
+            "sort_order": 40,
+            "title": "精选洞察",
+            "subtitle": "来自后台的真实精选文章",
+            "limit": 6,
+            "alignment": "left"
+        },
+        {
+            "id": "enterprise-latest",
+            "type": "article_collection",
+            "layout": "compact",
+            "data_source": "latest",
+            "enabled": true,
+            "sort_order": 50,
+            "title": "最新资源",
+            "subtitle": "来自后台的真实发布内容",
+            "limit": 6,
+            "alignment": "left"
+        },
+        {
+            "id": "enterprise-open-source",
+            "type": "cta_band",
+            "layout": "split",
+            "enabled": true,
+            "sort_order": 60,
+            "subtitle": "Open Source",
+            "title": "查看 GEOFlow 开源仓库",
+            "body": "了解项目架构、版本进展和参与方式。",
+            "link_text": "前往 GitHub",
+            "link_url": "https://github.com/yaojingang/GEOFlow",
+            "alignment": "left"
+        }
+    ],
+    "notes": [
+        "此文件仅用于管理员评审，当前未导入站点设置。",
+        "如需接入后台表单，请先在增长中心创建并启用表单，再添加 lead_form 模块和真实 lead_form_slug。",
+        "导入 replace 模式会替换现有首页运营模块，执行前需确认当前配置。"
+    ]
+}

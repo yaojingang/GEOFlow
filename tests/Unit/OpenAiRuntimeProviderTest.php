@@ -87,6 +87,22 @@ class OpenAiRuntimeProviderTest extends TestCase
         );
     }
 
+    public function test_it_normalizes_a_full_openai_responses_endpoint_to_its_base_url(): void
+    {
+        $this->assertSame(
+            'https://api.openai.com/v1',
+            OpenAiRuntimeProvider::resolveChatBaseUrl('https://api.openai.com/v1/responses')
+        );
+    }
+
+    public function test_it_normalizes_a_full_compatible_responses_endpoint_to_its_base_url(): void
+    {
+        $this->assertSame(
+            'https://ark.cn-beijing.volces.com/api/v3',
+            OpenAiRuntimeProvider::resolveChatBaseUrl('https://ark.cn-beijing.volces.com/api/v3/responses')
+        );
+    }
+
     public function test_it_normalizes_gemini_base_urls_to_native_v1beta(): void
     {
         $this->assertSame(
@@ -136,12 +152,12 @@ class OpenAiRuntimeProviderTest extends TestCase
         );
 
         $this->assertSame(
-            'openai',
+            'openai-compatible',
             OpenAiRuntimeProvider::resolveEmbeddingDriver('https://open.bigmodel.cn/api/paas/v4', 'embedding-3')
         );
 
         $this->assertSame(
-            'openai',
+            'openai-compatible',
             OpenAiRuntimeProvider::resolveEmbeddingDriver('https://ark.cn-beijing.volces.com/api/v3', 'doubao-embedding-text-240515')
         );
     }
@@ -163,13 +179,13 @@ class OpenAiRuntimeProviderTest extends TestCase
 
     public function test_it_resolves_chat_driver_for_zhipu(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://open.bigmodel.cn/api/paas/v4', 'glm-5.1'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://open.bigmodel.cn/api/paas/v4', 'glm-5.2'));
     }
 
     public function test_it_resolves_chat_driver_for_minimax(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimax.io/v1', 'MiniMax-M3'));
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimaxi.com/v1', 'MiniMax-M2.7'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimax.io/v1', 'MiniMax-M3'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimaxi.com/v1', 'MiniMax-M2.7'));
     }
 
     public function test_it_resolves_chat_driver_for_siliconflow(): void
@@ -179,16 +195,16 @@ class OpenAiRuntimeProviderTest extends TestCase
 
     public function test_it_resolves_chat_driver_for_volcengine(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-2-0-lite-260428'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-2-0-lite-260428'));
     }
 
     public function test_it_resolves_chat_driver_for_aliyun(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen3.6-plus'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen3.6-plus'));
     }
 
-    public function test_it_defaults_to_deepseek_for_unknown(): void
+    public function test_it_defaults_to_the_openai_compatible_driver_for_unknown(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.unknown-provider.com/v1', 'some-model'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://api.unknown-provider.com/v1', 'some-model'));
     }
 }

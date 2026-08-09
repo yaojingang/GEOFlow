@@ -54,6 +54,26 @@ class SiteSettingsController extends Controller
                 ? $this->themeReplicationService->recent(3)
                 : collect(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
+            'homepageEditorPage' => false,
+            'homepageModuleCount' => count($this->parseHomepageModules((string) ($settings['homepage_modules'] ?? '[]'))),
+            'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
+            'articleDetailTextAds' => $this->parseArticleDetailTextAds((string) ($settings['article_detail_text_ads'] ?? '[]')),
+        ]);
+    }
+
+    /**
+     * 独立的首页模块编排页面。
+     */
+    public function editHomepageModules(): View
+    {
+        $settings = $this->loadSettings();
+
+        return view('admin.site-settings.index', [
+            'pageTitle' => __('admin.site_settings.homepage.page_title'),
+            'activeMenu' => 'site_settings',
+            'adminSiteName' => AdminWeb::siteName(),
+            'settings' => $settings,
+            'homepageEditorPage' => true,
             'homepageModules' => $this->parseHomepageModules((string) ($settings['homepage_modules'] ?? '[]')),
             'homepageStyle' => $this->parseHomepageStyle((string) ($settings['homepage_style'] ?? '{}')),
             'homepageModuleTypes' => HomepageModuleBuilder::TYPES,
@@ -66,8 +86,6 @@ class SiteSettingsController extends Controller
             'homepageAlignments' => HomepageModuleBuilder::ALIGNMENTS,
             'homepagePresets' => HomepageModuleBuilder::presetIds(),
             'homepagePresetModes' => HomepageModuleBuilder::presetModes(),
-            'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
-            'articleDetailTextAds' => $this->parseArticleDetailTextAds((string) ($settings['article_detail_text_ads'] ?? '[]')),
         ]);
     }
 
@@ -237,7 +255,7 @@ class SiteSettingsController extends Controller
 
         SiteSettingsBag::forget();
 
-        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.homepage.message.saved'));
+        return redirect()->route('admin.site-settings.homepage-modules.edit')->with('message', __('admin.site_settings.homepage.message.saved'));
     }
 
     /**
@@ -277,7 +295,7 @@ class SiteSettingsController extends Controller
 
         SiteSettingsBag::forget();
 
-        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.homepage.message.preset_applied'));
+        return redirect()->route('admin.site-settings.homepage-modules.edit')->with('message', __('admin.site_settings.homepage.message.preset_applied'));
     }
 
     /**
@@ -331,7 +349,7 @@ class SiteSettingsController extends Controller
 
         SiteSettingsBag::forget();
 
-        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.homepage.message.imported'));
+        return redirect()->route('admin.site-settings.homepage-modules.edit')->with('message', __('admin.site_settings.homepage.message.imported'));
     }
 
     /**

@@ -1,8 +1,13 @@
 <?php
 
 $base = require __DIR__.'/../en/admin.php';
+$manualPublicationsPath = __DIR__.'/manual_publications.php';
+if (! is_file($manualPublicationsPath) && function_exists('lang_path')) {
+    $manualPublicationsPath = lang_path('ru/manual_publications.php');
+}
 
 return array_replace_recursive($base, [
+    'manual_publications' => require $manualPublicationsPath,
     'nav' => [
         'dashboard' => 'Панель',
         'tasks' => 'Задачи',

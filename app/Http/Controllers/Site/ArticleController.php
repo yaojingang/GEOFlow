@@ -47,6 +47,7 @@ class ArticleController extends Controller
         $contentHtml = ArticleTextAdPicker::injectIntoContentHtml(
             ArticleHtmlPresenter::markdownToHtml($body)
         );
+        $excerptPlain = $excerpt !== '' ? ArticleHtmlPresenter::cardSummary($article, 160) : '';
 
         $tags = $this->keywordTags((string) $article->keywords);
 
@@ -59,7 +60,7 @@ class ArticleController extends Controller
             ->get(['id', 'title', 'slug']);
 
         $pageTitle = (string) $article->title;
-        $pageDescription = $excerpt !== '' ? $excerpt : ArticleHtmlPresenter::cardSummary($article, 160);
+        $pageDescription = $excerptPlain !== '' ? $excerptPlain : ArticleHtmlPresenter::cardSummary($article, 160);
         $pageKeywords = implode(',', $tags);
 
         $stickyAd = ArticleStickyAdPicker::firstEnabled();
@@ -68,7 +69,7 @@ class ArticleController extends Controller
             'activeNav' => 'article',
             'article' => $article,
             'contentHtml' => $contentHtml,
-            'excerptPlain' => $excerpt,
+            'excerptPlain' => $excerptPlain,
             'tags' => $tags,
             'relatedArticles' => $related,
             'siteTitle' => $siteTitle,

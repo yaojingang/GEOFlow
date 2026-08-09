@@ -9,15 +9,19 @@ use App\Models\SiteSetting;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiUsageReservation;
 use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
+use App\Services\Outbound\OutboundRequestBlockedException;
+use App\Services\Outbound\OutboundRequestFailedException;
 use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Throwable;
@@ -217,6 +221,8 @@ class AiModelController extends Controller
             $apiKey = $this->decryptApiKey((string) ($model->getRawOriginal('api_key') ?? ''));
             $modelName = trim((string) ($model->model_id ?? ''));
             $isGemini = OpenAiRuntimeProvider::isGeminiProviderUrl($endpoint);
+            $usesOpenAiResponses = $modelType === 'chat'
+                && OpenAiRuntimeProvider::resolveChatDriver((string) ($model->api_url ?? ''), $modelName) === 'openai';
 
             if ($endpoint === '') {
                 return $this->modelTestResponse(false, __('admin.ai_models.test_error_api_url_missing'), $startedAt, $modelType);
@@ -228,7 +234,8 @@ class AiModelController extends Controller
                 return $this->modelTestResponse(false, __('admin.ai_models.test_error_model_missing'), $startedAt, $modelType, $endpoint);
             }
 
-            $reservation = $this->usageQuota->reserveModel($model);
+            // 停用模型也可诊断，所有真实上游请求继续纳入每日额度和用量审计。
+            $reservation = $this->usageQuota->reserveModelForTest($model);
             if ($reservation === null) {
                 return $this->modelTestResponse(
                     false,
@@ -251,19 +258,21 @@ class AiModelController extends Controller
             $response = $this->safeHttp->post(
                 $request,
                 $endpoint,
-                $this->buildTestPayload($modelName, $modelType, $isGemini),
+                $this->buildTestPayload($modelName, $modelType, $isGemini, $usesOpenAiResponses),
                 (int) config('geoflow.outbound_ai_max_bytes', 8 * 1024 * 1024),
             );
 
             $json = $response->json();
             if (! $response->successful()) {
-                $this->usageQuota->releaseModel($reservation);
+                if ($reservation instanceof AiUsageReservation) {
+                    $this->recordModelTestAttempt($reservation);
+                }
 
                 return $this->modelTestResponse(
                     false,
                     __('admin.ai_models.test_failed_with_status', [
                         'status' => (string) $response->status(),
-                        'message' => $this->redactedRemoteDetail(),
+                        'message' => $this->safeRemoteDetail($response, $apiKey),
                     ]),
                     $startedAt,
                     $modelType,
@@ -272,13 +281,15 @@ class AiModelController extends Controller
                 );
             }
 
-            if (! $this->isValidTestResponse($json, $modelType, $isGemini)) {
-                $this->usageQuota->releaseModel($reservation);
+            if (! $this->isValidTestResponse($json, $modelType, $isGemini, $usesOpenAiResponses)) {
+                if ($reservation instanceof AiUsageReservation) {
+                    $this->recordModelTestAttempt($reservation);
+                }
 
                 return $this->modelTestResponse(
                     false,
                     __('admin.ai_models.test_invalid_response', [
-                        'message' => $this->redactedRemoteDetail(),
+                        'message' => $this->safeRemoteDetail($response, $apiKey),
                     ]),
                     $startedAt,
                     $modelType,
@@ -287,10 +298,12 @@ class AiModelController extends Controller
                 );
             }
 
-            try {
-                $this->usageQuota->recordModelSuccess($reservation);
-            } catch (Throwable $exception) {
-                report($exception);
+            if ($reservation instanceof AiUsageReservation) {
+                try {
+                    $this->usageQuota->recordModelSuccess($reservation);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
             }
 
             return $this->modelTestResponse(
@@ -303,12 +316,18 @@ class AiModelController extends Controller
             );
         } catch (Throwable $exception) {
             if ($reservation instanceof AiUsageReservation) {
-                $this->usageQuota->releaseModel($reservation);
+                $this->recordModelTestAttempt($reservation);
             }
+
+            Log::warning('AI model connection test failed.', [
+                'ai_model_id' => (int) $model->id,
+                'exception' => $exception::class,
+                'reason_code' => property_exists($exception, 'reasonCode') ? (string) $exception->reasonCode : null,
+            ]);
 
             return $this->modelTestResponse(
                 false,
-                __('admin.ai_models.test_exception', ['message' => $this->redactedRemoteDetail()]),
+                __('admin.ai_models.test_exception', ['message' => $this->safeExceptionDetail($exception)]),
                 $startedAt,
                 $this->normalizeModelType((string) ($model->model_type ?? 'chat'))
             );
@@ -665,14 +684,23 @@ class AiModelController extends Controller
             return rtrim($providerBaseUrl, '/').'/models/'.$modelName.($modelType === 'embedding' ? ':batchEmbedContents' : ':generateContent');
         }
 
+        if ($modelType === 'chat'
+            && OpenAiRuntimeProvider::resolveChatDriver($providerBaseUrl, (string) ($model->model_id ?? '')) === 'openai') {
+            return rtrim($providerBaseUrl, '/').'/responses';
+        }
+
         return rtrim($providerBaseUrl, '/').($modelType === 'embedding' ? '/embeddings' : '/chat/completions');
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function buildTestPayload(string $modelName, string $modelType, bool $isGemini = false): array
-    {
+    private function buildTestPayload(
+        string $modelName,
+        string $modelType,
+        bool $isGemini = false,
+        bool $usesOpenAiResponses = false
+    ): array {
         if ($isGemini) {
             if ($modelType === 'embedding') {
                 return [
@@ -690,10 +718,10 @@ class AiModelController extends Controller
                 ];
             }
 
-            $generationConfig = [
-                'temperature' => 0,
-                'maxOutputTokens' => 64,
-            ];
+            $generationConfig = ['maxOutputTokens' => 64];
+            if ($this->supportsGeminiSamplingParameters($modelName)) {
+                $generationConfig['temperature'] = 0;
+            }
 
             $thinkingLevel = $this->resolveGeminiTestThinkingLevel($modelName);
             if ($thinkingLevel !== null) {
@@ -722,6 +750,14 @@ class AiModelController extends Controller
             ];
         }
 
+        if ($usesOpenAiResponses) {
+            return [
+                'model' => $modelName,
+                'input' => 'Reply with OK.',
+                'max_output_tokens' => 128,
+            ];
+        }
+
         return [
             'model' => $modelName,
             'messages' => [
@@ -732,8 +768,12 @@ class AiModelController extends Controller
         ];
     }
 
-    private function isValidTestResponse(mixed $json, string $modelType, bool $isGemini = false): bool
-    {
+    private function isValidTestResponse(
+        mixed $json,
+        string $modelType,
+        bool $isGemini = false,
+        bool $usesOpenAiResponses = false
+    ): bool {
         if (! is_array($json)) {
             return false;
         }
@@ -762,6 +802,26 @@ class AiModelController extends Controller
             return isset($json['data'][0]['embedding']) && is_array($json['data'][0]['embedding']);
         }
 
+        if ($usesOpenAiResponses) {
+            if (trim((string) ($json['output_text'] ?? '')) !== '') {
+                return true;
+            }
+
+            foreach (($json['output'] ?? []) as $output) {
+                if (! is_array($output)) {
+                    continue;
+                }
+
+                foreach (($output['content'] ?? []) as $part) {
+                    if (is_array($part) && trim((string) ($part['text'] ?? '')) !== '') {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
         return isset($json['choices'][0]['message']['content'])
             || isset($json['choices'][0]['text'])
             || isset($json['choices'][0]['delta']['content']);
@@ -783,6 +843,10 @@ class AiModelController extends Controller
     {
         $modelName = strtolower($this->normalizeGeminiModelName($modelName));
 
+        if (preg_match('/^gemini-3\.\d+-/', $modelName) === 1) {
+            return 'low';
+        }
+
         if (str_starts_with($modelName, 'gemini-3-flash')) {
             return 'minimal';
         }
@@ -792,6 +856,19 @@ class AiModelController extends Controller
         }
 
         return null;
+    }
+
+    private function supportsGeminiSamplingParameters(string $modelName): bool
+    {
+        $modelName = strtolower($this->normalizeGeminiModelName($modelName));
+        if (preg_match('/^gemini-(\d+)(?:\.(\d+))?-/', $modelName, $matches) !== 1) {
+            return true;
+        }
+
+        $major = (int) ($matches[1] ?? 0);
+        $minor = isset($matches[2]) && $matches[2] !== '' ? (int) $matches[2] : 0;
+
+        return $major < 3 || ($major === 3 && $minor < 5);
     }
 
     private function modelTestResponse(
@@ -814,8 +891,90 @@ class AiModelController extends Controller
         ], $success ? 200 : 422);
     }
 
-    private function redactedRemoteDetail(): string
+    private function safeRemoteDetail(Response $response, string $apiKey): string
     {
-        return 'Upstream response details are hidden.';
+        $payload = $response->json();
+        $message = $this->extractRemoteMessage($payload);
+        if ($message !== null) {
+            return $this->sanitizeRemoteText($message, $apiKey);
+        }
+
+        foreach (preg_split('/\R/u', mb_substr($response->body(), 0, 4000, 'UTF-8')) ?: [] as $line) {
+            $line = trim($line);
+            if (! str_starts_with($line, 'data:')) {
+                continue;
+            }
+
+            $eventPayload = json_decode(trim(substr($line, strlen('data:'))), true);
+            $message = $this->extractRemoteMessage($eventPayload);
+            if ($message !== null) {
+                return $this->sanitizeRemoteText($message, $apiKey);
+            }
+        }
+
+        $plainBody = trim(strip_tags(mb_substr($response->body(), 0, 2000, 'UTF-8')));
+        if ($plainBody !== '') {
+            return $this->sanitizeRemoteText($plainBody, $apiKey);
+        }
+
+        return 'The upstream service returned no readable error detail.';
+    }
+
+    private function extractRemoteMessage(mixed $payload): ?string
+    {
+        $candidates = is_array($payload) ? [
+            data_get($payload, 'error.message'),
+            data_get($payload, 'error.detail'),
+            data_get($payload, 'error'),
+            data_get($payload, 'detail'),
+            data_get($payload, 'message'),
+            data_get($payload, 'msg'),
+        ] : [];
+
+        foreach ($candidates as $candidate) {
+            if (is_scalar($candidate) && trim((string) $candidate) !== '') {
+                return trim((string) $candidate);
+            }
+        }
+
+        return null;
+    }
+
+    private function sanitizeRemoteText(string $text, string $apiKey): string
+    {
+        $sanitized = str_replace($apiKey, '[redacted]', $text);
+        $sanitized = preg_replace('/\bBearer\s+[A-Za-z0-9._~+\/=:-]{8,}/iu', 'Bearer [redacted]', $sanitized) ?? $sanitized;
+        $sanitized = preg_replace('/\bsk-[A-Za-z0-9_-]{8,}\b/u', '[redacted]', $sanitized) ?? $sanitized;
+        $sanitized = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $sanitized) ?? $sanitized;
+        $sanitized = preg_replace('/\s+/u', ' ', trim($sanitized)) ?? trim($sanitized);
+
+        return mb_substr($sanitized, 0, 500, 'UTF-8');
+    }
+
+    private function safeExceptionDetail(Throwable $exception): string
+    {
+        if ($exception instanceof OutboundRequestBlockedException) {
+            return match ($exception->reasonCode) {
+                'dns_resolution_failed' => 'DNS resolution failed. Check container DNS and retry.',
+                'unsafe_address', 'mapped_address' => 'The API address was blocked by the outbound security policy.',
+                'response_too_large' => 'The upstream response exceeded the configured safety limit.',
+                default => 'The outbound request was blocked ('.$exception->reasonCode.').',
+            };
+        }
+
+        if ($exception instanceof OutboundRequestFailedException) {
+            return 'The network request failed. Check DNS, TLS, and upstream availability.';
+        }
+
+        return 'An unexpected backend error occurred. Check the application log.';
+    }
+
+    private function recordModelTestAttempt(AiUsageReservation $reservation): void
+    {
+        try {
+            $this->usageQuota->recordModelAttempt($reservation);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 }

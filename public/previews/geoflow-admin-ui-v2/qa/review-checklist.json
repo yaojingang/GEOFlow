@@ -1,0 +1,27 @@
+{
+  "schema": "geoflow-admin-ui-v2-qa/v1",
+  "viewports": [
+    { "width": 1440, "height": 1000, "label": "Desktop XL" },
+    { "width": 1280, "height": 900, "label": "Desktop" },
+    { "width": 768, "height": 1024, "label": "Tablet" },
+    { "width": 375, "height": 812, "label": "Mobile" },
+    { "width": 320, "height": 700, "label": "Mobile Compact" }
+  ],
+  "states": ["normal", "empty", "loading", "error", "permission"],
+  "checks": [
+    "Shared sidebar and topbar are present on authenticated pages.",
+    "Topbar has no separator line or shadow.",
+    "Active navigation matches the page manifest.",
+    "Page title and primary action do not overflow.",
+    "Tables scroll inside their own container.",
+    "Mobile sidebar opens as a drawer and closes from the overlay.",
+    "Mobile drawer and modal move focus on open and restore it on close.",
+    "Popover menus are mutually exclusive.",
+    "Escape closes menus, modal, and mobile drawer.",
+    "Form labels, required fields, and header or footer submit actions are correctly associated.",
+    "Interactive tabs expose the selected state and matching tab panel.",
+    "Catalog search exposes a no-results status when no page matches.",
+    "All internal page links resolve.",
+    "Browser console contains no errors."
+  ]
+}

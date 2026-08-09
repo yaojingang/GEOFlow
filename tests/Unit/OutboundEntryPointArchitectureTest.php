@@ -86,7 +86,13 @@ class OutboundEntryPointArchitectureTest extends TestCase
     #[Test]
     public function application_and_http_sdk_code_do_not_register_generic_http_middleware(): void
     {
-        foreach ([app_path(), base_path('vendor/prism-php/prism/src')] as $root) {
+        $roots = [app_path(), base_path('vendor/laravel/ai/src')];
+        $legacyPrismRoot = base_path('vendor/prism-php/prism/src');
+        if (is_dir($legacyPrismRoot)) {
+            $roots[] = $legacyPrismRoot;
+        }
+
+        foreach ($roots as $root) {
             foreach (File::allFiles($root) as $file) {
                 if ($file->getExtension() !== 'php') {
                     continue;

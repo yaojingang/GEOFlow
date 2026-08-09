@@ -396,6 +396,17 @@
                 $lanes,
                 static fn (array $item): bool => $item['title'] !== __('admin.dashboard.automation.lane_multi_title'),
             ));
+            $lanes = array_map(
+                static function (array $lane): array {
+                    $lane['rows'] = array_values(array_filter(
+                        $lane['rows'],
+                        static fn (array $row): bool => $row['href'] !== route('admin.admin-users.index'),
+                    ));
+
+                    return $lane;
+                },
+                $lanes,
+            );
         }
 
         $skillResourceCards = [

@@ -16,7 +16,7 @@ class DatabaseSeederTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_database_seeder_does_not_seed_frontend_demo_content_by_default(): void
+    public function test_database_seeder_does_not_seed_frontend_reference_content_by_default(): void
     {
         Config::set('geoflow.seed_frontend_demo', false);
 
@@ -27,7 +27,7 @@ class DatabaseSeederTest extends TestCase
         $this->assertSame(0, Article::query()->count());
     }
 
-    public function test_database_seeder_can_seed_frontend_demo_content_when_enabled(): void
+    public function test_database_seeder_can_seed_frontend_reference_content_when_enabled(): void
     {
         Config::set('geoflow.seed_frontend_demo', true);
         Config::set('geoflow.seed_frontend_demo_overwrite', false);
@@ -35,11 +35,12 @@ class DatabaseSeederTest extends TestCase
         $this->seed(DatabaseSeeder::class);
 
         $this->assertSame(1, Admin::query()->where('username', 'admin')->count());
-        $this->assertGreaterThan(0, Category::query()->where('slug', 'mac')->count());
-        $this->assertGreaterThan(0, Article::query()->where('slug', 'how-to-reinstall-macos')->count());
+        $this->assertSame(2, Category::query()->count());
+        $this->assertSame(50, Article::query()->count());
+        $this->assertSame(1, Category::query()->where('slug', 'geoflow-getting-started')->count());
     }
 
-    public function test_frontend_demo_seed_does_not_overwrite_existing_user_owned_rows(): void
+    public function test_frontend_reference_seed_does_not_overwrite_existing_user_owned_rows(): void
     {
         Config::set('geoflow.seed_frontend_demo', true);
         Config::set('geoflow.seed_frontend_demo_overwrite', false);
@@ -50,20 +51,20 @@ class DatabaseSeederTest extends TestCase
         ]);
 
         $category = Category::query()->create([
-            'slug' => 'mac',
-            'name' => '用户自己的 Mac 分类',
+            'slug' => 'geoflow-getting-started',
+            'name' => '用户自己的功能分类',
             'description' => '用户写的分类描述',
             'sort_order' => 77,
         ]);
 
         $author = Author::query()->create([
             'name' => '用户作者',
-            'email' => 'demo@geoflow.local',
+            'email' => 'editor@geoflow.local',
             'bio' => '用户写的作者说明',
         ]);
 
         Article::query()->create([
-            'slug' => 'how-to-reinstall-macos',
+            'slug' => 'gnflg8xg',
             'title' => '用户自己的文章标题',
             'excerpt' => '用户自己的摘要',
             'content' => '用户自己的正文',
@@ -78,7 +79,7 @@ class DatabaseSeederTest extends TestCase
         $this->assertSame('用户自己的站点名称', SiteSetting::query()->where('setting_key', 'site_name')->value('setting_value'));
 
         $category->refresh();
-        $this->assertSame('用户自己的 Mac 分类', $category->name);
+        $this->assertSame('用户自己的功能分类', $category->name);
         $this->assertSame('用户写的分类描述', $category->description);
         $this->assertSame(77, $category->sort_order);
 
@@ -86,12 +87,12 @@ class DatabaseSeederTest extends TestCase
         $this->assertSame('用户作者', $author->name);
         $this->assertSame('用户写的作者说明', $author->bio);
 
-        $article = Article::query()->where('slug', 'how-to-reinstall-macos')->firstOrFail();
+        $article = Article::query()->where('slug', 'gnflg8xg')->firstOrFail();
         $this->assertSame('用户自己的文章标题', $article->title);
         $this->assertSame('用户自己的正文', $article->content);
     }
 
-    public function test_frontend_demo_seed_only_overwrites_when_explicitly_enabled(): void
+    public function test_frontend_reference_seed_only_overwrites_owned_rows_when_explicitly_enabled(): void
     {
         Config::set('geoflow.seed_frontend_demo', true);
         Config::set('geoflow.seed_frontend_demo_overwrite', true);
@@ -102,20 +103,20 @@ class DatabaseSeederTest extends TestCase
         ]);
 
         $category = Category::query()->create([
-            'slug' => 'mac',
-            'name' => '用户自己的 Mac 分类',
+            'slug' => 'geoflow-getting-started',
+            'name' => '用户自己的功能分类',
             'description' => '用户写的分类描述',
             'sort_order' => 77,
         ]);
 
         $author = Author::query()->create([
             'name' => '用户作者',
-            'email' => 'demo@geoflow.local',
+            'email' => 'editor@geoflow.local',
             'bio' => '用户写的作者说明',
         ]);
 
         Article::query()->create([
-            'slug' => 'how-to-reinstall-macos',
+            'slug' => 'gnflg8xg',
             'title' => '用户自己的文章标题',
             'excerpt' => '用户自己的摘要',
             'content' => '用户自己的正文',
@@ -127,17 +128,17 @@ class DatabaseSeederTest extends TestCase
 
         $this->seed(DatabaseSeeder::class);
 
-        $this->assertSame('GEOFlow Support', SiteSetting::query()->where('setting_key', 'site_name')->value('setting_value'));
+        $this->assertSame('用户自己的站点名称', SiteSetting::query()->where('setting_key', 'site_name')->value('setting_value'));
 
         $category->refresh();
-        $this->assertSame('Mac 支持', $category->name);
+        $this->assertSame('功能指南', $category->name);
         $this->assertSame(10, $category->sort_order);
 
         $author->refresh();
         $this->assertSame('GEOFlow 编辑部', $author->name);
 
-        $article = Article::query()->where('slug', 'how-to-reinstall-macos')->firstOrFail();
-        $this->assertSame('如何重新安装 macOS', $article->title);
-        $this->assertStringContainsString('从恢复系统重新安装', $article->content);
+        $article = Article::query()->where('slug', 'gnflg8xg')->firstOrFail();
+        $this->assertSame('GEOFlow 2.3.0 是什么？面向 AI 搜索的开源内容工程系统详解', $article->title);
+        $this->assertStringContainsString('系统定位：内容工程', $article->content);
     }
 }

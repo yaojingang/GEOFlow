@@ -636,6 +636,12 @@
                                 <div>{{ __('admin.article_edit.info.published_at') }}: {{ $formData['published_at'] !== '' ? $formData['published_at'] : '-' }}</div>
                             </div>
                         </div>
+                        @if($canCreateManualPublication && in_array((string) $formData['review_status'], ['approved', 'auto_approved'], true))
+                            <a href="{{ route('admin.manual-publications.create', ['article_id' => (int) $articleId]) }}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-3 text-sm font-semibold text-white hover:bg-purple-700">
+                                <i data-lucide="send" class="h-4 w-4"></i>
+                                {{ __('admin.manual_publications.article_action') }}
+                            </a>
+                        @endif
                     @endif
 
                     <div class="flex items-center justify-end space-x-3">

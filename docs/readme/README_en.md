@@ -219,7 +219,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 
 - Frontend and admin both enter through `web` (Nginx)
 - PHP is executed by `app` (php-fpm)
-- **First install:** the production `init` service runs migrations and then `php artisan geoflow:install`. This sequence is limited to a fresh empty database. Deployments with data or migration history must follow the stopped-and-drained upgrade protocol in section 3.1 of `../../docs/deployment/DEPLOYMENT.md`.
+- **First install:** the production `init` service runs migrations and then `php artisan geoflow:install`. A pristine database receives theme 21 and the 50-article reference pack. Deployments with data or migration history keep their existing theme and content and must follow the stopped-and-drained upgrade protocol in section 3.1 of `../../docs/deployment/DEPLOYMENT.md`.
 - See `../../docs/deployment/DEPLOYMENT.md` for details
 
 ### Option 2: Local PHP stack
@@ -237,6 +237,7 @@ php artisan key:generate
 
 GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
 php artisan geoflow:install                                            # first install on an empty database
+# Optional minimal install: php artisan geoflow:install --without-demo
 php artisan storage:link
 
 php artisan serve --host=127.0.0.1 --port=8080
@@ -280,7 +281,7 @@ chmod -R ug+rwx storage bootstrap/cache
 | Username | `GEOFLOW_ADMIN_USERNAME`, default `admin` |
 | Password | Local/dev default `password`; in production set `GEOFLOW_ADMIN_PASSWORD`. If it is empty and the account does not exist yet, the installer generates a one-time random password in the init / `geoflow:install` logs. |
 
-`geoflow:install` only runs install seeders on a fresh empty database. If it detects existing user/business data but no installation marker, it writes the marker and skips seeding. `AdminUserSeeder` itself remains idempotent and never overwrites an existing username, email, or password.
+`geoflow:install` adds the default Enterprise Signature theme and the 50-article reference pack only on a fresh empty database. Use `--without-demo` for an admin-only minimal install. If the command detects existing user/business data, it records the installation marker and retains the current theme, settings, categories, authors, and articles. `AdminUserSeeder` remains idempotent and never overwrites an existing username, email, or password.
 
 ### Admin login lockout and manual unlock
 

@@ -215,7 +215,7 @@ chmod -R ug+rwx storage bootstrap/cache
 
 `geoflow:install` só executa seeders iniciais quando o banco está vazio. Se detectar dados de usuário ou de negócio, apenas grava o marcador de instalação e ignora o seed. O admin seeder continua idempotente e nunca sobrescreve usuário, email ou senha existentes.
 
-Se precisar de categorias e artigos demo do frontend, defina `GEOFLOW_SEED_FRONTEND_DEMO=true` e então execute `php artisan db:seed --force`. Por padrão, os dados demo apenas preenchem registros ausentes e não sobrescrevem configurações do site, anúncios, categorias ou artigos existentes. Use `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` apenas para reiniciar uma base demo.
+Em um banco novo e vazio, `geoflow:install` ativa o Enterprise Signature 21 e importa o pacote com 50 artigos de referência. Use `--without-demo` para uma instalação mínima. Sites com dados preservam tema, configurações, autores, categorias e artigos. Para importação manual, defina `GEOFLOW_SEED_FRONTEND_DEMO=true` e execute `php artisan db:seed --force`; o modo padrão apenas completa registros ausentes. Reserve `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` para bases demo reinicializáveis.
 
 ### Bloqueio de login admin e desbloqueio manual
 

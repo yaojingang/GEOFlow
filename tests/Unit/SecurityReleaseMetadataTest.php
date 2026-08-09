@@ -6,28 +6,28 @@ use Tests\TestCase;
 
 class SecurityReleaseMetadataTest extends TestCase
 {
-    public function test_v220_manifest_uses_immutable_release_urls_and_security_upgrade_guidance(): void
+    public function test_v230_manifest_uses_immutable_release_urls_and_security_upgrade_guidance(): void
     {
         $manifest = json_decode((string) file_get_contents(base_path('version.json')), true, flags: JSON_THROW_ON_ERROR);
         $payload = $manifest['payload'];
 
-        $this->assertSame('2.2.0', $manifest['version']);
-        $this->assertSame('2026-07-29', $manifest['release_date']);
+        $this->assertSame('2.3.0', $manifest['version']);
+        $this->assertSame('2026-08-09', $manifest['release_date']);
         $this->assertSame('minor', $manifest['release_type']);
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.2.0.zip',
+            'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.3.0.zip',
             $manifest['archive_url'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/releases/tag/v2.2.0',
+            'https://github.com/yaojingang/GEOFlow/releases/tag/v2.3.0',
             $payload['release_url'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/blob/v2.2.0/docs/CHANGELOG.md',
+            'https://github.com/yaojingang/GEOFlow/blob/v2.3.0/docs/CHANGELOG.md',
             $payload['changelog_url_zh'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/blob/v2.2.0/docs/CHANGELOG_en.md',
+            'https://github.com/yaojingang/GEOFlow/blob/v2.3.0/docs/CHANGELOG_en.md',
             $payload['changelog_url_en'],
         );
 

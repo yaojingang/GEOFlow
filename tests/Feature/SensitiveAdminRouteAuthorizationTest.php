@@ -69,6 +69,22 @@ class SensitiveAdminRouteAuthorizationTest extends TestCase
         $this->actingAs($admin, 'admin')->get(route('admin.url-import'))->assertOk();
     }
 
+    #[Test]
+    public function standard_admin_pages_do_not_render_super_admin_only_links(): void
+    {
+        $admin = $this->admin('admin');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertDontSee(route('admin.admin-users.index'), false);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.create'))
+            ->assertOk()
+            ->assertDontSee(route('admin.distribution.create'), false);
+    }
+
     private function admin(string $role): Admin
     {
         return Admin::query()->create([

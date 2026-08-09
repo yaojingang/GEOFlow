@@ -8,9 +8,9 @@
                 <p class="mt-1 text-sm text-gray-600">{{ __('admin.lead_forms.page_subtitle') }}</p>
             </div>
             <div class="flex flex-wrap gap-2">
-                <a href="{{ route('admin.analytics') }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                <a href="{{ $backUrl }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                     <i data-lucide="arrow-left" class="mr-2 h-4 w-4"></i>
-                    {{ __('admin.growth_center.back') }}
+                    {{ $backLabel }}
                 </a>
                 <a href="{{ route('admin.lead-forms.create') }}" class="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
                     <i data-lucide="plus" class="mr-2 h-4 w-4"></i>

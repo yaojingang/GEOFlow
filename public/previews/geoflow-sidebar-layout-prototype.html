@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEOFlow 左侧菜单布局原型</title>
+    <script src="../js/tailwindcss.play-cdn.js"></script>
+    <script src="../js/lucide.min.js"></script>
+    <style>
+        html, body { min-height: 100%; }
+        body { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        #app-sidebar { width: 16rem; }
+        #sidebar-overlay { opacity: 0; pointer-events: none; }
+
+        @media (max-width: 767px) {
+            #app-sidebar { transform: translateX(-100%); transition: transform 180ms ease-out; }
+            body.sidebar-open #app-sidebar { transform: translateX(0); }
+            body.sidebar-open #sidebar-overlay { opacity: 1; pointer-events: auto; }
+        }
+
+        @media (min-width: 768px) {
+            body.sidebar-collapsed #app-sidebar { width: 4.5rem; }
+            body.sidebar-collapsed .sidebar-wordmark,
+            body.sidebar-collapsed .sidebar-label { display: none; }
+            body.sidebar-collapsed .sidebar-link { justify-content: center; padding-left: 0.75rem; padding-right: 0.75rem; }
+            body.sidebar-collapsed .sidebar-group { margin-top: 0.25rem; }
+            body.sidebar-collapsed .sidebar-recent { display: none; }
+            body.sidebar-collapsed #sidebar-collapse-icon { transform: rotate(180deg); }
+        }
+
+        :focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            #app-sidebar { transition: none; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased">
+    <div class="flex min-h-screen">
+        <button id="sidebar-overlay" type="button" aria-label="关闭主菜单" class="fixed inset-0 z-40 bg-gray-900/40 transition-opacity md:hidden"></button>
+
+        <aside id="app-sidebar" aria-label="主菜单" class="fixed inset-y-0 left-0 z-50 flex h-screen shrink-0 flex-col border-r border-gray-200 bg-white md:sticky md:top-0 md:translate-x-0">
+            <div class="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-4">
+                <a href="#dashboard" class="sidebar-wordmark flex min-h-10 shrink-0 items-center text-xl font-semibold text-gray-900">GEOFlow</a>
+                <button id="sidebar-collapse" type="button" aria-label="收起主菜单" aria-expanded="true" class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 md:flex">
+                    <i id="sidebar-collapse-icon" data-lucide="panel-left-close" class="h-5 w-5"></i>
+                </button>
+                <button id="sidebar-close" type="button" aria-label="关闭主菜单" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 md:hidden">
+                    <i data-lucide="x" class="h-5 w-5"></i>
+                </button>
+            </div>
+
+            <nav class="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="后台功能导航">
+                <a href="#dashboard" aria-current="page" title="首页" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md bg-blue-100 px-3 py-2 text-sm font-medium text-blue-600">
+                    <i data-lucide="home" class="h-5 w-5 shrink-0"></i>
+                    <span class="sidebar-label whitespace-nowrap">首页</span>
+                </a>
+
+                <section class="sidebar-group mt-5" aria-labelledby="sidebar-analytics-heading">
+                    <h2 id="sidebar-analytics-heading" class="sidebar-label px-3 pb-2 text-xs font-semibold text-gray-400">运营分析</h2>
+                    <a href="#analytics" title="增长中心" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="chart-no-axes-combined" class="h-5 w-5 shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">增长中心</span>
+                    </a>
+                </section>
+
+                <section class="sidebar-group mt-5 space-y-1" aria-labelledby="sidebar-content-heading">
+                    <h2 id="sidebar-content-heading" class="sidebar-label px-3 pb-2 text-xs font-semibold text-gray-400">内容生产</h2>
+                    <a href="#tasks" title="任务管理" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="workflow" class="h-5 w-5 shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">任务管理</span>
+                    </a>
+                    <a href="#articles" title="内容管理" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="file-text" class="h-5 w-5 shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">内容管理</span>
+                    </a>
+                    <a href="#manual-publications" title="人工发布" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="send" class="h-5 w-5 shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">人工发布</span>
+                    </a>
+                    <a href="#distribution" title="分发管理" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="radio-tower" class="h-5 w-5 shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">分发管理</span>
+                    </a>
+                </section>
+
+                <section class="sidebar-group mt-5 space-y-1" aria-labelledby="sidebar-capability-heading">
+                    <h2 id="sidebar-capability-heading" class="sidebar-label px-3 pb-2 text-xs font-semibold text-gray-400">资产与能力</h2>
+                    <a href="#materials" title="内容资产" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="database" class="h-5 w-5 shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">内容资产</span>
+                    </a>
+                    <a href="#ai-config" title="AI配置器" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="bot" class="h-5 w-5 shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">AI配置器</span>
+                    </a>
+                </section>
+
+                <section class="sidebar-group mt-5 space-y-1" aria-labelledby="sidebar-system-heading">
+                    <h2 id="sidebar-system-heading" class="sidebar-label px-3 pb-2 text-xs font-semibold text-gray-400">系统管理</h2>
+                    <a href="#site-settings" title="网站设置" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="settings" class="h-5 w-5 shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">网站设置</span>
+                    </a>
+                    <a href="#admin-users" title="用户管理" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="users" class="h-5 w-5 shrink-0"></i>
+                        <span class="sidebar-label whitespace-nowrap">用户管理</span>
+                    </a>
+                </section>
+
+                <section class="sidebar-recent mt-6 border-t border-gray-100 pt-5" aria-labelledby="sidebar-recent-heading">
+                    <div class="flex min-h-10 items-center justify-between px-3">
+                        <h2 id="sidebar-recent-heading" class="text-xs font-semibold text-gray-400">最近处理</h2>
+                        <button type="button" aria-label="管理最近处理记录" class="flex h-10 w-10 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                            <i data-lucide="sliders-horizontal" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                    <div class="mt-1 space-y-1">
+                        <a href="#analytics" title="AI 可见性周报复盘" class="flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                            <span class="h-2 w-2 shrink-0 rounded-full bg-blue-500"></span>
+                            <span class="truncate">AI 可见性周报复盘</span>
+                        </a>
+                        <a href="#articles" title="GEOFlow 2.1 发布说明" class="flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                            <span class="h-2 w-2 shrink-0 rounded-full bg-emerald-500"></span>
+                            <span class="truncate">GEOFlow 2.1 发布说明</span>
+                        </a>
+                        <a href="#materials" title="企业知识库批量更新" class="flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                            <span class="h-2 w-2 shrink-0 rounded-full bg-violet-500"></span>
+                            <span class="truncate">企业知识库批量更新</span>
+                        </a>
+                    </div>
+                </section>
+            </nav>
+
+            <div class="sidebar-label shrink-0 border-t border-gray-100 px-5 py-4 text-xs text-gray-400">
+                GEOFlow v2.0
+            </div>
+        </aside>
+
+        <div class="flex min-w-0 flex-1 flex-col">
+            <header class="relative z-30 h-16 shrink-0 border-b border-gray-200 bg-white shadow-sm">
+                <div class="flex h-full items-center gap-3 px-4 sm:px-6 lg:px-12">
+                    <button id="sidebar-open" type="button" aria-label="打开主菜单" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 md:hidden">
+                        <i data-lucide="menu" class="h-5 w-5"></i>
+                    </button>
+                    <div class="flex min-w-0 items-center gap-2 text-sm text-gray-500">
+                        <i data-lucide="home" class="hidden h-4 w-4 sm:block"></i>
+                        <span class="truncate font-medium text-gray-700">首页</span>
+                    </div>
+
+                    <div class="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+                        <div class="relative">
+                            <button id="notification-button" type="button" aria-label="通知消息" aria-expanded="false" class="relative flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                                <i data-lucide="bell" class="h-5 w-5"></i>
+                                <span class="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"></span>
+                            </button>
+                            <div id="notification-menu" class="absolute right-0 mt-3 hidden w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+                                <div class="border-b border-gray-100 px-4 py-3">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span class="text-sm font-semibold text-gray-900">通知消息</span>
+                                        <span class="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">有更新</span>
+                                    </div>
+                                </div>
+                                <div class="px-4 py-4">
+                                    <div class="text-sm font-semibold text-gray-900">发现新版本 v2.1</div>
+                                    <p class="mt-2 text-sm leading-6 text-gray-600">GitHub 上已经有新的 GEOFlow 版本，建议查看更新日志后再升级。</p>
+                                    <a href="#changelog" class="mt-4 inline-flex min-h-10 items-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">查看更新日志</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="hidden min-h-10 items-center rounded-lg border border-gray-200 bg-white px-2 py-1 shadow-sm md:flex">
+                            <i data-lucide="languages" class="mr-1.5 h-4 w-4 text-gray-400"></i>
+                            <select aria-label="界面语言" class="appearance-none bg-transparent pr-5 text-sm font-medium text-gray-700 outline-none">
+                                <option>简体中文</option>
+                                <option>English</option>
+                            </select>
+                        </div>
+
+                        <div class="relative">
+                            <button id="user-button" type="button" aria-label="打开用户菜单" aria-expanded="false" class="flex min-h-10 items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
+                                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
+                                    <i data-lucide="user" class="h-4 w-4 text-blue-600"></i>
+                                </span>
+                                <i data-lucide="chevron-down" class="h-4 w-4"></i>
+                            </button>
+                            <div id="user-menu" class="absolute right-0 mt-2 hidden w-56 rounded-md bg-white py-1 shadow-lg ring-1 ring-gray-200">
+                                <div class="border-b border-gray-100 px-4 py-2">
+                                    <div class="text-sm text-gray-700">欢迎，admin</div>
+                                    <div class="text-xs text-gray-400">超级管理员</div>
+                                </div>
+                                <a href="#dashboard" class="flex min-h-10 items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><i data-lucide="home" class="mr-2 h-4 w-4"></i>返回首页</a>
+                                <a href="#logout" class="flex min-h-10 items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50"><i data-lucide="log-out" class="mr-2 h-4 w-4"></i>退出登录</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <main id="dashboard" class="min-w-0 flex-1">
+                <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-12">
+                    <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                            <h1 class="text-3xl font-bold text-gray-900">GEO 内容运营后台</h1>
+                            <p class="mt-1 text-sm leading-6 text-gray-600">把问题地图、知识资产、证据结构、生产质检、权威分发和数据归因放在同一个工作台里演示</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="inline-flex h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50">
+                                <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>刷新
+                            </button>
+                            <button type="button" class="inline-flex h-10 items-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                                <i data-lucide="plus" class="mr-2 h-4 w-4"></i>新建任务
+                            </button>
+                        </div>
+                    </div>
+
+                    <section class="mb-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
+                        <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">快速开始</p>
+                                <h2 class="mt-2 text-xl font-semibold text-gray-900">三步演示 GEO 内容流程</h2>
+                                <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-500">先接入模型能力，再沉淀知识资产和证据，最后创建任务生成、审核、分发并观察 AI 爬虫反馈</p>
+                            </div>
+                            <span class="inline-flex w-fit items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                <span class="mr-2 h-1.5 w-1.5 rounded-full bg-current"></span>基础能力可用
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-1 divide-y divide-gray-100 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+                            <div class="p-6">
+                                <div class="flex items-start gap-4">
+                                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">1</div>
+                                    <div>
+                                        <h3 class="text-base font-semibold text-gray-900">配置 API</h3>
+                                        <p class="mt-2 text-sm leading-6 text-gray-500">添加至少一个可用的聊天模型；如果需要知识库 RAG 召回，再配置一个 embedding 模型</p>
+                                        <button type="button" class="mt-4 inline-flex min-h-10 items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                                            <i data-lucide="plug-zap" class="mr-1.5 h-4 w-4"></i>配置 AI 模型
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="flex items-start gap-4">
+                                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-semibold text-white">2</div>
+                                    <div class="min-w-0 flex-1">
+                                        <h3 class="text-base font-semibold text-gray-900">沉淀知识资产</h3>
+                                        <p class="mt-2 text-sm leading-6 text-gray-500">把真实、可靠的业务资料拆成可复用知识、标题、关键词、图片和作者资产</p>
+                                        <div class="mt-4 flex flex-wrap gap-2">
+                                            <a href="#materials" class="inline-flex items-center rounded-full border border-orange-100 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100">知识库</a>
+                                            <a href="#materials" class="inline-flex items-center rounded-full border border-green-100 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100">标题库</a>
+                                            <a href="#materials" class="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100">关键词库</a>
+                                            <a href="#materials" class="inline-flex items-center rounded-full border border-purple-100 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100">图片库</a>
+                                            <a href="#materials" class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">作者</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="flex items-start gap-4">
+                                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">3</div>
+                                    <div>
+                                        <h3 class="text-base font-semibold text-gray-900">新建任务</h3>
+                                        <p class="mt-2 text-sm leading-6 text-gray-500">选择问题输入、知识资产、模型和分发范围，系统会生成草稿并进入审核与发布链路</p>
+                                        <button type="button" class="mt-4 inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                            <i data-lucide="plus" class="mr-1.5 h-4 w-4"></i>新建任务
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="mb-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
+                        <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">现场演示路径</p>
+                                <h2 class="mt-2 text-xl font-semibold text-gray-900">五分钟讲清 GEO 内容流程</h2>
+                                <p class="mt-2 max-w-4xl text-sm leading-6 text-gray-500">把抽象概念落到后台操作：先看知识资产，再新建任务、过质量门禁、做权威分发，最后用观测归因解释效果</p>
+                            </div>
+                            <span class="inline-flex w-fit items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                                <i data-lucide="presentation" class="mr-1.5 h-3.5 w-3.5"></i>讲解动线
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-1 divide-y divide-gray-100 lg:grid-cols-5 lg:divide-x lg:divide-y-0">
+                            <article class="flex min-h-[220px] flex-col p-5">
+                                <div class="flex items-start justify-between gap-3"><div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><i data-lucide="database" class="h-5 w-5"></i></div><span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">01</span></div>
+                                <h3 class="mt-4 text-base font-semibold text-gray-900">知识资产</h3>
+                                <p class="mt-2 text-sm leading-6 text-gray-500">展示企业资料如何变成标题、关键词、知识切片、图片和作者资产</p>
+                                <a href="#materials" class="mt-auto inline-flex h-9 w-fit items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">进入<i data-lucide="arrow-right" class="ml-1.5 h-4 w-4"></i></a>
+                            </article>
+                            <article class="flex min-h-[220px] flex-col p-5">
+                                <div class="flex items-start justify-between gap-3"><div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><i data-lucide="workflow" class="h-5 w-5"></i></div><span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">02</span></div>
+                                <h3 class="mt-4 text-base font-semibold text-gray-900">任务化生产</h3>
+                                <p class="mt-2 text-sm leading-6 text-gray-500">选择问题输入、知识资产、模型和节奏，生成可复用的内容生产任务</p>
+                                <a href="#tasks" class="mt-auto inline-flex h-9 w-fit items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">进入<i data-lucide="arrow-right" class="ml-1.5 h-4 w-4"></i></a>
+                            </article>
+                            <article class="flex min-h-[220px] flex-col p-5">
+                                <div class="flex items-start justify-between gap-3"><div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600"><i data-lucide="shield-check" class="h-5 w-5"></i></div><span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">03</span></div>
+                                <h3 class="mt-4 text-base font-semibold text-gray-900">质量门禁</h3>
+                                <p class="mt-2 text-sm leading-6 text-gray-500">用结构、证据、风险和归因检查文章是否适合进入发布链路</p>
+                                <a href="#articles" class="mt-auto inline-flex h-9 w-fit items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">进入<i data-lucide="arrow-right" class="ml-1.5 h-4 w-4"></i></a>
+                            </article>
+                            <article class="flex min-h-[220px] flex-col p-5">
+                                <div class="flex items-start justify-between gap-3"><div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><i data-lucide="radio-tower" class="h-5 w-5"></i></div><span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">04</span></div>
+                                <h3 class="mt-4 text-base font-semibold text-gray-900">权威分发</h3>
+                                <p class="mt-2 text-sm leading-6 text-gray-500">把合格内容同步到目标站点，形成可被发现和引用的外部触点</p>
+                                <a href="#distribution" class="mt-auto inline-flex h-9 w-fit items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">进入<i data-lucide="arrow-right" class="ml-1.5 h-4 w-4"></i></a>
+                            </article>
+                            <article class="flex min-h-[220px] flex-col p-5">
+                                <div class="flex items-start justify-between gap-3"><div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700"><i data-lucide="chart-no-axes-combined" class="h-5 w-5"></i></div><span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">05</span></div>
+                                <h3 class="mt-4 text-base font-semibold text-gray-900">观测归因</h3>
+                                <p class="mt-2 text-sm leading-6 text-gray-500">查看访问日志、任务、分发和 AI 爬虫信号，判断闭环是否有效</p>
+                                <a href="#analytics" class="mt-auto inline-flex h-9 w-fit items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">进入<i data-lucide="arrow-right" class="ml-1.5 h-4 w-4"></i></a>
+                            </article>
+                        </div>
+                    </section>
+
+                    <section class="mb-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
+                        <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                                <h2 class="text-xl font-semibold text-gray-900">GEO 内容主链路</h2>
+                                <p class="mt-2 max-w-4xl text-sm leading-6 text-gray-500">从问题地图、知识资产、证据结构、任务生产、质量门禁、权威分发到观测归因，按内容运营逻辑串联后台能力</p>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <span class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700"><span class="mr-2 h-1.5 w-1.5 rounded-full bg-current"></span>2 个流程运行中</span>
+                                <span class="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700"><span class="mr-2 h-1.5 w-1.5 rounded-full bg-current"></span>1 项需要关注</span>
+                            </div>
+                        </div>
+                        <div class="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+                            <div class="rounded-lg border border-gray-200 p-4"><div class="flex items-center justify-between"><span class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><i data-lucide="map" class="h-5 w-5"></i></span><span class="text-xs font-semibold text-blue-600">步骤 1</span></div><h3 class="mt-4 font-semibold text-gray-900">问题地图与提示策略</h3><p class="mt-2 text-sm leading-6 text-gray-500">用标题、关键词和提示词定义要覆盖的问题空间</p></div>
+                            <div class="rounded-lg border border-gray-200 p-4"><div class="flex items-center justify-between"><span class="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><i data-lucide="library" class="h-5 w-5"></i></span><span class="text-xs font-semibold text-emerald-600">步骤 2</span></div><h3 class="mt-4 font-semibold text-gray-900">知识资产池</h3><p class="mt-2 text-sm leading-6 text-gray-500">把业务资料沉淀成任务可调用的知识、标题、关键词、图片和作者资产</p></div>
+                            <div class="rounded-lg border border-gray-200 p-4"><div class="flex items-center justify-between"><span class="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-600"><i data-lucide="list-checks" class="h-5 w-5"></i></span><span class="text-xs font-semibold text-amber-600">步骤 3</span></div><h3 class="mt-4 font-semibold text-gray-900">结构与证据</h3><p class="mt-2 text-sm leading-6 text-gray-500">用切片、向量、元数据和审核状态提升召回与引用质量</p></div>
+                            <div class="rounded-lg border border-gray-200 p-4"><div class="flex items-center justify-between"><span class="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><i data-lucide="chart-spline" class="h-5 w-5"></i></span><span class="text-xs font-semibold text-violet-600">步骤 4</span></div><h3 class="mt-4 font-semibold text-gray-900">观测与归因</h3><p class="mt-2 text-sm leading-6 text-gray-500">用内容表现、分发状态、访问日志和 AI 爬虫数据回看运营效果</p></div>
+                        </div>
+                    </section>
+                </div>
+            </main>
+
+            <footer class="border-t border-gray-200 bg-white py-6">
+                <div class="mx-auto max-w-7xl px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-12">
+                    <p>© 2026 GEOFlow · 版本 2.0 · 作者：姚金刚</p>
+                    <div class="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-2">
+                        <a href="#x" class="hover:text-blue-600">作者 X 主页</a>
+                        <a href="#github" class="hover:text-blue-600">项目 GitHub 地址</a>
+                        <a href="#changelog" class="hover:text-blue-600">更新日志</a>
+                        <a href="#readme" class="hover:text-blue-600">项目说明</a>
+                    </div>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        const body = document.body;
+        const collapseButton = document.getElementById('sidebar-collapse');
+        const openButton = document.getElementById('sidebar-open');
+        const closeButton = document.getElementById('sidebar-close');
+        const overlay = document.getElementById('sidebar-overlay');
+        const notificationButton = document.getElementById('notification-button');
+        const notificationMenu = document.getElementById('notification-menu');
+        const userButton = document.getElementById('user-button');
+        const userMenu = document.getElementById('user-menu');
+
+        function setSidebarOpen(isOpen) {
+            body.classList.toggle('sidebar-open', isOpen);
+            openButton.setAttribute('aria-expanded', String(isOpen));
+        }
+
+        function toggleMenu(button, menu, otherButton, otherMenu) {
+            const willOpen = menu.classList.contains('hidden');
+            otherMenu.classList.add('hidden');
+            otherButton.setAttribute('aria-expanded', 'false');
+            menu.classList.toggle('hidden', !willOpen);
+            button.setAttribute('aria-expanded', String(willOpen));
+        }
+
+        collapseButton.addEventListener('click', () => {
+            const collapsed = body.classList.toggle('sidebar-collapsed');
+            collapseButton.setAttribute('aria-expanded', String(!collapsed));
+            collapseButton.setAttribute('aria-label', collapsed ? '展开主菜单' : '收起主菜单');
+        });
+        openButton.addEventListener('click', () => setSidebarOpen(true));
+        closeButton.addEventListener('click', () => setSidebarOpen(false));
+        overlay.addEventListener('click', () => setSidebarOpen(false));
+        notificationButton.addEventListener('click', () => toggleMenu(notificationButton, notificationMenu, userButton, userMenu));
+        userButton.addEventListener('click', () => toggleMenu(userButton, userMenu, notificationButton, notificationMenu));
+
+        document.addEventListener('click', (event) => {
+            if (!notificationButton.contains(event.target) && !notificationMenu.contains(event.target)) {
+                notificationMenu.classList.add('hidden');
+                notificationButton.setAttribute('aria-expanded', 'false');
+            }
+            if (!userButton.contains(event.target) && !userMenu.contains(event.target)) {
+                userMenu.classList.add('hidden');
+                userButton.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                setSidebarOpen(false);
+                notificationMenu.classList.add('hidden');
+                userMenu.classList.add('hidden');
+                notificationButton.setAttribute('aria-expanded', 'false');
+                userButton.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        document.querySelectorAll('#app-sidebar a').forEach((link) => {
+            link.addEventListener('click', () => setSidebarOpen(false));
+        });
+
+        lucide.createIcons();
+    </script>
+</body>
+</html>

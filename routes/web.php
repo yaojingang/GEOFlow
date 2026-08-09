@@ -32,6 +32,8 @@ use App\Http\Controllers\Admin\LeadAnalyticsController;
 use App\Http\Controllers\Admin\LeadController;
 use App\Http\Controllers\Admin\LeadFormController;
 use App\Http\Controllers\Admin\LegacyController;
+use App\Http\Controllers\Admin\ManualPublicationController;
+use App\Http\Controllers\Admin\ManualPublicationSettingsController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
@@ -41,6 +43,7 @@ use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\TrafficAnalyticsController;
 use App\Http\Controllers\Admin\UrlImportController;
+use App\Http\Controllers\Site\AboutController;
 use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
@@ -51,6 +54,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
+    Route::get('/about', [AboutController::class, 'index'])->name('site.about');
     Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
     Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
         ->name('site.archive.month')
@@ -199,6 +203,24 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{articleId}/risk-scan', [ArticleController::class, 'recheckRisk'])->name('risk-scan')->whereNumber('articleId');
             Route::post('{articleId}/editor/images/upload', [ArticleEditorAssetController::class, 'uploadImage'])->name('editor.images.upload')->whereNumber('articleId');
             Route::put('{articleId}', [ArticleController::class, 'update'])->name('update');
+        });
+
+        Route::prefix('manual-publications')->name('manual-publications.')->group(function () {
+            Route::get('/', [ManualPublicationController::class, 'index'])->name('index');
+            Route::get('export', [ManualPublicationController::class, 'export'])->name('export');
+            Route::get('create', [ManualPublicationController::class, 'create'])->name('create');
+            Route::post('/', [ManualPublicationController::class, 'store'])->name('store');
+            Route::middleware('admin.super')->prefix('settings')->name('settings.')->group(function () {
+                Route::get('/', [ManualPublicationSettingsController::class, 'index'])->name('index');
+                Route::post('personas', [ManualPublicationSettingsController::class, 'storePersona'])->name('personas.store');
+                Route::put('personas/{personaId}', [ManualPublicationSettingsController::class, 'updatePersona'])->name('personas.update')->whereNumber('personaId');
+                Route::post('accounts', [ManualPublicationSettingsController::class, 'storeAccount'])->name('accounts.store');
+                Route::put('accounts/{accountId}', [ManualPublicationSettingsController::class, 'updateAccount'])->name('accounts.update')->whereNumber('accountId');
+            });
+            Route::get('{manualPublicationId}', [ManualPublicationController::class, 'show'])->name('show')->whereNumber('manualPublicationId');
+            Route::get('{manualPublicationId}/edit', [ManualPublicationController::class, 'edit'])->name('edit')->whereNumber('manualPublicationId');
+            Route::put('{manualPublicationId}', [ManualPublicationController::class, 'update'])->name('update')->whereNumber('manualPublicationId');
+            Route::post('{manualPublicationId}/transition', [ManualPublicationController::class, 'transition'])->name('transition')->whereNumber('manualPublicationId');
         });
 
         // 栏目管理（保持 geo_admin/categories 路径语义）
@@ -361,6 +383,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('/', [SiteSettingsController::class, 'index'])->name('index');
             Route::post('/', [SiteSettingsController::class, 'update'])->name('update');
             Route::post('theme', [SiteSettingsController::class, 'updateTheme'])->name('theme');
+            Route::get('homepage-modules', [SiteSettingsController::class, 'editHomepageModules'])->name('homepage-modules.edit');
             Route::post('homepage-modules', [SiteSettingsController::class, 'updateHomepageModules'])->name('homepage-modules');
             Route::post('homepage-modules/preset', [SiteSettingsController::class, 'applyHomepageModulePreset'])->name('homepage-modules.preset');
             Route::post('homepage-modules/import', [SiteSettingsController::class, 'importHomepageModuleDesign'])->name('homepage-modules.import');

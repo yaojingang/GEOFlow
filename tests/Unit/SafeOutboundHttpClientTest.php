@@ -268,6 +268,48 @@ class SafeOutboundHttpClientTest extends TestCase
     }
 
     #[Test]
+    public function the_system_resolver_uses_addresses_returned_with_a_cname_without_requerying_the_target(): void
+    {
+        $lookups = [];
+        $resolver = new SystemHostResolver(static function (string $host) use (&$lookups): array {
+            $lookups[] = $host;
+
+            return match ($host) {
+                'api.example' => [
+                    ['type' => 'CNAME', 'target' => 'edge.example'],
+                    ['type' => 'A', 'ip' => '93.184.216.34'],
+                    ['type' => 'AAAA', 'ipv6' => '2606:2800:220:1:248:1893:25c8:1946'],
+                ],
+                default => throw new \RuntimeException('The alias target should not be queried when glue addresses are present.'),
+            };
+        });
+
+        $this->assertSame(
+            ['93.184.216.34', '2606:2800:220:1:248:1893:25c8:1946'],
+            $resolver->resolve('api.example')
+        );
+        $this->assertSame(['api.example'], $lookups);
+    }
+
+    #[Test]
+    public function the_system_resolver_skips_slow_cname_queries_when_direct_dns_records_exist(): void
+    {
+        $recordTypes = [];
+        $resolver = new SystemHostResolver(null, static function (string $host, int $type) use (&$recordTypes): array {
+            $recordTypes[] = $type;
+
+            return match ($type) {
+                DNS_A => [['type' => 'A', 'ip' => '93.184.216.34']],
+                DNS_AAAA => [],
+                default => throw new \RuntimeException('CNAME lookup should be skipped for a directly resolved host.'),
+            };
+        });
+
+        $this->assertSame(['93.184.216.34'], $resolver->resolve('direct.example'));
+        $this->assertSame([DNS_A, DNS_AAAA], $recordTypes);
+    }
+
+    #[Test]
     public function the_production_transport_disables_redirects_and_proxies_and_pins_the_validated_ip(): void
     {
         $captured = [];

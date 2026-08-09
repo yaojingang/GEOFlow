@@ -25,6 +25,27 @@ class AdminLeadFormsTest extends TestCase
             ->assertSee('right-3', false);
     }
 
+    public function test_form_management_uses_permission_appropriate_parent_module(): void
+    {
+        $regularResponse = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.lead-forms.index'));
+
+        $regularResponse
+            ->assertOk()
+            ->assertSee(route('admin.analytics'), false)
+            ->assertSee(__('admin.growth_center.back'));
+
+        auth('admin')->logout();
+
+        $superResponse = $this->actingAs($this->admin('super_admin'), 'admin')
+            ->get(route('admin.lead-forms.index'));
+
+        $superResponse
+            ->assertOk()
+            ->assertSee(route('admin.distribution.index'), false)
+            ->assertSee(__('admin.distribution.default_site.back'));
+    }
+
     public function test_create_form_field_rows_use_single_line_options_and_centered_required_control(): void
     {
         $this->actingAs($this->admin(), 'admin')
@@ -217,14 +238,14 @@ class AdminLeadFormsTest extends TestCase
         $this->assertStringNotContainsString('Bob', $csv);
     }
 
-    private function admin(): Admin
+    private function admin(string $role = 'admin'): Admin
     {
         return Admin::query()->create([
             'username' => 'lead_admin_'.uniqid(),
             'password' => 'secret-123',
             'email' => uniqid('lead-admin-').'@example.com',
             'display_name' => 'Lead Admin',
-            'role' => 'admin',
+            'role' => $role,
             'status' => 'active',
         ]);
     }
