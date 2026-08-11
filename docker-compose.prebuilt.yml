@@ -49,7 +49,9 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env.prod
-    command: ["php", "artisan", "about"]
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "${AUTO_FIX_STORAGE_PERMISSIONS:-true}"
+    command: ["true"]
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -65,6 +67,9 @@ services:
     container_name: geoflow-app-prod
     mem_limit: ${APP_CONTAINER_MEMORY_LIMIT:-768m}
     working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+    user: "www-data:www-data"
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -101,6 +106,9 @@ services:
     image: ${GEOFLOW_APP_IMAGE:?GEOFLOW_APP_IMAGE is required for prebuilt deployment}
     container_name: geoflow-queue-prod
     working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+    user: "www-data:www-data"
     command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=660", "--memory=128", "--max-jobs=100", "--max-time=3600"]
     mem_limit: ${QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
     stop_grace_period: 690s
@@ -118,6 +126,9 @@ services:
     image: ${GEOFLOW_APP_IMAGE:?GEOFLOW_APP_IMAGE is required for prebuilt deployment}
     container_name: geoflow-knowledge-queue-prod
     working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+    user: "www-data:www-data"
     command: ["php", "-d", "memory_limit=160M", "artisan", "queue:work", "redis", "--queue=knowledge", "--sleep=1", "--tries=1", "--timeout=210", "--memory=128", "--max-jobs=20", "--max-time=1800"]
     mem_limit: ${KNOWLEDGE_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
     stop_grace_period: 240s
@@ -135,6 +146,9 @@ services:
     image: ${GEOFLOW_APP_IMAGE:?GEOFLOW_APP_IMAGE is required for prebuilt deployment}
     container_name: geoflow-system-update-queue-prod
     working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+    user: "www-data:www-data"
     command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates", "--sleep=1", "--tries=1", "--timeout=930", "--memory=256", "--max-jobs=10", "--max-time=3600"]
     mem_limit: ${SYSTEM_UPDATE_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
     stop_grace_period: 960s
@@ -152,6 +166,9 @@ services:
     image: ${GEOFLOW_APP_IMAGE:?GEOFLOW_APP_IMAGE is required for prebuilt deployment}
     container_name: geoflow-scheduler-prod
     working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+    user: "www-data:www-data"
     command: ["php", "artisan", "schedule:work"]
     volumes:
       - ./.env.prod:/var/www/html/.env
@@ -165,6 +182,9 @@ services:
     image: ${GEOFLOW_APP_IMAGE:?GEOFLOW_APP_IMAGE is required for prebuilt deployment}
     container_name: geoflow-reverb-prod
     working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+    user: "www-data:www-data"
     # 端口由 .env.prod 的 REVERB_SERVER_PORT 决定（见 config/reverb.php）；nginx /reverb 反代端口须与之对齐
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0"]
     ports:

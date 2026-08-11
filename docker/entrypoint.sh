@@ -61,20 +61,6 @@ mkdir -p \
   storage/framework/views \
   storage/logs
 
-if [ "${AUTO_FIX_STORAGE_PERMISSIONS:-true}" = "true" ]; then
-  if [ "$(id -u)" = "0" ]; then
-    RUNTIME_USER="${RUNTIME_USER:-www-data}"
-    RUNTIME_GROUP="${RUNTIME_GROUP:-www-data}"
-
-    echo "[entrypoint] fixing storage permissions for ${RUNTIME_USER}:${RUNTIME_GROUP}"
-    chown -R "${RUNTIME_USER}:${RUNTIME_GROUP}" storage bootstrap/cache
-    find storage bootstrap/cache -type d -exec chmod 775 {} \;
-    find storage bootstrap/cache -type f -exec chmod 664 {} \;
-  else
-    echo "[entrypoint] skip permission fix: container is not running as root"
-  fi
-fi
-
 if [ ! -e public/storage ]; then
   php artisan storage:link --force --no-interaction
 fi
@@ -123,6 +109,20 @@ if [ "${AUTO_OPTIMIZE:-false}" = "true" ]; then
     php artisan optimize --no-interaction || echo "[entrypoint] warning: php artisan optimize failed, continuing"
   else
     echo "[entrypoint] skip php artisan optimize (no valid APP_KEY in .env)"
+  fi
+fi
+
+if [ "${AUTO_FIX_STORAGE_PERMISSIONS:-true}" = "true" ]; then
+  if [ "$(id -u)" = "0" ]; then
+    RUNTIME_USER="${RUNTIME_USER:-www-data}"
+    RUNTIME_GROUP="${RUNTIME_GROUP:-www-data}"
+
+    echo "[entrypoint] fixing storage permissions for ${RUNTIME_USER}:${RUNTIME_GROUP}"
+    chown -R "${RUNTIME_USER}:${RUNTIME_GROUP}" storage bootstrap/cache
+    find storage bootstrap/cache -type d -exec chmod 775 {} +
+    find storage bootstrap/cache -type f -exec chmod 664 {} +
+  else
+    echo "[entrypoint] skip permission fix: container is not running as root"
   fi
 fi
 
