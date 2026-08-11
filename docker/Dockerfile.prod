@@ -125,5 +125,10 @@ RUN chmod +x /usr/local/bin/geoflow-entrypoint-prod
 COPY --from=vendor /app /var/www/html
 COPY --from=assets /app/public/build /var/www/html/public/build
 
+# Runtime services run as www-data and skip recursive permission repair.
+RUN rm -f public/storage \
+    && ln -s ../storage/app/public public/storage \
+    && chown -R www-data:www-data storage bootstrap/cache
+
 ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint-prod"]
 CMD ["php-fpm", "-F"]
