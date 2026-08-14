@@ -1,0 +1,6 @@
+{
+  "name": "Zero Point Public Site",
+  "version": "1.0.0",
+  "description": "Dedicated governed public-site renderer; not selectable as a generic GEOFlow theme.",
+  "selectable": false
+}

@@ -27,5 +27,9 @@ class DatabaseSeeder extends Seeder
         if ((bool) config('geoflow.seed_frontend_demo', false)) {
             $this->call(FrontendDemoSeeder::class);
         }
+
+        if ((bool) config('zeropoint.enabled', false)) {
+            $this->call(ZeroPointPublicSiteSeeder::class);
+        }
     }
 }

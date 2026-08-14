@@ -26,10 +26,12 @@ class LeadSubmission extends Model
     ];
 
     protected $fillable = [
+        'reference_code',
         'lead_form_id',
         'status',
         'payload',
         'source_url',
+        'attribution',
         'ip_address',
         'user_agent',
         'note',
@@ -46,6 +48,7 @@ class LeadSubmission extends Model
     {
         return [
             'payload' => 'array',
+            'attribution' => 'array',
             'handled_at' => 'datetime',
         ];
     }

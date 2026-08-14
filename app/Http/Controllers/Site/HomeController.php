@@ -11,6 +11,7 @@ use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -19,8 +20,12 @@ use Illuminate\View\View;
  */
 class HomeController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
+        if ((bool) config('zeropoint.enabled')) {
+            return app(ZeroPointPublicSiteController::class)->home($request);
+        }
+
         $search = trim((string) $request->query('search', ''));
         $categoryId = max(0, (int) $request->query('category', 0));
         $page = max(1, (int) $request->query('page', 1));

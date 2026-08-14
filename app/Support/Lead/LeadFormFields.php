@@ -166,6 +166,11 @@ final class LeadFormFields
             $rules[] = 'email';
         }
 
+        if ($field['type'] === 'date') {
+            $rules[] = 'date_format:Y-m-d';
+            $rules[] = 'after_or_equal:today';
+        }
+
         if ($field['type'] === 'phone') {
             $rules[] = 'regex:/^[0-9+\-\s().]{5,30}$/';
         }

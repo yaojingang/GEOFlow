@@ -58,7 +58,7 @@
                         <span>{{ $field['options'][0] ?? $field['label'] }}</span>
                     </label>
                 @else
-                    <input id="{{ $fieldId }}" type="{{ $type === 'email' ? 'email' : ($type === 'phone' ? 'tel' : 'text') }}" name="{{ $name }}" value="{{ old($name) }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900">
+                    <input id="{{ $fieldId }}" type="{{ $type === 'email' ? 'email' : ($type === 'phone' ? 'tel' : ($type === 'date' ? 'date' : 'text')) }}" name="{{ $name }}" value="{{ old($name) }}" @if($type === 'date') min="{{ now()->toDateString() }}" @endif class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900">
                 @endif
 
                 @error($name)

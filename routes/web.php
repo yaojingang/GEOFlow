@@ -34,6 +34,8 @@ use App\Http\Controllers\Admin\LeadFormController;
 use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\ManualPublicationController;
 use App\Http\Controllers\Admin\ManualPublicationSettingsController;
+use App\Http\Controllers\Admin\PublicFactController;
+use App\Http\Controllers\Admin\PublicPageController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
@@ -49,22 +51,41 @@ use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
 use App\Http\Controllers\Site\HomeController;
 use App\Http\Controllers\Site\LeadFormController as SiteLeadFormController;
+use App\Http\Controllers\Site\ZeroPointBookingController;
+use App\Http\Controllers\Site\ZeroPointPublicSiteController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
-    Route::get('/about', [AboutController::class, 'index'])->name('site.about');
-    Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
-    Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
-        ->name('site.archive.month')
-        ->where(['year' => '[0-9]{4}', 'month' => '[0-9]{2}']);
-    Route::get('/category/{slug}', [SiteCategoryController::class, 'show'])->name('site.category');
-    Route::get('/article/{slug}', [SiteArticleController::class, 'show'])->name('site.article');
-    Route::get('/forms/{slug}', [SiteLeadFormController::class, 'show'])->name('site.lead-forms.show');
-    Route::post('/forms/{slug}/submissions', [SiteLeadFormController::class, 'submit'])
-        ->middleware('throttle:10,1')
-        ->name('site.lead-forms.submit');
+    Route::middleware('site.legacy')->group(function (): void {
+        Route::get('/about', [AboutController::class, 'index'])->name('site.about');
+        Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
+        Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
+            ->name('site.archive.month')
+            ->where(['year' => '[0-9]{4}', 'month' => '[0-9]{2}']);
+        Route::get('/category/{slug}', [SiteCategoryController::class, 'show'])->name('site.category');
+        Route::get('/article/{slug}', [SiteArticleController::class, 'show'])->name('site.article');
+        Route::get('/forms/{slug}', [SiteLeadFormController::class, 'show'])->name('site.lead-forms.show');
+        Route::post('/forms/{slug}/submissions', [SiteLeadFormController::class, 'submit'])
+            ->middleware('throttle:10,1')
+            ->name('site.lead-forms.submit');
+    });
+
+    Route::get('/credentials', [ZeroPointPublicSiteController::class, 'show'])->defaults('slug', 'credentials')->name('site.zeropoint.credentials');
+    Route::get('/contact', [ZeroPointPublicSiteController::class, 'show'])->defaults('slug', 'contact')->name('site.zeropoint.contact');
+    Route::get('/team', [ZeroPointPublicSiteController::class, 'show'])->defaults('slug', 'team')->name('site.zeropoint.team');
+    Route::get('/first-visit', [ZeroPointPublicSiteController::class, 'show'])->defaults('slug', 'first-visit')->name('site.zeropoint.first-visit');
+    Route::get('/pricing-and-receipts', [ZeroPointPublicSiteController::class, 'show'])->defaults('slug', 'pricing-and-receipts')->name('site.zeropoint.pricing');
+    Route::get('/rights-and-corrections', [ZeroPointPublicSiteController::class, 'show'])->defaults('slug', 'rights-and-corrections')->name('site.zeropoint.rights');
+    Route::get('/health', [ZeroPointPublicSiteController::class, 'healthIndex'])->name('site.zeropoint.health.index');
+    Route::get('/health/{slug}', [ZeroPointPublicSiteController::class, 'healthShow'])->name('site.zeropoint.health.show');
+    Route::get('/search', [ZeroPointPublicSiteController::class, 'search'])->name('site.zeropoint.search');
+    Route::get('/booking', [ZeroPointBookingController::class, 'show'])->name('site.zeropoint.booking');
+    Route::post('/booking', [ZeroPointBookingController::class, 'submit'])->middleware('throttle:5,1')->name('site.zeropoint.booking.submit');
+    Route::get('/sitemap.xml', [ZeroPointPublicSiteController::class, 'sitemap'])->name('site.zeropoint.sitemap');
+    Route::get('/robots.txt', [ZeroPointPublicSiteController::class, 'robots'])->name('site.zeropoint.robots');
+    Route::get('/llms.txt', [ZeroPointPublicSiteController::class, 'llms'])->name('site.zeropoint.llms');
 });
 
 $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/');
@@ -136,6 +157,23 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('export', [LeadController::class, 'export'])->name('export');
             Route::get('{submissionId}', [LeadController::class, 'show'])->name('show')->whereNumber('submissionId');
             Route::put('{submissionId}', [LeadController::class, 'update'])->name('update')->whereNumber('submissionId');
+        });
+
+        Route::prefix('public-pages')->name('public-pages.')->group(function () {
+            Route::get('/', [PublicPageController::class, 'index'])->name('index');
+            Route::get('{pageId}/edit', [PublicPageController::class, 'edit'])->name('edit')->whereNumber('pageId');
+            Route::put('{pageId}', [PublicPageController::class, 'update'])->name('update')->whereNumber('pageId');
+            Route::middleware('admin.super')->group(function () {
+                Route::post('{pageId}/approve', [PublicPageController::class, 'approve'])->name('approve')->whereNumber('pageId');
+                Route::post('{pageId}/publish', [PublicPageController::class, 'publish'])->name('publish')->whereNumber('pageId');
+                Route::post('{pageId}/snapshots/{snapshotId}/rollback', [PublicPageController::class, 'rollback'])->name('rollback')->whereNumber(['pageId', 'snapshotId']);
+            });
+        });
+
+        Route::prefix('public-facts')->name('public-facts.')->group(function () {
+            Route::get('/', [PublicFactController::class, 'index'])->name('index');
+            Route::post('/', [PublicFactController::class, 'store'])->name('store');
+            Route::put('{factId}', [PublicFactController::class, 'update'])->name('update')->whereNumber('factId');
         });
 
         // 任务管理（Blade 新路径）

@@ -46,6 +46,10 @@ class SiteThemeCatalog
                     continue;
                 }
 
+                if (($manifest['selectable'] ?? true) === false) {
+                    continue;
+                }
+
                 $themes[] = [
                     'id' => (string) $entry,
                     'name' => (string) ($manifest['name'] ?? $entry),

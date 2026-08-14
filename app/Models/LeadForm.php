@@ -21,6 +21,7 @@ class LeadForm extends Model
         'text',
         'phone',
         'email',
+        'date',
         'textarea',
         'select',
         'checkbox',

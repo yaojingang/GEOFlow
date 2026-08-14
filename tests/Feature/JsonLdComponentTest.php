@@ -50,7 +50,7 @@ class JsonLdComponentTest extends TestCase
         }
 
         $this->assertSame([], $violations, implode(PHP_EOL, $violations));
-        $this->assertSame(104, $componentCount, 'The theme JSON-LD block count changed.');
+        $this->assertSame(105, $componentCount, 'The theme JSON-LD block count changed.');
     }
 
     public function test_json_ld_component_prevents_script_breakout_and_preserves_data(): void

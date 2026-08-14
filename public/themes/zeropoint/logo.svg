@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240" viewBox="0 0 720 240" role="img" aria-labelledby="title desc">
+  <title id="title">正负零 Zero Point 主标志</title><desc id="desc">太极归零符号、中文名和英文名。</desc>
+  <g transform="translate(28 40) scale(.4)">
+    <g fill="none" stroke="#171a17" stroke-width="2">
+      <path d="M190 20h20M190 26h20M190 32h20M190 368h20M190 374h20M190 380h8m4 0h8"/>
+      <g transform="translate(327 73) rotate(45)"><path d="M-10-6h8m4 0h8M-10 0h20M-10 6h20"/></g>
+      <g transform="translate(380 200) rotate(90)"><path d="M-10-6h20M-10 0h8m4 0h8M-10 6h20"/></g>
+      <g transform="translate(327 327) rotate(135)"><path d="M-10-6h8m4 0h8M-10 0h8m4 0h8M-10 6h20"/></g>
+      <g transform="translate(73 327) rotate(225)"><path d="M-10-6h8m4 0h8M-10 0h20M-10 6h8m4 0h8"/></g>
+      <g transform="translate(20 200) rotate(270)"><path d="M-10-6h20M-10 0h8m4 0h8M-10 6h8m4 0h8"/></g>
+      <g transform="translate(73 73) rotate(315)"><path d="M-10-6h8m4 0h8M-10 0h8m4 0h8M-10 6h8m4 0h8"/></g>
+    </g>
+    <circle cx="200" cy="200" r="180" fill="none" stroke="#171a17" stroke-width="2.5"/>
+    <path d="M200 20A90 90 0 0 1 200 200A90 90 0 0 0 200 380A180 180 0 0 1 200 20Z" fill="#f7f1e7" stroke="#171a17" stroke-width="2"/>
+    <path d="M200 20A90 90 0 0 0 200 200A90 90 0 0 1 200 380A180 180 0 0 0 200 20Z" fill="#171a17"/>
+    <circle cx="200" cy="110" r="18" fill="#c8423c"/><circle cx="200" cy="290" r="18" fill="#f7f1e7"/>
+    <circle cx="200" cy="200" r="20" fill="#c8423c" opacity=".12"/><circle cx="200" cy="200" r="6" fill="#c8423c"/>
+  </g>
+  <line x1="218" y1="66" x2="218" y2="174" stroke="#e3dacb" stroke-width="1.6"/><text x="254" y="107" fill="#171a17" font-family="Songti SC,STSong,serif" font-size="54" font-weight="600" letter-spacing="8">正负零</text><text x="257" y="143" fill="#6f6a62" font-family="Avenir Next,sans-serif" font-size="17" font-weight="600" letter-spacing="8">ZERO POINT</text><text x="258" y="173" fill="#c8423c" font-family="Songti SC,STSong,serif" font-size="15" letter-spacing="8">归零 · 溯源 · 共生</text>
+</svg>

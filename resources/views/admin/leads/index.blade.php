@@ -102,6 +102,7 @@
                     @forelse ($submissions as $submission)
                         <tr>
                             <td class="px-6 py-4">
+                                @if($submission->reference_code)<div class="mb-1 font-mono text-xs font-semibold text-blue-700">{{ $submission->reference_code }}</div>@endif
                                 <div class="max-w-sm text-sm text-gray-900">
                                     @foreach (collect($submission->payload ?? [])->take(3) as $key => $value)
                                         <div class="truncate"><span class="font-medium">{{ $key }}:</span> {{ is_bool($value) ? ($value ? __('admin.common.yes') : __('admin.common.no')) : $value }}</div>

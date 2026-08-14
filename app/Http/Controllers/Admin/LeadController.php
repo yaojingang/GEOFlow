@@ -89,6 +89,7 @@ class LeadController extends Controller
             fwrite($handle, "\xEF\xBB\xBF");
             fputcsv($handle, [
                 __('admin.leads.export.id'),
+                'reference_code',
                 __('admin.leads.export.form'),
                 __('admin.leads.export.status'),
                 __('admin.leads.export.payload'),
@@ -107,6 +108,7 @@ class LeadController extends Controller
 
                     fputcsv($handle, [
                         $row->id,
+                        $this->csvCell($row->reference_code ?? ''),
                         $this->csvCell($row->form?->name ?? ''),
                         $this->csvCell(__('admin.leads.status.'.$row->status)),
                         $this->csvCell(json_encode($row->payload ?? [], JSON_UNESCAPED_UNICODE)),
@@ -153,7 +155,8 @@ class LeadController extends Controller
             $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($search)).'%';
             $payloadExpression = $this->payloadSearchExpression();
             $query->where(function (Builder $inner) use ($like, $payloadExpression): void {
-                $inner->whereRaw('LOWER(COALESCE(source_url, ?)) LIKE ?', ['', $like])
+                $inner->whereRaw('LOWER(COALESCE(reference_code, ?)) LIKE ?', ['', $like])
+                    ->orWhereRaw('LOWER(COALESCE(source_url, ?)) LIKE ?', ['', $like])
                     ->orWhereRaw($payloadExpression.' LIKE ?', [$like])
                     ->orWhereRaw('LOWER(COALESCE(note, ?)) LIKE ?', ['', $like]);
             });

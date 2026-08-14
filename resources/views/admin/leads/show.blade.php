@@ -34,6 +34,7 @@
             <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.leads.handle_title') }}</h2>
                 <dl class="mt-4 space-y-3 text-sm">
+                    @if($submission->reference_code)<div><dt class="text-gray-500">申请编号</dt><dd class="mt-1 font-mono font-semibold text-blue-700">{{ $submission->reference_code }}</dd></div>@endif
                     <div>
                         <dt class="text-gray-500">{{ __('admin.leads.meta.status') }}</dt>
                         <dd class="mt-1 font-medium text-gray-900">{{ __('admin.leads.status.'.$submission->status) }}</dd>
@@ -54,6 +55,7 @@
                         <dt class="text-gray-500">{{ __('admin.leads.meta.created_at') }}</dt>
                         <dd class="mt-1 text-gray-900">{{ $submission->created_at?->format('Y-m-d H:i:s') }}</dd>
                     </div>
+                    @if(!empty($submission->attribution))<div><dt class="text-gray-500">来源归因</dt><dd class="mt-1 break-words text-gray-900">{{ collect($submission->attribution)->map(fn($value,$key) => $key.'='.$value)->implode(' · ') }}</dd></div>@endif
                     <div>
                         <dt class="text-gray-500">{{ __('admin.leads.meta.handler') }}</dt>
                         <dd class="mt-1 text-gray-900">{{ $submission->handler?->username ?? '-' }}</dd>

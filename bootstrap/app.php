@@ -12,6 +12,7 @@ use App\Http\Middleware\AssignApiRequestId;
 use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnsureApiScope;
+use App\Http\Middleware\EnsureLegacySiteMode;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogAdminActivity;
 use App\Http\Middleware\RecordSiteViewLog;
@@ -52,6 +53,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'site.locale' => SiteWebLocale::class,
             // 前台：保存访问日志，供数据分析模块统计 PV、路径和爬虫类型
             'site.view_log' => RecordSiteViewLog::class,
+            // 正负零专站启用时，关闭 GEOFlow 原有文章与通用表单前台，防止示例内容外泄
+            'site.legacy' => EnsureLegacySiteMode::class,
             // Blade 后台：仅超级管理员
             'admin.super' => EnsureSuperAdmin::class,
             // Blade 后台：写操作日志
