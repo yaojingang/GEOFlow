@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Laravel\Ai\Ai;
+use Laravel\Ai\Providers\OpenAiCompatibleProvider;
 use RuntimeException;
 use Tests\TestCase;
 use TypeError;
@@ -175,6 +177,32 @@ class OpenAiRuntimeProviderTest extends TestCase
     public function test_it_resolves_chat_driver_for_openrouter(): void
     {
         $this->assertSame('openrouter', OpenAiRuntimeProvider::resolveChatDriver('https://openrouter.ai/api/v1', 'anthropic/claude-3'));
+    }
+
+    public function test_it_resolves_chat_driver_for_orcarouter(): void
+    {
+        $this->assertSame('orcarouter', OpenAiRuntimeProvider::resolveChatDriver('https://api.orcarouter.ai/v1', 'orcarouter/auto'));
+        $this->assertSame('orcarouter', OpenAiRuntimeProvider::resolveChatDriver('https://api.orcarouter.ai', 'openai/gpt-4o'));
+        $this->assertTrue(OpenAiRuntimeProvider::isOrcaRouterProviderUrl('https://api.orcarouter.ai/v1'));
+    }
+
+    public function test_it_resolves_embedding_driver_for_orcarouter(): void
+    {
+        $this->assertSame('orcarouter', OpenAiRuntimeProvider::resolveEmbeddingDriver('https://api.orcarouter.ai/v1', 'openai/text-embedding-3-small'));
+    }
+
+    public function test_it_registers_and_resolves_the_orcarouter_runtime_driver(): void
+    {
+        $providerName = OpenAiRuntimeProvider::registerProvider(
+            'orcarouter_test',
+            'orcarouter',
+            'https://api.orcarouter.ai/v1',
+            'test-key',
+        );
+
+        $provider = Ai::textProvider($providerName);
+
+        $this->assertInstanceOf(OpenAiCompatibleProvider::class, $provider);
     }
 
     public function test_it_resolves_chat_driver_for_zhipu(): void

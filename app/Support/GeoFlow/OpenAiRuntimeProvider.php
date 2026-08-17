@@ -99,6 +99,10 @@ final class OpenAiRuntimeProvider
             return 'deepseek';
         }
 
+        if (self::isOrcaRouterProviderUrl($normalized)) {
+            return 'orcarouter';
+        }
+
         return 'openai-compatible';
     }
 
@@ -109,6 +113,10 @@ final class OpenAiRuntimeProvider
     {
         if (self::isGeminiProviderUrl($apiUrl)) {
             return 'gemini';
+        }
+
+        if (self::isOrcaRouterProviderUrl($apiUrl)) {
+            return 'orcarouter';
         }
 
         $host = strtolower((string) (parse_url(trim($apiUrl), PHP_URL_HOST) ?? ''));
@@ -124,6 +132,16 @@ final class OpenAiRuntimeProvider
         $host = strtolower((string) (parse_url(trim($apiUrl), PHP_URL_HOST) ?? ''));
 
         return $host === 'generativelanguage.googleapis.com';
+    }
+
+    /**
+     * 判断 URL 是否指向 OrcaRouter 网关（OpenAI 兼容，驱动名为 orcarouter）。
+     */
+    public static function isOrcaRouterProviderUrl(string $apiUrl): bool
+    {
+        $host = strtolower((string) (parse_url(trim($apiUrl), PHP_URL_HOST) ?? ''));
+
+        return str_contains($host, 'orcarouter.ai');
     }
 
     /**

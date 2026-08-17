@@ -22,12 +22,15 @@ use App\View\Composers\SiteLayoutComposer;
 use Closure;
 use GuzzleHttp\Utils;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Ai\Ai;
+use Laravel\Ai\Providers\OpenAiCompatibleProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -69,6 +72,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // OrcaRouter 是 OpenAI 兼容网关，注册为命名驱动（同 openrouter/deepseek 具名先例）。
+        Ai::extend('orcarouter', fn ($app, array $config) => new OpenAiCompatibleProvider($config, $app->make(Dispatcher::class)));
+
         RateLimiter::for('admin-login', function (Request $request): Limit {
             return Limit::perMinute(30)->by('admin-login-ip:'.$request->ip());
         });
