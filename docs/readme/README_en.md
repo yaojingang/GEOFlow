@@ -371,4 +371,4 @@ GEOFlow is licensed under the [Apache License 2.0](../../LICENSE). It allows per
 
 ## ⭐ Star history
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.com/#yaojingang/GEOFlow&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.dera.page/#yaojingang/GEOFlow&Date)

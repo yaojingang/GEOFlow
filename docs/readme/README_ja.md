@@ -312,4 +312,4 @@ GEOFlow は [Apache License 2.0](../../LICENSE) の下で提供されます。�
 
 ## ⭐ スター推移
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.com/#yaojingang/GEOFlow&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.dera.page/#yaojingang/GEOFlow&Date)
