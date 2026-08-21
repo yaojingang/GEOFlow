@@ -6,7 +6,10 @@ use App\Models\Article;
 use App\Models\DistributionChannel;
 use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteProfile;
+use App\Models\Task;
+use App\Support\GeoFlow\ArticleWorkflow;
 use DomainException;
+use Illuminate\Support\Facades\DB;
 
 final class HostedSiteAllocationRequestService
 {
@@ -16,7 +19,7 @@ final class HostedSiteAllocationRequestService
             throw new DomainException('Hosted sites are disabled.');
         }
 
-        $article->loadMissing('task.distributionChannels');
+        $article->load('task.distributionChannels.hostedSiteProfile');
         $task = $article->task;
         if ($task === null || (string) $task->publish_scope !== 'distribution_only') {
             throw new DomainException('Hosted site tasks require distribution_only publish scope.');
@@ -34,33 +37,70 @@ final class HostedSiteAllocationRequestService
         }
 
         if (! in_array((string) $article->status, ['private', 'published'], true)
-            || (string) $article->review_status !== 'approved') {
+            || ! ArticleWorkflow::isPublishableReviewStatus($article->review_status)) {
             throw new DomainException('Article is not eligible for hosted site distribution.');
         }
 
-        $request = HostedSiteAllocationRequest::query()->firstOrCreate(
-            ['article_id' => (int) $article->id],
-            [
-                'task_id' => (int) $task->id,
-                'hosted_site_profile_id' => (int) $profile->id,
-                'status' => HostedSiteAllocationRequest::STATUS_PENDING,
-                'attempt_count' => 0,
-                'next_attempt_at' => now(),
-            ]
-        );
+        return DB::transaction(function () use ($article, $task, $hostedChannels, $profile): HostedSiteAllocationRequest {
+            $channelId = (int) $hostedChannels->first()->id;
+            $lockedChannel = DistributionChannel::query()
+                ->whereKey($channelId)
+                ->lockForUpdate()
+                ->first();
+            $lockedProfile = HostedSiteProfile::query()
+                ->whereKey((int) $profile->id)
+                ->where('distribution_channel_id', $channelId)
+                ->lockForUpdate()
+                ->first();
+            $request = HostedSiteAllocationRequest::query()
+                ->where('article_id', (int) $article->id)
+                ->lockForUpdate()
+                ->first();
+            $lockedArticle = Article::query()->whereKey((int) $article->id)->lockForUpdate()->first();
+            $lockedTask = $lockedArticle instanceof Article
+                ? Task::query()->whereKey((int) $lockedArticle->task_id)->lockForUpdate()->first()
+                : null;
+            $hostedChannelIds = $lockedTask
+                ? DistributionChannel::query()
+                    ->where('channel_type', DistributionChannel::TYPE_HOSTED_SITE)
+                    ->whereHas('tasks', fn ($query) => $query->whereKey((int) $lockedTask->id))
+                    ->orderBy('id')
+                    ->pluck('id')
+                    ->map(static fn ($id): int => (int) $id)
+                    ->all()
+                : [];
 
-        if ($request->status === HostedSiteAllocationRequest::STATUS_CANCELLED) {
+            if (! $lockedChannel?->isHostedSite()
+                || ! $lockedProfile
+                || ! $lockedArticle
+                || ! $lockedTask
+                || (int) $lockedTask->id !== (int) $task->id
+                || (string) $lockedTask->publish_scope !== 'distribution_only'
+                || $hostedChannelIds !== [$channelId]
+                || ! in_array((string) $lockedArticle->status, ['private', 'published'], true)
+                || ! ArticleWorkflow::isPublishableReviewStatus($lockedArticle->review_status)) {
+                throw new DomainException('The article or task changed while requesting hosted distribution.');
+            }
+
+            $request ??= new HostedSiteAllocationRequest([
+                'article_id' => (int) $lockedArticle->id,
+                'attempt_count' => 0,
+            ]);
+            if ($request->hosted_site_article_assignment_id !== null) {
+                return $request;
+            }
+
             $request->forceFill([
+                'task_id' => (int) $lockedTask->id,
+                'hosted_site_profile_id' => (int) $lockedProfile->id,
                 'status' => HostedSiteAllocationRequest::STATUS_PENDING,
-                'task_id' => (int) $task->id,
-                'hosted_site_profile_id' => (int) $profile->id,
                 'next_attempt_at' => now(),
                 'last_error_code' => null,
                 'last_error_message' => null,
             ])->save();
-        }
 
-        return $request;
+            return $request;
+        }, 3);
     }
 
     public function cancel(Article $article): void

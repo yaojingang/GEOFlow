@@ -103,6 +103,7 @@ class HostedSiteCommandsTest extends TestCase
                 'site_description' => 'Description',
                 'about_title' => 'About Alpha',
                 'about_content' => 'Alpha site information.',
+                'contact_email' => 'alpha@example.test',
             ],
             'status' => DistributionChannel::STATUS_ACTIVE,
         ]);

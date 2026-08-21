@@ -249,7 +249,7 @@ class HostedSiteController extends Controller
             fn ($channel) => $this->lifecycle->setIndexing(
                 $channel,
                 (string) $request->validated('indexing_status'),
-                $request->boolean('quality_confirmed')
+                filter_var($request->validated('quality_confirmed'), FILTER_VALIDATE_BOOLEAN)
             ),
             '站点索引状态已更新。'
         );
@@ -323,7 +323,10 @@ class HostedSiteController extends Controller
 
     private function hosted(DistributionChannel $channel): DistributionChannel
     {
-        abort_unless($channel->isHostedSite(), 404);
+        abort_unless(
+            $channel->isHostedSite() && $channel->hostedSiteProfile()->exists(),
+            404
+        );
 
         return $channel->loadMissing('hostedSiteProfile');
     }

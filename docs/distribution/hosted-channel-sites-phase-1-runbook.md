@@ -26,6 +26,8 @@ REVERB_HOST=example.com
 REVERB_PORT=443
 REVERB_SCHEME=https
 REVERB_ALLOWED_ORIGINS=example.com,www.example.com
+
+GEOFLOW_HOSTED_SITE_INDEX_OBSERVATION_MINUTES=30
 ```
 
 `GEOFLOW_PRIMARY_HOSTS` 使用英文逗号分隔，`GEOFLOW_NGINX_PRIMARY_ALIASES` 使用空格分隔。主站 Host 与托管根域及其子域不能重叠。阶段一固定使用 HTTPS 443。生产环境启用托管功能时，配置检查会校验主站、根域、Host-only Cookie、可信代理、公开协议与端口、Reverb 内部端口与路径的一致性，配置错误会阻止应用启动。
@@ -83,7 +85,7 @@ php artisan hosted-sites:reconcile --limit=500
 1. 保持功能关闭，完成 DNS、通配符 TLS、可信代理和 Nginx 三入口配置。验证主站正常，任意托管 Host 返回 404，外部 HTTPS 生成的链接不带内部 `:80`。
 2. 将 `GEOFLOW_HOSTED_SITES_ENABLED` 改为 `true`，按上一节重建 Web、队列、调度和 Reverb 进程。
 3. 打开“分发管理 > 托管渠道站点”创建灰度站点。新站固定为 `paused + maintenance + noindex + pending`，也不会生成渠道密钥。
-4. 填写站点名称、简介、关于页、认证主题、时区、日发布上限和允许使用的有效线索表单。新站不会继承主站 Logo、图标、版权、备案、轮播、首页模块、广告、自定义 HTML、脚本和统计代码，站点身份信息由运营人员单独配置。
+4. 填写站点名称、简介、关于页、公开联系邮箱、认证主题、时区、日发布上限和允许使用的有效线索表单。公开联系邮箱与有效联系表单至少配置一项。新站不会继承主站 Logo、图标、版权、备案、轮播、首页模块、广告、自定义 HTML、脚本和统计代码，站点身份信息由运营人员单独配置。
 5. 执行维护态预检。生产默认启用网络探针，会验证公共 DNS、TLS、503、noindex 和配置完整性。
 
    ```bash
@@ -93,7 +95,7 @@ php artisan hosted-sites:reconcile --limit=500
 
 6. 在后台激活站点。系统先以 `paused + online + noindex` 执行在线探针，检查首页、canonical、JSON-LD、关于页、robots、Sitemap、白名单表单和认证主题资源。检查通过后切换为 `active`；检查失败会自动返回 `paused + maintenance + noindex`。
 7. 给一个 `distribution_only` 任务绑定该托管渠道，发布测试文章。检查归属、分发、文章页 canonical、访问日志和线索归属。
-8. 保持 `noindex` 完成灰度。文章数量达到门槛且在线预检新鲜时，超级管理员勾选内容、版权、合规确认后开放索引。
+8. 保持 `noindex` 完成灰度。文章数量达到门槛、在线预检新鲜、上线观察窗口完成且窗口内没有 5xx 时，超级管理员勾选内容、版权、合规确认后开放索引。观察窗口默认 30 分钟，由 `GEOFLOW_HOSTED_SITE_INDEX_OBSERVATION_MINUTES` 配置。
 
 ## 公开页面与数据隔离
 
@@ -134,7 +136,9 @@ php artisan hosted-sites:invalidate-cache alpha.sites.example.com
 - 会话 Cookie 没有 `Domain` 属性。
 - 维护站返回 503，归档站返回 410，两者都禁止索引。
 - 在线激活探针失败会自动回到维护状态。
+- 在线激活过程中只有携带一次性内部令牌的技术探针可查看页面；进程中断时公众仍得到 503。
 - `noindex` 和 `index` 状态下的 robots、Sitemap 索引、分片和 canonical 符合预期。
+- 开放索引前已完成配置的观察窗口，且最近窗口内没有 5xx 记录。
 - 一篇文章只产生一个托管归属，日发布上限不会被并发请求突破。
 - 暂停渠道后不再产生新归属，归档会取消在途请求并解除任务绑定。
 - 硬删除只能在归档后执行，删除影响确认包含 profile、归属、请求、访问日志和线索。

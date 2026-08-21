@@ -4,6 +4,7 @@ namespace App\Services\Site;
 
 use App\Models\Article;
 use App\Models\HostedSiteArticleAssignment;
+use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\Site\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -28,7 +29,7 @@ final class SiteScopedArticleQuery
 
         return $query
             ->whereNull('articles.deleted_at')
-            ->where('articles.review_status', 'approved')
+            ->whereIn('articles.review_status', ArticleWorkflow::PUBLISHABLE_REVIEW_STATUSES)
             ->whereIn('articles.status', ['private', 'published'])
             ->whereHas('task', fn (Builder $task): Builder => $task->where('publish_scope', 'distribution_only'))
             ->whereHas('hostedSiteAssignment', function (Builder $assignment) use ($profileId): void {

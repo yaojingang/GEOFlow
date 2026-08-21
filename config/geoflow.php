@@ -112,6 +112,7 @@ return [
         ),
         'preflight_timeout_seconds' => max(2, (int) env('GEOFLOW_HOSTED_SITE_PREFLIGHT_TIMEOUT', 8)),
         'preflight_fresh_minutes' => max(1, (int) env('GEOFLOW_HOSTED_SITE_PREFLIGHT_FRESH_MINUTES', 15)),
+        'index_observation_minutes' => max(0, (int) env('GEOFLOW_HOSTED_SITE_INDEX_OBSERVATION_MINUTES', 30)),
         'sitemap_url_limit' => 50000,
     ],
 

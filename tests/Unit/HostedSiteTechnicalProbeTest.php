@@ -70,4 +70,27 @@ class HostedSiteTechnicalProbeTest extends TestCase
         $this->assertTrue($checks['maintenance_noindex']);
         $this->assertArrayNotHasKey('canonical', $checks);
     }
+
+    public function test_online_probe_sends_the_private_activation_token(): void
+    {
+        config()->set('geoflow.hosted_sites.network_preflight_enabled', true);
+        $transport = new HostedSiteProbeTransport;
+        $transport->requiredActivationToken = 'activation-secret';
+        $probe = new HostedSiteTechnicalProbe(
+            new SafeOutboundHttpClient(new FakeHostResolver, $transport),
+            app(Factory::class),
+        );
+        $profile = new HostedSiteProfile([
+            'hostname' => 'alpha.sites.test',
+            'serving_status' => HostedSiteProfile::SERVING_ONLINE,
+        ]);
+        $profile->setRelation('channel', new DistributionChannel([
+            'template_key' => 'default',
+            'channel_config' => ['hosted_site_activation_token' => 'activation-secret'],
+        ]));
+
+        $checks = $probe->check($profile, []);
+
+        $this->assertNotContains(false, $checks);
+    }
 }

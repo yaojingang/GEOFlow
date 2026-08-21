@@ -15,7 +15,9 @@ class ArchiveHostedSiteRequest extends FormRequest
     {
         $channel = $this->route('hostedSite');
 
-        return $channel instanceof DistributionChannel && $channel->isHostedSite();
+        return $this->user('admin')?->canManageProtectedWorkflows() === true
+            && $channel instanceof DistributionChannel
+            && $channel->isHostedSite();
     }
 
     /**

@@ -84,6 +84,7 @@
                         </fieldset>
                     </div>
                     <div><label for="about_content" class="block text-sm font-medium text-gray-700">关于页内容</label><textarea id="about_content" name="about_content" rows="6" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm">{{ old('about_content', $settings['about_content'] ?? '') }}</textarea></div>
+                    <div><label for="contact_email" class="block text-sm font-medium text-gray-700">公开联系邮箱</label><input id="contact_email" name="contact_email" type="email" value="{{ old('contact_email', $settings['contact_email'] ?? '') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm"><p class="mt-1 text-xs text-gray-500">开放索引前必须配置联系邮箱，或至少启用一个联系表单。</p></div>
                 </div>
             </section>
 

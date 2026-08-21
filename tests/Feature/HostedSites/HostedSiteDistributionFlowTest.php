@@ -60,6 +60,21 @@ class HostedSiteDistributionFlowTest extends TestCase
         Queue::assertPushed(ProcessArticleDistributionJob::class, 1);
     }
 
+    public function test_automatically_approved_article_completes_the_hosted_distribution_contract(): void
+    {
+        Queue::fake();
+        [$article, $profile] = $this->fixtures();
+        $article->update(['review_status' => 'auto_approved']);
+
+        $request = app(HostedSiteAllocationRequestService::class)->request($article->fresh());
+        $assignment = app(HostedSiteAllocator::class)->allocate($request);
+        $distribution = ArticleDistribution::query()->where('article_id', $article->id)->firstOrFail();
+        app(DistributionPublisherManager::class)->forChannel($profile->channel)
+            ->publish($distribution, []);
+
+        $this->assertSame(HostedSiteArticleAssignment::STATUS_PUBLISHED, $assignment?->fresh()->status);
+    }
+
     public function test_daily_capacity_is_never_over_reserved(): void
     {
         Queue::fake();
@@ -196,6 +211,45 @@ class HostedSiteDistributionFlowTest extends TestCase
             'last_error_code' => 'allocation_contract_changed',
         ]);
         $this->assertDatabaseCount('hosted_site_article_assignments', 0);
+    }
+
+    public function test_unassigned_pending_request_follows_an_explicit_task_rebind(): void
+    {
+        Queue::fake();
+        [$article, $alpha] = $this->fixtures();
+        $request = app(HostedSiteAllocationRequestService::class)->request($article);
+        $betaChannel = DistributionChannel::query()->create([
+            'name' => 'Beta site',
+            'domain' => 'beta.sites.test',
+            'endpoint_url' => 'https://beta.sites.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+        $beta = HostedSiteProfile::query()->create([
+            'distribution_channel_id' => $betaChannel->id,
+            'hostname' => 'beta.sites.test',
+            'root_domain' => 'sites.test',
+            'topic' => 'AI',
+            'daily_publish_limit' => 3,
+            'min_publish_interval_minutes' => 0,
+            'serving_status' => HostedSiteProfile::SERVING_ONLINE,
+        ]);
+        $article->task->distributionChannels()->detach($alpha->distribution_channel_id);
+        $article->task->distributionChannels()->attach($betaChannel->id, [
+            'trigger' => 'after_local_publish',
+            'remote_status' => 'follow_local',
+            'failure_policy' => 'ignore_distribution_failure',
+            'max_attempts' => 3,
+            'sort_order' => 0,
+        ]);
+
+        $refreshedRequest = app(HostedSiteAllocationRequestService::class)->request($article->fresh());
+        $assignment = app(HostedSiteAllocator::class)->allocate($refreshedRequest);
+
+        $this->assertSame($request->id, $refreshedRequest->id);
+        $this->assertSame($beta->id, $refreshedRequest->hosted_site_profile_id);
+        $this->assertSame($beta->id, $assignment?->hosted_site_profile_id);
+        $this->assertDatabaseCount('hosted_site_article_assignments', 1);
     }
 
     public function test_publication_rechecks_cross_day_capacity_and_site_lifecycle(): void

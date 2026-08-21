@@ -81,6 +81,7 @@ final class SiteSettingsBag
                 'filing_url' => '',
                 'about_title' => '',
                 'about_content' => '',
+                'contact_email' => '',
                 'featured_limit' => '5',
                 'per_page' => (string) config('geoflow.items_per_page', 12),
                 'lead_form_slugs' => '[]',
@@ -93,7 +94,7 @@ final class SiteSettingsBag
 
             foreach ([
                 'site_name', 'site_subtitle', 'site_description', 'site_keywords', 'copyright_info',
-                'site_logo', 'site_favicon', 'filing_info', 'filing_url', 'about_title', 'about_content',
+                'site_logo', 'site_favicon', 'filing_info', 'filing_url', 'about_title', 'about_content', 'contact_email',
                 'featured_limit', 'per_page', 'lead_form_slugs', 'homepage_style', 'homepage_modules',
                 'home_carousel_slides', 'article_detail_text_ads', 'article_detail_ads',
             ] as $key) {

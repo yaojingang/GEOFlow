@@ -11,6 +11,7 @@ use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
+use App\Support\GeoFlow\ArticleWorkflow;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -66,7 +67,7 @@ final class HostedSiteAllocator
                     || (string) $task->publish_scope !== 'distribution_only'
                     || $hostedChannelIds !== [(int) $lockedChannel->id]
                     || ! in_array((string) $article->status, ['private', 'published'], true)
-                    || (string) $article->review_status !== 'approved') {
+                    || ! ArticleWorkflow::isPublishableReviewStatus($article->review_status)) {
                     $request->forceFill([
                         'status' => HostedSiteAllocationRequest::STATUS_CANCELLED,
                         'next_attempt_at' => null,

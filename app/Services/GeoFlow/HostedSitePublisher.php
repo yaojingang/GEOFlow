@@ -11,6 +11,7 @@ use App\Models\HostedSiteProfile;
 use App\Models\Task;
 use App\Services\HostedSites\HostedSiteContentFingerprint;
 use App\Services\Site\HostedSiteResolver;
+use App\Support\GeoFlow\ArticleWorkflow;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -128,7 +129,7 @@ final class HostedSitePublisher implements DistributionPublisherInterface
                     || (string) $task->publish_scope !== 'distribution_only'
                     || $hostedChannelIds !== [(int) $channel->id]
                     || ! in_array((string) $article->status, ['private', 'published'], true)
-                    || (string) $article->review_status !== 'approved') {
+                    || ! ArticleWorkflow::isPublishableReviewStatus($article->review_status)) {
                     throw new RuntimeException('The article no longer satisfies the hosted publication contract.');
                 }
             }

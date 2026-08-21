@@ -117,6 +117,10 @@ final class HostedSiteQualityService
                 && trim((string) ($settings['site_description'] ?? '')) !== '',
             'about' => trim((string) ($settings['about_title'] ?? '')) !== ''
                 && trim((string) ($settings['about_content'] ?? '')) !== '',
+            'contact' => filter_var(
+                trim((string) ($settings['contact_email'] ?? '')),
+                FILTER_VALIDATE_EMAIL
+            ) !== false || $activeLeadForms > 0,
             'forms' => $activeLeadForms === count($leadFormSlugs),
             'theme' => in_array(
                 (string) $channel->template_key,

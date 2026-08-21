@@ -75,6 +75,7 @@ class HostedSitePublicRenderingTest extends TestCase
         [$profile] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha article', [
             'about_title' => 'About Alpha',
             'about_content' => 'Alpha is a focused AI publication.',
+            'contact_email' => 'contact-alpha@example.test',
             'lead_form_slugs' => ['contact-alpha'],
         ]);
         $allowed = $this->leadForm('contact-alpha');
@@ -83,7 +84,8 @@ class HostedSitePublicRenderingTest extends TestCase
         $this->get('http://alpha.sites.test/about')
             ->assertOk()
             ->assertSee('About Alpha')
-            ->assertSee('Alpha is a focused AI publication.');
+            ->assertSee('Alpha is a focused AI publication.')
+            ->assertSee('mailto:contact-alpha@example.test', false);
 
         $this->get('http://alpha.sites.test/forms/contact-alpha')->assertOk();
         $this->get('http://alpha.sites.test/forms/private-form')->assertNotFound();
@@ -167,6 +169,18 @@ class HostedSitePublicRenderingTest extends TestCase
             ->assertDontSee('GEOFlow');
     }
 
+    public function test_automatically_approved_assigned_article_is_visible_on_its_hosted_site(): void
+    {
+        [, $article] = $this->siteFixture('alpha', 'Alpha Site', 'Automatically approved article');
+        $article->update(['review_status' => 'auto_approved']);
+
+        $this->get('http://alpha.sites.test/')
+            ->assertOk()
+            ->assertSee('Automatically approved article');
+        $this->get('http://alpha.sites.test/article/'.$article->slug)
+            ->assertOk();
+    }
+
     public function test_hosted_storage_assets_are_served_only_after_host_resolution(): void
     {
         $this->siteFixture('alpha', 'Alpha Site', 'Alpha article');
@@ -181,6 +195,28 @@ class HostedSitePublicRenderingTest extends TestCase
         } finally {
             Storage::disk('public')->delete('hosted-sites/alpha-test.png');
         }
+    }
+
+    public function test_in_progress_activation_is_only_visible_to_the_matching_internal_probe(): void
+    {
+        [$profile] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha article');
+        $profile->channel->update([
+            'status' => DistributionChannel::STATUS_PAUSED,
+            'channel_config' => ['hosted_site_activation_token' => 'activation-secret'],
+        ]);
+
+        $this->get('http://alpha.sites.test/')
+            ->assertServiceUnavailable()
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+
+        $this->withHeader('X-GEOFlow-Hosted-Activation', 'wrong-secret')
+            ->get('http://alpha.sites.test/')
+            ->assertServiceUnavailable();
+
+        $this->withHeader('X-GEOFlow-Hosted-Activation', 'activation-secret')
+            ->get('http://alpha.sites.test/')
+            ->assertOk()
+            ->assertSee('Alpha Site');
     }
 
     /** @param array<string,mixed> $extraSettings @return array{HostedSiteProfile,Article} */

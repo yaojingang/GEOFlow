@@ -14,6 +14,8 @@ final class HostedSiteProbeTransport implements OutboundTransport
 
     public bool $maintenance = false;
 
+    public ?string $requiredActivationToken = null;
+
     public function send(
         PendingRequest $request,
         string $method,
@@ -23,6 +25,15 @@ final class HostedSiteProbeTransport implements OutboundTransport
         bool $crossOrigin = false,
     ): Response {
         $path = (string) parse_url($target->url, PHP_URL_PATH);
+        $activationToken = (string) data_get(
+            $request->getOptions(),
+            'headers.X-GEOFlow-Hosted-Activation',
+            ''
+        );
+        if ($this->requiredActivationToken !== null
+            && ! hash_equals($this->requiredActivationToken, $activationToken)) {
+            return new Response(new PsrResponse(503, ['X-Robots-Tag' => 'noindex, nofollow'], 'activation pending'));
+        }
         if (! $this->healthy && $path === '/') {
             return new Response(new PsrResponse(500, [], 'probe failure'));
         }

@@ -31,6 +31,7 @@ class AboutController extends Controller
             : 'GEOFlow 是面向生成式引擎优化的开源智能内容工程与多站点分发系统，连接知识、生成、审核、发布、分发和数据分析。';
         $aboutTitle = trim((string) ($map['about_title'] ?? ''));
         $aboutContent = trim((string) ($map['about_content'] ?? ''));
+        $contactEmail = trim((string) ($map['contact_email'] ?? ''));
         $pageDescription = $aboutContent !== '' ? $aboutContent : $defaultDescription;
         $view = $this->currentSite->isHosted() ? view('site.about') : null;
 
@@ -49,6 +50,7 @@ class AboutController extends Controller
             'repositoryUrl' => 'https://github.com/yaojingang/GEOFlow',
             'aboutTitle' => $aboutTitle !== '' ? $aboutTitle : '关于 '.$siteTitle,
             'aboutContent' => $aboutContent,
+            'contactEmail' => $contactEmail,
             'isHostedAbout' => $isHosted,
         ];
 

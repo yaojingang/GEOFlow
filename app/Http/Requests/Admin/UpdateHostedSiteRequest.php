@@ -17,7 +17,9 @@ class UpdateHostedSiteRequest extends FormRequest
     {
         $channel = $this->route('hostedSite');
 
-        return $channel instanceof DistributionChannel && $channel->isHostedSite();
+        return $this->user('admin')?->canManageProtectedWorkflows() === true
+            && $channel instanceof DistributionChannel
+            && $channel->isHostedSite();
     }
 
     /** @return array<string,array<int,mixed>|string> */
@@ -47,6 +49,7 @@ class UpdateHostedSiteRequest extends FormRequest
             'site_keywords' => ['nullable', 'string', 'max:500'],
             'about_title' => ['nullable', 'string', 'max:160'],
             'about_content' => ['nullable', 'string', 'max:20000'],
+            'contact_email' => ['nullable', 'email', 'max:254'],
             'lead_form_slugs' => ['nullable', 'array', 'max:20'],
             'lead_form_slugs.*' => [
                 'string', 'max:120', 'distinct',

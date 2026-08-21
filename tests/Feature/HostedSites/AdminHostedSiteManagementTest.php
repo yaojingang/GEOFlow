@@ -16,6 +16,7 @@ use App\Models\Task;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\HostedSiteProbeTransport;
 use Tests\TestCase;
@@ -74,6 +75,7 @@ class AdminHostedSiteManagementTest extends TestCase
                 'min_articles_before_index' => 1,
                 'template_key' => 'default',
                 'site_description' => 'Alpha description',
+                'contact_email' => 'alpha-contact@example.test',
                 'lead_form_slugs' => [''],
                 'custom_html' => '<script>alert(1)</script>',
             ]
@@ -85,6 +87,7 @@ class AdminHostedSiteManagementTest extends TestCase
         $this->assertSame('https://alpha.sites.test', $channel->endpoint_url);
         $this->assertSame(DistributionChannel::STATUS_PAUSED, $channel->status);
         $this->assertSame(0, $channel->secrets()->count());
+        $this->assertSame('alpha-contact@example.test', data_get($channel->site_settings, 'contact_email'));
         $this->assertArrayNotHasKey('custom_html', $channel->site_settings ?? []);
         foreach (['copyright_info', 'site_logo', 'site_favicon', 'filing_info', 'home_carousel_slides', 'article_detail_ads'] as $key) {
             $this->assertArrayNotHasKey($key, $channel->site_settings ?? []);
@@ -143,6 +146,17 @@ class AdminHostedSiteManagementTest extends TestCase
 
         $this->actingAs($this->admin(), 'admin')
             ->get(route('admin.distribution.hosted-sites.show', $external))
+            ->assertNotFound();
+
+        $malformedHosted = DistributionChannel::query()->create([
+            'name' => 'Missing profile',
+            'domain' => 'missing.sites.test',
+            'endpoint_url' => 'https://missing.sites.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_PAUSED,
+        ]);
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.hosted-sites.show', $malformedHosted))
             ->assertNotFound();
     }
 
@@ -285,6 +299,22 @@ class AdminHostedSiteManagementTest extends TestCase
         $this->assertStringContainsString('about', (string) $channel->fresh()->last_error_message);
     }
 
+    public function test_preflight_requires_a_public_contact_method(): void
+    {
+        $channel = $this->hostedChannel();
+        $channel->update([
+            'site_settings' => collect($channel->site_settings)->except('contact_email')->all(),
+        ]);
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.hosted-sites.preflight', $channel))
+            ->assertSessionHasErrors();
+
+        $messages = implode(' ', $response->getSession()->get('errors')->all());
+        $this->assertStringContainsString('contact', $messages);
+        $this->assertStringContainsString('contact', (string) $channel->fresh()->last_error_message);
+    }
+
     public function test_activation_requires_a_recent_preflight_and_lifecycle_audit_has_target_and_transition(): void
     {
         $admin = $this->admin();
@@ -357,6 +387,7 @@ class AdminHostedSiteManagementTest extends TestCase
 
     public function test_indexing_action_requires_confirmation_visible_content_and_current_online_preflight(): void
     {
+        config()->set('geoflow.hosted_sites.index_observation_minutes', 30);
         $admin = $this->admin();
         $channel = $this->hostedChannel();
         $task = Task::query()->create([
@@ -411,6 +442,35 @@ class AdminHostedSiteManagementTest extends TestCase
                 'indexing_status' => HostedSiteProfile::INDEXING_INDEX,
             ])
             ->assertSessionHasErrors('quality_confirmed');
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.hosted-sites.indexing', $channel), [
+                'indexing_status' => HostedSiteProfile::INDEXING_INDEX,
+                'quality_confirmed' => '1',
+            ])
+            ->assertSessionHasErrors();
+
+        $channel->hostedSiteProfile->update(['activated_at' => now()->subMinutes(31)]);
+        DB::table('view_logs')->insert([
+            'hosted_site_profile_id' => $channel->hostedSiteProfile->id,
+            'source' => 'hosted_site',
+            'method' => 'GET',
+            'path' => '/',
+            'route_name' => 'site.home',
+            'status_code' => 500,
+            'ip_address' => '127.0.0.1',
+            'created_at' => now(),
+        ]);
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.hosted-sites.indexing', $channel), [
+                'indexing_status' => HostedSiteProfile::INDEXING_INDEX,
+                'quality_confirmed' => '1',
+            ])
+            ->assertSessionHasErrors();
+
+        DB::table('view_logs')
+            ->where('hosted_site_profile_id', $channel->hostedSiteProfile->id)
+            ->where('status_code', '>=', 500)
+            ->delete();
         $this->actingAs($admin, 'admin')
             ->post(route('admin.distribution.hosted-sites.indexing', $channel), [
                 'indexing_status' => HostedSiteProfile::INDEXING_INDEX,
@@ -491,6 +551,7 @@ class AdminHostedSiteManagementTest extends TestCase
                 'site_description' => 'Description',
                 'about_title' => 'About Alpha',
                 'about_content' => 'Alpha site information.',
+                'contact_email' => 'alpha@example.test',
             ],
         ]);
         HostedSiteProfile::query()->create([

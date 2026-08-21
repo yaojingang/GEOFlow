@@ -10,6 +10,7 @@ use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Services\Site\HostedSiteResolver;
+use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use Carbon\CarbonImmutable;
@@ -188,7 +189,7 @@ final class HostedSiteLifecycleService
                     'status' => DistributionChannel::STATUS_ACTIVE,
                     'channel_config' => $this->withoutActivationToken($lockedChannel),
                 ])->save();
-                $profile->forceFill(['activated_at' => $profile->activated_at ?? now()])->save();
+                $profile->forceFill(['activated_at' => now()])->save();
 
                 return $lockedChannel->fresh('hostedSiteProfile');
             }, 3);
@@ -251,7 +252,7 @@ final class HostedSiteLifecycleService
                     ->where('status', HostedSiteArticleAssignment::STATUS_PUBLISHED)
                     ->whereHas('article', function ($article): void {
                         $article->whereNull('deleted_at')
-                            ->where('review_status', 'approved')
+                            ->whereIn('review_status', ArticleWorkflow::PUBLISHABLE_REVIEW_STATUSES)
                             ->whereIn('status', ['private', 'published'])
                             ->whereHas('task', fn ($task) => $task->where('publish_scope', 'distribution_only'));
                     })
@@ -266,6 +267,24 @@ final class HostedSiteLifecycleService
                     || ! $freshPreflight
                     || $published < (int) $profile->min_articles_before_index) {
                     throw new DomainException('Hosted site does not meet the indexing quality gate.');
+                }
+                $observationMinutes = max(
+                    0,
+                    (int) config('geoflow.hosted_sites.index_observation_minutes', 30)
+                );
+                if ($observationMinutes > 0) {
+                    $observationStart = now()->subMinutes($observationMinutes);
+                    if ($profile->activated_at === null || $profile->activated_at->gt($observationStart)) {
+                        throw new DomainException('Hosted site must complete its observation window before indexing.');
+                    }
+                    $recentServerErrors = DB::table('view_logs')
+                        ->where('hosted_site_profile_id', (int) $profile->id)
+                        ->where('created_at', '>=', $observationStart)
+                        ->where('status_code', '>=', 500)
+                        ->exists();
+                    if ($recentServerErrors) {
+                        throw new DomainException('Hosted site has recent 5xx responses and cannot be indexed.');
+                    }
                 }
                 $profile->forceFill([
                     'quality_status' => HostedSiteProfile::QUALITY_PASSED,
@@ -340,7 +359,7 @@ final class HostedSiteLifecycleService
                 || (string) $task->publish_scope !== 'distribution_only'
                 || $hostedChannelIds !== [$channelId]
                 || ! in_array((string) $article->status, ['private', 'published'], true)
-                || (string) $article->review_status !== 'approved') {
+                || ! ArticleWorkflow::isPublishableReviewStatus($article->review_status)) {
                 throw new DomainException('The article no longer satisfies the hosted publication contract.');
             }
 
@@ -568,6 +587,7 @@ final class HostedSiteLifecycleService
             'site_keywords',
             'about_title',
             'about_content',
+            'contact_email',
             'lead_form_slugs',
             'theme_id',
             'featured_limit',
@@ -585,6 +605,7 @@ final class HostedSiteLifecycleService
             'site_keywords' => trim((string) ($payload['site_keywords'] ?? '')),
             'about_title' => trim((string) ($payload['about_title'] ?? '')),
             'about_content' => trim((string) ($payload['about_content'] ?? '')),
+            'contact_email' => strtolower(trim((string) ($payload['contact_email'] ?? ''))),
             'lead_form_slugs' => array_values(array_unique(array_map(
                 'strval',
                 is_array($payload['lead_form_slugs'] ?? null) ? $payload['lead_form_slugs'] : []

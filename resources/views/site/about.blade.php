@@ -26,6 +26,9 @@
                     <h1 class="article-hero-title font-semibold text-gray-900 mb-4 leading-tight">{{ $aboutTitle ?? '关于 GEOFlow' }}</h1>
                     @if(!empty($isHostedAbout))
                         <p class="article-kicker text-gray-600 max-w-3xl whitespace-pre-line">{{ $aboutContent !== '' ? $aboutContent : $pageDescription }}</p>
+                        @if($contactEmail !== '')
+                            <p class="mt-6 text-sm text-gray-600">联系邮箱：<a class="text-blue-600 hover:text-blue-800" href="mailto:{{ $contactEmail }}">{{ $contactEmail }}</a></p>
+                        @endif
                     @else
                         <p class="article-kicker text-gray-600 max-w-3xl">
                             把可信知识、AI 内容工程与多站点分发连接起来，为持续运营的 GEO 内容资产提供一套开放的工作流。

@@ -10,6 +10,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnforceCurrentSiteSurface
 {
+    public const ACTIVATION_HEADER = 'X-GEOFlow-Hosted-Activation';
+
     public function __construct(private readonly CurrentSite $currentSite) {}
 
     /**
@@ -40,6 +42,13 @@ class EnforceCurrentSiteSurface
             return response('Service Unavailable', 503)->withHeaders([
                 ...$this->noindexHeaders(),
                 'Retry-After' => '300',
+            ]);
+        }
+
+        if ($this->activationProbePending($request, $profile)) {
+            return response('Service Unavailable', 503)->withHeaders([
+                ...$this->noindexHeaders(),
+                'Retry-After' => '60',
             ]);
         }
 
@@ -77,6 +86,21 @@ class EnforceCurrentSiteSurface
         return preg_match('#^/(?:category|article|forms)/[a-zA-Z0-9_-]+$#', $path) === 1
             || preg_match('#^/archive/[0-9]{4}/[0-9]{2}$#', $path) === 1
             || preg_match('#^/sitemaps/[a-zA-Z0-9._-]+$#', $path) === 1;
+    }
+
+    private function activationProbePending(Request $request, HostedSiteProfile $profile): bool
+    {
+        $profile->loadMissing('channel');
+        $expected = trim((string) data_get(
+            $profile->channel?->channel_config,
+            'hosted_site_activation_token',
+            ''
+        ));
+        if ($expected === '') {
+            return false;
+        }
+
+        return ! hash_equals($expected, trim((string) $request->header(self::ACTIVATION_HEADER, '')));
     }
 
     /** @return array<string,string> */
