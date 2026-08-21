@@ -10,6 +10,12 @@ class KnowledgeBase extends Model
 {
     protected $table = 'knowledge_bases';
 
+    protected $attributes = [
+        'chunk_sync_status' => 'idle',
+        'chunk_source_hash' => '',
+        'chunk_sync_require_real_embedding' => false,
+    ];
+
     protected $fillable = [
         'name',
         'description',
@@ -27,6 +33,12 @@ class KnowledgeBase extends Model
         'effective_date',
         'risk_level',
         'review_status',
+        'chunk_sync_status',
+        'chunk_sync_token',
+        'chunk_source_hash',
+        'chunk_sync_error',
+        'chunk_sync_require_real_embedding',
+        'chunk_synced_at',
     ];
 
     protected function casts(): array
@@ -37,6 +49,8 @@ class KnowledgeBase extends Model
             'word_count' => 'integer',
             'usage_count' => 'integer',
             'effective_date' => 'date',
+            'chunk_sync_require_real_embedding' => 'boolean',
+            'chunk_synced_at' => 'datetime',
         ];
     }
 

@@ -44,7 +44,7 @@ return [
 
     // 当前系统版本（底部展示、GitHub 更新检查对比）；默认跟随本地 version.json，避免已部署 .env 锁死版本号。
     'app_version' => $appVersion,
-    // 首次部署登录页初始管理员提示；仅当默认管理员尚未登录且密码可验证时展示一次。
+    // 首次部署登录页初始管理员提示；只展示账号与初始化日志指引，永远不展示密码。
     'initial_admin_hint_enabled' => filter_var(env('GEOFLOW_INITIAL_ADMIN_HINT_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
     'initial_admin_username' => trim((string) env('GEOFLOW_ADMIN_USERNAME', 'admin')) ?: 'admin',
     'initial_admin_email' => trim((string) env('GEOFLOW_ADMIN_EMAIL', 'admin@example.com')) ?: 'admin@example.com',
@@ -103,6 +103,10 @@ return [
     'semantic_chunking_max_chars' => max(1, (int) env('GEOFLOW_SEMANTIC_CHUNKING_MAX_CHARS', 20000)),
     // Embedding 文档向量化单次请求切片数；部分供应商限制 batch 较小，默认保守拆分。
     'embedding_batch_size' => max(1, min(64, (int) env('GEOFLOW_EMBEDDING_BATCH_SIZE', 1))),
+    // 单个知识向量化 Job 最多处理的切片数，控制队列进程峰值内存。
+    'knowledge_embedding_job_size' => max(1, min(32, (int) env('GEOFLOW_KNOWLEDGE_EMBEDDING_JOB_SIZE', 32))),
+    // Worker 心跳超过该秒数未更新时，任务页标记为 stale。
+    'worker_stale_seconds' => max(30, (int) env('GEOFLOW_WORKER_STALE_SECONDS', 120)),
     // 正文生成默认最大输出 token 数；当 AI 模型未单独配置 max_tokens 时使用此兜底值，
     // 避免依赖各服务商较小的默认上限（常见 4K）导致长文被截断。
     'content_max_tokens' => max(256, (int) env('GEOFLOW_CONTENT_MAX_TOKENS', 8192)),
@@ -150,6 +154,8 @@ return [
     'max_login_attempts' => (int) env('GEOFLOW_MAX_LOGIN_ATTEMPTS', 5),
     // 超出次数后锁定时长（秒）
     'login_lockout_seconds' => (int) env('GEOFLOW_LOGIN_LOCKOUT_SECONDS', 900),
+    // 后台“记住我”凭证有效期（分钟），默认 30 天
+    'admin_remember_minutes' => max(1, (int) env('GEOFLOW_ADMIN_REMEMBER_MINUTES', 43200)),
     // API 登录限速：同一账号/IP 在窗口期内最多尝试次数
     'api_login_rate_limit_attempts' => (int) env('GEOFLOW_API_LOGIN_RATE_LIMIT_ATTEMPTS', 10),
     // API 登录限速窗口（秒）

@@ -98,6 +98,8 @@ return [
 
     'waits' => [
         'redis:geoflow' => 60,
+        'redis:knowledge' => 60,
+        'redis:system-updates' => 60,
     ],
 
     /*
@@ -199,15 +201,39 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['geoflow', 'distribution'],
+            'queue' => ['geoflow', 'distribution', 'theme-replication', 'default'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
-            'maxTime' => 0,
-            'maxJobs' => 0,
+            'maxTime' => 3600,
+            'maxJobs' => 100,
             'memory' => 128,
             'tries' => 1,
-            'timeout' => 300,
+            'timeout' => 660,
+            'nice' => 0,
+        ],
+        'supervisor-knowledge' => [
+            'connection' => 'redis',
+            'queue' => ['knowledge'],
+            'balance' => 'simple',
+            'maxProcesses' => 1,
+            'maxTime' => 1800,
+            'maxJobs' => 20,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 210,
+            'nice' => 0,
+        ],
+        'supervisor-system-updates' => [
+            'connection' => 'redis',
+            'queue' => ['system-updates'],
+            'balance' => 'simple',
+            'maxProcesses' => 1,
+            'maxTime' => 3600,
+            'maxJobs' => 10,
+            'memory' => 256,
+            'tries' => 1,
+            'timeout' => 930,
             'nice' => 0,
         ],
     ],
@@ -215,7 +241,7 @@ return [
     'environments' => [
         'production' => [
             'supervisor-1' => [
-                'maxProcesses' => 10,
+                'maxProcesses' => (int) env('HORIZON_MAX_PROCESSES', 3),
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],

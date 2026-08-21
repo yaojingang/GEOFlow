@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEOFlow AI 工作台原型</title>
+    <script src="../js/tailwindcss.play-cdn.js"></script>
+    <script src="../js/lucide.min.js"></script>
+    <style>
+        /* PROTOTYPE: GEOFlow 新入口的 AI 工作台，仅用于验证交互与信息结构。 */
+        html, body { min-height: 100%; }
+        body { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        #app-sidebar { width: 16rem; }
+        #sidebar-overlay { opacity: 0; pointer-events: none; }
+        .scene-button[aria-pressed="true"] { border-color: #bfdbfe; background: #eff6ff; color: #2563eb; }
+        .mode-button[aria-pressed="true"] { border-color: transparent; background: #eff6ff; color: #2563eb; }
+        #send-button:disabled { cursor: not-allowed; background: #cbd5e1; }
+        #toast { opacity: 0; pointer-events: none; transform: translateY(0.5rem); }
+        #toast.toast-visible { opacity: 1; transform: translateY(0); }
+
+        @media (max-width: 767px) {
+            #app-sidebar { transform: translateX(-100%); transition: transform 180ms ease-out; }
+            body.sidebar-open #app-sidebar { transform: translateX(0); }
+            body.sidebar-open #sidebar-overlay { opacity: 1; pointer-events: auto; }
+        }
+
+        @media (min-width: 768px) {
+            body.sidebar-collapsed #app-sidebar { width: 4.5rem; }
+            body.sidebar-collapsed .sidebar-wordmark,
+            body.sidebar-collapsed .sidebar-label { display: none; }
+            body.sidebar-collapsed .sidebar-link { justify-content: center; padding-left: 0.75rem; padding-right: 0.75rem; }
+            body.sidebar-collapsed .sidebar-group { margin-top: 0.25rem; }
+            body.sidebar-collapsed .sidebar-recent { display: none; }
+            body.sidebar-collapsed #sidebar-collapse-icon { transform: rotate(180deg); }
+        }
+
+        :focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            #app-sidebar, #toast { transition: none; }
+        }
+    </style>
+</head>
+<body class="bg-white text-gray-900 antialiased">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-blue-600 focus:shadow-lg">跳到主要内容</a>
+
+    <div class="flex min-h-screen">
+        <button id="sidebar-overlay" type="button" aria-label="关闭主菜单" class="fixed inset-0 z-40 bg-gray-900/40 transition-opacity md:hidden"></button>
+
+        <aside id="app-sidebar" aria-label="主菜单" class="fixed inset-y-0 left-0 z-50 flex h-screen shrink-0 flex-col border-r border-gray-200 bg-white md:sticky md:top-0 md:translate-x-0">
+            <div class="flex h-16 shrink-0 items-center justify-between px-4">
+                <a href="#main-content" class="sidebar-wordmark flex min-h-10 shrink-0 items-center text-xl font-semibold text-gray-900">GEOFlow</a>
+                <button id="sidebar-collapse" type="button" aria-label="收起主菜单" aria-expanded="true" class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 md:flex">
+                    <i id="sidebar-collapse-icon" data-lucide="panel-left-close" class="h-5 w-5"></i>
+                </button>
+                <button id="sidebar-close" type="button" aria-label="关闭主菜单" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 md:hidden">
+                    <i data-lucide="x" class="h-5 w-5"></i>
+                </button>
+            </div>
+
+            <nav class="min-h-0 flex-1 overflow-y-auto px-3 py-4 [scrollbar-width:thin]" aria-label="后台功能导航">
+                <a href="#main-content" aria-current="page" title="AI 工作台" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md bg-blue-100 px-3 py-2 text-sm font-medium text-blue-600">
+                    <i data-lucide="sparkles" class="h-5 w-5 shrink-0"></i>
+                    <span class="sidebar-label whitespace-nowrap">AI 工作台</span>
+                </a>
+
+                <section class="sidebar-group mt-5 space-y-1" aria-labelledby="sidebar-overview-heading">
+                    <h2 id="sidebar-overview-heading" class="sidebar-label px-3 pb-2 text-xs font-semibold text-gray-400">运营分析</h2>
+                    <a href="#dashboard" title="首页" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="home" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">首页</span>
+                    </a>
+                    <a href="#analytics" title="增长中心" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="chart-no-axes-combined" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">增长中心</span>
+                    </a>
+                </section>
+
+                <section class="sidebar-group mt-5 space-y-1" aria-labelledby="sidebar-content-heading">
+                    <h2 id="sidebar-content-heading" class="sidebar-label px-3 pb-2 text-xs font-semibold text-gray-400">内容生产</h2>
+                    <a href="#tasks" title="任务管理" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="workflow" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">任务管理</span>
+                    </a>
+                    <a href="#articles" title="内容管理" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="file-text" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">内容管理</span>
+                    </a>
+                    <a href="#manual-publications" title="人工发布" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="send" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">人工发布</span>
+                    </a>
+                    <a href="#distribution" title="分发管理" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="radio-tower" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">分发管理</span>
+                    </a>
+                </section>
+
+                <section class="sidebar-group mt-5 space-y-1" aria-labelledby="sidebar-capability-heading">
+                    <h2 id="sidebar-capability-heading" class="sidebar-label px-3 pb-2 text-xs font-semibold text-gray-400">资产与能力</h2>
+                    <a href="#materials" title="内容资产" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="database" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">内容资产</span>
+                    </a>
+                    <a href="#ai-config" title="AI配置器" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="bot" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">AI配置器</span>
+                    </a>
+                </section>
+
+                <section class="sidebar-group mt-5 space-y-1" aria-labelledby="sidebar-system-heading">
+                    <h2 id="sidebar-system-heading" class="sidebar-label px-3 pb-2 text-xs font-semibold text-gray-400">系统管理</h2>
+                    <a href="#settings" title="网站设置" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="settings" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">网站设置</span>
+                    </a>
+                    <a href="#users" title="用户管理" class="sidebar-link flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">
+                        <i data-lucide="users" class="h-5 w-5 shrink-0"></i><span class="sidebar-label whitespace-nowrap">用户管理</span>
+                    </a>
+                </section>
+
+                <section class="sidebar-recent mt-6 border-t border-gray-100 pt-5" aria-labelledby="sidebar-recent-heading">
+                    <div class="flex min-h-10 items-center justify-between px-3">
+                        <h2 id="sidebar-recent-heading" class="text-xs font-semibold text-gray-400">最近处理</h2>
+                        <button type="button" aria-label="管理最近处理记录" class="flex h-10 w-10 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"><i data-lucide="sliders-horizontal" class="h-4 w-4"></i></button>
+                    </div>
+                    <div class="mt-1 space-y-1">
+                        <a href="#recent" class="flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><span class="h-2 w-2 shrink-0 rounded-full bg-blue-500"></span><span class="truncate">AI 可见性周报复盘</span></a>
+                        <a href="#recent" class="flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><span class="h-2 w-2 shrink-0 rounded-full bg-emerald-500"></span><span class="truncate">GEOFlow 2.1 发布说明</span></a>
+                        <a href="#recent" class="flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"><span class="h-2 w-2 shrink-0 rounded-full bg-violet-500"></span><span class="truncate">企业知识库批量更新</span></a>
+                    </div>
+                </section>
+            </nav>
+
+            <div class="sidebar-label shrink-0 border-t border-gray-100 px-5 py-4 text-xs text-gray-400">GEOFlow v2.0</div>
+        </aside>
+
+        <div class="flex min-w-0 flex-1 flex-col">
+            <header class="relative z-30 h-16 shrink-0 bg-white">
+                <div class="flex h-full items-center gap-3 px-4 sm:px-6 lg:px-12">
+                    <button id="sidebar-open" type="button" aria-label="打开主菜单" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 md:hidden"><i data-lucide="menu" class="h-5 w-5"></i></button>
+                    <div class="flex min-w-0 items-center gap-2 text-sm text-gray-500">
+                        <i data-lucide="sparkles" class="hidden h-4 w-4 sm:block"></i>
+                        <span class="truncate font-medium text-gray-700">AI 工作台</span>
+                    </div>
+                    <div class="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+                        <button type="button" aria-label="通知消息" class="relative flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"><i data-lucide="bell" class="h-5 w-5"></i><span class="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"></span></button>
+                        <div class="hidden min-h-10 items-center rounded-lg border border-gray-200 bg-white px-2 py-1 shadow-sm md:flex"><i data-lucide="languages" class="mr-1.5 h-4 w-4 text-gray-400"></i><span class="pr-2 text-sm font-medium text-gray-700">简体中文</span></div>
+                        <button type="button" aria-label="打开用户菜单" class="flex min-h-10 items-center gap-1 text-sm text-gray-600 hover:text-gray-900"><span class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100"><i data-lucide="user" class="h-4 w-4 text-blue-600"></i></span><i data-lucide="chevron-down" class="h-4 w-4"></i></button>
+                    </div>
+                </div>
+            </header>
+
+            <main id="main-content" class="min-w-0 flex-1 bg-white">
+                <div class="mx-auto max-w-3xl px-5 pb-12 pt-10 sm:px-6 sm:pt-16">
+                    <section aria-labelledby="ai-workspace-title">
+                        <h1 id="ai-workspace-title" class="text-center text-[26px] font-medium leading-tight tracking-tight text-slate-800 sm:text-[34px]">今天想让 GEOFlow 做什么？</h1>
+                        <p class="mt-3 text-center text-[14px] text-slate-500">告诉我一句话，从内容诊断到创建任务、多站分发和增长观测，一键完成</p>
+
+                        <div class="relative mt-7 overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+                            <textarea id="prompt-input" rows="2" aria-label="告诉 GEOFlow 你想完成的工作" placeholder="例如：分析近 30 天 AI 爬虫访问与品牌可见性，找出 5 篇优先优化的内容并创建任务" class="w-full resize-none bg-transparent px-5 pb-2 pt-4 text-[14.5px] leading-6 text-slate-800 placeholder:text-slate-400 focus:outline-none"></textarea>
+                            <div class="flex items-center justify-between px-3 py-2.5">
+                                <div class="flex min-w-0 items-center gap-1">
+                                    <div class="relative">
+                                        <button id="attachment-button" type="button" aria-label="添加上下文" aria-expanded="false" class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-stone-100"><i data-lucide="plus" class="h-5 w-5"></i></button>
+                                        <div id="attachment-menu" class="absolute bottom-11 left-0 z-20 hidden w-52 rounded-lg border border-stone-200 bg-white p-2 shadow-lg">
+                                            <button type="button" class="flex min-h-10 w-full items-center rounded-md px-3 text-left text-sm text-slate-700 hover:bg-stone-100"><i data-lucide="upload" class="mr-2 h-4 w-4 text-slate-400"></i>上传业务资料</button>
+                                            <button id="open-template-menu" type="button" class="flex min-h-10 w-full items-center rounded-md px-3 text-left text-sm text-slate-700 hover:bg-stone-100"><i data-lucide="layout-template" class="mr-2 h-4 w-4 text-slate-400"></i>从模板选择</button>
+                                        </div>
+                                    </div>
+                                    <button type="button" aria-label="AI 智能拆解" class="hidden h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-stone-100 sm:flex"><i data-lucide="sparkles" class="h-4 w-4"></i></button>
+                                    <button type="button" class="mode-button hidden h-8 items-center rounded-lg border border-transparent px-2.5 text-[13px] text-slate-700 hover:bg-stone-100 sm:flex" data-mode="增长分析" aria-pressed="false"><i data-lucide="chart-spline" class="mr-1.5 h-4 w-4 text-slate-500"></i>增长分析<span class="ml-1.5 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">新</span></button>
+                                    <button type="button" class="mode-button flex h-8 items-center rounded-lg border border-transparent px-2.5 text-[13px] font-medium text-slate-700 hover:bg-stone-100" data-mode="创建任务" aria-pressed="true"><i data-lucide="workflow" class="mr-1.5 h-4 w-4"></i>创建任务</button>
+                                </div>
+                                <div class="flex shrink-0 items-center gap-1">
+                                    <button type="button" aria-label="语音输入" class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-stone-100"><i data-lucide="mic" class="h-4 w-4"></i></button>
+                                    <button id="send-button" type="button" aria-label="生成执行计划" class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white hover:bg-slate-800"><i data-lucide="arrow-up" class="h-4 w-4"></i></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 flex items-center justify-between text-[13px]">
+                            <span class="text-slate-600">您想做什么？</span>
+                            <div class="flex items-center gap-4 text-slate-500">
+                                <button id="upload-context" type="button" class="flex items-center gap-1 hover:text-slate-700"><i data-lucide="upload-file" class="h-4 w-4"></i><span class="hidden sm:inline">上传资料</span></button>
+                                <button id="open-templates" type="button" class="flex items-center gap-1 hover:text-slate-700"><i data-lucide="file-text" class="h-4 w-4"></i><span class="hidden sm:inline">从模板选择</span></button>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex flex-wrap items-center gap-2">
+                            <button type="button" class="scene-button flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-slate-700 hover:border-stone-300" data-scene="diagnosis" aria-pressed="true"><i data-lucide="scan-search" class="h-4 w-4 text-slate-500"></i>内容诊断</button>
+                            <button type="button" class="scene-button flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-slate-700 hover:border-stone-300" data-scene="task" aria-pressed="false"><i data-lucide="workflow" class="h-4 w-4 text-slate-500"></i>创建任务</button>
+                            <button type="button" class="scene-button flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-slate-700 hover:border-stone-300" data-scene="knowledge" aria-pressed="false"><i data-lucide="database" class="h-4 w-4 text-slate-500"></i>知识资产</button>
+                            <button type="button" class="scene-button flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-slate-700 hover:border-stone-300" data-scene="distribution" aria-pressed="false"><i data-lucide="radio-tower" class="h-4 w-4 text-slate-500"></i>多站分发</button>
+                            <button type="button" class="scene-button flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-[13px] text-slate-500 hover:border-stone-300" data-scene="analytics" aria-pressed="false"><i data-lucide="more-horizontal" class="h-4 w-4"></i>更多</button>
+                        </div>
+                    </section>
+
+                    <section id="conversation-panel" aria-live="polite" class="mt-7 hidden overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+                        <div class="border-b border-gray-100 px-5 py-4 sm:px-6">
+                            <div class="flex items-start gap-3">
+                                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600"><i data-lucide="user" class="h-4 w-4"></i></span>
+                                <div><p class="text-xs font-semibold text-gray-400">你的目标</p><p id="submitted-prompt" class="mt-1 text-sm leading-6 text-gray-800"></p></div>
+                            </div>
+                        </div>
+                        <div class="px-5 py-5 sm:px-6">
+                            <div class="flex items-start gap-3">
+                                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600"><i data-lucide="sparkles" class="h-4 w-4"></i></span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-xs font-semibold text-blue-600">GEOFlow AI</p><h2 class="mt-1 text-lg font-semibold text-gray-900">已生成可审核的执行计划</h2></div><span id="plan-mode" class="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">智能拆解</span></div>
+                                    <p class="mt-2 text-sm leading-6 text-gray-500">系统会先读取当前数据与内容资产，再进入创建或分发步骤。每个会改变业务状态的动作都需要确认。</p>
+                                    <ol class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                        <li class="rounded-lg border border-gray-200 p-3"><span class="text-xs font-semibold text-blue-600">01</span><p class="mt-2 text-sm font-semibold text-gray-900">读取现状</p><p class="mt-1 text-xs leading-5 text-gray-500">分析任务、内容、流量与 AI 爬虫信号</p></li>
+                                        <li class="rounded-lg border border-gray-200 p-3"><span class="text-xs font-semibold text-emerald-600">02</span><p class="mt-2 text-sm font-semibold text-gray-900">组织资产</p><p class="mt-1 text-xs leading-5 text-gray-500">匹配知识、标题、关键词、图片和作者</p></li>
+                                        <li class="rounded-lg border border-gray-200 p-3"><span class="text-xs font-semibold text-amber-600">03</span><p class="mt-2 text-sm font-semibold text-gray-900">准备任务</p><p class="mt-1 text-xs leading-5 text-gray-500">形成任务参数、质量门禁与分发范围</p></li>
+                                        <li class="rounded-lg border border-gray-200 p-3"><span class="text-xs font-semibold text-violet-600">04</span><p class="mt-2 text-sm font-semibold text-gray-900">持续观测</p><p class="mt-1 text-xs leading-5 text-gray-500">建立访问、分发和品牌可见性回看</p></li>
+                                    </ol>
+                                    <div class="mt-5 flex flex-wrap gap-2"><button type="button" class="inline-flex h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50">调整计划</button><button id="confirm-plan" type="button" class="inline-flex h-10 items-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">确认并进入任务创建</button></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="relative mt-8" aria-labelledby="workflow-card-title">
+                        <div class="overflow-hidden rounded-2xl border border-stone-200/80">
+                            <div class="flex flex-col bg-white sm:flex-row">
+                                <div class="flex-1 p-5">
+                                    <button type="button" class="flex items-center gap-1 text-[14px] font-semibold text-slate-800"><span id="workflow-card-title">GEO 工作一站直达</span><i data-lucide="chevron-right" class="h-4 w-4 text-slate-500"></i></button>
+                                    <p id="workflow-card-desc" class="mt-1 text-[12px] text-slate-500">内容、资产、任务、分发与增长观测，在一个工作台完成</p>
+                                    <div id="workflow-tags" class="mt-3 flex flex-wrap gap-2"><span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">问题地图</span><span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">知识资产</span><span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">任务编排</span><span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">质量门禁</span><span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">AI 可见性</span><span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">多站分发</span><span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">增长分析</span><span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">数据导出</span></div>
+                                </div>
+                                <div class="relative hidden w-52 shrink-0 overflow-hidden border-l border-stone-100 bg-stone-50 sm:block">
+                                    <div class="absolute inset-3 rounded-lg border border-stone-100 bg-white p-3 shadow-sm">
+                                        <div class="mb-2 flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-blue-500"></span><span class="text-[10px] font-semibold text-slate-700">AI 可见性趋势</span></div>
+                                        <div class="flex h-10 items-end gap-1"><span class="flex-1 rounded-sm bg-blue-200" style="height:60%"></span><span class="flex-1 rounded-sm bg-blue-300" style="height:85%"></span><span class="flex-1 rounded-sm bg-blue-500" style="height:100%"></span><span class="flex-1 rounded-sm bg-blue-300" style="height:75%"></span><span class="flex-1 rounded-sm bg-blue-200" style="height:45%"></span></div>
+                                        <div class="mt-2 grid grid-cols-3 gap-1"><span class="flex h-4 items-center justify-center rounded bg-green-100 text-[8px] text-green-700">引用 32</span><span class="flex h-4 items-center justify-center rounded bg-amber-100 text-[8px] text-amber-700">访问 18</span><span class="flex h-4 items-center justify-center rounded bg-rose-100 text-[8px] text-rose-700">待优化 5</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex items-center justify-center gap-3">
+                            <button id="carousel-prev" type="button" aria-label="上一张能力卡" class="rounded-md p-1 text-slate-400 hover:bg-stone-100"><i data-lucide="chevron-left" class="h-4 w-4"></i></button>
+                            <div class="flex items-center gap-1.5"><button type="button" aria-label="查看第 1 张能力卡" data-carousel-index="0" class="carousel-dot h-1.5 w-4 rounded-full bg-blue-500"></button><button type="button" aria-label="查看第 2 张能力卡" data-carousel-index="1" class="carousel-dot h-1.5 w-1.5 rounded-full bg-stone-300"></button><button type="button" aria-label="查看第 3 张能力卡" data-carousel-index="2" class="carousel-dot h-1.5 w-1.5 rounded-full bg-stone-300"></button></div>
+                            <button id="carousel-next" type="button" aria-label="下一张能力卡" class="rounded-md p-1 text-slate-400 hover:bg-stone-100"><i data-lucide="chevron-right" class="h-4 w-4"></i></button>
+                        </div>
+                    </section>
+
+                    <section class="mt-4 overflow-hidden rounded-2xl border border-stone-200/80 bg-white" aria-labelledby="daily-summary-title">
+                        <div class="flex items-center justify-between border-b border-stone-100 px-5 py-3">
+                            <div class="flex min-w-0 items-center gap-2"><i data-lucide="book-open" class="h-4 w-4 shrink-0 text-blue-500"></i><h2 id="daily-summary-title" class="shrink-0 text-[14px] font-semibold text-slate-800">运营日报</h2><span class="truncate text-[12px] text-slate-400">· 今天 · 2026年8月2日</span></div>
+                            <button type="button" class="ml-3 flex shrink-0 items-center gap-1 text-[12.5px] text-slate-400 hover:text-slate-600"><i data-lucide="history" class="h-4 w-4"></i>往期</button>
+                        </div>
+                        <div class="flex flex-col gap-5 px-5 py-4 sm:flex-row">
+                            <div class="min-w-0 flex-1 space-y-3">
+                                <h3 class="text-[12px] font-medium uppercase tracking-wide text-slate-400">今日动态</h3>
+                                <div class="flex items-start gap-2.5"><span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-500"><i data-lucide="workflow" class="h-3.5 w-3.5"></i></span><p class="text-[13px] text-slate-700">创建任务 <span class="font-medium">「品牌问题地图优化」</span> · 8 篇内容</p></div>
+                                <div class="flex items-start gap-2.5"><span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-500"><i data-lucide="shield-check" class="h-3.5 w-3.5"></i></span><p class="text-[13px] text-slate-700">质量审核 <span class="font-medium">「企业知识库专题」</span> · 通过 5/6</p></div>
+                                <div class="flex items-start gap-2.5"><span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-500"><i data-lucide="radio-tower" class="h-3.5 w-3.5"></i></span><p class="text-[13px] text-slate-700">今日完成多站分发 <span class="font-medium text-slate-800">12 篇</span> · 成功率 96%</p></div>
+                            </div>
+                            <div class="hidden w-px shrink-0 bg-stone-100 sm:block"></div>
+                            <div class="min-w-0 flex-1 space-y-3">
+                                <h3 class="text-[12px] font-medium uppercase tracking-wide text-slate-400">AI 建议</h3>
+                                <div class="flex items-start gap-2"><i data-lucide="sparkles" class="mt-0.5 h-4 w-4 shrink-0 text-violet-400"></i><p class="text-[13px] leading-relaxed text-slate-600">优先处理 <span class="font-medium text-amber-600">3 篇高访问、低引用内容</span>，补充可验证数据与来源。</p></div>
+                                <div class="flex items-start gap-2"><i data-lucide="sparkles" class="mt-0.5 h-4 w-4 shrink-0 text-violet-400"></i><p class="text-[13px] leading-relaxed text-slate-600">更新 18 个待向量化知识切片，提高任务生成时的知识召回覆盖。</p></div>
+                                <div class="flex items-start gap-2"><i data-lucide="sparkles" class="mt-0.5 h-4 w-4 shrink-0 text-violet-400"></i><p class="text-[13px] leading-relaxed text-slate-600">2 个目标站点响应偏慢，建议错峰安排下一批内容分发。</p></div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </main>
+
+            <footer class="border-t border-gray-200 bg-white py-6"><div class="mx-auto max-w-6xl px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-12">© 2026 GEOFlow · 版本 2.0 · AI 工作台原型</div></footer>
+        </div>
+    </div>
+
+    <div id="template-modal" role="dialog" aria-modal="true" aria-labelledby="template-modal-title" class="fixed inset-0 z-[70] hidden items-center justify-center bg-gray-900/40 p-4">
+        <div class="w-full max-w-xl rounded-lg bg-white shadow-xl ring-1 ring-gray-200">
+            <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4"><div><h2 id="template-modal-title" class="text-base font-semibold text-gray-900">选择 GEO 工作模板</h2><p class="mt-1 text-sm text-gray-500">模板只会填入输入框，发送前仍可编辑</p></div><button id="close-templates" type="button" aria-label="关闭模板库" class="flex h-10 w-10 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"><i data-lucide="x" class="h-5 w-5"></i></button></div>
+            <div class="space-y-2 p-4">
+                <button type="button" class="template-button w-full rounded-lg border border-gray-200 p-4 text-left hover:border-blue-200 hover:bg-blue-50" data-template="分析近 30 天 AI 爬虫和品牌可见性变化，找出优先优化的内容并给出原因"><span class="text-sm font-semibold text-gray-900">品牌可见性复盘</span><span class="mt-1 block text-xs leading-5 text-gray-500">从增长中心读取信号，形成内容优化清单</span></button>
+                <button type="button" class="template-button w-full rounded-lg border border-gray-200 p-4 text-left hover:border-blue-200 hover:bg-blue-50" data-template="基于企业知识库创建 10 篇内容任务，启用质量门禁，并安排到三个目标站点分发"><span class="text-sm font-semibold text-gray-900">内容生产与多站分发</span><span class="mt-1 block text-xs leading-5 text-gray-500">组合知识资产、任务参数与分发范围</span></button>
+                <button type="button" class="template-button w-full rounded-lg border border-gray-200 p-4 text-left hover:border-blue-200 hover:bg-blue-50" data-template="检查待审核文章的证据、风险表达和 SEO 信息，按优先级输出处理建议"><span class="text-sm font-semibold text-gray-900">发布前质量检查</span><span class="mt-1 block text-xs leading-5 text-gray-500">聚焦证据引用、风险和发布完整性</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" role="status" class="fixed bottom-5 right-5 z-[90] max-w-sm rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-lg transition-[opacity,transform] duration-200">原型模式：这里将进入任务确认页</div>
+
+    <script>
+        const body = document.body;
+        const promptInput = document.getElementById('prompt-input');
+        const sendButton = document.getElementById('send-button');
+        const conversationPanel = document.getElementById('conversation-panel');
+        const submittedPrompt = document.getElementById('submitted-prompt');
+        const planMode = document.getElementById('plan-mode');
+        const attachmentButton = document.getElementById('attachment-button');
+        const attachmentMenu = document.getElementById('attachment-menu');
+        const templateModal = document.getElementById('template-modal');
+        const toast = document.getElementById('toast');
+        let activeMode = '创建任务';
+        let carouselIndex = 0;
+        let toastTimer;
+
+        const carouselContent = [
+            {
+                title: 'GEO 工作一站直达',
+                desc: '内容、资产、任务、分发与增长观测，在一个工作台完成',
+                tags: ['问题地图', '知识资产', '任务编排', '质量门禁', 'AI 可见性', '多站分发', '增长分析', '数据导出']
+            },
+            {
+                title: '从问题地图生成内容任务',
+                desc: '结合真实搜索问题与企业知识，一次生成可审核的内容计划',
+                tags: ['问题聚类', '搜索意图', '标题库', '关键词库', '作者匹配', '图片建议', '质量检查']
+            },
+            {
+                title: '多站分发与增长回看',
+                desc: '统一安排渠道、检查发布状态，并持续观察访问与 AI 引用表现',
+                tags: ['站点选择', '内容冲突', '发布重试', '访问日志', '爬虫识别', '品牌引用', '增长归因']
+            }
+        ];
+
+        const sceneContent = {
+            diagnosis: {
+                prompt: '分析近 30 天 AI 爬虫访问和品牌可见性，找出 5 篇优先优化的内容并创建任务',
+                title: '从内容诊断开始，找到最值得优先推进的动作',
+                desc: '汇总内容表现、访问日志、AI 爬虫与品牌可见性信号，输出问题清单和优化优先级。',
+                tags: ['内容表现', '访问日志', 'AI 爬虫', '品牌可见性']
+            },
+            task: {
+                prompt: '根据本月问题地图和企业知识库，创建 10 篇内容任务，并启用发布前质量门禁',
+                title: '把问题、资产、模型和节奏组合成任务',
+                desc: '从标题、关键词和知识资产中生成任务参数，先预览数量、模型、作者、图片与发布节奏。',
+                tags: ['问题地图', '知识资产', '模型配置', '任务编排']
+            },
+            knowledge: {
+                prompt: '检查企业知识库中待处理的资料，整理重复内容，并列出需要更新向量的知识切片',
+                title: '整理可召回、可维护的知识资产',
+                desc: '盘点企业资料、知识切片、标题、关键词、图片和作者，识别缺失、重复与待向量化内容。',
+                tags: ['企业资料', '知识切片', '向量状态', '作者图片']
+            },
+            distribution: {
+                prompt: '筛选本周已通过质量审核的文章，按目标站点安排分发，并标记可能冲突的内容',
+                title: '先确认内容与渠道，再准备多站分发',
+                desc: '读取合格内容、渠道健康和远端状态，生成分发范围、冲突提醒与失败重试计划。',
+                tags: ['质量门禁', '渠道健康', '内容冲突', '失败重试']
+            },
+            analytics: {
+                prompt: '复盘近 30 天内容、分发、访问日志和 AI 可见性，解释增长变化并给出三项建议',
+                title: '把内容、分发与访问数据放到同一条归因链路',
+                desc: '对比内容产出、渠道触达、真实访问和 AI 可见性变化，定位影响增长结果的关键环节。',
+                tags: ['内容产出', '多站分发', '真实访问', '增长归因']
+            }
+        };
+
+        function setSidebarOpen(isOpen) {
+            body.classList.toggle('sidebar-open', isOpen);
+            document.getElementById('sidebar-open').setAttribute('aria-expanded', String(isOpen));
+        }
+
+        function updateSendState() {
+            sendButton.disabled = promptInput.value.trim() === '';
+        }
+
+        function setPrompt(value) {
+            promptInput.value = value;
+            updateSendState();
+            promptInput.focus();
+        }
+
+        function closeTemplates() {
+            templateModal.classList.add('hidden');
+            templateModal.classList.remove('flex');
+        }
+
+        function openTemplates() {
+            attachmentMenu.classList.add('hidden');
+            templateModal.classList.remove('hidden');
+            templateModal.classList.add('flex');
+        }
+
+        function showToast(message) {
+            toast.textContent = message;
+            toast.classList.add('toast-visible');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toast.classList.remove('toast-visible'), 2200);
+        }
+
+        document.getElementById('sidebar-collapse').addEventListener('click', (event) => {
+            const collapsed = body.classList.toggle('sidebar-collapsed');
+            event.currentTarget.setAttribute('aria-expanded', String(!collapsed));
+            event.currentTarget.setAttribute('aria-label', collapsed ? '展开主菜单' : '收起主菜单');
+        });
+        document.getElementById('sidebar-open').addEventListener('click', () => setSidebarOpen(true));
+        document.getElementById('sidebar-close').addEventListener('click', () => setSidebarOpen(false));
+        document.getElementById('sidebar-overlay').addEventListener('click', () => setSidebarOpen(false));
+
+        promptInput.addEventListener('input', updateSendState);
+        promptInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !sendButton.disabled) sendButton.click();
+        });
+
+        document.querySelectorAll('.mode-button').forEach((button) => {
+            button.addEventListener('click', () => {
+                document.querySelectorAll('.mode-button').forEach((item) => item.setAttribute('aria-pressed', 'false'));
+                button.setAttribute('aria-pressed', 'true');
+                activeMode = button.dataset.mode;
+            });
+        });
+
+        document.querySelectorAll('.scene-button').forEach((button) => {
+            button.addEventListener('click', () => {
+                const scene = sceneContent[button.dataset.scene];
+                document.querySelectorAll('.scene-button').forEach((item) => item.setAttribute('aria-pressed', 'false'));
+                button.setAttribute('aria-pressed', 'true');
+                document.getElementById('workflow-card-title').textContent = scene.title;
+                document.getElementById('workflow-card-desc').textContent = scene.desc;
+                document.getElementById('workflow-tags').innerHTML = scene.tags.map((tag) => `<span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">${tag}</span>`).join('');
+                setPrompt(scene.prompt);
+            });
+        });
+
+        function showCarouselSlide(index) {
+            carouselIndex = (index + carouselContent.length) % carouselContent.length;
+            const slide = carouselContent[carouselIndex];
+            document.getElementById('workflow-card-title').textContent = slide.title;
+            document.getElementById('workflow-card-desc').textContent = slide.desc;
+            document.getElementById('workflow-tags').innerHTML = slide.tags.map((tag) => `<span class="rounded-md bg-stone-100 px-2.5 py-1 text-[12px] text-slate-600">${tag}</span>`).join('');
+            document.querySelectorAll('.carousel-dot').forEach((dot, dotIndex) => {
+                const active = dotIndex === carouselIndex;
+                dot.classList.toggle('w-4', active);
+                dot.classList.toggle('bg-blue-500', active);
+                dot.classList.toggle('w-1.5', !active);
+                dot.classList.toggle('bg-stone-300', !active);
+            });
+        }
+
+        document.getElementById('carousel-prev').addEventListener('click', () => showCarouselSlide(carouselIndex - 1));
+        document.getElementById('carousel-next').addEventListener('click', () => showCarouselSlide(carouselIndex + 1));
+        document.querySelectorAll('.carousel-dot').forEach((dot) => dot.addEventListener('click', () => showCarouselSlide(Number(dot.dataset.carouselIndex))));
+
+        attachmentButton.addEventListener('click', () => {
+            const willOpen = attachmentMenu.classList.contains('hidden');
+            attachmentMenu.classList.toggle('hidden', !willOpen);
+            attachmentButton.setAttribute('aria-expanded', String(willOpen));
+        });
+        document.getElementById('open-template-menu').addEventListener('click', openTemplates);
+        document.getElementById('open-templates').addEventListener('click', openTemplates);
+        document.getElementById('close-templates').addEventListener('click', closeTemplates);
+        document.getElementById('upload-context').addEventListener('click', () => showToast('原型模式：这里将打开资料上传面板'));
+
+        document.querySelectorAll('.template-button').forEach((button) => {
+            button.addEventListener('click', () => {
+                setPrompt(button.dataset.template);
+                closeTemplates();
+            });
+        });
+
+        templateModal.addEventListener('click', (event) => {
+            if (event.target === templateModal) closeTemplates();
+        });
+
+        sendButton.addEventListener('click', () => {
+            const value = promptInput.value.trim();
+            if (!value) return;
+            submittedPrompt.textContent = value;
+            planMode.textContent = activeMode;
+            conversationPanel.classList.remove('hidden');
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            conversationPanel.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+        });
+
+        document.getElementById('confirm-plan').addEventListener('click', () => showToast('原型模式：这里将进入任务确认页'));
+
+        document.addEventListener('click', (event) => {
+            if (!attachmentButton.contains(event.target) && !attachmentMenu.contains(event.target)) {
+                attachmentMenu.classList.add('hidden');
+                attachmentButton.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                setSidebarOpen(false);
+                closeTemplates();
+                attachmentMenu.classList.add('hidden');
+            }
+        });
+
+        document.querySelectorAll('#app-sidebar a').forEach((link) => link.addEventListener('click', () => setSidebarOpen(false)));
+        lucide.createIcons();
+    </script>
+</body>
+</html>

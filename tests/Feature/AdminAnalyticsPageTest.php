@@ -12,6 +12,7 @@ use App\Models\DistributionChannel;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\Admin\Analytics\AnalyticsFilter;
+use App\Services\Admin\Analytics\AnalyticsLogFilter;
 use App\Services\Admin\Analytics\AnalyticsLogQueryService;
 use App\Services\Admin\Analytics\AnalyticsOverviewService;
 use App\Support\Analytics\TrafficClassifier;
@@ -33,65 +34,25 @@ class AdminAnalyticsPageTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee(__('admin.analytics.heading'))
-            ->assertSee(__('admin.analytics.subtitle'))
-            ->assertSee(__('admin.growth_center.workbench.title'))
-            ->assertSee(__('admin.growth_center.priority.no_form_title'))
-            ->assertSee(__('admin.growth_center.stage.visit_title'))
-            ->assertSee(__('admin.growth_center.stage.touch_title'))
-            ->assertSee(__('admin.growth_center.stage.lead_title'))
-            ->assertSee(__('admin.growth_center.stage.follow_title'))
-            ->assertSee(__('admin.growth_center.inbox.title'))
-            ->assertSee(__('admin.growth_center.source.title'))
-            ->assertSee(__('admin.growth_center.observation.title'))
-            ->assertSee(route('admin.lead-forms.create'), false)
-            ->assertSee(route('admin.leads.index'), false)
-            ->assertSee(__('admin.analytics.filters.apply'))
-            ->assertSee(__('admin.analytics.filters.source_pending', ['source' => __('admin.analytics.filters.server')]))
+            ->assertSee(__('admin.analytics.overview.title'))
+            ->assertSee(__('admin.analytics.overview.subtitle'))
             ->assertSee(route('admin.analytics'), false)
-            ->assertSee(__('admin.analytics.overall_title'))
-            ->assertSee(__('admin.analytics.single_site_title'))
-            ->assertSee(__('admin.analytics.multi_site_title'))
-            ->assertSee(__('admin.analytics.self_log_title'))
-            ->assertSee('data-analytics-single-site-section', false)
-            ->assertSee('data-analytics-multi-site-section', false)
-            ->assertSee('data-analytics-log-section', false)
-            ->assertSee('内容运营分析')
-            ->assertSee(__('admin.dashboard.category_distribution'))
-            ->assertSee(__('admin.dashboard.system_performance'))
-            ->assertSee(__('admin.dashboard.latest_articles'))
-            ->assertSee(__('admin.dashboard.task_health'))
-            ->assertSee(__('admin.dashboard.material_health'))
-            ->assertSee(__('admin.dashboard.ai_health'))
-            ->assertSee(__('admin.dashboard.url_import_health'))
-            ->assertSee('data-analytics-health-grid', false)
-            ->assertSee('lg:grid-cols-2', false)
-            ->assertSee(route('admin.categories.index'), false)
-            ->assertSee(route('admin.articles.index'), false)
-            ->assertSee(route('admin.keyword-libraries.index'), false)
-            ->assertSee(route('admin.title-libraries.index'), false)
-            ->assertSee(route('admin.knowledge-bases.index'), false)
-            ->assertSee(route('admin.authors.index'), false)
-            ->assertSee(route('admin.url-import.history'), false)
-            ->assertSee(__('admin.analytics.logs_title'))
-            ->assertSee('暂无日志数据');
+            ->assertSee(route('admin.analytics.content'), false)
+            ->assertSee(route('admin.analytics.traffic'), false)
+            ->assertSee(route('admin.analytics.ai-visibility'), false)
+            ->assertSee(route('admin.analytics.leads'), false)
+            ->assertSee(route('admin.analytics.distribution'), false)
+            ->assertDontSee('data-analytics-single-site-section', false)
+            ->assertDontSee('data-analytics-log-section', false)
+            ->assertDontSee('data-analytics-health-grid', false);
 
         $html = $response->getContent();
         $this->assertStringContainsString(route('admin.dashboard'), $html);
         $this->assertStringContainsString(route('admin.analytics'), $html);
         $this->assertLessThan(
-            strpos($html, 'data-analytics-multi-site-section'),
-            strpos($html, 'data-analytics-single-site-section')
-        );
-        $this->assertLessThan(
-            strpos($html, 'data-analytics-log-section'),
-            strpos($html, 'data-analytics-multi-site-section')
-        );
-        $this->assertLessThan(
             strpos($html, route('admin.analytics')),
             strpos($html, route('admin.dashboard'))
         );
-        $this->assertStringContainsString('text-blue-600 font-medium', $html);
     }
 
     public function test_analytics_page_renders_before_lead_tables_are_migrated(): void
@@ -102,64 +63,55 @@ class AdminAnalyticsPageTest extends TestCase
         $this->actingAs($this->admin(), 'admin')
             ->get(route('admin.analytics'))
             ->assertOk()
-            ->assertSee(__('admin.analytics.heading'))
-            ->assertSee(__('admin.growth_center.priority.no_form_title'))
-            ->assertSee(__('admin.growth_center.inbox.empty'))
-            ->assertSee(__('admin.growth_center.source.empty'));
+            ->assertSee(__('admin.analytics.overview.title'))
+            ->assertSee(__('admin.analytics.overview.alerts.no_forms.title'));
+    }
+
+    public function test_regular_admin_sees_business_reports_without_distribution_report(): void
+    {
+        $this->actingAs($this->admin('admin'), 'admin')
+            ->get(route('admin.analytics'))
+            ->assertOk()
+            ->assertSee(route('admin.analytics.content'), false)
+            ->assertSee(route('admin.analytics.leads'), false)
+            ->assertDontSee(route('admin.analytics.distribution'), false);
     }
 
     public function test_analytics_page_applies_date_filters_to_content_metrics(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
 
-        $fixtures = $this->contentFixtures();
+        $this->contentFixtures();
 
-        $this->actingAs($this->admin(), 'admin')
-            ->get(route('admin.analytics', [
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics.content', [
                 'date_from' => '2026-05-20',
                 'date_to' => '2026-05-21',
-                'channel_id' => (int) $fixtures['channel']->id,
-            ]))
+            ]));
+
+        $response
             ->assertOk()
             ->assertSee('2026-05-20')
             ->assertSee('2026-05-21')
-            ->assertSee(__('admin.analytics.overall_title'))
-            ->assertSee('data-analytics-global-overview', false)
-            ->assertSee(__('admin.dashboard.total_articles'))
-            ->assertSee('今日新增', false)
-            ->assertSee(__('admin.dashboard.published'))
-            ->assertSee(__('admin.dashboard.publish_rate', ['rate' => 66.7]), false)
-            ->assertSee(__('admin.dashboard.ai_generated'))
-            ->assertSee(__('admin.dashboard.ai_generated_ratio', ['rate' => 100]), false)
-            ->assertSee(__('admin.dashboard.total_views'))
-            ->assertSee(__('admin.dashboard.active_tasks'))
-            ->assertSee(__('admin.dashboard.ai_models'))
-            ->assertSee(__('admin.dashboard.material_total'))
-            ->assertSee(__('admin.dashboard.pending_review'))
+            ->assertSee(__('admin.analytics.pages.content.title'))
             ->assertSee('筛选范围文章')
-            ->assertSee('2')
             ->assertSee('筛选范围发布')
-            ->assertSee('1')
             ->assertSee('运行中任务')
-            ->assertSee('1')
             ->assertSee('失败任务')
-            ->assertSee('1')
             ->assertSee('今日 AI/API 调用')
-            ->assertSee('9')
-            ->assertSee('分发失败')
-            ->assertSee('1')
             ->assertSee('筛选内热门文章')
             ->assertSee('范围内热门文章')
             ->assertSee('分析分类')
             ->assertSee(__('admin.dashboard.latest_articles'))
             ->assertSee(__('admin.dashboard.system_performance'))
-            ->assertSee(__('admin.dashboard.task_health'))
-            ->assertSee(__('admin.dashboard.material_health'))
-            ->assertSee(__('admin.dashboard.ai_health'))
-            ->assertSee(__('admin.dashboard.url_import_health'))
-            ->assertSee('分发状态概览')
-            ->assertSee('已同步')
-            ->assertSee('失败');
+            ->assertDontSee('data-analytics-health-grid', false)
+            ->assertDontSee(__('admin.analytics.distribution_status'));
+
+        $this->assertSame(3, (int) $response->viewData('kpis')['articles']);
+        $this->assertSame(1, (int) $response->viewData('kpis')['published']);
+        $this->assertSame(1, (int) $response->viewData('kpis')['running_tasks']);
+        $this->assertSame(1, (int) $response->viewData('kpis')['failed_tasks']);
+        $this->assertSame(9, (int) $response->viewData('kpis')['ai_calls']);
 
         Carbon::setTestNow();
     }
@@ -188,13 +140,11 @@ class AdminAnalyticsPageTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin(), 'admin')
-            ->get(route('admin.analytics'));
+            ->get(route('admin.analytics.content'));
 
         $response->assertOk();
         $this->assertSame(3, (int) $response->viewData('kpis')['ai_calls']);
         $this->assertSame(3, (int) $response->viewData('aiUsageSummary')['used_today']);
-        $this->assertSame(3, (int) $response->viewData('aiHealth')['used_today']);
-
         $usageRows = collect($response->viewData('aiUsageSummary')['model_rows']);
         $this->assertSame(
             0,
@@ -211,7 +161,7 @@ class AdminAnalyticsPageTest extends TestCase
         $admin = $this->admin();
 
         $this->actingAs($admin, 'admin')
-            ->get(route('admin.analytics', [
+            ->get(route('admin.analytics.content', [
                 'preset' => '7d',
                 'date_from' => '2026-01-01',
                 'date_to' => '2026-01-01',
@@ -222,7 +172,7 @@ class AdminAnalyticsPageTest extends TestCase
             ->assertDontSee('value="2026-01-01"', false);
 
         $this->actingAs($admin, 'admin')
-            ->get(route('admin.analytics', [
+            ->get(route('admin.analytics.content', [
                 'preset' => 'custom',
                 'date_from' => '2026-05-20',
                 'date_to' => '2026-05-21',
@@ -240,7 +190,7 @@ class AdminAnalyticsPageTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
 
         $this->actingAs($this->admin(), 'admin')
-            ->get(route('admin.analytics'))
+            ->get(route('admin.analytics.content'))
             ->assertOk()
             ->assertSee('id="analytics-filter-form"', false)
             ->assertSee('type="hidden" name="preset" value="7d"', false)
@@ -251,6 +201,80 @@ class AdminAnalyticsPageTest extends TestCase
             ->assertSee('data-date-from="2026-04-22"', false)
             ->assertDontSee('data-analytics-preset-submit', false)
             ->assertDontSee('requestSubmit()', false);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_log_filters_are_independent_and_chart_exposes_complete_interaction_contract(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+        $this->ensureViewLogsTable();
+        DB::table('view_logs')->insert([
+            [
+                'article_id' => null,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => '/',
+                'route_name' => 'site.home',
+                'status_code' => 200,
+                'ip_address' => '10.0.0.1',
+                'user_agent' => 'Mozilla/5.0',
+                'created_at' => Carbon::parse('2026-05-21 09:00:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'demo',
+                'method' => 'GET',
+                'path' => '/demo',
+                'route_name' => null,
+                'status_code' => 200,
+                'ip_address' => '10.0.0.2',
+                'user_agent' => 'Mozilla/5.0',
+                'created_at' => Carbon::parse('2026-05-21 09:10:00'),
+            ],
+        ]);
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics.traffic', [
+                'preset' => 'custom',
+                'date_from' => '2026-05-01',
+                'date_to' => '2026-05-02',
+                'log_preset' => 'custom',
+                'log_date_from' => '2026-05-20',
+                'log_date_to' => '2026-05-21',
+                'log_traffic_type' => 'all',
+                'log_source' => 'all',
+            ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('name="log_preset" value="custom"', false)
+            ->assertSee('name="log_date_from" value="2026-05-20"', false)
+            ->assertSee('id="analytics-log-filter-form"', false)
+            ->assertSee('name="preset" value="custom"', false)
+            ->assertSee('name="date_from" value="2026-05-01"', false)
+            ->assertSee('type="submit" name="log_preset" value="7d"', false)
+            ->assertSee('type="submit" name="log_preset" value="30d"', false)
+            ->assertSee('type="submit" name="log_preset" value="60d"', false)
+            ->assertSee('data-analytics-log-chart', false)
+            ->assertSee('aria-keyshortcuts="ArrowLeft ArrowRight Enter Escape"', false)
+            ->assertSee('data-log-chart-point', false)
+            ->assertSee('data-log-detail-date', false)
+            ->assertSee('data-log-detail-pv', false)
+            ->assertSee('data-log-detail-unique-ip', false)
+            ->assertSee('data-log-detail-ai', false)
+            ->assertSee('data-log-detail-errors', false)
+            ->assertSee('id="log-task-id"', false)
+            ->assertSee('id="log-category-id"', false)
+            ->assertSee('id="log-article-id"', false)
+            ->assertSee('<polyline', false)
+            ->assertSee(__('admin.analytics.logs_excluded_sources', ['count' => 1]));
+
+        $this->assertSame('2026-05-01', $response->viewData('filters')->dateFrom->toDateString());
+        $this->assertSame('2026-05-20', $response->viewData('logFilters')->dateFrom->toDateString());
+        $this->assertSame(1, $response->viewData('logSummary')['kpis']['pv']);
+        $this->assertSame(1, $response->viewData('logSummary')['excluded_source_rows']);
 
         Carbon::setTestNow();
     }
@@ -317,7 +341,7 @@ class AdminAnalyticsPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
-            ->get(route('admin.analytics', [
+            ->get(route('admin.analytics.traffic', [
                 'preset' => 'custom',
                 'date_from' => '2026-05-20',
                 'date_to' => '2026-05-21',
@@ -338,7 +362,7 @@ class AdminAnalyticsPageTest extends TestCase
             ->assertSee('1');
 
         $this->actingAs($admin, 'admin')
-            ->get(route('admin.analytics', [
+            ->get(route('admin.analytics.traffic', [
                 'preset' => 'custom',
                 'date_from' => '2026-05-20',
                 'date_to' => '2026-05-21',
@@ -357,7 +381,7 @@ class AdminAnalyticsPageTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
 
         $this->actingAs($this->admin(), 'admin')
-            ->get(route('admin.analytics', ['preset' => '30d']))
+            ->get(route('admin.analytics.content', ['preset' => '30d']))
             ->assertOk()
             ->assertSee('data-analytics-axis="compact"', false)
             ->assertSee('data-axis-label="start"', false)
@@ -416,6 +440,28 @@ class AdminAnalyticsPageTest extends TestCase
             ...$this->viewLogRows((int) $fixtures['article']->id, '/article/analytics-hot-article', 2, '2026-05-20 10:00:00'),
             ...$this->viewLogRows((int) $oldViewed->id, '/article/old-most-viewed-in-range', 4, '2026-05-21 10:00:00'),
             [
+                'article_id' => (int) $oldViewed->id,
+                'source' => 'local',
+                'method' => 'HEAD',
+                'path' => '/article/old-most-viewed-in-range',
+                'route_name' => 'site.article',
+                'status_code' => 200,
+                'ip_address' => '10.0.1.198',
+                'user_agent' => 'ChatGPT-User/1.0',
+                'created_at' => Carbon::parse('2026-05-21 10:20:00'),
+            ],
+            [
+                'article_id' => (int) $oldViewed->id,
+                'source' => 'demo',
+                'method' => 'GET',
+                'path' => '/article/old-most-viewed-in-range',
+                'route_name' => 'site.article',
+                'status_code' => 200,
+                'ip_address' => '10.0.1.199',
+                'user_agent' => 'Mozilla/5.0',
+                'created_at' => Carbon::parse('2026-05-21 10:30:00'),
+            ],
+            [
                 'article_id' => null,
                 'source' => 'local',
                 'method' => 'GET',
@@ -436,7 +482,7 @@ class AdminAnalyticsPageTest extends TestCase
         $overview = app(AnalyticsOverviewService::class);
 
         $this->assertSame(2, $overview->kpis($filter)['published']);
-        $this->assertSame(7, $overview->kpis($filter)['total_views']);
+        $this->assertSame(6, $overview->kpis($filter)['total_views']);
 
         $trend = collect($overview->publicationTrend($filter))->keyBy('date');
         $this->assertSame(1, $trend['2026-05-21']['published']);
@@ -568,13 +614,13 @@ class AdminAnalyticsPageTest extends TestCase
             ],
         ]);
 
-        $summary = app(AnalyticsLogQueryService::class)->summary(AnalyticsFilter::fromRequest([
-            'preset' => 'custom',
-            'date_from' => '2026-05-21',
-            'date_to' => '2026-05-21',
+        $summary = app(AnalyticsLogQueryService::class)->summary(AnalyticsLogFilter::fromRequest([
+            'log_preset' => 'custom',
+            'log_date_from' => '2026-05-21',
+            'log_date_to' => '2026-05-21',
             'log_source' => 'local',
             'traffic_type' => 'all',
-        ]));
+        ]), AnalyticsFilter::fromRequest([]));
         $breakdown = collect($summary['bot_breakdown'])->keyBy('key');
 
         $this->assertSame(3, $summary['kpis']['pv']);
@@ -583,26 +629,222 @@ class AdminAnalyticsPageTest extends TestCase
         $this->assertSame(1, $breakdown['ai_bot']['count']);
         $this->assertSame(1, $breakdown['other_bot']['count']);
 
-        $humanSummary = app(AnalyticsLogQueryService::class)->summary(AnalyticsFilter::fromRequest([
-            'preset' => 'custom',
-            'date_from' => '2026-05-21',
-            'date_to' => '2026-05-21',
+        $humanSummary = app(AnalyticsLogQueryService::class)->summary(AnalyticsLogFilter::fromRequest([
+            'log_preset' => 'custom',
+            'log_date_from' => '2026-05-21',
+            'log_date_to' => '2026-05-21',
             'log_source' => 'local',
             'traffic_type' => 'human',
-        ]));
+        ]), AnalyticsFilter::fromRequest([]));
         $this->assertSame(1, $humanSummary['kpis']['pv']);
 
         Carbon::setTestNow();
     }
 
-    private function admin(): Admin
+    public function test_log_summary_excludes_unsupported_sources_and_returns_complete_daily_metrics(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+        $this->ensureViewLogsTable();
+        $fixtures = $this->contentFixtures();
+
+        DB::table('view_logs')->insert([
+            [
+                'article_id' => (int) $fixtures['article']->id,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => '/article/analytics-hot-article',
+                'route_name' => 'site.article',
+                'status_code' => 200,
+                'ip_address' => '10.0.0.1',
+                'user_agent' => 'Mozilla/5.0 Safari/537.36',
+                'created_at' => Carbon::parse('2026-05-20 09:00:00'),
+            ],
+            [
+                'article_id' => (int) $fixtures['article']->id,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => '/article/analytics-hot-article',
+                'route_name' => 'site.article',
+                'status_code' => 500,
+                'ip_address' => '10.0.0.1',
+                'user_agent' => 'ChatGPT-User/1.0 curl/8.0',
+                'created_at' => Carbon::parse('2026-05-20 09:10:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'server',
+                'method' => 'GET',
+                'path' => '/search',
+                'route_name' => null,
+                'status_code' => 400,
+                'ip_address' => '   ',
+                'user_agent' => 'Googlebot/2.1 curl/8.0',
+                'created_at' => Carbon::parse('2026-05-20 09:20:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'channel',
+                'method' => 'GET',
+                'path' => '/robots.txt',
+                'route_name' => null,
+                'status_code' => 200,
+                'ip_address' => '10.0.0.2',
+                'user_agent' => 'curl/8.0',
+                'created_at' => Carbon::parse('2026-05-20 09:30:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => '/unknown',
+                'route_name' => null,
+                'status_code' => 200,
+                'ip_address' => '',
+                'user_agent' => '',
+                'created_at' => Carbon::parse('2026-05-20 09:40:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'local',
+                'method' => 'GET',
+                'path' => '/',
+                'route_name' => 'site.home',
+                'status_code' => 200,
+                'ip_address' => '10.0.0.1',
+                'user_agent' => 'Mozilla/5.0',
+                'created_at' => Carbon::parse('2026-05-21 09:00:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'demo',
+                'method' => 'GET',
+                'path' => '/demo',
+                'route_name' => null,
+                'status_code' => 200,
+                'ip_address' => '10.0.0.3',
+                'user_agent' => 'Mozilla/5.0',
+                'created_at' => Carbon::parse('2026-05-21 09:10:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'legacy-import',
+                'method' => 'GET',
+                'path' => '/legacy',
+                'route_name' => null,
+                'status_code' => 200,
+                'ip_address' => '10.0.0.4',
+                'user_agent' => 'Mozilla/5.0',
+                'created_at' => Carbon::parse('2026-05-21 09:20:00'),
+            ],
+            [
+                'article_id' => null,
+                'source' => 'local',
+                'method' => 'HEAD',
+                'path' => '/head',
+                'route_name' => null,
+                'status_code' => 500,
+                'ip_address' => '10.0.0.5',
+                'user_agent' => 'ChatGPT-User/1.0',
+                'created_at' => Carbon::parse('2026-05-21 09:30:00'),
+            ],
+        ]);
+
+        $contentFilter = AnalyticsFilter::fromRequest([
+            'preset' => 'custom',
+            'date_from' => '2020-01-01',
+            'date_to' => '2020-01-02',
+        ]);
+        $logFilter = AnalyticsLogFilter::fromRequest([
+            'log_preset' => 'custom',
+            'log_date_from' => '2026-05-19',
+            'log_date_to' => '2026-05-21',
+        ]);
+
+        $summary = app(AnalyticsLogQueryService::class)->summary($logFilter, $contentFilter);
+        $breakdown = collect($summary['bot_breakdown'])->pluck('count', 'key')->all();
+
+        $this->assertTrue($summary['has_data']);
+        $this->assertSame([
+            'pv' => 6,
+            'unique_ip' => 2,
+            'ai_bot_pv' => 1,
+            'errors' => 2,
+        ], $summary['kpis']);
+        $this->assertSame(2, $summary['excluded_source_rows']);
+        $this->assertSame([
+            'human' => 2,
+            'search_bot' => 1,
+            'ai_bot' => 1,
+            'other_bot' => 1,
+            'unknown' => 1,
+        ], $breakdown);
+        $this->assertSame(6, array_sum($breakdown));
+        $this->assertSame([
+            ['date' => '2026-05-19', 'pv' => 0, 'unique_ip' => 0, 'ai_bot_pv' => 0, 'errors' => 0],
+            ['date' => '2026-05-20', 'pv' => 5, 'unique_ip' => 2, 'ai_bot_pv' => 1, 'errors' => 2],
+            ['date' => '2026-05-21', 'pv' => 1, 'unique_ip' => 1, 'ai_bot_pv' => 0, 'errors' => 0],
+        ], $summary['traffic_trend']);
+        $this->assertSame(2, $summary['top_articles'][0]['views']);
+        $this->assertSame(1, $summary['top_articles'][0]['unique_ip']);
+
+        $aiOnly = app(AnalyticsLogQueryService::class)->summary(
+            AnalyticsLogFilter::fromRequest([
+                'log_preset' => 'custom',
+                'log_date_from' => '2026-05-19',
+                'log_date_to' => '2026-05-21',
+                'log_traffic_type' => 'ai_bot',
+            ]),
+            $contentFilter,
+        );
+
+        $this->assertSame(1, $aiOnly['kpis']['pv']);
+        $this->assertSame(1, array_sum(array_column($aiOnly['bot_breakdown'], 'count')));
+    }
+
+    public function test_log_summary_query_count_is_constant_for_seven_and_sixty_days(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+        $this->ensureViewLogsTable();
+        DB::table('view_logs')->insert([
+            'article_id' => null,
+            'source' => 'local',
+            'method' => 'GET',
+            'path' => '/',
+            'route_name' => 'site.home',
+            'status_code' => 200,
+            'ip_address' => '10.0.0.1',
+            'user_agent' => 'Mozilla/5.0',
+            'created_at' => Carbon::parse('2026-05-21 09:00:00'),
+        ]);
+
+        $service = app(AnalyticsLogQueryService::class);
+        $contentFilter = AnalyticsFilter::fromRequest([]);
+        $service->summary(AnalyticsLogFilter::fromRequest([]), $contentFilter);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $service->summary(AnalyticsLogFilter::fromRequest(['log_preset' => '7d']), $contentFilter);
+        $sevenDayQueries = count(DB::getQueryLog());
+
+        DB::flushQueryLog();
+        $service->summary(AnalyticsLogFilter::fromRequest(['log_preset' => '60d']), $contentFilter);
+        $sixtyDayQueries = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertLessThanOrEqual(10, $sevenDayQueries);
+        $this->assertSame($sevenDayQueries, $sixtyDayQueries);
+    }
+
+    private function admin(string $role = 'super_admin'): Admin
     {
         return Admin::query()->create([
             'username' => 'analytics_admin',
             'password' => 'secret-123',
             'email' => 'analytics-admin@example.com',
             'display_name' => 'Analytics Admin',
-            'role' => 'super_admin',
+            'role' => $role,
             'status' => 'active',
         ]);
     }

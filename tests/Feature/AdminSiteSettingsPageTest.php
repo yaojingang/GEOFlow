@@ -34,13 +34,18 @@ class AdminSiteSettingsPageTest extends TestCase
             'status' => 'active',
         ]);
 
-        $this->actingAs($admin, 'admin')
+        $response = $this->actingAs($admin, 'admin')
             ->get(route('admin.site-settings.index'))
             ->assertOk()
             ->assertSee(__('admin.site_settings.field_admin_base_path'))
             ->assertSee(__('admin.site_settings.section_home_carousel'))
             ->assertSee(__('admin.site_settings.module_sensitive_words'))
+            ->assertSee(__('admin.site_settings.homepage.section_title'))
+            ->assertSee(route('admin.site-settings.homepage-modules.edit'), false)
+            ->assertDontSee('id="homepage-module-form"', false)
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
+
+        $this->assertSame(1, substr_count($response->getContent(), route('admin.site-settings.homepage-modules.edit')));
     }
 
     public function test_site_settings_page_renders_before_lead_forms_table_is_migrated(): void
@@ -61,6 +66,14 @@ class AdminSiteSettingsPageTest extends TestCase
             ->get(route('admin.site-settings.index'))
             ->assertOk()
             ->assertSee(__('admin.site_settings.page_title'))
+            ->assertSee(__('admin.site_settings.homepage.open_editor'));
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.homepage-modules.edit'))
+            ->assertOk()
+            ->assertSee(__('admin.site_settings.homepage.page_title'))
+            ->assertSee(__('admin.site_settings.homepage.back_to_settings'))
+            ->assertSee('id="homepage-module-form"', false)
             ->assertSee(__('admin.site_settings.homepage.lead_form_none'));
     }
 
@@ -115,6 +128,7 @@ class AdminSiteSettingsPageTest extends TestCase
             'geoflow-template-18-consulting-insight' => 'GEOFlow 18 Consulting Insight',
             'geoflow-template-19-tech-review' => 'GEOFlow 19 Tech Review',
             'geoflow-template-20-research-journal' => 'GEOFlow 20 Research Journal',
+            'geoflow-template-21-enterprise-signature' => 'GEOFlow 21 Enterprise Signature',
         ];
 
         $catalogIds = collect(app(SiteThemeCatalog::class)->all())
@@ -819,7 +833,7 @@ class AdminSiteSettingsPageTest extends TestCase
                     ],
                 ],
             ])
-            ->assertRedirect(route('admin.site-settings.index'));
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'));
 
         $modules = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_modules')->value('setting_value'), true);
         $style = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_style')->value('setting_value'), true);
@@ -851,7 +865,7 @@ class AdminSiteSettingsPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
-            ->from(route('admin.site-settings.index'))
+            ->from(route('admin.site-settings.homepage-modules.edit'))
             ->post(route('admin.site-settings.homepage-modules'), [
                 'homepage_style' => [
                     'accent_color' => 'blue',
@@ -864,11 +878,11 @@ class AdminSiteSettingsPageTest extends TestCase
                     ],
                 ],
             ])
-            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'))
             ->assertSessionHasErrors('homepage_style');
 
         $this->actingAs($admin, 'admin')
-            ->from(route('admin.site-settings.index'))
+            ->from(route('admin.site-settings.homepage-modules.edit'))
             ->post(route('admin.site-settings.homepage-modules'), [
                 'homepage_style' => [
                     'accent_color' => '#2563eb',
@@ -883,11 +897,11 @@ class AdminSiteSettingsPageTest extends TestCase
                     ],
                 ],
             ])
-            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'))
             ->assertSessionHasErrors('homepage_modules');
 
         $this->actingAs($admin, 'admin')
-            ->from(route('admin.site-settings.index'))
+            ->from(route('admin.site-settings.homepage-modules.edit'))
             ->post(route('admin.site-settings.homepage-modules'), [
                 'homepage_style' => [
                     'accent_color' => '#2563eb',
@@ -901,11 +915,11 @@ class AdminSiteSettingsPageTest extends TestCase
                     ],
                 ],
             ])
-            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'))
             ->assertSessionHasErrors('homepage_modules');
 
         $this->actingAs($admin, 'admin')
-            ->from(route('admin.site-settings.index'))
+            ->from(route('admin.site-settings.homepage-modules.edit'))
             ->post(route('admin.site-settings.homepage-modules'), [
                 'homepage_style' => [
                     'accent_color' => '#2563eb',
@@ -919,7 +933,7 @@ class AdminSiteSettingsPageTest extends TestCase
                     ],
                 ],
             ])
-            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'))
             ->assertSessionHasErrors('homepage_modules');
     }
 
@@ -958,7 +972,7 @@ class AdminSiteSettingsPageTest extends TestCase
                     ],
                 ],
             ])
-            ->assertRedirect(route('admin.site-settings.index'));
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'));
 
         $modules = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_modules')->value('setting_value'), true);
 
@@ -999,7 +1013,7 @@ class AdminSiteSettingsPageTest extends TestCase
                 'homepage_preset' => 'enterprise_brand',
                 'preset_mode' => 'replace',
             ])
-            ->assertRedirect(route('admin.site-settings.index'));
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'));
 
         $modules = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_modules')->value('setting_value'), true);
         $style = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_style')->value('setting_value'), true);
@@ -1068,7 +1082,7 @@ class AdminSiteSettingsPageTest extends TestCase
                 'homepage_preset' => 'content_portal',
                 'preset_mode' => 'append',
             ])
-            ->assertRedirect(route('admin.site-settings.index'));
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'));
 
         $modules = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_modules')->value('setting_value'), true);
         $style = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_style')->value('setting_value'), true);
@@ -1125,7 +1139,7 @@ class AdminSiteSettingsPageTest extends TestCase
                 'homepage_design_json' => (string) json_encode($design, JSON_UNESCAPED_UNICODE),
                 'import_mode' => 'replace',
             ])
-            ->assertRedirect(route('admin.site-settings.index'));
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'));
 
         $modules = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_modules')->value('setting_value'), true);
         $style = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_style')->value('setting_value'), true);
@@ -1213,7 +1227,7 @@ class AdminSiteSettingsPageTest extends TestCase
                 'homepage_design_json' => (string) json_encode($design, JSON_UNESCAPED_UNICODE),
                 'import_mode' => 'append',
             ])
-            ->assertRedirect(route('admin.site-settings.index'));
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'));
 
         $modules = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_modules')->value('setting_value'), true);
         $style = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_style')->value('setting_value'), true);
@@ -1267,7 +1281,7 @@ class AdminSiteSettingsPageTest extends TestCase
                 'homepage_design_json' => (string) json_encode($design, JSON_UNESCAPED_UNICODE),
                 'import_mode' => 'replace',
             ])
-            ->assertRedirect(route('admin.site-settings.index'));
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'));
 
         $modules = json_decode((string) SiteSetting::query()->where('setting_key', 'homepage_modules')->value('setting_value'), true);
 
@@ -1301,21 +1315,21 @@ class AdminSiteSettingsPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
-            ->from(route('admin.site-settings.index'))
+            ->from(route('admin.site-settings.homepage-modules.edit'))
             ->post(route('admin.site-settings.homepage-modules.import'), [
                 'homepage_design_json' => '{"modules":',
                 'import_mode' => 'replace',
             ])
-            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'))
             ->assertSessionHasErrors('homepage_design_json');
 
         $this->actingAs($admin, 'admin')
-            ->from(route('admin.site-settings.index'))
+            ->from(route('admin.site-settings.homepage-modules.edit'))
             ->post(route('admin.site-settings.homepage-modules.import'), [
                 'homepage_design_json' => '{"style":{"accent":"#2563eb"}}',
                 'import_mode' => 'replace',
             ])
-            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'))
             ->assertSessionHasErrors('homepage_design_json');
     }
 
@@ -1333,12 +1347,12 @@ class AdminSiteSettingsPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
-            ->from(route('admin.site-settings.index'))
+            ->from(route('admin.site-settings.homepage-modules.edit'))
             ->post(route('admin.site-settings.homepage-modules.preset'), [
                 'homepage_preset' => 'unknown',
                 'preset_mode' => 'replace',
             ])
-            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertRedirect(route('admin.site-settings.homepage-modules.edit'))
             ->assertSessionHasErrors('homepage_preset');
     }
 }

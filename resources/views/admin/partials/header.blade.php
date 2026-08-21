@@ -36,6 +36,11 @@
     }
     $subMap = [
         'admin.analytics' => 'analytics',
+        'admin.analytics.content' => 'analytics',
+        'admin.analytics.traffic' => 'analytics',
+        'admin.analytics.ai-visibility' => 'analytics',
+        'admin.analytics.leads' => 'analytics',
+        'admin.analytics.distribution' => 'analytics',
         'admin.system-updates.index' => 'dashboard',
         'admin.system-updates.check' => 'dashboard',
         'admin.system-updates.plan' => 'dashboard',
@@ -56,6 +61,11 @@
         'admin.distribution.rotate-secret' => 'distribution',
         'admin.articles.create' => 'articles',
         'admin.articles.edit' => 'articles',
+        'admin.manual-publications.index' => 'articles',
+        'admin.manual-publications.create' => 'articles',
+        'admin.manual-publications.show' => 'articles',
+        'admin.manual-publications.edit' => 'articles',
+        'admin.manual-publications.settings.index' => 'articles',
         'admin.categories.index' => 'materials',
         'admin.categories.create' => 'materials',
         'admin.categories.edit' => 'materials',

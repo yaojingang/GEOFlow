@@ -36,6 +36,14 @@ GEOFlow は [Apache License 2.0](../../LICENSE) の下で公開されていま�
 
 ---
 
+## GEOFlow CLI 0.2.0
+
+リポジトリ同梱の `bin/geoflow` から、API v1 のカタログ、タスク、ジョブ、素材、記事を操作できます。macOS、Linux、WSL を正式にサポートしています。Windows ネイティブ環境では、設定ファイルの ACL を手動で確認してください。
+
+[CLI ガイド（英語）](../GEOFLOW_CLI_en.md)
+
+---
+
 ## 🖼 画面プレビュー
 
 <table>
@@ -259,7 +267,7 @@ php artisan reverb:start
 - 解除コマンド:
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoflow:admin-unlock USERNAME
 ```
 
 例:

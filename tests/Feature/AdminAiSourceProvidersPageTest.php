@@ -392,6 +392,33 @@ class AdminAiSourceProvidersPageTest extends TestCase
             && ($request['Filter']['BlockHosts'] ?? null) === ['blocked.example']);
     }
 
+    public function test_failed_search_provider_test_attempt_consumes_daily_quota(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response('Provider unavailable', 503),
+        ]);
+
+        $provider = $this->createSearchProvider(['daily_limit' => 1]);
+        $admin = $this->createAdmin();
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-source-providers.test', ['providerId' => (int) $provider->id]))
+            ->assertUnprocessable();
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-source-providers.test', ['providerId' => (int) $provider->id]))
+            ->assertUnprocessable()
+            ->assertJsonFragment(['message' => __('admin.ai_source_providers.test_failed', [
+                'message' => '搜索源已达到每日调用上限',
+            ])]);
+
+        $provider->refresh();
+        $this->assertSame(1, (int) $provider->used_today);
+        $this->assertSame(0, (int) $provider->total_used);
+        Http::assertSentCount(2);
+    }
+
     public function test_admin_can_test_deepseek_structured_output(): void
     {
         Http::preventStrayRequests();
@@ -440,6 +467,44 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->assertSame(1, (int) $model->used_today);
         $this->assertSame(1, (int) $model->total_used);
         $this->assertSame(now()->toDateString(), $model->usage_date?->toDateString());
+    }
+
+    public function test_failed_model_binding_test_attempt_consumes_daily_quota(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://api.deepseek.com/v1/chat/completions' => Http::response('Provider unavailable', 503),
+        ]);
+
+        $model = $this->createAiModel([
+            'name' => 'DeepSeek Quota Probe',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+            'daily_limit' => 1,
+        ]);
+        $admin = $this->createAdmin();
+
+        $payload = [
+            'binding_type' => 'deepseek',
+            'model_id' => (int) $model->id,
+            'query' => 'GEOFlow',
+        ];
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-source-providers.model-bindings.test'), $payload)
+            ->assertUnprocessable();
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-source-providers.model-bindings.test'), $payload)
+            ->assertUnprocessable()
+            ->assertJsonFragment(['message' => __('admin.ai_source_providers.test_failed', [
+                'message' => '模型已达到每日调用上限',
+            ])]);
+
+        $model->refresh();
+        $this->assertSame(1, (int) $model->used_today);
+        $this->assertSame(0, (int) $model->total_used);
+        Http::assertSentCount(2);
     }
 
     public function test_admin_can_test_doubao_ark_structured_output(): void

@@ -70,15 +70,19 @@ main() {
   log "Checking container status."
   "${COMPOSE[@]}" ps
 
-  local required=(postgres redis app web queue scheduler reverb)
-  local service
+  local required=(postgres redis app web queue knowledge-queue system-update-queue scheduler reverb)
+  local service missing_services=()
   for service in "${required[@]}"; do
     if "${COMPOSE[@]}" ps --status running --services | grep -qx "$service"; then
       log "Service running: ${service}"
     else
       warn "Service is not running: ${service}"
+      missing_services+=("$service")
     fi
   done
+  if [ "${#missing_services[@]}" -gt 0 ]; then
+    fail "Required services are not running: ${missing_services[*]}"
+  fi
 
   check_http "$web_port"
 
@@ -90,7 +94,7 @@ main() {
   fi
 
   log "Recent application logs:"
-  "${COMPOSE[@]}" logs --tail=80 app queue scheduler web || true
+  "${COMPOSE[@]}" logs --tail=80 app queue knowledge-queue system-update-queue scheduler web || true
 }
 
 main "$@"

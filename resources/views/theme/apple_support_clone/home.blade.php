@@ -26,7 +26,7 @@
                     </form>
                     <div class="as-action-row" aria-label="primary actions">
                         <a href="#latest-articles">{{ __('site.home_latest') }}</a>
-                        <a href="{{ route('site.archive') }}">{{ __('site.archive_title') }}</a>
+                        <a href="{{ route('site.about') }}">关于 GEOFlow</a>
                     </div>
                 </div>
             </section>

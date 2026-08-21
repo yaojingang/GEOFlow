@@ -15,6 +15,7 @@ use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
 use App\Models\Image;
 use App\Models\ImageLibrary;
+use App\Models\LeadForm;
 use App\Models\Prompt;
 use App\Models\SiteSetting;
 use App\Models\Task;
@@ -35,6 +36,7 @@ use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
 use ZipArchive;
@@ -45,10 +47,54 @@ class AdminDistributionPageTest extends TestCase
 
     public function test_admin_can_open_distribution_management_page(): void
     {
+        SiteSetting::query()->create([
+            'setting_key' => 'site_name',
+            'setting_value' => 'GEOFlow 默认官网',
+        ]);
+        LeadForm::query()->create([
+            'name' => '业务咨询',
+            'slug' => 'business-contact',
+            'status' => LeadForm::STATUS_ACTIVE,
+            'fields' => [],
+        ]);
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.distribution.index'))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.page_heading'))
+            ->assertSee(__('admin.distribution.default_site.title'))
+            ->assertSee(__('admin.distribution.default_site.badge'))
+            ->assertSee('GEOFlow 默认官网')
+            ->assertSee(__('admin.distribution.default_site.forms_summary', ['active' => 1, 'total' => 1]))
+            ->assertSee(route('site.home'), false)
+            ->assertSee(route('admin.lead-forms.index'), false)
+            ->assertSee(route('admin.site-settings.index'), false)
+            ->assertSee(__('admin.distribution.button.sync_settings_selected'))
+            ->assertSee(__('admin.distribution.button.sync_settings_all'))
+            ->assertSee(__('admin.distribution.button.create'))
+            ->assertSee(__('admin.distribution.channels_title'));
+
+        $html = $response->getContent();
+        $defaultSitePosition = strpos($html, 'data-default-site-management');
+        $externalChannelsPosition = strpos($html, 'data-external-distribution-channels');
+        $this->assertNotFalse($defaultSitePosition);
+        $this->assertNotFalse($externalChannelsPosition);
+        $this->assertLessThan(
+            $externalChannelsPosition,
+            $defaultSitePosition,
+        );
+    }
+
+    public function test_distribution_index_renders_default_site_before_lead_forms_are_migrated(): void
+    {
+        Schema::dropIfExists('lead_submissions');
+        Schema::dropIfExists('lead_forms');
+
         $this->actingAs($this->admin(), 'admin')
             ->get(route('admin.distribution.index'))
             ->assertOk()
-            ->assertSee(__('admin.distribution.page_heading'));
+            ->assertSee(__('admin.distribution.default_site.title'))
+            ->assertSee(__('admin.distribution.default_site.forms_summary', ['active' => 0, 'total' => 0]));
     }
 
     public function test_distribution_index_selected_sync_modal_shows_frontend_sync_summary(): void
@@ -142,8 +188,8 @@ class AdminDistributionPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.distribution.index'))
             ->assertOk()
-            ->assertSee('渠道总数')
-            ->assertSee('活跃渠道')
+            ->assertSee(__('admin.distribution.stats.total'))
+            ->assertSee(__('admin.distribution.stats.active'))
             ->assertSee('待处理分发')
             ->assertSee('失败分发')
             ->assertDontSee('admin.distribution.stats.')

@@ -18,6 +18,8 @@ class DistributionQueueConfigurationTest extends TestCase
             $contents = file_get_contents($composeFile);
             $this->assertIsString($contents);
             $this->assertStringContainsString('--queue=geoflow,distribution,theme-replication,default', $contents, basename($composeFile));
+            $this->assertStringContainsString('--queue=knowledge', $contents, basename($composeFile));
+            $this->assertStringContainsString('--queue=system-updates', $contents, basename($composeFile));
         }
     }
 
@@ -26,7 +28,7 @@ class DistributionQueueConfigurationTest extends TestCase
         $horizon = require dirname(__DIR__, 2).'/config/horizon.php';
 
         $this->assertSame(
-            ['geoflow', 'distribution'],
+            ['geoflow', 'distribution', 'theme-replication', 'default'],
             $horizon['defaults']['supervisor-1']['queue'] ?? null
         );
     }
@@ -125,5 +127,69 @@ class DistributionQueueConfigurationTest extends TestCase
             'fail "Laravel cannot read migration status or still has pending migrations.',
             $healthcheck
         );
+    }
+
+    public function test_production_lifecycle_includes_dedicated_long_running_workers(): void
+    {
+        $root = dirname(__DIR__, 2);
+        foreach ([
+            'README.md',
+            'docs/deployment/DEPLOYMENT.md',
+            'deploy-scripts/geoflow-docker-deploy.sh',
+            'deploy-scripts/geoflow-healthcheck.sh',
+        ] as $file) {
+            $contents = file_get_contents($root.'/'.$file);
+            $this->assertIsString($contents);
+            $this->assertStringContainsString('knowledge-queue', $contents, $file);
+            $this->assertStringContainsString('system-update-queue', $contents, $file);
+        }
+    }
+
+    public function test_queue_timeouts_preserve_retry_ordering(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $horizon = require $root.'/config/horizon.php';
+        $queue = require $root.'/config/queue.php';
+
+        $this->assertSame(210, $horizon['defaults']['supervisor-knowledge']['timeout']);
+        $this->assertSame(930, $horizon['defaults']['supervisor-system-updates']['timeout']);
+        $this->assertGreaterThan(930, $queue['connections']['redis']['retry_after']);
+        $this->assertGreaterThan(930, $queue['connections']['database']['retry_after']);
+    }
+
+    public function test_deploy_script_matches_secure_cookie_to_public_protocol(): void
+    {
+        $script = file_get_contents(dirname(__DIR__, 2).'/deploy-scripts/geoflow-docker-deploy.sh');
+
+        $this->assertIsString($script);
+        $this->assertStringContainsString('https://*) session_secure_cookie=true', $script);
+        $this->assertStringContainsString('*) session_secure_cookie=false', $script);
+        $this->assertStringContainsString('SESSION_SECURE_COOKIE "$session_secure_cookie"', $script);
+        $this->assertStringContainsString('GEOFLOW_TRUSTED_PROXIES:-}', $script);
+        $this->assertStringNotContainsString('GEOFLOW_TRUSTED_PROXIES:-*}', $script);
+    }
+
+    public function test_nginx_forwards_client_ip_chain_to_laravel_rate_limiters(): void
+    {
+        $nginx = file_get_contents(dirname(__DIR__, 2).'/docker/nginx/default.conf');
+
+        $this->assertIsString($nginx);
+        $this->assertStringContainsString(
+            'fastcgi_param HTTP_X_FORWARDED_FOR $proxy_add_x_forwarded_for;',
+            $nginx
+        );
+        $this->assertStringContainsString(
+            'fastcgi_param HTTP_X_REAL_IP $remote_addr;',
+            $nginx
+        );
+    }
+
+    public function test_php_fpm_concurrency_fits_the_application_memory_envelope(): void
+    {
+        $pool = file_get_contents(dirname(__DIR__, 2).'/docker/php-fpm/www.conf');
+
+        $this->assertIsString($pool);
+        $this->assertStringContainsString('pm.max_children = 5', $pool);
+        $this->assertStringContainsString('php_admin_value[memory_limit] = 128M', $pool);
     }
 }

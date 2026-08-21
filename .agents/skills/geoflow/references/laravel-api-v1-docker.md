@@ -8,7 +8,7 @@ X: https://x.com/yaojingang
 
 # Laravel API v1, Docker, And Admin Fallback
 
-Use this reference when the target GEOFlow workspace is a Laravel app and no `bin/geoflow` wrapper is available. `/api/v1` is the normal scriptable content-operations path. Current GEOFlow also has many admin-only workflows under `/admin/*`; use authenticated admin web for those.
+Use this reference when the target GEOFlow workspace is a Laravel app and no `bin/geoflow` wrapper is available. `/api/v1` is the normal scriptable content-operations path. Current GEOFlow also has many admin-only workflows under the configurable admin prefix; use authenticated admin web for those.
 
 ## Detection
 
@@ -167,7 +167,7 @@ The Laravel API v1 paths are:
 - `POST /api/v1/articles/{id}/publish`
 - `POST /api/v1/articles/{id}/trash`
 
-Mutating endpoints should use `X-Idempotency-Key`.
+Use `X-Idempotency-Key` for the POST and PATCH operations that implement API idempotency. Current DELETE routes for tasks, material libraries, and material items do not use an idempotency header.
 
 ## Material Types and Payload Notes
 
@@ -219,6 +219,6 @@ API v1 task responses may include `task_progress`, `queue_overview`, `schedule_e
 
 ## Admin Fallback Boundary
 
-Current GEOFlow has admin UI capabilities including Distribution Management, target-site packages, WordPress REST channels, generic HTTP API channels, frontend-capability refresh, target settings-sync preview, logs, queue retry, remote article management, enterprise knowledge drafting/publish, growth-center lead forms/leads/export, Analytics, URL Import, System Updates, Theme Replication, Theme Editor, site settings, AI configuration, API tokens, and admin users. These are not part of the current `/api/v1` operations surface unless route inspection proves otherwise.
+Current GEOFlow has admin UI capabilities including Distribution Management, target-site packages, WordPress REST channels, generic HTTP API channels, frontend-capability refresh, target settings-sync preview, logs, queue retry, remote article management, manual publication, enterprise knowledge drafting/publish, lead forms/leads/export, six Analytics pages, AI source providers, article editor assistance/risk scan, URL Import, System Updates, Theme Replication, homepage module editing, site settings, AI configuration, API tokens, and admin users. These are not part of the current `/api/v1` operations surface unless route inspection proves otherwise. The current `routes/web.php` has no live Theme Editor route.
 
 Use API v1 only for the exposed task/article/material operations. When an operation requires an admin-only capability, switch to authenticated admin web routes if the user has provided or already has a valid admin session. Otherwise report the missing admin session/prerequisite.

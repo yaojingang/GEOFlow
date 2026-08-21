@@ -21,32 +21,83 @@ class AiVisibilityAnalyticsService
     ) {}
 
     /**
-     * @return array<string, mixed>
+     * @return array{configured: bool, kpis: array<string, float>, sampled_runs: int}
      */
-    public function overview(int $days = 14): array
+    public function snapshot(int $days = 60): array
     {
         $days = max(1, min(90, $days));
+        $filter = AiVisibilityAnalyticsFilter::forDays($days);
+        $configuration = $this->configurationStatus();
+        if (! Schema::hasTable('ai_visibility_runs') || ! Schema::hasTable('ai_visibility_sources')) {
+            return [
+                'configured' => (bool) ($configuration['configured'] ?? false),
+                'kpis' => $this->emptyKpis(),
+                'sampled_runs' => 0,
+            ];
+        }
+
+        $start = $filter->start();
+        $end = $filter->end();
+        $sampledRunIds = $this->sampledRunIds($start, $end, $filter);
+        if ($sampledRunIds === []) {
+            return [
+                'configured' => (bool) ($configuration['configured'] ?? false),
+                'kpis' => $this->emptyKpis(),
+                'sampled_runs' => 0,
+            ];
+        }
+
+        $brandAliases = $this->brandAliases();
+        $ownedHosts = $this->ownedHosts();
+        $runs = AiVisibilityRun::query()
+            ->with(['sources' => fn ($query) => $query
+                ->select($this->sourceColumns())
+                ->orderByRaw('COALESCE(rank, 999999) asc')
+                ->orderBy('id')])
+            ->whereIn('id', $sampledRunIds)
+            ->select('id', 'keyword', 'provider_type', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
+            ->get()
+            ->map(fn (AiVisibilityRun $run): array => $this->analyzeRunForKpis($run, $brandAliases, $ownedHosts));
+
+        return [
+            'configured' => (bool) ($configuration['configured'] ?? false),
+            'kpis' => $this->kpis($this->dailyKeywordMetrics($runs)),
+            'sampled_runs' => $runs->count(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function overview(int|AiVisibilityAnalyticsFilter $filter = 14): array
+    {
+        $filter = is_int($filter) ? AiVisibilityAnalyticsFilter::forDays($filter) : $filter;
+        $days = $filter->days();
+        $start = $filter->start();
+        $end = $filter->end();
         $configuration = $this->configurationStatus();
 
         if (! Schema::hasTable('ai_visibility_runs') || ! Schema::hasTable('ai_visibility_sources')) {
-            return $this->emptyOverview(false, $days, $configuration);
+            return $this->emptyOverview(false, $start, $end, $configuration);
         }
 
-        $start = now()->copy()->startOfDay()->subDays($days - 1);
-        $end = now()->copy()->endOfDay();
-        $periodRuns = $this->periodRunsQuery($start, $end);
+        $periodRuns = $this->periodRunsQuery($start, $end, $filter);
         $runCount = (int) (clone $periodRuns)->count();
         if ($runCount === 0) {
-            return $this->emptyOverview(true, $days, $configuration);
+            return $this->emptyOverview(true, $start, $end, $configuration);
         }
 
         $completedRunCount = (int) (clone $periodRuns)
             ->where('status', AiVisibilityRun::STATUS_COMPLETED)
             ->count();
-        $sampledRunIds = $this->sampledRunIds($start, $end);
+        $sampledRunIds = $this->sampledRunIds($start, $end, $filter);
         $sampledRuns = AiVisibilityRun::query()
-            ->with(['sources' => fn ($query) => $query->orderByRaw('COALESCE(rank, 999999) asc')->orderBy('id')])
+            ->with(['sources' => fn ($query) => $query
+                ->select($this->sourceColumns())
+                ->orderByRaw('COALESCE(rank, 999999) asc')
+                ->orderBy('id')])
             ->whereIn('id', $sampledRunIds)
+            ->select('id', 'keyword', 'provider_type', 'provider_key', 'model_id', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
             ->orderBy('created_at')
             ->orderBy('id')
             ->get();
@@ -60,7 +111,7 @@ class AiVisibilityAnalyticsService
         $dailyKeywordMetrics = $this->dailyKeywordMetrics($analyzedRuns);
         $kpis = $this->kpis($dailyKeywordMetrics);
         $sourcePreferences = $this->sourcePreferences($analyzedRuns);
-        $todayRuns = $this->periodRunsQuery(now()->copy()->startOfDay(), now()->copy()->endOfDay());
+        $todayRuns = $this->periodRunsQuery(now()->copy()->startOfDay(), now()->copy()->endOfDay(), $filter);
         $todayRunCount = (int) (clone $todayRuns)->count();
         $todayCompletedRunCount = (int) (clone $todayRuns)
             ->where('status', AiVisibilityRun::STATUS_COMPLETED)
@@ -97,7 +148,7 @@ class AiVisibilityAnalyticsService
                 'today_keyword_count' => $todayKeywordCount,
                 'today_target_samples' => $todayKeywordCount * self::DAILY_SAMPLE_TARGET,
             ],
-            'trend' => $this->trend($dailyKeywordMetrics, $days),
+            'trend' => $this->trend($dailyKeywordMetrics, $start, $days),
             'keywords' => $this->keywordMetrics($dailyKeywordMetrics),
             'terms' => $this->termCloud($analyzedRuns),
             'sources' => $sourcePreferences,
@@ -106,7 +157,7 @@ class AiVisibilityAnalyticsService
         ];
     }
 
-    private function periodRunsQuery(Carbon $start, Carbon $end): Builder
+    private function periodRunsQuery(Carbon $start, Carbon $end, ?AiVisibilityAnalyticsFilter $filter = null): Builder
     {
         return AiVisibilityRun::query()
             ->where(function (Builder $query) use ($start, $end): void {
@@ -117,15 +168,34 @@ class AiVisibilityAnalyticsService
                             ->whereNull('completed_at')
                             ->whereBetween('created_at', [$start, $end]);
                     });
-            });
+            })
+            ->when($filter !== null && $filter->keyword !== '', fn (Builder $query) => $query->where('keyword', $filter->keyword))
+            ->when($filter !== null && $filter->provider !== 'all', fn (Builder $query) => $query->where('provider_type', $filter->provider));
+    }
+
+    /** @return list<string> */
+    private function sourceColumns(): array
+    {
+        return [
+            'id',
+            'ai_visibility_run_id',
+            'title',
+            'url',
+            'domain',
+            'site_name',
+            'snippet',
+            'summary',
+            'content_excerpt',
+            'rank',
+        ];
     }
 
     /**
      * @return list<int>
      */
-    private function sampledRunIds(Carbon $start, Carbon $end): array
+    private function sampledRunIds(Carbon $start, Carbon $end, ?AiVisibilityAnalyticsFilter $filter = null): array
     {
-        $rankedRuns = $this->periodRunsQuery($start, $end)
+        $rankedRuns = $this->periodRunsQuery($start, $end, $filter)
             ->where('status', AiVisibilityRun::STATUS_COMPLETED)
             ->select('id')
             ->selectRaw(
@@ -146,9 +216,10 @@ class AiVisibilityAnalyticsService
     /**
      * @return array<string, mixed>
      */
-    private function emptyOverview(bool $ready, int $days, ?array $configuration = null): array
+    private function emptyOverview(bool $ready, Carbon $start, Carbon $end, ?array $configuration = null): array
     {
         $configuration ??= $this->configurationStatus();
+        $days = (int) $start->copy()->startOfDay()->diffInDays($end->copy()->startOfDay()) + 1;
 
         return [
             'ready' => $ready,
@@ -156,8 +227,8 @@ class AiVisibilityAnalyticsService
             'configuration' => $configuration,
             'daily_sample_target' => self::DAILY_SAMPLE_TARGET,
             'period' => [
-                'start' => now()->copy()->startOfDay()->subDays($days - 1)->toDateString(),
-                'end' => now()->toDateString(),
+                'start' => $start->toDateString(),
+                'end' => $end->toDateString(),
                 'days' => $days,
             ],
             'brand' => [
@@ -176,7 +247,7 @@ class AiVisibilityAnalyticsService
                 'today_keyword_count' => 0,
                 'today_target_samples' => 0,
             ],
-            'trend' => $this->trend(collect(), $days),
+            'trend' => $this->trend(collect(), $start, $days),
             'keywords' => [],
             'terms' => [],
             'sources' => [],
@@ -298,6 +369,49 @@ class AiVisibilityAnalyticsService
     }
 
     /**
+     * @param  list<string>  $brandAliases
+     * @param  list<string>  $ownedHosts
+     * @return array<string, mixed>
+     */
+    private function analyzeRunForKpis(AiVisibilityRun $run, array $brandAliases, array $ownedHosts): array
+    {
+        $brandSourceRanks = $run->sources
+            ->values()
+            ->map(function (AiVisibilitySource $source, int $index) use ($brandAliases, $ownedHosts): ?int {
+                $domain = $this->sourceDomain($source);
+                $brandText = implode(' ', array_filter([
+                    $source->title,
+                    $source->site_name,
+                    $source->domain,
+                    $source->url,
+                    $source->snippet,
+                    $source->summary,
+                    $source->content_excerpt,
+                ], static fn (mixed $value): bool => trim((string) $value) !== ''));
+
+                if (! $this->domainMatches($domain, $ownedHosts) && ! $this->containsAny($brandText, $brandAliases)) {
+                    return null;
+                }
+
+                return (int) ($source->rank ?: $index + 1);
+            })
+            ->filter(fn (?int $rank): bool => $rank !== null && $rank > 0);
+        $sentiment = $this->sentiment($run);
+
+        return [
+            'date' => $this->runDate($run),
+            'keyword' => trim((string) $run->keyword),
+            'provider_type' => (string) $run->provider_type,
+            'brand_visible' => $this->containsAny((string) $run->answer_text, $brandAliases)
+                || $brandSourceRanks->contains(fn (int $rank): bool => $rank <= 3),
+            'top1' => $brandSourceRanks->contains(fn (int $rank): bool => $rank === 1),
+            'top3' => $brandSourceRanks->contains(fn (int $rank): bool => $rank <= 3),
+            'sentiment' => $sentiment['label'],
+            'sentiment_score' => $sentiment['score'],
+        ];
+    }
+
+    /**
      * @param  Collection<int, array<string, mixed>>  $runs
      * @return Collection<int, array<string, mixed>>
      */
@@ -328,9 +442,9 @@ class AiVisibilityAnalyticsService
      * @param  Collection<int, array<string, mixed>>  $dailyKeywordMetrics
      * @return list<array<string, mixed>>
      */
-    private function trend(Collection $dailyKeywordMetrics, int $days): array
+    private function trend(Collection $dailyKeywordMetrics, Carbon $start, int $days): array
     {
-        $start = now()->copy()->startOfDay()->subDays($days - 1);
+        $start = $start->copy()->startOfDay();
 
         return collect(range(0, $days - 1))
             ->map(function (int $offset) use ($start, $dailyKeywordMetrics): array {

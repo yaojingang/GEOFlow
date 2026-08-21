@@ -8,52 +8,48 @@ X: https://x.com/yaojingang
 
 # GEOFlow Current Capability Map
 
-This reference maps current GEOFlow 2.1+ operations to the supported automation surface. Always inspect the target workspace before mutating anything:
+This reference maps the current repository to its supported operation surfaces. Inspect the target workspace before a mutation:
 
 ```bash
+bin/geoflow --version
+bin/geoflow --help
 php artisan route:list --path=api/v1
-php artisan route:list --path=admin
 php artisan route:list --except-vendor
 ```
 
-If a route is missing in the target deployment, report the capability as unavailable there.
+If a command or route is absent in the target deployment, report that capability as unavailable there.
 
 ## Operation Surfaces
 
-- `CLI`: use `bin/geoflow` only when it exists and `--help` confirms the action.
-- `API v1`: use bearer auth, JSON payloads, `Accept: application/json`, and `X-Idempotency-Key` for writes.
-- `Admin web`: use an authenticated admin session, CSRF token, cookies, and route-specific form semantics.
-- `Super-admin web`: same as admin web, but first verify super-admin access and current-password requirements.
+- `CLI 0.2.0`: preferred client for current API v1 catalog, task, job, material, and article operations.
+- `API v1`: fallback when the CLI is absent. Use bearer auth and JSON. Add `X-Idempotency-Key` only to operations that support it; current DELETE routes do not use it.
+- `Admin web`: capabilities outside API v1. Use an authenticated admin session, CSRF token, and the actual configurable admin prefix.
+- `Super-admin web`: protected workflows such as distribution, manual-publication settings, system updates, theme replication, admin users, and API tokens.
+- `Local Artisan`: maintenance commands that operate inside the deployed Laravel application.
 
-Never replace an admin-web capability with direct SQL or invented API routes.
+Do not replace an admin or Artisan capability with direct SQL or an invented API path.
 
-## API v1 Coverage
+## CLI And API v1 Coverage
 
-API v1 covers scriptable content operations:
+CLI 0.2.0 and API v1 cover the same scriptable content surface:
 
 - Authentication: `POST /api/v1/auth/login`
 - Catalog: `GET /api/v1/catalog`
 - Tasks: list, create, show, update, delete, start, stop, enqueue, and task jobs
-- Jobs: show one task run via `GET /api/v1/jobs/{id}`
-- Materials: summary, typed CRUD, typed item list/create/delete
-- Articles: list, create, show, update, review, publish, trash
+- Jobs: show one task run
+- Materials: summary, typed CRUD, typed item list/create/delete, and image upload
+- Articles: list, create, show, update, review, publish, and trash
 
-API v1 does not expose distribution channel CRUD, enterprise knowledge drafting, growth-center lead management, Analytics, URL Import, System Updates, Theme Replication, live Theme Editor, API token admin, admin-user admin, site settings, security settings, or AI model/prompt configuration unless the target workspace adds explicit matching routes.
+The CLI adds local profile handling, endpoint and credential binding, HTTPS policy, secret prompts/stdin, JSON input, response limits, redaction, and deletion confirmation. Use [command-map.md](command-map.md) for the complete command set.
 
-## Task Contract
+API v1 does not expose distribution-channel management, manual publication, enterprise knowledge, lead administration, Analytics, AI source-provider management, article editor assistance, URL Import, System Updates, Theme Replication, homepage module editing, API-token administration, admin-user administration, site settings, or security settings.
 
-Create requires:
+### Task Contract
 
-- `name`
-- `title_library_id`
-- `prompt_id`
-- `ai_model_id`
-
-Common optional task fields:
+Create requires `name`, `title_library_id`, `prompt_id`, and `ai_model_id`. Common optional fields include:
 
 - `author_id`, `image_library_id`, `image_count`
-- `knowledge_base_id`
-- `knowledge_base_ids` up to five IDs; when present, it takes precedence over `knowledge_base_id`
+- `knowledge_base_id`, or `knowledge_base_ids` with up to five IDs
 - `fixed_category_id`
 - `status`: `active` or `paused`
 - `category_mode`: `smart` or `fixed`
@@ -63,145 +59,149 @@ Common optional task fields:
 - `draft_limit`, `article_limit`, `publish_interval`
 - `need_review`, `is_loop`, `auto_keywords`, `auto_description`
 
-Admin task forms also accept `distribution_channel_ids[]`; that channel binding is an admin-web flow unless the target deployment exposes a dedicated API route.
+`knowledge_base_ids` takes precedence over legacy `knowledge_base_id`. Concrete `distribution_channel_ids[]` binding remains an admin task-form flow.
 
-## Admin Web Coverage
+## Admin Prefix
 
-Use admin web routes when a capability is absent from API v1.
+The route prefix comes from `geoflow.admin_base_path` and `ADMIN_BASE_PATH`; the repository default is `geo_admin`. The examples below use `/{admin}` as a placeholder. Resolve the real path from configuration or `route:list` before sending a request.
 
-### Dashboard And Analytics
+Admin writes need current cookies and CSRF. Routes protected by `admin.super` also require a super-admin account. Some sensitive actions add rate limits, current-password checks, or impact confirmations.
 
-- Dashboard: `GET /admin/dashboard`
-- Analytics: `GET /admin/analytics`
-- Growth-center metrics are exposed through the Analytics/Growth Center admin views when the target branch includes lead management.
-- Report rendered metrics only; do not invent trend values.
+## Analytics Pages
 
-### Enterprise Knowledge
+Current pages are:
 
-Routes under `/admin/enterprise-knowledge` cover:
+- Overview: `GET /{admin}/analytics`
+- Content: `GET /{admin}/analytics/content`
+- Traffic: `GET /{admin}/analytics/traffic`
+- AI visibility: `GET /{admin}/analytics/ai-visibility`
+- Leads: `GET /{admin}/analytics/leads`
+- Distribution: `GET /{admin}/analytics/distribution`, protected by `admin.super`
 
-- project list and create form
-- upload/create project draft
-- project workspace
-- autosave
-- validate
-- editor image upload
-- publish to knowledge base
-- restore revisions
-- delete project
-- status polling
+The overview may redirect legacy content, traffic, or channel query parameters to the matching page. Read rendered filters, KPI cards, tables, and chart data from the requested page. Do not reconstruct metrics from memory.
 
-This is an admin-web workflow. Verify project status and resulting knowledge-base/chunk state after publish. Do not create direct database rows for generated documents, revisions, or chunks.
+## Manual Publication Workbench
 
-### Growth Center: Lead Forms And Leads
+Routes under `/{admin}/manual-publications` provide:
 
-Admin routes cover:
+- `GET /` list, filters, assignment-aware statistics, and status views
+- `GET /create` and `POST /` creation
+- `GET /export` CSV export
+- `GET /{manualPublicationId}` detail
+- `GET /{manualPublicationId}/edit` and `PUT /{manualPublicationId}` update
+- `POST /{manualPublicationId}/transition` workflow transition and completion readback
+- super-admin settings under `/settings` for personas and platform account references
 
-- `GET /admin/lead-forms`
-- `GET /admin/lead-forms/create`
-- `POST /admin/lead-forms`
-- `GET /admin/lead-forms/{formId}/edit`
-- `PUT /admin/lead-forms/{formId}`
-- `POST /admin/lead-forms/{formId}/toggle-status`
-- `POST /admin/lead-forms/{formId}/delete`
-- `GET /admin/leads`
-- `GET /admin/leads/export`
-- `GET /admin/leads/{submissionId}`
-- `PUT /admin/leads/{submissionId}`
+Super admins create and configure work items. Ordinary active admins see and transition assigned items according to `ManualPublicationPolicy`. Creation from an article accepts only articles with `approved` or `auto_approved` review status. The workbench stores copy, public account references, assignee, schedule, risk state, duplicate warnings, completion URL, and result notes. It does not store platform passwords, cookies, access tokens, or OAuth credentials.
 
-Public lead capture routes are:
+CSV export can contain content and external account references. Require an explicit export request and protect the resulting file.
 
-- `GET /forms/{slug}`
-- `POST /forms/{slug}/submissions`
+## Article Editor Assistance And Risk Scan
 
-Operate lead-form creation and lead review/export through admin web in `operations` mode. A homepage `lead_form` module requires an already existing active form slug; switch to `public_frontend` for homepage module payload design.
+Admin article routes add capabilities outside CLI/API v1:
 
-### Distribution And Frontend Capabilities
+- `GET /{admin}/articles/editor/titles` loads assistant title choices.
+- `POST /{admin}/articles/editor/generate` runs the AI editor assistant and is limited by `throttle:10,1`.
+- `POST /{admin}/articles/{articleId}/risk-scan` reruns the article risk scan.
+- `POST /{admin}/articles/{articleId}/editor/images/upload` uploads an editor image.
+- `POST /{admin}/articles/editor/wechat-html` exports WeChat HTML.
+- Batch review/status/delete/restore/force-delete, single restore/force-delete, and trash emptying remain admin flows.
 
-Routes under `/admin/distribution` cover:
+Read the article edit page before an assistant or risk action, preserve its CSRF/session state, and read the resulting article or redirect page afterward. Risk override requires an explicit reason where the workflow asks for one.
 
-- channel list/create/show/edit/update
-- pause/activate
-- health check
-- secret reveal/rotation
-- target-site package download
-- per-channel settings sync and preview
-- selected/all channel settings sync and preview
-- frontend-capability refresh
-- distribution jobs list/edit/update/delete/retry
+## AI Source Providers
 
-Channel types:
+Routes under `/{admin}/ai-source-providers` provide:
 
-- `geoflow_agent`
-- `wordpress_rest`
-- `generic_http_api`
+- `GET /` provider, binding, quota, and health overview
+- `POST /` create a supported source provider
+- `PUT /{providerId}` update provider settings
+- `POST /{providerId}/test` test a provider, limited by `admin-sensitive`
+- `POST /{providerId}/delete` delete an unused provider
+- `POST /model-bindings` update Ark and DeepSeek model bindings
+- `POST /model-bindings/upsert-api` create or update a bound model API
+- `POST /model-bindings/test` test structured output, limited by `admin-sensitive`
 
-Rules:
+Provider endpoints pass the current endpoint policy. Changing endpoint origin requires a fresh API key. Stored keys are encrypted, and failed forms exclude `api_key` from repopulated input. Redact provider and model secrets from reports.
 
-- GEOFlow Agent channels can use target packages, static/rewrite frontend mode, secret reveal/rotation, frontend-capability inspection, and settings sync.
-- WordPress REST channels use WordPress username and Application Password. Do not reveal the password after save.
-- Generic HTTP API channels support configurable auth, request paths, success statuses, response mapping, health checks, and optional settings sync path.
-- Treat frontend-capability mismatches as remote package/version issues, not as proof that local homepage modules are invalid.
+## Distribution Channels And Safe Deletion
 
-### URL Import
+Distribution routes are protected by `admin.super`. They cover channel list/create/show/edit/update, pause/activate, health, secret rotation/reveal, target package download, settings-sync preview/apply, frontend-capability refresh, and job edit/delete/retry.
 
-Routes under `/admin/url-import` cover create, run, status polling, show, history, and commit into knowledge base, keyword library, and title library outputs. Verify an analysis model is configured before running jobs.
+Channel types are `geoflow_agent`, `wordpress_rest`, and `generic_http_api`. WordPress Application Passwords and generic API secrets remain secret after save. GEOFlow Agent settings sync needs a fresh capability inspection and an exact preview.
 
-### System Updates
+Channel deletion is a staged admin-web workflow:
 
-Routes under `/admin/system-updates` cover check, plan, manual-command confirmation, backup, apply, run status, retry, mark failed, backup inspection, full rollback, and single-file rollback.
+1. `GET /{admin}/distribution/{channelId}/delete` renders the current impact and fingerprint.
+2. `POST /{admin}/distribution/{channelId}/delete/prepare` moves the channel to `deleting` and marks queued distributions failed so workers cannot start new sends.
+3. `POST /{admin}/distribution/{channelId}/delete/cancel` returns a prepared channel to `paused` if the operator stops.
+4. `DELETE /{admin}/distribution/{channelId}` performs the final deletion under `admin-sensitive` rate limiting.
 
-These are high-risk super-admin operations. Before `apply`, `rollback`, `rollback-file`, `retry`, or `mark-failed`, verify update center config, super-admin access, active run state, backup/run UUID, current password requirements, preflight, and plan state.
+The final request requires the exact channel name, current password, current impact fingerprint, history acknowledgement, and acknowledgements for remote content, task changes, or credentials when those impacts exist. Fresh sending jobs and fresh channel operations block deletion. Stale sending or operation state requires its own force acknowledgement.
 
-### Site Settings, Homepage Modules, Theme Replication, And Theme Editor
+Final deletion detaches tasks, switches lone `local_and_distribution` tasks to `local_only`, pauses lone `distribution_only` tasks, removes local distributions and secrets, and writes a redacted audit record with a remote cleanup manifest. It does not prove that remote content was deleted. Report remote cleanup as a separate follow-up.
 
-Routes under `/admin/site-settings` cover:
+## Site Settings, Homepage Modules, And Theme Replication
 
-- global site settings
-- theme activation
-- homepage module update, preset, and import
-- article detail image/text ads
-- sensitive words
-- theme replication create/show/status/preview/assets/retry/iterate/publish/copy/archive/delete-drafts/package
-- live theme editor edit/preview/draft/publish/discard for `{themeId}/{page}`
+Current site-setting routes include:
 
-Theme replication and theme editor publish are high-risk visual/frontend operations. Verify preview pages (`home`, `category`, `article`, or the requested page) before publish. Package download does not imply publication.
+- `GET|POST /{admin}/site-settings`
+- `POST /{admin}/site-settings/theme`
+- `GET /{admin}/site-settings/homepage-modules`
+- `POST /{admin}/site-settings/homepage-modules`
+- `POST /{admin}/site-settings/homepage-modules/preset`
+- `POST /{admin}/site-settings/homepage-modules/import`
+- article image/text ad settings and sensitive-word management
 
-### Articles
+The GET homepage route is the editor page and supplies persisted modules/style, supported module/layout values, active lead forms, and preset metadata. Switch to `public_frontend` mode to design or validate a homepage payload, then return to `operations` for an approved POST and readback.
 
-Admin article routes cover list, create, edit, update, batch status/review/delete/restore/force-delete, per-article restore/force-delete, empty trash, editor image upload, and WeChat HTML export. Prefer API v1 for simple draft/review/publish/trash; use admin web for editor uploads and batch/destructive flows.
+Super-admin Theme Replication routes cover create, show, status, `home|category|article` preview, retry, iterate, publish, copy, archive, delete drafts, and package download. Preview and package state do not prove publication.
 
-### Materials And Knowledge Bases
+The current `routes/web.php` does not expose live Theme Editor edit, preview, draft, publish, or discard routes. Treat that operation as unavailable unless the inspected target deployment has explicit routes.
 
-Admin web extends material work beyond API v1:
+## Enterprise Knowledge, Leads, URL Import, And System Updates
 
-- Category CRUD
-- Author CRUD and detail
-- Keyword library CRUD/import/items
-- Title library CRUD/import/items and AI title generation
-- Image library CRUD/upload/delete/detail
-- Knowledge base CRUD, file upload, Markdown/detail editing, semantic chunk refresh
-- Unified materials index
+Enterprise Knowledge routes cover list/create, workspace, status, autosave, validation, editor image upload, revision restore, publish to a knowledge base, and project deletion. Read both project status and resulting knowledge-base/chunk state after publication.
 
-Prefer API v1 for simple typed material CRUD. Use admin web for uploads, imports, AI generation, detail pages, Markdown editing, and chunk refresh.
+Lead administration covers lead-form CRUD/status, lead list/detail/update, and CSV export. Public capture routes are `GET /forms/{slug}` and throttled `POST /forms/{slug}/submissions`. Lead detail and export contain personal data.
 
-### AI Configuration
+URL Import is a super-admin flow covering create, history, show, run, status, and commit. Verify the analysis model before a run and wait for a terminal state before commit.
 
-Admin routes cover AI configurator, AI model CRUD, model connection test, default embedding model, chunking config, content prompt CRUD, and special keyword/description prompts. Verify model status after writes and redact provider secrets.
+System Updates cover check, plan, manual-command confirmation, backup, apply, run status, retry, mark failed, full rollback, and single-file rollback. Apply, retry, mark failed, and rollback require the exact run/backup target, the current gate state, and explicit user approval.
 
-### Admin, Security, And Tokens
+## Login Limits And Credential Revocation
 
-Admin web covers login/logout/locale, admin-user management, admin activity logs, API tokens, security password update, and sensitive words. API token creation returns the token once; redact it unless the user explicitly asks to receive it in the current private thread.
+Both admin web login and API login use the `admin-login` limiter, currently 30 attempts per minute per IP. Web login also tracks failed attempts by normalized username plus IP. The defaults are five failures and a 900-second temporary lockout, configured by `geoflow.max_login_attempts` and `geoflow.login_lockout_seconds`. This temporary limiter does not change `admins.status`.
+
+An admin with `status=locked` remains manually locked until the supported unlock command runs:
+
+```bash
+php artisan geoflow:admin-unlock USERNAME
+```
+
+Super admins manage API tokens under `/{admin}/api-tokens`. Token creation displays plaintext once. `POST /{admin}/api-tokens/{tokenId}/revoke` physically deletes that Sanctum token, so later API calls return `401`.
+
+Password changes, admin status changes, and admin deletion call `revokeAuthenticationCredentials()`. That increments `auth_version`, rotates the remember token, and deletes all API tokens for the affected admin. Existing admin sessions fail the `auth_version` check on their next request.
+
+## Local Artisan Maintenance
+
+These commands have no API v1 or GEOFlow CLI 0.2.0 equivalent:
+
+```bash
+php artisan geoflow:recover-knowledge-syncs --stale=600 --limit=50
+php artisan geoflow:prune-expired-cache --limit=5000
+```
+
+`geoflow:recover-knowledge-syncs` requeues knowledge chunk-sync pipelines that stopped making progress. It clamps `--stale` to at least 60 seconds and `--limit` to 1 through 200. The scheduler runs it every five minutes with overlap protection.
+
+`geoflow:prune-expired-cache` deletes expired rows only when the configured limiter cache uses the database driver. Other cache drivers return a no-op message. It clamps `--limit` to 1 through 20,000, runs hourly, and uses overlap protection.
+
+Run local Artisan commands in the correct application container when the deployment is containerized:
+
+```bash
+docker compose exec app php artisan geoflow:recover-knowledge-syncs --stale=600 --limit=50
+```
 
 ## Reporting Standard
 
-For each operation, report:
-
-- surface used: CLI, API v1, admin web, or super-admin web
-- route or command
-- resource IDs touched
-- verification readback
-- final state
-- redacted secret handling, when relevant
-
-For failed operations, classify the failure as authentication/session, CSRF, permission, route missing, validation, business data, queue/worker, remote target, system update preflight, frontend-capability mismatch, or route-surface mismatch.
+For each operation, report the surface, exact route or command, resource IDs, verification readback, final state, and redacted secret handling. Classify failures as authentication/session, CSRF, permission, route missing, validation, business data, queue/worker, locked resource, rate limit, remote target, update preflight, frontend-capability mismatch, or route-surface mismatch.

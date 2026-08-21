@@ -36,6 +36,14 @@ GEOFlow распространяется по лицензии [Apache License 2
 
 ---
 
+## GEOFlow CLI 0.2.0
+
+В репозитории есть `bin/geoflow` для работы с каталогами, задачами, заданиями, материалами и статьями через API v1. Официально поддерживаются macOS, Linux и WSL. В нативной Windows необходимо вручную проверить ACL файла конфигурации.
+
+[Полное руководство по CLI на английском](../GEOFLOW_CLI_en.md)
+
+---
+
 ## 🖼 Предпросмотр UI
 
 <table>
@@ -249,7 +257,7 @@ php artisan reverb:start
 - Команда разблокировки:
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoflow:admin-unlock USERNAME
 ```
 
 Пример:

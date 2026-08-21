@@ -11,9 +11,11 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\JobQueueService;
+use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Services\GeoFlow\TaskRealtimeBroadcastService;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Mockery;
@@ -106,7 +108,30 @@ class ApiV1ContractTest extends TestCase
         $this->assertContains('materials:write', $response->json('data.scopes'));
     }
 
-    public function test_login_locks_account_after_repeated_password_failures(): void
+    public function test_login_reads_the_admin_inside_the_token_issuance_transaction(): void
+    {
+        $this->createActiveAdmin('transactional_login', 'right-pass');
+        $transactionLevels = [];
+
+        DB::listen(function (QueryExecuted $query) use (&$transactionLevels): void {
+            $sql = strtolower($query->sql);
+            if (str_starts_with(ltrim($sql), 'select')
+                && str_contains($sql, 'admins')
+                && str_contains($sql, 'username')) {
+                $transactionLevels[] = DB::transactionLevel();
+            }
+        });
+
+        $this->postJson('/api/v1/auth/login', [
+            'username' => 'transactional_login',
+            'password' => 'right-pass',
+        ])->assertOk();
+
+        $this->assertNotEmpty($transactionLevels);
+        $this->assertNotContains(0, $transactionLevels);
+    }
+
+    public function test_login_temporarily_limits_username_and_ip_after_repeated_password_failures(): void
     {
         $admin = $this->createActiveAdmin('lock_me', 'right-pass');
 
@@ -121,10 +146,11 @@ class ApiV1ContractTest extends TestCase
             'username' => 'lock_me',
             'password' => 'wrong-pass',
         ])
-            ->assertStatus(423)
-            ->assertJsonPath('error.code', 'account_locked');
+            ->assertStatus(429)
+            ->assertJsonPath('error.code', 'too_many_attempts')
+            ->assertJsonPath('error.details.retry_after', 900);
 
-        $this->assertSame('locked', $admin->fresh()->status);
+        $this->assertSame('active', $admin->fresh()->status);
     }
 
     public function test_catalog_forbidden_when_scope_missing(): void
@@ -162,6 +188,46 @@ class ApiV1ContractTest extends TestCase
             ]);
     }
 
+    public function test_token_is_rejected_without_being_touched_when_its_owner_is_inactive(): void
+    {
+        $admin = $this->createActiveAdmin('inactive_token_owner', 'p');
+        $bearer = $this->createBearerToken($admin, ['catalog:read']);
+        $admin->forceFill(['status' => 'inactive'])->save();
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/catalog')
+            ->assertStatus(401)
+            ->assertJsonPath('error.code', 'unauthorized');
+
+        $this->assertDatabaseHas('personal_access_tokens', [
+            'tokenable_type' => Admin::class,
+            'tokenable_id' => $admin->id,
+            'last_used_at' => null,
+        ]);
+    }
+
+    public function test_token_is_rejected_without_audit_fallback_when_its_owner_is_deleted(): void
+    {
+        $admin = $this->createActiveAdmin('deleted_token_owner', 'p');
+        $bearer = $this->createBearerToken($admin, ['catalog:read']);
+        $tokenId = (int) DB::table('personal_access_tokens')
+            ->where('tokenable_type', Admin::class)
+            ->where('tokenable_id', $admin->id)
+            ->value('id');
+
+        DB::table('admins')->where('id', $admin->id)->delete();
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/catalog')
+            ->assertStatus(401)
+            ->assertJsonPath('error.code', 'unauthorized');
+
+        $this->assertDatabaseHas('personal_access_tokens', [
+            'id' => $tokenId,
+            'last_used_at' => null,
+        ]);
+    }
+
     public function test_materials_require_materials_scope(): void
     {
         $admin = $this->createActiveAdmin('u5', 'p');
@@ -171,6 +237,58 @@ class ApiV1ContractTest extends TestCase
             ->getJson('/api/v1/materials')
             ->assertStatus(403)
             ->assertJsonPath('error.code', 'forbidden');
+    }
+
+    public function test_knowledge_base_list_bounds_content_while_detail_returns_the_full_body(): void
+    {
+        $admin = $this->createActiveAdmin('knowledge_list_reader', 'p');
+        $bearer = $this->createBearerToken($admin, ['materials:read']);
+        $content = str_repeat('知识库正文', 1200);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => 'Large API Knowledge Base',
+            'description' => '',
+            'content' => $content,
+            'file_type' => 'markdown',
+            'character_count' => mb_strlen($content, 'UTF-8'),
+            'word_count' => mb_strlen($content, 'UTF-8'),
+        ]);
+
+        $list = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/materials/knowledge-bases?per_page=100')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.content_truncated', true);
+        $this->assertSame(4000, mb_strlen((string) $list->json('data.items.0.content'), 'UTF-8'));
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/materials/knowledge-bases/'.(int) $knowledgeBase->id)
+            ->assertOk()
+            ->assertJsonPath('data.item.content', $content)
+            ->assertJsonPath('data.item.content_truncated', false);
+    }
+
+    public function test_knowledge_base_api_create_survives_queue_publish_failure(): void
+    {
+        $admin = $this->createActiveAdmin('knowledge_queue_writer', 'p');
+        $bearer = $this->createBearerToken($admin, ['materials:write']);
+        $this->mock(KnowledgeChunkSyncCoordinator::class, function ($mock): void {
+            $mock->shouldReceive('request')
+                ->once()
+                ->andThrow(new \RuntimeException('queue unavailable'));
+        });
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson('/api/v1/materials/knowledge-bases', [
+                'name' => 'Queue Failure API Knowledge',
+                'description' => '',
+                'content' => '正文已经保存，等待队列恢复。',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.item.name', 'Queue Failure API Knowledge');
+
+        $this->assertDatabaseHas('knowledge_bases', [
+            'name' => 'Queue Failure API Knowledge',
+            'content' => '正文已经保存，等待队列恢复。',
+        ]);
     }
 
     public function test_keyword_library_material_crud_and_items(): void

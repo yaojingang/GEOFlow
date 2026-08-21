@@ -71,7 +71,7 @@ class FrontendDemoSeeder extends Seeder
             'seo_title_template' => '{title} - {site_name}',
             'seo_description_template' => '{description}',
             'featured_limit' => '6',
-            'per_page' => '9',
+            'per_page' => '12',
             'home_carousel_slides' => (string) json_encode([
                 [
                     'image_url' => 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=1600&q=80',

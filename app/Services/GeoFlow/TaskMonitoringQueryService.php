@@ -29,18 +29,22 @@ class TaskMonitoringQueryService
      *     tasks:list<array<string,mixed>>,
      *     queue_overview:array{pending:int,running:int,failed:int,completed:int},
      *     worker_overview:list<array<string,mixed>>,
-     *     recent_runs:list<array<string,mixed>>
+     *     recent_runs:list<array<string,mixed>>,
+     *     pagination:array{page:int,per_page:int,total:int,total_pages:int},
+     *     task_summary:array{total_tasks:int,enabled_tasks:int,total_articles:int,published_articles:int}
      * }
      */
-    public function buildAdminOverview(): array
+    public function buildAdminOverview(int $page = 1, int $perPage = 50): array
     {
-        $tasks = $this->listTaskMonitoringRows();
+        $paginatedTasks = $this->listTasksPaginated($page, $perPage);
 
         return [
-            'tasks' => $tasks,
+            'tasks' => $paginatedTasks['items'],
             'queue_overview' => $this->horizonMetrics->queueOverview('geoflow'),
             'worker_overview' => $this->workerOverview(),
             'recent_runs' => $this->recentRuns(),
+            'pagination' => $paginatedTasks['pagination'],
+            'task_summary' => $this->taskSummary(),
         ];
     }
 
@@ -51,7 +55,7 @@ class TaskMonitoringQueryService
      */
     public function buildTaskSnapshot(): array
     {
-        return $this->listTaskMonitoringRows();
+        return $this->listTasksPaginated(1, 100)['items'];
     }
 
     /**
@@ -71,7 +75,8 @@ class TaskMonitoringQueryService
         $query = Task::query()
             ->when(! empty($filters['status']), fn ($q) => $q->where('status', (string) $filters['status']))
             ->when(! empty($filters['search']), fn ($q) => $q->where('name', 'like', '%'.trim((string) $filters['search']).'%'))
-            ->orderByDesc('created_at');
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
 
         $total = (clone $query)->count();
         /** @var Collection<int, Task> $rows */
@@ -99,19 +104,6 @@ class TaskMonitoringQueryService
         $decorated = $this->decorateTasks(collect([$task]))->first();
 
         return is_array($decorated) ? $decorated : [];
-    }
-
-    /**
-     * @return list<array<string,mixed>>
-     */
-    private function listTaskMonitoringRows(): array
-    {
-        /** @var Collection<int, Task> $tasks */
-        $tasks = Task::query()
-            ->orderByDesc('created_at')
-            ->get();
-
-        return $this->decorateTasks($tasks)->values()->all();
     }
 
     /**
@@ -193,12 +185,16 @@ class TaskMonitoringQueryService
             ]);
 
         // 最近一条执行记录：用于回填最新状态、错误信息、重试次数等字段。
-        $latestRuns = TaskRun::query()
+        $latestRunIds = TaskRun::query()
+            ->selectRaw('task_id, MAX(id) AS latest_id')
             ->whereIn('task_id', $taskIds)
-            ->orderByDesc('id')
-            ->get()
-            ->groupBy('task_id')
-            ->map(static fn (Collection $group): ?TaskRun => $group->first());
+            ->groupBy('task_id');
+        $latestRuns = TaskRun::query()
+            ->joinSub($latestRunIds, 'latest_task_runs', function ($join): void {
+                $join->on('task_runs.id', '=', 'latest_task_runs.latest_id');
+            })
+            ->get('task_runs.*')
+            ->keyBy('task_id');
 
         // 显示名称映射：减少后续 map 内重复查询。
         $titleNames = DB::table('title_libraries')
@@ -353,6 +349,28 @@ class TaskMonitoringQueryService
     }
 
     /**
+     * @return array{total_tasks:int,enabled_tasks:int,total_articles:int,published_articles:int}
+     */
+    private function taskSummary(): array
+    {
+        $taskCounts = Task::query()
+            ->selectRaw("COUNT(*) AS total_tasks, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS enabled_tasks")
+            ->first();
+        $articleCounts = DB::table('articles')
+            ->whereNotNull('task_id')
+            ->whereNull('deleted_at')
+            ->selectRaw("COUNT(*) AS total_articles, SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS published_articles")
+            ->first();
+
+        return [
+            'total_tasks' => (int) ($taskCounts?->total_tasks ?? 0),
+            'enabled_tasks' => (int) ($taskCounts?->enabled_tasks ?? 0),
+            'total_articles' => (int) ($articleCounts?->total_articles ?? 0),
+            'published_articles' => (int) ($articleCounts?->published_articles ?? 0),
+        ];
+    }
+
+    /**
      * @param  array<string,mixed>  $runStats
      */
     private function resolveBatchStatus(Task $task, array $runStats, ?TaskRun $latestRun, array $articleStats): string
@@ -407,16 +425,27 @@ class TaskMonitoringQueryService
     {
         try {
             return WorkerHeartbeat::query()
-                ->select(['worker_id', 'status', 'last_seen_at'])
+                ->select(['worker_id', 'status', 'last_seen_at', 'meta'])
                 ->orderByDesc('last_seen_at')
                 ->limit(5)
                 ->get()
-                ->map(static fn (WorkerHeartbeat $row): array => [
-                    'worker_id' => (string) $row->worker_id,
-                    'status' => (string) $row->status,
-                    'current_job_id' => null,
-                    'last_seen_at' => $row->last_seen_at?->toDateTimeString(),
-                ])
+                ->map(static function (WorkerHeartbeat $row): array {
+                    $meta = is_array($row->meta) ? $row->meta : [];
+                    $isStale = $row->last_seen_at === null
+                        || $row->last_seen_at->lessThan(now()->subSeconds(
+                            max(30, (int) config('geoflow.worker_stale_seconds', 120))
+                        ));
+
+                    return [
+                        'worker_id' => (string) $row->worker_id,
+                        'status' => $isStale ? 'stale' : (string) $row->status,
+                        'is_stale' => $isStale,
+                        'current_job_id' => isset($meta['task_run_id']) ? (int) $meta['task_run_id'] : null,
+                        'memory_mb' => isset($meta['memory_mb']) ? (float) $meta['memory_mb'] : null,
+                        'peak_memory_mb' => isset($meta['peak_memory_mb']) ? (float) $meta['peak_memory_mb'] : null,
+                        'last_seen_at' => $row->last_seen_at?->toDateTimeString(),
+                    ];
+                })
                 ->all();
         } catch (\Throwable) {
             return [];

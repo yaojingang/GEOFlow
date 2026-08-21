@@ -5,7 +5,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:analytics": "node --test tests/JavaScript/analytics.test.js"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

@@ -108,12 +108,13 @@ REDIS_HOST=redis
 
 - 如果直接用服务器 IP 加端口访问，例如 `http://172.29.64.77:18080/geo_admin/login`，则 `APP_URL=http://172.29.64.77:18080`
 - 如果前面有域名和 HTTPS 反向代理，则 `APP_URL=https://你的域名`
+- 直接使用 HTTP 时设置 `SESSION_SECURE_COOKIE=false`，HTTPS 环境设置为 `true`
 - 不要保留 `https://your-domain.com`，这只是示例占位符
 
 如果刚改过 `.env.prod`，需要重建相关容器：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app web queue scheduler
+$COMPOSE_PROD up -d --force-recreate app web queue knowledge-queue system-update-queue scheduler
 ```
 
 然后查看 Laravel 的真实错误日志：
@@ -172,7 +173,7 @@ $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up -d init
 $COMPOSE_PROD logs --tail=200 init
-$COMPOSE_PROD up -d app web queue scheduler reverb
+$COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler reverb
 ```
 
 仅在全新空库首次安装时，可以一次性启动：
@@ -186,5 +187,5 @@ $COMPOSE_PROD up -d --build
 首次部署后，如果修改了 `.env.prod`，建议至少重建应用相关容器：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app web queue scheduler reverb
+$COMPOSE_PROD up -d --force-recreate app web queue knowledge-queue system-update-queue scheduler reverb
 ```

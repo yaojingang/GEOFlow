@@ -57,11 +57,12 @@ class ApiTokenService
     {
         $row = PersonalAccessToken::findToken($plainToken);
 
-        if (! $row) {
+        if (! $row || $row->tokenable_type !== Admin::class) {
             return null;
         }
 
-        if ($row->tokenable_type !== Admin::class) {
+        $row->loadMissing('tokenable:id,status');
+        if (! $row->tokenable instanceof Admin || $row->tokenable->status !== 'active') {
             return null;
         }
 
@@ -107,19 +108,19 @@ class ApiTokenService
 
     public function resolveAuditAdminId(?int $preferredAdminId): int
     {
-        if ($preferredAdminId !== null && $preferredAdminId > 0) {
-            $exists = Admin::query()->whereKey($preferredAdminId)->exists();
-            if ($exists) {
-                return $preferredAdminId;
-            }
-        }
-
-        $fallback = (int) Admin::query()->orderBy('id')->value('id');
-        if ($fallback <= 0) {
+        if ($preferredAdminId === null || $preferredAdminId <= 0) {
             throw new ApiException('admin_not_found', '系统中不存在可用的管理员账号', 500);
         }
 
-        return $fallback;
+        $activeAdminId = (int) Admin::query()
+            ->whereKey($preferredAdminId)
+            ->where('status', 'active')
+            ->value('id');
+        if ($activeAdminId <= 0) {
+            throw new ApiException('admin_not_found', '系统中不存在可用的管理员账号', 500);
+        }
+
+        return $activeAdminId;
     }
 
     /**
@@ -143,7 +144,7 @@ class ApiTokenService
         }
 
         $expires = $this->normalizeExpiresAt($expiresAt);
-        $creatorId = $this->normalizeCreatorAdminId($adminId) ?? $this->resolveAuditAdminId($adminId);
+        $creatorId = $this->resolveAuditAdminId($adminId);
         $admin = Admin::query()->whereKey($creatorId)->first();
         if (! $admin) {
             throw new ApiException('admin_not_found', '系统中不存在可用的管理员账号', 500);
@@ -241,14 +242,5 @@ class ApiTokenService
         }
 
         return date('Y-m-d H:i:s', $timestamp);
-    }
-
-    private function normalizeCreatorAdminId(?int $adminId): ?int
-    {
-        if ($adminId === null || $adminId <= 0) {
-            return null;
-        }
-
-        return Admin::query()->whereKey($adminId)->exists() ? $adminId : null;
     }
 }

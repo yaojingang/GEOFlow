@@ -2,15 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\GenerateEnterpriseKnowledgeDraftJob;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\EnterpriseKnowledgeProject;
 use App\Models\EnterpriseKnowledgeRevision;
 use App\Models\EnterpriseKnowledgeSource;
 use App\Models\KnowledgeBase;
-use App\Jobs\GenerateEnterpriseKnowledgeDraftJob;
 use App\Services\GeoFlow\EnterpriseKnowledgeDraftService;
-use App\Services\GeoFlow\KnowledgeChunkSyncService;
+use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeSourceParser;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -76,8 +76,7 @@ class AdminEnterpriseKnowledgeTest extends TestCase
         $this->assertDatabaseMissing('enterprise_knowledge_revisions', [
             'enterprise_knowledge_project_id' => (int) $project->id,
         ]);
-        Queue::assertPushed(GenerateEnterpriseKnowledgeDraftJob::class, fn (GenerateEnterpriseKnowledgeDraftJob $job): bool =>
-            $job->projectId === (int) $project->id && $job->adminId === (int) $admin->id
+        Queue::assertPushed(GenerateEnterpriseKnowledgeDraftJob::class, fn (GenerateEnterpriseKnowledgeDraftJob $job): bool => $job->projectId === (int) $project->id && $job->adminId === (int) $admin->id
         );
     }
 
@@ -151,7 +150,7 @@ class AdminEnterpriseKnowledgeTest extends TestCase
             'enterprise_knowledge_project_id' => (int) $project->id,
             'original_name' => 'company-profile.md',
             'file_type' => 'markdown',
-            'content' => <<<MARKDOWN
+            'content' => <<<'MARKDOWN'
 # 星河智能公司资料
 星河智能为制造企业提供设备巡检 SaaS 和维保工单系统。
 
@@ -302,7 +301,7 @@ MARKDOWN,
             'enterprise_knowledge_project_id' => (int) $project->id,
             'original_name' => 'detail-profile.md',
             'file_type' => 'markdown',
-            'content' => <<<MARKDOWN
+            'content' => <<<'MARKDOWN'
 # 企业背景
 澜舟数据为连锁零售企业提供门店知识库、巡店 SOP 和总部督导协同系统。
 
@@ -737,8 +736,8 @@ MARKDOWN,
             'created_by_admin_id' => (int) $admin->id,
         ]);
 
-        $this->mock(KnowledgeChunkSyncService::class, function ($mock): void {
-            $mock->shouldReceive('sync')->once()->andReturn(8);
+        $this->mock(KnowledgeChunkSyncCoordinator::class, function ($mock): void {
+            $mock->shouldReceive('request')->once()->andReturnTrue();
         });
 
         $this->actingAs($admin, 'admin')
@@ -780,8 +779,8 @@ MARKDOWN,
             'created_by_admin_id' => (int) $admin->id,
         ]);
 
-        $this->mock(KnowledgeChunkSyncService::class, function ($mock): void {
-            $mock->shouldReceive('sync')->once()->andReturn(9);
+        $this->mock(KnowledgeChunkSyncCoordinator::class, function ($mock): void {
+            $mock->shouldReceive('request')->once()->andReturnTrue();
         });
 
         $this->actingAs($admin, 'admin')
@@ -799,6 +798,34 @@ MARKDOWN,
             'enterprise_knowledge_project_id' => (int) $project->id,
             'source' => 'publish',
         ]);
+    }
+
+    public function test_publish_reports_queue_failure_after_preserving_the_formal_knowledge_base(): void
+    {
+        $admin = $this->admin();
+        $project = EnterpriseKnowledgeProject::query()->create([
+            'name' => '队列故障企业知识库',
+            'description' => '审核后的资料仍需保存',
+            'status' => 'reviewing',
+            'draft_content' => $this->completeDraftContent('等待队列恢复的正式内容'),
+            'created_by_admin_id' => (int) $admin->id,
+        ]);
+        $this->mock(KnowledgeChunkSyncCoordinator::class, function ($mock): void {
+            $mock->shouldReceive('request')
+                ->once()
+                ->andThrow(new \RuntimeException('queue unavailable'));
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.enterprise-knowledge.publish', ['projectId' => (int) $project->id]))
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+
+        $knowledgeBase = KnowledgeBase::query()->where('name', '队列故障企业知识库')->firstOrFail();
+        $project->refresh();
+        $this->assertSame('published', (string) $project->status);
+        $this->assertSame((int) $knowledgeBase->id, (int) $project->published_knowledge_base_id);
+        $this->assertStringContainsString('等待队列恢复的正式内容', (string) $knowledgeBase->content);
     }
 
     public function test_materials_page_links_to_enterprise_knowledge_builder(): void

@@ -8,6 +8,12 @@ use Illuminate\Support\Facades\Storage;
 
 final class KnowledgeSourceParser
 {
+    private const MAX_KNOWLEDGE_BYTES = 8 * 1024 * 1024;
+
+    private const MAX_DOCX_XML_BYTES = 16 * 1024 * 1024;
+
+    private const MAX_DOCX_COMPRESSION_RATIO = 100;
+
     public function storeUploadedKnowledgeFile(UploadedFile $file, string $relativeDirectory = 'uploads/knowledge'): string
     {
         $extension = strtolower($file->getClientOriginalExtension() ?: 'txt');
@@ -40,6 +46,7 @@ final class KnowledgeSourceParser
             $uploaded = $request->file($fieldName, []);
             if ($uploaded instanceof UploadedFile) {
                 $files[] = $uploaded;
+
                 continue;
             }
 
@@ -62,7 +69,17 @@ final class KnowledgeSourceParser
      */
     public function parseUploadedKnowledgeFiles(array $uploadedFiles, array &$storedPaths, string $relativeDirectory = 'uploads/knowledge'): array
     {
+        $totalUploadBytes = 0;
+        foreach ($uploadedFiles as $uploadedFile) {
+            $fileBytes = max(0, (int) $uploadedFile->getSize());
+            $totalUploadBytes += $fileBytes;
+            if ($fileBytes > self::MAX_KNOWLEDGE_BYTES || $totalUploadBytes > self::MAX_KNOWLEDGE_BYTES) {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.total_files_too_large'));
+            }
+        }
+
         $parsedFiles = [];
+        $parsedBytes = 0;
 
         foreach ($uploadedFiles as $uploadedFile) {
             $storedRelativePath = $this->storeUploadedKnowledgeFile($uploadedFile, $relativeDirectory);
@@ -78,6 +95,10 @@ final class KnowledgeSourceParser
                 'original_name' => (string) $uploadedFile->getClientOriginalName(),
                 'file_path' => $storedRelativePath,
             ];
+            $parsedBytes += strlen((string) $parsed['content']);
+            if ($parsedBytes > self::MAX_KNOWLEDGE_BYTES) {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.content_too_large'));
+            }
         }
 
         return $parsedFiles;
@@ -88,6 +109,8 @@ final class KnowledgeSourceParser
      */
     public function mergeKnowledgeSources(string $manualContent, array $parsedFiles): string
     {
+        $this->assertContentSize($manualContent);
+
         if ($manualContent !== '' && $parsedFiles === []) {
             return $manualContent;
         }
@@ -102,7 +125,10 @@ final class KnowledgeSourceParser
             $blocks[] = '# 文件：'.$fileName."\n\n".trim((string) $parsedFile['content']);
         }
 
-        return $this->normalizeKnowledgeText(implode("\n\n---\n\n", $blocks));
+        $merged = $this->normalizeKnowledgeText(implode("\n\n---\n\n", $blocks));
+        $this->assertContentSize($merged);
+
+        return $merged;
     }
 
     /**
@@ -191,6 +217,10 @@ final class KnowledgeSourceParser
     {
         $extension = strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION));
         if (in_array($extension, ['txt', 'md', 'markdown'], true)) {
+            if (@filesize($absolutePath) > self::MAX_KNOWLEDGE_BYTES) {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.file_too_large'));
+            }
+
             $raw = @file_get_contents($absolutePath);
             if ($raw === false) {
                 throw new \RuntimeException(__('admin.knowledge_bases.message.upload_failed'));
@@ -310,7 +340,7 @@ final class KnowledgeSourceParser
 
     public function extractDocxContent(string $absolutePath): string
     {
-        if (! class_exists('ZipArchive')) {
+        if (! class_exists('ZipArchive') || ! class_exists('XMLReader')) {
             return '';
         }
 
@@ -319,32 +349,95 @@ final class KnowledgeSourceParser
             return '';
         }
 
-        $xmlContent = $zip->getFromName('word/document.xml');
+        $stat = $zip->statName('word/document.xml');
+        if (! is_array($stat)) {
+            $zip->close();
+
+            return '';
+        }
+
+        $uncompressedSize = max(0, (int) ($stat['size'] ?? 0));
+        $compressedSize = max(1, (int) ($stat['comp_size'] ?? 0));
+        if (
+            $uncompressedSize > self::MAX_DOCX_XML_BYTES
+            || ($uncompressedSize / $compressedSize) > self::MAX_DOCX_COMPRESSION_RATIO
+        ) {
+            $zip->close();
+            throw new \RuntimeException(__('admin.knowledge_bases.error.docx_expansion_too_large'));
+        }
+
+        $source = $zip->getStream('word/document.xml');
+        $temporary = tmpfile();
+        if (! is_resource($source) || ! is_resource($temporary)) {
+            if (is_resource($source)) {
+                fclose($source);
+            }
+            if (is_resource($temporary)) {
+                fclose($temporary);
+            }
+            $zip->close();
+
+            return '';
+        }
+
+        $copiedBytes = stream_copy_to_stream($source, $temporary, self::MAX_DOCX_XML_BYTES + 1);
+        fclose($source);
         $zip->close();
-        if (! is_string($xmlContent) || $xmlContent === '') {
+        if (! is_int($copiedBytes) || $copiedBytes > self::MAX_DOCX_XML_BYTES) {
+            fclose($temporary);
+            throw new \RuntimeException(__('admin.knowledge_bases.error.docx_expansion_too_large'));
+        }
+
+        $metadata = stream_get_meta_data($temporary);
+        $temporaryPath = (string) ($metadata['uri'] ?? '');
+        $reader = new \XMLReader;
+        if ($temporaryPath === '' || ! @$reader->open($temporaryPath, null, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING)) {
+            fclose($temporary);
+
             return '';
         }
 
-        $dom = new \DOMDocument;
-        $loaded = @$dom->loadXML($xmlContent, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
-        if (! $loaded) {
+        $wordNamespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+        $textOutput = tmpfile();
+        if (! is_resource($textOutput)) {
+            $reader->close();
+            fclose($temporary);
+
             return '';
         }
-
-        $xpath = new \DOMXPath($dom);
-        $xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
-
-        $parts = [];
-        $nodes = $xpath->query('//w:t');
-        if ($nodes !== false) {
-            foreach ($nodes as $node) {
-                $value = trim((string) $node->textContent);
+        $contentBytes = 0;
+        while ($reader->read()) {
+            if (
+                $reader->nodeType === \XMLReader::ELEMENT
+                && $reader->localName === 't'
+                && $reader->namespaceURI === $wordNamespace
+            ) {
+                $value = trim($reader->readString());
                 if ($value !== '') {
-                    $parts[] = $value;
+                    $contentBytes += strlen($value) + 1;
+                    if ($contentBytes > self::MAX_KNOWLEDGE_BYTES) {
+                        $reader->close();
+                        fclose($temporary);
+                        fclose($textOutput);
+                        throw new \RuntimeException(__('admin.knowledge_bases.error.content_too_large'));
+                    }
+                    fwrite($textOutput, $value."\n");
                 }
             }
         }
+        $reader->close();
+        fclose($temporary);
+        rewind($textOutput);
+        $content = stream_get_contents($textOutput, self::MAX_KNOWLEDGE_BYTES + 1);
+        fclose($textOutput);
 
-        return $this->normalizeKnowledgeText(implode("\n", $parts));
+        return is_string($content) ? $this->normalizeKnowledgeText($content) : '';
+    }
+
+    private function assertContentSize(string $content): void
+    {
+        if (strlen($content) > self::MAX_KNOWLEDGE_BYTES) {
+            throw new \RuntimeException(__('admin.knowledge_bases.error.content_too_large'));
+        }
     }
 }

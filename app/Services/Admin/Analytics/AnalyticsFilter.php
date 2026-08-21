@@ -23,8 +23,6 @@ class AnalyticsFilter
             taskId: self::nullablePositiveInt($input['task_id'] ?? null),
             categoryId: self::nullablePositiveInt($input['category_id'] ?? null),
             articleId: self::nullablePositiveInt($input['article_id'] ?? null),
-            trafficType: self::normalizeChoice((string) ($input['traffic_type'] ?? 'all'), ['all', 'human', 'search_bot', 'ai_bot', 'other_bot', 'unknown']),
-            logSource: self::normalizeChoice((string) ($input['log_source'] ?? 'all'), ['all', 'local', 'server', 'channel']),
         );
     }
 
@@ -36,8 +34,6 @@ class AnalyticsFilter
         public readonly ?int $taskId,
         public readonly ?int $categoryId,
         public readonly ?int $articleId,
-        public readonly string $trafficType,
-        public readonly string $logSource,
     ) {}
 
     public function start(): Carbon
@@ -63,8 +59,6 @@ class AnalyticsFilter
             'task_id' => $this->taskId,
             'category_id' => $this->categoryId,
             'article_id' => $this->articleId,
-            'traffic_type' => $this->trafficType,
-            'log_source' => $this->logSource,
         ];
     }
 
@@ -109,11 +103,8 @@ class AnalyticsFilter
             $preset = 'custom';
             $from = self::parseDate($rawFrom) ?? $today->copy()->subDays(6);
             $to = self::parseDate($rawTo) ?? $today->copy();
-            if ($from->greaterThan($to)) {
-                [$from, $to] = [$to, $from];
-            }
 
-            return [$from->startOfDay(), $to->startOfDay()];
+            return AnalyticsDateRange::normalize($from, $to, $today);
         }
 
         $preset = '7d';
@@ -123,12 +114,15 @@ class AnalyticsFilter
 
     private static function parseDate(string $value): ?Carbon
     {
+        $value = trim($value);
         if ($value === '') {
             return null;
         }
 
         try {
-            return Carbon::parse($value)->startOfDay();
+            $date = Carbon::createFromFormat('!Y-m-d', $value);
+
+            return $date->toDateString() === $value ? $date->startOfDay() : null;
         } catch (\Throwable) {
             return null;
         }
@@ -139,13 +133,5 @@ class AnalyticsFilter
         $integer = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
         return $integer === false ? null : (int) $integer;
-    }
-
-    /**
-     * @param  list<string>  $allowed
-     */
-    private static function normalizeChoice(string $value, array $allowed): string
-    {
-        return in_array($value, $allowed, true) ? $value : 'all';
     }
 }

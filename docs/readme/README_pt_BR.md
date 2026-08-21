@@ -36,6 +36,14 @@ O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usa
 
 ---
 
+## GEOFlow CLI 0.2.0
+
+O repositório inclui `bin/geoflow` para gerenciar catálogos, tarefas, trabalhos, materiais e artigos pela API v1. O suporte oficial cobre macOS, Linux e WSL. No Windows nativo, confirme manualmente as ACLs do arquivo de configuração.
+
+[Guia completo da CLI em inglês](../GEOFLOW_CLI_en.md)
+
+---
+
 ## 🖼 Preview da Interface
 
 <table>
@@ -224,7 +232,7 @@ Se precisar de categorias e artigos demo do frontend, defina `GEOFLOW_SEED_FRONT
 - Comando de desbloqueio:
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoflow:admin-unlock USERNAME
 ```
 
 **HTTP em produção:** use Nginx/Apache + **PHP-FPM**, com document root em **`public/`**. Não exponha a raiz do projeto como web root.
@@ -262,7 +270,7 @@ composer test
 
 ## 📖 Documentação
 
-- [Documentação completa](../README.md)
+- [Documentação completa](../../README.md)
 - [Changelog](../CHANGELOG.md)
 
 ---

@@ -123,7 +123,7 @@ final class AdminActivityLogger
             }
 
             // 与 bak 保持一致：对内容型长文本仅记录长度摘要。
-            if (preg_match('/content|prompt|description|bio|note|words|html/i', $field) === 1) {
+            if (preg_match('/content|context|disclosure|prompt|description|bio|note|words|html/i', $field) === 1) {
                 $result[$field] = '[text:'.mb_strlen($text).' chars]';
 
                 continue;

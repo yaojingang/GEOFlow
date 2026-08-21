@@ -16,8 +16,7 @@
     "home",
     "article",
     "category",
-    "archive-index",
-    "archive-month"
+    "about"
   ],
   "compatible_modules": [
     "layout",
@@ -31,14 +30,13 @@
     "article.tags",
     "article.related_articles",
     "article.sticky_ad",
-    "archive.overview",
-    "archive.article_list"
+    "about.default_fallback"
   ],
   "preview_routes": [
     "/",
     "/category/{slug}",
     "/article/{slug}",
-    "/archive"
+    "/about"
   ],
   "requires_admin_activation": true,
   "blade_templates": [
@@ -46,8 +44,6 @@
     "home.blade.php",
     "article.blade.php",
     "category.blade.php",
-    "archive-index.blade.php",
-    "archive-month.blade.php",
     "partials/article-card.blade.php"
   ],
   "fallback_templates": [],

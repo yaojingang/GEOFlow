@@ -15,6 +15,7 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Laravel\Ai\Embeddings;
 use Throwable;
 
@@ -27,6 +28,14 @@ use Throwable;
  */
 class KnowledgeChunkSyncService
 {
+    private const MAX_CONTENT_BYTES = 8 * 1024 * 1024;
+
+    private const MAX_STRUCTURED_LINES = 2000;
+
+    private const MIN_STRUCTURED_LINE_BUDGET = 100;
+
+    private const STRUCTURED_LINE_AMPLIFICATION = 4;
+
     private const SEMANTIC_CHUNKING_MAX_BLOCKS = 120;
 
     private const SEMANTIC_CHUNKING_MAX_PROMPT_CHARS = 20000;
@@ -49,57 +58,343 @@ class KnowledgeChunkSyncService
      */
     public function sync(int $knowledgeBaseId, string $content, bool $requireRealEmbedding = false): int
     {
-        if ($knowledgeBaseId <= 0) {
+        if ($knowledgeBaseId <= 0 || ! KnowledgeBase::query()->whereKey($knowledgeBaseId)->exists()) {
             return 0;
         }
 
-        $plannedChunks = $this->planChunks($knowledgeBaseId, $content);
-        $chunks = array_values(array_map(
-            static fn (array $chunk): string => (string) ($chunk['content'] ?? ''),
-            $plannedChunks
-        ));
-        $knowledgeMetadata = $this->resolveKnowledgeBaseMetadata($knowledgeBaseId);
-        $embeddingMetadata = $this->resolveEmbeddingMetadata();
-        $embeddingDocumentTitle = $this->resolveEmbeddingDocumentTitle($knowledgeBaseId);
-        $generatedEmbeddings = $this->generateEmbeddingsForChunks($chunks, $embeddingMetadata, $requireRealEmbedding, $embeddingDocumentTitle);
+        $syncToken = (string) Str::uuid();
+        KnowledgeBase::query()->whereKey($knowledgeBaseId)->update([
+            'chunk_sync_status' => 'processing',
+            'chunk_sync_token' => $syncToken,
+            'chunk_source_hash' => hash('sha256', $content),
+            'chunk_sync_error' => null,
+            'updated_at' => now(),
+        ]);
 
-        if ($requireRealEmbedding && count($generatedEmbeddings) !== count($chunks)) {
-            throw new \RuntimeException(__('admin.knowledge_bases.error.embedding_sync_failed'));
+        try {
+            $chunkCount = $this->prepareStagingSync($knowledgeBaseId, $content, $syncToken);
+            $afterRowId = 0;
+            while (true) {
+                $batch = $this->embedStagingBatch(
+                    $knowledgeBaseId,
+                    $syncToken,
+                    $afterRowId,
+                    $requireRealEmbedding,
+                );
+                if ($batch === null || $batch['done']) {
+                    break;
+                }
+
+                $afterRowId = $batch['last_id'];
+            }
+
+            $this->finalizeStagingSync($knowledgeBaseId, $syncToken);
+
+            return $chunkCount;
+        } catch (Throwable $exception) {
+            DB::table('knowledge_chunk_sync_rows')
+                ->where('knowledge_base_id', $knowledgeBaseId)
+                ->where('sync_token', $syncToken)
+                ->delete();
+            KnowledgeBase::query()
+                ->whereKey($knowledgeBaseId)
+                ->where('chunk_sync_token', $syncToken)
+                ->update([
+                    'chunk_sync_status' => 'failed',
+                    'chunk_sync_error' => mb_substr($exception->getMessage(), 0, 2000, 'UTF-8'),
+                    'updated_at' => now(),
+                ]);
+
+            throw $exception;
+        }
+    }
+
+    public function prepareStagingSync(int $knowledgeBaseId, string $content, string $syncToken): int
+    {
+        if (strlen($content) > self::MAX_CONTENT_BYTES) {
+            throw new \RuntimeException(__('admin.knowledge_bases.error.content_too_large'));
         }
 
-        DB::transaction(function () use ($knowledgeBaseId, $plannedChunks, $generatedEmbeddings, $knowledgeMetadata): void {
-            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->delete();
+        $plannedChunks = $this->planChunks($knowledgeBaseId, $content);
+        $knowledgeMetadata = $this->resolveKnowledgeBaseMetadata($knowledgeBaseId);
+        $now = now();
 
+        DB::transaction(function () use (
+            $knowledgeBaseId,
+            $syncToken,
+            $plannedChunks,
+            $knowledgeMetadata,
+            $now,
+        ): void {
+            DB::table('knowledge_chunk_sync_rows')
+                ->where('knowledge_base_id', $knowledgeBaseId)
+                ->where('sync_token', $syncToken)
+                ->delete();
+
+            $rows = [];
             foreach ($plannedChunks as $index => $chunk) {
                 $chunkContent = (string) ($chunk['content'] ?? '');
                 $fallbackVector = $this->buildFallbackVector($chunkContent, 256);
-                $realEmbedding = $generatedEmbeddings[$index] ?? null;
-                $isRealEmbedding = is_array($realEmbedding);
-                $embeddingJson = $isRealEmbedding
-                    ? json_encode($realEmbedding['vector'] ?? [], JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION)
-                    : json_encode($fallbackVector, JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
-
-                KnowledgeChunk::query()->create([
+                $rows[] = [
                     'knowledge_base_id' => $knowledgeBaseId,
+                    'sync_token' => $syncToken,
                     'chunk_index' => $index,
                     'content' => $chunkContent,
                     'content_hash' => hash('sha256', $chunkContent),
                     'chunk_title' => mb_substr((string) ($chunk['title'] ?? ''), 0, 255, 'UTF-8'),
                     'section_path' => mb_substr((string) ($chunk['section_path'] ?? ''), 0, 500, 'UTF-8'),
                     'chunk_strategy' => mb_substr((string) ($chunk['strategy'] ?? 'structured_rule'), 0, 50, 'UTF-8'),
-                    'metadata_json' => json_encode($this->mergeChunkMetadata($chunk['metadata'] ?? [], $knowledgeMetadata), JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION),
+                    'metadata_json' => json_encode(
+                        $this->mergeChunkMetadata($chunk['metadata'] ?? [], $knowledgeMetadata),
+                        JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+                    ),
                     'source_hash' => hash('sha256', (string) ($chunk['section_path'] ?? '').'|'.$chunkContent),
                     'token_count' => $this->estimateTokenCount($chunkContent),
-                    'embedding_json' => $embeddingJson ?: '[]',
-                    'embedding_model_id' => $isRealEmbedding ? (int) ($realEmbedding['model_id'] ?? 0) : null,
-                    'embedding_dimensions' => $isRealEmbedding ? (int) ($realEmbedding['dimensions'] ?? 0) : 0,
-                    'embedding_provider' => $isRealEmbedding ? (string) ($realEmbedding['provider'] ?? '') : '',
-                    'embedding_vector' => $isRealEmbedding ? ($realEmbedding['vector_literal'] ?? null) : null,
-                ]);
+                    'embedding_json' => json_encode(
+                        $fallbackVector,
+                        JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+                    ) ?: '[]',
+                    'embedding_model_id' => null,
+                    'embedding_dimensions' => 0,
+                    'embedding_provider' => '',
+                    'embedding_vector' => null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+
+                if (count($rows) >= 50) {
+                    DB::table('knowledge_chunk_sync_rows')->insert($rows);
+                    $rows = [];
+                }
             }
+
+            if ($rows !== []) {
+                DB::table('knowledge_chunk_sync_rows')->insert($rows);
+            }
+
+            KnowledgeBase::query()
+                ->whereKey($knowledgeBaseId)
+                ->where('chunk_sync_token', $syncToken)
+                ->update([
+                    'chunk_sync_status' => 'processing',
+                    'updated_at' => $now,
+                ]);
         });
 
-        return count($chunks);
+        return count($plannedChunks);
+    }
+
+    /**
+     * @return array{last_id:int,done:bool}|null
+     */
+    public function embedStagingBatch(
+        int $knowledgeBaseId,
+        string $syncToken,
+        int $afterRowId,
+        bool $requireRealEmbedding = false,
+    ): ?array {
+        $batchLimit = max(1, min(32, (int) config('geoflow.knowledge_embedding_job_size', 32)));
+        $rows = DB::table('knowledge_chunk_sync_rows')
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->where('sync_token', $syncToken)
+            ->where('id', '>', $afterRowId)
+            ->orderBy('id')
+            ->limit($batchLimit)
+            ->get(['id', 'content']);
+
+        if ($rows->isEmpty()) {
+            return null;
+        }
+
+        $chunks = [];
+        foreach ($rows as $row) {
+            $chunks[(int) $row->id] = (string) $row->content;
+        }
+
+        $embeddingMetadata = $this->resolveEmbeddingMetadata();
+        $generatedEmbeddings = $this->generateEmbeddingsForChunks(
+            $chunks,
+            $embeddingMetadata,
+            $requireRealEmbedding,
+            $this->resolveEmbeddingDocumentTitle($knowledgeBaseId),
+        );
+
+        if ($requireRealEmbedding && count($generatedEmbeddings) !== count($chunks)) {
+            throw new \RuntimeException(__('admin.knowledge_bases.error.embedding_sync_failed'));
+        }
+
+        if ($generatedEmbeddings === []) {
+            $hasRealEmbeddings = DB::table('knowledge_chunk_sync_rows')
+                ->where('knowledge_base_id', $knowledgeBaseId)
+                ->where('sync_token', $syncToken)
+                ->whereNotNull('embedding_model_id')
+                ->exists();
+            if ($hasRealEmbeddings) {
+                $this->resetStagingEmbeddingsToFallback($knowledgeBaseId, $syncToken);
+            }
+
+            return [
+                'last_id' => (int) $rows->last()->id,
+                'done' => true,
+            ];
+        }
+
+        $generatedModelId = (int) (($generatedEmbeddings[array_key_first($generatedEmbeddings)] ?? [])['model_id'] ?? 0);
+        $existingModelId = (int) (DB::table('knowledge_chunk_sync_rows')
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->where('sync_token', $syncToken)
+            ->whereNotNull('embedding_model_id')
+            ->value('embedding_model_id') ?? 0);
+        if ($existingModelId > 0 && $existingModelId !== $generatedModelId) {
+            if ($requireRealEmbedding) {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.embedding_sync_failed'));
+            }
+
+            $this->resetStagingEmbeddingsToFallback($knowledgeBaseId, $syncToken);
+
+            return [
+                'last_id' => (int) $rows->last()->id,
+                'done' => true,
+            ];
+        }
+
+        foreach ($generatedEmbeddings as $rowId => $embedding) {
+            DB::table('knowledge_chunk_sync_rows')
+                ->where('id', (int) $rowId)
+                ->where('knowledge_base_id', $knowledgeBaseId)
+                ->where('sync_token', $syncToken)
+                ->update([
+                    'embedding_json' => json_encode(
+                        $embedding['vector'] ?? [],
+                        JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+                    ) ?: '[]',
+                    'embedding_model_id' => (int) ($embedding['model_id'] ?? 0),
+                    'embedding_dimensions' => (int) ($embedding['dimensions'] ?? 0),
+                    'embedding_provider' => (string) ($embedding['provider'] ?? ''),
+                    'embedding_vector' => $embedding['vector_literal'] ?? null,
+                    'updated_at' => now(),
+                ]);
+        }
+        KnowledgeBase::query()
+            ->whereKey($knowledgeBaseId)
+            ->where('chunk_sync_token', $syncToken)
+            ->where('chunk_sync_status', 'processing')
+            ->update(['updated_at' => now()]);
+
+        $lastId = (int) $rows->last()->id;
+        $hasMoreRows = DB::table('knowledge_chunk_sync_rows')
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->where('sync_token', $syncToken)
+            ->where('id', '>', $lastId)
+            ->exists();
+
+        return [
+            'last_id' => $lastId,
+            'done' => ! $hasMoreRows,
+        ];
+    }
+
+    public function finalizeStagingSync(int $knowledgeBaseId, string $syncToken): bool
+    {
+        return DB::transaction(function () use ($knowledgeBaseId, $syncToken): bool {
+            $knowledgeBase = KnowledgeBase::query()
+                ->whereKey($knowledgeBaseId)
+                ->lockForUpdate()
+                ->first();
+            if (! $knowledgeBase || ! hash_equals((string) $knowledgeBase->chunk_sync_token, $syncToken)) {
+                DB::table('knowledge_chunk_sync_rows')
+                    ->where('knowledge_base_id', $knowledgeBaseId)
+                    ->where('sync_token', $syncToken)
+                    ->delete();
+
+                return false;
+            }
+
+            $stagedQuery = DB::table('knowledge_chunk_sync_rows')
+                ->where('knowledge_base_id', $knowledgeBaseId)
+                ->where('sync_token', $syncToken);
+            if (! (clone $stagedQuery)->exists()) {
+                throw new \RuntimeException('No staged knowledge chunks are available.');
+            }
+
+            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->delete();
+            (clone $stagedQuery)
+                ->orderBy('id')
+                ->chunkById(100, function ($rows): void {
+                    $inserts = [];
+                    foreach ($rows as $row) {
+                        $inserts[] = [
+                            'knowledge_base_id' => (int) $row->knowledge_base_id,
+                            'chunk_index' => (int) $row->chunk_index,
+                            'content' => (string) $row->content,
+                            'content_hash' => (string) $row->content_hash,
+                            'chunk_title' => (string) $row->chunk_title,
+                            'section_path' => (string) $row->section_path,
+                            'chunk_strategy' => (string) $row->chunk_strategy,
+                            'metadata_json' => $row->metadata_json,
+                            'source_hash' => (string) $row->source_hash,
+                            'token_count' => (int) $row->token_count,
+                            'embedding_json' => $row->embedding_json,
+                            'embedding_model_id' => $row->embedding_model_id,
+                            'embedding_dimensions' => (int) $row->embedding_dimensions,
+                            'embedding_provider' => (string) $row->embedding_provider,
+                            'embedding_vector' => $row->embedding_vector,
+                            'created_at' => $row->created_at,
+                            'updated_at' => $row->updated_at,
+                        ];
+                    }
+
+                    if ($inserts !== []) {
+                        KnowledgeChunk::query()->insert($inserts);
+                    }
+                });
+
+            $knowledgeBase->forceFill([
+                'chunk_sync_status' => 'ready',
+                'chunk_sync_token' => null,
+                'chunk_sync_error' => null,
+                'chunk_sync_require_real_embedding' => false,
+                'chunk_synced_at' => now(),
+            ])->save();
+            DB::table('knowledge_chunk_sync_rows')
+                ->where('knowledge_base_id', $knowledgeBaseId)
+                ->delete();
+
+            return true;
+        });
+    }
+
+    public function discardStagingSync(int $knowledgeBaseId, string $syncToken): void
+    {
+        DB::table('knowledge_chunk_sync_rows')
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->where('sync_token', $syncToken)
+            ->delete();
+    }
+
+    private function resetStagingEmbeddingsToFallback(int $knowledgeBaseId, string $syncToken): void
+    {
+        DB::table('knowledge_chunk_sync_rows')
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->where('sync_token', $syncToken)
+            ->orderBy('id')
+            ->chunkById(50, function ($rows): void {
+                foreach ($rows as $row) {
+                    DB::table('knowledge_chunk_sync_rows')
+                        ->where('id', (int) $row->id)
+                        ->update([
+                            'embedding_json' => json_encode(
+                                $this->buildFallbackVector((string) $row->content, 256),
+                                JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+                            ) ?: '[]',
+                            'embedding_model_id' => null,
+                            'embedding_dimensions' => 0,
+                            'embedding_provider' => '',
+                            'embedding_vector' => null,
+                            'updated_at' => now(),
+                        ]);
+                }
+            }, 'id');
     }
 
     /**
@@ -255,6 +550,35 @@ class KnowledgeChunkSyncService
         $normalized = $this->normalizeText($content);
         if ($normalized === '') {
             return [];
+        }
+
+        $expectedRuleChunks = max(
+            1,
+            (int) ceil(mb_strlen($normalized, 'UTF-8') / $this->chunkMaxChars())
+        );
+        $structuredLineBudget = min(
+            self::MAX_STRUCTURED_LINES,
+            max(
+                self::MIN_STRUCTURED_LINE_BUDGET,
+                $expectedRuleChunks * self::STRUCTURED_LINE_AMPLIFICATION,
+            ),
+        );
+        if ((substr_count($normalized, "\n") + 1) > $structuredLineBudget) {
+            $parts = $this->splitTextByCharacters($normalized, $this->chunkMaxChars());
+
+            return array_map(
+                static fn (string $text, int $index): array => [
+                    'index' => $index,
+                    'type' => 'paragraph',
+                    'text' => $text,
+                    'section_path' => '',
+                    'heading_level' => null,
+                    'heading_text' => null,
+                    'skip_semantic_planning' => true,
+                ],
+                $parts,
+                array_keys($parts),
+            );
         }
 
         $lines = preg_split('/\R/u', $normalized) ?: [];
@@ -437,16 +761,13 @@ class KnowledgeChunkSyncService
      */
     private function splitTextByCharacters(string $text, int $maxChars): array
     {
-        $parts = [];
-        $length = mb_strlen($text, 'UTF-8');
-        for ($offset = 0; $offset < $length; $offset += $maxChars) {
-            $part = trim(mb_substr($text, $offset, $maxChars, 'UTF-8'));
-            if ($part !== '') {
-                $parts[] = $part;
-            }
-        }
-
-        return $parts;
+        return array_values(array_filter(
+            array_map(
+                static fn (string $part): string => trim($part),
+                mb_str_split($text, $maxChars, 'UTF-8')
+            ),
+            static fn (string $part): bool => $part !== ''
+        ));
     }
 
     private function detectStructuredLineType(string $line): string
@@ -597,6 +918,12 @@ class KnowledgeChunkSyncService
      */
     private function canAttemptSemanticChunking(array $blocks): bool
     {
+        foreach ($blocks as $block) {
+            if (($block['skip_semantic_planning'] ?? false) === true) {
+                return false;
+            }
+        }
+
         return count($blocks) <= self::SEMANTIC_CHUNKING_MAX_BLOCKS
             && $this->estimateSemanticPlanningPromptChars($blocks) <= $this->semanticChunkingMaxPromptChars();
     }

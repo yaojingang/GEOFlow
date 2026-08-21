@@ -125,5 +125,8 @@ RUN chmod +x /usr/local/bin/geoflow-entrypoint-prod
 COPY --from=vendor /app /var/www/html
 COPY --from=assets /app/public/build /var/www/html/public/build
 
+# 递归权限修复集中在 init；镜像内的 bootstrap/cache 需预先对 PHP-FPM 用户可写。
+RUN chown -R www-data:www-data storage bootstrap/cache
+
 ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint-prod"]
 CMD ["php-fpm", "-F"]

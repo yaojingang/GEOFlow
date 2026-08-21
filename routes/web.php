@@ -13,30 +13,37 @@ use App\Http\Controllers\Admin\AiPromptController;
 use App\Http\Controllers\Admin\AiSourceProviderController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
 use App\Http\Controllers\Admin\AnalyticsController;
+use App\Http\Controllers\Admin\AiVisibilityAnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ArticleEditorAssetController;
 use App\Http\Controllers\Admin\ArticleEditorAssistantController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\ContentAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DistributionController;
+use App\Http\Controllers\Admin\DistributionAnalyticsController;
 use App\Http\Controllers\Admin\EnterpriseKnowledgeController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
 use App\Http\Controllers\Admin\LeadController;
+use App\Http\Controllers\Admin\LeadAnalyticsController;
 use App\Http\Controllers\Admin\LeadFormController;
 use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\MaterialsController;
+use App\Http\Controllers\Admin\ManualPublicationController;
+use App\Http\Controllers\Admin\ManualPublicationSettingsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\SiteThemeReplicationController;
 use App\Http\Controllers\Admin\SystemUpdateController;
 use App\Http\Controllers\Admin\TaskController;
+use App\Http\Controllers\Admin\TrafficAnalyticsController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\UrlImportController;
-use App\Http\Controllers\Site\ArchiveController;
+use App\Http\Controllers\Site\AboutController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
 use App\Http\Controllers\Site\HomeController;
@@ -46,8 +53,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
-    Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
-    Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
+    Route::get('/about', [AboutController::class, 'index'])->name('site.about');
+    Route::permanentRedirect('/archive', '/about')->name('site.archive');
+    Route::permanentRedirect('/archive/{year}/{month}', '/about')
         ->name('site.archive.month')
         ->where(['year' => '[0-9]{4}', 'month' => '[0-9]{2}']);
     Route::get('/category/{slug}', [SiteCategoryController::class, 'show'])->name('site.category');
@@ -73,7 +81,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
     // 访客认证路由
     Route::middleware('guest:admin')->group(function () {
         Route::get('login', [AdminAuthController::class, 'showLoginForm'])->name('login');
-        Route::post('login', [AdminAuthController::class, 'login'])->name('login.attempt');
+        Route::post('login', [AdminAuthController::class, 'login'])
+            ->middleware('throttle:admin-login')
+            ->name('login.attempt');
     });
 
     // 后台受保护路由
@@ -83,6 +93,15 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics');
+        Route::prefix('analytics')->name('analytics.')->group(function (): void {
+            Route::get('content', ContentAnalyticsController::class)->name('content');
+            Route::get('traffic', TrafficAnalyticsController::class)->name('traffic');
+            Route::get('ai-visibility', AiVisibilityAnalyticsController::class)->name('ai-visibility');
+            Route::get('leads', LeadAnalyticsController::class)->name('leads');
+            Route::get('distribution', DistributionAnalyticsController::class)
+                ->middleware('admin.super')
+                ->name('distribution');
+        });
 
         Route::prefix('system-updates')->name('system-updates.')->group(function () {
             Route::get('/', [SystemUpdateController::class, 'index'])->name('index');
@@ -183,6 +202,24 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{articleId}/risk-scan', [ArticleController::class, 'recheckRisk'])->name('risk-scan')->whereNumber('articleId');
             Route::post('{articleId}/editor/images/upload', [ArticleEditorAssetController::class, 'uploadImage'])->name('editor.images.upload')->whereNumber('articleId');
             Route::put('{articleId}', [ArticleController::class, 'update'])->name('update');
+        });
+
+        Route::prefix('manual-publications')->name('manual-publications.')->group(function () {
+            Route::get('/', [ManualPublicationController::class, 'index'])->name('index');
+            Route::get('export', [ManualPublicationController::class, 'export'])->name('export');
+            Route::get('create', [ManualPublicationController::class, 'create'])->name('create');
+            Route::post('/', [ManualPublicationController::class, 'store'])->name('store');
+            Route::middleware('admin.super')->prefix('settings')->name('settings.')->group(function () {
+                Route::get('/', [ManualPublicationSettingsController::class, 'index'])->name('index');
+                Route::post('personas', [ManualPublicationSettingsController::class, 'storePersona'])->name('personas.store');
+                Route::put('personas/{personaId}', [ManualPublicationSettingsController::class, 'updatePersona'])->name('personas.update')->whereNumber('personaId');
+                Route::post('accounts', [ManualPublicationSettingsController::class, 'storeAccount'])->name('accounts.store');
+                Route::put('accounts/{accountId}', [ManualPublicationSettingsController::class, 'updateAccount'])->name('accounts.update')->whereNumber('accountId');
+            });
+            Route::get('{manualPublicationId}', [ManualPublicationController::class, 'show'])->name('show')->whereNumber('manualPublicationId');
+            Route::get('{manualPublicationId}/edit', [ManualPublicationController::class, 'edit'])->name('edit')->whereNumber('manualPublicationId');
+            Route::put('{manualPublicationId}', [ManualPublicationController::class, 'update'])->name('update')->whereNumber('manualPublicationId');
+            Route::post('{manualPublicationId}/transition', [ManualPublicationController::class, 'transition'])->name('transition')->whereNumber('manualPublicationId');
         });
 
         // 栏目管理（保持 geo_admin/categories 路径语义）
@@ -345,6 +382,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('/', [SiteSettingsController::class, 'index'])->name('index');
             Route::post('/', [SiteSettingsController::class, 'update'])->name('update');
             Route::post('theme', [SiteSettingsController::class, 'updateTheme'])->name('theme');
+            Route::get('homepage-modules', [SiteSettingsController::class, 'editHomepageModules'])->name('homepage-modules.edit');
             Route::post('homepage-modules', [SiteSettingsController::class, 'updateHomepageModules'])->name('homepage-modules');
             Route::post('homepage-modules/preset', [SiteSettingsController::class, 'applyHomepageModulePreset'])->name('homepage-modules.preset');
             Route::post('homepage-modules/import', [SiteSettingsController::class, 'importHomepageModuleDesign'])->name('homepage-modules.import');

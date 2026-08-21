@@ -45,7 +45,7 @@ class MaterialLibraryService
     ];
 
     public function __construct(
-        private readonly KnowledgeChunkSyncService $chunkSyncService,
+        private readonly KnowledgeChunkSyncCoordinator $chunkSyncCoordinator,
         private readonly ManagedImageFileService $managedImages,
     ) {}
 
@@ -73,7 +73,7 @@ class MaterialLibraryService
     public function list(string $type, int $page = 1, int $perPage = 20, array $filters = []): array
     {
         $type = $this->normalizeType($type);
-        $query = $this->buildListQuery($type);
+        $query = $this->buildListQuery($type, includeFullKnowledgeContent: false);
         $search = trim((string) ($filters['search'] ?? ''));
         if ($search !== '') {
             $this->applySearch($query, $type, $search);
@@ -373,7 +373,7 @@ class MaterialLibraryService
         return $type;
     }
 
-    private function buildListQuery(string $type): Builder
+    private function buildListQuery(string $type, bool $includeFullKnowledgeContent = true): Builder
     {
         return match ($type) {
             'categories' => Category::query()
@@ -405,7 +405,24 @@ class MaterialLibraryService
                 ->withSum('images as total_size', 'file_size')
                 ->orderByDesc('created_at'),
             'knowledge-bases' => KnowledgeBase::query()
-                ->select(['id', 'name', 'description', 'content', 'character_count', 'used_task_count', 'file_type', 'file_path', 'word_count', 'usage_count', 'created_at', 'updated_at'])
+                ->select([
+                    'id',
+                    'name',
+                    'description',
+                    'character_count',
+                    'used_task_count',
+                    'file_type',
+                    'file_path',
+                    'word_count',
+                    'usage_count',
+                    'chunk_sync_status',
+                    'chunk_sync_error',
+                    'created_at',
+                    'updated_at',
+                ])
+                ->selectRaw($includeFullKnowledgeContent
+                    ? 'content'
+                    : 'SUBSTR(content, 1, 4000) AS content')
                 ->withCount('chunks as chunk_count')
                 ->orderByDesc('created_at'),
         };
@@ -561,6 +578,8 @@ class MaterialLibraryService
                 'name' => (string) $row->name,
                 'description' => (string) ($row->description ?? ''),
                 'content' => (string) ($row->content ?? ''),
+                'content_truncated' => (int) ($row->character_count ?? 0)
+                    > mb_strlen((string) ($row->content ?? ''), 'UTF-8'),
                 'file_type' => (string) ($row->file_type ?? 'markdown'),
                 'file_path' => (string) ($row->file_path ?? ''),
                 'character_count' => (int) ($row->character_count ?? 0),
@@ -568,6 +587,8 @@ class MaterialLibraryService
                 'usage_count' => (int) ($row->usage_count ?? 0),
                 'used_task_count' => (int) ($row->used_task_count ?? 0),
                 'chunk_count' => (int) ($row->chunk_count ?? 0),
+                'chunk_sync_status' => (string) ($row->chunk_sync_status ?? 'idle'),
+                'chunk_sync_error' => (string) ($row->chunk_sync_error ?? ''),
                 'task_count' => (int) ($row->task_count ?? 0),
                 'created_at' => $this->formatDate($row->created_at ?? null),
                 'updated_at' => $this->formatDate($row->updated_at ?? null),
@@ -710,7 +731,7 @@ class MaterialLibraryService
     {
         $payload = $this->normalizeKnowledgePayload($data, false);
         $knowledgeBase = KnowledgeBase::query()->create($payload);
-        $this->chunkSyncService->sync((int) $knowledgeBase->id, (string) $payload['content']);
+        $this->requestKnowledgeChunkSync($knowledgeBase);
 
         return $knowledgeBase;
     }
@@ -721,7 +742,16 @@ class MaterialLibraryService
         $contentChanged = array_key_exists('content', $payload);
         $row->update($payload);
         if ($contentChanged) {
-            $this->chunkSyncService->sync((int) $row->id, (string) $payload['content']);
+            $this->requestKnowledgeChunkSync($row, true);
+        }
+    }
+
+    private function requestKnowledgeChunkSync(Model $knowledgeBase, bool $force = false): void
+    {
+        try {
+            $this->chunkSyncCoordinator->request((int) $knowledgeBase->id, force: $force);
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 
@@ -741,11 +771,17 @@ class MaterialLibraryService
         }
         if (array_key_exists('content', $data)) {
             $content = $this->requiredString($data, 'content', '知识库正文不能为空', 0);
+            if (strlen($content) > 8 * 1024 * 1024) {
+                $this->validationError('content', '知识库正文不能超过 8MB');
+            }
             $payload['content'] = $content;
             $payload['character_count'] = mb_strlen($content, 'UTF-8');
             $payload['word_count'] = mb_strlen(strip_tags($content), 'UTF-8');
         } elseif (! $isUpdate) {
             $content = $this->requiredString($data, 'content', '知识库正文不能为空', 0);
+            if (strlen($content) > 8 * 1024 * 1024) {
+                $this->validationError('content', '知识库正文不能超过 8MB');
+            }
             $payload['content'] = $content;
             $payload['character_count'] = mb_strlen($content, 'UTF-8');
             $payload['word_count'] = mb_strlen(strip_tags($content), 'UTF-8');

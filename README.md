@@ -35,6 +35,7 @@ GEOFLOW_TELEMETRY_ENABLED=false
 | 🗂 素材与提示词体系 | 标题库、关键词库、图片库、作者库、知识库、正文提示词、特殊提示词集中管理 |
 | 📦 任务自动化 | 支持任务创建、生成数量、草稿池、审核开关、发布节奏、队列执行、失败重试、发布范围控制和任务文章筛选 |
 | 📋 审核与文章管理 | 草稿、审核、发布、回收站、作者、分类、SEO 字段和任务来源统一管理 |
+| ✍️ 人工发布工作台 | 将已审核文章或评论文案编排为人工发布工单，支持身份、账号、执行人、计划时间、风险提示、重复提醒、发布回执和 CSV 导出 |
 | 📡 多站点分发管理 | 支持 GEOFlow Agent、WordPress REST 与通用 HTTP API 渠道、密钥管理、目标站点包、静态模式、伪静态规则、远端文章编辑/删除和队列日志 |
 | 🧾 目标站点包 | 为每个渠道生成预配置 PHP Agent 包，内置首页、详情页、静态资源、sitemap、`llms.txt` / TXT 地图和 Schema |
 | 📊 数据分析 | 集中展示系统总览、单站内容运营、多站分发、访问日志、Top 内容、AI 爬虫识别和趋势图 |
@@ -68,6 +69,14 @@ bash .agents/skills/geoflow/scripts/install_codex_skill.sh
 ```
 
 安装器只复制公开清单中的文件，校验暂存包，将当前 `geoflow` 和三个旧 Skill 移到唯一的 `~/.codex/skill-backups/geoflow-<时间戳>.<后缀>/`，随后在同一文件系统内切换新版本。完成后重启 Codex。依赖矩阵、回滚命令和平台边界见 [Skill 安装说明](.agents/skills/geoflow/README.md#installation)。
+
+---
+
+## GEOFlow CLI 0.2.0
+
+仓库内置 `bin/geoflow`，用于通过 API v1 管理目录、任务、执行记录、素材和文章。CLI 支持安全配置、登录、JSON 文件或 stdin、删除确认和结构化错误提示。正式支持 macOS、Linux 和 WSL；原生 Windows 的配置文件 ACL 需要手动确认。
+
+[CLI 中文完整文档](docs/GEOFLOW_CLI.md) | [CLI English guide](docs/GEOFLOW_CLI_en.md)
 
 ---
 
@@ -152,6 +161,20 @@ AI 配置 / 素材库 / 提示词 / 任务配置
 
 ---
 
+## ✍️ 人工发布工作台
+
+后台「人工发布」用于管理需要运营人员在外部平台手动完成的发帖与评论任务：
+
+1. 超级管理员在「身份与账号」中建立发布身份和平台账号引用。
+2. 从已审核文章创建发帖工单，或为公开目标地址创建评论工单。
+3. 设置最终文案、执行人和计划时间，将工单流转到待执行状态。
+4. 执行人复制内容，在外部平台发布并回填实际发布地址和结果备注。
+5. 管理员通过筛选、状态统计、重复提醒和 CSV 导出持续跟踪执行情况。
+
+工作台不保存平台密码、Cookie、Token 或 OAuth 凭证，也不会自动访问外部网站。发布内容、来源文章和身份披露文案按工单保存快照；普通管理员只能查看和处理分配给自己的工单。
+
+---
+
 ## ⚡ 后台三步上手
 
 登录后台后，建议按仪表盘里的「快速开始」完成第一轮验证：
@@ -228,7 +251,7 @@ cp .env.example .env
 # 3. 按需编辑 .env（数据库、Redis、APP_URL、ADMIN_BASE_PATH、REVERB_* 等）
 vi .env
 
-# 4. 构建并启动（含 postgres、redis、init、app、queue、scheduler、reverb）
+# 4. 构建并启动（含 postgres、redis、init、app、三类 queue、scheduler、reverb）
 docker compose build
 docker compose up -d
 ```
@@ -258,11 +281,12 @@ vi .env.prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml build
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres redis
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d init
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue scheduler reverb
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue knowledge-queue system-update-queue scheduler reverb
 ```
 
 - 前台 / 后台统一经 `web`（Nginx）访问
 - PHP 由 `app`（php-fpm）解析
+- `APP_URL` 使用 `http://` 时设置 `SESSION_SECURE_COOKIE=false`；启用 HTTPS 后设置为 `true`
 - **首次安装**：生产 `init` 服务会先执行迁移，再运行 `php artisan geoflow:install`。该流程仅用于全新空库；已有数据或迁移历史的实例必须执行 `docs/deployment/DEPLOYMENT.md` 3.1 节的停机排空升级协议。
 - 详细说明见 `docs/deployment/DEPLOYMENT.md`
 
@@ -291,10 +315,12 @@ php artisan storage:link
 php artisan serve --host=127.0.0.1 --port=8080
 ```
 
-另开终端启动常驻进程（与 Docker 中 `queue` / `scheduler` / `reverb` 对应）：
+另开终端启动常驻进程（每条 `queue:work` 需要独立终端或进程托管）：
 
 ```bash
-php artisan queue:work redis --queue=geoflow,distribution,default --sleep=1 --tries=1 --timeout=300
+php -d memory_limit=256M artisan queue:work redis --queue=geoflow,distribution,theme-replication,default --sleep=1 --tries=1 --timeout=660 --memory=128 --max-jobs=100 --max-time=3600
+php -d memory_limit=160M artisan queue:work redis --queue=knowledge --sleep=1 --tries=1 --timeout=210 --memory=128 --max-jobs=20 --max-time=1800
+php -d memory_limit=256M artisan queue:work redis --queue=system-updates --sleep=1 --tries=1 --timeout=930 --memory=256 --max-jobs=10 --max-time=3600
 php artisan schedule:work
 php artisan reverb:start
 ```
@@ -340,7 +366,7 @@ chmod -R ug+rwx storage bootstrap/cache
 - 解锁命令：
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoflow:admin-unlock USERNAME
 ```
 
 例如：
@@ -363,7 +389,9 @@ php artisan geoflow:admin-unlock admin
 | `redis` | Redis 7 |
 | `init` | 一次性初始化（`restart: "no"`） |
 | `app` | `php artisan serve`，映射 **`${APP_PORT:-18080}:8080`** |
-| `queue` | `queue:work redis` |
+| `queue` | 文章生成、分发、主题复刻与默认队列 |
+| `knowledge-queue` | 知识库解析与向量化队列，独立内存上限 |
+| `system-update-queue` | 系统更新与回滚队列，独立长超时 |
 | `scheduler` | `schedule:work` |
 | `reverb` | WebSocket，映射 **`${REVERB_EXPOSE_PORT:-18081}:8080`** |
 

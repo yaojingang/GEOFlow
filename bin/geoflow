@@ -1,0 +1,33 @@
+#!/usr/bin/env php
+<?php
+
+use App\Console\GeoFlowCli\Entrypoint;
+use App\Console\GeoFlowCli\GeoFlowApplication;
+use Illuminate\Http\Client\Factory as HttpFactory;
+use Symfony\Component\Console\Input\ArgvInput;
+use Symfony\Component\Console\Output\ConsoleOutput;
+
+if (PHP_SAPI !== 'cli') {
+    fwrite(STDERR, "This command must run in CLI mode.\n");
+
+    exit(1);
+}
+
+$autoload = dirname(__DIR__).'/vendor/autoload.php';
+if (! is_file($autoload)) {
+    fwrite(STDERR, "Composer autoload not found. Run composer install first.\n");
+
+    exit(1);
+}
+
+require $autoload;
+
+$input = new ArgvInput;
+if (function_exists('stream_isatty')) {
+    $input->setInteractive(stream_isatty(STDIN));
+}
+
+$application = new GeoFlowApplication(new HttpFactory);
+$application->setAutoExit(false);
+
+exit(Entrypoint::run($application, $input, new ConsoleOutput));
