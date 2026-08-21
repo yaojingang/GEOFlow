@@ -306,6 +306,98 @@ class AdminTasksPageTest extends TestCase
         ]);
     }
 
+    public function test_phase_one_hosted_task_contract_is_enforced_when_saving_the_task(): void
+    {
+        $admin = $this->createTaskFormAdmin('hosted_task_contract_admin');
+        $admin->update(['role' => 'super_admin']);
+        $dependencies = $this->createTaskFormDependencies();
+        $channels = collect(['alpha', 'beta'])->map(fn (string $label) => DistributionChannel::query()->create([
+            'name' => ucfirst($label).' hosted site',
+            'domain' => $label.'.sites.test',
+            'endpoint_url' => 'https://'.$label.'.sites.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]));
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.tasks.create'))
+            ->post(route('admin.tasks.store'), $this->validTaskPayload($dependencies, [
+                'task_name' => '托管站错误范围',
+                'publish_scope' => 'local_and_distribution',
+                'distribution_channel_ids' => [(string) $channels[0]->id],
+            ]))
+            ->assertRedirect(route('admin.tasks.create'))
+            ->assertSessionHasErrors('publish_scope');
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.tasks.create'))
+            ->post(route('admin.tasks.store'), $this->validTaskPayload($dependencies, [
+                'task_name' => '托管站数量超限',
+                'publish_scope' => 'distribution_only',
+                'distribution_channel_ids' => $channels->pluck('id')->map('strval')->all(),
+            ]))
+            ->assertRedirect(route('admin.tasks.create'))
+            ->assertSessionHasErrors('distribution_channel_ids');
+
+        $this->assertDatabaseMissing('tasks', ['name' => '托管站错误范围']);
+        $this->assertDatabaseMissing('tasks', ['name' => '托管站数量超限']);
+    }
+
+    public function test_regular_admin_cannot_see_bind_or_edit_a_hosted_site_task(): void
+    {
+        $admin = $this->createTaskFormAdmin('regular_hosted_task_admin');
+        $dependencies = $this->createTaskFormDependencies();
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Restricted hosted site',
+            'domain' => 'restricted.sites.test',
+            'endpoint_url' => 'https://restricted.sites.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.create'))
+            ->assertOk()
+            ->assertDontSee('Restricted hosted site');
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.tasks.create'))
+            ->post(route('admin.tasks.store'), $this->validTaskPayload($dependencies, [
+                'task_name' => 'Unauthorized hosted task',
+                'publish_scope' => 'distribution_only',
+                'distribution_channel_ids' => [(string) $channel->id],
+            ]))
+            ->assertRedirect(route('admin.tasks.create'))
+            ->assertSessionHasErrors('distribution_channel_ids');
+
+        $task = Task::query()->create([
+            'name' => 'Existing hosted task',
+            'status' => 'paused',
+            'publish_scope' => 'distribution_only',
+        ]);
+        $task->distributionChannels()->attach($channel->id);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('Existing hosted task')
+            ->assertSee(__('admin.tasks.action.super_admin_managed'))
+            ->assertDontSee('id="status-form-'.$task->id.'"', false)
+            ->assertDontSee('id="batch-btn-'.$task->id.'"', false)
+            ->assertDontSee('href="'.route('admin.tasks.edit', ['taskId' => $task->id]).'"', false)
+            ->assertDontSee('action="'.route('admin.tasks.delete', ['taskId' => $task->id]).'"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.edit', ['taskId' => $task->id]))
+            ->assertForbidden();
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.tasks.toggle-status', ['taskId' => $task->id]), ['status' => 'paused'])
+            ->assertForbidden();
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.tasks.batch'), ['task_id' => $task->id, 'action' => 'start'])
+            ->assertForbidden();
+    }
+
     public function test_task_form_collapses_knowledge_bases_after_two_rows(): void
     {
         $admin = $this->createTaskFormAdmin('tasks_multi_kb_collapse_admin');

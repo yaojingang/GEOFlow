@@ -16,6 +16,55 @@ $versionManifest = is_file($versionManifestPath)
     : [];
 $appVersion = is_array($versionManifest) ? trim((string) ($versionManifest['version'] ?? '')) : '';
 $appVersion = $appVersion !== '' ? $appVersion : '0.0.0-dev';
+$normalizeHosts = static function (array $hosts): array {
+    $normalized = [];
+    foreach ($hosts as $host) {
+        $host = strtolower(rtrim(trim((string) $host), '.'));
+        if ($host !== ''
+            && preg_match('/^[a-z0-9.-]+$/', $host) === 1
+            && ! str_contains($host, '..')
+            && ! in_array($host, $normalized, true)) {
+            $normalized[] = $host;
+        }
+    }
+
+    return $normalized;
+};
+$rawConfiguredPrimaryHosts = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) env('GEOFLOW_PRIMARY_HOSTS', ''))
+)));
+$configuredPrimaryHosts = $rawConfiguredPrimaryHosts;
+$configuredPrimaryHosts[] = (string) parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST);
+$configuredPrimaryHosts[] = (string) parse_url((string) env('SITE_URL', 'http://localhost'), PHP_URL_HOST);
+$rawHostedRootDomains = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) env('GEOFLOW_HOSTED_SITE_ROOT_DOMAINS', ''))
+)));
+$hostedRootDomains = $normalizeHosts($rawHostedRootDomains);
+$normalizedPrimaryHostCandidates = $normalizeHosts($configuredPrimaryHosts);
+$primaryHosts = array_values(array_filter(
+    array_diff($normalizedPrimaryHostCandidates, $hostedRootDomains),
+    static function (string $hostname) use ($hostedRootDomains): bool {
+        foreach ($hostedRootDomains as $rootDomain) {
+            if (str_ends_with($hostname, '.'.$rootDomain)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+));
+$configurationErrors = [];
+if (count($hostedRootDomains) !== count(array_unique(array_map('strtolower', $rawHostedRootDomains)))) {
+    $configurationErrors[] = 'GEOFLOW_HOSTED_SITE_ROOT_DOMAINS contains an invalid or duplicate hostname.';
+}
+if (count($normalizeHosts($rawConfiguredPrimaryHosts)) !== count(array_unique(array_map('strtolower', $rawConfiguredPrimaryHosts)))) {
+    $configurationErrors[] = 'GEOFLOW_PRIMARY_HOSTS contains an invalid or duplicate hostname.';
+}
+if (array_diff($normalizedPrimaryHostCandidates, $primaryHosts) !== []) {
+    $configurationErrors[] = 'A primary host overlaps a hosted root domain or one of its subdomains.';
+}
 
 return [
 
@@ -29,6 +78,43 @@ return [
     'site_description' => env('SITE_DESCRIPTION', ''),
     // SEO 关键词（逗号分隔等，依前端使用方式）
     'site_keywords' => env('SITE_KEYWORDS', ''),
+
+    'hosted_sites' => [
+        'enabled' => filter_var(env('GEOFLOW_HOSTED_SITES_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'root_domains' => $hostedRootDomains,
+        'primary_hosts' => $primaryHosts,
+        'configuration_errors' => $configurationErrors,
+        'nginx_primary_host' => strtolower(trim((string) env('GEOFLOW_NGINX_PRIMARY_HOST', ''))),
+        'nginx_root_domain' => strtolower(trim((string) env('GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN', ''))),
+        'nginx_public_scheme' => strtolower(trim((string) env('GEOFLOW_NGINX_PUBLIC_SCHEME', 'http'))),
+        'nginx_public_port' => max(1, (int) env('GEOFLOW_NGINX_PUBLIC_PORT', 80)),
+        'reserved_labels' => [
+            'www', 'admin', 'api', 'horizon', 'reverb', 'mail', 'smtp', 'ftp',
+            'cdn', 'static', 'assets', 'status', 'up', 'localhost',
+        ],
+        'resolver_positive_ttl' => max(1, (int) env('GEOFLOW_HOSTED_SITE_RESOLVER_POSITIVE_TTL', 300)),
+        'resolver_negative_ttl' => max(1, (int) env('GEOFLOW_HOSTED_SITE_RESOLVER_NEGATIVE_TTL', 30)),
+        'default_daily_publish_limit' => max(1, (int) env('GEOFLOW_HOSTED_SITE_DAILY_PUBLISH_LIMIT', 3)),
+        'default_min_publish_interval_minutes' => max(0, (int) env('GEOFLOW_HOSTED_SITE_MIN_PUBLISH_INTERVAL_MINUTES', 360)),
+        'default_min_articles_before_index' => max(1, (int) env('GEOFLOW_HOSTED_SITE_MIN_ARTICLES_BEFORE_INDEX', 10)),
+        'failure_cooldown_threshold' => max(1, (int) env('GEOFLOW_HOSTED_SITE_FAILURE_COOLDOWN_THRESHOLD', 3)),
+        'failure_cooldown_minutes' => max(1, (int) env('GEOFLOW_HOSTED_SITE_FAILURE_COOLDOWN_MINUTES', 60)),
+        'reservation_ttl_minutes' => max(1, (int) env('GEOFLOW_HOSTED_SITE_RESERVATION_TTL_MINUTES', 30)),
+        'reconcile_limit' => max(1, (int) env('GEOFLOW_HOSTED_SITE_RECONCILE_LIMIT', 500)),
+        'stale_sending_seconds' => max(90, (int) env('GEOFLOW_HOSTED_SITE_STALE_SENDING_SECONDS', 150)),
+        'certified_themes' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('GEOFLOW_HOSTED_SITE_CERTIFIED_THEMES', 'default'))
+        ))),
+        'network_preflight_enabled' => filter_var(
+            env('GEOFLOW_HOSTED_SITE_NETWORK_PREFLIGHT', env('APP_ENV') === 'production'),
+            FILTER_VALIDATE_BOOLEAN
+        ),
+        'preflight_timeout_seconds' => max(2, (int) env('GEOFLOW_HOSTED_SITE_PREFLIGHT_TIMEOUT', 8)),
+        'preflight_fresh_minutes' => max(1, (int) env('GEOFLOW_HOSTED_SITE_PREFLIGHT_FRESH_MINUTES', 15)),
+        'index_observation_minutes' => max(0, (int) env('GEOFLOW_HOSTED_SITE_INDEX_OBSERVATION_MINUTES', 30)),
+        'sitemap_url_limit' => 50000,
+    ],
 
     // 后台入口路径前缀，如 /geo_admin（勿与前台路由冲突）
     'admin_base_path' => '/'.$adminBasePath,

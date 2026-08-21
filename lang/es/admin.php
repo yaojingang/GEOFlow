@@ -255,6 +255,7 @@ return array_replace_recursive($base, [
             'delete' => 'Eliminar tarea',
             'start_batch' => 'Iniciar generación',
             'stop_batch' => 'Detener y pausar',
+            'super_admin_managed' => 'Gestionado por superadministrador',
         ],
     ],
     'articles' => [
@@ -662,6 +663,7 @@ return array_replace_recursive($base, [
                 'name_mismatch' => 'El nombre del canal no coincide.',
                 'password_invalid' => 'La contraseña actual del administrador es incorrecta.',
                 'prepare_required' => 'Inicia la revisión antes de la eliminación final.',
+                'hosted_archive_required' => 'Archiva el sitio alojado antes de iniciar la eliminación permanente.',
                 'remote_content_ack' => 'Confirma cómo se gestionará el contenido remoto.',
                 'task_changes_ack' => 'Confirma los cambios en las tareas vinculadas.',
                 'credentials_ack' => 'Confirma la eliminación de las credenciales guardadas.',
@@ -677,6 +679,7 @@ return array_replace_recursive($base, [
                 'migration_required' => 'Ejecuta primero la migración de la base de datos: php artisan migrate --force. Después actualiza esta página.',
                 'super_admin_required' => 'Solo un superadministrador puede eliminar un canal.',
                 'prepare_required' => 'Inicia la revisión antes de la eliminación final.',
+                'hosted_archive_required' => 'Archiva el sitio alojado antes de iniciar la eliminación permanente.',
                 'sending_in_progress' => 'Un trabajo de distribución sigue enviándose. Espera a que termine.',
                 'stale_sending_requires_force' => 'Confirma la eliminación forzada de trabajos en envío antiguos.',
                 'impact_changed' => 'El impacto cambió. Actualiza la página y confírmalo de nuevo.',

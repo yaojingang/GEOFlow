@@ -101,6 +101,16 @@ class Article extends Model
         return $this->hasMany(ArticleDistribution::class, 'article_id');
     }
 
+    public function hostedSiteAssignment(): HasOne
+    {
+        return $this->hasOne(HostedSiteArticleAssignment::class);
+    }
+
+    public function hostedSiteAllocationRequest(): HasOne
+    {
+        return $this->hasOne(HostedSiteAllocationRequest::class);
+    }
+
     public function syncedRemoteDistributions(): HasMany
     {
         return $this->hasMany(ArticleDistribution::class, 'article_id')

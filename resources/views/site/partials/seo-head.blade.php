@@ -16,6 +16,9 @@
 @endphp
 <title>{{ $seoTitle }}</title>
 <meta name="description" content="{{ $seoDescription }}">
+@if(isset($siteIndexingAllowed) && !$siteIndexingAllowed)
+    <meta name="robots" content="noindex, nofollow">
+@endif
 @if($seoKeywords !== '')
     <meta name="keywords" content="{{ $seoKeywords }}">
 @endif

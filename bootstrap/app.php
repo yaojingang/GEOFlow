@@ -11,10 +11,14 @@ use App\Http\Middleware\AdminWebLocale;
 use App\Http\Middleware\AssignApiRequestId;
 use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
+use App\Http\Middleware\EnforceCurrentSiteSurface;
 use App\Http\Middleware\EnsureApiScope;
+use App\Http\Middleware\EnsureHostedSitesEnabled;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogAdminActivity;
+use App\Http\Middleware\NormalizeRequestHost;
 use App\Http\Middleware\RecordSiteViewLog;
+use App\Http\Middleware\ResolveCurrentSite;
 use App\Http\Middleware\SiteWebLocale;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -24,6 +28,8 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -35,6 +41,22 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustHosts(static function (): array {
+            $patterns = [];
+            foreach (config('geoflow.hosted_sites.primary_hosts', []) as $hostname) {
+                $patterns[] = '^'.preg_quote($hostname, '/').'$';
+            }
+            foreach (config('geoflow.hosted_sites.root_domains', []) as $rootDomain) {
+                $patterns[] = '^[^.]+\\.'.preg_quote($rootDomain, '/').'$';
+            }
+
+            return $patterns;
+        }, subdomains: false);
+        $middleware->append([
+            NormalizeRequestHost::class,
+            ResolveCurrentSite::class,
+            EnforceCurrentSiteSurface::class,
+        ]);
         $middleware->appendToGroup('web', AssignApiRequestId::class);
 
         $middleware->alias([
@@ -52,6 +74,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'site.locale' => SiteWebLocale::class,
             // 前台：保存访问日志，供数据分析模块统计 PV、路径和爬虫类型
             'site.view_log' => RecordSiteViewLog::class,
+            'hosted-sites.enabled' => EnsureHostedSitesEnabled::class,
             // Blade 后台：仅超级管理员
             'admin.super' => EnsureSuperAdmin::class,
             // Blade 后台：写操作日志
@@ -109,8 +132,36 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (Throwable $e, Request $request) {
+            if ($request->is('api/*')) {
+                return null;
+            }
+
+            $hostRejected = $e instanceof SuspiciousOperationException
+                || ($e instanceof BadRequestHttpException
+                    && $e->getPrevious() instanceof SuspiciousOperationException);
+
+            return $hostRejected
+                ? response('', 404)->header('X-Robots-Tag', 'noindex, nofollow')
+                : null;
+        });
+
+        $exceptions->render(function (Throwable $e, Request $request) {
             if (! $request->is('api/*') || $e instanceof ApiException) {
                 return null;
+            }
+
+            $hostRejected = $e instanceof SuspiciousOperationException
+                || ($e instanceof BadRequestHttpException
+                    && $e->getPrevious() instanceof SuspiciousOperationException);
+            if ($e instanceof NotFoundHttpException || $hostRejected) {
+                $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+
+                return ApiResponse::error(
+                    'not_found',
+                    'Not Found',
+                    $rid,
+                    404
+                )->withHeaders(['X-Request-Id' => $rid]);
             }
 
             Log::error($e->getMessage(), [

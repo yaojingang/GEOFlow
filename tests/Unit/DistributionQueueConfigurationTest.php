@@ -165,23 +165,36 @@ class DistributionQueueConfigurationTest extends TestCase
         $this->assertStringContainsString('https://*) session_secure_cookie=true', $script);
         $this->assertStringContainsString('*) session_secure_cookie=false', $script);
         $this->assertStringContainsString('SESSION_SECURE_COOKIE "$session_secure_cookie"', $script);
-        $this->assertStringContainsString('GEOFLOW_TRUSTED_PROXIES:-}', $script);
+        $this->assertStringContainsString('GEOFLOW_TRUSTED_PROXIES:-REMOTE_ADDR}', $script);
         $this->assertStringNotContainsString('GEOFLOW_TRUSTED_PROXIES:-*}', $script);
     }
 
     public function test_nginx_forwards_client_ip_chain_to_laravel_rate_limiters(): void
     {
-        $nginx = file_get_contents(dirname(__DIR__, 2).'/docker/nginx/default.conf');
+        $root = dirname(__DIR__, 2);
+        $nginxTemplate = file_get_contents($root.'/docker/nginx/default.conf.template');
+        $nginxApp = file_get_contents($root.'/docker/nginx/geoflow-app.conf');
 
-        $this->assertIsString($nginx);
+        $this->assertIsString($nginxTemplate);
+        $this->assertIsString($nginxApp);
+        $this->assertStringContainsString('listen 80 default_server;', $nginxTemplate);
+        $this->assertStringContainsString('server_name *.${GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN};', $nginxTemplate);
         $this->assertStringContainsString(
             'fastcgi_param HTTP_X_FORWARDED_FOR $proxy_add_x_forwarded_for;',
-            $nginx
+            $nginxApp
         );
         $this->assertStringContainsString(
             'fastcgi_param HTTP_X_REAL_IP $remote_addr;',
-            $nginx
+            $nginxApp
         );
+        $this->assertStringContainsString('GEOFLOW_NGINX_PUBLIC_PORT', $nginxTemplate);
+        $this->assertStringContainsString('HTTP_X_FORWARDED_PORT $geoflow_forwarded_port', $nginxApp);
+        $this->assertStringContainsString('geoflow_hosted_surface', $nginxTemplate);
+        $this->assertStringContainsString('/__geoflow_host_must_resolve__', $nginxTemplate);
+        $wildcardServer = substr($nginxTemplate, strpos($nginxTemplate, 'server_name *.${GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN};'));
+        $this->assertIsString($wildcardServer);
+        $this->assertStringNotContainsString('try_files $uri', $wildcardServer);
+        $this->assertStringContainsString('location / {', $wildcardServer);
     }
 
     public function test_php_fpm_concurrency_fits_the_application_memory_envelope(): void

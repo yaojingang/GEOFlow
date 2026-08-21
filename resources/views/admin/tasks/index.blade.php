@@ -189,43 +189,54 @@
                                     </div>
                                 </td>
                                 <td class="px-4 py-4 align-top">
-                                    <form method="POST" action="{{ route('admin.tasks.toggle-status', ['taskId' => (int) $task['id']]) }}" class="inline" id="status-form-{{ (int) $task['id'] }}">
-                                        @csrf
-                                        <input type="hidden" name="status" value="{{ $task['status'] }}">
-                                        <label class="inline-flex items-center">
-                                            <input type="checkbox" @checked(($task['status'] ?? '') === 'active') onchange="handleStatusToggle({{ (int) $task['id'] }}, this)" class="rounded border-gray-300 text-blue-600 shadow-sm">
-                                            <span class="ml-2 text-sm {{ ($task['status'] ?? '') === 'active' ? 'text-green-600' : 'text-gray-500' }}">
-                                                {{ ($task['status'] ?? '') === 'active' ? __('admin.tasks.status.enabled') : __('admin.tasks.status.disabled') }}
-                                            </span>
-                                        </label>
-                                    </form>
+                                    @if($task['can_manage'] ?? true)
+                                        <form method="POST" action="{{ route('admin.tasks.toggle-status', ['taskId' => (int) $task['id']]) }}" class="inline" id="status-form-{{ (int) $task['id'] }}">
+                                            @csrf
+                                            <input type="hidden" name="status" value="{{ $task['status'] }}">
+                                            <label class="inline-flex items-center">
+                                                <input type="checkbox" @checked(($task['status'] ?? '') === 'active') onchange="handleStatusToggle({{ (int) $task['id'] }}, this)" class="rounded border-gray-300 text-blue-600 shadow-sm">
+                                                <span class="ml-2 text-sm {{ ($task['status'] ?? '') === 'active' ? 'text-green-600' : 'text-gray-500' }}">
+                                                    {{ ($task['status'] ?? '') === 'active' ? __('admin.tasks.status.enabled') : __('admin.tasks.status.disabled') }}
+                                                </span>
+                                            </label>
+                                        </form>
+                                    @else
+                                        <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                                            <i data-lucide="lock-keyhole" class="h-3.5 w-3.5"></i>
+                                            {{ __('admin.tasks.action.super_admin_managed') }}
+                                        </span>
+                                    @endif
                                 </td>
                                 <td class="px-3 py-4 align-top">
                                     <div class="flex w-fit items-center gap-1.5">
-                                        @if (($task['status'] ?? '') === 'active')
-                                            <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="stop" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
-                                                <i data-lucide="square" class="w-4 h-4"></i>
-                                            </button>
-                                        @else
-                                            <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="start" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
-                                                <i data-lucide="play" class="w-4 h-4"></i>
-                                            </button>
-                                        @endif
+                                        @if($task['can_manage'] ?? true)
+                                            @if (($task['status'] ?? '') === 'active')
+                                                <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="stop" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                                    <i data-lucide="square" class="w-4 h-4"></i>
+                                                </button>
+                                            @else
+                                                <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="start" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                                    <i data-lucide="play" class="w-4 h-4"></i>
+                                                </button>
+                                            @endif
 
-                                        <a href="{{ route('admin.tasks.edit', ['taskId' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors border border-blue-200" title="{{ __('admin.tasks.action.settings') }}">
-                                            <i data-lucide="settings" class="w-4 h-4"></i>
-                                        </a>
+                                            <a href="{{ route('admin.tasks.edit', ['taskId' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors border border-blue-200" title="{{ __('admin.tasks.action.settings') }}">
+                                                <i data-lucide="settings" class="w-4 h-4"></i>
+                                            </a>
+                                        @endif
 
                                         <a href="{{ route('admin.articles.index', ['task_id' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.articles') }}">
                                             <i data-lucide="file-text" class="w-4 h-4"></i>
                                         </a>
 
-                                        <form method="POST" action="{{ route('admin.tasks.delete', ['taskId' => (int) $task['id']]) }}" class="inline" onsubmit="return confirm(@js(__('admin.tasks.confirm.delete')))">
-                                            @csrf
-                                            <button type="submit" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.delete') }}">
-                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                            </button>
-                                        </form>
+                                        @if($task['can_manage'] ?? true)
+                                            <form method="POST" action="{{ route('admin.tasks.delete', ['taskId' => (int) $task['id']]) }}" class="inline" onsubmit="return confirm(@js(__('admin.tasks.confirm.delete')))">
+                                                @csrf
+                                                <button type="submit" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.delete') }}">
+                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                </button>
+                                            </form>
+                                        @endif
                                     </div>
                                     <div class="mt-2 max-w-[165px]" id="batch-status-{{ (int) $task['id'] }}"></div>
                                 </td>

@@ -12,6 +12,10 @@
                 <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.page_subtitle') }}</p>
             </div>
             <div class="flex flex-wrap items-center gap-3 lg:justify-end">
+                <a href="{{ route('admin.distribution.hosted-sites.index') }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-transform active:scale-[.96] hover:bg-gray-50">
+                    <i data-lucide="network" class="mr-2 h-4 w-4"></i>
+                    托管渠道站点
+                </a>
                 <button type="button" data-selected-sync-open class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
                     {{ __('admin.distribution.button.sync_settings_selected') }}
@@ -249,13 +253,15 @@
                                     </td>
                                     <td class="px-6 py-4 text-sm">
                                         <div class="flex items-center gap-3">
-                                            <a href="{{ route('admin.distribution.show', ['channelId' => (int) $channel->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.button.view') }}</a>
+                                            <a href="{{ $channel->isHostedSite() ? route('admin.distribution.hosted-sites.show', $channel) : route('admin.distribution.show', ['channelId' => (int) $channel->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.button.view') }}</a>
                                             @if ($channel->status === 'deleting')
                                                 @if ($canDeleteChannels)
                                                     <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="font-medium text-amber-700 hover:text-amber-900">{{ __('admin.distribution.delete.button.continue') }}</a>
                                                 @endif
                                             @else
-                                                <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="text-gray-600 hover:text-gray-800">{{ __('admin.button.edit') }}</a>
+                                                @unless ($channel->isHostedSite())
+                                                    <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="text-gray-600 hover:text-gray-800">{{ __('admin.button.edit') }}</a>
+                                                @endunless
                                                 @if ($canDeleteChannels)
                                                     <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="text-red-600 hover:text-red-800">{{ __('admin.distribution.delete.button.open') }}</a>
                                                 @endif

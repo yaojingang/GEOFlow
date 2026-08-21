@@ -19,6 +19,7 @@ use App\Models\TitleLibrary;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use App\Services\HostedSites\HostedSiteArticleFingerprintService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Illuminate\Database\QueryException;
@@ -43,6 +44,7 @@ class ArticleController extends Controller
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly ArticleRiskScanner $articleRiskScanner,
         private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
+        private readonly HostedSiteArticleFingerprintService $hostedFingerprints,
     ) {}
 
     /**
@@ -478,6 +480,7 @@ class ArticleController extends Controller
                         'published_at' => $workflowState['published_at'],
                     ]);
                 }
+                $this->hostedFingerprints->synchronizeLockedArticle($lockedArticle);
                 $article = $lockedArticle;
 
                 return null;

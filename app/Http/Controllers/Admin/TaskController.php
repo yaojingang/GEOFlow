@@ -23,6 +23,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Throwable;
 
@@ -53,7 +54,7 @@ class TaskController extends Controller
                 max(1, $request->integer('page', 1)),
                 50,
             );
-            $tasks = $overview['tasks'];
+            $tasks = $this->decorateTaskManageability($overview['tasks']);
             $workers = $overview['worker_overview'];
             $queueStats = $overview['queue_overview'];
             $recentJobs = $overview['recent_runs'];
@@ -93,6 +94,7 @@ class TaskController extends Controller
         if ($taskId <= 0) {
             return back()->withErrors(__('admin.tasks.message.status_update_failed'));
         }
+        $this->assertCanManageHostedTask($taskId);
 
         try {
             $currentStatus = (string) $request->input('status', 'paused');
@@ -118,6 +120,7 @@ class TaskController extends Controller
         if ($taskId <= 0) {
             return back()->withErrors(__('admin.tasks.message.status_update_failed'));
         }
+        $this->assertCanManageHostedTask($taskId);
 
         try {
             $this->taskLifecycleService->deleteTask($taskId);
@@ -164,6 +167,7 @@ class TaskController extends Controller
         $payload = $this->validateTaskForm($request);
         $taskData = $this->buildTaskPayload($request, $payload);
         $channelIds = $this->selectedDistributionChannelIds($request);
+        $this->validateHostedChannelContract($taskData, $channelIds);
 
         try {
             DB::transaction(function () use ($taskData, $channelIds): void {
@@ -192,6 +196,8 @@ class TaskController extends Controller
      */
     public function edit(int $taskId): View|RedirectResponse
     {
+        $this->assertCanManageHostedTask($taskId);
+
         try {
             $task = $this->taskLifecycleService->getTask($taskId);
         } catch (Throwable $e) {
@@ -245,6 +251,8 @@ class TaskController extends Controller
      */
     public function update(Request $request, int $taskId): RedirectResponse
     {
+        $this->assertCanManageHostedTask($taskId);
+
         if (! Category::query()->exists()) {
             return redirect()
                 ->route('admin.categories.create')
@@ -254,6 +262,7 @@ class TaskController extends Controller
         $payload = $this->validateTaskForm($request);
         $taskData = $this->buildTaskPayload($request, $payload);
         $channelIds = $this->selectedDistributionChannelIds($request);
+        $this->validateHostedChannelContract($taskData, $channelIds);
         $taskRevision = (string) $payload['task_revision'];
 
         try {
@@ -290,7 +299,7 @@ class TaskController extends Controller
 
             return response()->json([
                 'success' => true,
-                'tasks' => $overview['tasks'],
+                'tasks' => $this->decorateTaskManageability($overview['tasks']),
                 'queue_overview' => $overview['queue_overview'],
                 'worker_overview' => $overview['worker_overview'],
                 'recent_runs' => $overview['recent_runs'],
@@ -315,6 +324,7 @@ class TaskController extends Controller
             'task_id' => ['required', 'integer', 'min:1'],
             'action' => ['required', 'string', 'in:start,stop'],
         ]);
+        $this->assertCanManageHostedTask((int) $payload['task_id']);
 
         try {
             $taskId = (int) $payload['task_id'];
@@ -513,6 +523,10 @@ class TaskController extends Controller
         $distributionChannels = DistributionChannel::query()
             ->select(['id', 'name', 'domain'])
             ->where('status', 'active')
+            ->when(
+                auth('admin')->user()?->isSuperAdmin() !== true,
+                fn ($query) => $query->where('channel_type', '!=', DistributionChannel::TYPE_HOSTED_SITE)
+            )
             ->orderBy('name')
             ->get()
             ->map(static fn (DistributionChannel $row): array => [
@@ -659,6 +673,85 @@ class TaskController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    /** @param array<string,int|string|null> $taskData @param list<int> $channelIds */
+    private function validateHostedChannelContract(array $taskData, array $channelIds): void
+    {
+        if ($channelIds === []) {
+            return;
+        }
+
+        $hostedCount = DistributionChannel::query()
+            ->whereIn('id', $channelIds)
+            ->where('channel_type', DistributionChannel::TYPE_HOSTED_SITE)
+            ->count();
+        if ($hostedCount > 0 && auth('admin')->user()?->isSuperAdmin() !== true) {
+            throw ValidationException::withMessages([
+                'distribution_channel_ids' => '托管站点只能由超级管理员绑定到任务。',
+            ]);
+        }
+        if ($hostedCount > 1) {
+            throw ValidationException::withMessages([
+                'distribution_channel_ids' => '阶段一任务最多只能绑定一个托管站点。',
+            ]);
+        }
+        if ($hostedCount === 1 && (string) ($taskData['publish_scope'] ?? '') !== 'distribution_only') {
+            throw ValidationException::withMessages([
+                'publish_scope' => '绑定托管站点的任务必须使用仅发布到渠道站点。',
+            ]);
+        }
+    }
+
+    private function assertCanManageHostedTask(int $taskId): void
+    {
+        if (auth('admin')->user()?->isSuperAdmin() === true) {
+            return;
+        }
+
+        $hasHostedChannel = Task::query()
+            ->whereKey($taskId)
+            ->whereHas('distributionChannels', fn ($query) => $query->where(
+                'channel_type',
+                DistributionChannel::TYPE_HOSTED_SITE
+            ))
+            ->exists();
+        abort_if($hasHostedChannel, 403);
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $tasks
+     * @return list<array<string,mixed>>
+     */
+    private function decorateTaskManageability(array $tasks): array
+    {
+        if ($tasks === [] || auth('admin')->user()?->isSuperAdmin() === true) {
+            return array_map(static function (array $task): array {
+                $task['can_manage'] = true;
+
+                return $task;
+            }, $tasks);
+        }
+
+        $taskIds = collect($tasks)
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->filter()
+            ->values();
+        $hostedTaskIds = Task::query()
+            ->whereIn('id', $taskIds)
+            ->whereHas('distributionChannels', fn ($query) => $query->where(
+                'channel_type',
+                DistributionChannel::TYPE_HOSTED_SITE
+            ))
+            ->pluck('id')
+            ->mapWithKeys(static fn ($id): array => [(int) $id => true]);
+
+        return array_map(static function (array $task) use ($hostedTaskIds): array {
+            $task['can_manage'] = ! $hostedTaskIds->has((int) ($task['id'] ?? 0));
+
+            return $task;
+        }, $tasks);
     }
 
     /**

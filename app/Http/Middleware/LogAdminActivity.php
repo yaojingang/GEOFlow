@@ -39,7 +39,17 @@ class LogAdminActivity
         // 组合路由名 + action，便于后续按模块和操作类型筛选审计日志。
         $fullAction = $routeName !== '' ? $routeName.':'.$action : $action;
 
-        AdminActivityLogger::logFromRequest($request, $admin, $fullAction, $request->except(['password', 'package_password', 'current_password', 'new_password', 'confirm_password']));
+        $details = $request->except(['password', 'package_password', 'current_password', 'new_password', 'confirm_password']);
+        $explicitDetails = $request->attributes->get('admin_activity_details');
+        if (is_array($explicitDetails)) {
+            $details = array_replace($details, $explicitDetails);
+        }
+        if (! array_key_exists('success', $details)) {
+            $errors = session()->get('errors');
+            $details['success'] = $response->getStatusCode() < 400
+                && (! is_object($errors) || ! method_exists($errors, 'any') || ! $errors->any());
+        }
+        AdminActivityLogger::logFromRequest($request, $admin, $fullAction, $details);
 
         return $response;
     }

@@ -77,3 +77,10 @@ Schedule::command('geoflow:prune-expired-cache')
     ->hourly()
     ->onOneServer()
     ->withoutOverlapping(10);
+
+Schedule::command('hosted-sites:reconcile', [
+    '--limit' => (int) config('geoflow.hosted_sites.reconcile_limit', 500),
+])
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
