@@ -19,6 +19,7 @@
     </source>
     <php>
         <ini name="memory_limit" value="512M"/>
+        <env name="ADMIN_BASE_PATH" value="geo_admin" force="true"/>
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
@@ -31,6 +32,7 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <env name="SITE_NAME" value="GEOFlow" force="true"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

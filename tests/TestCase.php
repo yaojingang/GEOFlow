@@ -30,7 +30,7 @@ abstract class TestCase extends BaseTestCase
 
     public function createApplication()
     {
-        $this->forceTestingDatabaseEnvironment();
+        $this->forceTestingEnvironment();
 
         $app = parent::createApplication();
 
@@ -42,13 +42,15 @@ abstract class TestCase extends BaseTestCase
         return $app;
     }
 
-    private function forceTestingDatabaseEnvironment(): void
+    private function forceTestingEnvironment(): void
     {
         $variables = [
+            'ADMIN_BASE_PATH' => 'geo_admin',
             'APP_ENV' => 'testing',
             'DB_CONNECTION' => 'sqlite',
             'DB_DATABASE' => ':memory:',
             'DB_URL' => '',
+            'SITE_NAME' => 'GEOFlow',
         ];
 
         foreach ($variables as $key => $value) {
