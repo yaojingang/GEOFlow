@@ -12,8 +12,8 @@ use App\Http\Controllers\Admin\AiModelController;
 use App\Http\Controllers\Admin\AiPromptController;
 use App\Http\Controllers\Admin\AiSourceProviderController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
-use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\AiVisibilityAnalyticsController;
+use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ArticleEditorAssetController;
@@ -22,38 +22,51 @@ use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\ContentAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
-use App\Http\Controllers\Admin\DistributionController;
 use App\Http\Controllers\Admin\DistributionAnalyticsController;
+use App\Http\Controllers\Admin\DistributionController;
 use App\Http\Controllers\Admin\EnterpriseKnowledgeController;
+use App\Http\Controllers\Admin\HostedSiteController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
-use App\Http\Controllers\Admin\LeadController;
 use App\Http\Controllers\Admin\LeadAnalyticsController;
+use App\Http\Controllers\Admin\LeadController;
 use App\Http\Controllers\Admin\LeadFormController;
 use App\Http\Controllers\Admin\LegacyController;
-use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\ManualPublicationController;
 use App\Http\Controllers\Admin\ManualPublicationSettingsController;
+use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\SiteThemeReplicationController;
 use App\Http\Controllers\Admin\SystemUpdateController;
 use App\Http\Controllers\Admin\TaskController;
-use App\Http\Controllers\Admin\TrafficAnalyticsController;
 use App\Http\Controllers\Admin\TitleLibraryController;
+use App\Http\Controllers\Admin\TrafficAnalyticsController;
 use App\Http\Controllers\Admin\UrlImportController;
 use App\Http\Controllers\Site\AboutController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
 use App\Http\Controllers\Site\HomeController;
+use App\Http\Controllers\Site\HostedAssetController;
 use App\Http\Controllers\Site\LeadFormController as SiteLeadFormController;
+use App\Http\Controllers\Site\SiteDiscoveryController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/favicon.ico', HostedAssetController::class)->name('site.asset.favicon');
+Route::get('/{assetPath}', HostedAssetController::class)
+    ->where('assetPath', '(?:(?:assets|js|storage|themes)/[a-zA-Z0-9._/-]+|build/assets/[a-zA-Z0-9._-]+)')
+    ->name('site.asset');
 
 Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
     Route::get('/about', [AboutController::class, 'index'])->name('site.about');
+    Route::get('/robots.txt', [SiteDiscoveryController::class, 'robots'])->name('site.robots');
+    Route::get('/sitemap.xml', [SiteDiscoveryController::class, 'sitemap'])->name('site.sitemap');
+    Route::get('/sitemaps/pages-{page}.xml', [SiteDiscoveryController::class, 'sitemapShard'])
+        ->whereNumber('page')
+        ->name('site.sitemap.shard');
     Route::permanentRedirect('/archive', '/about')->name('site.archive');
     Route::permanentRedirect('/archive/{year}/{month}', '/about')
         ->name('site.archive.month')
@@ -62,7 +75,7 @@ Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/article/{slug}', [SiteArticleController::class, 'show'])->name('site.article');
     Route::get('/forms/{slug}', [SiteLeadFormController::class, 'show'])->name('site.lead-forms.show');
     Route::post('/forms/{slug}/submissions', [SiteLeadFormController::class, 'submit'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:site-lead-submission')
         ->name('site.lead-forms.submit');
 });
 
@@ -155,6 +168,21 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('/', [DistributionController::class, 'index'])->name('index');
             Route::get('create', [DistributionController::class, 'create'])->name('create');
             Route::post('create', [DistributionController::class, 'store'])->name('store');
+            Route::prefix('hosted-sites')->name('hosted-sites.')->middleware('hosted-sites.enabled')->scopeBindings()->group(function (): void {
+                Route::get('/', [HostedSiteController::class, 'index'])->name('index');
+                Route::get('create', [HostedSiteController::class, 'create'])->name('create');
+                Route::post('/', [HostedSiteController::class, 'store'])->name('store');
+                Route::get('{hostedSite}', [HostedSiteController::class, 'show'])->name('show');
+                Route::get('{hostedSite}/edit', [HostedSiteController::class, 'edit'])->name('edit');
+                Route::put('{hostedSite}', [HostedSiteController::class, 'update'])->name('update');
+                Route::post('{hostedSite}/preflight', [HostedSiteController::class, 'preflight'])->name('preflight');
+                Route::post('{hostedSite}/activate', [HostedSiteController::class, 'activate'])->name('activate');
+                Route::post('{hostedSite}/pause', [HostedSiteController::class, 'pause'])->name('pause');
+                Route::post('{hostedSite}/maintenance', [HostedSiteController::class, 'maintenance'])->name('maintenance');
+                Route::post('{hostedSite}/indexing', [HostedSiteController::class, 'indexing'])->name('indexing');
+                Route::post('{hostedSite}/archive', [HostedSiteController::class, 'archive'])->name('archive');
+                Route::post('{hostedSite}/articles', [HostedSiteController::class, 'assignArticle'])->name('articles.assign');
+            })->whereNumber('hostedSite');
             Route::get('jobs', [DistributionController::class, 'jobs'])->name('jobs');
             Route::get('sync-settings-all/preview', [DistributionController::class, 'previewSyncSettingsAll'])->name('sync-settings-all.preview');
             Route::post('sync-settings-all', [DistributionController::class, 'syncSettingsAll'])->name('sync-settings-all');

@@ -20,6 +20,7 @@ use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPublisherManager;
 use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
 use App\Services\GeoFlow\FrontendExperienceInspector;
+use App\Services\HostedSites\HostedSiteArticleFingerprintService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\Site\ArticleTextAdPicker;
@@ -49,6 +50,7 @@ class DistributionController extends Controller
         private readonly FrontendExperienceInspector $frontendExperienceInspector,
         private readonly DistributionChannelDeletionService $channelDeletionService,
         private readonly DistributionChannelOperationLeaseService $channelOperationLeaseService,
+        private readonly HostedSiteArticleFingerprintService $hostedFingerprints,
     ) {}
 
     public function index(Request $request): View
@@ -181,6 +183,9 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
+        if ($redirect = $this->hostedSiteRedirect($channel)) {
+            return $redirect;
+        }
         if ($redirect = $this->deletingChannelRedirect($channel)) {
             return $redirect;
         }
@@ -205,6 +210,9 @@ class DistributionController extends Controller
         $channel = DistributionChannel::query()->whereKey($channelId)->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($redirect = $this->hostedSiteRedirect($channel)) {
+            return $redirect;
         }
         if ($redirect = $this->deletingChannelRedirect($channel)) {
             return $redirect;
@@ -324,6 +332,9 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
+        if ($redirect = $this->hostedSiteRedirect($channel)) {
+            return $redirect;
+        }
 
         $jobs = ArticleDistribution::query()
             ->with('article:id,title,slug,status')
@@ -386,7 +397,13 @@ class DistributionController extends Controller
                 ->withErrors(['distribution' => __('admin.distribution.delete.blocked.migration_required')]);
         }
 
-        $this->channelDeletionService->prepare($channel);
+        try {
+            $this->channelDeletionService->prepare($channel);
+        } catch (DistributionChannelDeletionBlocked $exception) {
+            $messageKey = 'admin.distribution.delete.blocked.'.$exception->reason;
+
+            return back()->withErrors(trans()->has($messageKey) ? __($messageKey) : __('admin.distribution.delete.blocked.default'));
+        }
 
         return redirect()
             ->route('admin.distribution.delete', ['channelId' => $channelId])
@@ -494,6 +511,11 @@ class DistributionController extends Controller
 
     public function rotateSecret(int $channelId): RedirectResponse
     {
+        $candidate = DistributionChannel::query()->whereKey($channelId)->first();
+        if ($candidate && ($redirect = $this->hostedSiteRedirect($candidate))) {
+            return $redirect;
+        }
+
         try {
             $result = DB::transaction(function () use ($channelId): ?array {
                 $channel = DistributionChannel::query()
@@ -548,6 +570,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($redirect = $this->hostedSiteRedirect($channel)) {
+            return $redirect;
         }
         if ($redirect = $this->deletingChannelRedirect($channel)) {
             return $redirect;
@@ -621,6 +646,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($redirect = $this->hostedSiteRedirect($channel)) {
+            return $redirect;
         }
         if ($redirect = $this->deletingChannelRedirect($channel)) {
             return $redirect;
@@ -767,6 +795,9 @@ class DistributionController extends Controller
         if (! $distribution || ! $distribution->article || ! $distribution->channel) {
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
         }
+        if ($redirect = $this->hostedSiteRedirect($distribution->channel)) {
+            return $redirect;
+        }
         if ($redirect = $this->deletingChannelRedirect($distribution->channel)) {
             return $redirect;
         }
@@ -791,6 +822,9 @@ class DistributionController extends Controller
         if (! $distribution || ! $distribution->article || ! $distribution->channel) {
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
         }
+        if ($redirect = $this->hostedSiteRedirect($distribution->channel)) {
+            return $redirect;
+        }
         if ($redirect = $this->deletingChannelRedirect($distribution->channel)) {
             return $redirect;
         }
@@ -803,15 +837,21 @@ class DistributionController extends Controller
             'meta_description' => ['nullable', 'string'],
         ]);
 
-        $distribution->article->forceFill([
-            'title' => (string) $payload['title'],
-            'excerpt' => filled($payload['excerpt'] ?? null) ? (string) $payload['excerpt'] : null,
-            'content' => (string) $payload['content'],
-            'keywords' => filled($payload['keywords'] ?? null) ? (string) $payload['keywords'] : null,
-            'meta_description' => filled($payload['meta_description'] ?? null) ? (string) $payload['meta_description'] : null,
-        ])->save();
-
         try {
+            DB::transaction(function () use ($distribution, $payload): void {
+                $article = Article::query()
+                    ->whereKey((int) $distribution->article_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $article->forceFill([
+                    'title' => (string) $payload['title'],
+                    'excerpt' => filled($payload['excerpt'] ?? null) ? (string) $payload['excerpt'] : null,
+                    'content' => (string) $payload['content'],
+                    'keywords' => filled($payload['keywords'] ?? null) ? (string) $payload['keywords'] : null,
+                    'meta_description' => filled($payload['meta_description'] ?? null) ? (string) $payload['meta_description'] : null,
+                ])->save();
+                $this->hostedFingerprints->synchronizeLockedArticle($article);
+            }, 3);
             $distribution->refresh();
             $this->distributionOrchestrator->updateRemoteArticle($distribution);
         } catch (Throwable $e) {
@@ -841,6 +881,9 @@ class DistributionController extends Controller
             }
 
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
+        }
+        if ($redirect = $this->hostedSiteRedirect($distribution->channel)) {
+            return $redirect;
         }
         if ((string) $distribution->channel->status === DistributionChannel::STATUS_DELETING) {
             $message = __('admin.distribution.delete.operation_blocked');
@@ -891,6 +934,9 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
+        if ($redirect = $this->hostedSiteRedirect($channel)) {
+            return $redirect;
+        }
         if ($redirect = $this->deletingChannelRedirect($channel)) {
             return $redirect;
         }
@@ -928,6 +974,9 @@ class DistributionController extends Controller
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
+        if ($redirect = $this->hostedSiteRedirect($channel)) {
+            return $redirect;
+        }
         if ($redirect = $this->deletingChannelRedirect($channel)) {
             return $redirect;
         }
@@ -959,6 +1008,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($redirect = $this->hostedSiteRedirect($channel)) {
+            return $redirect;
         }
         if ($redirect = $this->deletingChannelRedirect($channel)) {
             return $redirect;
@@ -1003,6 +1055,9 @@ class DistributionController extends Controller
             ->first();
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
+        }
+        if ($redirect = $this->hostedSiteRedirect($channel)) {
+            return $redirect;
         }
         if ($redirect = $this->deletingChannelRedirect($channel)) {
             return $redirect;
@@ -1899,6 +1954,11 @@ class DistributionController extends Controller
 
     private function setStatus(int $channelId, string $status, string $message): RedirectResponse
     {
+        $candidate = DistributionChannel::query()->whereKey($channelId)->first();
+        if ($candidate && ($redirect = $this->hostedSiteRedirect($candidate))) {
+            return $redirect;
+        }
+
         $channel = DB::transaction(function () use ($channelId, $status): ?DistributionChannel {
             $channel = DistributionChannel::query()
                 ->whereKey($channelId)
@@ -1933,5 +1993,14 @@ class DistributionController extends Controller
         return redirect()
             ->route('admin.distribution.delete', ['channelId' => (int) $channel->id])
             ->withErrors(__('admin.distribution.delete.operation_blocked'));
+    }
+
+    private function hostedSiteRedirect(DistributionChannel $channel): ?RedirectResponse
+    {
+        if (! $channel->isHostedSite()) {
+            return null;
+        }
+
+        return redirect()->route('admin.distribution.hosted-sites.show', $channel);
     }
 }

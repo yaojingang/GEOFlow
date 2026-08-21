@@ -255,6 +255,7 @@ return array_replace_recursive($base, [
             'delete' => 'タスク削除',
             'start_batch' => '生成開始',
             'stop_batch' => '停止して一時停止',
+            'super_admin_managed' => 'スーパー管理者が管理',
         ],
     ],
     'articles' => [
@@ -662,6 +663,7 @@ return array_replace_recursive($base, [
                 'name_mismatch' => 'チャネル名が一致しません。',
                 'password_invalid' => '現在の管理者パスワードが正しくありません。',
                 'prepare_required' => '最終削除の前に削除確認を開始してください。',
+                'hosted_archive_required' => '完全に削除する前にホストサイトをアーカイブしてください。',
                 'remote_content_ack' => 'リモートコンテンツの扱いを確認してください。',
                 'task_changes_ack' => '関連タスクの変更を確認してください。',
                 'credentials_ack' => '保存済み認証情報の削除を確認してください。',
@@ -677,6 +679,7 @@ return array_replace_recursive($base, [
                 'migration_required' => '先にデータベース移行を実行してください: php artisan migrate --force。その後、このページを更新してください。',
                 'super_admin_required' => 'チャネルを削除できるのはスーパー管理者だけです。',
                 'prepare_required' => '最終削除の前に削除確認を開始してください。',
+                'hosted_archive_required' => '完全に削除する前にホストサイトをアーカイブしてください。',
                 'sending_in_progress' => '配信ジョブが送信中です。完了するまで待ってください。',
                 'stale_sending_requires_force' => '古い送信中ジョブの強制削除を確認してください。',
                 'impact_changed' => '削除の影響が変わりました。ページを更新して再確認してください。',

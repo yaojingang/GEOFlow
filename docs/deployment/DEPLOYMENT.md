@@ -77,7 +77,10 @@ DB_PASSWORD=change-this-password
 
 REDIS_PASSWORD=
 WEB_PORT=18080
-REVERB_EXPOSE_PORT=18081
+REVERB_HOST=your-domain.com
+REVERB_PORT=443
+REVERB_SCHEME=https
+REVERB_ALLOWED_ORIGINS=your-domain.com
 ```
 
 说明：
@@ -182,7 +185,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 - 前台与后台统一从 `web`（Nginx）进入
 - 站点：`http://服务器IP:${WEB_PORT}` 或你的反向代理域名
 - 后台：`/geo_admin/login`（或你的 `ADMIN_BASE_PATH`）
-- Reverb：默认映射 `${REVERB_EXPOSE_PORT}:8080`
+- Reverb：通过主站 Nginx 的 `/reverb` 入口访问，生产 Compose 不发布 Reverb 容器端口
 
 ### 默认管理员（首次安装）
 

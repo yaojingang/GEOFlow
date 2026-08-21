@@ -98,6 +98,7 @@ return [
 
     'waits' => [
         'redis:geoflow' => 60,
+        'redis:distribution' => 60,
         'redis:knowledge' => 60,
         'redis:system-updates' => 60,
     ],

@@ -27,6 +27,7 @@ class LeadSubmission extends Model
 
     protected $fillable = [
         'lead_form_id',
+        'hosted_site_profile_id',
         'status',
         'payload',
         'source_url',
@@ -45,6 +46,7 @@ class LeadSubmission extends Model
     protected function casts(): array
     {
         return [
+            'hosted_site_profile_id' => 'integer',
             'payload' => 'array',
             'handled_at' => 'datetime',
         ];
@@ -58,5 +60,10 @@ class LeadSubmission extends Model
     public function handler(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'handled_by');
+    }
+
+    public function hostedSiteProfile(): BelongsTo
+    {
+        return $this->belongsTo(HostedSiteProfile::class);
     }
 }

@@ -4,10 +4,14 @@ namespace App\Services\GeoFlow;
 
 use App\Exceptions\DistributionChannelDeletionBlocked;
 use App\Models\Admin;
+use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelOperation;
 use App\Models\DistributionLog;
+use App\Models\HostedSiteAllocationRequest;
+use App\Models\HostedSiteArticleAssignment;
+use App\Models\HostedSiteProfile;
 use App\Models\Task;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -83,6 +87,32 @@ class DistributionChannelDeletionService
             static fn (DistributionChannelOperation $operation): bool => $operation->expires_at !== null && $operation->expires_at->isFuture()
         );
         $secretIds = $channel->secrets()->orderBy('id')->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+        $hostedProfile = Schema::hasTable('hosted_site_profiles')
+            ? HostedSiteProfile::query()->where('distribution_channel_id', $channelId)->first()
+            : null;
+        $hostedAssignmentIds = $hostedProfile && Schema::hasTable('hosted_site_article_assignments')
+            ? $hostedProfile->assignments()->orderBy('id')->pluck('id')->map(static fn ($id): int => (int) $id)->all()
+            : [];
+        $linkedTaskIds = $tasks->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+        $hostedAllocationRequestCount = Schema::hasTable('hosted_site_allocation_requests')
+            && ($hostedProfile || $hostedAssignmentIds !== [] || $linkedTaskIds !== [])
+            ? HostedSiteAllocationRequest::query()
+                ->where(function ($query) use ($hostedProfile, $hostedAssignmentIds, $linkedTaskIds): void {
+                    $query->when($hostedProfile, fn ($request) => $request->where(
+                        'hosted_site_profile_id',
+                        (int) $hostedProfile->id
+                    ))
+                        ->orWhereIn('hosted_site_article_assignment_id', $hostedAssignmentIds)
+                        ->orWhereIn('task_id', $linkedTaskIds);
+                })
+                ->count()
+            : 0;
+        $hostedViewLogCount = $hostedProfile && Schema::hasColumn('view_logs', 'hosted_site_profile_id')
+            ? DB::table('view_logs')->where('hosted_site_profile_id', (int) $hostedProfile->id)->count()
+            : 0;
+        $hostedLeadCount = $hostedProfile && Schema::hasColumn('lead_submissions', 'hosted_site_profile_id')
+            ? DB::table('lead_submissions')->where('hosted_site_profile_id', (int) $hostedProfile->id)->count()
+            : 0;
         $remoteCleanupManifest = $distributions
             ->filter(fn (ArticleDistribution $distribution): bool => $this->hasRemoteContent($distribution))
             ->map(fn (ArticleDistribution $distribution): array => [
@@ -120,6 +150,13 @@ class DistributionChannelDeletionService
                 (string) $operation->operation,
                 $operation->expires_at?->toISOString(),
             ])->values()->all(),
+            'hosted_site' => [
+                'profile_id' => $hostedProfile?->id,
+                'assignment_ids' => $hostedAssignmentIds,
+                'allocation_request_count' => $hostedAllocationRequestCount,
+                'view_log_count' => $hostedViewLogCount,
+                'lead_count' => $hostedLeadCount,
+            ],
         ];
 
         return [
@@ -130,6 +167,11 @@ class DistributionChannelDeletionService
             'remote_content_count' => count($remoteCleanupManifest),
             'secret_count' => count($secretIds),
             'log_count' => $channel->logs()->count(),
+            'hosted_site_profile_id' => $hostedProfile?->id,
+            'hosted_assignment_count' => count($hostedAssignmentIds),
+            'hosted_allocation_request_count' => $hostedAllocationRequestCount,
+            'hosted_view_log_count' => $hostedViewLogCount,
+            'hosted_lead_count' => $hostedLeadCount,
             'queued_count' => $distributions->where('status', 'queued')->count(),
             'sending_count' => $sending->count(),
             'fresh_sending_count' => $freshSending->count(),
@@ -139,6 +181,8 @@ class DistributionChannelDeletionService
             'stale_operation_count' => $staleOperations->count(),
             'stale_after_seconds' => $staleAfterSeconds,
             'can_delete' => (string) $channel->status === DistributionChannel::STATUS_DELETING
+                && (! $channel->isHostedSite()
+                    || $hostedProfile?->serving_status === HostedSiteProfile::SERVING_ARCHIVED)
                 && $sending->isEmpty()
                 && $operations->isEmpty(),
             'requires_force' => $staleSending->isNotEmpty() || $staleOperations->isNotEmpty(),
@@ -162,6 +206,16 @@ class DistributionChannelDeletionService
                 ->whereKey((int) $channel->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+            $hostedProfile = Schema::hasTable('hosted_site_profiles')
+                ? HostedSiteProfile::query()
+                    ->where('distribution_channel_id', (int) $lockedChannel->id)
+                    ->lockForUpdate()
+                    ->first()
+                : null;
+            if ($lockedChannel->isHostedSite()
+                && $hostedProfile?->serving_status !== HostedSiteProfile::SERVING_ARCHIVED) {
+                throw new DistributionChannelDeletionBlocked('hosted_archive_required');
+            }
 
             if ((string) $lockedChannel->status !== DistributionChannel::STATUS_DELETING) {
                 $lockedChannel->forceFill([
@@ -225,6 +279,62 @@ class DistributionChannelDeletionService
             }
 
             $channelId = (int) $lockedChannel->id;
+            $linkedTaskIds = DB::table('task_distribution_channels')
+                ->where('distribution_channel_id', $channelId)
+                ->orderBy('task_id')
+                ->pluck('task_id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all();
+            $hostedProfile = Schema::hasTable('hosted_site_profiles')
+                ? HostedSiteProfile::query()
+                    ->where('distribution_channel_id', $channelId)
+                    ->lockForUpdate()
+                    ->first()
+                : null;
+            if ($lockedChannel->isHostedSite()
+                && $hostedProfile?->serving_status !== HostedSiteProfile::SERVING_ARCHIVED) {
+                throw new DistributionChannelDeletionBlocked('hosted_archive_required');
+            }
+            $hostedAssignmentCandidates = $hostedProfile && Schema::hasTable('hosted_site_article_assignments')
+                ? HostedSiteArticleAssignment::query()
+                    ->where('hosted_site_profile_id', (int) $hostedProfile->id)
+                    ->orderBy('id')
+                    ->get(['id', 'article_id'])
+                : collect();
+            $hostedAssignmentIds = $hostedAssignmentCandidates->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+            $hostedArticleIds = $hostedAssignmentCandidates->pluck('article_id')->map(static fn ($id): int => (int) $id)->all();
+            $hostedAllocationRequests = Schema::hasTable('hosted_site_allocation_requests')
+                ? HostedSiteAllocationRequest::query()
+                    ->where(function ($query) use ($hostedProfile, $hostedAssignmentIds, $linkedTaskIds): void {
+                        $query->when($hostedProfile, fn ($request) => $request->where(
+                            'hosted_site_profile_id',
+                            (int) $hostedProfile->id
+                        ))
+                            ->orWhereIn('hosted_site_article_assignment_id', $hostedAssignmentIds)
+                            ->orWhereIn('task_id', $linkedTaskIds);
+                    })
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get()
+                : collect();
+            if ($hostedAllocationRequests->isNotEmpty()) {
+                $hostedArticleIds = array_values(array_unique(array_merge(
+                    $hostedArticleIds,
+                    $hostedAllocationRequests->pluck('article_id')->map(static fn ($id): int => (int) $id)->all(),
+                )));
+            }
+            if ($hostedArticleIds !== []) {
+                Article::query()
+                    ->whereIn('id', $hostedArticleIds)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+                HostedSiteArticleAssignment::query()
+                    ->whereIn('id', $hostedAssignmentIds)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+            }
             $tasks = Task::query()
                 ->whereHas('distributionChannels', fn ($query) => $query->whereKey($channelId))
                 ->orderBy('tasks.id')
@@ -309,6 +419,11 @@ class DistributionChannelDeletionService
             ArticleDistribution::query()
                 ->where('distribution_channel_id', $channelId)
                 ->delete();
+            if ($hostedAllocationRequests->isNotEmpty()) {
+                HostedSiteAllocationRequest::query()
+                    ->whereIn('id', $hostedAllocationRequests->pluck('id')->all())
+                    ->delete();
+            }
             $lockedChannel->secrets()->delete();
             $lockedChannel->operations()->delete();
 

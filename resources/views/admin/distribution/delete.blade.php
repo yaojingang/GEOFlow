@@ -30,6 +30,11 @@
                     </div>
                 @endforeach
             </dl>
+            @if (!empty($impact['hosted_site_profile_id']))
+                <div class="mt-5 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+                    托管站点影响：{{ (int) $impact['hosted_assignment_count'] }} 条文章归属、{{ (int) $impact['hosted_allocation_request_count'] }} 条分配请求、{{ (int) $impact['hosted_view_log_count'] }} 条访问日志、{{ (int) $impact['hosted_lead_count'] }} 条线索。访问日志和线索会保留，站点归属会清理。
+                </div>
+            @endif
             @if ((int) $impact['remote_content_count'] > 0)
                 <a href="{{ route('admin.distribution.jobs', ['channel_id' => (int) $channel->id]) }}" class="mt-5 inline-flex text-sm font-medium text-blue-700 hover:text-blue-900">{{ __('admin.distribution.delete.review_jobs') }}</a>
             @endif

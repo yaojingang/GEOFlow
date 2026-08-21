@@ -179,14 +179,10 @@ check_resources() {
 
 check_ports() {
   local web_port="$1"
-  local reverb_port="$2"
 
   if command_exists ss; then
     if ss -ltn | awk '{print $4}' | grep -Eq "[:.]${web_port}$"; then
       warn "Port ${web_port} already appears to be in use. Change GEOFLOW_WEB_PORT if deployment fails."
-    fi
-    if ss -ltn | awk '{print $4}' | grep -Eq "[:.]${reverb_port}$"; then
-      warn "Port ${reverb_port} already appears to be in use. Change GEOFLOW_REVERB_PORT if deployment fails."
     fi
   fi
 }
@@ -250,18 +246,16 @@ prepare_env() {
     log ".env.prod already exists; preserving existing values unless explicitly set by this script."
   fi
 
-  local default_ip current_app_url current_admin_path current_web_port current_reverb_port
-  local app_url admin_path web_port reverb_port db_password redis_password reverb_secret session_secure_cookie
+  local default_ip current_app_url current_admin_path current_web_port
+  local app_url app_authority app_host app_scheme app_public_port admin_path web_port db_password redis_password reverb_secret session_secure_cookie
   default_ip="$(detect_primary_ip || true)"
   default_ip="${default_ip:-127.0.0.1}"
 
   current_web_port="$(get_env_value .env.prod WEB_PORT)"
-  current_reverb_port="$(get_env_value .env.prod REVERB_EXPOSE_PORT)"
   current_app_url="$(get_env_value .env.prod APP_URL)"
   current_admin_path="$(get_env_value .env.prod ADMIN_BASE_PATH)"
 
   web_port="$(prompt_value GEOFLOW_WEB_PORT "Public web port" "${current_web_port:-18080}")"
-  reverb_port="$(prompt_value GEOFLOW_REVERB_PORT "Public Reverb port" "${current_reverb_port:-18081}")"
   app_url="$(prompt_value GEOFLOW_APP_URL "Public APP_URL, including protocol and optional subdirectory" "${current_app_url:-http://${default_ip}:${web_port}}")"
   admin_path="$(prompt_value GEOFLOW_ADMIN_BASE_PATH "Admin base path without leading slash" "${current_admin_path:-geo_admin}")"
 
@@ -275,14 +269,22 @@ prepare_env() {
     https://*) session_secure_cookie=true ;;
     *) session_secure_cookie=false ;;
   esac
+  app_scheme="${app_url%%://*}"
+  app_authority="${app_url#*://}"
+  app_authority="${app_authority%%/*}"
+  app_host="${app_authority%%:*}"
+  case "$app_authority" in
+    *:*) app_public_port="${app_authority##*:}" ;;
+    *) [ "$app_scheme" = "https" ] && app_public_port=443 || app_public_port=80 ;;
+  esac
   session_secure_cookie="${GEOFLOW_SESSION_SECURE_COOKIE:-$session_secure_cookie}"
 
-  check_ports "$web_port" "$reverb_port"
+  check_ports "$web_port"
 
   set_env_value .env.prod APP_ENV production
   set_env_value .env.prod APP_DEBUG false
   set_env_value .env.prod APP_URL "$app_url"
-  set_env_value .env.prod TRUSTED_PROXIES "${GEOFLOW_TRUSTED_PROXIES:-}"
+  set_env_value .env.prod TRUSTED_PROXIES "${GEOFLOW_TRUSTED_PROXIES:-REMOTE_ADDR}"
   set_env_value .env.prod BOOST_BROWSER_LOGS_WATCHER false
   set_env_value .env.prod ADMIN_BASE_PATH "$admin_path"
   set_env_value .env.prod DB_CONNECTION pgsql
@@ -294,8 +296,18 @@ prepare_env() {
   set_env_value .env.prod REDIS_HOST redis
   set_env_value .env.prod REDIS_PASSWORD "$redis_password"
   set_env_value .env.prod WEB_PORT "$web_port"
-  set_env_value .env.prod REVERB_EXPOSE_PORT "$reverb_port"
   set_env_value .env.prod REVERB_APP_SECRET "$reverb_secret"
+  set_env_value .env.prod REVERB_HOST "$app_host"
+  set_env_value .env.prod REVERB_PORT "$app_public_port"
+  set_env_value .env.prod REVERB_SCHEME "$app_scheme"
+  set_env_value .env.prod REVERB_SERVER_PORT 18080
+  set_env_value .env.prod REVERB_SERVER_PATH /reverb
+  set_env_value .env.prod REVERB_ALLOWED_ORIGINS "$app_host"
+  set_env_value .env.prod GEOFLOW_PRIMARY_HOSTS "$app_host"
+  set_env_value .env.prod GEOFLOW_NGINX_PRIMARY_HOST "$app_host"
+  set_env_value .env.prod GEOFLOW_NGINX_PRIMARY_ALIASES ""
+  set_env_value .env.prod GEOFLOW_NGINX_PUBLIC_SCHEME "$app_scheme"
+  set_env_value .env.prod GEOFLOW_NGINX_PUBLIC_PORT "$app_public_port"
   set_env_value .env.prod SESSION_LIFETIME 43200
   set_env_value .env.prod SESSION_SECURE_COOKIE "$session_secure_cookie"
   set_env_value .env.prod GEOFLOW_SESSION_TIMEOUT 2592000

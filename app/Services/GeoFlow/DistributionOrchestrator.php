@@ -9,7 +9,11 @@ use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionLog;
+use App\Models\HostedSiteArticleAssignment;
 use App\Models\Task;
+use App\Services\HostedSites\HostedSiteAllocationRequestService;
+use App\Services\HostedSites\HostedSiteAllocator;
+use App\Services\HostedSites\HostedSiteLifecycleService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -22,6 +26,9 @@ class DistributionOrchestrator
         private readonly TaskDistributionChannelSelector $channelSelector,
         private readonly ArticleRiskGate $articleRiskGate,
         private readonly DistributionChannelOperationLeaseService $channelOperationLeaseService,
+        private readonly HostedSiteAllocationRequestService $hostedAllocationRequests,
+        private readonly HostedSiteAllocator $hostedSiteAllocator,
+        private readonly HostedSiteLifecycleService $hostedSiteLifecycle,
     ) {}
 
     /**
@@ -40,6 +47,17 @@ class DistributionOrchestrator
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            $requestedHostedCount = DistributionChannel::query()
+                ->whereIn('id', array_keys($activeIds->all()))
+                ->where('channel_type', DistributionChannel::TYPE_HOSTED_SITE)
+                ->count();
+            if ($requestedHostedCount > 1) {
+                throw new \DomainException('Phase one allows one hosted site per task.');
+            }
+            if ($requestedHostedCount === 1 && (string) $lockedTask->publish_scope !== 'distribution_only') {
+                throw new \DomainException('Hosted site tasks require distribution_only publish scope.');
+            }
 
             $syncPayload = [];
             $sortOrder = 0;
@@ -174,7 +192,35 @@ class DistributionOrchestrator
                 return;
             }
 
-            $channels = $this->channelSelector->selectChannelsForArticle($articleModel, $channels, $action);
+            $hostedChannels = $channels
+                ->filter(static fn (DistributionChannel $channel): bool => $channel->isHostedSite())
+                ->values();
+            $externalChannels = $channels
+                ->reject(static fn (DistributionChannel $channel): bool => $channel->isHostedSite())
+                ->values();
+            $channels = $this->channelSelector->selectChannelsForArticle($articleModel, $externalChannels, $action);
+
+            if ($action === 'publish' && $hostedChannels->isNotEmpty()) {
+                $existingAssignment = HostedSiteArticleAssignment::query()
+                    ->where('article_id', (int) $articleModel->id)
+                    ->first();
+                if ($existingAssignment?->status === HostedSiteArticleAssignment::STATUS_WITHDRAWN) {
+                    $this->hostedSiteLifecycle->restorePublication($articleModel);
+                } else {
+                    $allocationRequest = $this->hostedAllocationRequests->request($articleModel);
+                    $this->hostedSiteAllocator->allocate($allocationRequest);
+                }
+            } elseif ($action !== 'publish' && $hostedChannels->isNotEmpty()) {
+                $assignment = HostedSiteArticleAssignment::query()
+                    ->with('profile.channel')
+                    ->where('article_id', (int) $articleModel->id)
+                    ->first();
+                $assignedChannel = $assignment?->profile?->channel;
+                if ($assignedChannel instanceof DistributionChannel
+                    && (string) $assignedChannel->status === DistributionChannel::STATUS_ACTIVE) {
+                    $channels->push($assignedChannel);
+                }
+            }
 
             if ($channels->isEmpty()) {
                 return;
@@ -327,11 +373,23 @@ class DistributionOrchestrator
                 return null;
             }
 
-            if (! $channel || (string) $channel->status !== DistributionChannel::STATUS_ACTIVE) {
+            if (! $channel
+                || (string) $channel->status !== DistributionChannel::STATUS_ACTIVE) {
                 $distribution->forceFill([
                     'status' => 'failed',
                     'next_retry_at' => null,
                     'last_error_message' => __('admin.distribution.delete.channel_unavailable_error'),
+                ])->save();
+
+                return null;
+            }
+            if ($channel->isHostedSite() && ! config('geoflow.hosted_sites.enabled', false)) {
+                $remoteMeta = is_array($distribution->remote_meta) ? $distribution->remote_meta : [];
+                $distribution->forceFill([
+                    'status' => 'queued',
+                    'next_retry_at' => null,
+                    'last_error_message' => 'Hosted sites are temporarily disabled.',
+                    'remote_meta' => array_replace($remoteMeta, ['hosted_feature_paused' => true]),
                 ])->save();
 
                 return null;
@@ -498,11 +556,14 @@ class DistributionOrchestrator
                 ->whereKey((int) $candidate->distribution_channel_id)
                 ->lockForUpdate()
                 ->first();
-            $distribution = ArticleDistribution::query()
-                ->whereKey((int) $candidate->id)
+            $distributions = ArticleDistribution::query()
+                ->where('article_id', (int) $candidate->article_id)
                 ->where('distribution_channel_id', (int) $candidate->distribution_channel_id)
+                ->orderBy('id')
                 ->lockForUpdate()
-                ->first();
+                ->get();
+            $distribution = $distributions->firstWhere('action', $action)
+                ?? $distributions->firstWhere('id', (int) $candidate->id);
             if (! $channel || ! $distribution) {
                 throw new \RuntimeException('分发记录缺少文章或渠道');
             }
