@@ -1,5 +1,5 @@
-import QRCode from 'qrcode';
 import { enhanceFormAccessibility } from './form-accessibility';
+import { refreshIconPlaceholders, stabilizeLucideRuntime } from './ui-v3-icons';
 
 const SHELL_SELECTOR = '[data-gf-shell]';
 const SIDEBAR_STORAGE_KEY = 'geoflow.admin.ui-v3.sidebar-collapsed';
@@ -15,8 +15,8 @@ function runtimeConfig() {
     }
 }
 
-function refreshIcons() {
-    window.lucide?.createIcons?.();
+function refreshIcons(root = document) {
+    return refreshIconPlaceholders(root, window.lucide, document);
 }
 
 function showToast(message) {
@@ -35,11 +35,14 @@ function setupSidebar() {
     const shell = document.querySelector(SHELL_SELECTOR);
     if (!shell) return;
 
+    const root = document.documentElement;
     const body = document.body;
     const collapseButton = document.querySelector('[data-sidebar-collapse]');
-    const applyCollapsedState = (collapsed) => {
+    const applyCollapsedState = (collapsed, persist = true) => {
+        root.setAttribute('data-gf-sidebar-state', collapsed ? 'collapsed' : 'expanded');
         body.classList.toggle('gf-sidebar-collapsed', collapsed);
         collapseButton?.setAttribute('aria-expanded', String(!collapsed));
+        if (!persist) return;
         try {
             window.localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0');
         } catch {
@@ -47,14 +50,11 @@ function setupSidebar() {
         }
     };
 
-    let storedCollapsed = false;
-    try {
-        storedCollapsed = window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1';
-    } catch {
-        storedCollapsed = false;
-    }
-    applyCollapsedState(storedCollapsed);
-    collapseButton?.addEventListener('click', () => applyCollapsedState(!body.classList.contains('gf-sidebar-collapsed')));
+    const initialCollapsed = root.getAttribute('data-gf-sidebar-state') === 'collapsed';
+    applyCollapsedState(initialCollapsed, false);
+    collapseButton?.addEventListener('click', () => {
+        applyCollapsedState(root.getAttribute('data-gf-sidebar-state') !== 'collapsed');
+    });
     document.querySelectorAll('[data-sidebar-open]').forEach((button) => button.addEventListener('click', () => body.classList.add('gf-sidebar-open')));
     document.querySelectorAll('[data-sidebar-close]').forEach((button) => button.addEventListener('click', () => body.classList.remove('gf-sidebar-open')));
     document.querySelectorAll('.gf-sidebar a').forEach((link) => link.addEventListener('click', () => body.classList.remove('gf-sidebar-open')));
@@ -123,12 +123,20 @@ function closeModal() {
     modalOpener = null;
 }
 
+let qrCodeModulePromise = null;
+
+function loadQrCode() {
+    qrCodeModulePromise ??= import('qrcode').then((module) => module.default ?? module);
+    return qrCodeModulePromise;
+}
+
 async function renderQrCode(modal) {
     const canvas = modal.querySelector('[data-qr-canvas]');
     const value = modal.dataset.qrValue;
     if (!canvas || !value || canvas.dataset.rendered === 'true') return;
 
     try {
+        const QRCode = await loadQrCode();
         await QRCode.toCanvas(canvas, value, {
             width: 132,
             margin: 1,
@@ -300,6 +308,31 @@ function setupFormAccessibility() {
     observer.observe(shell, { childList: true, subtree: true });
 }
 
+function setupIcons() {
+    window.GeoFlowAdminUi = {
+        ...(window.GeoFlowAdminUi ?? {}),
+        refreshIcons,
+        showToast,
+    };
+
+    if (window.lucide) {
+        stabilizeLucideRuntime(window.lucide, document);
+        refreshIcons(document);
+        return;
+    }
+
+    document.querySelector('[data-lucide-runtime]')?.addEventListener('load', () => {
+        stabilizeLucideRuntime(window.lucide, document);
+        refreshIcons(document);
+    }, { once: true });
+}
+
+function finishFirstPaint() {
+    window.requestAnimationFrame(() => {
+        document.documentElement.removeAttribute('data-gf-ui-booting');
+    });
+}
+
 function initialize() {
     if (!document.body.classList.contains('gf-admin-v3')) return;
     setupSidebar();
@@ -310,8 +343,8 @@ function initialize() {
     setupUnsavedChanges();
     setupFormAccessibility();
     focusFirstError();
-    refreshIcons();
-    window.setTimeout(refreshIcons, 80);
+    setupIcons();
+    finishFirstPaint();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize);

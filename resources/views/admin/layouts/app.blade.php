@@ -20,12 +20,27 @@
     @endif
     <title>@isset($pageTitle){{ $pageTitle }} · @endisset{{ $adminBrandName }}</title>
     @if ($adminUiV3Enabled)
+        <script data-gf-sidebar-bootstrap>
+            (() => {
+                const root = document.documentElement;
+                root.setAttribute('data-gf-ui-booting', '');
+                let sidebarState = 'expanded';
+                try {
+                    sidebarState = window.localStorage.getItem('geoflow.admin.ui-v3.sidebar-collapsed') === '1'
+                        ? 'collapsed'
+                        : 'expanded';
+                } catch {
+                    sidebarState = 'expanded';
+                }
+                root.setAttribute('data-gf-sidebar-state', sidebarState);
+            })();
+        </script>
         @include('admin.partials.v3-runtime-config')
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @else
         <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     @endif
-    <script src="{{ asset('js/lucide.min.js') }}" defer></script>
+    <script src="{{ asset('js/lucide.min.js') }}" data-lucide-runtime defer></script>
     @stack('styles')
 </head>
 @if ($adminUiV3Enabled && $currentAdmin instanceof \App\Models\Admin)

@@ -33,6 +33,30 @@ class AdminUiV3ShellTest extends TestCase
             ->assertSee('tailwindcss.play-cdn.js', false);
     }
 
+    public function test_v3_shell_primes_sidebar_state_before_the_page_can_render(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+        $admin = $this->admin('stable_shell_owner', 'super_admin');
+
+        $html = $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
+            ->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $bootstrapPosition = strpos($html, 'data-gf-sidebar-bootstrap');
+        $lucidePosition = strpos($html, 'data-lucide-runtime');
+        $bodyPosition = strpos($html, '<body');
+
+        $this->assertNotFalse($bootstrapPosition);
+        $this->assertNotFalse($lucidePosition);
+        $this->assertNotFalse($bodyPosition);
+        $this->assertLessThan($lucidePosition, $bootstrapPosition);
+        $this->assertLessThan($bodyPosition, $bootstrapPosition);
+        $this->assertStringContainsString('data-gf-sidebar-state', $html);
+        $this->assertStringContainsString('data-gf-ui-booting', $html);
+    }
+
     public function test_feature_flag_disables_v3_only_pages(): void
     {
         $admin = $this->admin('disabled_v3_owner', 'super_admin');
