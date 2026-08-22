@@ -68,6 +68,9 @@ if (array_diff($normalizedPrimaryHostCandidates, $primaryHosts) !== []) {
 
 return [
 
+    // Admin UI V3 公共壳层。默认关闭，仅在独立 UI V3 环境显式开启。
+    'admin_ui_v3_enabled' => filter_var(env('GEOFLOW_ADMIN_UI_V3_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+
     // 站点展示名称（页眉、标题等）
     'site_name' => env('SITE_NAME', 'GEOFlow'),
     // 站点完整/副标题文案

@@ -2,7 +2,7 @@
     <div class="px-6 py-8 text-sm text-gray-500">{{ __('admin.distribution.empty_jobs') }}</div>
 @else
     <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200">
+        <table class="min-w-full divide-y divide-gray-200" data-sticky-actions>
             <thead class="bg-gray-50">
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">{{ __('admin.distribution.field.article') }}</th>

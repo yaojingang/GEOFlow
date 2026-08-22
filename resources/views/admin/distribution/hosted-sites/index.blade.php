@@ -28,7 +28,7 @@
         @else
             <div class="overflow-hidden border-y border-gray-200 bg-white">
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm" data-sticky-actions>
                         <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
                             <tr>
                                 <th class="px-5 py-3">站点</th>

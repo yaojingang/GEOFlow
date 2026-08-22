@@ -19,6 +19,7 @@ use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\Outbound\SecureHttpFactory;
 use App\Services\Outbound\SystemHostResolver;
 use App\Services\Site\HostedSiteResolver;
+use App\Support\AdminUiRegistry;
 use App\Support\Site\CurrentSite;
 use App\View\Composers\SiteLayoutComposer;
 use Closure;
@@ -115,6 +116,23 @@ class AppServiceProvider extends ServiceProvider
                 'anonymousUsageTelemetryPayload',
                 $admin instanceof Admin ? app(AnonymousUsageTelemetry::class)->payload($admin) : null
             );
+            if ((bool) config('geoflow.admin_ui_v3_enabled', false) && $admin instanceof Admin) {
+                $registry = app(AdminUiRegistry::class);
+                $viewData = $view->getData();
+                $view->with('adminUiV3', [
+                    'navigation' => $registry->navigation($admin),
+                    'current' => $registry->currentPage(
+                        $admin,
+                        request()->route()?->getName(),
+                        (string) ($viewData['activeMenu'] ?? '')
+                    ),
+                    'recent' => $registry->recent($admin),
+                    'settings_navigation' => $registry->settingsNavigation($admin, request()->route()?->getName()),
+                    'show_settings_navigation' => $registry->activeKey(request()->route()?->getName()) === 'site_settings'
+                        && ! request()->routeIs('admin.account.*'),
+                    'site_url' => (string) config('geoflow.site_url', config('app.url')),
+                ]);
+            }
         });
     }
 

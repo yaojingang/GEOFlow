@@ -1,11 +1,17 @@
+@php($adminUiV3Enabled = (bool) config('geoflow.admin_ui_v3_enabled', false))
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ __('admin.login.title') }} — {{ $adminSiteName }}</title>
-    <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
+    <title>{{ __('admin.login.title') }} · {{ $adminSiteName }}</title>
+    @if ($adminUiV3Enabled)
+        @vite('resources/css/app.css')
+    @else
+        <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
+    @endif
     <script src="{{ asset('js/lucide.min.js') }}"></script>
+    @unless ($adminUiV3Enabled)
     <style>
         body {
             background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 32%),
@@ -26,8 +32,9 @@
             background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255, 255, 255, 0.9) 100%);
         }
     </style>
+    @endunless
 </head>
-<body class="overflow-hidden">
+<body class="overflow-hidden @if($adminUiV3Enabled) gf-login-v3 @endif">
 <div class="fixed right-4 top-4 z-50">
     <select onchange="window.location.href=this.value" class="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600 shadow-sm">
         @foreach (\App\Support\AdminWeb::supportedLocales() as $localeCode => $localeLabel)

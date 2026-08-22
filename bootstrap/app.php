@@ -12,6 +12,7 @@ use App\Http\Middleware\AssignApiRequestId;
 use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnforceCurrentSiteSurface;
+use App\Http\Middleware\EnsureAdminUiV3Enabled;
 use App\Http\Middleware\EnsureApiScope;
 use App\Http\Middleware\EnsureHostedSitesEnabled;
 use App\Http\Middleware\EnsureSuperAdmin;
@@ -20,6 +21,7 @@ use App\Http\Middleware\NormalizeRequestHost;
 use App\Http\Middleware\RecordSiteViewLog;
 use App\Http\Middleware\ResolveCurrentSite;
 use App\Http\Middleware\SiteWebLocale;
+use App\Http\Middleware\TrackAdminRecentPage;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -79,6 +81,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.super' => EnsureSuperAdmin::class,
             // Blade 后台：写操作日志
             'admin.activity' => LogAdminActivity::class,
+            // Blade 后台：记录经过权限过滤的最近处理页面
+            'admin.recent' => TrackAdminRecentPage::class,
+            // Blade 后台：V3 独占页面在功能开关关闭时不可访问
+            'admin.ui-v3' => EnsureAdminUiV3Enabled::class,
         ]);
 
         // 已登录的管理员访问登录页(guest:admin)时，重定向到后台仪表盘，而不是 Laravel 默认的 "/"。

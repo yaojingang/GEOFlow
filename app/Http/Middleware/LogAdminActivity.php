@@ -20,6 +20,9 @@ class LogAdminActivity
      */
     public function handle(Request $request, Closure $next): Response
     {
+        /** @var Admin|null $admin */
+        $admin = auth('admin')->user();
+
         // 先放行业务逻辑，确保日志失败不阻断正常响应。
         $response = $next($request);
 
@@ -28,18 +31,23 @@ class LogAdminActivity
             return $response;
         }
 
-        /** @var Admin|null $admin */
-        $admin = auth('admin')->user();
         if (! $admin instanceof Admin) {
             return $response;
         }
 
-        $action = (string) ($request->input('action') ?: 'submit');
+        $requestedAction = $request->attributes->get('admin_activity_action');
+        $action = is_string($requestedAction)
+            && preg_match('/\A[a-z0-9._:-]{1,40}\z/i', $requestedAction) === 1
+                ? $requestedAction
+                : 'submit';
         $routeName = (string) ($request->route()?->getName() ?? '');
         // 组合路由名 + action，便于后续按模块和操作类型筛选审计日志。
-        $fullAction = $routeName !== '' ? $routeName.':'.$action : $action;
+        $fullAction = mb_substr($routeName !== '' ? $routeName.':'.$action : $action, 0, 120);
 
-        $details = $request->except(['password', 'package_password', 'current_password', 'new_password', 'confirm_password']);
+        $details = $request->except([
+            'password', 'password_confirmation', 'package_password',
+            'current_password', 'new_password', 'confirm_password',
+        ]);
         $explicitDetails = $request->attributes->get('admin_activity_details');
         if (is_array($explicitDetails)) {
             $details = array_replace($details, $explicitDetails);

@@ -97,7 +97,7 @@
                 </div>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[1110px] table-fixed divide-y divide-gray-200">
+                    <table class="w-full min-w-[1110px] table-fixed divide-y divide-gray-200" data-sticky-actions>
                         <thead class="bg-gray-50">
                         <tr>
                             <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.tasks.column.name') }}</th>

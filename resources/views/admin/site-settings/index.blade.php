@@ -73,6 +73,45 @@
             ],
         ],
     ];
+
+    if (auth('admin')->user()?->canManageProtectedWorkflows()) {
+        $siteSettingsGroupRows[] = [
+            [
+                'title' => __('admin.ui_v3.system_management'),
+                'desc' => __('admin.ui_v3.system_management_hint'),
+                'columns' => 'lg:grid-cols-3',
+                'items' => [
+                    [
+                        'title' => __('admin.ui_v3.users_permissions'),
+                        'desc' => __('admin.ui_v3.user_settings_hint'),
+                        'href' => route('admin.admin-users.index'),
+                        'target' => null,
+                        'icon' => 'users-round',
+                        'iconClass' => 'bg-blue-50 text-blue-600 ring-blue-100',
+                        'action' => __('admin.site_settings.manage_module'),
+                    ],
+                    [
+                        'title' => __('admin.ui_v3.security_audit'),
+                        'desc' => __('admin.ui_v3.audit_settings_hint'),
+                        'href' => route('admin.admin-activity-logs'),
+                        'target' => null,
+                        'icon' => 'shield-check',
+                        'iconClass' => 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+                        'action' => __('admin.site_settings.manage_module'),
+                    ],
+                    [
+                        'title' => __('admin.ui_v3.system_updates'),
+                        'desc' => __('admin.ui_v3.system_updates_hint'),
+                        'href' => route('admin.system-updates.index'),
+                        'target' => null,
+                        'icon' => 'refresh-cw',
+                        'iconClass' => 'bg-violet-50 text-violet-600 ring-violet-100',
+                        'action' => __('admin.site_settings.manage_module'),
+                    ],
+                ],
+            ],
+        ];
+    }
 @endphp
 
 @section('content')
