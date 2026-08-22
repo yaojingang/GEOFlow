@@ -1,0 +1,65 @@
+name: geoflow-ui-v3
+
+services:
+  postgres:
+    container_name: geoflow-ui-v3-postgres
+    ports:
+      - "127.0.0.1:${DB_EXPOSE_PORT:-35432}:5432"
+    volumes:
+      - geoflow-ui-v3-postgres-data:/var/lib/postgresql/data
+
+  redis:
+    container_name: geoflow-ui-v3-redis
+    ports:
+      - "127.0.0.1:${REDIS_EXPOSE_PORT:-36379}:6379"
+
+  assets:
+    container_name: geoflow-ui-v3-assets
+
+  init:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-init
+
+  app:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-app
+    ports: !override
+      - "127.0.0.1:${APP_PORT:-28080}:8080"
+    tmpfs:
+      - /var/www/html/storage/framework/testing
+
+  queue:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-queue
+
+  knowledge-queue:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-knowledge-queue
+
+  system-update-queue:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-system-update-queue
+
+  scheduler:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-scheduler
+
+  reverb:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-reverb
+    ports: !override
+      - "127.0.0.1:${REVERB_EXPOSE_PORT:-28081}:8080"
+
+volumes:
+  geoflow-node-modules:
+    name: geoflow-ui-v3-node-modules
+  geoflow-ui-v3-postgres-data:
+    name: geoflow-ui-v3-postgres-data
+
+networks:
+  default:
+    name: geoflow-ui-v3-network
+    ipam:
+      config:
+        - subnet: 10.254.217.0/24
+          gateway: 10.254.217.1
