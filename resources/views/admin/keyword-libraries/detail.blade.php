@@ -5,7 +5,7 @@
         <div class="mb-8">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-4">
-                    <a href="{{ route('admin.keyword-libraries.index') }}" class="text-gray-400 hover:text-gray-600">
+                    <a href="{{ route('admin.keyword-libraries.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                         <i data-lucide="arrow-left" class="w-5 h-5"></i>
                     </a>
                     <div>
@@ -164,7 +164,7 @@
                                     <input type="checkbox" form="batch-form" name="keyword_ids[]" value="{{ (int) $keyword->id }}" class="keyword-checkbox hidden rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
                                     <span class="text-sm text-gray-900 break-all">{{ $keyword->keyword }}</span>
                                 </div>
-                                <button type="button" onclick="deleteKeyword({{ (int) $keyword->id }}, @js($keyword->keyword))" class="text-red-600 hover:text-red-800 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button type="button" onclick="deleteKeyword({{ (int) $keyword->id }}, @js($keyword->keyword))" aria-label="{{ __('admin.common.delete') }}：{{ $keyword->keyword }}" class="text-red-600 hover:text-red-800 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <i data-lucide="x" class="w-4 h-4"></i>
                                 </button>
                             </div>

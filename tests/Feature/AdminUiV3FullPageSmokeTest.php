@@ -155,6 +155,88 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         }
     }
 
+    public function test_review_fixture_pages_do_not_expose_raw_translation_keys(): void
+    {
+        Storage::fake('local');
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+        config()->set('geoflow.update_center_enabled', true);
+        $this->seed(UiV3ReviewSeeder::class);
+
+        $admin = Admin::query()->where('username', 'ui_v3_reviewer')->firstOrFail();
+        $parameters = $this->routeParameters();
+
+        $this
+            ->withSession([Admin::AUTH_VERSION_SESSION_KEY => (int) $admin->auth_version])
+            ->actingAs($admin, 'admin')
+            ->get(route('admin.enterprise-knowledge.show', $parameters['admin.enterprise-knowledge.show']))
+            ->assertOk()
+            ->assertDontSee('admin.no_data');
+
+        $this
+            ->withSession([Admin::AUTH_VERSION_SESSION_KEY => (int) $admin->auth_version])
+            ->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertDontSee('admin.system_updates.backup.status_completed');
+    }
+
+    public function test_special_layouts_and_error_recovery_pages_keep_v3_accessibility_contracts(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+
+        $this->get(route('admin.login'))
+            ->assertOk()
+            ->assertSee('gf-login-v3', false)
+            ->assertSee('aria-label="'.e(__('admin.auth.language_label')).'"', false);
+
+        $standardAdmin = Admin::query()->create([
+            'username' => 'ui_v3_standard_reviewer',
+            'password' => 'ui-v3-review-only',
+            'email' => 'ui-v3-standard-reviewer@example.test',
+            'display_name' => 'UI V3 Standard Reviewer',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $this->actingAs($standardAdmin, 'admin')
+            ->get(route('admin.distribution.index'))
+            ->assertForbidden()
+            ->assertSee('admin-error-v3.css', false)
+            ->assertSee('403');
+
+        $this->get('/admin/ui-v3-review-missing-page')
+            ->assertNotFound()
+            ->assertSee('admin-error-v3.css', false)
+            ->assertSee('404');
+
+        $serverError = view('errors.500')->render();
+        $this->assertStringContainsString('admin-error-v3.css', $serverError);
+        $this->assertStringContainsString('500', $serverError);
+    }
+
+    public function test_legacy_icon_controls_have_accessible_names(): void
+    {
+        Storage::fake('local');
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+        $this->seed(UiV3ReviewSeeder::class);
+
+        $admin = Admin::query()->where('username', 'ui_v3_reviewer')->firstOrFail();
+        $parameters = $this->routeParameters();
+        $authenticated = $this
+            ->withSession([Admin::AUTH_VERSION_SESSION_KEY => (int) $admin->auth_version])
+            ->actingAs($admin, 'admin');
+
+        $authenticated
+            ->get(route('admin.keyword-libraries.detail', $parameters['admin.keyword-libraries.detail']))
+            ->assertOk()
+            ->assertSee('aria-label="'.e(__('admin.common.back')).'"', false)
+            ->assertSee('aria-label="'.e(__('admin.common.delete')).'：', false);
+
+        $authenticated
+            ->get(route('admin.ai-models.index'))
+            ->assertOk()
+            ->assertSee('aria-label="'.e(__('admin.common.close')).'"', false);
+    }
+
     /** @return array<string, array<string, int|string>> */
     private function routeParameters(): array
     {

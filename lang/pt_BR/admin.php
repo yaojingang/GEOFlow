@@ -473,6 +473,7 @@ return array_replace_recursive($base, [
             'execution_switch_warn' => 'A substituição real de arquivos está ativada. Confirme backups e rollback antes da execução.',
         ],
         'backup' => [
+            'status_completed' => 'Concluído',
             'status_available' => 'Disponível',
             'status_not_required' => 'Backup desnecessário',
             'file_count' => ':count arquivos',

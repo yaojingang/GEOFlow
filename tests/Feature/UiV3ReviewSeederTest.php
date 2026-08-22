@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\DistributionChannel;
@@ -35,6 +36,8 @@ class UiV3ReviewSeederTest extends TestCase
         $this->seed(UiV3ReviewSeeder::class);
         $this->seed(UiV3ReviewSeeder::class);
 
+        $this->assertSame(1, Admin::query()->where('username', UiV3ReviewSeeder::REVIEW_ADMIN_USERNAME)->count());
+        $this->assertSame(1, Admin::query()->where('username', UiV3ReviewSeeder::STANDARD_ADMIN_USERNAME)->count());
         $this->assertSame(1, Task::query()->where('name', UiV3ReviewSeeder::TASK_NAME)->count());
         $this->assertSame(1, KeywordLibrary::query()->where('name', UiV3ReviewSeeder::KEYWORD_LIBRARY_NAME)->count());
         $this->assertSame(1, TitleLibrary::query()->where('name', UiV3ReviewSeeder::TITLE_LIBRARY_NAME)->count());

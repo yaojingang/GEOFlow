@@ -469,6 +469,7 @@ return [
             'execution_switch_warn' => 'Real file replacement is enabled. Confirm backups and rollback before execution.',
         ],
         'backup' => [
+            'status_completed' => 'Completed',
             'status_available' => 'Available',
             'status_not_required' => 'No backup needed',
             'file_count' => ':count files',

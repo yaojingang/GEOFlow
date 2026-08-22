@@ -6,7 +6,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:analytics": "node --test tests/JavaScript/analytics.test.js"
+        "test:analytics": "node --test tests/JavaScript/*.test.js"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

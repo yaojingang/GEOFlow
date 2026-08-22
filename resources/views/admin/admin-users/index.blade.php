@@ -4,7 +4,7 @@
     <div class="px-4 sm:px-0">
         <div class="flex items-center justify-between mb-8">
             <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.site-settings.index') }}" class="text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.site-settings.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
                 <div>
@@ -179,7 +179,7 @@
             <div class="bg-white rounded-lg shadow-xl max-w-lg w-full">
                 <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">{{ __('admin.admin_users.modal_create') }}</h3>
-                    <button type="button" onclick="hideCreateAdminModal()" class="text-gray-400 hover:text-gray-600">
+                    <button type="button" onclick="hideCreateAdminModal()" aria-label="{{ __('admin.common.close') }}" class="text-gray-400 hover:text-gray-600">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -229,7 +229,7 @@
             <div class="bg-white rounded-lg shadow-xl max-w-lg w-full">
                 <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">{{ __('admin.admin_users.modal_edit') }}</h3>
-                    <button type="button" onclick="hideEditAdminModal()" class="text-gray-400 hover:text-gray-600">
+                    <button type="button" onclick="hideEditAdminModal()" aria-label="{{ __('admin.common.close') }}" class="text-gray-400 hover:text-gray-600">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>

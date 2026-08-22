@@ -73,7 +73,11 @@ class UiV3ReviewSeeder extends Seeder
 
     public const AI_SOURCE_PROVIDER_KEY = 'ui_v3_review_provider';
 
-    private const REVIEW_ADMIN_USERNAME = 'ui_v3_reviewer';
+    public const REVIEW_ADMIN_USERNAME = 'ui_v3_reviewer';
+
+    public const STANDARD_ADMIN_USERNAME = 'ui_v3_standard_reviewer';
+
+    public const REVIEW_PASSWORD = 'ui-v3-review-only';
 
     private const REVIEW_ARTICLE_SLUG = 'ui-v3-review-article';
 
@@ -85,10 +89,21 @@ class UiV3ReviewSeeder extends Seeder
             $admin = Admin::query()->updateOrCreate(
                 ['username' => self::REVIEW_ADMIN_USERNAME],
                 [
-                    'password' => 'ui-v3-review-only',
+                    'password' => self::REVIEW_PASSWORD,
                     'email' => 'ui-v3-review@example.test',
                     'display_name' => 'UI V3 Reviewer',
                     'role' => 'super_admin',
+                    'status' => 'active',
+                ],
+            );
+
+            Admin::query()->updateOrCreate(
+                ['username' => self::STANDARD_ADMIN_USERNAME],
+                [
+                    'password' => self::REVIEW_PASSWORD,
+                    'email' => 'ui-v3-standard-reviewer@example.test',
+                    'display_name' => 'UI V3 Standard Reviewer',
+                    'role' => 'admin',
                     'status' => 'active',
                 ],
             );

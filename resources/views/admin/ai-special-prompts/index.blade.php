@@ -4,7 +4,7 @@
     <div class="px-4 sm:px-0">
         <div class="flex items-center justify-between mb-8">
             <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.ai.configurator') }}" class="text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.ai.configurator') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
                 <div>
@@ -120,4 +120,3 @@
         });
     </script>
 @endpush
-

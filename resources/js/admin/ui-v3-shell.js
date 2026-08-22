@@ -1,4 +1,5 @@
 import QRCode from 'qrcode';
+import { enhanceFormAccessibility } from './form-accessibility';
 
 const SHELL_SELECTOR = '[data-gf-shell]';
 const SIDEBAR_STORAGE_KEY = 'geoflow.admin.ui-v3.sidebar-collapsed';
@@ -284,6 +285,21 @@ function focusFirstError() {
     document.querySelector('[data-admin-errors]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+function setupFormAccessibility() {
+    const shell = document.querySelector(SHELL_SELECTOR);
+    if (!shell) return;
+
+    enhanceFormAccessibility(shell);
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+                if (node instanceof HTMLElement) enhanceFormAccessibility(node);
+            });
+        });
+    });
+    observer.observe(shell, { childList: true, subtree: true });
+}
+
 function initialize() {
     if (!document.body.classList.contains('gf-admin-v3')) return;
     setupSidebar();
@@ -292,6 +308,7 @@ function initialize() {
     setupClipboard();
     setupLocaleSwitch();
     setupUnsavedChanges();
+    setupFormAccessibility();
     focusFirstError();
     refreshIcons();
     window.setTimeout(refreshIcons, 80);

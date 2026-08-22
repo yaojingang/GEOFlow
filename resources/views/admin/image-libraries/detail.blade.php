@@ -26,7 +26,7 @@
         <div class="mb-8">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-4">
-                    <a href="{{ route('admin.image-libraries.index') }}" class="text-gray-400 hover:text-gray-600">
+                    <a href="{{ route('admin.image-libraries.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                         <i data-lucide="arrow-left" class="w-5 h-5"></i>
                     </a>
                     <div>
@@ -298,7 +298,7 @@
             <div class="bg-white rounded-lg overflow-hidden">
                 <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                     <h3 id="image-title" class="text-lg font-medium text-gray-900"></h3>
-                    <button type="button" onclick="hideImageModal()" class="text-gray-400 hover:text-gray-600">
+                    <button type="button" onclick="hideImageModal()" aria-label="{{ __('admin.common.close') }}" class="text-gray-400 hover:text-gray-600">
                         <i data-lucide="x" class="w-6 h-6"></i>
                     </button>
                 </div>

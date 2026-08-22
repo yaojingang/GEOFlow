@@ -472,6 +472,7 @@ return [
             'execution_switch_warn' => '真实文件覆盖开关已开启，执行前请确认备份和回滚方案。',
         ],
         'backup' => [
+            'status_completed' => '已完成',
             'status_available' => '可用',
             'status_not_required' => '无需备份',
             'file_count' => ':count 个文件',

@@ -47,7 +47,7 @@
                     </button>
                 </div>
                 <div class="p-6">
-                    <textarea id="manual-publication-content" readonly rows="14" class="w-full rounded-lg border-gray-200 bg-gray-50 font-mono text-sm leading-6 text-gray-800">{{ $publication->content }}</textarea>
+                    <textarea id="manual-publication-content" readonly rows="14" aria-label="{{ __('admin.manual_publications.section.publish_content') }}" class="w-full rounded-lg border-gray-200 bg-gray-50 font-mono text-sm leading-6 text-gray-800">{{ $publication->content }}</textarea>
                     @if($publication->disclosure_snapshot)
                         <div class="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
                             <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">{{ __('admin.manual_publications.field.disclosure') }}</div>
