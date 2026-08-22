@@ -571,7 +571,7 @@
         document.addEventListener('DOMContentLoaded', function () {
             const isEditMode = @json($isEdit);
 
-            if (typeof lucide !== 'undefined') {
+            if (! window.GeoFlowAdminUi?.refreshIcons && typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
 

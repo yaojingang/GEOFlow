@@ -189,7 +189,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
-            if (typeof lucide !== 'undefined') {
+            if (! window.GeoFlowAdminUi?.refreshIcons && typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
         });

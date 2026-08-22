@@ -54,7 +54,7 @@
         if (!path) return base + '/';
         return base + '/' + String(path).replace(/^\/+/, '');
     };
-    if (typeof lucide !== 'undefined') {
+    if (! window.GeoFlowAdminUi?.refreshIcons && typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
 </script>

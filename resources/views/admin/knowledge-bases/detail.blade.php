@@ -294,9 +294,7 @@
                         textarea.value = editor.getValue();
                     }
 
-                    if (window.lucide) {
-                        window.lucide.createIcons();
-                    }
+                    window.GeoFlowAdminUi?.refreshIcons?.(editorNode);
                 },
             });
 

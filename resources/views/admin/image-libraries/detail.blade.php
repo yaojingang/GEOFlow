@@ -517,9 +517,8 @@
             if (uploadBtn) {
                 uploadBtn.disabled = true;
                 uploadBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 inline animate-spin"></i>' + @json(__('admin.image_detail.uploading'));
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
+                if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(uploadBtn);
+                else window.lucide?.createIcons?.();
             }
         });
 

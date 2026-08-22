@@ -1281,9 +1281,8 @@
                 bindRemove(item);
                 refreshState();
 
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
+                if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(item);
+                else window.lucide?.createIcons?.();
             });
 
             list.querySelectorAll('.homepage-module-item').forEach(bindRemove);
@@ -1353,7 +1352,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            if (typeof lucide !== 'undefined') {
+            if (! window.GeoFlowAdminUi?.refreshIcons && typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
 
@@ -1398,9 +1397,8 @@
                 bindRemove(adItem);
                 refreshState();
 
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
+                if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(adItem);
+                else window.lucide?.createIcons?.();
             });
 
             adList.querySelectorAll('.article-ad-item').forEach(bindRemove);
@@ -1628,9 +1626,8 @@
                     bindColorPicker(linkItem);
                     refreshTextAdLinks(scope);
 
-                    if (typeof lucide !== 'undefined') {
-                        lucide.createIcons();
-                    }
+                    if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(linkItem);
+                    else window.lucide?.createIcons?.();
                 });
             }
 
@@ -1682,9 +1679,8 @@
                 bindTextAdModule(textAdItem);
                 refreshTextAdState();
 
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
+                if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(textAdItem);
+                else window.lucide?.createIcons?.();
             });
 
             textAdList.querySelectorAll('.article-text-ad-item').forEach(function (item) {

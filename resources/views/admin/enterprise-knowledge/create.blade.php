@@ -212,9 +212,8 @@
                 submitButton.disabled = true;
                 submitButton.classList.add('opacity-70');
                 submitButton.innerHTML = `<i data-lucide="loader-2" class="mr-2 h-4 w-4 animate-spin"></i>${escapeHtml(labels.submitting)}`;
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
+                if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(submitButton);
+                else window.lucide?.createIcons?.();
             });
         });
     </script>

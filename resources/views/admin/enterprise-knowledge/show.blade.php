@@ -701,9 +701,7 @@
                     },
                     after() {
                         textarea.value = getEditorContent();
-                        if (window.lucide) {
-                            window.lucide.createIcons();
-                        }
+                        window.GeoFlowAdminUi?.refreshIcons?.(editorNode);
                     },
                 });
             };

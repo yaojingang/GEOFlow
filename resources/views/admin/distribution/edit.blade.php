@@ -975,9 +975,8 @@
             list.appendChild(module);
             addChannelTextAdLink(module);
             syncChannelTextAdModuleList(list);
-            if (window.lucide) {
-                window.lucide.createIcons();
-            }
+            if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(module);
+            else window.lucide?.createIcons?.();
         }
 
         function addChannelTextAdLink(module) {
