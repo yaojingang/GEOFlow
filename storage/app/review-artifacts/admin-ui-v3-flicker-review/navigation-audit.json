@@ -1,0 +1,245 @@
+{
+  "checks": 9,
+  "passed": 9,
+  "failed": 0,
+  "results": [
+    {
+      "name": "collapsed-new-tab",
+      "status": "pass",
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "collapsed-refresh",
+      "status": "pass",
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "immutable-asset-cache",
+      "status": "pass",
+      "assets": [
+        {
+          "name": "http://localhost:28080/build/assets/app-B0vTBWKm.css",
+          "transferSize": 0
+        },
+        {
+          "name": "http://localhost:28080/build/assets/app-C4EEGa2C.css",
+          "transferSize": 0
+        },
+        {
+          "name": "http://localhost:28080/build/assets/app-Bhzyv3qa.js",
+          "transferSize": 0
+        }
+      ]
+    },
+    {
+      "name": "collapsed-cross-page",
+      "status": "pass",
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "collapsed-second-tab",
+      "status": "pass",
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "collapsed-back",
+      "status": "pass",
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "collapsed-forward",
+      "status": "pass",
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "user-expand",
+      "status": "pass",
+      "measurement": {
+        "state": "expanded",
+        "sidebarWidth": 256,
+        "bodyX": 256,
+        "stored": "0"
+      }
+    },
+    {
+      "name": "mobile-collapsed-preference",
+      "status": "pass",
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": -256,
+          "width": 256
+        },
+        "shellBody": {
+          "x": 0,
+          "width": 375
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": -256,
+          "width": 256
+        },
+        "shellBody": {
+          "x": 0,
+          "width": 375
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    }
+  ]
+}
