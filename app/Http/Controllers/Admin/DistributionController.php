@@ -59,7 +59,7 @@ class DistributionController extends Controller
             ->with('activeSecret')
             ->withCount([
                 'articleDistributions as pending_count' => fn ($query) => $query->whereIn('status', ['queued', 'sending']),
-                'articleDistributions as failed_count' => fn ($query) => $query->where('status', 'failed'),
+                'articleDistributions as failed_count' => fn ($query) => $query->whereIn('status', ['failed', 'outcome_unknown']),
             ])
             ->orderByDesc('id')
             ->get();
@@ -68,7 +68,7 @@ class DistributionController extends Controller
             'total' => DistributionChannel::query()->count(),
             'active' => DistributionChannel::query()->where('status', 'active')->count(),
             'pending' => ArticleDistribution::query()->whereIn('status', ['queued', 'sending'])->count(),
-            'failed' => ArticleDistribution::query()->where('status', 'failed')->count(),
+            'failed' => ArticleDistribution::query()->whereIn('status', ['failed', 'outcome_unknown'])->count(),
         ];
 
         $defaultSiteFormStats = Schema::hasTable('lead_forms')
@@ -232,6 +232,7 @@ class DistributionController extends Controller
                 if ((string) $lockedChannel->status === DistributionChannel::STATUS_DELETING) {
                     throw new DistributionChannelDeletionBlocked('operation_blocked');
                 }
+                $this->channelOperationLeaseService->assertNoActiveLease($lockedChannel);
 
                 if (($payload['channel_type'] ?? 'geoflow_agent') === 'generic_http_api') {
                     $genericAuthType = (string) ($payload['generic_auth_type'] ?? 'bearer');
@@ -286,10 +287,8 @@ class DistributionController extends Controller
 
                 return $lockedChannel->fresh();
             });
-        } catch (DistributionChannelDeletionBlocked) {
-            return redirect()
-                ->route('admin.distribution.delete', ['channelId' => $channelId])
-                ->withErrors(__('admin.distribution.delete.operation_blocked'));
+        } catch (DistributionChannelDeletionBlocked $exception) {
+            return $this->channelMutationBlockedResponse($channelId, $exception);
         }
 
         if (! $channel) {
@@ -469,7 +468,7 @@ class DistributionController extends Controller
             'status' => (string) $request->query('status', ''),
             'channel_id' => max(0, (int) $request->query('channel_id', 0)),
         ];
-        if (! in_array($filters['status'], ['queued', 'sending', 'synced', 'failed'], true)) {
+        if (! in_array($filters['status'], ['queued', 'sending', 'synced', 'failed', 'outcome_unknown'], true)) {
             $filters['status'] = '';
         }
 
@@ -528,6 +527,7 @@ class DistributionController extends Controller
                 if ((string) $channel->status === DistributionChannel::STATUS_DELETING) {
                     throw new DistributionChannelDeletionBlocked('operation_blocked');
                 }
+                $this->channelOperationLeaseService->assertNoActiveLease($channel);
                 if (! $channel->isGeoFlowAgent()) {
                     throw ValidationException::withMessages([
                         'channel' => __('admin.distribution.message.secret_rotation_not_available'),
@@ -541,10 +541,8 @@ class DistributionController extends Controller
 
                 return [$channel, $this->createChannelSecret($channel)];
             });
-        } catch (DistributionChannelDeletionBlocked) {
-            return redirect()
-                ->route('admin.distribution.delete', ['channelId' => $channelId])
-                ->withErrors(__('admin.distribution.delete.operation_blocked'));
+        } catch (DistributionChannelDeletionBlocked $exception) {
+            return $this->channelMutationBlockedResponse($channelId, $exception);
         }
 
         if (! $result) {
@@ -746,6 +744,9 @@ class DistributionController extends Controller
             if ((string) $distribution->status === 'sending') {
                 return 'sending';
             }
+            if ((string) $distribution->status === 'outcome_unknown') {
+                return 'outcome_unknown';
+            }
 
             $distribution->forceFill([
                 'status' => 'queued',
@@ -777,6 +778,9 @@ class DistributionController extends Controller
         }
         if ($result === 'sending') {
             return back()->withErrors(__('admin.distribution.delete.sending_retry_blocked'));
+        }
+        if ($result === 'outcome_unknown') {
+            return back()->withErrors(__('admin.distribution.message.outcome_unknown_retry_blocked'));
         }
         if ($result !== 'queued') {
             return back()->withErrors(__('admin.distribution.delete.channel_unavailable_error'));
@@ -1959,19 +1963,24 @@ class DistributionController extends Controller
             return $redirect;
         }
 
-        $channel = DB::transaction(function () use ($channelId, $status): ?DistributionChannel {
-            $channel = DistributionChannel::query()
-                ->whereKey($channelId)
-                ->lockForUpdate()
-                ->first();
-            if (! $channel || (string) $channel->status === DistributionChannel::STATUS_DELETING) {
+        try {
+            $channel = DB::transaction(function () use ($channelId, $status): ?DistributionChannel {
+                $channel = DistributionChannel::query()
+                    ->whereKey($channelId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $channel || (string) $channel->status === DistributionChannel::STATUS_DELETING) {
+                    return $channel;
+                }
+                $this->channelOperationLeaseService->assertNoActiveLease($channel);
+
+                $channel->forceFill(['status' => $status])->save();
+
                 return $channel;
-            }
-
-            $channel->forceFill(['status' => $status])->save();
-
-            return $channel;
-        });
+            });
+        } catch (DistributionChannelDeletionBlocked $exception) {
+            return $this->channelMutationBlockedResponse($channelId, $exception);
+        }
         if (! $channel) {
             return redirect()->route('admin.distribution.index')->withErrors(__('admin.distribution.message.not_found'));
         }
@@ -1992,6 +2001,19 @@ class DistributionController extends Controller
 
         return redirect()
             ->route('admin.distribution.delete', ['channelId' => (int) $channel->id])
+            ->withErrors(__('admin.distribution.delete.operation_blocked'));
+    }
+
+    private function channelMutationBlockedResponse(int $channelId, DistributionChannelDeletionBlocked $exception): RedirectResponse
+    {
+        if ($exception->reason === 'operation_in_progress') {
+            return redirect()
+                ->route('admin.distribution.show', ['channelId' => $channelId])
+                ->withErrors(__('admin.distribution.message.operation_in_progress'));
+        }
+
+        return redirect()
+            ->route('admin.distribution.delete', ['channelId' => $channelId])
             ->withErrors(__('admin.distribution.delete.operation_blocked'));
     }
 

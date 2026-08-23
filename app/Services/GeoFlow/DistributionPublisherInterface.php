@@ -32,5 +32,5 @@ interface DistributionPublisherInterface
     /**
      * @return array<string,mixed>
      */
-    public function syncSiteSettings(DistributionChannel $channel): array;
+    public function syncSiteSettings(DistributionChannel $channel, ?string $idempotencyKey = null, ?array $settings = null): array;
 }

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\GeoFlow\DistributionRetryPolicy;
+use App\Services\Outbound\OutboundRequestFailedException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -15,6 +16,7 @@ class DistributionRetryPolicyTest extends TestCase
         $this->assertTrue($policy->shouldRetry(new RuntimeException('Connection timed out'), 1, 3));
         $this->assertTrue($policy->shouldRetry(new RuntimeException('HTTP 429 Too Many Requests'), 1, 3));
         $this->assertTrue($policy->shouldRetry(new RuntimeException('HTTP 500 Server Error'), 1, 3));
+        $this->assertTrue($policy->shouldRetry(new OutboundRequestFailedException, 1, 3));
     }
 
     public function test_auth_and_signature_errors_are_not_retryable(): void

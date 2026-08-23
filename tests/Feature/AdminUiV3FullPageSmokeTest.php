@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\AiConversation;
+use App\Models\AiWorkspaceRun;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\Author;
@@ -111,7 +113,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $this->assertCount(2, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
         $this->assertCount(3, $routesByClassification->get('download', collect()));
-        $this->assertCount(8, $routesByClassification->get('endpoint', collect()));
+        $this->assertCount(12, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
             ->assertOk()
@@ -240,6 +242,28 @@ class AdminUiV3FullPageSmokeTest extends TestCase
     /** @return array<string, array<string, int|string>> */
     private function routeParameters(): array
     {
+        $admin = Admin::query()->where('username', 'ui_v3_reviewer')->firstOrFail();
+        $aiConversation = AiConversation::query()->firstOrCreate([
+            'id' => '01987f84-7f01-7000-8000-000000000001',
+        ], [
+            'participant_type' => $admin->getMorphClass(),
+            'participant_id' => $admin->id,
+            'title' => 'UI V3 AI Workspace Review',
+        ]);
+        $aiRun = AiWorkspaceRun::query()->firstOrCreate([
+            'id' => '01987f84-7f01-7000-8000-000000000002',
+        ], [
+            'conversation_id' => $aiConversation->id,
+            'admin_id' => $admin->id,
+            'admin_username_snapshot' => $admin->username,
+            'mode' => 'answer',
+            'state' => 'completed',
+            'prompt' => 'UI V3 smoke test',
+            'intent' => 'general_question',
+            'risk_level' => 'low',
+            'answer' => 'Smoke test complete. 本次未执行系统操作。',
+            'status_message' => 'Completed',
+        ]);
         $article = Article::query()->where('slug', 'ui-v3-review-article')->firstOrFail();
         $author = Author::query()->where('email', 'ui-v3-review-author@example.test')->firstOrFail();
         $category = Category::query()->where('slug', 'ui-v3-review')->firstOrFail();
@@ -263,6 +287,8 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->value('id');
 
         return [
+            'admin.ai-workspace.conversations.show' => ['conversation' => $aiConversation->id],
+            'admin.ai-workspace.runs.show' => ['run' => $aiRun->id],
             'admin.articles.edit' => ['articleId' => $article->id],
             'admin.authors.detail' => ['authorId' => $author->id],
             'admin.authors.edit' => ['authorId' => $author->id],

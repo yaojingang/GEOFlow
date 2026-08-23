@@ -93,7 +93,7 @@ class AdminSiteThemeReplicationTest extends TestCase
             $content = File::get(base_path($composeFile));
 
             $this->assertStringContainsString(
-                '--queue=geoflow,distribution,theme-replication,default',
+                '--queue=ai-workspace-interactive,ai-workspace,geoflow,distribution,theme-replication,default',
                 $content,
                 $composeFile.' must consume the queue used by theme replication jobs.'
             );

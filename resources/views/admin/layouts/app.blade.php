@@ -53,7 +53,14 @@
                 :navigation="$uiV3['navigation'] ?? []"
                 :current="$uiV3['current'] ?? []"
                 :recent="$uiV3['recent'] ?? []"
-            />
+            >
+                @hasSection('sidebar-recent-action')
+                    <x-slot:recentAction>@yield('sidebar-recent-action')</x-slot>
+                @endif
+                @hasSection('sidebar-recent-content')
+                    <x-slot:recentContent>@yield('sidebar-recent-content')</x-slot>
+                @endif
+            </x-admin.v3.sidebar>
             <div class="gf-shell__body">
                 <x-admin.v3.topbar
                     :admin="$currentAdmin"

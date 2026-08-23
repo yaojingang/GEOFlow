@@ -28,6 +28,8 @@ class AiModel extends Model
         'total_used',
         'status',
         'max_tokens',
+        'ai_workspace_structured_output_status',
+        'ai_workspace_structured_output_verified_at',
     ];
 
     protected function casts(): array
@@ -39,7 +41,18 @@ class AiModel extends Model
             'usage_date' => 'date',
             'total_used' => 'integer',
             'max_tokens' => 'integer',
+            'ai_workspace_structured_output_verified_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (AiModel $model): void {
+            if ($model->isDirty(['model_id', 'model_type', 'api_url', 'api_key', 'status'])) {
+                $model->ai_workspace_structured_output_status = null;
+                $model->ai_workspace_structured_output_verified_at = null;
+            }
+        });
     }
 
     public function titleLibraries(): HasMany

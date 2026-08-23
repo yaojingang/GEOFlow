@@ -11,6 +11,7 @@ use App\Models\ArticleImage;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\DistributionChannelOperation;
 use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
 use App\Models\Image;
@@ -2300,6 +2301,49 @@ class AdminDistributionPageTest extends TestCase
             'id' => (int) $channel->id,
             'status' => 'active',
         ]);
+    }
+
+    public function test_active_channel_operation_blocks_status_and_secret_mutations(): void
+    {
+        $admin = $this->admin();
+        $channel = DistributionChannel::query()->create([
+            'name' => '租约保护渠道',
+            'domain' => 'lease-guard.example.com',
+            'endpoint_url' => 'https://lease-guard.example.com',
+            'status' => 'active',
+        ]);
+        $secret = DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'lease-guard-secret',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('lease-guard-value'),
+            'status' => 'active',
+        ]);
+        $operation = DistributionChannelOperation::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'token' => 'lease-guard-operation',
+            'operation' => 'article_publish',
+            'started_at' => now(),
+            'expires_at' => now()->addMinute(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.pause', ['channelId' => (int) $channel->id]))
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]))
+            ->assertSessionHasErrors();
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.rotate-secret', ['channelId' => (int) $channel->id]))
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]))
+            ->assertSessionHasErrors();
+
+        $this->assertSame('active', $channel->fresh()->status);
+        $this->assertSame('active', $secret->fresh()->status);
+        $this->assertSame(1, DistributionChannelSecret::query()->where('distribution_channel_id', $channel->id)->count());
+
+        $operation->forceFill(['expires_at' => now()->subSecond()])->save();
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.distribution.pause', ['channelId' => (int) $channel->id]))
+            ->assertRedirect(route('admin.distribution.show', ['channelId' => (int) $channel->id]));
+        $this->assertSame('paused', $channel->fresh()->status);
     }
 
     public function test_admin_can_rotate_distribution_channel_secret_once(): void

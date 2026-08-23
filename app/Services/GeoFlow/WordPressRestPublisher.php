@@ -46,6 +46,7 @@ class WordPressRestPublisher implements DistributionPublisherInterface
         $distribution->loadMissing('channel');
         $channel = $this->channel($distribution);
         $response = $this->requestFactory->request($channel)
+            ->withHeaders(['Idempotency-Key' => (string) $distribution->idempotency_key])
             ->post($channel->wordpressRestBaseUrl().'/wp/v2/posts', $this->postPayload($channel, $payload));
         $this->throwIfFailed($response, 'WordPress 文章发布');
 
@@ -62,6 +63,7 @@ class WordPressRestPublisher implements DistributionPublisherInterface
         }
 
         $response = $this->requestFactory->request($channel)
+            ->withHeaders(['Idempotency-Key' => (string) $distribution->idempotency_key])
             ->post($channel->wordpressRestBaseUrl().'/wp/v2/posts/'.$postId, $this->postPayload($channel, $payload));
         $this->throwIfFailed($response, 'WordPress 文章更新');
 
@@ -93,22 +95,66 @@ class WordPressRestPublisher implements DistributionPublisherInterface
         ];
     }
 
-    public function syncSiteSettings(DistributionChannel $channel): array
+    public function syncSiteSettings(DistributionChannel $channel, ?string $idempotencyKey = null, ?array $settings = null): array
     {
-        $settings = $channel->resolvedSiteSettings();
+        $settings ??= $channel->resolvedSiteSettings();
         $payload = [
             'title' => $settings['site_name'],
             'description' => $settings['site_description'],
             'posts_per_page' => $settings['per_page'],
         ];
 
-        $response = $this->requestFactory->request($channel)
+        $request = $this->requestFactory->request($channel);
+        if (is_string($idempotencyKey) && $idempotencyKey !== '') {
+            $request = $request->withHeaders(['Idempotency-Key' => $idempotencyKey]);
+        }
+        $response = $request
             ->post($channel->wordpressRestBaseUrl().'/wp/v2/settings', $payload);
         $this->throwIfFailed($response, 'WordPress 站点设置同步');
 
         return [
             'ok' => true,
             'settings' => $payload,
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>|null
+     */
+    public function reconcilePublication(ArticleDistribution $distribution, array $payload): ?array
+    {
+        $distribution->loadMissing('channel');
+        $channel = $this->channel($distribution);
+        $article = is_array($payload['article'] ?? null) ? $payload['article'] : [];
+        $slug = trim((string) ($article['slug'] ?? ''));
+        if ($slug === '') {
+            return null;
+        }
+
+        $response = $this->requestFactory->request($channel, 10)
+            ->get($channel->wordpressRestBaseUrl().'/wp/v2/posts', [
+                'slug' => $slug,
+                'context' => 'edit',
+                'per_page' => 1,
+                '_fields' => 'id,link,slug',
+            ]);
+        if ($response->failed()) {
+            return null;
+        }
+        $posts = $response->json();
+        $post = is_array($posts) && is_array($posts[0] ?? null) ? $posts[0] : null;
+        if (! is_array($post) || (string) ($post['slug'] ?? '') !== $slug || (int) ($post['id'] ?? 0) <= 0) {
+            return null;
+        }
+
+        return [
+            'remote_id' => (string) $post['id'],
+            'remote_url' => (string) ($post['link'] ?? ''),
+            'remote_meta' => [
+                'wordpress_post_id' => (int) $post['id'],
+                'outcome_reconciled' => true,
+            ],
         ];
     }
 

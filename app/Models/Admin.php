@@ -119,4 +119,9 @@ class Admin extends Authenticatable
     {
         return $this->hasMany(ArticleReview::class, 'admin_id');
     }
+
+    public function aiWorkspaceRuns(): HasMany
+    {
+        return $this->hasMany(AiWorkspaceRun::class, 'admin_id');
+    }
 }

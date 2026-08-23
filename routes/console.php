@@ -78,6 +78,16 @@ Schedule::command('geoflow:prune-expired-cache')
     ->onOneServer()
     ->withoutOverlapping(10);
 
+Schedule::command('geoflow:recover-ai-workspace')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
+Schedule::command('geoflow:prune-ai-workspace')
+    ->dailyAt('02:30')
+    ->onOneServer()
+    ->withoutOverlapping(60);
+
 Schedule::command('hosted-sites:reconcile', [
     '--limit' => (int) config('geoflow.hosted_sites.reconcile_limit', 500),
 ])

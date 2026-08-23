@@ -219,7 +219,14 @@ def main() -> int:
                 session.send("Network.setCacheDisabled", {"cacheDisabled": True})
                 try:
                     response = page.goto(audit_url(args.base_url, row["url"]), wait_until="domcontentloaded", timeout=20000)
-                    page.wait_for_timeout(950)
+                    page.wait_for_function(
+                        """() => (
+                            window.__gfFlickerAudit?.frames?.length >= 50
+                            && !document.documentElement.hasAttribute('data-gf-ui-booting')
+                            && document.querySelectorAll('i[data-lucide]').length === 0
+                        )""",
+                        timeout=5000,
+                    )
                     result = page_result(page, row, viewport_name)
                     result["http_status"] = response.status if response else None
                     result["console_errors"] = console_errors

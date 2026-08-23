@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Workspace\AiPlanCompiler;
 use App\Exceptions\ArticleRiskGateException;
 use App\Jobs\ProcessArticleDistributionJob;
 use App\Models\Article;
@@ -60,6 +61,116 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         $this->assertSame('clean', $article->fresh()->latestRiskScan?->status);
         $this->assertSame('distribution_enqueue', $article->fresh()->latestRiskScan?->trigger);
         Queue::assertPushed(ProcessArticleDistributionJob::class, 1);
+    }
+
+    public function test_ai_workspace_enqueue_surfaces_an_approved_payload_mismatch(): void
+    {
+        [$article] = $this->createDistributionArticle('Safe content.');
+
+        try {
+            app(DistributionOrchestrator::class)->enqueueForArticle($article, 'publish', [
+                'expected_payload_digest' => str_repeat('f', 64),
+            ]);
+            $this->fail('Expected the AI workspace payload mismatch to be surfaced.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('AI 工作台分发载荷在审批后已变化。', $exception->getMessage());
+            $this->assertDatabaseCount('article_distributions', 0);
+            Queue::assertNothingPushed();
+        }
+    }
+
+    public function test_ai_workspace_distribution_rejects_a_channel_changed_after_enqueue(): void
+    {
+        [$article, , $channel] = $this->createDistributionArticle('Immutable target content.');
+        $summary = app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', [
+            'article_ids' => [$article->id],
+            'channel_ids' => [$channel->id],
+        ]);
+        $channelRevision = (string) data_get($summary, 'channel_snapshots.0.revision');
+        $distributionIds = app(DistributionOrchestrator::class)->enqueueForArticle($article, 'publish', [
+            'expected_payload_digest' => (string) data_get($summary, 'article_snapshots.0.outbound_payload_digest'),
+            'approved_channel_revisions' => [$channel->id => $channelRevision],
+        ]);
+        $this->assertCount(1, $distributionIds);
+        $channel->forceFill(['endpoint_url' => 'https://changed-target.example.com/api'])->save();
+        Http::fake();
+
+        try {
+            app(DistributionOrchestrator::class)->process(ArticleDistribution::query()->findOrFail($distributionIds[0]));
+            $this->fail('Expected the changed AI workspace target to be rejected.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('AI 工作台分发目标在审批后已变化。', $exception->getMessage());
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_ai_workspace_distribution_rejects_a_secret_rotated_after_approval(): void
+    {
+        [$article, , $channel] = $this->createDistributionArticle('Immutable credential target.');
+        $oldSecret = DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'approved-secret',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('approved-secret-value'),
+            'status' => 'active',
+            'scopes' => ['article.publish'],
+        ]);
+        $summary = app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', [
+            'article_ids' => [$article->id],
+            'channel_ids' => [$channel->id],
+        ]);
+        $approvedRevision = (string) data_get($summary, 'channel_snapshots.0.revision');
+        $oldSecret->forceFill(['last_used_at' => now()])->save();
+        $afterUseSummary = app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', [
+            'article_ids' => [$article->id],
+            'channel_ids' => [$channel->id],
+        ]);
+        $this->assertSame($approvedRevision, (string) data_get($afterUseSummary, 'channel_snapshots.0.revision'));
+        $distributionIds = app(DistributionOrchestrator::class)->enqueueForArticle($article, 'publish', [
+            'expected_payload_digest' => (string) data_get($summary, 'article_snapshots.0.outbound_payload_digest'),
+            'approved_channel_revisions' => [
+                $channel->id => $approvedRevision,
+            ],
+        ]);
+        $oldSecret->forceFill(['status' => 'revoked'])->save();
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'rotated-secret',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('rotated-secret-value'),
+            'status' => 'active',
+            'scopes' => ['article.publish'],
+        ]);
+        Http::fake();
+
+        try {
+            app(DistributionOrchestrator::class)->process(ArticleDistribution::query()->findOrFail($distributionIds[0]));
+            $this->fail('Expected the changed AI workspace credential target to be rejected.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('AI 工作台分发目标在审批后已变化。', $exception->getMessage());
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_ai_workspace_enqueue_does_not_claim_an_existing_sending_distribution(): void
+    {
+        [$article, , $channel] = $this->createDistributionArticle('Already sending content.');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $orchestrator->enqueueForArticle($article);
+        $distribution = ArticleDistribution::query()->firstOrFail();
+        $distribution->forceFill(['status' => 'sending'])->save();
+        $summary = app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', [
+            'article_ids' => [$article->id],
+            'channel_ids' => [$channel->id],
+        ]);
+
+        $distributionIds = $orchestrator->enqueueForArticle($article, 'publish', [
+            'expected_payload_digest' => (string) data_get($summary, 'article_snapshots.0.outbound_payload_digest'),
+            'approved_channel_revisions' => [
+                $channel->id => (string) data_get($summary, 'channel_snapshots.0.revision'),
+            ],
+        ]);
+
+        $this->assertSame([], $distributionIds);
+        $this->assertNull(data_get($distribution->fresh()->remote_meta, 'ai_workspace_guard'));
     }
 
     public function test_distribution_send_rechecks_content_changed_after_enqueue(): void

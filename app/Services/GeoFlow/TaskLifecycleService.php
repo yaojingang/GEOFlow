@@ -127,6 +127,53 @@ class TaskLifecycleService
     }
 
     /**
+     * Create a deliberately incomplete task draft for later configuration.
+     * Drafts stay paused and still receive the same scheduler initialization
+     * and realtime refresh used by the regular task lifecycle.
+     *
+     * @param  array<string,mixed>  $data
+     * @return array<string,mixed>
+     */
+    public function createDraftTask(array $data): array
+    {
+        $name = trim((string) ($data['name'] ?? ''));
+        if ($name === '') {
+            throw new ApiException('validation_failed', '任务名称不能为空', 422);
+        }
+        $articleLimit = max(1, min(100, (int) ($data['article_limit'] ?? 10)));
+        $publishInterval = max(60, min(2592000, (int) ($data['publish_interval'] ?? 3600)));
+
+        $taskId = DB::transaction(function () use ($name, $articleLimit, $publishInterval): int {
+            $task = Task::query()->create([
+                'name' => $name,
+                'need_review' => 1,
+                'publish_interval' => $publishInterval,
+                'draft_limit' => $articleLimit,
+                'article_limit' => $articleLimit,
+                'is_loop' => 0,
+                'status' => 'paused',
+                'schedule_enabled' => 0,
+                'publish_scope' => 'local_only',
+                'distribution_strategy' => TaskDistributionChannelSelector::STRATEGY_BROADCAST,
+                'max_retry_count' => 3,
+            ]);
+            $this->queueService->initializeTaskSchedule((int) $task->id);
+            Task::query()->whereKey($task->id)->update([
+                'schedule_enabled' => 0,
+                'next_run_at' => null,
+                'updated_at' => now(),
+            ]);
+
+            return (int) $task->id;
+        });
+
+        $task = $this->getTask($taskId);
+        $this->broadcastOverviewAfterCommit();
+
+        return $task;
+    }
+
+    /**
      * 获取单任务详情（含任务运行摘要与文章统计摘要）。
      *
      * @return array<string,mixed>

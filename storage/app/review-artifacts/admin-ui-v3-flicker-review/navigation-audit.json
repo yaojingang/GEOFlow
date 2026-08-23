@@ -1,11 +1,33 @@
 {
-  "checks": 9,
-  "passed": 9,
+  "checks": 14,
+  "passed": 14,
   "failed": 0,
   "results": [
     {
+      "name": "blocked-source-index.php",
+      "status": "pass",
+      "request_path": "/index.php",
+      "http_status": 404,
+      "source_marker_exposed": false
+    },
+    {
+      "name": "blocked-source-.htaccess",
+      "status": "pass",
+      "request_path": "/.htaccess",
+      "http_status": 404,
+      "source_marker_exposed": false
+    },
+    {
+      "name": "public-home-through-laravel",
+      "status": "pass",
+      "request_path": "/",
+      "http_status": 200,
+      "source_marker_exposed": false
+    },
+    {
       "name": "collapsed-new-tab",
       "status": "pass",
+      "frame_count": 40,
       "first": {
         "state": "collapsed",
         "sidebar": {
@@ -34,8 +56,19 @@
       }
     },
     {
+      "name": "dynamic-response-security-headers",
+      "status": "pass",
+      "headers": {
+        "cache-control": "no-cache, private, no-store",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "SAMEORIGIN",
+        "referrer-policy": "strict-origin-when-cross-origin"
+      }
+    },
+    {
       "name": "collapsed-refresh",
       "status": "pass",
+      "frame_count": 40,
       "first": {
         "state": "collapsed",
         "sidebar": {
@@ -68,7 +101,7 @@
       "status": "pass",
       "assets": [
         {
-          "name": "http://localhost:28080/build/assets/app-B0vTBWKm.css",
+          "name": "http://localhost:28080/build/assets/app-DVqqtB2j.css",
           "transferSize": 0
         },
         {
@@ -76,14 +109,26 @@
           "transferSize": 0
         },
         {
-          "name": "http://localhost:28080/build/assets/app-Bhzyv3qa.js",
+          "name": "http://localhost:28080/build/assets/app-Dd1k8gdO.js",
           "transferSize": 0
         }
       ]
     },
     {
+      "name": "immutable-asset-security-headers",
+      "status": "pass",
+      "http_status": 200,
+      "headers": {
+        "cache-control": "max-age=31536000, public, max-age=31536000, immutable",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "SAMEORIGIN",
+        "referrer-policy": "strict-origin-when-cross-origin"
+      }
+    },
+    {
       "name": "collapsed-cross-page",
       "status": "pass",
+      "frame_count": 40,
       "first": {
         "state": "collapsed",
         "sidebar": {
@@ -114,6 +159,7 @@
     {
       "name": "collapsed-second-tab",
       "status": "pass",
+      "frame_count": 40,
       "first": {
         "state": "collapsed",
         "sidebar": {
@@ -144,6 +190,7 @@
     {
       "name": "collapsed-back",
       "status": "pass",
+      "frame_count": 40,
       "first": {
         "state": "collapsed",
         "sidebar": {
@@ -174,6 +221,7 @@
     {
       "name": "collapsed-forward",
       "status": "pass",
+      "frame_count": 40,
       "first": {
         "state": "collapsed",
         "sidebar": {
@@ -214,6 +262,7 @@
     {
       "name": "mobile-collapsed-preference",
       "status": "pass",
+      "frame_count": 40,
       "first": {
         "state": "collapsed",
         "sidebar": {

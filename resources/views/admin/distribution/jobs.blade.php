@@ -20,7 +20,7 @@
                     <label for="status" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.field.status') }}</label>
                     <select id="status" name="status" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                         <option value="">{{ __('admin.distribution.filter.all_statuses') }}</option>
-                        @foreach (['queued', 'sending', 'synced', 'failed'] as $status)
+                        @foreach (['queued', 'sending', 'synced', 'failed', 'outcome_unknown'] as $status)
                             <option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ __('admin.distribution.job_status.'.$status) }}</option>
                         @endforeach
                     </select>

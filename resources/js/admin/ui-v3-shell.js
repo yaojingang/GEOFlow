@@ -1,5 +1,5 @@
-import { enhanceFormAccessibility } from './form-accessibility';
-import { refreshIconPlaceholders, stabilizeLucideRuntime } from './ui-v3-icons';
+import { enhanceFormAccessibility } from './form-accessibility.js';
+import { refreshIconPlaceholders, stabilizeLucideRuntime } from './ui-v3-icons.js';
 
 const SHELL_SELECTOR = '[data-gf-shell]';
 const SIDEBAR_STORAGE_KEY = 'geoflow.admin.ui-v3.sidebar-collapsed';
@@ -190,6 +190,18 @@ function setupDialogs() {
         });
     });
 
+    document.addEventListener('geoflow:modal:open', (event) => {
+        const name = event instanceof CustomEvent ? event.detail?.name : null;
+        if (typeof name !== 'string' || name === '') return;
+        const opener = event.detail?.opener instanceof HTMLElement ? event.detail.opener : null;
+        openModal(name, opener);
+    });
+    document.addEventListener('geoflow:modal:close', (event) => {
+        const name = event instanceof CustomEvent ? event.detail?.name : null;
+        if (typeof name === 'string' && activeModal?.dataset.gfModal !== name) return;
+        closeModal();
+    });
+
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
             if (activeModal) closeModal();
@@ -334,6 +346,7 @@ function finishFirstPaint() {
 }
 
 function initialize() {
+    setupIcons();
     if (!document.body.classList.contains('gf-admin-v3')) return;
     setupSidebar();
     setupPopovers();
@@ -343,7 +356,6 @@ function initialize() {
     setupUnsavedChanges();
     setupFormAccessibility();
     focusFirstError();
-    setupIcons();
     finishFirstPaint();
 }
 

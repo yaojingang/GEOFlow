@@ -85,20 +85,65 @@ class AdminUiV3ShellTest extends TestCase
             ->assertDontSee(AdminWeb::routePath('admin.admin-activity-logs'), false);
     }
 
-    public function test_ai_workspace_is_a_demo_conversation_page(): void
+    public function test_ai_workspace_renders_the_controlled_conversation_runtime(): void
     {
         config()->set('geoflow.admin_ui_v3_enabled', true);
         $admin = $this->admin('agent_owner', 'super_admin');
 
-        $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
+        $response = $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
             ->actingAs($admin, 'admin')
             ->get(route('admin.ai-workspace'))
             ->assertOk()
             ->assertSee('data-ai-workspace', false)
-            ->assertSee('data-ai-conversation', false)
-            ->assertSee('data-ai-stage', false)
-            ->assertSee('data-ai-result', false)
+            ->assertSee('data-ai-history-list', false)
+            ->assertSee('data-ai-new', false)
+            ->assertDontSee('data-ai-history-toggle', false)
+            ->assertDontSee('class="gf-ai-history"', false)
+            ->assertSee('data-ai-runs', false)
+            ->assertSee('data-ai-form', false)
+            ->assertSee('data-ai-error-dialog', false)
+            ->assertSee('role="alertdialog"', false)
+            ->assertSee('target="_blank" rel="noopener" data-ai-error-configurator', false)
+            ->assertSee('data-ai-configurator-url="'.AdminWeb::routePath('admin.ai.configurator').'"', false)
+            ->assertSee(__('admin.ai_workspace.error_runtime_title'))
+            ->assertSee(__('admin.ai_workspace.open_configurator'))
+            ->assertSee('data-runtime-enabled="false"', false)
+            ->assertSee('data-capability-group="insight"', false)
+            ->assertSee('data-capability-key="visibility.diagnose"', false)
+            ->assertSee('data-capability-key="distribution.preview"', false)
+            ->assertSee(__('admin.ai_workspace.capability_directory_title'))
             ->assertSee(__('admin.ai_workspace.disclaimer'));
+
+        self::assertMatchesRegularExpression('/<textarea[^>]*data-ai-input[^>]*><\/textarea>/', (string) $response->getContent());
+        preg_match('/<textarea[^>]*data-ai-input[^>]*>/', (string) $response->getContent(), $composerMatch);
+        self::assertStringNotContainsString(' disabled', $composerMatch[0] ?? '');
+    }
+
+    public function test_ai_workspace_capability_directory_respects_admin_permissions(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+
+        $superAdmin = $this->admin('capability_owner', 'super_admin');
+        $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
+            ->actingAs($superAdmin, 'admin')
+            ->get(route('admin.ai-workspace'))
+            ->assertOk()
+            ->assertSee(__('admin.ai_workspace.capability_count', ['count' => 19]))
+            ->assertSee('data-capability-key="url_import.preview"', false)
+            ->assertSee('data-capability-key="distribution.publish"', false)
+            ->assertSee('data-capability-key="admin.governance"', false);
+
+        $admin = $this->admin('capability_editor', 'admin');
+        $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
+            ->actingAs($admin, 'admin')
+            ->get(route('admin.ai-workspace'))
+            ->assertOk()
+            ->assertSee(__('admin.ai_workspace.capability_count', ['count' => 12]))
+            ->assertSee('data-capability-key="task.draft"', false)
+            ->assertSee('data-capability-key="task.status.change"', false)
+            ->assertDontSee('data-capability-key="url_import.preview"', false)
+            ->assertDontSee('data-capability-key="distribution.publish"', false)
+            ->assertDontSee('data-capability-key="admin.governance"', false);
     }
 
     public function test_site_settings_context_navigation_respects_permissions(): void

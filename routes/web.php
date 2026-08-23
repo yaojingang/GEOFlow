@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\AiPromptController;
 use App\Http\Controllers\Admin\AiSourceProviderController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
 use App\Http\Controllers\Admin\AiVisibilityAnalyticsController;
+use App\Http\Controllers\Admin\AiWorkspaceApiController;
 use App\Http\Controllers\Admin\AiWorkspaceController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
@@ -109,6 +110,26 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::middleware('admin.ui-v3')->group(function (): void {
             Route::get('ai-workspace', AiWorkspaceController::class)->name('ai-workspace');
+            Route::prefix('ai-workspace')->name('ai-workspace.')->group(function (): void {
+                Route::middleware('throttle:ai-workspace-read')->group(function (): void {
+                    Route::get('conversations', [AiWorkspaceApiController::class, 'conversations'])->name('conversations.index');
+                    Route::get('conversations/{conversation}', [AiWorkspaceApiController::class, 'showConversation'])->name('conversations.show');
+                    Route::get('metrics', [AiWorkspaceApiController::class, 'metrics'])->name('metrics');
+                    Route::get('runs/{run}', [AiWorkspaceApiController::class, 'showRun'])->name('runs.show');
+                });
+                Route::post('runs/{run}/cancel', [AiWorkspaceApiController::class, 'cancel'])
+                    ->middleware('throttle:ai-workspace')
+                    ->name('runs.cancel');
+                Route::post('conversations/{conversation}/archive', [AiWorkspaceApiController::class, 'archiveConversation'])->middleware('throttle:ai-workspace')->name('conversations.archive');
+                Route::middleware('ai-workspace.enabled')->group(function (): void {
+                    Route::post('conversations', [AiWorkspaceApiController::class, 'storeConversation'])->middleware('throttle:ai-workspace')->name('conversations.store');
+                    Route::post('conversations/{conversation}/messages', [AiWorkspaceApiController::class, 'sendMessage'])->middleware('throttle:ai-workspace-messages')->name('messages.store');
+                    Route::put('runs/{run}/plan', [AiWorkspaceApiController::class, 'updatePlan'])->middleware('throttle:ai-workspace')->name('runs.plan.update');
+                    Route::post('approvals/{approval}/approve', [AiWorkspaceApiController::class, 'approve'])->middleware('throttle:ai-workspace')->name('approvals.approve');
+                    Route::post('approvals/{approval}/reject', [AiWorkspaceApiController::class, 'reject'])->middleware('throttle:ai-workspace')->name('approvals.reject');
+                    Route::post('steps/{step}/retry', [AiWorkspaceApiController::class, 'retryStep'])->middleware('throttle:ai-workspace')->name('steps.retry');
+                });
+            });
             Route::prefix('account')->name('account.')->group(function (): void {
                 Route::get('/', [AdminAccountController::class, 'show'])->name('show');
                 Route::put('profile', [AdminAccountController::class, 'updateProfile'])->name('profile.update');

@@ -6,6 +6,7 @@ use App\Exceptions\HostedSitesDisabled;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionLog;
+use App\Services\AiWorkspace\AiWorkspaceDispatchGuard;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionRetryPolicy;
 use App\Services\HostedSites\HostedSitePublishFailureService;
@@ -42,10 +43,31 @@ class ProcessArticleDistributionJob implements ShouldQueue
     public function handle(
         DistributionOrchestrator $orchestrator,
         DistributionRetryPolicy $retryPolicy,
+        ?AiWorkspaceDispatchGuard $dispatchGuard = null,
         ?HostedSitePublishFailureService $hostedFailures = null,
     ): void {
         $distribution = ArticleDistribution::query()->whereKey($this->distributionId)->first();
         if (! $distribution) {
+            return;
+        }
+        if ((string) $distribution->status !== 'queued') {
+            return;
+        }
+        if (! ($dispatchGuard ?? app(AiWorkspaceDispatchGuard::class))->allowsDistribution($distribution)) {
+            $meta = is_array($distribution->remote_meta) ? $distribution->remote_meta : [];
+            unset($meta['ai_workspace_payload']);
+            $meta['ai_workspace_guard_status'] = 'denied';
+            ArticleDistribution::query()
+                ->whereKey($distribution->id)
+                ->where('status', 'queued')
+                ->update([
+                    'status' => 'failed',
+                    'next_retry_at' => null,
+                    'last_error_message' => 'AI 工作台授权或运行状态已失效。',
+                    'remote_meta' => json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    'updated_at' => now(),
+                ]);
+
             return;
         }
 
@@ -75,6 +97,32 @@ class ProcessArticleDistributionJob implements ShouldQueue
                 ?->firstWhere('id', (int) $distribution->distribution_channel_id)
                 ?->pivot?->max_attempts ?? 3);
             $shouldRetry = $retryPolicy->shouldRetry($e, $attemptCount, $maxAttempts);
+            if ($this->createsUncertainAiWordPressPost($distribution) && $shouldRetry) {
+                try {
+                    if ($orchestrator->reconcileUnknownOutcome($distribution)) {
+                        return;
+                    }
+                } catch (Throwable $reconciliationError) {
+                    report($reconciliationError);
+                }
+                $safeMessage = DistributionErrorSanitizer::from($e);
+                $distribution->forceFill([
+                    'status' => 'outcome_unknown',
+                    'last_error_message' => '远程请求可能已生效，需要人工对账：'.$safeMessage,
+                    'last_attempt_at' => now(),
+                    'next_retry_at' => null,
+                ])->save();
+                $orchestrator->log(
+                    'error',
+                    'AI 工作台 WordPress 分发结果无法确认，已停止自动重试',
+                    (int) $distribution->distribution_channel_id,
+                    (int) $distribution->id,
+                    (int) $distribution->article_id,
+                    ['event' => 'distribution.outcome_unknown'],
+                );
+
+                return;
+            }
             $retryAt = $shouldRetry ? $retryPolicy->retryAt($attemptCount) : null;
             if ((string) $distribution->channel?->status !== DistributionChannel::STATUS_ACTIVE) {
                 $shouldRetry = false;
@@ -120,12 +168,40 @@ class ProcessArticleDistributionJob implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         $distribution = ArticleDistribution::query()->find($this->distributionId);
-        if (! $distribution || (string) $distribution->status === 'synced') {
+        if (! $distribution || in_array((string) $distribution->status, ['synced', 'outcome_unknown'], true)) {
             return;
         }
 
         $exceptionClass = $exception ? class_basename($exception) : 'UnknownFailure';
         $safeMessage = 'Distribution job terminated: '.$exceptionClass;
+        $distribution->loadMissing('channel');
+        if ((string) $distribution->status === 'sending' && $this->createsUncertainAiWordPressPost($distribution)) {
+            try {
+                if (app(DistributionOrchestrator::class)->reconcileUnknownOutcome($distribution)) {
+                    return;
+                }
+            } catch (Throwable $reconciliationError) {
+                report($reconciliationError);
+            }
+            $distribution->forceFill([
+                'status' => 'outcome_unknown',
+                'next_retry_at' => null,
+                'last_attempt_at' => now(),
+                'last_error_message' => '远程请求可能已生效，需要人工对账：'.$safeMessage,
+            ])->save();
+            DistributionLog::query()->create([
+                'distribution_channel_id' => (int) $distribution->distribution_channel_id,
+                'article_distribution_id' => (int) $distribution->id,
+                'article_id' => (int) $distribution->article_id,
+                'level' => 'error',
+                'event' => 'distribution.outcome_unknown',
+                'message' => 'AI 工作台 WordPress 分发 Worker 终止，远程结果无法确认。',
+                'context' => ['exception_class' => $exceptionClass],
+                'created_at' => now(),
+            ]);
+
+            return;
+        }
         $committed = app(HostedSitePublishFailureService::class)
             ->record($distribution, $safeMessage, false);
         if (! $committed) {
@@ -148,5 +224,13 @@ class ProcessArticleDistributionJob implements ShouldQueue
             'context' => ['exception_class' => $exceptionClass],
             'created_at' => now(),
         ]);
+    }
+
+    private function createsUncertainAiWordPressPost(ArticleDistribution $distribution): bool
+    {
+        return is_array(data_get($distribution->remote_meta, 'ai_workspace_guard'))
+            && $distribution->channel?->isWordPressRest()
+            && ((string) $distribution->action === 'publish'
+                || ((string) $distribution->action === 'update' && ! $distribution->wordpressPostId()));
     }
 }

@@ -22,7 +22,7 @@ final class AdminUiRegistry
             [
                 'key' => 'ai-workspace', 'group' => 'workspace', 'label_key' => 'admin.nav.ai_workspace',
                 'icon' => 'sparkles', 'route' => 'admin.ai-workspace', 'protected' => false,
-                'patterns' => ['admin.ai-workspace'], 'recent_tone' => 'blue',
+                'patterns' => ['admin.ai-workspace', 'admin.ai-workspace.*'], 'recent_tone' => 'blue',
             ],
             [
                 'key' => 'dashboard', 'group' => 'data', 'label_key' => 'admin.nav.data_center',
@@ -190,6 +190,8 @@ final class AdminUiRegistry
                 'admin.articles.editor.titles', 'admin.distribution.sync-settings*.preview',
                 'admin.enterprise-knowledge.status', 'admin.site-settings.theme-replications.status',
                 'admin.system-updates.runs.status', 'admin.tasks.health', 'admin.url-import.status',
+                'admin.ai-workspace.conversations.index', 'admin.ai-workspace.conversations.show',
+                'admin.ai-workspace.metrics', 'admin.ai-workspace.runs.show',
             ],
             'shell' => collect($this->modules())->pluck('patterns')->flatten()->unique()->values()->all(),
         ];

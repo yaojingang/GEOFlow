@@ -13,12 +13,14 @@ use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnforceCurrentSiteSurface;
 use App\Http\Middleware\EnsureAdminUiV3Enabled;
+use App\Http\Middleware\EnsureAiWorkspaceRuntimeEnabled;
 use App\Http\Middleware\EnsureApiScope;
 use App\Http\Middleware\EnsureHostedSitesEnabled;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogAdminActivity;
 use App\Http\Middleware\NormalizeRequestHost;
 use App\Http\Middleware\RecordSiteViewLog;
+use App\Http\Middleware\RenderAiWorkspaceJsonErrors;
 use App\Http\Middleware\ResolveCurrentSite;
 use App\Http\Middleware\SiteWebLocale;
 use App\Http\Middleware\TrackAdminRecentPage;
@@ -85,6 +87,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.recent' => TrackAdminRecentPage::class,
             // Blade 后台：V3 独占页面在功能开关关闭时不可访问
             'admin.ui-v3' => EnsureAdminUiV3Enabled::class,
+            'ai-workspace.enabled' => EnsureAiWorkspaceRuntimeEnabled::class,
         ]);
 
         // 已登录的管理员访问登录页(guest:admin)时，重定向到后台仪表盘，而不是 Laravel 默认的 "/"。
@@ -94,6 +97,15 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash(['api_key']);
+
+        $exceptions->render(function (Throwable $e, Request $request) {
+            $routeName = (string) ($request->route()?->getName() ?? '');
+            if (! Str::startsWith($routeName, 'admin.ai-workspace.')) {
+                return null;
+            }
+
+            return RenderAiWorkspaceJsonErrors::responseFor($e);
+        });
 
         /**
          * 后台 firstOrFail 友好错误页：

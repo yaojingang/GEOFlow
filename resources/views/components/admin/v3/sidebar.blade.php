@@ -24,8 +24,17 @@
             </section>
         @endforeach
         <section class="gf-sidebar__recent">
-            <div class="gf-sidebar__recent-head"><h2 class="gf-sidebar__heading">{{ __('admin.ui_v3.recent') }}</h2><span class="gf-icon-button gf-icon-button--small" aria-hidden="true"><i data-lucide="sliders-horizontal"></i></span></div>
-            @if ($recent !== [])
+            <div class="gf-sidebar__recent-head">
+                <h2 class="gf-sidebar__heading">{{ __('admin.ui_v3.recent') }}</h2>
+                @if (isset($recentAction))
+                    {{ $recentAction }}
+                @else
+                    <span class="gf-icon-button gf-icon-button--small" aria-hidden="true"><i data-lucide="sliders-horizontal"></i></span>
+                @endif
+            </div>
+            @if (isset($recentContent))
+                {{ $recentContent }}
+            @elseif ($recent !== [])
                 <div class="gf-sidebar__items">
                     @foreach ($recent as $entry)
                         <a class="gf-sidebar__link" href="{{ \App\Support\AdminWeb::routePath($entry['route']) }}"><span class="gf-recent-dot gf-recent-dot--{{ $entry['tone'] }}"></span><span>{{ $entry['label'] }}</span></a>
