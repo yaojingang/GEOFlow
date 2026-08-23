@@ -54,10 +54,12 @@ if (assistantRoot) {
     let generationContent = '';
     let editorFrame = null;
 
-    const refreshIcons = () => {
-        if (window.lucide) {
-            window.lucide.createIcons();
+    const refreshIcons = (target = assistantRoot) => {
+        if (window.GeoFlowAdminUi?.refreshIcons) {
+            window.GeoFlowAdminUi.refreshIcons(target);
+            return;
         }
+        window.lucide?.createIcons?.();
     };
 
     const interpolate = (template, values = {}) => Object.entries(values).reduce(
@@ -140,7 +142,7 @@ if (assistantRoot) {
             : (messages.titleNoKeyword || '');
         selectedTitlePanel?.classList.remove('hidden');
         selectedTitlePanel?.classList.add('flex');
-        refreshIcons();
+        refreshIcons(selectedTitlePanel);
     };
 
     const selectTitle = (item) => {
@@ -211,7 +213,7 @@ if (assistantRoot) {
             resultsNode.append(row);
         });
 
-        refreshIcons();
+        refreshIcons(resultsNode);
     };
 
     const loadTitles = async (page = 1) => {
@@ -421,7 +423,7 @@ if (assistantRoot) {
             progressBar.classList.add('w-1/3', 'animate-pulse', 'bg-blue-500');
         }
 
-        refreshIcons();
+        refreshIcons(statusIcon);
     };
 
     const setGenerating = (active) => {
@@ -436,7 +438,7 @@ if (assistantRoot) {
             createIcon(active ? 'square' : 'wand-sparkles', 'mr-2 h-4 w-4'),
             document.createTextNode(active ? (messages.stopButton || '') : (messages.generateButton || '')),
         );
-        refreshIcons();
+        refreshIcons(generateButton);
     };
 
     const parseSseBlock = (block) => {

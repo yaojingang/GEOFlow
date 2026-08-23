@@ -10,3 +10,7 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 Broadcast::channel('admin.tasks', function (Admin $admin): bool {
     return (string) ($admin->status ?? '') === 'active';
 }, ['guards' => ['admin']]);
+
+Broadcast::channel('admin.ai-workspace.{adminId}', function (Admin $admin, int $adminId): bool {
+    return (int) $admin->id === $adminId && (string) $admin->status === 'active';
+}, ['guards' => ['admin']]);

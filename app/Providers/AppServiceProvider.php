@@ -19,6 +19,7 @@ use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\Outbound\SecureHttpFactory;
 use App\Services\Outbound\SystemHostResolver;
 use App\Services\Site\HostedSiteResolver;
+use App\Support\AdminUiRegistry;
 use App\Support\Site\CurrentSite;
 use App\View\Composers\SiteLayoutComposer;
 use Closure;
@@ -87,6 +88,30 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(5)->by('admin-sensitive:admin-ip:'.$adminId.'|'.$request->ip()),
             ];
         });
+        RateLimiter::for('ai-workspace', function (Request $request): array {
+            $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
+
+            return [
+                Limit::perMinute(30)->by('ai-workspace:admin:'.$adminId),
+                Limit::perMinute(60)->by('ai-workspace:ip:'.$request->ip()),
+            ];
+        });
+        RateLimiter::for('ai-workspace-read', function (Request $request): array {
+            $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
+
+            return [
+                Limit::perMinute(120)->by('ai-workspace-read:admin:'.$adminId),
+                Limit::perMinute(240)->by('ai-workspace-read:ip:'.$request->ip()),
+            ];
+        });
+        RateLimiter::for('ai-workspace-messages', function (Request $request): array {
+            $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
+
+            return [
+                Limit::perMinute(6)->by('ai-workspace-messages:admin:'.$adminId),
+                Limit::perMinute(12)->by('ai-workspace-messages:ip:'.$request->ip()),
+            ];
+        });
         RateLimiter::for('site-lead-submission', function (Request $request): Limit {
             $siteId = app(CurrentSite::class)->profileId() ?? 0;
 
@@ -115,6 +140,23 @@ class AppServiceProvider extends ServiceProvider
                 'anonymousUsageTelemetryPayload',
                 $admin instanceof Admin ? app(AnonymousUsageTelemetry::class)->payload($admin) : null
             );
+            if ((bool) config('geoflow.admin_ui_v3_enabled', false) && $admin instanceof Admin) {
+                $registry = app(AdminUiRegistry::class);
+                $viewData = $view->getData();
+                $view->with('adminUiV3', [
+                    'navigation' => $registry->navigation($admin),
+                    'current' => $registry->currentPage(
+                        $admin,
+                        request()->route()?->getName(),
+                        (string) ($viewData['activeMenu'] ?? '')
+                    ),
+                    'recent' => $registry->recent($admin),
+                    'settings_navigation' => $registry->settingsNavigation($admin, request()->route()?->getName()),
+                    'show_settings_navigation' => $registry->activeKey(request()->route()?->getName()) === 'site_settings'
+                        && ! request()->routeIs('admin.account.*'),
+                    'site_url' => (string) config('geoflow.site_url', config('app.url')),
+                ]);
+            }
         });
     }
 

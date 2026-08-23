@@ -507,6 +507,31 @@ class AdminAiSourceProvidersPageTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_regular_admin_probe_failure_cannot_clear_workspace_model_readiness(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://api.deepseek.com/v1/chat/completions' => Http::response('Provider unavailable', 503),
+        ]);
+        $model = $this->createAiModel([
+            'name' => 'Ready Workspace Model',
+            'model_id' => 'deepseek-ready',
+            'api_url' => 'https://api.deepseek.com',
+            'ai_workspace_structured_output_status' => 'ready',
+            'ai_workspace_structured_output_verified_at' => now(),
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
+                'binding_type' => 'deepseek',
+                'model_id' => (int) $model->id,
+            ])
+            ->assertUnprocessable();
+
+        self::assertSame('ready', $model->fresh()->ai_workspace_structured_output_status);
+        self::assertNotNull($model->fresh()->ai_workspace_structured_output_verified_at);
+    }
+
     public function test_admin_can_test_doubao_ark_structured_output(): void
     {
         Http::preventStrayRequests();

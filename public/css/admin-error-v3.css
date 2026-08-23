@@ -1,0 +1,29 @@
+:root {
+    --gf-blue-600: #2563eb;
+    --gf-blue-700: #1d4ed8;
+    --gf-gray-50: #f9fafb;
+    --gf-gray-200: #e5e7eb;
+    --gf-gray-500: #6b7280;
+    --gf-gray-700: #374151;
+    --gf-gray-900: #111827;
+    --gf-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
+}
+
+* { box-sizing: border-box; }
+.gf-error-page { align-items: center; background: var(--gf-gray-50); color: var(--gf-gray-900); display: flex; font-family: var(--gf-font); justify-content: center; margin: 0; min-height: 100vh; padding: 24px; }
+.gf-error-card { background: #fff; border: 1px solid var(--gf-gray-200); border-radius: 16px; box-shadow: 0 1px 3px rgba(15, 23, 42, .1); max-width: 520px; padding: 42px; text-align: center; width: 100%; }
+.gf-error-card__mark { align-items: center; background: #dbeafe; border-radius: 16px; color: var(--gf-blue-600); display: flex; font-size: 20px; font-weight: 750; height: 64px; justify-content: center; margin: 0 auto 22px; width: 64px; }
+.gf-error-card > span { color: var(--gf-blue-600); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.gf-error-card h1 { font-size: 30px; line-height: 1.25; margin: 8px 0 10px; }
+.gf-error-card p { color: var(--gf-gray-500); line-height: 1.75; margin: 0 auto; max-width: 420px; }
+.gf-error-card__actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 28px; }
+.gf-button { align-items: center; background: #fff; border: 1px solid var(--gf-gray-200); border-radius: 8px; color: var(--gf-gray-700); display: inline-flex; font-size: 14px; font-weight: 650; justify-content: center; min-height: 40px; padding: 8px 16px; text-decoration: none; }
+.gf-button--primary { background: var(--gf-blue-600); border-color: var(--gf-blue-600); color: #fff; }
+.gf-button:hover { border-color: #d1d5db; }
+.gf-button--primary:hover { background: var(--gf-blue-700); border-color: var(--gf-blue-700); }
+.gf-button:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
+
+@media (max-width: 480px) {
+    .gf-error-card { padding: 32px 22px; }
+    .gf-error-card h1 { font-size: 24px; }
+}

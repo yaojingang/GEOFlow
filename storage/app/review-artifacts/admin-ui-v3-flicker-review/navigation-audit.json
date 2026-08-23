@@ -1,0 +1,294 @@
+{
+  "checks": 14,
+  "passed": 14,
+  "failed": 0,
+  "results": [
+    {
+      "name": "blocked-source-index.php",
+      "status": "pass",
+      "request_path": "/index.php",
+      "http_status": 404,
+      "source_marker_exposed": false
+    },
+    {
+      "name": "blocked-source-.htaccess",
+      "status": "pass",
+      "request_path": "/.htaccess",
+      "http_status": 404,
+      "source_marker_exposed": false
+    },
+    {
+      "name": "public-home-through-laravel",
+      "status": "pass",
+      "request_path": "/",
+      "http_status": 200,
+      "source_marker_exposed": false
+    },
+    {
+      "name": "collapsed-new-tab",
+      "status": "pass",
+      "frame_count": 40,
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "dynamic-response-security-headers",
+      "status": "pass",
+      "headers": {
+        "cache-control": "no-cache, private, no-store",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "SAMEORIGIN",
+        "referrer-policy": "strict-origin-when-cross-origin"
+      }
+    },
+    {
+      "name": "collapsed-refresh",
+      "status": "pass",
+      "frame_count": 40,
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "immutable-asset-cache",
+      "status": "pass",
+      "assets": [
+        {
+          "name": "http://localhost:28080/build/assets/app-DVqqtB2j.css",
+          "transferSize": 0
+        },
+        {
+          "name": "http://localhost:28080/build/assets/app-C4EEGa2C.css",
+          "transferSize": 0
+        },
+        {
+          "name": "http://localhost:28080/build/assets/app-Dd1k8gdO.js",
+          "transferSize": 0
+        }
+      ]
+    },
+    {
+      "name": "immutable-asset-security-headers",
+      "status": "pass",
+      "http_status": 200,
+      "headers": {
+        "cache-control": "max-age=31536000, public, max-age=31536000, immutable",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "SAMEORIGIN",
+        "referrer-policy": "strict-origin-when-cross-origin"
+      }
+    },
+    {
+      "name": "collapsed-cross-page",
+      "status": "pass",
+      "frame_count": 40,
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "collapsed-second-tab",
+      "status": "pass",
+      "frame_count": 40,
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "collapsed-back",
+      "status": "pass",
+      "frame_count": 40,
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "collapsed-forward",
+      "status": "pass",
+      "frame_count": 40,
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": 0,
+          "width": 72
+        },
+        "shellBody": {
+          "x": 72,
+          "width": 1368
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    },
+    {
+      "name": "user-expand",
+      "status": "pass",
+      "measurement": {
+        "state": "expanded",
+        "sidebarWidth": 256,
+        "bodyX": 256,
+        "stored": "0"
+      }
+    },
+    {
+      "name": "mobile-collapsed-preference",
+      "status": "pass",
+      "frame_count": 40,
+      "first": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": -256,
+          "width": 256
+        },
+        "shellBody": {
+          "x": 0,
+          "width": 375
+        }
+      },
+      "final": {
+        "state": "collapsed",
+        "sidebar": {
+          "x": -256,
+          "width": 256
+        },
+        "shellBody": {
+          "x": 0,
+          "width": 375
+        }
+      },
+      "deltas": {
+        "sidebar_width": 0,
+        "body_x": 0
+      }
+    }
+  ]
+}

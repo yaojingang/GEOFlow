@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Support\AdminActivityLogger;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -20,6 +21,9 @@ class LogAdminActivity
      */
     public function handle(Request $request, Closure $next): Response
     {
+        /** @var Admin|null $admin */
+        $admin = auth('admin')->user();
+
         // 先放行业务逻辑，确保日志失败不阻断正常响应。
         $response = $next($request);
 
@@ -28,18 +32,26 @@ class LogAdminActivity
             return $response;
         }
 
-        /** @var Admin|null $admin */
-        $admin = auth('admin')->user();
         if (! $admin instanceof Admin) {
             return $response;
         }
 
-        $action = (string) ($request->input('action') ?: 'submit');
+        $requestedAction = $request->attributes->get('admin_activity_action');
+        $action = is_string($requestedAction)
+            && preg_match('/\A[a-z0-9._:-]{1,40}\z/i', $requestedAction) === 1
+                ? $requestedAction
+                : 'submit';
         $routeName = (string) ($request->route()?->getName() ?? '');
         // 组合路由名 + action，便于后续按模块和操作类型筛选审计日志。
-        $fullAction = $routeName !== '' ? $routeName.':'.$action : $action;
+        $fullAction = mb_substr($routeName !== '' ? $routeName.':'.$action : $action, 0, 120);
 
-        $details = $request->except(['password', 'package_password', 'current_password', 'new_password', 'confirm_password']);
+        $isAiWorkspace = Str::startsWith($routeName, 'admin.ai-workspace.');
+        $details = $isAiWorkspace
+            ? $this->aiWorkspaceAuditSummary($request, $response)
+            : $request->except([
+                'password', 'password_confirmation', 'package_password',
+                'current_password', 'new_password', 'confirm_password',
+            ]);
         $explicitDetails = $request->attributes->get('admin_activity_details');
         if (is_array($explicitDetails)) {
             $details = array_replace($details, $explicitDetails);
@@ -52,5 +64,27 @@ class LogAdminActivity
         AdminActivityLogger::logFromRequest($request, $admin, $fullAction, $details);
 
         return $response;
+    }
+
+    /** @return array<string,mixed> */
+    private function aiWorkspaceAuditSummary(Request $request, Response $response): array
+    {
+        $details = [];
+        foreach (['conversation', 'run', 'approval', 'step'] as $parameter) {
+            $value = $request->route($parameter);
+            if (is_string($value) && $value !== '') {
+                $details[$parameter.'_id'] = mb_substr($value, 0, 80);
+            }
+        }
+
+        $payload = method_exists($response, 'getData') ? $response->getData(true) : null;
+        $data = is_array($payload) && is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        foreach (['id', 'state', 'plan_version'] as $field) {
+            if (isset($data[$field]) && (is_string($data[$field]) || is_numeric($data[$field]))) {
+                $details[$field === 'id' ? 'result_id' : $field] = $data[$field];
+            }
+        }
+
+        return $details;
     }
 }

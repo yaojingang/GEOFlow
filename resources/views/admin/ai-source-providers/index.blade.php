@@ -4,7 +4,7 @@
     <div class="px-4 sm:px-0">
         <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center gap-4">
-                <a href="{{ route('admin.ai.configurator') }}" class="text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.ai.configurator') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
                 <div>
@@ -169,7 +169,7 @@
                 </div>
 
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
+                    <table class="min-w-full divide-y divide-gray-200" data-sticky-actions>
                         <thead class="bg-gray-50">
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{{ __('admin.ai_source_providers.column.provider') }}</th>
@@ -296,7 +296,7 @@
             <div class="mt-3">
                 <div class="mb-4 flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900" id="providerModalTitle">{{ __('admin.ai_source_providers.modal_create') }}</h3>
-                    <button type="button" onclick="closeProviderModal()" class="text-gray-400 hover:text-gray-600">
+                    <button type="button" onclick="closeProviderModal()" aria-label="{{ __('admin.common.close') }}" class="text-gray-400 hover:text-gray-600">
                         <i data-lucide="x" class="h-6 w-6"></i>
                     </button>
                 </div>

@@ -7,6 +7,7 @@ use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\SiteSetting;
+use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
 use App\Services\GeoFlow\AiVisibility\AiStructuredOutputHealthCheck;
@@ -36,6 +37,7 @@ class AiSourceProviderController extends Controller
         private readonly AiProviderEndpointPolicy $endpointPolicy,
         private readonly AiUsageQuotaService $usageQuota,
         private readonly AiVisibilityConfigurationResolver $configuration,
+        private readonly AiWorkspaceModelRuntime $aiWorkspaceRuntime,
     ) {}
 
     public function index(): View
@@ -193,6 +195,8 @@ class AiSourceProviderController extends Controller
             'failover_priority' => $bindingType === 'ark' ? 40 : 45,
             'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
             'status' => 'active',
+            'ai_workspace_structured_output_status' => null,
+            'ai_workspace_structured_output_verified_at' => null,
         ];
         if ($this->supportsModelMaxTokens()) {
             $modelData['max_tokens'] = $this->normalizeModelMaxTokens($payload['max_tokens'] ?? null);
@@ -265,23 +269,43 @@ class AiSourceProviderController extends Controller
         $bindingType = (string) $payload['binding_type'];
         $model = AiModel::query()->whereKey((int) $payload['model_id'])->firstOrFail();
         $query = $this->normalizeTestQuery((string) ($payload['query'] ?? 'GEOFlow'));
+        $canUpdateWorkspaceReadiness = (bool) $request->user('admin')?->isSuperAdmin();
+
+        if ($bindingType === 'ark' && ! $this->isCallableArkModel($model)) {
+            return response()->json([
+                'success' => false,
+                'message' => __('admin.ai_source_providers.test_failed', [
+                    'message' => $this->previewMessage(__('admin.ai_source_providers.error.ark_model_unavailable')),
+                ]),
+            ], 422);
+        }
+        if ($bindingType === 'deepseek' && ! $this->isCallableDeepSeekModel($model)) {
+            return response()->json([
+                'success' => false,
+                'message' => __('admin.ai_source_providers.test_failed', [
+                    'message' => $this->previewMessage(__('admin.ai_source_providers.error.deepseek_model_unavailable')),
+                ]),
+            ], 422);
+        }
 
         $reservation = null;
         try {
-            if ($bindingType === 'ark' && ! $this->isCallableArkModel($model)) {
-                throw new RuntimeException(__('admin.ai_source_providers.error.ark_model_unavailable'));
-            }
-            if ($bindingType === 'deepseek' && ! $this->isCallableDeepSeekModel($model)) {
-                throw new RuntimeException(__('admin.ai_source_providers.error.deepseek_model_unavailable'));
-            }
             $reservation = $this->usageQuota->reserveModel($model);
             if ($reservation === null) {
                 throw new RuntimeException('模型已达到每日调用上限');
             }
 
-            $result = $bindingType === 'ark'
-                ? $this->structuredOutputHealthCheck->testArkResponsesStructuredOutput($model, $query)
-                : $this->structuredOutputHealthCheck->testDeepSeekJsonOutput($model, $query);
+            $result = $canUpdateWorkspaceReadiness
+                ? $this->aiWorkspaceRuntime->probeStructuredOutput($model, $query)
+                : ($bindingType === 'ark'
+                    ? $this->structuredOutputHealthCheck->testArkResponsesStructuredOutput($model, $query)
+                    : $this->structuredOutputHealthCheck->testDeepSeekJsonOutput($model, $query));
+            if ($canUpdateWorkspaceReadiness) {
+                $model->forceFill([
+                    'ai_workspace_structured_output_status' => 'ready',
+                    'ai_workspace_structured_output_verified_at' => now(),
+                ])->save();
+            }
             $this->usageQuota->recordModelSuccess($reservation);
             $reservation = null;
 
@@ -289,6 +313,12 @@ class AiSourceProviderController extends Controller
                 'provider' => $bindingType === 'ark' ? 'Ark Web Search' : 'DeepSeek',
             ]));
         } catch (Throwable $exception) {
+            if ($canUpdateWorkspaceReadiness && $model->ai_workspace_structured_output_status !== 'ready') {
+                $model->forceFill([
+                    'ai_workspace_structured_output_status' => 'failed',
+                    'ai_workspace_structured_output_verified_at' => null,
+                ])->save();
+            }
             if ($reservation !== null) {
                 $this->usageQuota->recordModelAttempt($reservation);
             }

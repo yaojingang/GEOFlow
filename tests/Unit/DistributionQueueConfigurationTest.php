@@ -17,7 +17,7 @@ class DistributionQueueConfigurationTest extends TestCase
         foreach ($composeFiles as $composeFile) {
             $contents = file_get_contents($composeFile);
             $this->assertIsString($contents);
-            $this->assertStringContainsString('--queue=geoflow,distribution,theme-replication,default', $contents, basename($composeFile));
+            $this->assertStringContainsString('--queue=ai-workspace-interactive,ai-workspace,geoflow,distribution,theme-replication,default', $contents, basename($composeFile));
             $this->assertStringContainsString('--queue=knowledge', $contents, basename($composeFile));
             $this->assertStringContainsString('--queue=system-updates', $contents, basename($composeFile));
         }

@@ -12,11 +12,10 @@
 
 ## 访问
 
-在项目根目录运行现有静态预览服务后访问：
+启动 UI V3 后访问：
 
 ```text
-http://127.0.0.1:4173/previews/geoflow-admin-ui-v3-pilot/index.html
+http://localhost:28080/previews/geoflow-admin-ui-v3-pilot/index.html
 ```
 
 试点只使用演示数据，不调用接口，不修改数据库，也不替换现有 Blade 页面。
-

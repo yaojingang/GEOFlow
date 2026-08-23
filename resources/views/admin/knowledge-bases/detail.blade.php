@@ -64,7 +64,7 @@
     <div class="px-4 sm:px-0">
         <div class="mb-8 flex items-center justify-between">
             <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.knowledge-bases.index') }}" class="text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.knowledge-bases.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
                 <div>
@@ -294,9 +294,7 @@
                         textarea.value = editor.getValue();
                     }
 
-                    if (window.lucide) {
-                        window.lucide.createIcons();
-                    }
+                    window.GeoFlowAdminUi?.refreshIcons?.(editorNode);
                 },
             });
 

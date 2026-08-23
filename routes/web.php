@@ -4,6 +4,7 @@
  * Web 路由：前台与 Blade 管理后台（路径见 config/geoflow.admin_base_path，默认 geo_admin）。
  */
 
+use App\Http\Controllers\Admin\AdminAccountController;
 use App\Http\Controllers\Admin\AdminActivityLogController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminUserController;
@@ -13,6 +14,8 @@ use App\Http\Controllers\Admin\AiPromptController;
 use App\Http\Controllers\Admin\AiSourceProviderController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
 use App\Http\Controllers\Admin\AiVisibilityAnalyticsController;
+use App\Http\Controllers\Admin\AiWorkspaceApiController;
+use App\Http\Controllers\Admin\AiWorkspaceController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\ArticleController;
@@ -51,6 +54,7 @@ use App\Http\Controllers\Site\HomeController;
 use App\Http\Controllers\Site\HostedAssetController;
 use App\Http\Controllers\Site\LeadFormController as SiteLeadFormController;
 use App\Http\Controllers\Site\SiteDiscoveryController;
+use App\Support\AdminUiRegistry;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -100,10 +104,40 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
     });
 
     // 后台受保护路由
-    Route::middleware(['admin.auth', 'admin.activity'])->group(function () {
+    Route::middleware(['admin.auth', 'admin.activity', 'admin.recent'])->group(function () {
         // 会话与首页
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
+        Route::middleware('admin.ui-v3')->group(function (): void {
+            Route::get('ai-workspace', AiWorkspaceController::class)->name('ai-workspace');
+            Route::prefix('ai-workspace')->name('ai-workspace.')->group(function (): void {
+                Route::middleware('throttle:ai-workspace-read')->group(function (): void {
+                    Route::get('conversations', [AiWorkspaceApiController::class, 'conversations'])->name('conversations.index');
+                    Route::get('conversations/{conversation}', [AiWorkspaceApiController::class, 'showConversation'])->name('conversations.show');
+                    Route::get('metrics', [AiWorkspaceApiController::class, 'metrics'])->name('metrics');
+                    Route::get('runs/{run}', [AiWorkspaceApiController::class, 'showRun'])->name('runs.show');
+                });
+                Route::post('runs/{run}/cancel', [AiWorkspaceApiController::class, 'cancel'])
+                    ->middleware('throttle:ai-workspace')
+                    ->name('runs.cancel');
+                Route::post('conversations/{conversation}/archive', [AiWorkspaceApiController::class, 'archiveConversation'])->middleware('throttle:ai-workspace')->name('conversations.archive');
+                Route::middleware('ai-workspace.enabled')->group(function (): void {
+                    Route::post('conversations', [AiWorkspaceApiController::class, 'storeConversation'])->middleware('throttle:ai-workspace')->name('conversations.store');
+                    Route::post('conversations/{conversation}/messages', [AiWorkspaceApiController::class, 'sendMessage'])->middleware('throttle:ai-workspace-messages')->name('messages.store');
+                    Route::put('runs/{run}/plan', [AiWorkspaceApiController::class, 'updatePlan'])->middleware('throttle:ai-workspace')->name('runs.plan.update');
+                    Route::post('approvals/{approval}/approve', [AiWorkspaceApiController::class, 'approve'])->middleware('throttle:ai-workspace')->name('approvals.approve');
+                    Route::post('approvals/{approval}/reject', [AiWorkspaceApiController::class, 'reject'])->middleware('throttle:ai-workspace')->name('approvals.reject');
+                    Route::post('steps/{step}/retry', [AiWorkspaceApiController::class, 'retryStep'])->middleware('throttle:ai-workspace')->name('steps.retry');
+                });
+            });
+            Route::prefix('account')->name('account.')->group(function (): void {
+                Route::get('/', [AdminAccountController::class, 'show'])->name('show');
+                Route::put('profile', [AdminAccountController::class, 'updateProfile'])->name('profile.update');
+                Route::put('password', [AdminAccountController::class, 'updatePassword'])
+                    ->middleware('throttle:admin-sensitive')
+                    ->name('password.update');
+            });
+        });
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics');
         Route::prefix('analytics')->name('analytics.')->group(function (): void {
@@ -487,9 +521,19 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('admin-activity-logs', [AdminActivityLogController::class, 'index'])->name('admin-activity-logs');
             Route::prefix('api-tokens')->name('api-tokens.')->group(function () {
                 Route::get('/', [ApiTokenController::class, 'index'])->name('index');
-                Route::post('/', [ApiTokenController::class, 'store'])->name('store');
+                Route::post('/', [ApiTokenController::class, 'store'])->middleware('throttle:admin-sensitive')->name('store');
                 Route::post('{tokenId}/revoke', [ApiTokenController::class, 'revoke'])->name('revoke');
             });
         });
     });
 });
+
+$adminUiRegistry = app(AdminUiRegistry::class);
+foreach (Route::getRoutes() as $adminRoute) {
+    $routeName = $adminRoute->getName();
+    if (is_string($routeName)
+        && in_array('GET', $adminRoute->methods(), true)
+        && $adminUiRegistry->shouldRememberRoute($routeName)) {
+        $adminRoute->block(30, 30);
+    }
+}

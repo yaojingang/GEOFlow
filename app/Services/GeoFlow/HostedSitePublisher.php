@@ -54,7 +54,7 @@ final class HostedSitePublisher implements DistributionPublisherInterface
         return $this->write($distribution, HostedSiteArticleAssignment::STATUS_WITHDRAWN);
     }
 
-    public function syncSiteSettings(DistributionChannel $channel): array
+    public function syncSiteSettings(DistributionChannel $channel, ?string $idempotencyKey = null, ?array $settings = null): array
     {
         if (! config('geoflow.hosted_sites.enabled', false)) {
             throw new HostedSitesDisabled;

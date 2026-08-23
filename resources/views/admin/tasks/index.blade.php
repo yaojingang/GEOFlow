@@ -56,7 +56,7 @@
 @endphp
 
 @section('content')
-    <div class="px-4 sm:px-0">
+    <div class="px-4 sm:px-0" data-task-realtime>
         <div class="mb-8 flex items-center justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.tasks.page_title') }}</h1>
@@ -97,7 +97,7 @@
                 </div>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[1110px] table-fixed divide-y divide-gray-200">
+                    <table class="w-full min-w-[1110px] table-fixed divide-y divide-gray-200" data-sticky-actions>
                         <thead class="bg-gray-50">
                         <tr>
                             <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.tasks.column.name') }}</th>
@@ -450,11 +450,14 @@ const TASK_TEXT = {
     jobsUpdatedAt: @js(__('admin.tasks.jobs.updated_at')),
 };
 
-function renderIcons() { if (typeof lucide !== 'undefined') { lucide.createIcons(); } }
+function renderIcons(target = document) {
+    if (window.GeoFlowAdminUi?.refreshIcons) { window.GeoFlowAdminUi.refreshIcons(target); return; }
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+}
 
 function showNotification(type, message) { if (window.AdminUtils && typeof window.AdminUtils.showToast === 'function') { window.AdminUtils.showToast(message, type); return; } alert(message); }
 
-function setButtonLoading(btn, text, classes) { btn.disabled = true; btn.className = classes; btn.innerHTML = `<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i><span class="sr-only">${text}</span>`; renderIcons(); }
+function setButtonLoading(btn, text, classes) { btn.disabled = true; btn.className = classes; btn.innerHTML = `<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i><span class="sr-only">${text}</span>`; renderIcons(btn); }
 
 function updateBatchButton(btn, taskId, taskName, isActive) {
     if (!btn) return;
@@ -465,7 +468,7 @@ function updateBatchButton(btn, taskId, taskName, isActive) {
     btn.title = isActive ? TASK_I18N.stopBatch : TASK_I18N.startBatch;
     btn.setAttribute('aria-label', btn.title);
     btn.onclick = isActive ? () => stopBatchExecution(taskId, taskName) : () => startBatchExecution(taskId, taskName);
-    renderIcons();
+    renderIcons(btn);
 }
 
 function formatEstimatedTime(seconds) { if (seconds < 60) return `${seconds}${TASK_I18N.secondsSuffix}`; if (seconds < 3600) return `${Math.round(seconds / 60)}${TASK_I18N.minutesSuffix}`; if (seconds < 86400) return `${Math.round(seconds / 3600)}${TASK_I18N.hoursSuffix}`; return `${Math.round(seconds / 86400)}${TASK_I18N.daysSuffix}`; }
@@ -514,7 +517,7 @@ function updateBatchStatus(task) {
     const remainingArticles = Math.max(0, articleLimit - createdCount);
     const estimatedTime = formatEstimatedTime(remainingArticles * Number(task.publish_interval || 3600));
     statusDiv.innerHTML = `<div class="flex flex-col gap-1 text-xs"><div class="flex items-center gap-2"><span class="inline-flex items-center rounded-full border px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200"><i data-lucide="activity" class="h-3 w-3 mr-1"></i>${stateLabel}</span><span class="text-gray-600">${createdCount}/${articleLimit}</span></div><div class="text-gray-500">${TASK_I18N.pendingRunning.replace('__PENDING__', pendingJobs).replace('__RUNNING__', runningJobs)}${remainingArticles > 0 ? ` · ${TASK_I18N.estimated.replace('__TIME__', estimatedTime)}` : ''}</div></div>`;
-    renderIcons();
+    renderIcons(statusDiv);
 }
 
 function updateTaskUI(task) {
@@ -737,7 +740,7 @@ function handleStatusToggle(taskId, checkbox) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    renderIcons();
+    if (!window.GeoFlowAdminUi?.refreshIcons) renderIcons();
     applyOverview(TASK_INITIAL_OVERVIEW);
     requestTaskSnapshot();
     initTaskRealtime();

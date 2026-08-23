@@ -4,7 +4,7 @@
     <div class="px-4 sm:px-0">
         <div class="flex items-center justify-between mb-8">
             <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.ai.configurator') }}" class="text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.ai.configurator') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
                 <div>
@@ -29,7 +29,7 @@
             </div>
 
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
+                <table class="min-w-full divide-y divide-gray-200" data-sticky-actions>
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_prompts.column_info') }}</th>
@@ -94,7 +94,7 @@
             <div class="mt-3">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-medium text-gray-900" id="promptModalTitle">{{ __('admin.ai_prompts.modal_create') }}</h3>
-                    <button type="button" onclick="closePromptModal()" class="text-gray-400 hover:text-gray-600">
+                    <button type="button" onclick="closePromptModal()" aria-label="{{ __('admin.common.close') }}" class="text-gray-400 hover:text-gray-600">
                         <i data-lucide="x" class="w-6 h-6"></i>
                     </button>
                 </div>
@@ -189,10 +189,9 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
-            if (typeof lucide !== 'undefined') {
+            if (! window.GeoFlowAdminUi?.refreshIcons && typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
         });
     </script>
 @endpush
-

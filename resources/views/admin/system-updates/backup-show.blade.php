@@ -31,7 +31,7 @@
     <div class="px-4 sm:px-0">
         <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div class="flex items-start gap-4">
-                <a href="{{ route('admin.system-updates.index') }}" class="mt-1 text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.system-updates.index') }}" aria-label="{{ __('admin.common.back') }}" class="mt-1 text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="h-5 w-5"></i>
                 </a>
                 <div>
@@ -110,7 +110,7 @@
             </div>
 
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <table class="min-w-full divide-y divide-gray-200 text-sm" data-sticky-actions>
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-6 py-3 text-left font-semibold text-gray-500">{{ __('admin.system_updates.plan.file') }}</th>

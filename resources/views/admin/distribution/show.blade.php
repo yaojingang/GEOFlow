@@ -65,7 +65,7 @@
     <div class="space-y-8 px-4 sm:px-0">
         <div class="flex items-center justify-between">
             <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.distribution.index') }}" class="text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.distribution.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="h-5 w-5"></i>
                 </a>
                 <div>

@@ -4,7 +4,7 @@
     <div class="space-y-8 px-4 sm:px-0">
         <div class="flex items-center justify-between">
             <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.distribution.index') }}" class="text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.distribution.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="h-5 w-5"></i>
                 </a>
                 <div>
@@ -20,7 +20,7 @@
                     <label for="status" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.field.status') }}</label>
                     <select id="status" name="status" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                         <option value="">{{ __('admin.distribution.filter.all_statuses') }}</option>
-                        @foreach (['queued', 'sending', 'synced', 'failed'] as $status)
+                        @foreach (['queued', 'sending', 'synced', 'failed', 'outcome_unknown'] as $status)
                             <option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ __('admin.distribution.job_status.'.$status) }}</option>
                         @endforeach
                     </select>

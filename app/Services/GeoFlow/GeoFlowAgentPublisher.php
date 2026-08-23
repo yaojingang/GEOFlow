@@ -29,8 +29,8 @@ class GeoFlowAgentPublisher implements DistributionPublisherInterface
         return $this->httpClient->deleteArticle($distribution);
     }
 
-    public function syncSiteSettings(DistributionChannel $channel): array
+    public function syncSiteSettings(DistributionChannel $channel, ?string $idempotencyKey = null, ?array $settings = null): array
     {
-        return $this->httpClient->syncSiteSettings($channel);
+        return $this->httpClient->syncSiteSettings($channel, $idempotencyKey, $settings);
     }
 }

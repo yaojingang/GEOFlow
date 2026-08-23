@@ -1,0 +1,22 @@
+[
+  {"prompt":"生成今天的运营日报", "expected":"analytics.daily_report"},
+  {"prompt":"给我一份本周运营周报", "expected":"analytics.weekly_report"},
+  {"prompt":"诊断品牌：“GEOFlow”的 AI 可见性", "expected":"visibility.diagnose"},
+  {"prompt":"做一次可见性诊断", "expected":"visibility.diagnose", "missing":["query"]},
+  {"prompt":"分析“智能营销”的内容机会", "expected":"content.opportunities"},
+  {"prompt":"创建任务“八月内容增长”", "expected":"task.draft"},
+  {"prompt":"帮我新建任务", "expected":"task.draft", "missing":["name"]},
+  {"prompt":"起草一篇文章", "expected":"article.draft", "missing":["title","content","category_id","author_id"]},
+  {"prompt":"创建企业知识草稿", "expected":"knowledge.draft", "missing":["name","content"]},
+  {"prompt":"URL 导入预览 https://example.com/post", "expected":"url_import.preview"},
+  {"prompt":"做一个 URL 导入", "expected":"url_import.preview", "missing":["url"]},
+  {"prompt":"生成文章 12 到渠道 3 的分发预览", "expected":"distribution.preview"},
+  {"prompt":"执行文章 12 发布到渠道 3", "expected":"distribution.publish"},
+  {"prompt":"启动任务 42", "expected":"task.status.change"},
+  {"prompt":"暂停任务", "expected":"task.status.change", "missing":["task_id"]},
+  {"prompt":"预检站点 7", "expected":"hosted_site.preflight"},
+  {"prompt":"托管站点健康检查", "expected":"hosted_site.preflight", "missing":["hosted_site_id"]},
+  {"prompt":"GEOFlow 后台有哪些能力", "expected":"system.capabilities.explain"},
+  {"prompt":"如何写一个清晰的产品需求", "expected":"answer"},
+  {"prompt":"解释一下 GEO 的基本概念", "expected":"answer"}
+]

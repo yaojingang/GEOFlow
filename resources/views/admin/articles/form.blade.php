@@ -175,7 +175,7 @@
 @section('content')
     <div class="px-4 sm:px-0">
         <div class="flex items-center space-x-4 mb-6">
-            <a href="{{ route('admin.articles.index') }}" class="text-gray-400 hover:text-gray-600">
+            <a href="{{ route('admin.articles.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                 <i data-lucide="arrow-left" class="w-5 h-5"></i>
             </a>
             <div>
@@ -1132,9 +1132,7 @@
                     copyWechatHtmlButton.disabled = true;
                     copyWechatHtmlButton.setAttribute('aria-busy', 'true');
                     copyWechatHtmlButton.innerHTML = '<i data-lucide="loader-2" class="mr-1.5 h-4 w-4 animate-spin"></i>' + messages.wechatCopying;
-                    if (window.lucide) {
-                        window.lucide.createIcons();
-                    }
+                    window.GeoFlowAdminUi?.refreshIcons?.(copyWechatHtmlButton);
                 }
 
                 try {
@@ -1164,9 +1162,7 @@
                         copyWechatHtmlButton.disabled = false;
                         copyWechatHtmlButton.removeAttribute('aria-busy');
                         copyWechatHtmlButton.innerHTML = originalHtml;
-                        if (window.lucide) {
-                            window.lucide.createIcons();
-                        }
+                        window.GeoFlowAdminUi?.refreshIcons?.(copyWechatHtmlButton);
                     }
                 }
             }
@@ -1191,9 +1187,7 @@
                 contextMenu.style.top = Math.max(12, top) + 'px';
                 contextMenu.hidden = false;
 
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
+                window.GeoFlowAdminUi?.refreshIcons?.(contextMenu);
             }
 
             function destroyCropper() {
@@ -1440,9 +1434,7 @@
                         tip: showEditorTip,
                     };
                     window.dispatchEvent(new CustomEvent('geo-article-editor-ready'));
-                    if (window.lucide) {
-                        window.lucide.createIcons();
-                    }
+                    window.GeoFlowAdminUi?.refreshIcons?.(editorNode);
                 },
             });
 

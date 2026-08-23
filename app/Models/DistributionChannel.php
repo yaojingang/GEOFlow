@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DistributionChannel extends Model
 {
+    public const TYPE_GEOFLOW_AGENT = 'geoflow_agent';
+
     public const TYPE_HOSTED_SITE = 'hosted_site';
 
     public const STATUS_ACTIVE = 'active';
