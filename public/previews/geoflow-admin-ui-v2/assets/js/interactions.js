@@ -47,16 +47,49 @@
 
     function showModal(message) {
         const modal = document.querySelector('[data-modal]');
+        const panel = document.querySelector('[data-modal-panel]');
+        const title = document.querySelector('[data-modal-title]');
         const content = document.querySelector('[data-modal-message]');
-        if (!modal || !content) {
+        const body = document.querySelector('[data-modal-body]');
+        const footer = document.querySelector('[data-modal-footer]');
+        if (!modal || !panel || !title || !content || !body || !footer) {
             showToast(message);
             return;
         }
+        panel.dataset.modalVariant = 'demo';
+        title.textContent = '原型操作说明';
         content.textContent = message;
+        body.innerHTML = '<div class="gf-callout"><i data-lucide="info"></i><div>所有页面均使用演示数据，不会调用接口、写入数据库或改变现有 GEOFlow 状态。</div></div>';
+        footer.innerHTML = '<button class="gf-button gf-button--primary" type="button" data-modal-close><i data-lucide="check"></i><span>知道了</span></button>';
         modal.classList.add('is-open');
         modal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('gf-modal-open');
+        window.lucide?.createIcons();
         modal.querySelector('[data-modal-close]')?.focus();
+    }
+
+    function showShellDialog(name, trigger) {
+        const template = document.querySelector(`[data-shell-dialog-template="${name}"]`);
+        const modal = document.querySelector('[data-modal]');
+        const panel = document.querySelector('[data-modal-panel]');
+        const title = document.querySelector('[data-modal-title]');
+        const message = document.querySelector('[data-modal-message]');
+        const body = document.querySelector('[data-modal-body]');
+        const footer = document.querySelector('[data-modal-footer]');
+        if (!template || !modal || !panel || !title || !message || !body || !footer) return;
+
+        modalTrigger = trigger;
+        closePopovers();
+        panel.dataset.modalVariant = name;
+        title.textContent = template.dataset.dialogTitle || '快捷入口';
+        message.textContent = template.dataset.dialogMessage || '';
+        body.innerHTML = template.content.querySelector('[data-dialog-body]')?.innerHTML || '';
+        footer.innerHTML = template.content.querySelector('[data-dialog-footer]')?.innerHTML || '';
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('gf-modal-open');
+        window.lucide?.createIcons();
+        modal.querySelector('[data-modal-close], input, a, button')?.focus();
     }
 
     function trapModalFocus(event) {
@@ -116,9 +149,47 @@
             });
         });
 
-        document.querySelectorAll('[data-modal-close]').forEach((button) => button.addEventListener('click', () => closeModal(true)));
+        document.querySelectorAll('[data-shell-dialog]').forEach((button) => {
+            button.addEventListener('click', () => showShellDialog(button.dataset.shellDialog, button));
+        });
+
         document.querySelector('[data-modal]')?.addEventListener('click', (event) => {
+            const closeButton = event.target.closest?.('[data-modal-close]');
+            if (closeButton) {
+                closeModal(true);
+                return;
+            }
+            const passwordToggle = event.target.closest?.('[data-account-password-toggle]');
+            if (passwordToggle) {
+                const passwordPanel = document.querySelector('[data-account-password-form]');
+                const expanded = passwordToggle.getAttribute('aria-expanded') === 'true';
+                passwordToggle.setAttribute('aria-expanded', String(!expanded));
+                if (passwordPanel) passwordPanel.hidden = expanded;
+                if (!expanded) passwordPanel?.querySelector('input')?.focus();
+                return;
+            }
+            const copyButton = event.target.closest?.('[data-copy-prototype-url]');
+            if (copyButton) {
+                navigator.clipboard?.writeText(window.location.href);
+                showToast('当前原型访问地址已复制');
+                return;
+            }
             if (event.target === event.currentTarget) closeModal(true);
+        });
+        document.querySelector('[data-modal]')?.addEventListener('submit', (event) => {
+            if (!event.target.matches('[data-account-password-form]')) return;
+            event.preventDefault();
+            const password = event.target.querySelector('#new-password')?.value;
+            const confirmation = event.target.querySelector('#confirm-password')?.value;
+            if (password !== confirmation) {
+                showToast('两次输入的新密码不一致');
+                event.target.querySelector('#confirm-password')?.focus();
+                return;
+            }
+            showToast('Admin 密码修改演示已完成');
+            event.target.reset();
+            event.target.hidden = true;
+            document.querySelector('[data-account-password-toggle]')?.setAttribute('aria-expanded', 'false');
         });
 
         document.querySelectorAll('[data-demo-form]').forEach((form) => {
@@ -148,7 +219,9 @@
         const runbarTime = document.querySelector('[data-ai-runbar-time]');
         const runbarCount = document.querySelector('[data-ai-runbar-count]');
         const stopButton = document.querySelector('[data-ai-stop]');
+        const landingSend = document.querySelector('[data-ai-send="landing"]');
         const followupSend = document.querySelector('[data-ai-send="followup"]');
+        const composerStatus = document.querySelector('[data-ai-composer-status]');
         const autoConfirm = document.querySelector('[data-ai-auto-confirm]');
         const approvalNote = document.querySelector('[data-ai-approval-note]');
         const confirmation = document.querySelector('[data-ai-confirmation]');
@@ -159,6 +232,45 @@
         let aiRunTimers = [];
         let aiRunClock = null;
         let aiStartedAt = 0;
+
+        const resizePrompt = (input) => {
+            if (!input) return;
+            input.style.height = 'auto';
+            const maxHeight = input === landingPrompt ? 144 : 120;
+            input.style.height = `${Math.min(input.scrollHeight, maxHeight)}px`;
+            input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden';
+        };
+
+        const syncPromptState = (input) => {
+            const sendButton = input === landingPrompt ? landingSend : followupSend;
+            if (sendButton) sendButton.disabled = !input?.value.trim();
+            resizePrompt(input);
+        };
+
+        const fillLandingPrompt = (value, label) => {
+            if (!landingPrompt) return;
+            landingPrompt.value = value;
+            syncPromptState(landingPrompt);
+            if (composerStatus) composerStatus.textContent = `已填入${label}任务示例`;
+        };
+
+        const clearChipSelection = () => {
+            document.querySelectorAll('[data-ai-chip]').forEach((item) => {
+                item.classList.remove('is-active');
+                item.setAttribute('aria-pressed', 'false');
+            });
+        };
+
+        const syncConversationRoute = (historyKey = null) => {
+            const currentUrl = new URL(window.location.href);
+            if (historyKey) currentUrl.searchParams.set('conversation', historyKey);
+            else currentUrl.searchParams.delete('conversation');
+            window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+            document.querySelectorAll('[data-recent-conversation]').forEach((item) => {
+                if (historyKey && item.dataset.recentConversation === historyKey) item.setAttribute('aria-current', 'page');
+                else item.removeAttribute('aria-current');
+            });
+        };
 
         const clearAiRun = () => {
             aiRunTimers.forEach((timer) => window.clearTimeout(timer));
@@ -176,6 +288,7 @@
             if (stopButton) stopButton.hidden = !running;
             if (followupSend) followupSend.hidden = running;
             if (followupPrompt) followupPrompt.disabled = running;
+            if (!running) syncPromptState(followupPrompt);
         };
 
         const formatElapsed = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -310,6 +423,7 @@
 
         const exitAiConversation = () => {
             clearAiRun();
+            syncConversationRoute();
             document.body.classList.remove('gf-ai-conversation-mode');
             conversation?.classList.remove('is-visible');
             if (conversation) conversation.hidden = true;
@@ -318,6 +432,9 @@
             result?.classList.remove('is-visible');
             if (result) result.hidden = true;
             setRunControls(false);
+            if (landingPrompt) landingPrompt.value = '';
+            clearChipSelection();
+            syncPromptState(landingPrompt);
             window.scrollTo({ top: 0, behavior: 'auto' });
             window.requestAnimationFrame(() => landingPrompt?.focus());
         };
@@ -328,17 +445,19 @@
                     item.classList.toggle('is-active', item === mode);
                     item.setAttribute('aria-pressed', String(item === mode));
                 });
+                clearChipSelection();
+                fillLandingPrompt(mode.dataset.aiPrompt || '', mode.textContent.trim());
             });
         });
         document.querySelectorAll('[data-ai-chip]').forEach((chip) => {
             chip.addEventListener('click', () => {
-                document.querySelectorAll('[data-ai-chip]').forEach((item) => item.classList.remove('is-active'));
+                clearChipSelection();
                 chip.classList.add('is-active');
-                if (landingPrompt) landingPrompt.value = `${chip.dataset.aiChip}：分析当前 GEOFlow 数据，给出优先级建议并生成可审核的执行计划`;
-                landingPrompt?.focus();
+                chip.setAttribute('aria-pressed', 'true');
+                fillLandingPrompt(chip.dataset.aiPrompt || '', chip.dataset.aiChip || '快捷能力');
             });
         });
-        document.querySelector('[data-ai-send="landing"]')?.addEventListener('click', () => {
+        landingSend?.addEventListener('click', () => {
             const taskText = landingPrompt?.value.trim();
             if (!taskText) {
                 showToast('请先输入需要 GEOFlow 完成的任务');
@@ -356,6 +475,7 @@
             }
             runAiConversation({ taskText, scrollResult: true, announce: false });
             if (followupPrompt) followupPrompt.value = '';
+            syncPromptState(followupPrompt);
         });
         stopButton?.addEventListener('click', () => {
             clearAiRun();
@@ -387,12 +507,28 @@
         });
         document.querySelector('[data-ai-replay]')?.addEventListener('click', () => runAiConversation({ taskText: userMessage?.textContent.trim(), scrollResult: true, announce: false }));
         document.querySelector('[data-ai-new-chat]')?.addEventListener('click', exitAiConversation);
-        [landingPrompt, followupPrompt].forEach((input) => input?.addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter' || event.shiftKey) return;
-            event.preventDefault();
-            const target = input.dataset.aiInput;
-            document.querySelector(`[data-ai-send="${target}"]`)?.click();
-        }));
+        [landingPrompt, followupPrompt].forEach((input) => {
+            input?.addEventListener('input', () => {
+                syncPromptState(input);
+                if (input === landingPrompt) clearChipSelection();
+            });
+            input?.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' || event.shiftKey) return;
+                event.preventDefault();
+                if (!input.value.trim()) {
+                    showToast(input === landingPrompt ? '请先输入需要 GEOFlow 完成的任务' : '请输入补充要求');
+                    return;
+                }
+                const target = input.dataset.aiInput;
+                document.querySelector(`[data-ai-send="${target}"]`)?.click();
+            });
+        });
+
+        syncPromptState(landingPrompt);
+        syncPromptState(followupPrompt);
+        const historyKey = new URLSearchParams(window.location.search).get('conversation');
+        const historyPrompt = window.GeoFlowShell?.recentItems?.find((item) => item.key === historyKey)?.prompt;
+        if (historyPrompt) enterAiConversation(historyPrompt);
     }
 
     function bindTabs() {

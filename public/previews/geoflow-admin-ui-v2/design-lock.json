@@ -21,9 +21,16 @@
     "tabletPadding": 24,
     "mobilePadding": 16,
     "standardMaxWidth": 1280,
-    "focusMaxWidth": 768,
+    "focusMaxWidth": 1040,
     "mobileBreakpoint": 768
   },
+  "navigation": [
+    { "id": "ai", "label": null, "items": [{ "key": "ai-workspace", "label": "AI 工作台" }] },
+    { "id": "data", "label": "数据", "items": [{ "key": "analytics", "label": "数据中心" }] },
+    { "id": "content", "label": "内容", "items": [{ "key": "tasks", "label": "任务管理" }, { "key": "articles", "label": "内容管理" }, { "key": "materials", "label": "内容资产" }] },
+    { "id": "distribution", "label": "分发", "items": [{ "key": "distribution", "label": "分发管理" }] },
+    { "id": "system", "label": "系统", "items": [{ "key": "ai-config", "label": "AI配置器" }, { "key": "site-settings", "label": "网站设置" }] }
+  ],
   "radii": {
     "navigation": 6,
     "control": 8,
@@ -34,8 +41,16 @@
   "rules": [
     "The topbar has no bottom border and no shadow.",
     "The sidebar has one gray-200 right border.",
+    "The first sidebar navigation item starts on the same horizontal line as the main canvas below the topbar.",
+    "The sidebar navigation follows the AI workspace, data, content, distribution, and system taxonomy.",
+    "User management and related system pages resolve to the website settings navigation context.",
+    "The sidebar footer exposes Admin account details, a QR entry, and common system settings on every shell page.",
+    "The sidebar account footer connects to the navigation without a horizontal divider.",
+    "Desktop sidebar navigation uses 36px menu rows with compact group spacing, while mobile keeps 40px touch targets.",
+    "The desktop sidebar remains pinned to the viewport while the main workspace scrolls.",
+    "Account, QR, and settings dialogs reuse the shared modal surface and remain keyboard accessible.",
     "Standard pages use a gray-50 canvas and white cards.",
-    "The AI workspace uses a white canvas and a 768px focus column.",
+    "The AI workspace uses a white canvas and a 1040px focus column.",
     "All primary actions use blue-600 and blue-700 on hover.",
     "Gradients and glass effects are not allowed.",
     "All page files use the shared shell, component, data, and interaction assets."

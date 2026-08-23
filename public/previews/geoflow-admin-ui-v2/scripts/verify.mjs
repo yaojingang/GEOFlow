@@ -104,6 +104,7 @@ for (const asset of requiredAssets) {
 }
 
 const shellSource = await readFile(resolve(rootDir, 'assets/js/geoflow-shell.js'), 'utf8');
+const buildSource = await readFile(resolve(rootDir, 'scripts/build.mjs'), 'utf8');
 const shellPageIds = [
     ...shellSource.matchAll(/pageId:\s*'([^']+)'/g),
     ...shellSource.matchAll(/pageHref\('([^']+)'\)/g),
@@ -142,18 +143,53 @@ const lockedTokens = {
 for (const [token, value] of Object.entries(lockedTokens)) {
     check(cssSource.includes(`${token}: ${value};`), `公共 CSS 未遵循设计锁：${token} 应为 ${value}`);
 }
+check(/\.gf-sidebar__nav\s*\{[^}]*padding:\s*0 12px 16px;/s.test(cssSource), '公共侧栏首项未与主内容画布顶部对齐');
+check(/\.gf-sidebar__group:first-of-type\s*\{[^}]*margin-top:\s*0;/s.test(cssSource), '公共侧栏首组仍保留顶部偏移');
+check(/html\s*\{[^}]*overflow-x:\s*clip;/s.test(cssSource), '页面根节点的横向溢出规则会破坏固定侧栏');
+check(/body\s*\{[^}]*overflow-x:\s*clip;/s.test(cssSource), '页面主体的横向溢出规则会破坏固定侧栏');
+check(/\.gf-sidebar\s*\{[^}]*height:\s*100vh;[^}]*position:\s*sticky;[^}]*top:\s*0;/s.test(cssSource), '桌面端公共侧栏缺少视口固定规则');
+check(!/\.gf-sidebar__account-bar\s*\{[^}]*border-top:/s.test(cssSource), '公共侧栏底部账户栏仍有横向分隔线');
+check(/\.gf-sidebar__group\s*\{[^}]*margin-top:\s*16px;/s.test(cssSource), '桌面端公共侧栏分组间距未使用紧凑节奏');
+check(/\.gf-sidebar__items\s*\{[^}]*gap:\s*2px;/s.test(cssSource), '桌面端公共侧栏按钮间距未使用紧凑节奏');
+check(/\.gf-sidebar__link\s*\{[^}]*min-height:\s*36px;[^}]*padding:\s*6px 12px;/s.test(cssSource), '桌面端公共侧栏按钮尺寸未使用紧凑节奏');
+check(/@media \(max-width: 767px\)[\s\S]*?\.gf-sidebar__link\s*\{[^}]*min-height:\s*40px;[^}]*padding:\s*8px 12px;/s.test(cssSource), '移动端公共侧栏未保留触控尺寸');
+
+const navigationBlock = shellSource.match(/const navigation = \[[\s\S]*?\n    \];/)?.[0] || '';
+const expectedNavigationItems = designLock.navigation.flatMap((group) => group.items);
+const expectedNavigationKeys = new Set(expectedNavigationItems.map((item) => item.key));
+check((navigationBlock.match(/\{ key:/g) || []).length === expectedNavigationItems.length, '公共侧栏菜单数量与设计锁不一致');
+for (const group of designLock.navigation) {
+    check(navigationBlock.includes(`id: '${group.id}'`), `公共侧栏缺少分组：${group.id}`);
+    if (group.label) check(navigationBlock.includes(`label: '${group.label}'`), `公共侧栏分组名称不一致：${group.label}`);
+    for (const item of group.items) {
+        check(navigationBlock.includes(`{ key: '${item.key}', label: '${item.label}'`), `公共侧栏缺少菜单：${item.label}`);
+    }
+}
+check(pages.every((page) => !page.nav || expectedNavigationKeys.has(page.nav)), '存在无法映射到公共侧栏的页面导航状态');
+check(shellSource.includes('data-shell-dialog="account"'), '公共侧栏缺少 Admin 账户入口');
+check(shellSource.includes('data-shell-dialog="qr"'), '公共侧栏缺少二维码入口');
+check(shellSource.includes('data-shell-dialog="settings"'), '公共侧栏缺少快捷设置入口');
+check(shellSource.includes('data-account-password-form'), 'Admin 账户弹窗缺少修改密码表单');
+check(shellSource.includes("pageHref('admin-users-index')"), 'Admin 账户弹窗缺少用户与权限管理入口');
 
 const interactionSource = await readFile(resolve(rootDir, 'assets/js/interactions.js'), 'utf8');
 check(interactionSource.includes('trapModalFocus'), '弹窗缺少键盘焦点循环');
+check(interactionSource.includes('showShellDialog'), '侧栏账户与设置入口缺少公共弹窗交互');
+check(buildSource.includes("const assetRevision = '20260822-sidebar-density-7'"), '原型资源缺少缓存版本标识');
 check(interactionSource.includes("form.dataset.successMessage"), '演示表单缺少统一提交反馈');
 check(interactionSource.includes("document.querySelectorAll('[data-tabs]')"), '详情标签页缺少交互绑定');
 check(interactionSource.includes('runAiConversation'), 'AI 工作台缺少任务理解和结果演示逻辑');
 check(interactionSource.includes('enterAiConversation'), 'AI 工作台缺少首页进入独立会话的状态切换');
 check(interactionSource.includes('updateRunbar'), 'AI 工作台缺少 Agent 执行进度同步逻辑');
 check(interactionSource.includes('data-ai-confirmation'), 'AI 工作台缺少任务确认结果交互');
+check(interactionSource.includes('syncPromptState'), 'AI 工作台缺少输入内容与发送状态同步逻辑');
+check(interactionSource.includes('syncConversationRoute'), 'AI 工作台缺少会话地址与侧栏状态同步逻辑');
+check(interactionSource.includes('GeoFlowShell?.recentItems'), 'AI 工作台缺少最近会话恢复逻辑');
+check(shellSource.includes('conversation=${encodeURIComponent(item.key)}'), '最近处理缺少 AI 会话恢复入口');
 
 const componentSource = await readFile(resolve(rootDir, 'assets/js/geoflow-components.js'), 'utf8');
 check(componentSource.includes('data-ai-landing'), 'AI 工作台缺少任务发起首页');
+check(componentSource.includes('data-ai-composer-status'), 'AI 工作台缺少快捷任务填入反馈');
 check(componentSource.includes('data-ai-reasoning'), 'AI 工作台缺少任务理解对话');
 check(componentSource.includes('data-ai-result'), 'AI 工作台缺少执行结果对话');
 check(componentSource.includes('data-ai-new-chat'), 'AI 工作台缺少返回新会话入口');
@@ -162,6 +198,7 @@ check(componentSource.includes('data-ai-auto-confirm'), 'AI 工作台缺少自�
 check(componentSource.includes('data-ai-confirm'), 'AI 工作台缺少一键确认入口');
 check(componentSource.includes('data-ai-stop'), 'AI 工作台缺少暂停 Agent 工作入口');
 check(cssSource.includes('.gf-ai-activity-stream'), '公共 CSS 缺少 Agent 动态执行流样式');
+check(cssSource.includes('.gf-ai-capability'), '公共 CSS 缺少 AI 能力说明样式');
 
 const catalogSource = await readFile(resolve(rootDir, 'assets/js/catalog.js'), 'utf8');
 check(catalogSource.includes('href="#main-content"'), '原型目录缺少跳到主要内容链接');

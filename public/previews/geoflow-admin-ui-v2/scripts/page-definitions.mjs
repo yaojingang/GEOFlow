@@ -17,7 +17,7 @@ export const pages = [
         keywords: ['内容诊断', '创建任务', '知识资产', '多站分发', '增长分析'],
     },
     {
-        id: 'dashboard', path: 'workspace/dashboard.html', group: 'workspace', type: 'dashboard', nav: 'dashboard', icon: 'home', role: 'admin',
+        id: 'dashboard', path: 'workspace/dashboard.html', group: 'workspace', type: 'dashboard', nav: 'analytics', icon: 'home', role: 'admin',
         title: 'GEO 内容运营后台', subtitle: '把问题地图、知识资产、证据结构、生产质检、权威分发和数据归因放在同一个工作台',
         route: '/admin/dashboard', action: '新建任务', actionIcon: 'plus',
         keywords: ['问题地图', '知识资产', '质量门禁', '权威分发', '观测归因'],
@@ -35,7 +35,7 @@ export const pages = [
 
     {
         id: 'analytics-overview', path: 'analytics/overview.html', group: 'analytics', type: 'analytics', nav: 'analytics', icon: 'chart-no-axes-combined', role: 'admin',
-        title: '增长中心', subtitle: '统一查看内容生产、站点访问、AI 爬虫、品牌可见性和线索转化', route: '/admin/analytics', action: '导出报告', actionIcon: 'download',
+        title: '数据中心', subtitle: '统一查看内容生产、站点访问、AI 爬虫、品牌可见性和线索转化', route: '/admin/analytics', action: '导出报告', actionIcon: 'download',
         keywords: ['内容产出', '访问趋势', 'AI 引用', '线索转化', '分发成功率'],
     },
     {
@@ -95,27 +95,27 @@ export const pages = [
         entity: '内容', keywords: ['GEO 优化完整指南', '证据来源 6 项', '风险检查通过', 'SEO 已完善', '等待发布'],
     },
     {
-        id: 'manual-publications-index', path: 'content/manual-publications-index.html', group: 'content', type: 'table', nav: 'manual-publications', icon: 'send', role: 'admin',
+        id: 'manual-publications-index', path: 'content/manual-publications-index.html', group: 'content', type: 'table', nav: 'distribution', icon: 'send', role: 'admin',
         title: '人工发布', subtitle: '管理需要人工确认和执行的外部平台发布记录', route: '/admin/manual-publications', action: '新建发布', actionIcon: 'plus',
         entity: '发布记录', keywords: ['知乎专栏发布', '微信公众号发布', '小红书笔记', '行业媒体投稿', '合作渠道更新'],
     },
     {
-        id: 'manual-publications-create', path: 'content/manual-publications-create.html', group: 'content', type: 'form', nav: 'manual-publications', icon: 'send', role: 'admin',
+        id: 'manual-publications-create', path: 'content/manual-publications-create.html', group: 'content', type: 'form', nav: 'distribution', icon: 'send', role: 'admin',
         title: '新建人工发布', subtitle: '选择内容、发布账号、人员身份和计划时间', route: '/admin/manual-publications/create', action: '创建发布记录', actionIcon: 'check',
         entity: '人工发布', keywords: ['目标内容', '发布平台', '发布账号', '人员身份', '计划时间'],
     },
     {
-        id: 'manual-publications-show', path: 'content/manual-publications-show.html', group: 'content', type: 'detail', nav: 'manual-publications', icon: 'send', role: 'admin',
+        id: 'manual-publications-show', path: 'content/manual-publications-show.html', group: 'content', type: 'detail', nav: 'distribution', icon: 'send', role: 'admin',
         title: '人工发布详情', subtitle: '查看发布内容、执行信息、当前状态和操作记录', route: '/admin/manual-publications/{manualPublicationId}', action: '更新状态', actionIcon: 'refresh-cw',
         entity: '人工发布', keywords: ['知乎专栏', 'GEO 优化完整指南', '计划发布', '王晓明', '2026-08-05 10:00'],
     },
     {
-        id: 'manual-publications-edit', path: 'content/manual-publications-edit.html', group: 'content', type: 'form', nav: 'manual-publications', icon: 'send', role: 'admin',
+        id: 'manual-publications-edit', path: 'content/manual-publications-edit.html', group: 'content', type: 'form', nav: 'distribution', icon: 'send', role: 'admin',
         title: '编辑人工发布', subtitle: '调整发布账号、人员身份、排期和备注', route: '/admin/manual-publications/{manualPublicationId}/edit', action: '保存修改', actionIcon: 'save',
         entity: '人工发布', keywords: ['知乎专栏', '品牌官方账号', '内容负责人', '2026-08-05', '发布前复核'],
     },
     {
-        id: 'manual-publications-settings', path: 'content/manual-publications-settings.html', group: 'content', type: 'settings', nav: 'manual-publications', icon: 'settings-2', role: 'admin',
+        id: 'manual-publications-settings', path: 'content/manual-publications-settings.html', group: 'content', type: 'settings', nav: 'distribution', icon: 'settings-2', role: 'admin',
         title: '人工发布设置', subtitle: '维护发布账号、人员身份和常用平台配置', route: '/admin/manual-publications/settings', action: '新增账号', actionIcon: 'plus',
         entity: '发布设置', keywords: ['发布账号', '人员身份', '默认平台', '通知方式', '发布提醒'],
     },
@@ -350,8 +350,8 @@ export const pages = [
 
     {
         id: 'site-settings-index', path: 'site/settings.html', group: 'site', type: 'settings', nav: 'site-settings', icon: 'settings', role: 'admin',
-        title: '网站设置', subtitle: '配置站点信息、SEO、首页模块、品牌素材和公开功能', route: '/admin/site-settings', action: '保存设置', actionIcon: 'save',
-        entity: '网站设置', keywords: ['基础信息', '品牌设置', 'SEO 设置', '首页模块', '线索表单'],
+        title: '网站设置', subtitle: '配置站点信息、SEO、首页模块、用户与公开功能', route: '/admin/site-settings', action: '保存设置', actionIcon: 'save',
+        entity: '网站设置', keywords: ['基础信息', '品牌设置', 'SEO 设置', '首页模块', '用户管理'],
     },
     {
         id: 'site-homepage-modules', path: 'site/homepage-modules.html', group: 'site', type: 'settings', nav: 'site-settings', icon: 'layout-dashboard', role: 'admin',
@@ -400,17 +400,17 @@ export const pages = [
     },
 
     {
-        id: 'admin-users-index', path: 'system/admin-users.html', group: 'system', type: 'table', nav: 'admin-users', icon: 'users', role: 'super_admin',
+        id: 'admin-users-index', path: 'system/admin-users.html', group: 'system', type: 'table', nav: 'site-settings', icon: 'users', role: 'super_admin',
         title: '用户管理', subtitle: '管理后台管理员、角色权限、账号状态和安全信息', route: '/admin/admin-users', action: '新建管理员', actionIcon: 'user-plus',
         entity: '管理员', keywords: ['admin', 'content_manager', 'analyst', 'site_operator', 'reviewer'],
     },
     {
-        id: 'api-tokens-index', path: 'system/api-tokens.html', group: 'system', type: 'table', nav: 'admin-users', icon: 'key-round', role: 'super_admin',
+        id: 'api-tokens-index', path: 'system/api-tokens.html', group: 'system', type: 'table', nav: 'site-settings', icon: 'key-round', role: 'super_admin',
         title: 'API Token', subtitle: '管理 API 访问令牌、能力范围、到期时间和撤销状态', route: '/admin/api-tokens', action: '创建 Token', actionIcon: 'plus',
         entity: 'API Token', keywords: ['内容同步服务', '数据分析脚本', '渠道连接器', '只读报表', '测试客户端'],
     },
     {
-        id: 'admin-activity-logs', path: 'system/activity-logs.html', group: 'system', type: 'table', nav: 'admin-users', icon: 'clipboard-list', role: 'super_admin',
+        id: 'admin-activity-logs', path: 'system/activity-logs.html', group: 'system', type: 'table', nav: 'site-settings', icon: 'clipboard-list', role: 'super_admin',
         title: '操作日志', subtitle: '查看后台重要操作、执行人员、目标资源和结果', route: '/admin/admin-activity-logs', action: '导出日志', actionIcon: 'download',
         entity: '操作记录', keywords: ['任务更新', '渠道配置', '用户登录', '知识库上传', '系统设置变更'],
     },
@@ -425,17 +425,17 @@ export const pages = [
         entity: '敏感词', keywords: ['绝对化表达', '未经验证数据', '隐私信息', '风险承诺', '行业限制词'],
     },
     {
-        id: 'system-updates-index', path: 'system/updates.html', group: 'system', type: 'settings', nav: 'admin-users', icon: 'refresh-cw', role: 'super_admin',
+        id: 'system-updates-index', path: 'system/updates.html', group: 'system', type: 'settings', nav: 'site-settings', icon: 'refresh-cw', role: 'super_admin',
         title: '系统更新', subtitle: '检查版本、预检环境、创建备份并管理更新执行', route: '/admin/system-updates', action: '检查新版本', actionIcon: 'refresh-cw',
         entity: '系统更新', keywords: ['当前版本 2.0', '最新版本 2.1', '环境预检', '创建备份', '回滚能力'],
     },
     {
-        id: 'system-update-backup-show', path: 'system/update-backup-show.html', group: 'system', type: 'detail', nav: 'admin-users', icon: 'archive', role: 'super_admin',
+        id: 'system-update-backup-show', path: 'system/update-backup-show.html', group: 'system', type: 'detail', nav: 'site-settings', icon: 'archive', role: 'super_admin',
         title: '系统备份详情', subtitle: '查看备份范围、文件校验、数据库状态和可恢复性', route: '/admin/system-updates/backups/{backupUuid}', action: '验证备份', actionIcon: 'shield-check',
         entity: '系统备份', keywords: ['备份 20260803-1015', '文件 1.8 GB', '数据库 246 MB', '校验通过', '可用于回滚'],
     },
     {
-        id: 'system-update-run-show', path: 'system/update-run-show.html', group: 'system', type: 'detail', nav: 'admin-users', icon: 'loader-circle', role: 'super_admin',
+        id: 'system-update-run-show', path: 'system/update-run-show.html', group: 'system', type: 'detail', nav: 'site-settings', icon: 'loader-circle', role: 'super_admin',
         title: '更新执行详情', subtitle: '查看更新步骤、实时进度、验证结果和回滚状态', route: '/admin/system-updates/runs/{runUuid}', action: '刷新进度', actionIcon: 'refresh-cw',
         entity: '更新执行', keywords: ['下载更新包', '验证签名', '创建备份', '更新文件', '运行验证'],
     },
