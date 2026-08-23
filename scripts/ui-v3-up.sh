@@ -9,7 +9,7 @@ compose_args=(
   -f "$repo_root/docker-compose.ui-v3.yml"
 )
 
-declare -a required_ports=(28080 28081 35432 36379)
+declare -a required_ports=(28080 35432 36379)
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker 未安装或未加入 PATH。" >&2

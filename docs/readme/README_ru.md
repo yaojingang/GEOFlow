@@ -248,7 +248,7 @@ php artisan reverb:start
 
 `geoflow:install` запускает начальные seeders только на пустой базе. Если он обнаружит пользовательские или бизнес-данные, то только запишет маркер установки и пропустит seed. Admin seeder остаётся идемпотентным и не перезаписывает существующий логин, email или пароль.
 
-Если нужны демо-категории и статьи фронтенда, задайте `GEOFLOW_SEED_FRONTEND_DEMO=true` и затем выполните `php artisan db:seed --force`. Демо-данные по умолчанию только добавляют отсутствующие записи и не перезаписывают существующие настройки сайта, рекламу, категории или статьи. `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` используйте только для сброса демо-базы.
+Обычная установка и команда `db:seed` не запускают `FrontendDemoSeeder`. Демо-данные разрешены только в тестах, которые вызывают этот seeder явно. Во всех развернутых средах сохраняйте `GEOFLOW_SEED_FRONTEND_DEMO=false` и `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=false`.
 
 ### Блокировка после неудачных входов и ручная разблокировка
 
@@ -270,7 +270,7 @@ php artisan geoflow:admin-unlock admin
 
 ## Docker (кратко)
 
-**Разработка** (`docker-compose.yml`): `postgres`, `redis`, `init`, `app` (`${APP_PORT:-18080}:8080`), `queue`, `scheduler`, `reverb` (`${REVERB_EXPOSE_PORT:-18081}:8080`). Переменные `docker/entrypoint.sh` — как в [README_en.md](README_en.md).
+**Разработка** (`docker-compose.yml`): `web` публикует единый шлюз Nginx на `127.0.0.1:${APP_PORT:-18080}:80`; `app` и `reverb` остаются во внутренней сети, а WebSocket доступен по тому же источнику через `/reverb`. В стек также входят `postgres`, `redis`, `assets`, `init`, `queue` и `scheduler`. Переменные `docker/entrypoint.sh` описаны в [README_en.md](README_en.md).
 
 **Продакшен** (`docker-compose.prod.yml`): запуск через `docker compose --env-file .env.prod -f docker-compose.prod.yml …` (см. дополнение выше и **`../../docs/deployment/DEPLOYMENT.md`**).
 

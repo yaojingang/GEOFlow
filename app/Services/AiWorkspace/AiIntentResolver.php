@@ -295,11 +295,43 @@ final readonly class AiIntentResolver
         return match ($capabilityKey) {
             'visibility.diagnose' => $parameters + (($quoted ?: $namedObject) ? ['query' => $quoted ?: $namedObject] : []),
             'content.opportunities' => $parameters + ($quoted ? ['theme' => $quoted] : []),
-            'task.draft' => $parameters + ($quoted ? ['name' => Str::limit($quoted, 100, '')] : []),
+            'task.draft' => $parameters + $this->extractTaskDraftParameters($prompt, $quoted),
             'knowledge.draft' => $parameters + ($quoted ? ['name' => $quoted] : []),
             'task.status.change' => $parameters + ['action' => preg_match('/停止|暂停|stop/iu', $prompt) === 1 ? 'stop' : 'start'],
             default => $parameters,
         };
+    }
+
+    /** @return array<string,int|string> */
+    private function extractTaskDraftParameters(string $prompt, ?string $quoted): array
+    {
+        $parameters = $quoted ? ['name' => Str::limit($quoted, 100, '')] : [];
+
+        if (preg_match('/(?:文章数量|文章数|文章上限|article\s*(?:count|limit))\s*(?:为|是|[:：=])?\s*(\d+)/iu', $prompt, $matches) === 1
+            || preg_match('/(?:生成|创建|需要)\s*(\d+)\s*篇(?:文章)?/iu', $prompt, $matches) === 1) {
+            $parameters['article_limit'] = (int) $matches[1];
+        }
+
+        if (preg_match('/(?:发布间隔|publish\s*interval)\s*(?:为|是|[:：=])?\s*(\d+)\s*(秒|分钟|分|小时|时|天|seconds?|minutes?|hours?|days?)?/iu', $prompt, $matches) === 1
+            || preg_match('/每\s*(\d+)\s*(秒|分钟|分|小时|时|天|seconds?|minutes?|hours?|days?)\s*(?:发布|执行)?/iu', $prompt, $matches) === 1) {
+            $parameters['publish_interval'] = $this->durationInSeconds((int) $matches[1], (string) ($matches[2] ?? '秒'));
+        }
+
+        return $parameters;
+    }
+
+    private function durationInSeconds(int $value, string $unit): int
+    {
+        $multiplier = match (mb_strtolower($unit, 'UTF-8')) {
+            '分钟', '分', 'minute', 'minutes' => 60,
+            '小时', '时', 'hour', 'hours' => 3600,
+            '天', 'day', 'days' => 86400,
+            default => 1,
+        };
+
+        return $value > intdiv(PHP_INT_MAX, $multiplier)
+            ? PHP_INT_MAX
+            : $value * $multiplier;
     }
 
     /** @return list<string> */

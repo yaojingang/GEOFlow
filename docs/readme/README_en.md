@@ -318,11 +318,13 @@ php artisan geoflow:admin-unlock admin
 |---------|------|
 | `postgres` | PostgreSQL 16 + pgvector |
 | `redis` | Redis 7 |
+| `assets` | One-off frontend dependency install and Vite asset build |
 | `init` | One-off bootstrap (`restart: "no"`) |
-| `app` | `php artisan serve`, maps **`${APP_PORT:-18080}:8080`** |
-| `queue` | `queue:work redis` |
+| `app` | Internal `php artisan serve` process with no host port |
+| `web` | Unified Nginx gateway on **`127.0.0.1:${APP_PORT:-18080}:80`** |
+| `queue` | AI workspace and application queue worker |
 | `scheduler` | `schedule:work` |
-| `reverb` | WebSocket, maps **`${REVERB_EXPOSE_PORT:-18081}:8080`** |
+| `reverb` | Internal WebSocket service proxied by Nginx at same-origin **`/reverb`** |
 
 Optional localhost-only DB/Redis host ports: see `DB_EXPOSE_PORT` and `REDIS_EXPOSE_PORT` in `docker-compose.yml`.
 

@@ -144,17 +144,26 @@ class TaskLifecycleService
         $publishInterval = max(60, min(2592000, (int) ($data['publish_interval'] ?? 3600)));
 
         $taskId = DB::transaction(function () use ($name, $articleLimit, $publishInterval): int {
+            $dependencies = $this->resolveDraftTaskDependencies();
             $task = Task::query()->create([
                 'name' => $name,
+                'title_library_id' => $dependencies['title_library_id'],
+                'prompt_id' => $dependencies['prompt_id'],
+                'ai_model_id' => $dependencies['ai_model_id'],
+                'image_count' => 0,
                 'need_review' => 1,
                 'publish_interval' => $publishInterval,
+                'auto_keywords' => 1,
+                'auto_description' => 1,
                 'draft_limit' => $articleLimit,
                 'article_limit' => $articleLimit,
                 'is_loop' => 0,
+                'model_selection_mode' => 'fixed',
                 'status' => 'paused',
                 'schedule_enabled' => 0,
                 'publish_scope' => 'local_only',
                 'distribution_strategy' => TaskDistributionChannelSelector::STRATEGY_BROADCAST,
+                'category_mode' => 'smart',
                 'max_retry_count' => 3,
             ]);
             $this->queueService->initializeTaskSchedule((int) $task->id);
@@ -171,6 +180,51 @@ class TaskLifecycleService
         $this->broadcastOverviewAfterCommit();
 
         return $task;
+    }
+
+    /** @return array{title_library_id:int,prompt_id:int,ai_model_id:int} */
+    private function resolveDraftTaskDependencies(): array
+    {
+        $titleLibraryId = TitleLibrary::query()->orderByDesc('id')->value('id');
+        $promptId = Prompt::query()
+            ->where('type', 'content')
+            ->orderByDesc('id')
+            ->value('id');
+        $aiModelId = AiModel::query()
+            ->where('status', 'active')
+            ->where(function ($query): void {
+                $query->whereNull('model_type')
+                    ->orWhere('model_type', '')
+                    ->orWhere('model_type', 'chat');
+            })
+            ->orderBy('failover_priority')
+            ->orderByDesc('id')
+            ->value('id');
+
+        $missing = [];
+        if ($titleLibraryId === null) {
+            $missing[] = '标题库';
+        }
+        if ($promptId === null) {
+            $missing[] = '内容提示词';
+        }
+        if ($aiModelId === null) {
+            $missing[] = '已启用的对话模型';
+        }
+        if ($missing !== []) {
+            throw new ApiException(
+                'configuration_required',
+                '创建任务草稿前，请先配置'.implode('、', $missing).'。',
+                422,
+                ['missing' => $missing],
+            );
+        }
+
+        return [
+            'title_library_id' => (int) $titleLibraryId,
+            'prompt_id' => (int) $promptId,
+            'ai_model_id' => (int) $aiModelId,
+        ];
     }
 
     /**

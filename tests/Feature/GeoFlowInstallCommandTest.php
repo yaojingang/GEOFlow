@@ -94,7 +94,7 @@ class GeoFlowInstallCommandTest extends TestCase
         $this->assertSame('fresh_install', $state->value['mode'] ?? null);
     }
 
-    public function test_install_command_only_seeds_frontend_demo_when_enabled_on_empty_database(): void
+    public function test_install_command_ignores_the_legacy_frontend_demo_flag(): void
     {
         Config::set('geoflow.seed_frontend_demo', true);
         Config::set('geoflow.seed_frontend_demo_overwrite', false);
@@ -103,7 +103,9 @@ class GeoFlowInstallCommandTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertSame(1, Admin::query()->where('username', 'admin')->count());
-        $this->assertGreaterThan(0, Category::query()->where('slug', 'mac')->count());
-        $this->assertGreaterThan(0, Article::query()->where('slug', 'how-to-reinstall-macos')->count());
+        $this->assertSame(0, Category::query()->count());
+        $this->assertSame(0, Article::query()->count());
+        $state = SystemState::query()->where('key', GeoFlowInstallCommand::INSTALLATION_STATE_KEY)->firstOrFail();
+        $this->assertArrayNotHasKey('seed_frontend_demo', $state->value);
     }
 }

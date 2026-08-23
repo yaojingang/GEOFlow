@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Ai\Agents\GeoHubPlanDrafterAgent;
 use App\Ai\Agents\IntentResolverAgent;
 use App\Ai\Workspace\AiPlanCompiler;
+use App\Exceptions\ApiException;
 use App\Jobs\ProcessAiWorkspaceRunJob;
 use App\Jobs\ProcessArticleDistributionJob;
 use App\Jobs\ResolveAiWorkspaceRunJob;
@@ -22,7 +23,9 @@ use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
+use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\TitleLibrary;
 use App\Services\AiWorkspace\AiCapabilityExecutor;
 use App\Services\AiWorkspace\AiConversationRepository;
 use App\Services\AiWorkspace\AiWorkflowEngine;
@@ -31,6 +34,7 @@ use App\Services\AiWorkspace\AiWorkspaceDispatchGuard;
 use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
 use App\Services\AiWorkspace\AiWorkspaceSnapshot;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use App\Services\GeoFlow\TaskLifecycleService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -117,6 +121,7 @@ final class AiWorkspaceWorkflowTest extends TestCase
     public function test_approved_internal_draft_is_atomic_and_idempotent(): void
     {
         Queue::fake();
+        $dependencies = $this->draftTaskDependencies();
         $admin = $this->admin();
         $run = $this->planningRun($admin, 'task.draft');
         $plan = app(AiPlanCompiler::class)->compile($admin, 'task.draft', [[
@@ -133,7 +138,28 @@ final class AiWorkspaceWorkflowTest extends TestCase
 
         self::assertSame('completed', $queued->fresh()->state);
         self::assertSame(1, Task::query()->where('name', 'AI 草稿任务')->count());
+        self::assertDatabaseHas('tasks', [
+            'name' => 'AI 草稿任务',
+            'title_library_id' => $dependencies['title_library_id'],
+            'prompt_id' => $dependencies['prompt_id'],
+            'ai_model_id' => $dependencies['ai_model_id'],
+        ]);
         self::assertSame(1, AiWorkspaceArtifact::query()->where('run_id', $queued->id)->where('type', 'task_draft')->count());
+    }
+
+    public function test_task_draft_reports_missing_legacy_dependencies_before_writing(): void
+    {
+        try {
+            app(TaskLifecycleService::class)->createDraftTask(['name' => '缺少配置的草稿']);
+            self::fail('Missing task dependencies must stop draft creation.');
+        } catch (ApiException $exception) {
+            self::assertSame('configuration_required', $exception->getErrorCode());
+            self::assertSame(422, $exception->getHttpStatus());
+            self::assertContains('标题库', $exception->getDetails()['missing']);
+            self::assertContains('已启用的对话模型', $exception->getDetails()['missing']);
+        }
+
+        self::assertDatabaseMissing('tasks', ['name' => '缺少配置的草稿']);
     }
 
     public function test_approval_expires_and_cannot_be_replayed_or_used_after_tampering(): void
@@ -380,6 +406,7 @@ final class AiWorkspaceWorkflowTest extends TestCase
     public function test_artifact_output_binding_pauses_for_downstream_approval_then_resumes(): void
     {
         Queue::fake();
+        $this->draftTaskDependencies();
         $admin = $this->admin();
         $run = $this->planningRun($admin, 'draft then start');
         $plan = app(AiPlanCompiler::class)->compile($admin, 'draft then start', [
@@ -414,6 +441,7 @@ final class AiWorkspaceWorkflowTest extends TestCase
     public function test_binding_digest_change_renews_all_remaining_grouped_approvals(): void
     {
         Queue::fake();
+        $this->draftTaskDependencies();
         $admin = $this->admin();
         $run = $this->planningRun($admin, 'draft start and knowledge');
         $plan = app(AiPlanCompiler::class)->compile($admin, 'draft start and knowledge', [
@@ -1600,6 +1628,35 @@ final class AiWorkspaceWorkflowTest extends TestCase
         ]]);
 
         return app(AiWorkflowEngine::class)->prepare($run, $plan);
+    }
+
+    /** @return array{title_library_id:int,prompt_id:int,ai_model_id:int} */
+    private function draftTaskDependencies(): array
+    {
+        $prompt = Prompt::query()->create([
+            'name' => 'AI 工作台内容提示词',
+            'type' => 'content',
+            'content' => '请根据标题生成内容。',
+        ]);
+        $model = AiModel::query()->create([
+            'name' => 'AI 工作台对话模型',
+            'model_id' => 'workspace-chat-model',
+            'model_type' => 'chat',
+            'api_key' => 'test-key',
+            'api_url' => 'https://example.com/v1',
+            'failover_priority' => 10,
+            'status' => 'active',
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'name' => 'AI 工作台标题库',
+            'description' => '任务草稿默认标题库',
+        ]);
+
+        return [
+            'title_library_id' => (int) $titleLibrary->id,
+            'prompt_id' => (int) $prompt->id,
+            'ai_model_id' => (int) $model->id,
+        ];
     }
 
     private function planningRun(Admin $admin, string $intent): AiWorkspaceRun

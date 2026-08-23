@@ -248,7 +248,7 @@ Admin: `http://127.0.0.1:8080/geo_admin/login`. **Producción:** Nginx + PHP-FPM
 
 `geoflow:install` solo ejecuta datos iniciales cuando la base está vacía. Si detecta datos de usuario o negocio, solo escribe el marcador de instalación y omite el seed. El seeder de admin sigue siendo idempotente y no sobrescribe usuario, correo ni contraseña existentes.
 
-Si necesitas categorías y artículos demo del frontend, configura `GEOFLOW_SEED_FRONTEND_DEMO=true` y después ejecuta `php artisan db:seed --force`. Los datos demo solo rellenan filas faltantes por defecto y no sobrescriben ajustes del sitio, anuncios, categorías ni artículos existentes. Usa `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` solo para reiniciar una base demo.
+La instalación normal y el comando `db:seed` no ejecutan `FrontendDemoSeeder`. Los datos demo quedan reservados para pruebas que llaman al seeder de forma explícita; mantén `GEOFLOW_SEED_FRONTEND_DEMO=false` y `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=false` en cualquier entorno desplegado.
 
 ### Bloqueo por intentos fallidos y desbloqueo manual
 
@@ -270,7 +270,7 @@ php artisan geoflow:admin-unlock admin
 
 ## Docker (resumen)
 
-**Desarrollo** (`docker-compose.yml`): `postgres`, `redis`, `init`, `app` (`${APP_PORT:-18080}:8080`), `queue`, `scheduler`, `reverb` (`${REVERB_EXPOSE_PORT:-18081}:8080`). Variables de `docker/entrypoint.sh`: como en [README_en.md](README_en.md).
+**Desarrollo** (`docker-compose.yml`): `web` publica la puerta de enlace Nginx en `127.0.0.1:${APP_PORT:-18080}:80`; `app` y `reverb` permanecen en la red interna, y WebSocket usa la ruta del mismo origen `/reverb`. La pila también incluye `postgres`, `redis`, `assets`, `init`, `queue` y `scheduler`. Variables de `docker/entrypoint.sh`: como en [README_en.md](README_en.md).
 
 **Producción** (`docker-compose.prod.yml`): use `docker compose --env-file .env.prod -f docker-compose.prod.yml …` (véase el suplemento arriba y `../../docs/deployment/DEPLOYMENT.md`).
 

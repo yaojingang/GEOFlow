@@ -63,7 +63,7 @@ $COMPOSE_PROD run --rm app php artisan optimize
 
 也就是说：命令从容器外的服务器项目目录执行，但实际运行在 `app` 容器内。
 
-`geoflow:install` 是首次安装入口：空库时创建默认管理员；如果检测到已有业务数据，则只补初始化标记，不会写入或覆盖前台演示分类、文章、网站设置、广告和提示词。如果确实需要重置演示内容，再临时设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 后手动执行 `php artisan db:seed --force`；演示数据默认只补缺，不覆盖已修改的数据，除非额外设置 `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true`。
+`geoflow:install` 是首次安装入口：空库时创建默认管理员；如果检测到已有业务数据，则只补初始化标记。正式安装与默认 `db:seed` 都不会调用 `FrontendDemoSeeder`，因此不会写入或覆盖前台演示分类、文章、网站设置、广告和提示词。演示数据只允许在测试环境显式调用专用 Seeder。
 
 也可以先进容器后执行：
 

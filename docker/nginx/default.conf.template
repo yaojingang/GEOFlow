@@ -26,14 +26,28 @@ server {
 
     include /etc/nginx/snippets/geoflow-app.conf;
 
-    location ~* \.(?:css|js|jpg|jpeg|gif|png|svg|ico|webp|avif|ttf|otf|woff|woff2)$ {
-        expires 7d;
+    location ^~ /build/assets/ {
+        expires 1y;
         access_log off;
-        add_header Cache-Control "public, max-age=604800, immutable";
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        try_files $uri =404;
+    }
+
+    location ~* \.(?:css|js|jpg|jpeg|gif|png|svg|ico|webp|avif|ttf|otf|woff|woff2)$ {
+        expires 5m;
+        access_log off;
+        add_header Cache-Control "public, max-age=300";
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
         try_files $uri =404;
     }
 
     location / {
+        add_header Cache-Control "no-store" always;
         try_files $uri $uri/ /index.php?$query_string;
     }
 
@@ -63,6 +77,7 @@ server {
 
     # Every hosted request resolves its Host and lifecycle state in Laravel first.
     location / {
+        add_header Cache-Control "no-store" always;
         try_files /__geoflow_host_must_resolve__ /index.php?$query_string;
     }
 

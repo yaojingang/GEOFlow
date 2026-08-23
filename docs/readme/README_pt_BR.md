@@ -223,7 +223,7 @@ chmod -R ug+rwx storage bootstrap/cache
 
 `geoflow:install` só executa seeders iniciais quando o banco está vazio. Se detectar dados de usuário ou de negócio, apenas grava o marcador de instalação e ignora o seed. O admin seeder continua idempotente e nunca sobrescreve usuário, email ou senha existentes.
 
-Se precisar de categorias e artigos demo do frontend, defina `GEOFLOW_SEED_FRONTEND_DEMO=true` e então execute `php artisan db:seed --force`. Por padrão, os dados demo apenas preenchem registros ausentes e não sobrescrevem configurações do site, anúncios, categorias ou artigos existentes. Use `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` apenas para reiniciar uma base demo.
+A instalação normal e o comando `db:seed` não executam `FrontendDemoSeeder`. Os dados de demonstração ficam restritos a testes que chamam o seeder explicitamente; mantenha `GEOFLOW_SEED_FRONTEND_DEMO=false` e `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=false` em qualquer ambiente implantado.
 
 ### Bloqueio de login admin e desbloqueio manual
 
@@ -247,11 +247,13 @@ php artisan geoflow:admin-unlock USERNAME
 |---------|-------|
 | `postgres` | PostgreSQL 16 + pgvector |
 | `redis` | Redis 7 |
+| `assets` | Instala as dependências do frontend e gera os assets Vite uma vez |
 | `init` | Bootstrap único (`restart: "no"`) |
-| `app` | `php artisan serve`, mapeia **`${APP_PORT:-18080}:8080`** |
-| `queue` | `queue:work redis` |
+| `app` | Executa `php artisan serve` apenas na rede interna |
+| `web` | Gateway Nginx unificado em **`127.0.0.1:${APP_PORT:-18080}:80`** |
+| `queue` | Worker da área de trabalho de IA e das filas da aplicação |
 | `scheduler` | `schedule:work` |
-| `reverb` | WebSocket, mapeia **`${REVERB_EXPOSE_PORT:-18081}:8080`** |
+| `reverb` | Serviço WebSocket interno, encaminhado pelo Nginx em **`/reverb`** na mesma origem |
 
 Para produção, use a pilha **`docker-compose.prod.yml`** com Nginx + php-fpm e consulte `../deployment/DEPLOYMENT.md`.
 

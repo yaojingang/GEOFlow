@@ -8,6 +8,7 @@ use App\Models\Author;
 use App\Models\Category;
 use App\Models\SiteSetting;
 use Database\Seeders\DatabaseSeeder;
+use Database\Seeders\FrontendDemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
@@ -27,7 +28,7 @@ class DatabaseSeederTest extends TestCase
         $this->assertSame(0, Article::query()->count());
     }
 
-    public function test_database_seeder_can_seed_frontend_demo_content_when_enabled(): void
+    public function test_database_seeder_ignores_the_legacy_frontend_demo_flag(): void
     {
         Config::set('geoflow.seed_frontend_demo', true);
         Config::set('geoflow.seed_frontend_demo_overwrite', false);
@@ -35,8 +36,8 @@ class DatabaseSeederTest extends TestCase
         $this->seed(DatabaseSeeder::class);
 
         $this->assertSame(1, Admin::query()->where('username', 'admin')->count());
-        $this->assertGreaterThan(0, Category::query()->where('slug', 'mac')->count());
-        $this->assertGreaterThan(0, Article::query()->where('slug', 'how-to-reinstall-macos')->count());
+        $this->assertSame(0, Category::query()->count());
+        $this->assertSame(0, Article::query()->count());
     }
 
     public function test_frontend_demo_seed_does_not_overwrite_existing_user_owned_rows(): void
@@ -73,7 +74,7 @@ class DatabaseSeederTest extends TestCase
             'review_status' => 'approved',
         ]);
 
-        $this->seed(DatabaseSeeder::class);
+        $this->seed(FrontendDemoSeeder::class);
 
         $this->assertSame('用户自己的站点名称', SiteSetting::query()->where('setting_key', 'site_name')->value('setting_value'));
 
@@ -125,7 +126,7 @@ class DatabaseSeederTest extends TestCase
             'review_status' => 'approved',
         ]);
 
-        $this->seed(DatabaseSeeder::class);
+        $this->seed(FrontendDemoSeeder::class);
 
         $this->assertSame('GEOFlow Support', SiteSetting::query()->where('setting_key', 'site_name')->value('setting_value'));
 

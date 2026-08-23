@@ -387,13 +387,15 @@ php artisan geoflow:admin-unlock admin
 |------|------|
 | `postgres` | PostgreSQL 16 + pgvector |
 | `redis` | Redis 7 |
+| `assets` | 一次性安装前端依赖并执行 Vite 资源构建 |
 | `init` | 一次性初始化（`restart: "no"`） |
-| `app` | `php artisan serve`，映射 **`${APP_PORT:-18080}:8080`** |
-| `queue` | 文章生成、分发、主题复刻与默认队列 |
+| `app` | 内网运行 `php artisan serve`，不直接暴露宿主机端口 |
+| `web` | Nginx 统一入口，映射 **`127.0.0.1:${APP_PORT:-18080}:80`** |
+| `queue` | AI 工作台、文章生成、分发、主题复刻与默认队列 |
 | `knowledge-queue` | 知识库解析与向量化队列，独立内存上限 |
 | `system-update-queue` | 系统更新与回滚队列，独立长超时 |
 | `scheduler` | `schedule:work` |
-| `reverb` | WebSocket，映射 **`${REVERB_EXPOSE_PORT:-18081}:8080`** |
+| `reverb` | 内网 WebSocket 服务，由 Nginx 通过同源路径 **`/reverb`** 转发 |
 
 宿主机仅绑定 **127.0.0.1** 暴露数据库 / Redis 端口时，见 `docker-compose.yml` 中的 `DB_EXPOSE_PORT`、`REDIS_EXPOSE_PORT`。
 

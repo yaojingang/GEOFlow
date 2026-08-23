@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\SystemState;
 use Database\Seeders\AdminUserSeeder;
-use Database\Seeders\FrontendDemoSeeder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -87,16 +86,7 @@ class GeoFlowInstallCommand extends Command
                 '--force' => true,
             ]);
 
-            if ((bool) config('geoflow.seed_frontend_demo', false)) {
-                $this->call('db:seed', [
-                    '--class' => FrontendDemoSeeder::class,
-                    '--force' => true,
-                ]);
-            }
-
-            $this->markInstalled($force ? 'forced_install' : 'fresh_install', [
-                'seed_frontend_demo' => (bool) config('geoflow.seed_frontend_demo', false),
-            ]);
+            $this->markInstalled($force ? 'forced_install' : 'fresh_install');
         } catch (Throwable $e) {
             $this->error('GEOFlow first-install seeders failed: '.$e->getMessage());
 

@@ -4,6 +4,7 @@ namespace Tests\Unit\AiWorkspace;
 
 use App\Ai\Agents\GeoHubAgent;
 use App\Ai\Agents\GeoHubPlanDrafterAgent;
+use App\Ai\Agents\IntentResolverAgent;
 use App\Ai\Workspace\AiCapabilityRegistry;
 use App\Ai\Workspace\AiIntentResolution;
 use App\Ai\Workspace\AiPayloadDigest;
@@ -13,6 +14,7 @@ use App\Events\Admin\AiWorkspaceRunUpdated;
 use App\Http\Requests\Admin\AiWorkspace\UpdatePlanRequest;
 use App\Models\Admin;
 use App\Services\AiWorkspace\AiIntentResolver;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Tests\TestCase;
@@ -69,6 +71,30 @@ final class AiWorkspaceProtocolTest extends TestCase
 
         self::assertSame([], (array) (new GeoHubAgent)->tools());
         self::assertSame([], (array) (new GeoHubPlanDrafterAgent('', ''))->tools());
+    }
+
+    public function test_agent_parameter_schemas_cover_every_registered_capability_field(): void
+    {
+        $registeredFields = app(AiCapabilityRegistry::class)->all()
+            ->flatMap(static fn ($capability): array => array_keys($capability->inputSchema))
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+        $schema = new JsonSchemaTypeFactory;
+        $intentSchema = (new IntentResolverAgent(''))->schema($schema);
+        $planSchema = (new GeoHubPlanDrafterAgent('', ''))->schema($schema);
+        $intentParameters = array_keys(
+            $intentSchema['requested_steps']->toArray()['items']['properties']['parameters']['properties']
+        );
+        $knownParameters = array_keys($intentSchema['known_parameters']->toArray()['properties']);
+        $planParameters = array_keys(
+            $planSchema['steps']->toArray()['items']['properties']['parameters']['properties']
+        );
+
+        self::assertEqualsCanonicalizing($registeredFields, $intentParameters);
+        self::assertEqualsCanonicalizing($registeredFields, $knownParameters);
+        self::assertEqualsCanonicalizing($registeredFields, $planParameters);
     }
 
     public function test_sensitive_routes_resolve_to_the_narrowest_controlled_capability(): void
@@ -138,6 +164,32 @@ final class AiWorkspaceProtocolTest extends TestCase
         );
         self::assertSame(['operation-1', 'operation-2'], array_column($resolution->workflowSteps, 'operation_id'));
         self::assertSame(12, $resolution->workflowSteps[1]['parameters']['task_id']);
+    }
+
+    public function test_rule_resolver_preserves_explicit_task_draft_limits(): void
+    {
+        config()->set('ai-workspace.runtime_enabled', false);
+
+        $resolution = app(AiIntentResolver::class)->resolve(
+            '请创建一个任务草稿，任务名称为“八月增长计划”，文章数量 1，发布间隔 60 分钟。'
+        );
+
+        self::assertFalse($resolution->requiresClarification());
+        self::assertSame('task.draft', $resolution->workflowSteps[0]['capability']);
+        self::assertSame('八月增长计划', $resolution->workflowSteps[0]['parameters']['name']);
+        self::assertSame(1, $resolution->workflowSteps[0]['parameters']['article_limit']);
+        self::assertSame(3600, $resolution->workflowSteps[0]['parameters']['publish_interval']);
+    }
+
+    public function test_rule_resolver_does_not_overflow_on_an_extreme_publish_interval(): void
+    {
+        config()->set('ai-workspace.runtime_enabled', false);
+
+        $resolution = app(AiIntentResolver::class)->resolve(
+            '请创建任务草稿“边界测试”，发布间隔 999999999999999999999999 天。'
+        );
+
+        self::assertSame(PHP_INT_MAX, $resolution->workflowSteps[0]['parameters']['publish_interval']);
     }
 
     public function test_model_candidates_are_deduplicated_and_ranked_by_confidence(): void

@@ -196,7 +196,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php artisan geoflow:install
 ```
 
-账号由 `Database\Seeders\AdminUserSeeder` 在首次空库安装时写入：只在目标用户名不存在时创建，**重复执行不会覆盖**已存在账号的用户名、邮箱或密码。前台演示分类和文章默认不会写入；只有显式设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 且首次空库安装时才会导入演示数据。
+账号由 `Database\Seeders\AdminUserSeeder` 在首次空库安装时写入：只在目标用户名不存在时创建，**重复执行不会覆盖**已存在账号的用户名、邮箱或密码。正式安装流程不调用 `FrontendDemoSeeder`，也不会写入前台演示分类、文章或站点设置。
 
 | 项目 | 值 |
 |------|-----|
@@ -207,7 +207,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php 
 
 ### 初始化数据维护规则
 
-后续新增默认站点配置、默认提示词、默认渠道、默认模板、演示分类或演示文章时，必须接入 `php artisan geoflow:install` 的首次空库安装路径，或通过明确的手动修复命令执行。不要把用户可修改的默认数据放到常规容器启动、迁移或每次升级都会自动执行的 seed 流程里，避免覆盖线上用户配置。
+后续新增必要的默认站点配置、默认提示词、默认渠道或默认模板时，必须接入 `php artisan geoflow:install` 的首次空库安装路径，或通过明确的手动修复命令执行。演示分类和演示文章只允许在测试环境显式调用专用 Seeder。不要把用户可修改的数据放到常规容器启动、迁移或每次升级都会自动执行的 seed 流程里，避免覆盖线上用户配置。
 
 ## 5. 关键差异
 
