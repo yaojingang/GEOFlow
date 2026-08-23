@@ -32,7 +32,7 @@ export function isSubmissionCurrent(currentGeneration, expectedGeneration, curre
 }
 
 export function shouldSubmitPrompt(event) {
-    return event.key === 'Enter' && !event.shiftKey && !event.isComposing;
+    return event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229;
 }
 
 export function composerControlsState(_runtimeEnabled, submissionInFlight, hasPrompt) {
@@ -40,6 +40,13 @@ export function composerControlsState(_runtimeEnabled, submissionInFlight, hasPr
         inputDisabled: submissionInFlight,
         submitDisabled: submissionInFlight || !hasPrompt,
     };
+}
+
+export function requestErrorKind(status, code, hasJsonResponse = true) {
+    if ([401, 419].includes(status) || !hasJsonResponse) return 'session';
+    if (status === 503 && ['ai_workspace_disabled', 'ai_workspace_model_unavailable'].includes(code)) return 'runtime';
+
+    return 'generic';
 }
 
 export function errorDialogContent(kind, message, labels) {
@@ -209,10 +216,14 @@ function initializeAiWorkspace() {
         window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
     };
 
-    const showAlert = (message, requestedKind = 'auto') => {
+    const showAlert = (issue, requestedKind = 'auto') => {
+        const message = issue instanceof Error ? issue.message : String(issue ?? labels.networkError);
+        const issueKind = issue instanceof Error ? issue.kind : null;
         const kind = requestedKind !== 'auto'
             ? requestedKind
-            : message === labels.sessionExpired
+            : issueKind && issueKind !== 'generic'
+                ? issueKind
+                : message === labels.sessionExpired
                 ? 'session'
                 : message === labels.networkError ? 'network' : 'generic';
         const content = errorDialogContent(kind, message, labels);
@@ -270,14 +281,22 @@ function initializeAiWorkspace() {
                 },
             });
         } catch {
-            throw new Error(labels.networkError);
+            const error = new Error(labels.networkError);
+            error.kind = 'network';
+            throw error;
         }
         const contentType = response.headers.get('content-type') ?? '';
         if (response.status === 401 || !contentType.includes('application/json')) {
-            throw new Error(labels.sessionExpired);
+            const error = new Error(labels.sessionExpired);
+            error.kind = requestErrorKind(response.status, null, contentType.includes('application/json'));
+            throw error;
         }
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload.message ?? labels.networkError);
+        if (!response.ok) {
+            const error = new Error(payload.message ?? labels.networkError);
+            error.kind = requestErrorKind(response.status, payload.code);
+            throw error;
+        }
 
         return payload.data;
     };
@@ -364,7 +383,7 @@ function initializeAiWorkspace() {
             renderHistory(conversations);
             return conversations;
         } catch (error) {
-            showAlert(error.message);
+            showAlert(error);
             return [];
         }
     };
@@ -572,7 +591,7 @@ function initializeAiWorkspace() {
                 renderRun(fresh);
             } catch (error) {
                 if (viewGeneration !== expectedGeneration || activeConversationId !== expectedConversationId) return;
-                showAlert(error.message || labels.networkError);
+                showAlert(error);
                 schedulePolling(snapshot);
             }
         }, 1500);
@@ -660,7 +679,7 @@ function initializeAiWorkspace() {
                 runs.querySelector('[data-ai-submission-pending]')?.remove();
                 if (!input.value.trim()) input.value = prompt;
                 syncComposer();
-                showAlert(error.message);
+                showAlert(error);
             }
         } finally {
             if (submissionGeneration === expectedSubmissionGeneration) {
@@ -702,7 +721,7 @@ function initializeAiWorkspace() {
                 else await loadHistory();
             }
         } catch (error) {
-            showAlert(error.message);
+            showAlert(error);
         }
     });
 
@@ -731,7 +750,7 @@ function initializeAiWorkspace() {
                 && activeConversationId === expectedConversationId
                 && snapshot.id === expectedRunId) renderRun(snapshot);
         } catch (error) {
-            if (viewGeneration === expectedGeneration && activeConversationId === expectedConversationId) showAlert(error.message);
+            if (viewGeneration === expectedGeneration && activeConversationId === expectedConversationId) showAlert(error);
         }
     });
 
@@ -756,7 +775,7 @@ function initializeAiWorkspace() {
                 && snapshot.id === expectedRunId) renderRun(snapshot);
         } catch (error) {
             if (viewGeneration === expectedGeneration && activeConversationId === expectedConversationId) {
-                showAlert(error instanceof SyntaxError ? labels.invalidJson : error.message);
+                showAlert(error instanceof SyntaxError ? labels.invalidJson : error);
             }
         }
     });
@@ -767,7 +786,7 @@ function initializeAiWorkspace() {
     if (requestedConversationId) {
         openConversation(requestedConversationId).catch((error) => {
             syncConversationUrl(null);
-            showAlert(error.message);
+            showAlert(error);
         });
     }
     if (runtimeEnabled) {
@@ -783,7 +802,7 @@ function initializeAiWorkspace() {
                     renderRun(fresh, { allowRunSwitch: !activeRun });
                 } catch (error) {
                     if (viewGeneration === expectedGeneration && activeConversationId === expectedConversationId) {
-                        showAlert(error.message || labels.networkError);
+                        showAlert(error);
                     }
                 }
             })

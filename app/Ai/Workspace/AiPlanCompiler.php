@@ -249,7 +249,10 @@ final readonly class AiPlanCompiler
                     (array) $parameters['article_ids'],
                     $capabilityKey === 'distribution.publish',
                 ),
-                'channel_snapshots' => $this->channelSnapshots((array) $parameters['channel_ids']),
+                'channel_snapshots' => $this->channelSnapshots(
+                    (array) $parameters['channel_ids'],
+                    $capabilityKey !== 'distribution.publish',
+                ),
             ],
             'distribution.site_settings_sync' => $summary + [
                 'channel_snapshots' => $this->channelSnapshots((array) $parameters['channel_ids']),
@@ -372,15 +375,18 @@ final readonly class AiPlanCompiler
     }
 
     /** @param list<int> $ids @return list<array<string,mixed>> */
-    private function channelSnapshots(array $ids): array
+    private function channelSnapshots(array $ids, bool $allowHostedSites = true): array
     {
         $normalized = collect($ids)->map(static fn ($id): int => (int) $id)->unique()->sort()->values();
         $channels = DistributionChannel::query()->whereIn('id', $normalized)->get()->keyBy('id');
 
-        return $normalized->map(function (int $id) use ($channels): array {
+        return $normalized->map(function (int $id) use ($allowHostedSites, $channels): array {
             $channel = $channels->get($id);
             if (! $channel instanceof DistributionChannel) {
                 throw new InvalidArgumentException('Distribution channel target does not exist: '.$id);
+            }
+            if (! $allowHostedSites && $channel->isHostedSite()) {
+                throw new InvalidArgumentException('托管站点发布由任务托管分发流程管理，请先在任务中关联站点并通过任务发布。');
             }
 
             return [

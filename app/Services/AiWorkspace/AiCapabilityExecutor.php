@@ -484,10 +484,9 @@ final readonly class AiCapabilityExecutor
             if ($publishScope === 'local_only') {
                 throw new RuntimeException('文章 '.$article->id.' 所属任务仅允许本地发布。');
             }
-            $this->distribution->syncTaskChannels($article->task, $channels);
             $articleSnapshot = collect((array) data_get($step->target_summary, 'article_snapshots', []))
                 ->firstWhere('id', (int) $article->id);
-            $distributionIds = $this->distribution->enqueueForArticle($article, 'publish', [
+            $distributionIds = $this->distribution->enqueueForArticleTargets($article, $channels, [
                 'run_id' => (string) $run->id,
                 'step_id' => (string) $step->id,
                 'admin_id' => (int) $run->admin_id,

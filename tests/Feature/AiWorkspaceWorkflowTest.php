@@ -118,6 +118,37 @@ final class AiWorkspaceWorkflowTest extends TestCase
         self::assertSame([1, 2], $plan->steps[2]['depends_on']);
     }
 
+    public function test_distribution_publish_rejects_hosted_targets_before_approval(): void
+    {
+        $task = Task::query()->create([
+            'name' => '托管发布边界', 'status' => 'active', 'publish_scope' => 'distribution_only',
+            'distribution_strategy' => 'broadcast', 'schedule_enabled' => false,
+        ]);
+        $category = Category::query()->create(['name' => '托管发布分类', 'slug' => 'hosted-publish-boundary']);
+        $author = Author::query()->create(['name' => '托管发布作者']);
+        $article = Article::query()->create([
+            'task_id' => $task->id, 'title' => '托管发布文章', 'slug' => 'hosted-publish-boundary',
+            'category_id' => $category->id, 'author_id' => $author->id,
+            'content' => '托管发布内容', 'status' => 'private', 'review_status' => 'approved',
+        ]);
+        $hostedChannel = DistributionChannel::query()->create([
+            'name' => '托管发布站点', 'domain' => 'hosted-publish.example.com',
+            'endpoint_url' => 'https://hosted-publish.example.com',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+
+        try {
+            app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', [
+                'article_ids' => [(int) $article->id],
+                'channel_ids' => [(int) $hostedChannel->id],
+            ]);
+            self::fail('Hosted targets must be rejected before an AI distribution approval is created.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertStringContainsString('任务托管分发流程', $exception->getMessage());
+        }
+    }
+
     public function test_approved_internal_draft_is_atomic_and_idempotent(): void
     {
         Queue::fake();
@@ -565,7 +596,7 @@ final class AiWorkspaceWorkflowTest extends TestCase
         ])->save();
         $step = AiWorkspaceStep::query()->create([
             'id' => (string) Str::uuid7(), 'run_id' => $run->id, 'position' => 1,
-            'capability_key' => 'distribution.publish', 'capability_version' => '1.3.0', 'state' => 'completed',
+            'capability_key' => 'distribution.publish', 'capability_version' => '1.4.0', 'state' => 'completed',
             'risk_level' => 'high', 'execution_scope' => 'external_write', 'parameters' => [],
             'idempotency_key' => 'queued-distribution-guard', 'requires_approval' => true,
             'external_operation' => true, 'attempts' => 1, 'max_attempts' => 1,
@@ -579,7 +610,7 @@ final class AiWorkspaceWorkflowTest extends TestCase
                     'run_id' => $run->id, 'step_id' => $step->id, 'admin_id' => $admin->id,
                     'admin_auth_version' => $admin->auth_version, 'plan_digest' => $run->plan_digest,
                     'parameter_digest' => $run->parameter_digest, 'target_digest' => $run->target_digest,
-                    'capability_version' => '1.3.0',
+                    'capability_version' => '1.4.0',
                 ],
                 'ai_workspace_payload' => ['article' => ['id' => $article->id]],
             ],
@@ -626,11 +657,11 @@ final class AiWorkspaceWorkflowTest extends TestCase
             'plan_digest' => str_repeat('a', 64),
             'parameter_digest' => str_repeat('b', 64),
             'target_digest' => str_repeat('c', 64),
-            'capability_versions' => ['distribution.publish' => '1.3.0'],
+            'capability_versions' => ['distribution.publish' => '1.4.0'],
         ])->save();
         $step = AiWorkspaceStep::query()->create([
             'id' => (string) Str::uuid7(), 'run_id' => $run->id, 'position' => 1,
-            'capability_key' => 'distribution.publish', 'capability_version' => '1.3.0', 'state' => 'completed',
+            'capability_key' => 'distribution.publish', 'capability_version' => '1.4.0', 'state' => 'completed',
             'risk_level' => 'high', 'execution_scope' => 'external_write', 'parameters' => [],
             'idempotency_key' => 'expired-distribution-approval', 'requires_approval' => true,
             'external_operation' => true, 'attempts' => 1, 'max_attempts' => 1,
@@ -652,7 +683,7 @@ final class AiWorkspaceWorkflowTest extends TestCase
                     'run_id' => $run->id, 'step_id' => $step->id, 'admin_id' => $admin->id,
                     'admin_auth_version' => $admin->auth_version, 'plan_digest' => $run->plan_digest,
                     'parameter_digest' => $run->parameter_digest, 'target_digest' => $run->target_digest,
-                    'capability_version' => '1.3.0',
+                    'capability_version' => '1.4.0',
                 ],
                 'ai_workspace_payload' => ['article' => ['id' => $article->id]],
             ],
@@ -711,11 +742,11 @@ final class AiWorkspaceWorkflowTest extends TestCase
             'plan_digest' => str_repeat('a', 64),
             'parameter_digest' => str_repeat('b', 64),
             'target_digest' => str_repeat('c', 64),
-            'capability_versions' => ['distribution.publish' => '1.3.0'],
+            'capability_versions' => ['distribution.publish' => '1.4.0'],
         ])->save();
         $step = AiWorkspaceStep::query()->create([
             'id' => (string) Str::uuid7(), 'run_id' => $run->id, 'position' => 1,
-            'capability_key' => 'distribution.publish', 'capability_version' => '1.3.0',
+            'capability_key' => 'distribution.publish', 'capability_version' => '1.4.0',
             'state' => 'completed', 'risk_level' => 'high', 'execution_scope' => 'external_write',
             'approval_policy' => 'target_matrix', 'parameters' => [], 'target_summary' => $targetSummary,
             'idempotency_key' => 'final-distribution-guard', 'requires_approval' => true,
@@ -746,7 +777,7 @@ final class AiWorkspaceWorkflowTest extends TestCase
                     'run_id' => $run->id, 'step_id' => $step->id, 'admin_id' => $admin->id,
                     'admin_auth_version' => $admin->auth_version, 'plan_digest' => $run->plan_digest,
                     'parameter_digest' => $run->parameter_digest, 'target_digest' => $run->target_digest,
-                    'capability_version' => '1.3.0',
+                    'capability_version' => '1.4.0',
                     'channel_revision' => data_get($targetSummary, 'channel_snapshots.0.revision'),
                 ],
                 'ai_workspace_payload' => $payload,
@@ -797,6 +828,80 @@ final class AiWorkspaceWorkflowTest extends TestCase
             ->where('article_distribution_id', $distribution->id)
             ->where('event', 'distribution.outcome_unknown')
             ->count());
+    }
+
+    public function test_ai_distribution_targets_do_not_reconfigure_the_task_channels(): void
+    {
+        Queue::fake();
+        $admin = $this->admin();
+        $task = Task::query()->create([
+            'name' => '保留任务分发配置', 'status' => 'active', 'publish_scope' => 'both',
+            'distribution_strategy' => 'round_robin', 'schedule_enabled' => false,
+        ]);
+        $configuredChannel = DistributionChannel::query()->create([
+            'name' => '任务默认站点', 'domain' => 'configured.example.com',
+            'endpoint_url' => 'https://configured.example.com/api',
+            'channel_type' => DistributionChannel::TYPE_GEOFLOW_AGENT,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+        $approvedTarget = DistributionChannel::query()->create([
+            'name' => '本次审批站点', 'domain' => 'approved-target.example.com',
+            'endpoint_url' => 'https://approved-target.example.com/api',
+            'channel_type' => DistributionChannel::TYPE_GEOFLOW_AGENT,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+        app(DistributionOrchestrator::class)->syncTaskChannels($task, [(int) $configuredChannel->id]);
+        $category = Category::query()->create(['name' => '定向分发分类', 'slug' => 'targeted-distribution']);
+        $author = Author::query()->create(['name' => '定向分发作者']);
+        $article = Article::query()->create([
+            'task_id' => $task->id, 'title' => '定向分发文章', 'slug' => 'targeted-distribution',
+            'category_id' => $category->id, 'author_id' => $author->id,
+            'content' => '定向分发内容', 'status' => 'published', 'review_status' => 'approved',
+        ]);
+        $parameters = [
+            'article_ids' => [(int) $article->id],
+            'channel_ids' => [(int) $approvedTarget->id],
+        ];
+        $targetSummary = app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', $parameters);
+        $run = $this->makeRun($admin, 'running', 'targeted distribution');
+        $run->forceFill([
+            'admin_auth_version' => $admin->auth_version,
+            'plan_digest' => str_repeat('a', 64),
+            'parameter_digest' => str_repeat('b', 64),
+            'target_digest' => str_repeat('c', 64),
+        ])->save();
+        AiWorkspaceStep::query()->create([
+            'id' => (string) Str::uuid7(), 'run_id' => $run->id, 'position' => 1,
+            'capability_key' => 'distribution.publish', 'capability_version' => '1.4.0',
+            'state' => 'running', 'risk_level' => 'high', 'execution_scope' => 'external_write',
+            'approval_policy' => 'target_matrix', 'parameters' => $parameters,
+            'target_summary' => $targetSummary, 'idempotency_key' => 'targeted-distribution',
+            'requires_approval' => true, 'external_operation' => true,
+            'attempts' => 1, 'max_attempts' => 1,
+        ]);
+
+        $result = app(AiCapabilityExecutor::class)->execute(
+            'distribution.publish',
+            $parameters,
+            $admin,
+            'targeted-distribution',
+        );
+
+        self::assertSame(1, $result->payload['queued_targets']);
+        self::assertSame(
+            [(int) $configuredChannel->id],
+            $task->fresh()->distributionChannels()->pluck('distribution_channels.id')->map(fn ($id): int => (int) $id)->all(),
+        );
+        self::assertDatabaseHas('article_distributions', [
+            'article_id' => (int) $article->id,
+            'distribution_channel_id' => (int) $approvedTarget->id,
+            'action' => 'publish',
+            'status' => 'queued',
+        ]);
+        self::assertDatabaseMissing('article_distributions', [
+            'article_id' => (int) $article->id,
+            'distribution_channel_id' => (int) $configuredChannel->id,
+        ]);
     }
 
     public function test_unknown_wordpress_outcome_can_be_reconciled_by_slug(): void
@@ -1395,7 +1500,7 @@ final class AiWorkspaceWorkflowTest extends TestCase
         $run = $this->makeRun($this->admin(), 'running', 'distribution enqueue recovery');
         $step = AiWorkspaceStep::query()->create([
             'id' => (string) Str::uuid7(), 'run_id' => $run->id, 'position' => 1,
-            'capability_key' => 'distribution.publish', 'capability_version' => '1.3.0', 'state' => 'running',
+            'capability_key' => 'distribution.publish', 'capability_version' => '1.4.0', 'state' => 'running',
             'risk_level' => 'high', 'execution_scope' => 'external_write',
             'parameters' => ['article_ids' => [1], 'channel_ids' => [1]],
             'idempotency_key' => 'atomic-distribution-recovery', 'requires_approval' => true,
@@ -1425,7 +1530,7 @@ final class AiWorkspaceWorkflowTest extends TestCase
         $externalRun = $this->makeRun($admin, 'running', 'expired external step');
         $externalStep = AiWorkspaceStep::query()->create([
             'id' => (string) Str::uuid7(), 'run_id' => $externalRun->id, 'position' => 1,
-            'capability_key' => 'distribution.publish', 'capability_version' => '1.3.0', 'state' => 'running',
+            'capability_key' => 'distribution.publish', 'capability_version' => '1.4.0', 'state' => 'running',
             'risk_level' => 'high', 'execution_scope' => 'external_write',
             'parameters' => ['article_ids' => [1], 'channel_ids' => [1]],
             'idempotency_key' => 'non-starved-external-recovery', 'requires_approval' => true,

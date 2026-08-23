@@ -171,6 +171,36 @@ class DistributionOrchestrator
     /** @return list<int> */
     public function enqueueForArticle(int|Article $article, string $action = 'publish', array $aiWorkspaceGuard = []): array
     {
+        return $this->enqueueForArticleSelection($article, $action, $aiWorkspaceGuard);
+    }
+
+    /**
+     * Queue the exact approved channel targets without changing the task's saved distribution configuration.
+     *
+     * @param  list<int>  $channelIds
+     * @param  array<string,mixed>  $aiWorkspaceGuard
+     * @return list<int>
+     */
+    public function enqueueForArticleTargets(
+        int|Article $article,
+        array $channelIds,
+        array $aiWorkspaceGuard,
+        string $action = 'publish',
+    ): array {
+        return $this->enqueueForArticleSelection($article, $action, $aiWorkspaceGuard, $channelIds);
+    }
+
+    /**
+     * @param  array<string,mixed>  $aiWorkspaceGuard
+     * @param  list<int>|null  $targetChannelIds
+     * @return list<int>
+     */
+    private function enqueueForArticleSelection(
+        int|Article $article,
+        string $action,
+        array $aiWorkspaceGuard,
+        ?array $targetChannelIds = null,
+    ): array {
         try {
             $articleModel = $article instanceof Article
                 ? $article
@@ -191,8 +221,43 @@ class DistributionOrchestrator
                 return [];
             }
 
-            $channels = $articleModel->task?->distributionChannels
-                ?->where('status', 'active') ?? new Collection;
+            $exactTargets = $targetChannelIds !== null;
+            if ($exactTargets) {
+                $requestedIds = collect($targetChannelIds)
+                    ->map(static fn ($id): int => (int) $id)
+                    ->filter(static fn (int $id): bool => $id > 0)
+                    ->unique()
+                    ->values();
+                if ($requestedIds->isEmpty()) {
+                    return [];
+                }
+                $availableTargets = DistributionChannel::query()
+                    ->whereIn('id', $requestedIds->all())
+                    ->where('status', DistributionChannel::STATUS_ACTIVE)
+                    ->get()
+                    ->keyBy('id');
+                if ($availableTargets->count() !== $requestedIds->count()) {
+                    throw new \RuntimeException('部分已审批的分发站点当前不可用。');
+                }
+                $channels = $requestedIds
+                    ->map(static fn (int $id): DistributionChannel => $availableTargets->get($id))
+                    ->values();
+                $attachedHostedIds = $articleModel->task?->distributionChannels
+                    ?->filter(static fn (DistributionChannel $channel): bool => $channel->isHostedSite())
+                    ->pluck('id')
+                    ->map(static fn ($id): int => (int) $id)
+                    ->all() ?? [];
+                $unconfiguredHostedTarget = $channels->first(
+                    static fn (DistributionChannel $channel): bool => $channel->isHostedSite()
+                        && ! in_array((int) $channel->id, $attachedHostedIds, true),
+                );
+                if ($unconfiguredHostedTarget instanceof DistributionChannel) {
+                    throw new \RuntimeException('托管站点需要先在任务设置中完成关联。');
+                }
+            } else {
+                $channels = $articleModel->task?->distributionChannels
+                    ?->where('status', DistributionChannel::STATUS_ACTIVE) ?? new Collection;
+            }
 
             if ($channels->isEmpty()) {
                 return [];
@@ -204,7 +269,9 @@ class DistributionOrchestrator
             $externalChannels = $channels
                 ->reject(static fn (DistributionChannel $channel): bool => $channel->isHostedSite())
                 ->values();
-            $channels = $this->channelSelector->selectChannelsForArticle($articleModel, $externalChannels, $action);
+            $channels = $exactTargets
+                ? $externalChannels
+                : $this->channelSelector->selectChannelsForArticle($articleModel, $externalChannels, $action);
 
             if ($action === 'publish' && $hostedChannels->isNotEmpty()) {
                 $existingAssignment = HostedSiteArticleAssignment::query()

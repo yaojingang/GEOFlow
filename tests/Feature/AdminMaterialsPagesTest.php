@@ -1549,6 +1549,7 @@ class AdminMaterialsPagesTest extends TestCase
 
     public function test_admin_can_upload_image_and_knowledge_file_from_detail_flow(): void
     {
+        Storage::fake('local');
         Storage::fake('public');
 
         $admin = Admin::query()->create([

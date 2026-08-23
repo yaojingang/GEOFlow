@@ -270,7 +270,7 @@ return [
         ],
         'distribution.publish' => [
             'name' => '多站分发入队',
-            'description' => '按文章拆分可追踪步骤并进入现有分发队列，远程结果由分发中心对账。',
+            'description' => '按已审批的文章与站点矩阵进入现有分发队列，保留任务默认分发配置，远程结果由分发中心对账。',
             'maturity' => 'execute_ready',
             'risk' => 'high',
             'permission' => 'super_admin',
@@ -278,7 +278,7 @@ return [
             'data_classification' => 'confidential',
             'cost' => 'high',
             'approval_policy' => 'target_matrix',
-            'version' => '1.3.0',
+            'version' => '1.4.0',
             'input_schema' => [
                 'article_ids' => ['type' => 'integer_list', 'required' => true, 'min_items' => 1, 'max_items' => 100],
                 'channel_ids' => ['type' => 'integer_list', 'required' => true, 'min_items' => 1, 'max_items' => 100],

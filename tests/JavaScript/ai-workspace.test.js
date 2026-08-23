@@ -5,6 +5,7 @@ import {
     composerControlsState,
     errorDialogContent,
     isSubmissionCurrent,
+    requestErrorKind,
     runProgressStage,
     runStateGroup,
     shouldAcceptAnswerDelta,
@@ -13,6 +14,15 @@ import {
     shouldFetchRunUpdate,
     shouldSubmitPrompt,
 } from '../../resources/js/admin/ai-workspace.js';
+
+test('runtime readiness failures keep the guided configuration action after page load', () => {
+    assert.equal(requestErrorKind(503, 'ai_workspace_disabled'), 'runtime');
+    assert.equal(requestErrorKind(503, 'ai_workspace_model_unavailable'), 'runtime');
+    assert.equal(requestErrorKind(401, null), 'session');
+    assert.equal(requestErrorKind(419, null), 'session');
+    assert.equal(requestErrorKind(422, 'validation_error'), 'generic');
+    assert.equal(requestErrorKind(200, null, false), 'session');
+});
 
 test('runtime errors become a guided dialog with preserved-draft actions', () => {
     const labels = {
@@ -96,6 +106,7 @@ test('composer submits on Enter while preserving Shift+Enter and IME composition
     assert.equal(shouldSubmitPrompt({ key: 'Enter', shiftKey: false, isComposing: false }), true);
     assert.equal(shouldSubmitPrompt({ key: 'Enter', shiftKey: true, isComposing: false }), false);
     assert.equal(shouldSubmitPrompt({ key: 'Enter', shiftKey: false, isComposing: true }), false);
+    assert.equal(shouldSubmitPrompt({ key: 'Enter', shiftKey: false, isComposing: false, keyCode: 229 }), false);
     assert.equal(shouldSubmitPrompt({ key: 'Escape', shiftKey: false, isComposing: false }), false);
 });
 
