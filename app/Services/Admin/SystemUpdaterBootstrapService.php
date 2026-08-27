@@ -18,6 +18,8 @@ class SystemUpdaterBootstrapService
 
     private const STATE_PATH = 'system-updater/bootstrap/current.json';
 
+    private const SEQUENCE_PATH = 'system-updater/bootstrap/highest-sequence.json';
+
     public function __construct(
         private readonly TufBootstrapVerifier $verifier,
         private readonly SystemUpdaterPlatform $platform,
@@ -31,15 +33,11 @@ class SystemUpdaterBootstrapService
     public function prepare(): array
     {
         $manifestUrl = (string) config('geoflow.updater_bootstrap_manifest_url');
-        $trustedRootPath = (string) config('geoflow.updater_trusted_root_path');
         if ($manifestUrl !== 'https://github.com/yaojingang/geoflow-updater/releases/latest/download/bootstrap-manifest.json') {
             throw new RuntimeException('Updater bootstrap source is invalid.');
         }
 
-        $trustedRoot = @file_get_contents($trustedRootPath);
-        if (! is_string($trustedRoot) || $trustedRoot === '') {
-            throw new RuntimeException('Updater trusted root is unavailable.');
-        }
+        $trustedRoot = $this->trustedRoot();
 
         $manifestResponse = $this->safeHttp->get(
             $this->http->acceptJson()->connectTimeout(5)->timeout(15),
@@ -55,6 +53,11 @@ class SystemUpdaterBootstrapService
         }
 
         $manifest = $this->verifier->verify($envelope, $trustedRoot);
+        $releaseSequence = (int) ($manifest['release_sequence'] ?? 0);
+        $disk = Storage::disk('local');
+        if ($releaseSequence < $this->highestAcceptedSequence($disk)) {
+            throw new RuntimeException('Updater bootstrap release rollback was rejected.');
+        }
         $platform = $this->platform->current();
         $asset = is_array($manifest['assets'][$platform] ?? null) ? $manifest['assets'][$platform] : null;
         if ($asset === null) {
@@ -72,8 +75,8 @@ class SystemUpdaterBootstrapService
             throw new RuntimeException('The signed updater package description is invalid.');
         }
 
-        $disk = Storage::disk('local');
         $relativePath = 'system-updater/bootstrap/'.$version.'/'.$filename;
+        $envelopePath = 'system-updater/bootstrap/'.$version.'/bootstrap-manifest.json';
         $destination = $disk->path($relativePath);
         $this->ensureSafeDirectory($disk->path('system-updater/bootstrap'));
         $this->ensureSafeDirectory(dirname($destination));
@@ -106,10 +109,15 @@ class SystemUpdaterBootstrapService
                 throw new RuntimeException('Updater package could not be staged.');
             }
 
+            $this->writePrivateFile($disk, $envelopePath, $envelope);
+            $this->writeHighestSequence($disk, $releaseSequence);
+
             $state = [
+                'release_sequence' => $releaseSequence,
                 'version' => $version,
                 'filename' => $filename,
                 'path' => $relativePath,
+                'envelope_path' => $envelopePath,
                 'sha256' => $digest,
                 'size' => $size,
                 'platform' => $platform,
@@ -136,6 +144,23 @@ class SystemUpdaterBootstrapService
      */
     public function state(): ?array
     {
+        $state = $this->readState();
+        if ($state === null) {
+            return null;
+        }
+
+        try {
+            return $this->verifyPreparedState(Storage::disk('local'), $state);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function readState(): ?array
+    {
         $disk = Storage::disk('local');
         if (! $disk->exists(self::STATE_PATH)) {
             return null;
@@ -159,14 +184,21 @@ class SystemUpdaterBootstrapService
      */
     public function download(): array
     {
-        $state = $this->state();
+        $state = $this->readState();
         $disk = Storage::disk('local');
-        if ($state === null || ! $disk->exists((string) $state['path'])) {
+        if ($state === null) {
             throw new RuntimeException('The prepared updater package is unavailable.');
         }
 
+        try {
+            $state = $this->verifyPreparedState($disk, $state);
+        } catch (Throwable $exception) {
+            throw new RuntimeException('The prepared updater package is no longer valid.', 0, $exception);
+        }
+
         $path = $disk->path((string) $state['path']);
-        if (! $this->isSafePreparedFile($disk, $path)
+        if (! $disk->exists((string) $state['path'])
+            || ! $this->isSafePreparedFile($disk, $path)
             || filesize($path) !== (int) $state['size']
             || ! hash_equals((string) $state['sha256'], (string) hash_file('sha256', $path))) {
             throw new RuntimeException('The prepared updater package is no longer valid.');
@@ -180,12 +212,8 @@ class SystemUpdaterBootstrapService
      */
     private function writeState(FilesystemAdapter $disk, array $state): void
     {
-        $temporaryPath = self::STATE_PATH.'.tmp.'.bin2hex(random_bytes(8));
         $encoded = json_encode($state, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)."\n";
-        if (! $disk->put($temporaryPath, $encoded) || ! $disk->move($temporaryPath, self::STATE_PATH)) {
-            $disk->delete($temporaryPath);
-            throw new RuntimeException('Updater package state could not be stored.');
-        }
+        $this->writePrivateFile($disk, self::STATE_PATH, $encoded);
     }
 
     /**
@@ -193,7 +221,7 @@ class SystemUpdaterBootstrapService
      */
     private function validStateShape(array $state): bool
     {
-        $expectedKeys = ['expires', 'filename', 'path', 'platform', 'prepared_at', 'sha256', 'size', 'version'];
+        $expectedKeys = ['envelope_path', 'expires', 'filename', 'path', 'platform', 'prepared_at', 'release_sequence', 'sha256', 'size', 'version'];
         $actualKeys = array_keys($state);
         sort($actualKeys, SORT_STRING);
         if ($actualKeys !== $expectedKeys) {
@@ -201,6 +229,7 @@ class SystemUpdaterBootstrapService
         }
 
         $path = $state['path'] ?? null;
+        $envelopePath = $state['envelope_path'] ?? null;
         $filename = $state['filename'] ?? null;
         $version = $state['version'] ?? null;
         $platform = $state['platform'] ?? null;
@@ -231,6 +260,10 @@ class SystemUpdaterBootstrapService
         return $filename === $expectedFilename
             && is_string($path)
             && $path === $expectedPath
+            && is_string($envelopePath)
+            && $envelopePath === 'system-updater/bootstrap/'.$version.'/bootstrap-manifest.json'
+            && is_int($state['release_sequence'] ?? null)
+            && $state['release_sequence'] > 0
             && is_string($state['sha256'] ?? null)
             && preg_match('/\A[a-f0-9]{64}\z/', $state['sha256']) === 1
             && is_int($state['size'] ?? null)
@@ -240,6 +273,118 @@ class SystemUpdaterBootstrapService
             && $expiryTimestamp > new \DateTimeImmutable('now', new \DateTimeZone('UTC'))
             && $preparedTimestamp instanceof \DateTimeImmutable
             && $preparedTimestamp->getOffset() === 0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     * @return array<string, mixed>
+     */
+    private function verifyPreparedState(FilesystemAdapter $disk, array $state): array
+    {
+        $envelopePath = (string) $state['envelope_path'];
+        if (! $disk->exists($envelopePath)) {
+            throw new RuntimeException('Signed updater bootstrap manifest is unavailable.');
+        }
+        $absoluteEnvelopePath = $disk->path($envelopePath);
+        $envelopeInfo = @lstat($absoluteEnvelopePath);
+        if (! $this->isSafePreparedFile($disk, $absoluteEnvelopePath)
+            || ! is_array($envelopeInfo)
+            || ($envelopeInfo['size'] ?? 0) < 1
+            || ($envelopeInfo['size'] ?? 0) > self::MANIFEST_MAX_BYTES) {
+            throw new RuntimeException('Signed updater bootstrap manifest is unsafe.');
+        }
+        $envelope = $disk->get($envelopePath);
+        $manifest = $this->verifier->verify($envelope, $this->trustedRoot());
+        $sequence = (int) ($manifest['release_sequence'] ?? 0);
+        if ($sequence < $this->highestAcceptedSequence($disk)) {
+            throw new RuntimeException('Updater bootstrap release rollback was rejected.');
+        }
+
+        $platform = $this->platform->current();
+        $asset = is_array($manifest['assets'][$platform] ?? null) ? $manifest['assets'][$platform] : null;
+        if ($asset === null) {
+            throw new RuntimeException('The signed updater release has no package for this host.');
+        }
+        $version = (string) ($manifest['updater_version'] ?? '');
+        $url = (string) ($asset['url'] ?? '');
+        $filename = basename((string) parse_url($url, PHP_URL_PATH));
+        $expected = [
+            'release_sequence' => $sequence,
+            'version' => $version,
+            'filename' => $filename,
+            'path' => 'system-updater/bootstrap/'.$version.'/'.$filename,
+            'envelope_path' => 'system-updater/bootstrap/'.$version.'/bootstrap-manifest.json',
+            'sha256' => (string) ($asset['sha256'] ?? ''),
+            'size' => (int) ($asset['size'] ?? 0),
+            'platform' => $platform,
+            'expires' => (string) ($manifest['expires'] ?? ''),
+            'prepared_at' => (string) ($state['prepared_at'] ?? ''),
+        ];
+        if ($state !== $expected || ! $this->validStateShape($expected)) {
+            throw new RuntimeException('Prepared updater state does not match its signed manifest.');
+        }
+
+        return $expected;
+    }
+
+    private function trustedRoot(): string
+    {
+        $trustedRoot = @file_get_contents((string) config('geoflow.updater_trusted_root_path'));
+        if (! is_string($trustedRoot) || $trustedRoot === '') {
+            throw new RuntimeException('Updater trusted root is unavailable.');
+        }
+
+        return $trustedRoot;
+    }
+
+    private function highestAcceptedSequence(FilesystemAdapter $disk): int
+    {
+        if (! $disk->exists(self::SEQUENCE_PATH)) {
+            return 0;
+        }
+        $info = @lstat($disk->path(self::SEQUENCE_PATH));
+        if (! is_array($info)
+            || (($info['mode'] ?? 0) & 0170000) !== 0100000
+            || ($info['size'] ?? 0) < 1
+            || ($info['size'] ?? 0) > 1024) {
+            throw new RuntimeException('Updater bootstrap sequence state is invalid.');
+        }
+        try {
+            $decoded = json_decode($disk->get(self::SEQUENCE_PATH), true, 4, JSON_THROW_ON_ERROR);
+        } catch (Throwable $exception) {
+            throw new RuntimeException('Updater bootstrap sequence state is invalid.', 0, $exception);
+        }
+        if (! is_array($decoded)
+            || array_keys($decoded) !== ['release_sequence']
+            || ! is_int($decoded['release_sequence'])
+            || $decoded['release_sequence'] < 1) {
+            throw new RuntimeException('Updater bootstrap sequence state is invalid.');
+        }
+
+        return $decoded['release_sequence'];
+    }
+
+    private function writeHighestSequence(FilesystemAdapter $disk, int $sequence): void
+    {
+        if ($sequence <= $this->highestAcceptedSequence($disk)) {
+            return;
+        }
+        $encoded = json_encode(['release_sequence' => $sequence], JSON_THROW_ON_ERROR)."\n";
+        $this->writePrivateFile($disk, self::SEQUENCE_PATH, $encoded);
+    }
+
+    private function writePrivateFile(FilesystemAdapter $disk, string $path, string $contents): void
+    {
+        $this->ensureSafeDirectory(dirname($disk->path($path)));
+        $temporaryPath = $path.'.tmp.'.bin2hex(random_bytes(8));
+        if (! $disk->put($temporaryPath, $contents)) {
+            throw new RuntimeException('Updater package state could not be stored.');
+        }
+        @chmod($disk->path($temporaryPath), 0640);
+        if (! $disk->move($temporaryPath, $path)) {
+            $disk->delete($temporaryPath);
+            throw new RuntimeException('Updater package state could not be stored.');
+        }
     }
 
     private function ensureSafeDirectory(string $path): void

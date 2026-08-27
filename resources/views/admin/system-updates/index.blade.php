@@ -29,6 +29,8 @@
         $updaterBridge = is_array($summary['updater_bridge'] ?? null) ? $summary['updater_bridge'] : [];
         $updaterConnection = (string) ($updaterBridge['connection'] ?? 'disconnected');
         $updaterInstance = is_array($updaterBridge['instance'] ?? null) ? $updaterBridge['instance'] : [];
+        $updaterChecks = is_array($updaterBridge['checks'] ?? null) ? array_values(array_filter($updaterBridge['checks'], 'is_array')) : [];
+        $updaterDoctorStatus = (string) ($updaterBridge['doctor_status'] ?? 'unavailable');
         $preparedUpdater = is_array($updaterBridge['prepared'] ?? null) ? $updaterBridge['prepared'] : [];
         $updaterHostRoot = (string) config('geoflow.updater_host_root');
         $updaterEnrollRoot = $updaterHostRoot !== '' ? $updaterHostRoot : '/absolute/path/to/GEOFlow';
@@ -179,9 +181,35 @@
                     </div>
                     <div class="border-t border-gray-200 px-6 py-4 sm:border-l lg:border-t-0">
                         <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('admin.system_updates.updater.doctor') }}</dt>
-                        <dd class="mt-1 text-sm font-semibold text-gray-900">{{ (string) ($updaterBridge['doctor_status'] ?? __('admin.common.none')) }}</dd>
+                        <dd class="mt-1 text-sm font-semibold text-gray-900">{{ __('admin.system_updates.updater.doctor_status.'.$updaterDoctorStatus) }}</dd>
                     </div>
                 </dl>
+                @if($updaterChecks !== [])
+                    <div class="border-t border-gray-200 px-6 py-5">
+                        <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.updater.checks') }}</h3>
+                        <ul class="mt-3 grid gap-3 lg:grid-cols-2">
+                            @foreach($updaterChecks as $check)
+                                @php
+                                    $checkStatus = in_array($check['status'] ?? null, ['pass', 'warn', 'fail'], true) ? $check['status'] : 'fail';
+                                    $checkClass = match ($checkStatus) {
+                                        'pass' => 'border-emerald-200 bg-emerald-50/60 text-emerald-800',
+                                        'warn' => 'border-amber-200 bg-amber-50/60 text-amber-800',
+                                        default => 'border-red-200 bg-red-50/60 text-red-800',
+                                    };
+                                @endphp
+                                <li class="rounded-lg border px-4 py-3 {{ $checkClass }}">
+                                    <div class="flex items-start gap-3">
+                                        <span class="mt-1.5 h-2 w-2 flex-none rounded-full bg-current" aria-hidden="true"></span>
+                                        <div class="min-w-0">
+                                            <p class="break-words font-mono text-xs font-semibold">{{ (string) ($check['id'] ?? __('admin.common.none')) }}</p>
+                                            <p class="mt-1 break-words text-sm leading-5">{{ (string) ($check['message'] ?? __('admin.common.none')) }}</p>
+                                        </div>
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
             @else
                 <div class="border-t border-gray-100 px-6 py-5">
                     <p class="text-sm font-medium text-gray-700">{{ __('admin.system_updates.updater.not_available') }}</p>

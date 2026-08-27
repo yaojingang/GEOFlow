@@ -59,6 +59,39 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ]);
     }
 
+    public function test_degraded_updater_renders_each_doctor_check_with_its_message(): void
+    {
+        $this->app->instance(AgentClient::class, new class implements AgentClient
+        {
+            public function status(): array
+            {
+                return [
+                    'schema_version' => 1,
+                    'status' => 'warn',
+                    'instance' => [
+                        'id' => 'primary',
+                        'version' => '2.4.0',
+                        'release_sequence' => 17,
+                    ],
+                    'checks' => [
+                        ['id' => 'docker-compose', 'status' => 'fail', 'message' => 'Docker Compose v2 is unavailable.'],
+                        ['id' => 'control-token', 'status' => 'pass', 'message' => 'Control token permissions are restricted.'],
+                    ],
+                    'updater_version' => '0.1.0',
+                ];
+            }
+        });
+
+        $this->actingAs($this->createAdmin('degraded_updater_admin'), 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.updater.status.degraded'))
+            ->assertSee(__('admin.system_updates.updater.checks'))
+            ->assertSee('docker-compose')
+            ->assertSee('Docker Compose v2 is unavailable.')
+            ->assertSee('Control token permissions are restricted.');
+    }
+
     public function test_disconnected_updater_shows_safe_package_preparation_action(): void
     {
         $this->app->instance(AgentClient::class, new class implements AgentClient

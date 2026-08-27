@@ -77,6 +77,13 @@ return [
             'instance' => '受管实例',
             'release' => '受管网站版本',
             'doctor' => '环境诊断',
+            'checks' => '诊断明细',
+            'doctor_status' => [
+                'pass' => '正常',
+                'warn' => '存在警告',
+                'fail' => '检查失败',
+                'unavailable' => '不可用',
+            ],
             'not_available' => '尚未安装或服务未启动。',
             'legacy_title' => '兼容更新能力',
             'legacy_description' => 'A 批期间保留原有更新计划、备份和执行入口，完成 B、C 批迁移后移除。',

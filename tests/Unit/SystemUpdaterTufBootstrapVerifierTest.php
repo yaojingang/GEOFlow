@@ -17,6 +17,7 @@ class SystemUpdaterTufBootstrapVerifierTest extends TestCase
         );
 
         $this->assertSame('0.1.0', $manifest['updater_version']);
+        $this->assertSame(17, $manifest['release_sequence']);
         $this->assertArrayHasKey('linux-amd64', $manifest['assets']);
     }
 
@@ -53,6 +54,7 @@ class SystemUpdaterTufBootstrapVerifierTest extends TestCase
                     ],
                 ],
                 'expires' => '2028-08-25T00:00:00Z',
+                'release_sequence' => 17,
                 'schema_version' => 1,
                 'updater_version' => '0.1.0',
             ],
@@ -115,6 +117,7 @@ class SystemUpdaterTufBootstrapVerifierTest extends TestCase
                 ],
             ],
             'expires' => '2099-01-01T00:00:00Z',
+            'release_sequence' => 17,
             'schema_version' => 1,
             'updater_version' => '0.1.0',
         ];

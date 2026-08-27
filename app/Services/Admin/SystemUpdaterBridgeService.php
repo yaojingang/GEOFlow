@@ -19,8 +19,10 @@ class SystemUpdaterBridgeService
     {
         try {
             $status = $this->agentClient->status();
-            $doctorStatus = (string) ($status['status'] ?? 'fail');
-            $connection = in_array($doctorStatus, ['pass', 'warn'], true) ? 'connected' : 'degraded';
+            $doctorStatus = in_array($status['status'] ?? null, ['pass', 'warn', 'fail'], true)
+                ? (string) $status['status']
+                : 'fail';
+            $connection = $doctorStatus === 'pass' ? 'connected' : 'degraded';
 
             return [
                 'connection' => $connection,

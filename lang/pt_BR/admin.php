@@ -78,6 +78,13 @@ return array_replace_recursive($base, [
             'instance' => 'Instância',
             'release' => 'Release gerenciada',
             'doctor' => 'Diagnóstico',
+            'checks' => 'Detalhes do diagnóstico',
+            'doctor_status' => [
+                'pass' => 'Saudável',
+                'warn' => 'Alertas encontrados',
+                'fail' => 'Falha nas verificações',
+                'unavailable' => 'Indisponível',
+            ],
             'not_available' => 'O atualizador ainda não está instalado ou o serviço não está em execução.',
             'legacy_title' => 'Controles de atualização compatíveis',
             'legacy_description' => 'A Fase A mantém os controles atuais de planejamento, backup e execução. Eles serão removidos após a migração das Fases B e C.',

@@ -77,6 +77,13 @@ return [
             'instance' => 'Managed instance',
             'release' => 'Managed website version',
             'doctor' => 'Environment doctor',
+            'checks' => 'Diagnostic details',
+            'doctor_status' => [
+                'pass' => 'Healthy',
+                'warn' => 'Warnings found',
+                'fail' => 'Checks failed',
+                'unavailable' => 'Unavailable',
+            ],
             'not_available' => 'The updater is not installed or its service is not running.',
             'legacy_title' => 'Compatibility update controls',
             'legacy_description' => 'Phase A keeps the existing planning, backup, and execution controls. They are removed after the Phase B and C migration.',

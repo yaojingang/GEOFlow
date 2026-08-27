@@ -89,9 +89,12 @@ class TufBootstrapVerifier
      */
     private function validateManifest(array $manifest): void
     {
-        $this->assertExactKeys($manifest, ['assets', 'expires', 'schema_version', 'updater_version'], 'bootstrap manifest');
+        $this->assertExactKeys($manifest, ['assets', 'expires', 'release_sequence', 'schema_version', 'updater_version'], 'bootstrap manifest');
         if (($manifest['schema_version'] ?? null) !== 1) {
             throw new RuntimeException('Bootstrap manifest schema is unsupported.');
+        }
+        if (! is_int($manifest['release_sequence'] ?? null) || $manifest['release_sequence'] < 1) {
+            throw new RuntimeException('Bootstrap release sequence is invalid.');
         }
         $version = $manifest['updater_version'] ?? null;
         if (! is_string($version) || ! preg_match('/\A[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?\z/', $version)) {
