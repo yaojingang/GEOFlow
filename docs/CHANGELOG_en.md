@@ -4,13 +4,20 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## Unreleased
 
+- Completed the Phase B independent updater integration:
+  - The System Update Center now provides safe update, full backup, environment verification, and one-click recovery-point rollback actions. Sensitive actions require a super administrator to confirm the current password.
+  - The page displays the durable operation ID, current stage, stage results, and recent recovery points. It refreshes while work is active and blocks concurrent submissions.
+  - The website starts operations through a fixed typed Unix-socket API that accepts no arbitrary commands or file paths.
+  - Before migrations or release activation, the updater backs up PostgreSQL, complete site storage, environment configuration, the version document, and managed deployment state. Protected-stage failures trigger restoration and verification.
+  - Recovery points record digest, size, mode, and ownership after writing and complete full verification before restoration. The newest five are retained by default.
+  - Existing update planning, file backup, and execution controls remain available during Phase B compatibility. Phase C removes them after stability verification.
 - Added the Phase A independent updater bridge:
   - The System Update Center now shows GEOFlow Updater connection status and environment diagnostics, and can prepare and privately download a signed installer.
   - Installer preparation verifies the embedded two-of-three offline root, targets-role signature, platform, size, and SHA-256. Downloads use the shared safe outbound gateway.
   - Private installer state retains the signed expiry and revalidates file type, path, size, and digest on download. Symlinks, expired state, and modified files are rejected.
   - The website reads updater status through an instance-authenticated local Unix socket and does not mount the Docker socket.
   - Initial managed handover loads both site and signed-release environment files, stops the standard production project before attaching its database directory, and calls out queue draining and the maintenance window.
-  - Phase A keeps the existing update planning, backup, and execution controls. Phases B and C will migrate transactional updates, automatic backups, verification, and rollback before those controls are removed.
+  - Phase A establishes the installer, trust, and connection foundation used by Phase B transactional operations.
 
 ## 2026-08-09
 

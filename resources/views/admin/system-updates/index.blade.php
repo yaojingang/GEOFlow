@@ -31,6 +31,12 @@
         $updaterInstance = is_array($updaterBridge['instance'] ?? null) ? $updaterBridge['instance'] : [];
         $updaterChecks = is_array($updaterBridge['checks'] ?? null) ? array_values(array_filter($updaterBridge['checks'], 'is_array')) : [];
         $updaterDoctorStatus = (string) ($updaterBridge['doctor_status'] ?? 'unavailable');
+        $updaterOperationsAvailable = !empty($updaterBridge['operations_available']);
+        $updaterOperation = is_array($updaterBridge['current_operation'] ?? null) ? $updaterBridge['current_operation'] : [];
+        $updaterOperationStages = is_array($updaterOperation['stages'] ?? null) ? array_values(array_filter($updaterOperation['stages'], 'is_array')) : [];
+        $updaterOperationStatus = (string) ($updaterOperation['status'] ?? '');
+        $updaterOperationActive = in_array($updaterOperationStatus, ['queued', 'running'], true);
+        $updaterRecoveryPoints = is_array($updaterBridge['recovery_points'] ?? null) ? array_values(array_filter($updaterBridge['recovery_points'], 'is_array')) : [];
         $preparedUpdater = is_array($updaterBridge['prepared'] ?? null) ? $updaterBridge['prepared'] : [];
         $updaterHostRoot = (string) config('geoflow.updater_host_root');
         $updaterEnrollRoot = $updaterHostRoot !== '' ? $updaterHostRoot : '/absolute/path/to/GEOFlow';
@@ -184,6 +190,140 @@
                         <dd class="mt-1 text-sm font-semibold text-gray-900">{{ __('admin.system_updates.updater.doctor_status.'.$updaterDoctorStatus) }}</dd>
                     </div>
                 </dl>
+                @if($updaterOperationsAvailable)
+                    <div class="border-t border-gray-200 px-6 py-5">
+                        <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                            <div class="max-w-2xl">
+                                <h3 class="text-base font-semibold text-gray-900">{{ __('admin.system_updates.updater.operations_title') }}</h3>
+                                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.operations_hint') }}</p>
+                            </div>
+                            <div class="grid gap-3 sm:grid-cols-2 xl:flex xl:flex-wrap xl:justify-end">
+                                <form method="POST" action="{{ route('admin.system-updates.updater.update') }}" class="flex flex-col gap-2 sm:min-w-56">
+                                    @csrf
+                                    @if($passwordRequired)
+                                        <label class="sr-only" for="updater-update-password">{{ __('admin.system_updates.label.current_admin_password') }}</label>
+                                        <input id="updater-update-password" type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($updaterOperationActive || $updaterConnection !== 'connected') class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
+                                    @endif
+                                    <button type="submit" @disabled($updaterOperationActive || $updaterConnection !== 'connected') class="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                                        <i data-lucide="rocket" class="mr-2 h-4 w-4"></i>
+                                        {{ __('admin.system_updates.updater.action.update') }}
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ route('admin.system-updates.updater.backup') }}" class="flex flex-col gap-2 sm:min-w-56">
+                                    @csrf
+                                    @if($passwordRequired)
+                                        <label class="sr-only" for="updater-backup-password">{{ __('admin.system_updates.label.current_admin_password') }}</label>
+                                        <input id="updater-backup-password" type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($updaterOperationActive || $updaterConnection !== 'connected') class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
+                                    @endif
+                                    <button type="submit" @disabled($updaterOperationActive || $updaterConnection !== 'connected') class="inline-flex min-h-10 items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
+                                        <i data-lucide="archive" class="mr-2 h-4 w-4"></i>
+                                        {{ __('admin.system_updates.updater.action.backup') }}
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ route('admin.system-updates.updater.verify') }}" class="sm:min-w-56">
+                                    @csrf
+                                    <button type="submit" @disabled($updaterOperationActive) class="inline-flex min-h-10 w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
+                                        <i data-lucide="shield-check" class="mr-2 h-4 w-4"></i>
+                                        {{ __('admin.system_updates.updater.action.verify') }}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        @if($updaterOperation !== [])
+                            @php
+                                $operationStatusClass = match ($updaterOperationStatus) {
+                                    'succeeded' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+                                    'rolled_back' => 'border-amber-200 bg-amber-50 text-amber-800',
+                                    'failed' => 'border-red-200 bg-red-50 text-red-800',
+                                    default => 'border-blue-200 bg-blue-50 text-blue-800',
+                                };
+                            @endphp
+                            <div class="mt-5 rounded-lg border p-4 {{ $operationStatusClass }}">
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <p class="text-sm font-semibold">
+                                            {{ __('admin.system_updates.updater.operation_kind.'.(string) ($updaterOperation['kind'] ?? 'verify')) }}
+                                            · {{ __('admin.system_updates.updater.operation_status.'.$updaterOperationStatus) }}
+                                        </p>
+                                        <p class="mt-1 break-all font-mono text-xs opacity-80">{{ (string) ($updaterOperation['id'] ?? '') }}</p>
+                                    </div>
+                                    @if(filled($updaterOperation['current_stage'] ?? null))
+                                        <span class="rounded-full border border-current/20 bg-white/60 px-3 py-1 text-xs font-semibold">
+                                            {{ __('admin.system_updates.updater.current_stage') }}: {{ __('admin.system_updates.updater.stage_name.'.(string) $updaterOperation['current_stage']) }}
+                                        </span>
+                                    @endif
+                                </div>
+                                @if($updaterOperationStages !== [])
+                                    <ol class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                        @foreach($updaterOperationStages as $stage)
+                                            @php
+                                                $stageName = (string) ($stage['name'] ?? 'verify');
+                                            @endphp
+                                            <li class="rounded-md border border-current/15 bg-white/60 px-3 py-2">
+                                                <p class="text-xs font-semibold">{{ __('admin.system_updates.updater.stage_name.'.$stageName) }}</p>
+                                                <p class="mt-1 text-xs opacity-80">{{ __('admin.system_updates.updater.stage_status.'.(string) ($stage['status'] ?? 'running')) }}</p>
+                                                @if(filled($stage['message'] ?? null) && ($stage['name'] ?? null) !== 'backup')
+                                                    <p class="mt-1 break-words text-xs leading-5">{{ (string) $stage['message'] }}</p>
+                                                @endif
+                                            </li>
+                                        @endforeach
+                                    </ol>
+                                @endif
+                                @if(filled($updaterOperation['error'] ?? null))
+                                    <p class="mt-3 break-words text-sm leading-6">{{ (string) $updaterOperation['error'] }}</p>
+                                @endif
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="border-t border-gray-200 px-6 py-5">
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900">{{ __('admin.system_updates.updater.recovery_title') }}</h3>
+                            <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.recovery_hint') }}</p>
+                        </div>
+                        @if($updaterRecoveryPoints === [])
+                            <p class="mt-4 rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">{{ __('admin.system_updates.updater.no_recovery_points') }}</p>
+                        @else
+                            <div class="mt-4 space-y-3">
+                                @foreach($updaterRecoveryPoints as $recoveryPoint)
+                                    @php
+                                        $recoveryReason = (string) ($recoveryPoint['reason'] ?? '');
+                                        $recoveryReasonLabel = match (true) {
+                                            $recoveryReason === 'manual-backup' => __('admin.system_updates.updater.recovery_reason.manual'),
+                                            str_starts_with($recoveryReason, 'update-to-') => __('admin.system_updates.updater.recovery_reason.update', ['version' => substr($recoveryReason, 10)]),
+                                            default => $recoveryReason,
+                                        };
+                                    @endphp
+                                    <div class="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50/70 p-4 lg:flex-row lg:items-center lg:justify-between">
+                                        <div class="min-w-0">
+                                            <p class="break-all font-mono text-sm font-semibold text-gray-900">{{ (string) ($recoveryPoint['id'] ?? '') }}</p>
+                                            <p class="mt-1 text-xs text-gray-500">
+                                                v{{ (string) ($recoveryPoint['version'] ?? '') }} · {{ (string) ($recoveryPoint['created_at'] ?? '') }} · {{ $recoveryReasonLabel }}
+                                            </p>
+                                        </div>
+                                        <form method="POST" action="{{ route('admin.system-updates.updater.rollback') }}" class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                            @csrf
+                                            <input type="hidden" name="recovery_point_id" value="{{ (string) ($recoveryPoint['id'] ?? '') }}">
+                                            @if($passwordRequired)
+                                                <label class="sr-only" for="rollback-password-{{ $loop->index }}">{{ __('admin.system_updates.label.current_admin_password') }}</label>
+                                                <input id="rollback-password-{{ $loop->index }}" type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($updaterOperationActive) class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-red-500 focus:ring-red-500 disabled:cursor-not-allowed disabled:bg-gray-100 sm:w-48">
+                                            @endif
+                                            <button type="submit" @disabled($updaterOperationActive) class="inline-flex min-h-10 items-center justify-center rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
+                                                <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
+                                                {{ __('admin.system_updates.updater.action.rollback') }}
+                                            </button>
+                                        </form>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                @else
+                    <div class="border-t border-amber-200 bg-amber-50 px-6 py-4 text-sm leading-6 text-amber-800">
+                        {{ __('admin.system_updates.updater.operations_unavailable') }}
+                    </div>
+                @endif
                 @if($updaterChecks !== [])
                     <div class="border-t border-gray-200 px-6 py-5">
                         <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.updater.checks') }}</h3>
@@ -243,6 +383,12 @@ sudo geoflow-updater doctor --instance primary</code></pre>
                 </div>
             @endif
         </section>
+
+        @if($updaterOperationActive)
+            <script>
+                window.setTimeout(() => window.location.reload(), 5000);
+            </script>
+        @endif
 
         <div class="mb-4">
             <h2 class="text-base font-semibold text-gray-900">{{ __('admin.system_updates.updater.legacy_title') }}</h2>

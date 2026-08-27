@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Contracts\SystemUpdater\AgentClient;
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessSystemUpdateApplyJob;
 use App\Jobs\ProcessSystemUpdateRollbackJob;
@@ -84,6 +85,56 @@ class SystemUpdateController extends Controller
                 'Content-Type' => 'application/gzip',
                 'X-Content-Type-Options' => 'nosniff',
             ],
+        );
+    }
+
+    public function updaterUpdate(Request $request, AgentClient $agentClient): RedirectResponse
+    {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+        $this->validateAdminPassword($request);
+
+        return $this->startUpdaterOperation(
+            fn (): array => $agentClient->startUpdate(),
+            'update',
+        );
+    }
+
+    public function updaterBackup(Request $request, AgentClient $agentClient): RedirectResponse
+    {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+        $this->validateAdminPassword($request);
+
+        return $this->startUpdaterOperation(
+            fn (): array => $agentClient->startBackup(),
+            'backup',
+        );
+    }
+
+    public function updaterRollback(Request $request, AgentClient $agentClient): RedirectResponse
+    {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+        $this->validateAdminPassword($request);
+        $validated = $request->validate([
+            'recovery_point_id' => ['required', 'regex:/\A[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}\z/'],
+        ]);
+
+        return $this->startUpdaterOperation(
+            fn (): array => $agentClient->startRollback((string) $validated['recovery_point_id']),
+            'rollback',
+        );
+    }
+
+    public function updaterVerify(AgentClient $agentClient): RedirectResponse
+    {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+
+        return $this->startUpdaterOperation(
+            fn (): array => $agentClient->startVerify(),
+            'verify',
         );
     }
 
@@ -471,6 +522,27 @@ class SystemUpdateController extends Controller
                 'current_admin_password' => __('admin.system_updates.error.admin_password_invalid'),
             ]);
         }
+    }
+
+    /** @param  \Closure(): array<string, mixed>  $start */
+    private function startUpdaterOperation(\Closure $start, string $kind): RedirectResponse
+    {
+        try {
+            $operation = $start();
+        } catch (\Throwable $exception) {
+            return redirect()
+                ->route('admin.system-updates.index')
+                ->withErrors([__('admin.system_updates.updater.operation_failed', [
+                    'message' => $exception->getMessage(),
+                ])]);
+        }
+
+        return redirect()
+            ->route('admin.system-updates.index')
+            ->with('message', __('admin.system_updates.updater.operation_started', [
+                'operation' => __('admin.system_updates.updater.operation_kind.'.$kind),
+                'id' => (string) ($operation['id'] ?? ''),
+            ]));
     }
 
     private function dispatchQueuedRun(SystemUpdateRun $run): void

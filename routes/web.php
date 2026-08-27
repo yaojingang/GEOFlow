@@ -112,6 +112,18 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('updater/download', [SystemUpdateController::class, 'downloadUpdater'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.download');
+            Route::post('updater/update', [SystemUpdateController::class, 'updaterUpdate'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.update');
+            Route::post('updater/backup', [SystemUpdateController::class, 'updaterBackup'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.backup');
+            Route::post('updater/rollback', [SystemUpdateController::class, 'updaterRollback'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.rollback');
+            Route::post('updater/verify', [SystemUpdateController::class, 'updaterVerify'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.verify');
             Route::post('check', [SystemUpdateController::class, 'check'])->name('check');
             Route::get('runs/status', [SystemUpdateController::class, 'runsStatus'])->name('runs.status');
             Route::get('runs/{runUuid}', [SystemUpdateController::class, 'runShow'])->name('runs.show');

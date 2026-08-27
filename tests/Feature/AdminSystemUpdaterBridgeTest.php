@@ -27,7 +27,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
 
     public function test_super_admin_sees_connected_updater_status_before_legacy_controls(): void
     {
-        $this->app->instance(AgentClient::class, new class implements AgentClient
+        $this->app->instance(AgentClient::class, new class extends AgentClientStub
         {
             public function status(): array
             {
@@ -61,7 +61,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
 
     public function test_degraded_updater_renders_each_doctor_check_with_its_message(): void
     {
-        $this->app->instance(AgentClient::class, new class implements AgentClient
+        $this->app->instance(AgentClient::class, new class extends AgentClientStub
         {
             public function status(): array
             {
@@ -94,7 +94,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
 
     public function test_disconnected_updater_shows_safe_package_preparation_action(): void
     {
-        $this->app->instance(AgentClient::class, new class implements AgentClient
+        $this->app->instance(AgentClient::class, new class extends AgentClientStub
         {
             public function status(): array
             {
@@ -128,7 +128,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
     public function test_prepared_package_exposes_a_private_download_entry(): void
     {
         config(['geoflow.updater_host_root' => '/opt/geoflow']);
-        $this->app->instance(AgentClient::class, new class implements AgentClient
+        $this->app->instance(AgentClient::class, new class extends AgentClientStub
         {
             public function status(): array
             {
@@ -206,6 +206,122 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ->assertSessionHasErrors();
     }
 
+    public function test_connected_updater_shows_transaction_controls_operation_progress_and_recovery_points(): void
+    {
+        $client = new AgentClientStub;
+        $client->current = [
+            'schema_version' => 1,
+            'id' => '20260827T123456.000000000Z-0011223344556677',
+            'instance_id' => 'primary',
+            'kind' => 'update',
+            'status' => 'running',
+            'current_stage' => 'backup',
+            'stages' => [
+                ['name' => 'quiesce', 'status' => 'succeeded', 'updated_at' => '2026-08-27T12:35:00Z'],
+                ['name' => 'backup', 'status' => 'running', 'updated_at' => '2026-08-27T12:35:01Z'],
+            ],
+            'started_at' => '2026-08-27T12:34:56Z',
+        ];
+        $client->points = [[
+            'schema_version' => 1,
+            'id' => '20260827T120000Z-1234abcd',
+            'instance_id' => 'primary',
+            'reason' => 'update-to-2.5.0',
+            'created_at' => '2026-08-27T12:00:00Z',
+            'version' => '2.4.0',
+            'release_sequence' => 17,
+        ]];
+        $this->app->instance(AgentClient::class, $client);
+
+        $response = $this->actingAs($this->createAdmin('phase_b_view_admin'), 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee(route('admin.system-updates.updater.update'), false)
+            ->assertSee(route('admin.system-updates.updater.backup'), false)
+            ->assertSee(route('admin.system-updates.updater.verify'), false)
+            ->assertSee(route('admin.system-updates.updater.rollback'), false)
+            ->assertSee('backup')
+            ->assertSee('20260827T120000Z-1234abcd');
+
+    }
+
+    public function test_super_admin_can_start_a_transactional_update_after_password_confirmation(): void
+    {
+        $client = new AgentClientStub;
+        $this->app->instance(AgentClient::class, $client);
+
+        $this->actingAs($this->createAdmin('phase_b_update_admin'), 'admin')
+            ->post(route('admin.system-updates.updater.update'), [
+                'current_admin_password' => 'secret-123',
+            ])
+            ->assertRedirect(route('admin.system-updates.index'));
+
+        $this->assertSame(1, $client->updates);
+    }
+
+    public function test_transactional_update_rejects_an_invalid_admin_password(): void
+    {
+        $client = new AgentClientStub;
+        $this->app->instance(AgentClient::class, $client);
+
+        $this->actingAs($this->createAdmin('phase_b_password_admin'), 'admin')
+            ->post(route('admin.system-updates.updater.update'), [
+                'current_admin_password' => 'incorrect',
+            ])
+            ->assertSessionHasErrors('current_admin_password');
+
+        $this->assertSame(0, $client->updates);
+    }
+
+    public function test_super_admin_can_start_a_one_click_rollback_to_a_valid_recovery_point(): void
+    {
+        $client = new AgentClientStub;
+        $this->app->instance(AgentClient::class, $client);
+        $recoveryPointId = '20260827T120000Z-1234abcd';
+
+        $this->actingAs($this->createAdmin('phase_b_rollback_admin'), 'admin')
+            ->post(route('admin.system-updates.updater.rollback'), [
+                'current_admin_password' => 'secret-123',
+                'recovery_point_id' => $recoveryPointId,
+            ])
+            ->assertRedirect(route('admin.system-updates.index'));
+
+        $this->assertSame([$recoveryPointId], $client->rollbacks);
+    }
+
+    public function test_super_admin_can_start_a_manual_backup_and_verification(): void
+    {
+        $client = new AgentClientStub;
+        $admin = $this->createAdmin('phase_b_backup_admin');
+        $this->app->instance(AgentClient::class, $client);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.updater.backup'), [
+                'current_admin_password' => 'secret-123',
+            ])
+            ->assertRedirect(route('admin.system-updates.index'));
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.updater.verify'))
+            ->assertRedirect(route('admin.system-updates.index'));
+
+        $this->assertSame(1, $client->backups);
+        $this->assertSame(1, $client->verifications);
+    }
+
+    public function test_standard_admin_cannot_start_updater_operations(): void
+    {
+        $client = new AgentClientStub;
+        $this->app->instance(AgentClient::class, $client);
+
+        $this->actingAs($this->createAdmin('phase_b_standard_admin', 'admin'), 'admin')
+            ->post(route('admin.system-updates.updater.update'), [
+                'current_admin_password' => 'secret-123',
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(0, $client->updates);
+    }
+
     private function createAdmin(string $username = 'system_updater_admin', string $role = 'super_admin'): Admin
     {
         return Admin::query()->create([
@@ -216,5 +332,86 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             'role' => $role,
             'status' => 'active',
         ]);
+    }
+}
+
+class AgentClientStub implements AgentClient
+{
+    public int $updates = 0;
+
+    public int $backups = 0;
+
+    public int $verifications = 0;
+
+    /** @var list<string> */
+    public array $rollbacks = [];
+
+    /** @var array<string, mixed>|null */
+    public ?array $current = null;
+
+    /** @var list<array<string, mixed>> */
+    public array $points = [];
+
+    public function status(): array
+    {
+        return [
+            'schema_version' => 1,
+            'status' => 'pass',
+            'instance' => ['id' => 'primary', 'version' => '2.4.0', 'release_sequence' => 17],
+            'checks' => [],
+            'updater_version' => '0.2.0',
+        ];
+    }
+
+    public function startUpdate(): array
+    {
+        $this->updates++;
+
+        return $this->queuedOperation('update');
+    }
+
+    public function startBackup(): array
+    {
+        $this->backups++;
+
+        return $this->queuedOperation('backup');
+    }
+
+    public function startRollback(string $recoveryPointId): array
+    {
+        $this->rollbacks[] = $recoveryPointId;
+
+        return $this->queuedOperation('rollback');
+    }
+
+    public function startVerify(): array
+    {
+        $this->verifications++;
+
+        return $this->queuedOperation('verify');
+    }
+
+    public function currentOperation(): ?array
+    {
+        return $this->current;
+    }
+
+    public function recoveryPoints(): array
+    {
+        return $this->points;
+    }
+
+    /** @return array<string, mixed> */
+    private function queuedOperation(string $kind): array
+    {
+        return [
+            'schema_version' => 1,
+            'id' => '20260827T123456.000000000Z-0011223344556677',
+            'instance_id' => 'primary',
+            'kind' => $kind,
+            'status' => 'queued',
+            'stages' => [],
+            'started_at' => '2026-08-27T12:34:56Z',
+        ];
     }
 }
