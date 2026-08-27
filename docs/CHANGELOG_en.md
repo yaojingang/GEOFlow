@@ -8,8 +8,10 @@ This document tracks user-facing updates in the public repository. For future Gi
   - The System Update Center now provides safe update, full backup, environment verification, and one-click recovery-point rollback actions. Sensitive actions require a super administrator to confirm the current password.
   - The page displays the durable operation ID, current stage, stage results, and recent recovery points. It refreshes while work is active and blocks concurrent submissions.
   - The website starts operations through a fixed typed Unix-socket API that accepts no arbitrary commands or file paths.
-  - Before migrations or release activation, the updater backs up PostgreSQL, complete site storage, environment configuration, the version document, and managed deployment state. Protected-stage failures trigger restoration and verification.
+  - Before migrations or release activation, the updater backs up PostgreSQL, complete site storage, persistent Redis data, environment configuration, the version document, and managed deployment state. Protected-stage failures trigger restoration and verification.
   - Recovery points record digest, size, mode, and ownership after writing and complete full verification before restoration. The newest five are retained by default.
+  - Interrupted operations use a durable recovery_required state and a cross-process lock for reconciliation. Both executors check the other execution path before administrator or queue mutations begin.
+  - Administrator passwords are excluded from audit payloads and failed-input flashing. Agent failures stay in server logs, and the application validates bounded Unix-socket response fields at the trust boundary.
   - Existing update planning, file backup, and execution controls remain available during Phase B compatibility. Phase C removes them after stability verification.
 - Added the Phase A independent updater bridge:
   - The System Update Center now shows GEOFlow Updater connection status and environment diagnostics, and can prepare and privately download a signed installer.
