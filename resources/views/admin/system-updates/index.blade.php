@@ -35,7 +35,7 @@
         $updaterOperation = is_array($updaterBridge['current_operation'] ?? null) ? $updaterBridge['current_operation'] : [];
         $updaterOperationStages = is_array($updaterOperation['stages'] ?? null) ? array_values(array_filter($updaterOperation['stages'], 'is_array')) : [];
         $updaterOperationStatus = (string) ($updaterOperation['status'] ?? '');
-        $updaterOperationActive = in_array($updaterOperationStatus, ['queued', 'running'], true);
+        $updaterOperationActive = in_array($updaterOperationStatus, ['queued', 'running', 'recovery_required'], true);
         $updaterRecoveryPoints = is_array($updaterBridge['recovery_points'] ?? null) ? array_values(array_filter($updaterBridge['recovery_points'], 'is_array')) : [];
         $preparedUpdater = is_array($updaterBridge['prepared'] ?? null) ? $updaterBridge['prepared'] : [];
         $updaterHostRoot = (string) config('geoflow.updater_host_root');
@@ -147,7 +147,7 @@
             </div>
         </div>
 
-        <section class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <section class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm" @if($updaterOperationActive) data-system-updater-auto-reload="5000" @endif>
             <div class="flex flex-col gap-5 px-6 py-6 lg:flex-row lg:items-start lg:justify-between">
                 <div class="max-w-2xl">
                     <div class="flex flex-wrap items-center gap-3">
@@ -202,9 +202,9 @@
                                     @csrf
                                     @if($passwordRequired)
                                         <label class="sr-only" for="updater-update-password">{{ __('admin.system_updates.label.current_admin_password') }}</label>
-                                        <input id="updater-update-password" type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($updaterOperationActive || $updaterConnection !== 'connected') class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
+                                        <input id="updater-update-password" type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($updaterOperationActive || $hasActiveUpdateRun || $updaterConnection !== 'connected') class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
                                     @endif
-                                    <button type="submit" @disabled($updaterOperationActive || $updaterConnection !== 'connected') class="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                                    <button type="submit" @disabled($updaterOperationActive || $hasActiveUpdateRun || $updaterConnection !== 'connected') class="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
                                         <i data-lucide="rocket" class="mr-2 h-4 w-4"></i>
                                         {{ __('admin.system_updates.updater.action.update') }}
                                     </button>
@@ -213,16 +213,16 @@
                                     @csrf
                                     @if($passwordRequired)
                                         <label class="sr-only" for="updater-backup-password">{{ __('admin.system_updates.label.current_admin_password') }}</label>
-                                        <input id="updater-backup-password" type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($updaterOperationActive || $updaterConnection !== 'connected') class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
+                                        <input id="updater-backup-password" type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($updaterOperationActive || $hasActiveUpdateRun || $updaterConnection !== 'connected') class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
                                     @endif
-                                    <button type="submit" @disabled($updaterOperationActive || $updaterConnection !== 'connected') class="inline-flex min-h-10 items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
+                                    <button type="submit" @disabled($updaterOperationActive || $hasActiveUpdateRun || $updaterConnection !== 'connected') class="inline-flex min-h-10 items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
                                         <i data-lucide="archive" class="mr-2 h-4 w-4"></i>
                                         {{ __('admin.system_updates.updater.action.backup') }}
                                     </button>
                                 </form>
                                 <form method="POST" action="{{ route('admin.system-updates.updater.verify') }}" class="sm:min-w-56">
                                     @csrf
-                                    <button type="submit" @disabled($updaterOperationActive) class="inline-flex min-h-10 w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
+                                    <button type="submit" @disabled($updaterOperationActive || $hasActiveUpdateRun || $updaterConnection !== 'connected') class="inline-flex min-h-10 w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
                                         <i data-lucide="shield-check" class="mr-2 h-4 w-4"></i>
                                         {{ __('admin.system_updates.updater.action.verify') }}
                                     </button>
@@ -235,6 +235,7 @@
                                 $operationStatusClass = match ($updaterOperationStatus) {
                                     'succeeded' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
                                     'rolled_back' => 'border-amber-200 bg-amber-50 text-amber-800',
+                                    'recovery_required' => 'border-red-200 bg-red-50 text-red-800',
                                     'failed' => 'border-red-200 bg-red-50 text-red-800',
                                     default => 'border-blue-200 bg-blue-50 text-blue-800',
                                 };
@@ -307,9 +308,9 @@
                                             <input type="hidden" name="recovery_point_id" value="{{ (string) ($recoveryPoint['id'] ?? '') }}">
                                             @if($passwordRequired)
                                                 <label class="sr-only" for="rollback-password-{{ $loop->index }}">{{ __('admin.system_updates.label.current_admin_password') }}</label>
-                                                <input id="rollback-password-{{ $loop->index }}" type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($updaterOperationActive) class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-red-500 focus:ring-red-500 disabled:cursor-not-allowed disabled:bg-gray-100 sm:w-48">
+                                                <input id="rollback-password-{{ $loop->index }}" type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($updaterOperationActive || $hasActiveUpdateRun || $updaterConnection !== 'connected') class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-red-500 focus:ring-red-500 disabled:cursor-not-allowed disabled:bg-gray-100 sm:w-48">
                                             @endif
-                                            <button type="submit" @disabled($updaterOperationActive) class="inline-flex min-h-10 items-center justify-center rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
+                                            <button type="submit" @disabled($updaterOperationActive || $hasActiveUpdateRun || $updaterConnection !== 'connected') class="inline-flex min-h-10 items-center justify-center rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
                                                 <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
                                                 {{ __('admin.system_updates.updater.action.rollback') }}
                                             </button>
@@ -383,12 +384,6 @@ sudo geoflow-updater doctor --instance primary</code></pre>
                 </div>
             @endif
         </section>
-
-        @if($updaterOperationActive)
-            <script>
-                window.setTimeout(() => window.location.reload(), 5000);
-            </script>
-        @endif
 
         <div class="mb-4">
             <h2 class="text-base font-semibold text-gray-900">{{ __('admin.system_updates.updater.legacy_title') }}</h2>
@@ -876,10 +871,10 @@ sudo geoflow-updater doctor --instance primary</code></pre>
                                         @if($passwordRequired)
                                             <label class="block">
                                                 <span class="sr-only">{{ __('admin.system_updates.label.current_admin_password') }}</span>
-                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($hasActiveUpdateRun) class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
+                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($hasActiveUpdateRun || $updaterOperationActive) class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
                                             </label>
                                         @endif
-                                        <button type="submit" @disabled($hasActiveUpdateRun) class="inline-flex items-center rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                                        <button type="submit" @disabled($hasActiveUpdateRun || $updaterOperationActive) class="inline-flex items-center rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-gray-300">
                                             <i data-lucide="rocket" class="mr-2 h-4 w-4"></i>
                                             {{ __('admin.system_updates.button.apply_update') }}
                                         </button>
@@ -932,7 +927,7 @@ sudo geoflow-updater doctor --instance primary</code></pre>
                             <form method="POST" action="{{ route('admin.system-updates.backup') }}">
                                 @csrf
                                 <input type="hidden" name="run_uuid" value="{{ $latestPlan->run_uuid }}">
-                                <button type="submit" @disabled($hasActiveUpdateRun) class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
+                                <button type="submit" @disabled($hasActiveUpdateRun || $updaterOperationActive) class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
                                     <i data-lucide="archive" class="mr-2 h-4 w-4"></i>
                                     {{ __('admin.system_updates.button.create_backup') }}
                                 </button>
@@ -969,10 +964,10 @@ sudo geoflow-updater doctor --instance primary</code></pre>
                                         @if($passwordRequired)
                                             <label class="block">
                                                 <span class="sr-only">{{ __('admin.system_updates.label.current_admin_password') }}</span>
-                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($hasActiveUpdateRun) class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
+                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($hasActiveUpdateRun || $updaterOperationActive) class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
                                             </label>
                                         @endif
-                                        <button type="submit" @disabled($hasActiveUpdateRun) class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400">
+                                        <button type="submit" @disabled($hasActiveUpdateRun || $updaterOperationActive) class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400">
                                             <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
                                             {{ __('admin.system_updates.button.rollback_backup') }}
                                         </button>

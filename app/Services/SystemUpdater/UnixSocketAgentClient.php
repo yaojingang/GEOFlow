@@ -16,7 +16,10 @@ class UnixSocketAgentClient implements AgentClient
         [$status, $decoded] = $this->instanceRequest('GET', 'status');
         $this->requireStatus($status, [200], $decoded, 'status');
         if ((int) ($decoded['schema_version'] ?? 0) !== 1
-            || ! in_array($decoded['status'] ?? null, ['pass', 'warn', 'fail'], true)) {
+            || ! in_array($decoded['status'] ?? null, ['pass', 'warn', 'fail'], true)
+            || ! $this->boundedString($decoded['updater_version'] ?? null, 100)
+            || ! $this->validStatusInstance($decoded['instance'] ?? null)
+            || ! $this->validChecks($decoded['checks'] ?? null)) {
             throw new RuntimeException('Updater returned an unsupported status response.');
         }
 
@@ -85,9 +88,11 @@ class UnixSocketAgentClient implements AgentClient
                 || (int) ($point['schema_version'] ?? 0) !== 1
                 || preg_match('/\A[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}\z/', (string) ($point['id'] ?? '')) !== 1
                 || ($point['instance_id'] ?? null) !== $instanceId
-                || ! is_string($point['created_at'] ?? null)
-                || ! is_string($point['version'] ?? null)
-                || (int) ($point['release_sequence'] ?? 0) < 1) {
+                || ! $this->boundedString($point['reason'] ?? null, 255, true)
+                || ! $this->validTimestamp($point['created_at'] ?? null)
+                || ! $this->boundedString($point['version'] ?? null, 100)
+                || ! is_int($point['release_sequence'] ?? null)
+                || $point['release_sequence'] < 1) {
                 throw new RuntimeException('Updater returned an invalid recovery point.');
             }
         }
@@ -120,10 +125,14 @@ class UnixSocketAgentClient implements AgentClient
             || ($operation['instance_id'] ?? null) !== $this->instanceId()
             || ! in_array($kind, ['update', 'backup', 'rollback', 'verify'], true)
             || ($expectedKind !== null && $kind !== $expectedKind)
-            || ! in_array($status, ['queued', 'running', 'succeeded', 'failed', 'rolled_back'], true)
+            || ! in_array($status, ['queued', 'running', 'succeeded', 'failed', 'rolled_back', 'recovery_required'], true)
             || ! is_array($stages)
             || count($stages) > 100
-            || ! is_string($operation['started_at'] ?? null)) {
+            || ! $this->validTimestamp($operation['started_at'] ?? null)
+            || (array_key_exists('completed_at', $operation) && $operation['completed_at'] !== null && ! $this->validTimestamp($operation['completed_at']))
+            || (array_key_exists('target_version', $operation) && ! $this->boundedString($operation['target_version'], 100))
+            || (array_key_exists('recovery_point_id', $operation) && preg_match('/\A[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}\z/', is_string($operation['recovery_point_id']) ? $operation['recovery_point_id'] : '') !== 1)
+            || (array_key_exists('error', $operation) && ! $this->boundedString($operation['error'], 4096, true))) {
             throw new RuntimeException('Updater returned an invalid operation response.');
         }
         if (isset($operation['current_stage']) && ! in_array($operation['current_stage'], $allowedStages, true)) {
@@ -133,13 +142,60 @@ class UnixSocketAgentClient implements AgentClient
             if (! is_array($stage)
                 || ! in_array($stage['name'] ?? null, $allowedStages, true)
                 || ! in_array($stage['status'] ?? null, ['running', 'succeeded', 'failed'], true)
-                || ! is_string($stage['updated_at'] ?? null)
-                || (isset($stage['message']) && ! is_string($stage['message']))) {
+                || ! $this->validTimestamp($stage['updated_at'] ?? null)
+                || (array_key_exists('message', $stage) && ! $this->boundedString($stage['message'], 4096, true))) {
                 throw new RuntimeException('Updater returned an invalid operation stage.');
             }
         }
 
         return $operation;
+    }
+
+    private function validStatusInstance(mixed $instance): bool
+    {
+        if ($instance === null) {
+            return true;
+        }
+        if (! is_array($instance)
+            || ($instance['id'] ?? null) !== $this->instanceId()
+            || ! $this->boundedString($instance['version'] ?? null, 100)
+            || ! is_int($instance['release_sequence'] ?? null)
+            || $instance['release_sequence'] < 1) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function validChecks(mixed $checks): bool
+    {
+        if (! is_array($checks) || count($checks) > 100) {
+            return false;
+        }
+        foreach ($checks as $check) {
+            if (! is_array($check)
+                || ! $this->boundedString($check['id'] ?? null, 100)
+                || ! in_array($check['status'] ?? null, ['pass', 'warn', 'fail'], true)
+                || ! $this->boundedString($check['message'] ?? null, 4096, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function boundedString(mixed $value, int $maximum, bool $allowEmpty = false): bool
+    {
+        return is_string($value)
+            && ($allowEmpty || $value !== '')
+            && mb_strlen($value, '8bit') <= $maximum;
+    }
+
+    private function validTimestamp(mixed $value): bool
+    {
+        return is_string($value)
+            && mb_strlen($value, '8bit') <= 40
+            && preg_match('/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z\z/', $value) === 1;
     }
 
     /**
@@ -288,7 +344,10 @@ class UnixSocketAgentClient implements AgentClient
         if (in_array($status, $expected, true)) {
             return;
         }
-        $code = is_string($payload['error'] ?? null) ? $payload['error'] : 'unknown_error';
+        $code = is_string($payload['error'] ?? null)
+            && preg_match('/\A[a-z][a-z0-9_]{0,63}\z/', $payload['error']) === 1
+                ? $payload['error']
+                : 'unknown_error';
         throw new RuntimeException("Updater agent rejected the {$operation} request ({$code}).");
     }
 }

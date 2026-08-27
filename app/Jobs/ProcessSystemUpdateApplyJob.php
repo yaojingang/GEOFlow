@@ -27,7 +27,10 @@ class ProcessSystemUpdateApplyJob implements ShouldQueue
             return;
         }
 
-        $operationGuard->run(fn () => $applyService->executeQueued($run));
+        $operationGuard->run(function () use ($operationGuard, $applyService, $run): void {
+            $operationGuard->assertNoUpdaterExecution();
+            $applyService->executeQueued($run);
+        });
     }
 
     public function failed(?Throwable $exception = null): void

@@ -21,4 +21,16 @@ class AdminActivityLoggerSanitizationTest extends TestCase
         $this->assertSame('[redacted]', $payload['package_password']);
         $this->assertSame('官网主站', $payload['name']);
     }
+
+    public function test_current_admin_password_is_redacted_from_admin_activity_payload(): void
+    {
+        $method = new ReflectionMethod(AdminActivityLogger::class, 'sanitizePayload');
+        $method->setAccessible(true);
+
+        $sanitized = $method->invoke(null, [
+            'current_admin_password' => 'secret-123',
+        ]);
+
+        $this->assertSame('[redacted]', $sanitized['current_admin_password']);
+    }
 }

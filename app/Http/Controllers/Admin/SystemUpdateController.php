@@ -53,9 +53,11 @@ class SystemUpdateController extends Controller
         try {
             $prepared = $bootstrapService->prepare();
         } catch (\Throwable $exception) {
+            report($exception);
+
             return redirect()
                 ->route('admin.system-updates.index')
-                ->withErrors([__('admin.system_updates.updater.prepare_failed', ['message' => $exception->getMessage()])]);
+                ->withErrors([__('admin.system_updates.updater.prepare_failed')]);
         }
 
         return redirect()
@@ -73,9 +75,11 @@ class SystemUpdateController extends Controller
         try {
             $prepared = $bootstrapService->download();
         } catch (\Throwable $exception) {
+            report($exception);
+
             return redirect()
                 ->route('admin.system-updates.index')
-                ->withErrors([__('admin.system_updates.updater.download_failed', ['message' => $exception->getMessage()])]);
+                ->withErrors([__('admin.system_updates.updater.download_failed')]);
         }
 
         return Storage::disk('local')->download(
@@ -88,7 +92,7 @@ class SystemUpdateController extends Controller
         );
     }
 
-    public function updaterUpdate(Request $request, AgentClient $agentClient): RedirectResponse
+    public function updaterUpdate(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
@@ -97,10 +101,11 @@ class SystemUpdateController extends Controller
         return $this->startUpdaterOperation(
             fn (): array => $agentClient->startUpdate(),
             'update',
+            $operationGuard,
         );
     }
 
-    public function updaterBackup(Request $request, AgentClient $agentClient): RedirectResponse
+    public function updaterBackup(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
@@ -109,10 +114,11 @@ class SystemUpdateController extends Controller
         return $this->startUpdaterOperation(
             fn (): array => $agentClient->startBackup(),
             'backup',
+            $operationGuard,
         );
     }
 
-    public function updaterRollback(Request $request, AgentClient $agentClient): RedirectResponse
+    public function updaterRollback(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
@@ -124,10 +130,11 @@ class SystemUpdateController extends Controller
         return $this->startUpdaterOperation(
             fn (): array => $agentClient->startRollback((string) $validated['recovery_point_id']),
             'rollback',
+            $operationGuard,
         );
     }
 
-    public function updaterVerify(AgentClient $agentClient): RedirectResponse
+    public function updaterVerify(AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
@@ -135,6 +142,7 @@ class SystemUpdateController extends Controller
         return $this->startUpdaterOperation(
             fn (): array => $agentClient->startVerify(),
             'verify',
+            $operationGuard,
         );
     }
 
@@ -228,6 +236,7 @@ class SystemUpdateController extends Controller
         try {
             $operationGuard->run(function () use ($operationGuard, $backupService, $run, $request): void {
                 $operationGuard->assertNoActiveExecution();
+                $operationGuard->assertNoUpdaterExecution();
                 $backupService->createFromPlan($run, $request->user('admin'));
             });
         } catch (\Throwable $e) {
@@ -295,6 +304,7 @@ class SystemUpdateController extends Controller
         try {
             $queuedRun = $operationGuard->run(function () use ($operationGuard, $applyService, $run, $request): SystemUpdateRun {
                 $operationGuard->assertNoActiveExecution();
+                $operationGuard->assertNoUpdaterExecution();
 
                 return $applyService->queueApply($run, $request->user('admin'));
             });
@@ -356,6 +366,7 @@ class SystemUpdateController extends Controller
         try {
             $queuedRun = $operationGuard->run(function () use ($operationGuard, $rollbackService, $backup, $request): SystemUpdateRun {
                 $operationGuard->assertNoActiveExecution();
+                $operationGuard->assertNoUpdaterExecution();
 
                 return $rollbackService->queueRollback($backup, $request->user('admin'));
             });
@@ -397,6 +408,7 @@ class SystemUpdateController extends Controller
         try {
             $queuedRun = $operationGuard->run(function () use ($operationGuard, $rollbackService, $backup, $validated, $request): SystemUpdateRun {
                 $operationGuard->assertNoActiveExecution();
+                $operationGuard->assertNoUpdaterExecution();
 
                 return $rollbackService->queueRollbackFile($backup, (string) $validated['path'], $request->user('admin'));
             });
@@ -441,6 +453,7 @@ class SystemUpdateController extends Controller
         try {
             $queuedRun = $operationGuard->run(function () use ($operationGuard, $runHealthService, $run, $request, $applyService, $rollbackService): SystemUpdateRun {
                 $operationGuard->assertNoActiveExecution($run);
+                $operationGuard->assertNoUpdaterExecution();
 
                 return $this->queueRetryRun($run, $request->user('admin'), $applyService, $rollbackService, $runHealthService);
             });
@@ -525,16 +538,20 @@ class SystemUpdateController extends Controller
     }
 
     /** @param  \Closure(): array<string, mixed>  $start */
-    private function startUpdaterOperation(\Closure $start, string $kind): RedirectResponse
+    private function startUpdaterOperation(\Closure $start, string $kind, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         try {
-            $operation = $start();
+            $operation = $operationGuard->run(function () use ($operationGuard, $start): array {
+                $operationGuard->assertNoActiveExecution();
+
+                return $start();
+            });
         } catch (\Throwable $exception) {
+            report($exception);
+
             return redirect()
                 ->route('admin.system-updates.index')
-                ->withErrors([__('admin.system_updates.updater.operation_failed', [
-                    'message' => $exception->getMessage(),
-                ])]);
+                ->withErrors([__('admin.system_updates.updater.operation_failed')]);
         }
 
         return redirect()

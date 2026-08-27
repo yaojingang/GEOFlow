@@ -27,7 +27,10 @@ class ProcessSystemUpdateRollbackJob implements ShouldQueue
             return;
         }
 
-        $operationGuard->run(fn () => $rollbackService->executeQueued($run));
+        $operationGuard->run(function () use ($operationGuard, $rollbackService, $run): void {
+            $operationGuard->assertNoUpdaterExecution();
+            $rollbackService->executeQueued($run);
+        });
     }
 
     public function failed(?Throwable $exception = null): void

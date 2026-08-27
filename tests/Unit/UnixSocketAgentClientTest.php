@@ -196,4 +196,131 @@ class UnixSocketAgentClientTest extends TestCase
 
         (new UnixSocketAgentClient)->startRollback('../unsafe');
     }
+
+    public function test_it_rejects_non_scalar_status_fields_at_the_socket_boundary(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('unsupported status response');
+
+        $this->withAgentResponse([
+            'schema_version' => 1,
+            'status' => 'pass',
+            'updater_version' => ['unexpected'],
+            'checks' => [],
+        ], fn (UnixSocketAgentClient $client): array => $client->status());
+    }
+
+    public function test_it_rejects_non_scalar_recovery_point_fields_at_the_socket_boundary(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('invalid recovery point');
+
+        $this->withAgentResponse([
+            'schema_version' => 1,
+            'recovery_points' => [[
+                'schema_version' => 1,
+                'id' => '20260827T120000Z-1234abcd',
+                'instance_id' => 'primary',
+                'reason' => ['unexpected'],
+                'created_at' => '2026-08-27T12:00:00Z',
+                'version' => '2.4.0',
+                'release_sequence' => 17,
+            ]],
+        ], fn (UnixSocketAgentClient $client): array => $client->recoveryPoints());
+    }
+
+    public function test_it_rejects_non_scalar_operation_fields_at_the_socket_boundary(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('invalid operation response');
+
+        $this->withAgentResponse([
+            'schema_version' => 1,
+            'id' => '20260827T123456.000000000Z-0011223344556677',
+            'instance_id' => 'primary',
+            'kind' => 'update',
+            'status' => 'failed',
+            'stages' => [],
+            'error' => ['unexpected'],
+            'started_at' => '2026-08-27T12:34:56Z',
+            'completed_at' => '2026-08-27T12:35:56Z',
+        ], fn (UnixSocketAgentClient $client): ?array => $client->currentOperation());
+    }
+
+    public function test_it_accepts_the_durable_recovery_required_operation_status(): void
+    {
+        $operation = $this->withAgentResponse([
+            'schema_version' => 1,
+            'id' => '20260827T123456.000000000Z-0011223344556677',
+            'instance_id' => 'primary',
+            'kind' => 'rollback',
+            'status' => 'recovery_required',
+            'current_stage' => 'rollback',
+            'stages' => [[
+                'name' => 'rollback',
+                'status' => 'failed',
+                'message' => 'restore will be retried',
+                'updated_at' => '2026-08-27T12:35:00Z',
+            ]],
+            'recovery_point_id' => '20260827T120000Z-1234abcd',
+            'started_at' => '2026-08-27T12:34:56Z',
+            'completed_at' => '2026-08-27T12:35:56Z',
+        ], fn (UnixSocketAgentClient $client): ?array => $client->currentOperation());
+
+        $this->assertSame('recovery_required', $operation['status']);
+    }
+
+    /**
+     * @template T
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  callable(UnixSocketAgentClient): T  $callback
+     * @return T
+     */
+    private function withAgentResponse(array $payload, callable $callback): mixed
+    {
+        $directory = sys_get_temp_dir().'/geoflow-updater-client-'.bin2hex(random_bytes(8));
+        mkdir($directory, 0700, true);
+        $socketPath = $directory.'/agent.sock';
+        $tokenPath = $directory.'/control.token';
+        $token = str_repeat('c', 43);
+        file_put_contents($tokenPath, $token."\n");
+        chmod($tokenPath, 0640);
+        $server = stream_socket_server('unix://'.$socketPath, $errorCode, $errorMessage);
+        $this->assertIsResource($server, $errorMessage);
+        $pid = pcntl_fork();
+
+        if ($pid === 0) {
+            $connection = stream_socket_accept($server, 5);
+            if (is_resource($connection)) {
+                while (! feof($connection)) {
+                    $chunk = fread($connection, 4096);
+                    if (! is_string($chunk) || $chunk === '' || str_contains($chunk, "\r\n\r\n")) {
+                        break;
+                    }
+                }
+                $body = json_encode($payload, JSON_THROW_ON_ERROR);
+                fwrite($connection, "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: ".strlen($body)."\r\n\r\n".$body);
+                fclose($connection);
+            }
+            fclose($server);
+            exit(0);
+        }
+
+        try {
+            config([
+                'geoflow.updater_socket' => $socketPath,
+                'geoflow.updater_control_token_file' => $tokenPath,
+                'geoflow.updater_instance_id' => 'primary',
+            ]);
+
+            return $callback(new UnixSocketAgentClient);
+        } finally {
+            fclose($server);
+            pcntl_waitpid($pid, $waitStatus);
+            @unlink($socketPath);
+            @unlink($tokenPath);
+            @rmdir($directory);
+        }
+    }
 }

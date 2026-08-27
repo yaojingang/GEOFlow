@@ -64,7 +64,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn () => route('admin.dashboard'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->dontFlash(['api_key']);
+        $exceptions->dontFlash([
+            'api_key',
+            'package_password',
+            'current_password',
+            'current_admin_password',
+            'new_password',
+            'confirm_password',
+        ]);
 
         /**
          * 后台 firstOrFail 友好错误页：
