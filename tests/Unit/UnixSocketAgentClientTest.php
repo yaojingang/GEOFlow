@@ -125,6 +125,8 @@ class UnixSocketAgentClientTest extends TestCase
                     $requestBody .= $chunk;
                 }
                 $firstLine = strtok($headers, "\r\n");
+                $updateAuthorized = str_contains($headers, "X-GEOFlow-Updater-Authorization: 123456\r\n");
+                $rollbackAuthorized = str_contains($headers, "X-GEOFlow-Updater-Authorization: 234567\r\n");
                 $operation = [
                     'schema_version' => 1,
                     'id' => '20260827T123456.000000000Z-0011223344556677',
@@ -135,10 +137,11 @@ class UnixSocketAgentClientTest extends TestCase
                     'started_at' => '2026-08-27T12:34:56Z',
                 ];
                 $status = '200 OK';
-                if ($firstLine === 'POST /v1/instances/primary/updates HTTP/1.0') {
+                if ($firstLine === 'POST /v1/instances/primary/updates HTTP/1.0' && $updateAuthorized) {
                     $status = '202 Accepted';
                 } elseif ($firstLine === 'POST /v1/instances/primary/rollbacks HTTP/1.0'
-                    && $requestBody === '{"recovery_point_id":"20260827T120000Z-1234abcd"}') {
+                    && $requestBody === '{"recovery_point_id":"20260827T120000Z-1234abcd"}'
+                    && $rollbackAuthorized) {
                     $status = '202 Accepted';
                     $operation['kind'] = 'rollback';
                 } elseif ($firstLine === 'GET /v1/instances/primary/operations/current HTTP/1.0') {
@@ -176,8 +179,8 @@ class UnixSocketAgentClientTest extends TestCase
             ]);
             $client = new UnixSocketAgentClient;
 
-            $this->assertSame('update', $client->startUpdate()['kind']);
-            $this->assertSame('rollback', $client->startRollback('20260827T120000Z-1234abcd')['kind']);
+            $this->assertSame('update', $client->startUpdate('123456')['kind']);
+            $this->assertSame('rollback', $client->startRollback('20260827T120000Z-1234abcd', '234567')['kind']);
             $this->assertSame('running', $client->currentOperation()['status']);
             $this->assertSame('20260827T120000Z-1234abcd', $client->recoveryPoints()[0]['id']);
         } finally {
@@ -194,7 +197,15 @@ class UnixSocketAgentClientTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('recovery point identifier is invalid');
 
-        (new UnixSocketAgentClient)->startRollback('../unsafe');
+        (new UnixSocketAgentClient)->startRollback('../unsafe', '123456');
+    }
+
+    public function test_it_rejects_an_invalid_mutation_authorization_code_before_connecting(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('authorization code is invalid');
+
+        (new UnixSocketAgentClient)->startUpdate("123456\r\nX-Injection: yes");
     }
 
     public function test_it_rejects_non_scalar_status_fields_at_the_socket_boundary(): void

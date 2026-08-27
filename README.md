@@ -283,7 +283,7 @@ vi .env.prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml build
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres redis
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d init
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue knowledge-queue system-update-queue scheduler reverb
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue knowledge-queue scheduler reverb
 ```
 
 - 前台 / 后台统一经 `web`（Nginx）访问
@@ -321,9 +321,8 @@ php artisan serve --host=127.0.0.1 --port=8080
 另开终端启动常驻进程（每条 `queue:work` 需要独立终端或进程托管）：
 
 ```bash
-php -d memory_limit=256M artisan queue:work redis --queue=geoflow,distribution,theme-replication,default --sleep=1 --tries=1 --timeout=660 --memory=128 --max-jobs=100 --max-time=3600
+php -d memory_limit=256M artisan queue:work redis --queue=system-updates,geoflow,distribution,theme-replication,default --sleep=1 --tries=1 --timeout=660 --memory=128 --max-jobs=100 --max-time=3600
 php -d memory_limit=160M artisan queue:work redis --queue=knowledge --sleep=1 --tries=1 --timeout=210 --memory=128 --max-jobs=20 --max-time=1800
-php -d memory_limit=256M artisan queue:work redis --queue=system-updates --sleep=1 --tries=1 --timeout=930 --memory=256 --max-jobs=10 --max-time=3600
 php artisan schedule:work
 php artisan reverb:start
 ```
@@ -396,7 +395,6 @@ php artisan geoflow:admin-unlock admin
 | `app` | `php artisan serve`，映射 **`${APP_PORT:-18080}:8080`** |
 | `queue` | 文章生成、分发、主题复刻与默认队列 |
 | `knowledge-queue` | 知识库解析与向量化队列，独立内存上限 |
-| `system-update-queue` | 系统更新与回滚队列，独立长超时 |
 | `scheduler` | `schedule:work` |
 | `reverb` | WebSocket，映射 **`${REVERB_EXPOSE_PORT:-18081}:8080`** |
 

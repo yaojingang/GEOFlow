@@ -55,7 +55,7 @@ return [
     ],
     'system_updates' => [
         'page_title' => '系统更新中心',
-        'page_subtitle' => '检查 GitHub 新版本，先生成安全更新计划，再备份将被覆盖的本地文件。',
+        'page_subtitle' => '通过独立更新工具完成网站更新、完整备份和一键回滚，并保留旧更新记录供审计查询。',
         'updater' => [
             'title' => '独立更新工具',
             'description' => '由宿主机上的 GEOFlow Updater 接管镜像、备份和回滚。网站通过本地 Unix socket 查询状态并发起固定类型的安全操作。',
@@ -87,10 +87,12 @@ return [
             'not_available' => '尚未安装或服务未启动。',
             'operations_title' => '更新与备份操作',
             'operations_hint' => '更新工具会依次完成预检、镜像拉取、维护模式、完整恢复点、数据库迁移、版本切换、启动和验收。受保护阶段失败时会自动回滚。',
+            'phase_b_handover_hint' => '检测到 Phase B 遗留更新进程。签名更新交接仍可执行，并会自动清理该进程；备份和回滚会保持锁定，直至更新验收通过。',
             'operations_unavailable' => '当前工具仅支持连接诊断，请升级 GEOFlow Updater 后使用事务更新、备份和回滚。',
             'recovery_title' => '恢复点',
-            'recovery_hint' => '每个恢复点包含 PostgreSQL、站点存储、环境配置和受管部署状态，默认保留最近 5 个。回滚期间网站会进入短暂维护状态。',
+            'recovery_hint' => '每个恢复点包含 PostgreSQL、站点存储、环境配置和受管部署状态，默认保留最近 5 个。网页只允许回滚到最近一次更新前检查点，其他恢复点可由服务器管理员通过命令行处理。',
             'no_recovery_points' => '暂无可用恢复点。',
+            'history_only' => '仅供历史查看',
             'current_stage' => '当前阶段',
             'action' => [
                 'update' => '检查并安全更新',
@@ -138,8 +140,20 @@ return [
             ],
             'operation_started' => ':operation 已提交，操作编号：:id',
             'operation_failed' => '操作提交失败，请稍后重试并查看服务端日志。',
+            'authorization_label' => '6 位授权码',
+            'authorization_hint' => '请从验证器中选择与操作名称一致的条目。更新、备份和回滚各消耗一个新的 6 位授权码，使用后立即失效。',
+            'authorization_setup_title' => '需要配置人工授权',
+            'authorization_setup_hint' => '请在宿主机执行以下命令，把生成的更新、备份和回滚三个 URI 添加到受信任管理员的验证器。',
             'legacy_title' => '兼容更新能力',
             'legacy_description' => 'B 批期间保留原有更新计划、备份和执行入口，C 批完成稳定性验证后移除。',
+        ],
+        'history' => [
+            'title' => '旧更新历史',
+            'description' => '最近 :days 天记录直接展示，更早记录进入归档视图。所有旧记录均为只读。',
+            'recent' => '最近记录',
+            'archived' => '归档记录',
+            'backups' => '旧备份记录',
+            'read_only' => '该记录来自已停用的旧更新执行器，仅供查看和审计。',
         ],
         'section' => [
             'overview' => '版本总览',
@@ -233,6 +247,7 @@ return [
             'current_admin_password' => '当前管理员密码',
             'created_by' => '创建人',
             'total_bytes' => '文件大小',
+            'file_count' => '文件数量',
             'backup_uuid' => '备份 ID',
             'from_version' => '来源版本',
             'to_version' => '目标版本',
@@ -454,6 +469,7 @@ return [
             'unknown_action' => '备份清单中的动作无法识别，请人工处理。',
         ],
         'run' => [
+            'action_plan' => '更新计划',
             'action_apply' => '执行更新',
             'action_rollback' => '整包回滚',
             'action_rollback_file' => '单文件恢复',
@@ -516,6 +532,7 @@ return [
         ],
         'error' => [
             'admin_password_invalid' => '管理员密码不正确。',
+            'legacy_executor_retired' => '该任务来自已退役的站内更新执行器，已安全停止。请改用独立更新工具。',
             'execution_disabled' => '真实文件替换未开启。',
             'rollback_disabled' => '备份回滚未开启。',
             'backup_required' => '执行更新前必须先为当前计划创建备份。',

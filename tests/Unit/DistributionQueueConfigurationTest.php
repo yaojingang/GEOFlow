@@ -17,9 +17,8 @@ class DistributionQueueConfigurationTest extends TestCase
         foreach ($composeFiles as $composeFile) {
             $contents = file_get_contents($composeFile);
             $this->assertIsString($contents);
-            $this->assertStringContainsString('--queue=geoflow,distribution,theme-replication,default', $contents, basename($composeFile));
+            $this->assertStringContainsString('--queue=system-updates,geoflow,distribution,theme-replication,default', $contents, basename($composeFile));
             $this->assertStringContainsString('--queue=knowledge', $contents, basename($composeFile));
-            $this->assertStringContainsString('--queue=system-updates', $contents, basename($composeFile));
         }
     }
 
@@ -28,7 +27,7 @@ class DistributionQueueConfigurationTest extends TestCase
         $horizon = require dirname(__DIR__, 2).'/config/horizon.php';
 
         $this->assertSame(
-            ['geoflow', 'distribution', 'theme-replication', 'default'],
+            ['system-updates', 'geoflow', 'distribution', 'theme-replication', 'default'],
             $horizon['defaults']['supervisor-1']['queue'] ?? null
         );
     }
@@ -129,20 +128,21 @@ class DistributionQueueConfigurationTest extends TestCase
         );
     }
 
-    public function test_production_lifecycle_includes_dedicated_long_running_workers(): void
+    public function test_production_lifecycle_excludes_the_retired_application_update_worker(): void
     {
         $root = dirname(__DIR__, 2);
-        foreach ([
-            'README.md',
-            'docs/deployment/DEPLOYMENT.md',
-            'deploy-scripts/geoflow-docker-deploy.sh',
-            'deploy-scripts/geoflow-healthcheck.sh',
-        ] as $file) {
+        foreach (['docker-compose.yml', 'docker-compose.prod.yml', 'docker-compose.prebuilt.yml', 'config/horizon.php'] as $file) {
             $contents = file_get_contents($root.'/'.$file);
             $this->assertIsString($contents);
-            $this->assertStringContainsString('knowledge-queue', $contents, $file);
-            $this->assertStringContainsString('system-update-queue', $contents, $file);
+            $this->assertStringNotContainsString('geoflow-system-update-queue-prod', $contents, $file);
         }
+
+        $deploy = (string) file_get_contents($root.'/deploy-scripts/geoflow-docker-deploy.sh');
+        $healthcheck = (string) file_get_contents($root.'/deploy-scripts/geoflow-healthcheck.sh');
+        $this->assertStringContainsString('geoflow-system-update-queue-prod', $deploy);
+        $this->assertStringContainsString('--remove-orphans', $deploy);
+        $this->assertStringContainsString('geoflow-system-update-queue-prod', $healthcheck);
+        $this->assertStringContainsString('Retired system update worker is still present', $healthcheck);
     }
 
     public function test_queue_timeouts_preserve_retry_ordering(): void
@@ -152,7 +152,7 @@ class DistributionQueueConfigurationTest extends TestCase
         $queue = require $root.'/config/queue.php';
 
         $this->assertSame(210, $horizon['defaults']['supervisor-knowledge']['timeout']);
-        $this->assertSame(930, $horizon['defaults']['supervisor-system-updates']['timeout']);
+        $this->assertArrayNotHasKey('supervisor-system-updates', $horizon['defaults']);
         $this->assertGreaterThan(930, $queue['connections']['redis']['retry_after']);
         $this->assertGreaterThan(930, $queue['connections']['database']['retry_after']);
     }

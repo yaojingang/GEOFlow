@@ -55,7 +55,7 @@ return [
     ],
     'system_updates' => [
         'page_title' => 'System Update Center',
-        'page_subtitle' => 'Check upstream releases, generate a safe update plan, and create local backups before applying changes.',
+        'page_subtitle' => 'Use the independent updater for website updates, full backups, and one-click rollback while retaining legacy update records for audit.',
         'updater' => [
             'title' => 'Independent updater',
             'description' => 'GEOFlow Updater runs on the host and owns images, backups, and rollback. The website reads status and starts fixed safe operations through a local Unix socket.',
@@ -87,10 +87,12 @@ return [
             'not_available' => 'The updater is not installed or its service is not running.',
             'operations_title' => 'Update and backup operations',
             'operations_hint' => 'The updater runs preflight checks, pulls images, enters maintenance, creates a full recovery point, migrates, activates, resumes, and verifies. Protected-stage failures trigger automatic rollback.',
+            'phase_b_handover_hint' => 'A retired Phase B update worker was detected. The signed update handover remains available and will remove it automatically. Backup and rollback stay locked until verification passes.',
             'operations_unavailable' => 'This updater supports connection diagnostics only. Upgrade GEOFlow Updater to enable transactional updates, backups, and rollback.',
             'recovery_title' => 'Recovery points',
-            'recovery_hint' => 'Each recovery point includes PostgreSQL, site storage, environment configuration, and managed deployment state. The newest five are retained by default. Rollback briefly enters maintenance mode.',
+            'recovery_hint' => 'Each recovery point includes PostgreSQL, site storage, environment configuration, and managed deployment state. The website can roll back only to the newest pre-update checkpoint; server administrators can handle other points through the CLI.',
             'no_recovery_points' => 'No recovery points are available.',
+            'history_only' => 'History only',
             'current_stage' => 'Current stage',
             'action' => [
                 'update' => 'Check and safely update',
@@ -138,8 +140,20 @@ return [
             ],
             'operation_started' => ':operation started. Operation ID: :id',
             'operation_failed' => 'Could not start the operation. Try again and check the server logs.',
+            'authorization_label' => '6-digit authorization code',
+            'authorization_hint' => 'Choose the authenticator entry matching the operation name. Updates, backups, and rollbacks each consume a fresh six-digit code.',
+            'authorization_setup_title' => 'Human authorization setup required',
+            'authorization_setup_hint' => 'Run this command on the host and add its update, backup, and rollback URIs to a trusted administrator\'s authenticator.',
             'legacy_title' => 'Compatibility update controls',
             'legacy_description' => 'Phase B keeps the existing planning, backup, and execution controls. Phase C removes them after stability verification.',
+        ],
+        'history' => [
+            'title' => 'Legacy update history',
+            'description' => 'Records from the last :days days appear here. Older records remain available in the archive view. Every legacy record is read-only.',
+            'recent' => 'Recent records',
+            'archived' => 'Archived records',
+            'backups' => 'Legacy backup records',
+            'read_only' => 'This record came from the retired legacy executor and is available for viewing and audit only.',
         ],
         'section' => [
             'overview' => 'Version Overview',
@@ -233,6 +247,7 @@ return [
             'current_admin_password' => 'Current admin password',
             'created_by' => 'Created by',
             'total_bytes' => 'Total bytes',
+            'file_count' => 'File count',
             'backup_uuid' => 'Backup ID',
             'from_version' => 'From version',
             'to_version' => 'To version',
@@ -454,6 +469,7 @@ return [
             'unknown_action' => 'The action in the backup manifest is unknown. Handle it manually.',
         ],
         'run' => [
+            'action_plan' => 'Update plan',
             'action_apply' => 'Apply update',
             'action_rollback' => 'Full rollback',
             'action_rollback_file' => 'Single-file restore',
@@ -516,6 +532,7 @@ return [
         ],
         'error' => [
             'admin_password_invalid' => 'The administrator password is incorrect.',
+            'legacy_executor_retired' => 'This task came from the retired in-app executor and was safely stopped. Use the independent updater.',
             'execution_disabled' => 'Real file replacement is not enabled.',
             'rollback_disabled' => 'Backup rollback is not enabled.',
             'backup_required' => 'Create a backup for the current plan before applying the update.',

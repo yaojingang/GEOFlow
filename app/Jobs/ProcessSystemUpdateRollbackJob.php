@@ -3,12 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\SystemUpdateRun;
-use App\Services\Admin\SystemUpdateOperationGuard;
-use App\Services\Admin\SystemUpdateRollbackService;
-use App\Services\Admin\SystemUpdateRunProgressService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Throwable;
 
 class ProcessSystemUpdateRollbackJob implements ShouldQueue
 {
@@ -20,35 +16,26 @@ class ProcessSystemUpdateRollbackJob implements ShouldQueue
 
     public function __construct(public readonly int $runId) {}
 
-    public function handle(SystemUpdateRollbackService $rollbackService, SystemUpdateOperationGuard $operationGuard): void
+    public function handle(): void
     {
-        $run = SystemUpdateRun::query()->whereKey($this->runId)->first();
-        if (! $run) {
-            return;
-        }
-
-        $operationGuard->run(function () use ($operationGuard, $rollbackService, $run): void {
-            $operationGuard->assertNoUpdaterExecution();
-            $rollbackService->executeQueued($run);
-        });
+        $this->retireRun();
     }
 
-    public function failed(?Throwable $exception = null): void
+    public function failed(): void
+    {
+        $this->retireRun();
+    }
+
+    private function retireRun(): void
     {
         $run = SystemUpdateRun::query()->whereKey($this->runId)->first();
         if (! $run || in_array((string) $run->status, ['succeeded', 'failed'], true)) {
             return;
         }
 
-        try {
-            app(SystemUpdateRunProgressService::class)->record($run, 'failed', 100, 'failed');
-        } catch (Throwable) {
-            // Keep the failure callback resilient; the run status is the source of truth.
-        }
-
         $run->forceFill([
             'status' => 'failed',
-            'error_message' => $exception?->getMessage() ?: __('admin.system_updates.error.job_failed'),
+            'error_message' => 'legacy_executor_retired',
             'finished_at' => now(),
         ])->save();
     }

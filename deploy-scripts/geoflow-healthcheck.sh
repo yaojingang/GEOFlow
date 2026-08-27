@@ -70,7 +70,11 @@ main() {
   log "Checking container status."
   "${COMPOSE[@]}" ps
 
-  local required=(postgres redis app web queue knowledge-queue system-update-queue scheduler reverb)
+  if "${DOCKER_CMD[@]}" container inspect geoflow-system-update-queue-prod >/dev/null 2>&1; then
+    fail "Retired system update worker is still present: geoflow-system-update-queue-prod"
+  fi
+
+	local required=(postgres redis app web queue knowledge-queue scheduler reverb)
   local service missing_services=()
   for service in "${required[@]}"; do
     if "${COMPOSE[@]}" ps --status running --services | grep -qx "$service"; then
@@ -94,7 +98,7 @@ main() {
   fi
 
   log "Recent application logs:"
-  "${COMPOSE[@]}" logs --tail=80 app queue knowledge-queue system-update-queue scheduler web || true
+	"${COMPOSE[@]}" logs --tail=80 app queue knowledge-queue scheduler web || true
 }
 
 main "$@"

@@ -10,13 +10,13 @@ interface AgentClient
     public function status(): array;
 
     /** @return array<string, mixed> */
-    public function startUpdate(): array;
+    public function startUpdate(string $authorizationCode): array;
 
     /** @return array<string, mixed> */
-    public function startBackup(): array;
+    public function startBackup(string $authorizationCode): array;
 
     /** @return array<string, mixed> */
-    public function startRollback(string $recoveryPointId): array;
+    public function startRollback(string $recoveryPointId, string $authorizationCode): array;
 
     /** @return array<string, mixed> */
     public function startVerify(): array;

@@ -4,6 +4,12 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## Unreleased
 
+- Completed the Phase C independent updater cutover:
+  - The independent updater is now the sole execution boundary for website updates, full backups, and rollback. Legacy planning, file replacement, single-file restore, retry, and manual-failure actions have been removed.
+  - Legacy run and backup tables remain intact, with read-only audit views for the latest 90 days and older archived records.
+  - Website update, backup, and rollback requests require the administrator password and a six-digit authenticator code. The host updater persists consumed time steps under an exclusive lock to prevent replay.
+  - The legacy update queue container and Horizon supervisor have left runtime configuration. Compatibility tombstone jobs only mark old queued records as retired and perform no file, database, or container mutation.
+  - The global outbound response limit now has a neutral setting, legacy executor settings are removed, and the release checklist includes real-host amd64 and arm64 rehearsal gates.
 - Completed the Phase B independent updater integration:
   - The System Update Center now provides safe update, full backup, environment verification, and one-click recovery-point rollback actions. Sensitive actions require a super administrator to confirm the current password.
   - The page displays the durable operation ID, current stage, stage results, and recent recovery points. It refreshes while work is active and blocks concurrent submissions.
@@ -12,7 +18,6 @@ This document tracks user-facing updates in the public repository. For future Gi
   - Recovery points record digest, size, mode, and ownership after writing and complete full verification before restoration. The newest five are retained by default.
   - Interrupted operations use a durable recovery_required state and a cross-process lock for reconciliation. Both executors check the other execution path before administrator or queue mutations begin.
   - Administrator passwords are excluded from audit payloads and failed-input flashing. Agent failures stay in server logs, and the application validates bounded Unix-socket response fields at the trust boundary.
-  - Existing update planning, file backup, and execution controls remain available during Phase B compatibility. Phase C removes them after stability verification.
 - Added the Phase A independent updater bridge:
   - The System Update Center now shows GEOFlow Updater connection status and environment diagnostics, and can prepare and privately download a signed installer.
   - Installer preparation verifies the embedded two-of-three offline root, targets-role signature, platform, size, and SHA-256. Downloads use the shared safe outbound gateway.

@@ -5,12 +5,12 @@ namespace Tests\Feature;
 use App\Contracts\SystemUpdater\AgentClient;
 use App\Models\Admin;
 use App\Models\AdminActivityLog;
+use App\Models\SystemUpdateBackup;
 use App\Models\SystemUpdateRun;
-use App\Services\Admin\SystemUpdateOperationGuard;
 use App\Services\Admin\SystemUpdaterBootstrapService;
+use App\Services\Admin\SystemUpdaterBridgeService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Mockery\MockInterface;
@@ -31,25 +31,24 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         ]);
     }
 
-    public function test_super_admin_sees_connected_updater_status_before_legacy_controls(): void
+    public function test_super_admin_sees_the_agent_as_the_only_mutation_boundary_and_read_only_legacy_history(): void
     {
-        $this->app->instance(AgentClient::class, new class extends AgentClientStub
-        {
-            public function status(): array
-            {
-                return [
-                    'schema_version' => 1,
-                    'status' => 'pass',
-                    'instance' => [
-                        'id' => 'primary',
-                        'version' => '2.4.0',
-                        'release_sequence' => 17,
-                    ],
-                    'checks' => [],
-                    'updater_version' => '0.1.0',
-                ];
-            }
-        });
+        $this->app->instance(AgentClient::class, new AgentClientStub);
+        $run = SystemUpdateRun::query()->create([
+            'run_uuid' => 'phase-c-history-run',
+            'action' => 'apply',
+            'status' => 'succeeded',
+            'target_version' => '2.4.0',
+        ]);
+        $backup = SystemUpdateBackup::query()->create([
+            'backup_uuid' => 'phase-c-history-backup',
+            'run_id' => $run->id,
+            'from_version' => '2.3.0',
+            'to_version' => '2.4.0',
+            'backup_path' => '/var/lib/geoflow-updates/phase-c-history-backup',
+            'manifest_path' => '/var/lib/geoflow-updates/phase-c-history-backup/manifest.json',
+            'status' => 'available',
+        ]);
 
         $response = $this->actingAs($this->createAdmin(), 'admin')
             ->get(route('admin.system-updates.index'));
@@ -58,391 +57,292 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ->assertOk()
             ->assertSee(__('admin.system_updates.updater.title'))
             ->assertSee(__('admin.system_updates.updater.status.connected'))
-            ->assertSee('0.1.0')
-            ->assertSeeInOrder([
-                __('admin.system_updates.updater.title'),
-                __('admin.system_updates.section.overview'),
-            ]);
+            ->assertSee('https://github.com/yaojingang/GEOFlow', false)
+            ->assertSee('name="updater_authorization_code"', false)
+            ->assertSee(route('admin.system-updates.updater.update'), false)
+            ->assertSee(route('admin.system-updates.runs.show', ['runUuid' => $run->run_uuid]), false)
+            ->assertSee(route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]), false)
+            ->assertSee(__('admin.system_updates.backup.status_available'))
+            ->assertDontSee('/system-updates/apply', false)
+            ->assertDontSee('/system-updates/plan', false)
+            ->assertDontSee('/system-updates/backups/'.$backup->backup_uuid.'/rollback', false);
     }
 
-    public function test_degraded_updater_renders_each_doctor_check_with_its_message(): void
-    {
-        $this->app->instance(AgentClient::class, new class extends AgentClientStub
-        {
-            public function status(): array
-            {
-                return [
-                    'schema_version' => 1,
-                    'status' => 'warn',
-                    'instance' => [
-                        'id' => 'primary',
-                        'version' => '2.4.0',
-                        'release_sequence' => 17,
-                    ],
-                    'checks' => [
-                        ['id' => 'docker-compose', 'status' => 'fail', 'message' => 'Docker Compose v2 is unavailable.'],
-                        ['id' => 'control-token', 'status' => 'pass', 'message' => 'Control token permissions are restricted.'],
-                    ],
-                    'updater_version' => '0.1.0',
-                ];
-            }
-        });
-
-        $this->actingAs($this->createAdmin('degraded_updater_admin'), 'admin')
-            ->get(route('admin.system-updates.index'))
-            ->assertOk()
-            ->assertSee(__('admin.system_updates.updater.status.degraded'))
-            ->assertSee(__('admin.system_updates.updater.checks'))
-            ->assertSee('docker-compose')
-            ->assertSee('Docker Compose v2 is unavailable.')
-            ->assertSee('Control token permissions are restricted.');
-    }
-
-    public function test_disconnected_updater_shows_safe_package_preparation_action(): void
-    {
-        $this->app->instance(AgentClient::class, new class extends AgentClientStub
-        {
-            public function status(): array
-            {
-                throw new \RuntimeException('socket unavailable');
-            }
-        });
-
-        $this->actingAs($this->createAdmin(), 'admin')
-            ->get(route('admin.system-updates.index'))
-            ->assertOk()
-            ->assertSee(__('admin.system_updates.updater.status.disconnected'))
-            ->assertSee(route('admin.system-updates.updater.prepare'), false)
-            ->assertSee(__('admin.system_updates.updater.prepare'));
-    }
-
-    public function test_super_admin_can_prepare_a_verified_updater_package(): void
-    {
-        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock): void {
-            $mock->shouldReceive('prepare')->once()->andReturn([
-                'version' => '0.1.0',
-                'filename' => 'geoflow-updater_0.1.0_linux_amd64.tar.gz',
-            ]);
-        });
-
-        $this->actingAs($this->createAdmin(), 'admin')
-            ->post(route('admin.system-updates.updater.prepare'))
-            ->assertRedirect(route('admin.system-updates.index'))
-            ->assertSessionHas('message', __('admin.system_updates.updater.prepared', ['version' => '0.1.0']));
-    }
-
-    public function test_prepared_package_exposes_a_private_download_entry(): void
-    {
-        config(['geoflow.updater_host_root' => '/opt/geoflow']);
-        $this->app->instance(AgentClient::class, new class extends AgentClientStub
-        {
-            public function status(): array
-            {
-                throw new \RuntimeException('socket unavailable');
-            }
-        });
-        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock): void {
-            $mock->shouldReceive('state')->once()->andReturn([
-                'version' => '0.1.0',
-                'filename' => 'geoflow-updater_0.1.0_linux_amd64.tar.gz',
-                'path' => 'system-updater/bootstrap/0.1.0/geoflow-updater_0.1.0_linux_amd64.tar.gz',
-                'sha256' => str_repeat('a', 64),
-                'size' => 1024,
-            ]);
-        });
-
-        $this->actingAs($this->createAdmin('prepared_updater_admin'), 'admin')
-            ->get(route('admin.system-updates.index'))
-            ->assertOk()
-            ->assertSee(route('admin.system-updates.updater.download'), false)
-            ->assertSee(__('admin.system_updates.updater.download'))
-            ->assertSee("sudo docker compose --env-file '/opt/geoflow/.env.prod' --env-file /var/lib/geoflow-updater/instances/primary/release.env -f /var/lib/geoflow-updater/instances/primary/docker-compose.managed.yml down")
-            ->assertSee("sudo docker compose --env-file '/opt/geoflow/.env.prod' --env-file /var/lib/geoflow-updater/instances/primary/release.env -f /var/lib/geoflow-updater/instances/primary/docker-compose.managed.yml up -d");
-    }
-
-    public function test_standard_admin_cannot_prepare_an_updater_package(): void
-    {
-        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock): void {
-            $mock->shouldNotReceive('prepare');
-        });
-
-        $this->actingAs($this->createAdmin('standard_updater_admin', 'admin'), 'admin')
-            ->post(route('admin.system-updates.updater.prepare'))
-            ->assertForbidden();
-    }
-
-    public function test_super_admin_can_download_the_prepared_private_package(): void
+    public function test_super_admin_can_prepare_and_download_a_verified_updater_package(): void
     {
         Storage::fake('local');
-        $path = 'system-updater/bootstrap/0.1.0/geoflow-updater_0.1.0_linux_amd64.tar.gz';
+        $path = 'system-updater/bootstrap/0.2.0/geoflow-updater_0.2.0_linux_amd64.tar.gz';
         Storage::disk('local')->put($path, 'verified archive');
         $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock) use ($path): void {
-            $mock->shouldReceive('download')->once()->andReturn([
-                'path' => $path,
-                'filename' => basename($path),
-            ]);
+            $mock->shouldReceive('prepare')->once()->andReturn(['version' => '0.2.0', 'filename' => basename($path)]);
+            $mock->shouldReceive('download')->once()->andReturn(['path' => $path, 'filename' => basename($path)]);
         });
 
-        $this->actingAs($this->createAdmin(), 'admin')
+        $admin = $this->createAdmin('phase_c_package_admin');
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.updater.prepare'))
+            ->assertRedirect(route('admin.system-updates.index'));
+        $this->actingAs($admin, 'admin')
             ->get(route('admin.system-updates.updater.download'))
             ->assertOk()
             ->assertDownload(basename($path));
     }
 
-    public function test_standard_admin_cannot_download_the_prepared_package(): void
+    public function test_mutating_agent_operation_requires_password_and_one_time_authorization_code(): void
     {
-        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock): void {
-            $mock->shouldNotReceive('download');
-        });
+        $this->ensureActivityLogTable();
+        $client = new AgentClientStub;
+        $this->app->instance(AgentClient::class, $client);
 
-        $this->actingAs($this->createAdmin('standard_updater_download_admin', 'admin'), 'admin')
-            ->get(route('admin.system-updates.updater.download'))
-            ->assertForbidden();
+        $response = $this->actingAs($this->createAdmin('phase_c_update_admin'), 'admin')
+            ->post(route('admin.system-updates.updater.update'), [
+                'current_admin_password' => 'secret-123',
+                'updater_authorization_code' => '123456',
+            ])
+            ->assertRedirect(route('admin.system-updates.index'));
+
+        $this->assertSame(['123456'], $client->updates);
+        $this->assertSame([], $response->getSession()->getOldInput());
+        $activity = AdminActivityLog::query()->latest('id')->firstOrFail();
+        $this->assertStringNotContainsString('secret-123', (string) $activity->details);
+        $this->assertStringNotContainsString('123456', (string) $activity->details);
+        $this->assertStringNotContainsString('updater_authorization_code', (string) $activity->details);
     }
 
-    public function test_stale_prepared_package_returns_to_the_update_center_with_an_error(): void
-    {
-        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock): void {
-            $mock->shouldReceive('download')->once()->andThrow(new \RuntimeException('archive changed'));
-        });
-
-        $this->actingAs($this->createAdmin('stale_updater_admin'), 'admin')
-            ->get(route('admin.system-updates.updater.download'))
-            ->assertRedirect(route('admin.system-updates.index'))
-            ->assertSessionHasErrors();
-    }
-
-    public function test_connected_updater_shows_transaction_controls_operation_progress_and_recovery_points(): void
+    public function test_invalid_authorization_code_never_reaches_the_agent(): void
     {
         $client = new AgentClientStub;
-        $client->current = [
-            'schema_version' => 1,
-            'id' => '20260827T123456.000000000Z-0011223344556677',
-            'instance_id' => 'primary',
-            'kind' => 'update',
-            'status' => 'running',
-            'current_stage' => 'backup',
-            'stages' => [
-                ['name' => 'quiesce', 'status' => 'succeeded', 'updated_at' => '2026-08-27T12:35:00Z'],
-                ['name' => 'backup', 'status' => 'running', 'updated_at' => '2026-08-27T12:35:01Z'],
-            ],
-            'started_at' => '2026-08-27T12:34:56Z',
-        ];
-        $client->points = [[
-            'schema_version' => 1,
-            'id' => '20260827T120000Z-1234abcd',
-            'instance_id' => 'primary',
-            'reason' => 'update-to-2.5.0',
-            'created_at' => '2026-08-27T12:00:00Z',
-            'version' => '2.4.0',
-            'release_sequence' => 17,
+        $this->app->instance(AgentClient::class, $client);
+
+        $response = $this->actingAs($this->createAdmin('phase_c_invalid_code_admin'), 'admin')
+            ->post(route('admin.system-updates.updater.update'), [
+                'current_admin_password' => 'secret-123',
+                'updater_authorization_code' => "123456\r\nX-Injection: yes",
+            ])
+            ->assertSessionHasErrors('updater_authorization_code');
+
+        $response->assertSessionMissing('_old_input.updater_authorization_code');
+        $this->assertSame([], $client->updates);
+    }
+
+    public function test_agent_without_mutation_authorization_capability_cannot_receive_a_mutation(): void
+    {
+        $client = new AgentClientStub;
+        $client->mutationAuthorizationReady = false;
+        $this->app->instance(AgentClient::class, $client);
+        $admin = $this->createAdmin('phase_c_legacy_agent_admin');
+
+        $this->actingAs($admin, 'admin')->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.updater.authorization_setup_title'))
+            ->assertSee('disabled', false);
+        $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.update'), [
+            'current_admin_password' => 'secret-123',
+            'updater_authorization_code' => '123456',
+        ])->assertSessionHasErrors();
+        $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.verify'))
+            ->assertRedirect(route('admin.system-updates.index'));
+
+        $this->assertSame([], $client->updates);
+        $this->assertSame(1, $client->verifications);
+    }
+
+    public function test_phase_b_retired_worker_failure_keeps_only_the_signed_update_handover_available(): void
+    {
+        $client = new AgentClientStub;
+        $client->doctorStatus = 'fail';
+        $client->additionalChecks = [[
+            'id' => 'retired-update-worker',
+            'status' => 'fail',
+            'message' => 'Retired Phase B update worker must be removed during the signed update handover.',
         ]];
         $this->app->instance(AgentClient::class, $client);
 
-        $response = $this->actingAs($this->createAdmin('phase_b_view_admin'), 'admin')
+        $summary = $this->app->make(SystemUpdaterBridgeService::class)->summary();
+        $this->assertSame('degraded', $summary['connection']);
+        $this->assertTrue($summary['phase_b_handover_ready']);
+
+        $html = $this->actingAs($this->createAdmin('phase_c_handover_admin'), 'admin')
             ->get(route('admin.system-updates.index'))
             ->assertOk()
-            ->assertSee(route('admin.system-updates.updater.update'), false)
-            ->assertSee(route('admin.system-updates.updater.backup'), false)
-            ->assertSee(route('admin.system-updates.updater.verify'), false)
-            ->assertSee(route('admin.system-updates.updater.rollback'), false)
-            ->assertSee('data-system-updater-auto-reload="5000"', false)
-            ->assertDontSee('window.setTimeout(() => window.location.reload(), 5000);', false)
-            ->assertSee('backup')
-            ->assertSee('20260827T120000Z-1234abcd');
+            ->assertSee(__('admin.system_updates.updater.phase_b_handover_hint'))
+            ->getContent();
 
-    }
+        preg_match('/<form[^>]+action="[^"]+\/updater\/update".*?<\/form>/s', $html, $updateForm);
+        preg_match('/<form[^>]+action="[^"]+\/updater\/backup".*?<\/form>/s', $html, $backupForm);
+        $this->assertNotEmpty($updateForm);
+        $this->assertNotEmpty($backupForm);
+        $this->assertDoesNotMatchRegularExpression('/\sdisabled(?:\s|>)/', $updateForm[0]);
+        $this->assertMatchesRegularExpression('/\sdisabled(?:\s|>)/', $backupForm[0]);
 
-    public function test_super_admin_can_start_a_transactional_update_after_password_confirmation(): void
-    {
-        if (! Schema::hasTable('admin_activity_logs')) {
-            Schema::create('admin_activity_logs', function (Blueprint $table): void {
-                $table->id();
-                $table->unsignedBigInteger('admin_id')->nullable();
-                $table->string('admin_username', 50);
-                $table->string('admin_role', 20)->default('admin');
-                $table->string('action', 120);
-                $table->string('request_method', 10)->default('POST');
-                $table->string('page')->default('');
-                $table->string('target_type', 50)->default('');
-                $table->unsignedBigInteger('target_id')->nullable();
-                $table->string('ip_address', 64)->default('');
-                $table->text('details')->default('');
-                $table->timestamp('created_at')->useCurrent();
-            });
-        }
-
-        $client = new AgentClientStub;
-        $this->app->instance(AgentClient::class, $client);
-
-        $this->actingAs($this->createAdmin('phase_b_update_admin'), 'admin')
+        $this->actingAs($this->createAdmin('phase_c_handover_submit_admin'), 'admin')
             ->post(route('admin.system-updates.updater.update'), [
                 'current_admin_password' => 'secret-123',
+                'updater_authorization_code' => '123456',
             ])
             ->assertRedirect(route('admin.system-updates.index'));
+        $this->assertSame(['123456'], $client->updates);
 
-        $this->assertSame(1, $client->updates);
-
-        $activity = AdminActivityLog::query()->latest('id')->firstOrFail();
-        $this->assertStringNotContainsString('secret-123', (string) $activity->details);
-        $this->assertStringNotContainsString('current_admin_password', (string) $activity->details);
+        $admin = $this->createAdmin('phase_c_handover_blocked_admin');
+        $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.backup'), [
+            'current_admin_password' => 'secret-123',
+            'updater_authorization_code' => '234567',
+        ])->assertSessionHasErrors();
+        $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.rollback'), [
+            'current_admin_password' => 'secret-123',
+            'updater_authorization_code' => '345678',
+            'recovery_point_id' => '20260827T120000Z-11111111',
+        ])->assertSessionHasErrors();
+        $this->assertSame([], $client->backups);
+        $this->assertSame([], $client->rollbacks);
     }
 
-    public function test_transactional_update_rejects_an_invalid_admin_password(): void
+    public function test_backup_and_rollback_forward_distinct_authorization_codes_while_verify_remains_read_only(): void
     {
         $client = new AgentClientStub;
         $this->app->instance(AgentClient::class, $client);
+        $admin = $this->createAdmin('phase_c_recovery_admin');
 
-        $response = $this->actingAs($this->createAdmin('phase_b_password_admin'), 'admin')
-            ->post(route('admin.system-updates.updater.update'), [
-                'current_admin_password' => 'incorrect',
-            ])
-            ->assertSessionHasErrors('current_admin_password');
-
-        $response->assertSessionMissing('_old_input.current_admin_password');
-
-        $this->assertSame(0, $client->updates);
-    }
-
-    public function test_super_admin_can_start_a_one_click_rollback_to_a_valid_recovery_point(): void
-    {
-        $client = new AgentClientStub;
-        $this->app->instance(AgentClient::class, $client);
-        $recoveryPointId = '20260827T120000Z-1234abcd';
-
-        $this->actingAs($this->createAdmin('phase_b_rollback_admin'), 'admin')
-            ->post(route('admin.system-updates.updater.rollback'), [
-                'current_admin_password' => 'secret-123',
-                'recovery_point_id' => $recoveryPointId,
-            ])
+        $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.backup'), [
+            'current_admin_password' => 'secret-123',
+            'updater_authorization_code' => '234567',
+        ])->assertRedirect(route('admin.system-updates.index'));
+        $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.rollback'), [
+            'current_admin_password' => 'secret-123',
+            'updater_authorization_code' => '345678',
+            'recovery_point_id' => '20260827T120000Z-1234abcd',
+        ])->assertRedirect(route('admin.system-updates.index'));
+        $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.verify'))
             ->assertRedirect(route('admin.system-updates.index'));
 
-        $this->assertSame([$recoveryPointId], $client->rollbacks);
+        $this->assertSame(['234567'], $client->backups);
+        $this->assertSame([['20260827T120000Z-1234abcd', '345678']], $client->rollbacks);
+        $this->assertSame(1, $client->verifications);
     }
 
-    public function test_updater_failure_is_reported_without_flashing_internal_details(): void
-    {
-        Exceptions::fake();
-        $this->app->instance(AgentClient::class, new class extends AgentClientStub
-        {
-            public function startUpdate(): array
-            {
-                throw new \RuntimeException('unix:///run/private-agent.sock returned database credentials');
-            }
-        });
-
-        $response = $this->actingAs($this->createAdmin('phase_b_failure_admin'), 'admin')
-            ->post(route('admin.system-updates.updater.update'), [
-                'current_admin_password' => 'secret-123',
-            ])
-            ->assertRedirect(route('admin.system-updates.index'))
-            ->assertSessionHasErrors();
-
-        $message = $response->getSession()->get('errors')->first();
-        $this->assertSame(__('admin.system_updates.updater.operation_failed'), $message);
-        $this->assertStringNotContainsString('private-agent.sock', $message);
-        Exceptions::assertReported(fn (\RuntimeException $exception): bool => str_contains($exception->getMessage(), 'private-agent.sock'));
-    }
-
-    public function test_updater_operation_is_blocked_while_a_legacy_executor_run_is_active(): void
+    public function test_active_legacy_row_blocks_agent_mutation_during_cutover(): void
     {
         SystemUpdateRun::query()->create([
-            'run_uuid' => 'phase-b-legacy-active',
+            'run_uuid' => 'phase-c-active-legacy-run',
             'action' => 'apply',
             'status' => 'running',
         ]);
         $client = new AgentClientStub;
         $this->app->instance(AgentClient::class, $client);
 
-        $this->actingAs($this->createAdmin('phase_b_cross_guard_admin'), 'admin')
+        $this->actingAs($this->createAdmin('phase_c_cutover_admin'), 'admin')
             ->post(route('admin.system-updates.updater.update'), [
                 'current_admin_password' => 'secret-123',
+                'updater_authorization_code' => '456789',
             ])
-            ->assertRedirect(route('admin.system-updates.index'))
             ->assertSessionHasErrors();
-
-        $this->assertSame(0, $client->updates);
-    }
-
-    public function test_legacy_executor_guard_is_blocked_while_an_updater_operation_is_active(): void
-    {
-        $client = new AgentClientStub;
-        $client->current = [
-            'schema_version' => 1,
-            'id' => '20260827T123456.000000000Z-0011223344556677',
-            'instance_id' => 'primary',
-            'kind' => 'update',
-            'status' => 'running',
-            'stages' => [],
-            'started_at' => '2026-08-27T12:34:56Z',
-        ];
-        $this->app->instance(AgentClient::class, $client);
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage(__('admin.system_updates.error.operation_in_progress'));
-
-        $this->app->make(SystemUpdateOperationGuard::class)->assertNoUpdaterExecution();
-    }
-
-    public function test_legacy_executor_guard_fails_closed_when_an_installed_updater_is_unreachable(): void
-    {
-        $directory = sys_get_temp_dir().'/geoflow-updater-guard-'.bin2hex(random_bytes(8));
-        mkdir($directory, 0700, true);
-        $socketPath = $directory.'/agent.sock';
-        $server = stream_socket_server('unix://'.$socketPath, $errorCode, $errorMessage);
-        $this->assertIsResource($server, $errorMessage);
-        config(['geoflow.updater_socket' => $socketPath]);
-        $this->app->instance(AgentClient::class, new class extends AgentClientStub
-        {
-            public function currentOperation(): ?array
-            {
-                throw new \RuntimeException('agent unavailable');
-            }
-        });
-
-        try {
-            $this->expectException(\RuntimeException::class);
-            $this->expectExceptionMessage(__('admin.system_updates.error.operation_in_progress'));
-
-            $this->app->make(SystemUpdateOperationGuard::class)->assertNoUpdaterExecution();
-        } finally {
-            fclose($server);
-            @unlink($socketPath);
-            @rmdir($directory);
-        }
-    }
-
-    public function test_super_admin_can_start_a_manual_backup_and_verification(): void
-    {
-        $client = new AgentClientStub;
-        $admin = $this->createAdmin('phase_b_backup_admin');
-        $this->app->instance(AgentClient::class, $client);
-
-        $this->actingAs($admin, 'admin')
-            ->post(route('admin.system-updates.updater.backup'), [
-                'current_admin_password' => 'secret-123',
-            ])
-            ->assertRedirect(route('admin.system-updates.index'));
-        $this->actingAs($admin, 'admin')
+        $this->actingAs($this->createAdmin('phase_c_cutover_verify_admin'), 'admin')
             ->post(route('admin.system-updates.updater.verify'))
             ->assertRedirect(route('admin.system-updates.index'));
 
-        $this->assertSame(1, $client->backups);
+        $this->assertSame([], $client->updates);
         $this->assertSame(1, $client->verifications);
     }
 
-    public function test_standard_admin_cannot_start_updater_operations(): void
+    public function test_page_only_offers_web_rollback_for_the_newest_update_checkpoint(): void
     {
         $client = new AgentClientStub;
+        $client->points = [
+            $this->recoveryPoint('20260828T120000Z-1234abcd', 'manual-backup'),
+            $this->recoveryPoint('20260827T120000Z-1234abcd', 'update-to-2.4.0'),
+            $this->recoveryPoint('20260826T120000Z-1234abcd', 'update-to-2.3.0'),
+        ];
         $this->app->instance(AgentClient::class, $client);
 
-        $this->actingAs($this->createAdmin('phase_b_standard_admin', 'admin'), 'admin')
-            ->post(route('admin.system-updates.updater.update'), [
-                'current_admin_password' => 'secret-123',
-            ])
-            ->assertForbidden();
+        $response = $this->actingAs($this->createAdmin('phase_c_web_rollback_admin'), 'admin')
+            ->get(route('admin.system-updates.index'));
 
-        $this->assertSame(0, $client->updates);
+        $response->assertOk();
+        $html = (string) $response->getContent();
+        $this->assertSame(1, substr_count($html, 'action="'.route('admin.system-updates.updater.rollback').'"'));
+        $this->assertStringContainsString('value="20260827T120000Z-1234abcd"', $html);
+        $this->assertStringNotContainsString('value="20260828T120000Z-1234abcd"', $html);
+        $this->assertStringNotContainsString('value="20260826T120000Z-1234abcd"', $html);
+    }
+
+    public function test_old_execution_routes_are_retired_and_standard_admin_is_forbidden(): void
+    {
+        $prefix = '/'.trim((string) config('geoflow.admin_base_path'), '/').'/system-updates';
+        $superAdmin = $this->createAdmin('phase_c_route_admin');
+        foreach (['plan', 'backup', 'apply', 'runs/example/retry', 'runs/example/mark-failed', 'backups/example/rollback', 'backups/example/files/rollback'] as $path) {
+            $this->actingAs($superAdmin, 'admin')->post($prefix.'/'.$path)->assertNotFound();
+        }
+
+        $this->actingAs($this->createAdmin('phase_c_standard_admin', 'admin'), 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertForbidden();
+    }
+
+    public function test_history_uses_a_ninety_day_recent_window_and_keeps_older_rows_read_only(): void
+    {
+        $recent = SystemUpdateRun::query()->create([
+            'run_uuid' => 'phase-c-recent',
+            'action' => 'apply',
+            'status' => 'succeeded',
+        ]);
+        $recent->forceFill(['created_at' => now()->subDays(20)])->save();
+        $archived = SystemUpdateRun::query()->create([
+            'run_uuid' => 'phase-c-archived',
+            'action' => 'rollback',
+            'status' => 'failed',
+            'error_message' => '<script>alert(1)</script>',
+        ]);
+        $archived->forceFill(['created_at' => now()->subDays(120)])->save();
+        $admin = $this->createAdmin('phase_c_history_admin');
+
+        $this->actingAs($admin, 'admin')->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee($recent->run_uuid)
+            ->assertDontSee($archived->run_uuid);
+        $this->actingAs($admin, 'admin')->get(route('admin.system-updates.index', ['history' => 'archived']))
+            ->assertOk()
+            ->assertSee($archived->run_uuid)
+            ->assertDontSee($recent->run_uuid);
+        $this->actingAs($admin, 'admin')->get(route('admin.system-updates.runs.show', ['runUuid' => $archived->run_uuid]))
+            ->assertOk()
+            ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
+            ->assertDontSee('<script>alert(1)</script>', false)
+            ->assertDontSee('/retry', false)
+            ->assertDontSee('/mark-failed', false);
+    }
+
+    public function test_archived_runs_and_backups_remain_reachable_after_the_first_twenty_rows(): void
+    {
+        $admin = $this->createAdmin('phase_c_paginated_history_admin');
+        for ($index = 0; $index < 21; $index++) {
+            $run = SystemUpdateRun::query()->create([
+                'run_uuid' => 'phase-c-paged-run-'.$index,
+                'action' => 'apply',
+                'status' => 'succeeded',
+            ]);
+            $run->forceFill(['created_at' => now()->subDays(120)])->save();
+            $backup = SystemUpdateBackup::query()->create([
+                'backup_uuid' => 'phase-c-paged-backup-'.$index,
+                'run_id' => $run->id,
+                'backup_path' => '/var/lib/geoflow-updates/phase-c-paged-'.$index,
+                'manifest_path' => '/var/lib/geoflow-updates/phase-c-paged-'.$index.'/manifest.json',
+                'status' => 'available',
+            ]);
+            $backup->forceFill(['created_at' => now()->subDays(120)])->save();
+        }
+
+        $this->actingAs($admin, 'admin')->get(route('admin.system-updates.index', ['history' => 'archived']))
+            ->assertOk()
+            ->assertDontSee('phase-c-paged-run-0')
+            ->assertDontSee('phase-c-paged-backup-0');
+        $this->actingAs($admin, 'admin')->get(route('admin.system-updates.index', [
+            'history' => 'archived',
+            'runs_page' => 2,
+            'backups_page' => 2,
+        ]))
+            ->assertOk()
+            ->assertSee('phase-c-paged-run-0')
+            ->assertSee('phase-c-paged-backup-0');
     }
 
     private function createAdmin(string $username = 'system_updater_admin', string $role = 'super_admin'): Admin
@@ -456,17 +356,61 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             'status' => 'active',
         ]);
     }
+
+    private function ensureActivityLogTable(): void
+    {
+        if (Schema::hasTable('admin_activity_logs')) {
+            return;
+        }
+        Schema::create('admin_activity_logs', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('admin_id')->nullable();
+            $table->string('admin_username', 50);
+            $table->string('admin_role', 20)->default('admin');
+            $table->string('action', 120);
+            $table->string('request_method', 10)->default('POST');
+            $table->string('page')->default('');
+            $table->string('target_type', 50)->default('');
+            $table->unsignedBigInteger('target_id')->nullable();
+            $table->string('ip_address', 64)->default('');
+            $table->text('details')->default('');
+            $table->timestamp('created_at')->useCurrent();
+        });
+    }
+
+    /** @return array<string, mixed> */
+    private function recoveryPoint(string $id, string $reason): array
+    {
+        return [
+            'schema_version' => 1,
+            'id' => $id,
+            'instance_id' => 'primary',
+            'reason' => $reason,
+            'created_at' => '2026-08-27T12:00:00Z',
+            'version' => '2.4.0',
+            'release_sequence' => 17,
+        ];
+    }
 }
 
 class AgentClientStub implements AgentClient
 {
-    public int $updates = 0;
+    public bool $mutationAuthorizationReady = true;
 
-    public int $backups = 0;
+    public string $doctorStatus = 'pass';
+
+    /** @var list<array<string, string>> */
+    public array $additionalChecks = [];
+
+    /** @var list<string> */
+    public array $updates = [];
+
+    /** @var list<string> */
+    public array $backups = [];
 
     public int $verifications = 0;
 
-    /** @var list<string> */
+    /** @var list<array{0: string, 1: string}> */
     public array $rollbacks = [];
 
     /** @var array<string, mixed>|null */
@@ -477,32 +421,38 @@ class AgentClientStub implements AgentClient
 
     public function status(): array
     {
+        $checks = $this->mutationAuthorizationReady ? [[
+            'id' => 'mutation-authorization',
+            'status' => 'pass',
+            'message' => 'Human mutation authorization is configured',
+        ]] : [];
+
         return [
             'schema_version' => 1,
-            'status' => 'pass',
+            'status' => $this->doctorStatus,
             'instance' => ['id' => 'primary', 'version' => '2.4.0', 'release_sequence' => 17],
-            'checks' => [],
+            'checks' => [...$checks, ...$this->additionalChecks],
             'updater_version' => '0.2.0',
         ];
     }
 
-    public function startUpdate(): array
+    public function startUpdate(string $authorizationCode): array
     {
-        $this->updates++;
+        $this->updates[] = $authorizationCode;
 
         return $this->queuedOperation('update');
     }
 
-    public function startBackup(): array
+    public function startBackup(string $authorizationCode): array
     {
-        $this->backups++;
+        $this->backups[] = $authorizationCode;
 
         return $this->queuedOperation('backup');
     }
 
-    public function startRollback(string $recoveryPointId): array
+    public function startRollback(string $recoveryPointId, string $authorizationCode): array
     {
-        $this->rollbacks[] = $recoveryPointId;
+        $this->rollbacks[] = [$recoveryPointId, $authorizationCode];
 
         return $this->queuedOperation('rollback');
     }

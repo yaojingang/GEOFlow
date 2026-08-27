@@ -313,6 +313,11 @@ deploy_stack() {
   log "Building production images."
   "${COMPOSE[@]}" build
 
+  if "${DOCKER_CMD[@]}" container inspect geoflow-system-update-queue-prod >/dev/null 2>&1; then
+    log "Stopping the retired system update worker before the Phase C cutover."
+    "${DOCKER_CMD[@]}" stop --time 900 geoflow-system-update-queue-prod
+  fi
+
   log "Starting PostgreSQL and Redis."
   "${COMPOSE[@]}" up -d postgres redis
 
@@ -320,7 +325,7 @@ deploy_stack() {
   "${COMPOSE[@]}" up init
 
   log "Starting GEOFlow services."
-  "${COMPOSE[@]}" up -d app web queue knowledge-queue system-update-queue scheduler reverb
+	"${COMPOSE[@]}" up -d --remove-orphans app web queue knowledge-queue scheduler reverb
 
   log "Clearing and rebuilding Laravel caches."
   "${COMPOSE[@]}" run --rm app php artisan optimize:clear

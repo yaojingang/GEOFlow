@@ -17,7 +17,6 @@
 - `app`: `php-fpm`
 - `queue`: 文章生成、分发、主题复刻与默认任务
 - `knowledge-queue`: 知识库解析与向量化任务
-- `system-update-queue`: 系统更新与回滚任务
 - `scheduler`: `php artisan schedule:work`
 - `reverb`: `php artisan reverb:start`
 - `postgres`: PostgreSQL 16 + pgvector
@@ -106,7 +105,7 @@ export COMPOSE_PROD='docker compose --env-file .env.prod -f docker-compose.prod.
 $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up -d init
-$COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler reverb
+$COMPOSE_PROD up -d --remove-orphans app web queue knowledge-queue scheduler reverb
 ```
 
 `init` 服务会把 `GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true` 仅注入该一次性容器。迁移只在单一 fresh migration batch 且业务表为空时接受此标志；已有部署仍需下一节的 drain confirmation。
@@ -120,7 +119,8 @@ $COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler 
 ```bash
 # 1. 先进入维护模式，再停止入口和所有旧版常驻进程。
 $COMPOSE_PROD exec app php artisan down
-$COMPOSE_PROD stop web queue knowledge-queue system-update-queue scheduler reverb
+$COMPOSE_PROD stop web queue knowledge-queue scheduler reverb
+docker stop --time 900 geoflow-system-update-queue-prod 2>/dev/null || true
 
 # 2. 等待负载均衡连接、PHP 请求、队列任务和调度任务全部结束；确认零在途后停止 app。
 # 请使用平台连接数、进程列表和队列监控完成确认。
@@ -137,7 +137,7 @@ $COMPOSE_PROD up init
 
 # 5. 迁移成功后立即将一次性确认恢复为 false，再启动全部新版本进程：
 # GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED=false
-$COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler reverb
+$COMPOSE_PROD up -d --remove-orphans app web queue knowledge-queue scheduler reverb
 
 # 6. 回填并检查受管图片身份；remaining、terminal、registry_failed 必须都为 0。
 $COMPOSE_PROD run --rm app php artisan geoflow:managed-images:readiness
@@ -164,7 +164,7 @@ $COMPOSE_PROD run --rm app php artisan geoflow:security-audit --json
 完成审计处理，再次确认运行中的容器全部来自新镜像，然后将 `GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=true` 写入生产环境配置，并重新创建会执行图片清理的新版本进程：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app queue knowledge-queue system-update-queue scheduler
+$COMPOSE_PROD up -d --force-recreate app queue knowledge-queue scheduler
 ```
 
 门禁关闭或回填未完成时，数据库记录仍可删除，物理图片文件会安全保留并记录清理失败日志。

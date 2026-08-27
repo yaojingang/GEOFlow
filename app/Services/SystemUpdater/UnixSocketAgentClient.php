@@ -27,26 +27,27 @@ class UnixSocketAgentClient implements AgentClient
     }
 
     /** @return array<string, mixed> */
-    public function startUpdate(): array
+    public function startUpdate(string $authorizationCode): array
     {
-        return $this->startOperation('updates', 'update');
+        return $this->startOperation('updates', 'update', $authorizationCode);
     }
 
     /** @return array<string, mixed> */
-    public function startBackup(): array
+    public function startBackup(string $authorizationCode): array
     {
-        return $this->startOperation('backups', 'backup');
+        return $this->startOperation('backups', 'backup', $authorizationCode);
     }
 
     /** @return array<string, mixed> */
-    public function startRollback(string $recoveryPointId): array
+    public function startRollback(string $recoveryPointId, string $authorizationCode): array
     {
         if (preg_match('/\A[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}\z/', $recoveryPointId) !== 1) {
             throw new RuntimeException('Updater recovery point identifier is invalid.');
         }
+        $this->validateAuthorizationCode($authorizationCode);
         [$status, $decoded] = $this->instanceRequest('POST', 'rollbacks', [
             'recovery_point_id' => $recoveryPointId,
-        ]);
+        ], $authorizationCode);
         $this->requireStatus($status, [202], $decoded, 'rollback');
 
         return $this->validateOperation($decoded, 'rollback');
@@ -102,9 +103,12 @@ class UnixSocketAgentClient implements AgentClient
     }
 
     /** @return array<string, mixed> */
-    private function startOperation(string $endpoint, string $kind): array
+    private function startOperation(string $endpoint, string $kind, ?string $authorizationCode = null): array
     {
-        [$status, $decoded] = $this->instanceRequest('POST', $endpoint);
+        if ($authorizationCode !== null) {
+            $this->validateAuthorizationCode($authorizationCode);
+        }
+        [$status, $decoded] = $this->instanceRequest('POST', $endpoint, null, $authorizationCode);
         $this->requireStatus($status, [202], $decoded, $kind);
 
         return $this->validateOperation($decoded, $kind);
@@ -202,7 +206,7 @@ class UnixSocketAgentClient implements AgentClient
      * @param  array<string, mixed>|null  $payload
      * @return array{0: int, 1: array<string, mixed>}
      */
-    private function instanceRequest(string $method, string $endpoint, ?array $payload = null): array
+    private function instanceRequest(string $method, string $endpoint, ?array $payload = null, ?string $authorizationCode = null): array
     {
         $socketPath = (string) config('geoflow.updater_socket');
         $tokenPath = (string) config('geoflow.updater_control_token_file');
@@ -224,6 +228,7 @@ class UnixSocketAgentClient implements AgentClient
             '/v1/instances/'.$this->instanceId().'/'.$endpoint,
             $token,
             $body,
+            $authorizationCode,
         );
         try {
             $decoded = json_decode($response, true, 32, JSON_THROW_ON_ERROR);
@@ -264,7 +269,7 @@ class UnixSocketAgentClient implements AgentClient
     }
 
     /** @return array{0: int, 1: string} */
-    private function request(string $socketPath, string $method, string $path, string $token, string $body): array
+    private function request(string $socketPath, string $method, string $path, string $token, string $body, ?string $authorizationCode): array
     {
         $socketInfo = @lstat($socketPath);
         if (! is_array($socketInfo) || (($socketInfo['mode'] ?? 0) & 0170000) !== 0140000) {
@@ -287,9 +292,13 @@ class UnixSocketAgentClient implements AgentClient
 
         try {
             stream_set_timeout($socket, $readTimeout);
+            $authorizationHeader = $authorizationCode === null
+                ? ''
+                : "X-GEOFlow-Updater-Authorization: {$authorizationCode}\r\n";
             $request = "{$method} {$path} HTTP/1.0\r\n"
                 ."Host: geoflow-updater\r\n"
                 ."Authorization: Bearer {$token}\r\n"
+                .$authorizationHeader
                 ."Accept: application/json\r\n"
                 ."Content-Type: application/json\r\n"
                 .'Content-Length: '.mb_strlen($body, '8bit')."\r\n"
@@ -333,6 +342,13 @@ class UnixSocketAgentClient implements AgentClient
         }
 
         return [(int) $matches[1], $responseBody];
+    }
+
+    private function validateAuthorizationCode(string $authorizationCode): void
+    {
+        if (preg_match('/\A[0-9]{6}\z/', $authorizationCode) !== 1) {
+            throw new RuntimeException('Updater mutation authorization code is invalid.');
+        }
     }
 
     /**

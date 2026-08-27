@@ -321,7 +321,7 @@ final class FinalOutboundSecurityPolicy
 
     private function responseLimit(RequestInterface $request, array $options): int
     {
-        $globalMaximum = max(1, (int) config('geoflow.update_archive_max_bytes', 50 * 1024 * 1024));
+        $globalMaximum = max(1, (int) config('geoflow.outbound_response_max_bytes', 50 * 1024 * 1024));
         $explicit = $options['geoflow_response_max_bytes'] ?? null;
         if (is_numeric($explicit) && (int) $explicit > 0) {
             $globalMaximum = min($globalMaximum, (int) $explicit);

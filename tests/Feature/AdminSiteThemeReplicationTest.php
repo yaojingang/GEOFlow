@@ -93,9 +93,9 @@ class AdminSiteThemeReplicationTest extends TestCase
             $content = File::get(base_path($composeFile));
 
             $this->assertStringContainsString(
-                '--queue=geoflow,distribution,theme-replication,default',
+                '--queue=system-updates,geoflow,distribution,theme-replication,default',
                 $content,
-                $composeFile.' must consume the queue used by theme replication jobs.'
+                $composeFile.' must retire legacy update jobs before consuming active application queues.'
             );
         }
     }

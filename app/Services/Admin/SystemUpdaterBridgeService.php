@@ -10,6 +10,7 @@ class SystemUpdaterBridgeService
     public function __construct(
         private readonly AgentClient $agentClient,
         private readonly SystemUpdaterBootstrapService $bootstrapService,
+        private readonly SystemUpdaterMutationPolicy $mutationPolicy,
     ) {}
 
     /**
@@ -23,6 +24,9 @@ class SystemUpdaterBridgeService
                 ? (string) $status['status']
                 : 'fail';
             $connection = $doctorStatus === 'pass' ? 'connected' : 'degraded';
+            $checks = $this->mutationPolicy->checks($status);
+            $phaseBHandoverReady = $this->mutationPolicy->phaseBHandoverReady($status);
+            $mutationAuthorizationReady = $this->mutationPolicy->authorizationReady($status);
 
             try {
                 $currentOperation = $this->agentClient->currentOperation();
@@ -39,8 +43,10 @@ class SystemUpdaterBridgeService
                 'doctor_status' => $doctorStatus,
                 'updater_version' => (string) ($status['updater_version'] ?? ''),
                 'instance' => is_array($status['instance'] ?? null) ? $status['instance'] : [],
-                'checks' => is_array($status['checks'] ?? null) ? $status['checks'] : [],
+                'checks' => $checks,
                 'operations_available' => $operationsAvailable,
+                'mutation_authorization_ready' => $mutationAuthorizationReady,
+                'phase_b_handover_ready' => $phaseBHandoverReady,
                 'current_operation' => is_array($currentOperation) ? $currentOperation : null,
                 'recovery_points' => $recoveryPoints,
                 'prepared' => $this->bootstrapService->state(),
@@ -53,6 +59,8 @@ class SystemUpdaterBridgeService
                 'instance' => [],
                 'checks' => [],
                 'operations_available' => false,
+                'mutation_authorization_ready' => false,
+                'phase_b_handover_ready' => false,
                 'current_operation' => null,
                 'recovery_points' => [],
                 'prepared' => $this->bootstrapService->state(),

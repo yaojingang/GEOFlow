@@ -32,6 +32,7 @@ use App\Http\Controllers\Admin\LeadAnalyticsController;
 use App\Http\Controllers\Admin\LeadController;
 use App\Http\Controllers\Admin\LeadFormController;
 use App\Http\Controllers\Admin\LegacyController;
+use App\Http\Controllers\Admin\LegacySystemUpdateHistoryController;
 use App\Http\Controllers\Admin\ManualPublicationController;
 use App\Http\Controllers\Admin\ManualPublicationSettingsController;
 use App\Http\Controllers\Admin\MaterialsController;
@@ -39,6 +40,7 @@ use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\SiteThemeReplicationController;
 use App\Http\Controllers\Admin\SystemUpdateController;
+use App\Http\Controllers\Admin\SystemUpdaterOperationController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\TrafficAnalyticsController;
@@ -104,40 +106,31 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 ->name('distribution');
         });
 
-        Route::prefix('system-updates')->name('system-updates.')->group(function () {
+        Route::prefix('system-updates')->name('system-updates.')->middleware('admin.super')->group(function () {
             Route::get('/', [SystemUpdateController::class, 'index'])->name('index');
-            Route::post('updater/prepare', [SystemUpdateController::class, 'prepareUpdater'])
+            Route::post('updater/prepare', [SystemUpdaterOperationController::class, 'prepare'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.prepare');
-            Route::get('updater/download', [SystemUpdateController::class, 'downloadUpdater'])
+            Route::get('updater/download', [SystemUpdaterOperationController::class, 'download'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.download');
-            Route::post('updater/update', [SystemUpdateController::class, 'updaterUpdate'])
+            Route::post('updater/update', [SystemUpdaterOperationController::class, 'update'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.update');
-            Route::post('updater/backup', [SystemUpdateController::class, 'updaterBackup'])
+            Route::post('updater/backup', [SystemUpdaterOperationController::class, 'backup'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.backup');
-            Route::post('updater/rollback', [SystemUpdateController::class, 'updaterRollback'])
+            Route::post('updater/rollback', [SystemUpdaterOperationController::class, 'rollback'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.rollback');
-            Route::post('updater/verify', [SystemUpdateController::class, 'updaterVerify'])
+            Route::post('updater/verify', [SystemUpdaterOperationController::class, 'verify'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.verify');
-            Route::post('check', [SystemUpdateController::class, 'check'])->name('check');
-            Route::get('runs/status', [SystemUpdateController::class, 'runsStatus'])->name('runs.status');
-            Route::get('runs/{runUuid}', [SystemUpdateController::class, 'runShow'])->name('runs.show');
-            Route::post('runs/{runUuid}/retry', [SystemUpdateController::class, 'retryRun'])->name('runs.retry');
-            Route::post('runs/{runUuid}/mark-failed', [SystemUpdateController::class, 'markRunFailed'])->name('runs.mark-failed');
-            Route::post('plan', [SystemUpdateController::class, 'plan'])->name('plan');
-            Route::post('backup', [SystemUpdateController::class, 'backup'])->name('backup');
-            Route::post('apply', [SystemUpdateController::class, 'apply'])->name('apply');
-            Route::post('plans/{runUuid}/commands/{commandIndex}/executed', [SystemUpdateController::class, 'markCommandExecuted'])
-                ->whereNumber('commandIndex')
-                ->name('commands.executed');
-            Route::get('backups/{backupUuid}', [SystemUpdateController::class, 'backupShow'])->name('backups.show');
-            Route::post('backups/{backupUuid}/files/rollback', [SystemUpdateController::class, 'rollbackFile'])->name('rollback-file');
-            Route::post('backups/{backupUuid}/rollback', [SystemUpdateController::class, 'rollback'])->name('rollback');
+            Route::post('check', [SystemUpdateController::class, 'check'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('check');
+            Route::get('runs/{runUuid}', [LegacySystemUpdateHistoryController::class, 'run'])->name('runs.show');
+            Route::get('backups/{backupUuid}', [LegacySystemUpdateHistoryController::class, 'backup'])->name('backups.show');
         });
 
         Route::prefix('lead-forms')->name('lead-forms.')->group(function () {
