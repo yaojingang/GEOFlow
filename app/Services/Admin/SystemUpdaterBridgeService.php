@@ -11,6 +11,7 @@ class SystemUpdaterBridgeService
         private readonly AgentClient $agentClient,
         private readonly SystemUpdaterBootstrapService $bootstrapService,
         private readonly SystemUpdaterMutationPolicy $mutationPolicy,
+        private readonly SystemUpdateOperationGuard $operationGuard,
     ) {}
 
     /**
@@ -47,6 +48,7 @@ class SystemUpdaterBridgeService
                 'operations_available' => $operationsAvailable,
                 'mutation_authorization_ready' => $mutationAuthorizationReady,
                 'phase_b_handover_ready' => $phaseBHandoverReady,
+                'legacy_worker_absent' => $this->operationGuard->retiredWorkerAbsent($status),
                 'current_operation' => is_array($currentOperation) ? $currentOperation : null,
                 'recovery_points' => $recoveryPoints,
                 'prepared' => $this->bootstrapService->state(),
@@ -61,6 +63,7 @@ class SystemUpdaterBridgeService
                 'operations_available' => false,
                 'mutation_authorization_ready' => false,
                 'phase_b_handover_ready' => false,
+                'legacy_worker_absent' => false,
                 'current_operation' => null,
                 'recovery_points' => [],
                 'prepared' => $this->bootstrapService->state(),

@@ -73,9 +73,9 @@ class SystemUpdaterOperationController extends Controller
                 $agentClient,
                 'update',
                 fn (): array => $agentClient->startUpdate($authorizationCode),
+                $operationGuard,
             ),
             'update',
-            $operationGuard,
         );
     }
 
@@ -89,9 +89,9 @@ class SystemUpdaterOperationController extends Controller
                 $agentClient,
                 'backup',
                 fn (): array => $agentClient->startBackup($authorizationCode),
+                $operationGuard,
             ),
             'backup',
-            $operationGuard,
         );
     }
 
@@ -108,9 +108,9 @@ class SystemUpdaterOperationController extends Controller
                 $agentClient,
                 'rollback',
                 fn (): array => $agentClient->startRollback((string) $validated['recovery_point_id'], $authorizationCode),
+                $operationGuard,
             ),
             'rollback',
-            $operationGuard,
         );
     }
 
@@ -149,24 +149,25 @@ class SystemUpdaterOperationController extends Controller
      * @param  \Closure(): array<string, mixed>  $start
      * @return array<string, mixed>
      */
-    private function startAuthorizedMutation(AgentClient $agentClient, string $kind, \Closure $start): array
-    {
+    private function startAuthorizedMutation(
+        AgentClient $agentClient,
+        string $kind,
+        \Closure $start,
+        SystemUpdateOperationGuard $operationGuard,
+    ): array {
         $status = $agentClient->status();
         if ($this->mutationPolicy->allows($status, $kind)) {
-            return $start();
+            return $operationGuard->run($start, $status);
         }
 
         throw new \RuntimeException('Updater mutation preconditions are unavailable.');
     }
 
     /** @param  \Closure(): array<string, mixed>  $start */
-    private function startOperation(
-        \Closure $start,
-        string $kind,
-        ?SystemUpdateOperationGuard $operationGuard = null,
-    ): RedirectResponse {
+    private function startOperation(\Closure $start, string $kind): RedirectResponse
+    {
         try {
-            $operation = $operationGuard ? $operationGuard->run($start) : $start();
+            $operation = $start();
         } catch (\Throwable $exception) {
             report($exception);
 

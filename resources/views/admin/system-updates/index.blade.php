@@ -10,7 +10,7 @@
         $historyDays = (int) ($summary['history_days'] ?? 90);
         $archivedCount = (int) ($summary['archived_run_count'] ?? 0) + (int) ($summary['archived_backup_count'] ?? 0);
         $passwordRequired = !empty($summary['admin_password_required']);
-        $legacyCutoverBlocked = !empty($summary['has_legacy_active_run']);
+        $legacyActiveRun = !empty($summary['has_legacy_active_run']);
         $updaterBridge = is_array($summary['updater_bridge'] ?? null) ? $summary['updater_bridge'] : [];
         $updaterConnection = (string) ($updaterBridge['connection'] ?? 'disconnected');
         $updaterInstance = is_array($updaterBridge['instance'] ?? null) ? $updaterBridge['instance'] : [];
@@ -19,10 +19,13 @@
         $updaterOperationsAvailable = !empty($updaterBridge['operations_available']);
         $mutationAuthorizationReady = !empty($updaterBridge['mutation_authorization_ready']);
         $phaseBHandoverReady = !empty($updaterBridge['phase_b_handover_ready']);
+        $legacyWorkerAbsent = !empty($updaterBridge['legacy_worker_absent']);
+        $legacyCutoverBlocked = $legacyActiveRun && !$legacyWorkerAbsent;
         $updaterOperation = is_array($updaterBridge['current_operation'] ?? null) ? $updaterBridge['current_operation'] : [];
         $updaterOperationStages = is_array($updaterOperation['stages'] ?? null) ? array_values(array_filter($updaterOperation['stages'], 'is_array')) : [];
         $updaterOperationStatus = (string) ($updaterOperation['status'] ?? '');
-        $updaterOperationActive = in_array($updaterOperationStatus, ['queued', 'running', 'recovery_required'], true);
+        $updaterOperationBlocksMutations = in_array($updaterOperationStatus, ['queued', 'running', 'recovery_required'], true);
+        $updaterOperationNeedsPolling = in_array($updaterOperationStatus, ['queued', 'running'], true);
         $updaterRecoveryPoints = is_array($updaterBridge['recovery_points'] ?? null) ? array_values(array_filter($updaterBridge['recovery_points'], 'is_array')) : [];
         $webRollbackPointId = null;
         foreach ($updaterRecoveryPoints as $recoveryPoint) {
@@ -41,13 +44,13 @@
             'degraded' => 'border-amber-200 bg-amber-50 text-amber-700',
             default => 'border-slate-200 bg-slate-100 text-slate-700',
         };
-        $readOnlyOperationDisabled = $updaterOperationActive || !$updaterOperationsAvailable;
+        $readOnlyOperationDisabled = $updaterOperationBlocksMutations || !$updaterOperationsAvailable;
         $mutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || $updaterConnection !== 'connected' || !$mutationAuthorizationReady;
         $updateMutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || ($updaterConnection !== 'connected' && !$phaseBHandoverReady) || !$mutationAuthorizationReady;
         $authorizationCheckFailed = !$mutationAuthorizationReady;
     @endphp
 
-    <div class="px-4 sm:px-0" @if($updaterOperationActive) data-system-updater-auto-reload="5000" @endif>
+    <div class="px-4 sm:px-0" @if($updaterOperationNeedsPolling) data-system-updater-auto-reload="5000" @endif>
         <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900">{{ __('admin.system_updates.page_title') }}</h1>

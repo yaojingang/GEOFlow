@@ -151,11 +151,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
     {
         $client = new AgentClientStub;
         $client->doctorStatus = 'fail';
-        $client->additionalChecks = [[
-            'id' => 'retired-update-worker',
-            'status' => 'fail',
-            'message' => 'Retired Phase B update worker must be removed during the signed update handover.',
-        ]];
+        $client->retiredWorkerPresent = true;
         $this->app->instance(AgentClient::class, $client);
 
         $summary = $this->app->make(SystemUpdaterBridgeService::class)->summary();
@@ -206,7 +202,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.backup'), [
             'current_admin_password' => 'secret-123',
             'updater_authorization_code' => '234567',
-        ])->assertRedirect(route('admin.system-updates.index'));
+        ])->assertRedirect(route('admin.system-updates.index'))->assertSessionHasNoErrors();
         $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.rollback'), [
             'current_admin_password' => 'secret-123',
             'updater_authorization_code' => '345678',
@@ -228,6 +224,8 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             'status' => 'running',
         ]);
         $client = new AgentClientStub;
+        $client->doctorStatus = 'fail';
+        $client->retiredWorkerPresent = true;
         $this->app->instance(AgentClient::class, $client);
 
         $this->actingAs($this->createAdmin('phase_c_cutover_admin'), 'admin')
@@ -242,6 +240,77 @@ class AdminSystemUpdaterBridgeTest extends TestCase
 
         $this->assertSame([], $client->updates);
         $this->assertSame(1, $client->verifications);
+    }
+
+    public function test_orphaned_legacy_rows_are_retired_after_the_agent_confirms_the_worker_is_absent(): void
+    {
+        $queued = SystemUpdateRun::query()->create([
+            'run_uuid' => 'phase-c-stale-queued-legacy-run',
+            'action' => 'apply',
+            'status' => 'queued',
+        ]);
+        $running = SystemUpdateRun::query()->create([
+            'run_uuid' => 'phase-c-stale-running-legacy-run',
+            'action' => 'rollback',
+            'status' => 'running',
+            'started_at' => now(),
+        ]);
+        $client = new AgentClientStub;
+        $this->app->instance(AgentClient::class, $client);
+        $admin = $this->createAdmin('phase_c_stale_cutover_admin');
+
+        $html = $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->getContent();
+        preg_match('/<form[^>]+action="[^"]+\/updater\/update".*?<\/form>/s', $html, $updateForm);
+        $this->assertNotEmpty($updateForm);
+        $this->assertDoesNotMatchRegularExpression('/\sdisabled(?:\s|>)/', $updateForm[0]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.updater.update'), [
+                'current_admin_password' => 'secret-123',
+                'updater_authorization_code' => '567890',
+            ])
+            ->assertRedirect(route('admin.system-updates.index'))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(['567890'], $client->updates);
+        foreach ([$queued, $running] as $run) {
+            $run->refresh();
+            $this->assertSame('failed', $run->status);
+            $this->assertSame('legacy_executor_retired', $run->error_message);
+            $this->assertNotNull($run->finished_at);
+        }
+    }
+
+    public function test_recovery_required_blocks_mutations_without_polling_forever(): void
+    {
+        $client = new AgentClientStub;
+        $client->current = $client->operation('update', 'recovery_required');
+        $this->app->instance(AgentClient::class, $client);
+
+        $response = $this->actingAs($this->createAdmin('phase_c_recovery_required_admin'), 'admin')
+            ->get(route('admin.system-updates.index'));
+
+        $response->assertOk()
+            ->assertDontSee('data-system-updater-auto-reload', false);
+        $html = $response->getContent();
+        preg_match('/<form[^>]+action="[^"]+\/updater\/update".*?<\/form>/s', $html, $updateForm);
+        $this->assertNotEmpty($updateForm);
+        $this->assertMatchesRegularExpression('/\sdisabled(?:\s|>)/', $updateForm[0]);
+    }
+
+    public function test_running_operation_keeps_page_polling_enabled(): void
+    {
+        $client = new AgentClientStub;
+        $client->current = $client->operation('update', 'running');
+        $this->app->instance(AgentClient::class, $client);
+
+        $this->actingAs($this->createAdmin('phase_c_running_operation_admin'), 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee('data-system-updater-auto-reload="5000"', false);
     }
 
     public function test_page_only_offers_web_rollback_for_the_newest_update_checkpoint(): void
@@ -399,6 +468,8 @@ class AgentClientStub implements AgentClient
 
     public string $doctorStatus = 'pass';
 
+    public bool $retiredWorkerPresent = false;
+
     /** @var list<array<string, string>> */
     public array $additionalChecks = [];
 
@@ -426,6 +497,13 @@ class AgentClientStub implements AgentClient
             'status' => 'pass',
             'message' => 'Human mutation authorization is configured',
         ]] : [];
+        $checks[] = [
+            'id' => 'retired-update-worker',
+            'status' => $this->retiredWorkerPresent ? 'fail' : 'pass',
+            'message' => $this->retiredWorkerPresent
+                ? 'Retired Phase B update worker must be removed during the signed update handover.'
+                : 'Retired Phase B update worker is absent.',
+        ];
 
         return [
             'schema_version' => 1,
@@ -472,6 +550,15 @@ class AgentClientStub implements AgentClient
     public function recoveryPoints(): array
     {
         return $this->points;
+    }
+
+    /** @return array<string, mixed> */
+    public function operation(string $kind, string $status): array
+    {
+        return [
+            ...$this->queuedOperation($kind),
+            'status' => $status,
+        ];
     }
 
     /** @return array<string, mixed> */
