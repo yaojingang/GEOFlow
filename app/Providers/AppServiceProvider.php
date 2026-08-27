@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\Outbound\HostResolver;
 use App\Contracts\Outbound\OutboundTransport;
+use App\Contracts\SystemUpdater\AgentClient;
 use App\Models\Admin;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
@@ -18,6 +19,7 @@ use App\Services\Outbound\LaravelPinnedOutboundTransport;
 use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\Outbound\SecureHttpFactory;
 use App\Services\Outbound\SystemHostResolver;
+use App\Services\SystemUpdater\UnixSocketAgentClient;
 use App\View\Composers\SiteLayoutComposer;
 use Closure;
 use GuzzleHttp\Utils;
@@ -40,6 +42,7 @@ class AppServiceProvider extends ServiceProvider
         $trustedTerminal = Closure::fromCallable(Utils::chooseHandler());
 
         $this->app->bind(HostResolver::class, SystemHostResolver::class);
+        $this->app->bind(AgentClient::class, UnixSocketAgentClient::class);
         $this->app->singleton(FinalOutboundSecurityPolicy::class);
         $this->app->bind(OutboundTransport::class, function () use ($fixedContextCapability): LaravelPinnedOutboundTransport {
             return new LaravelPinnedOutboundTransport($fixedContextCapability);

@@ -26,6 +26,19 @@
         $manualCommands = is_array($planJson['manual_commands'] ?? null) ? $planJson['manual_commands'] : [];
         $updateScript = (string) ($planJson['update_script'] ?? '');
         $commandStatuses = is_array($planJson['manual_command_statuses'] ?? null) ? $planJson['manual_command_statuses'] : [];
+        $updaterBridge = is_array($summary['updater_bridge'] ?? null) ? $summary['updater_bridge'] : [];
+        $updaterConnection = (string) ($updaterBridge['connection'] ?? 'disconnected');
+        $updaterInstance = is_array($updaterBridge['instance'] ?? null) ? $updaterBridge['instance'] : [];
+        $preparedUpdater = is_array($updaterBridge['prepared'] ?? null) ? $updaterBridge['prepared'] : [];
+        $updaterHostRoot = (string) config('geoflow.updater_host_root');
+        $updaterEnrollRoot = $updaterHostRoot !== '' ? $updaterHostRoot : '/absolute/path/to/GEOFlow';
+        $updaterEnrollRootArg = "'".str_replace("'", "'\\''", $updaterEnrollRoot)."'";
+        $updaterEnvironmentArg = "'".str_replace("'", "'\\''", rtrim($updaterEnrollRoot, '/').'/.env.prod')."'";
+        $updaterStatusClass = match ($updaterConnection) {
+            'connected' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            'degraded' => 'border-amber-200 bg-amber-50 text-amber-700',
+            default => 'border-slate-200 bg-slate-100 text-slate-700',
+        };
         $payload = is_array($state['payload'] ?? null) ? $state['payload'] : [];
         $executionReady = !empty($summary['execution_enabled']) && !empty($summary['archive_apply_enabled']);
         $rollbackReady = !empty($summary['rollback_enabled']);
@@ -124,6 +137,88 @@
                     {{ __('admin.system_updates.button.open_github') }}
                 </a>
             </div>
+        </div>
+
+        <section class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div class="flex flex-col gap-5 px-6 py-6 lg:flex-row lg:items-start lg:justify-between">
+                <div class="max-w-2xl">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.updater.title') }}</h2>
+                        <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold {{ $updaterStatusClass }}">
+                            <span class="h-2 w-2 rounded-full bg-current" aria-hidden="true"></span>
+                            {{ __('admin.system_updates.updater.status.'.$updaterConnection) }}
+                        </span>
+                    </div>
+                    <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.description') }}</p>
+                </div>
+
+                @if($updaterConnection === 'disconnected')
+                    <form method="POST" action="{{ route('admin.system-updates.updater.prepare') }}" class="flex-none">
+                        @csrf
+                        <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 [@media(hover:hover)]:hover:bg-gray-800">
+                            <i data-lucide="download" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.system_updates.updater.prepare') }}
+                        </button>
+                    </form>
+                @endif
+            </div>
+
+            @if($updaterConnection === 'connected' || $updaterConnection === 'degraded')
+                <dl class="grid border-t border-gray-100 bg-gray-50/70 sm:grid-cols-2 lg:grid-cols-4">
+                    <div class="px-6 py-4">
+                        <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('admin.system_updates.updater.version') }}</dt>
+                        <dd class="mt-1 font-mono text-sm font-semibold text-gray-900">{{ (string) ($updaterBridge['updater_version'] ?? '') ?: __('admin.common.none') }}</dd>
+                    </div>
+                    <div class="border-t border-gray-200 px-6 py-4 sm:border-l sm:border-t-0">
+                        <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('admin.system_updates.updater.instance') }}</dt>
+                        <dd class="mt-1 font-mono text-sm font-semibold text-gray-900">{{ (string) ($updaterInstance['id'] ?? '') ?: __('admin.common.none') }}</dd>
+                    </div>
+                    <div class="border-t border-gray-200 px-6 py-4 lg:border-l lg:border-t-0">
+                        <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('admin.system_updates.updater.release') }}</dt>
+                        <dd class="mt-1 font-mono text-sm font-semibold text-gray-900">{{ filled($updaterInstance['version'] ?? null) ? 'v'.(string) $updaterInstance['version'] : __('admin.common.none') }}</dd>
+                    </div>
+                    <div class="border-t border-gray-200 px-6 py-4 sm:border-l lg:border-t-0">
+                        <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('admin.system_updates.updater.doctor') }}</dt>
+                        <dd class="mt-1 text-sm font-semibold text-gray-900">{{ (string) ($updaterBridge['doctor_status'] ?? __('admin.common.none')) }}</dd>
+                    </div>
+                </dl>
+            @else
+                <div class="border-t border-gray-100 px-6 py-5">
+                    <p class="text-sm font-medium text-gray-700">{{ __('admin.system_updates.updater.not_available') }}</p>
+                    <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-500">{{ __('admin.system_updates.updater.prepare_hint') }}</p>
+                    @if($preparedUpdater !== [])
+                        <div class="mt-5 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
+                            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div class="min-w-0">
+                                    <p class="truncate font-mono text-sm font-semibold text-gray-900">{{ (string) ($preparedUpdater['filename'] ?? '') }}</p>
+                                    <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-600">
+                                        {{ __('admin.system_updates.updater.package_digest') }}: {{ (string) ($preparedUpdater['sha256'] ?? '') }}
+                                    </p>
+                                </div>
+                                <a href="{{ route('admin.system-updates.updater.download') }}" class="inline-flex min-h-10 flex-none items-center justify-center rounded-md border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 [@media(hover:hover)]:hover:bg-emerald-100">
+                                    <i data-lucide="download" class="mr-2 h-4 w-4"></i>
+                                    {{ __('admin.system_updates.updater.download') }}
+                                </a>
+                            </div>
+                            <div class="mt-4 border-t border-emerald-200 pt-4">
+                                <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.updater.install_title') }}</h3>
+                                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.install_hint') }}</p>
+                                <pre class="mt-3 overflow-x-auto rounded-md bg-gray-950 p-4 text-xs leading-6 text-gray-100"><code>tar -xzf {{ (string) ($preparedUpdater['filename'] ?? '') }}
+sudo ./packaging/scripts/install.sh
+sudo geoflow-updater enroll --instance-id primary --instance-root {{ $updaterEnrollRootArg }}
+sudo docker compose --env-file {{ $updaterEnvironmentArg }} --env-file /var/lib/geoflow-updater/instances/primary/release.env -f /var/lib/geoflow-updater/instances/primary/docker-compose.managed.yml down
+sudo docker compose --env-file {{ $updaterEnvironmentArg }} --env-file /var/lib/geoflow-updater/instances/primary/release.env -f /var/lib/geoflow-updater/instances/primary/docker-compose.managed.yml up -d
+sudo geoflow-updater doctor --instance primary</code></pre>
+                            </div>
+                        </div>
+                    @endif
+                </div>
+            @endif
+        </section>
+
+        <div class="mb-4">
+            <h2 class="text-base font-semibold text-gray-900">{{ __('admin.system_updates.updater.legacy_title') }}</h2>
+            <p class="mt-1 text-sm text-gray-500">{{ __('admin.system_updates.updater.legacy_description') }}</p>
         </div>
 
         <div class="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
@@ -238,17 +333,17 @@
             </div>
 
             <div class="grid gap-6 px-6 py-6 xl:grid-cols-[1fr_.95fr]">
-                <div class="space-y-5">
-                    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div class="min-w-0 space-y-5">
+                    <div class="min-w-0 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                         @foreach($diagnosticItems as $item)
                             @php($itemStatus = (string) ($item['status'] ?? 'info'))
                             @php($itemClass = $preflightItemClasses[$itemStatus] ?? $preflightItemClasses['info'])
-                            <div class="rounded-lg border p-4 {{ $itemClass }}">
-                                <div class="flex items-start gap-3">
+                            <div class="min-w-0 rounded-lg border p-4 {{ $itemClass }}">
+                                <div class="min-w-0 flex items-start gap-3">
                                     <i data-lucide="{{ $itemStatus === 'pass' ? 'check-circle-2' : ($itemStatus === 'fail' ? 'x-circle' : ($itemStatus === 'warn' ? 'alert-triangle' : 'info')) }}" class="mt-0.5 h-4 w-4 shrink-0"></i>
-                                    <div>
+                                    <div class="min-w-0">
                                         <div class="text-sm font-semibold">{{ (string) ($item['title'] ?? '') }}</div>
-                                        <p class="mt-1 text-xs leading-5 opacity-90">{{ (string) ($item['message'] ?? '') }}</p>
+                                        <p class="mt-1 break-all text-xs leading-5 opacity-90">{{ (string) ($item['message'] ?? '') }}</p>
                                     </div>
                                 </div>
                             </div>
@@ -269,9 +364,9 @@
 
                     <div class="rounded-lg border border-gray-100 bg-gray-50 p-4">
                         <div class="flex flex-wrap items-start justify-between gap-3">
-                            <div>
+                            <div class="min-w-0">
                                 <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.diagnostics.log_title') }}</h3>
-                                <p class="mt-1 text-xs leading-5 text-gray-500">{{ __('admin.system_updates.diagnostics.log_desc', ['path' => (string) ($diagnosticLog['path'] ?? '')]) }}</p>
+                                <p class="mt-1 break-all text-xs leading-5 text-gray-500">{{ __('admin.system_updates.diagnostics.log_desc', ['path' => (string) ($diagnosticLog['path'] ?? '')]) }}</p>
                             </div>
                             <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $diagnosticLogClass }}">
                                 {{ __('admin.system_updates.diagnostics.log_status_'.$diagnosticLogStatus) }}
@@ -280,7 +375,7 @@
                         @if(!empty($diagnosticLog['lines']) && is_array($diagnosticLog['lines']))
                             <div class="mt-4 space-y-2">
                                 @foreach($diagnosticLog['lines'] as $line)
-                                    <div class="rounded-md bg-white px-3 py-2 font-mono text-xs leading-5 text-gray-700">{{ (string) $line }}</div>
+                                    <div class="break-all rounded-md bg-white px-3 py-2 font-mono text-xs leading-5 text-gray-700">{{ (string) $line }}</div>
                                 @endforeach
                             </div>
                         @else
@@ -289,7 +384,7 @@
                     </div>
                 </div>
 
-                <div class="space-y-4">
+                <div class="min-w-0 space-y-4">
                     <div class="rounded-lg border border-blue-100 bg-blue-50 p-4">
                         <div class="flex flex-wrap items-start justify-between gap-3">
                             <div>

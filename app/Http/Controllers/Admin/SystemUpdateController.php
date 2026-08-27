@@ -14,6 +14,8 @@ use App\Services\Admin\SystemUpdateBackupInspectionService;
 use App\Services\Admin\SystemUpdateBackupService;
 use App\Services\Admin\SystemUpdateOperationGuard;
 use App\Services\Admin\SystemUpdatePlanService;
+use App\Services\Admin\SystemUpdaterBootstrapService;
+use App\Services\Admin\SystemUpdaterBridgeService;
 use App\Services\Admin\SystemUpdateRollbackService;
 use App\Services\Admin\SystemUpdateRunHealthService;
 use App\Services\Admin\SystemUpdateStateService;
@@ -21,12 +23,14 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SystemUpdateController extends Controller
 {
-    public function index(SystemUpdateStateService $stateService): View
+    public function index(SystemUpdateStateService $stateService, SystemUpdaterBridgeService $updaterBridgeService): View
     {
         $this->ensureUpdateCenterEnabled();
         $this->ensureSuperAdmin();
@@ -34,8 +38,53 @@ class SystemUpdateController extends Controller
         return view('admin.system-updates.index', [
             'pageTitle' => __('admin.system_updates.page_title'),
             'activeMenu' => 'dashboard',
-            'summary' => $stateService->summary(),
+            'summary' => array_merge($stateService->summary(), [
+                'updater_bridge' => $updaterBridgeService->summary(),
+            ]),
         ]);
+    }
+
+    public function prepareUpdater(SystemUpdaterBootstrapService $bootstrapService): RedirectResponse
+    {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+
+        try {
+            $prepared = $bootstrapService->prepare();
+        } catch (\Throwable $exception) {
+            return redirect()
+                ->route('admin.system-updates.index')
+                ->withErrors([__('admin.system_updates.updater.prepare_failed', ['message' => $exception->getMessage()])]);
+        }
+
+        return redirect()
+            ->route('admin.system-updates.index')
+            ->with('message', __('admin.system_updates.updater.prepared', [
+                'version' => (string) ($prepared['version'] ?? ''),
+            ]));
+    }
+
+    public function downloadUpdater(SystemUpdaterBootstrapService $bootstrapService): StreamedResponse|RedirectResponse
+    {
+        $this->ensureUpdateCenterEnabled();
+        $this->ensureSuperAdmin();
+
+        try {
+            $prepared = $bootstrapService->download();
+        } catch (\Throwable $exception) {
+            return redirect()
+                ->route('admin.system-updates.index')
+                ->withErrors([__('admin.system_updates.updater.download_failed', ['message' => $exception->getMessage()])]);
+        }
+
+        return Storage::disk('local')->download(
+            (string) $prepared['path'],
+            (string) $prepared['filename'],
+            [
+                'Content-Type' => 'application/gzip',
+                'X-Content-Type-Options' => 'nosniff',
+            ],
+        );
     }
 
     public function check(AdminUpdateMetadataService $metadataService): RedirectResponse

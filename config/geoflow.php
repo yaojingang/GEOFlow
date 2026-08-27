@@ -94,6 +94,16 @@ return [
     'update_lock_ttl_seconds' => max(30, (int) env('GEOFLOW_UPDATE_LOCK_TTL', 900)),
     // 系统更新任务超过该时间仍处于 queued/running 时，在更新中心提示为可能卡住。
     'update_run_stale_minutes' => max(1, (int) env('GEOFLOW_UPDATE_RUN_STALE_MINUTES', 15)),
+    // 独立 updater bridge：应用只访问 Unix socket 和实例凭据，不接触 Docker socket。
+    'updater_socket' => (string) env('GEOFLOW_UPDATER_SOCKET', '/run/geoflow-updater/geoflow-updater.sock'),
+    'updater_control_token_file' => (string) env('GEOFLOW_UPDATER_CONTROL_TOKEN_FILE', '/run/secrets/geoflow-updater-control-token'),
+    'updater_instance_id' => (string) env('GEOFLOW_UPDATER_INSTANCE_ID', 'primary'),
+    'updater_host_root' => rtrim((string) env('GEOFLOW_UPDATER_HOST_ROOT', ''), '/'),
+    'updater_connect_timeout_seconds' => max(0.1, (float) env('GEOFLOW_UPDATER_CONNECT_TIMEOUT_SECONDS', 0.5)),
+    'updater_read_timeout_seconds' => max(1, (int) env('GEOFLOW_UPDATER_READ_TIMEOUT_SECONDS', 10)),
+    'updater_bootstrap_manifest_url' => 'https://github.com/yaojingang/geoflow-updater/releases/latest/download/bootstrap-manifest.json',
+    'updater_trusted_root_path' => resource_path('update-trust/root.json'),
+    'updater_bootstrap_max_bytes' => 100 * 1024 * 1024,
 
     // 复刻主题审查包的资源上限。
     'theme_replication_package_max_files' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_MAX_FILES', 500)),

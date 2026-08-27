@@ -106,6 +106,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
 
         Route::prefix('system-updates')->name('system-updates.')->group(function () {
             Route::get('/', [SystemUpdateController::class, 'index'])->name('index');
+            Route::post('updater/prepare', [SystemUpdateController::class, 'prepareUpdater'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.prepare');
+            Route::get('updater/download', [SystemUpdateController::class, 'downloadUpdater'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.download');
             Route::post('check', [SystemUpdateController::class, 'check'])->name('check');
             Route::get('runs/status', [SystemUpdateController::class, 'runsStatus'])->name('runs.status');
             Route::get('runs/{runUuid}', [SystemUpdateController::class, 'runShow'])->name('runs.show');

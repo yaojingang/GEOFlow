@@ -2,6 +2,16 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## Unreleased
+
+- Added the Phase A independent updater bridge:
+  - The System Update Center now shows GEOFlow Updater connection status and environment diagnostics, and can prepare and privately download a signed installer.
+  - Installer preparation verifies the embedded two-of-three offline root, targets-role signature, platform, size, and SHA-256. Downloads use the shared safe outbound gateway.
+  - Private installer state retains the signed expiry and revalidates file type, path, size, and digest on download. Symlinks, expired state, and modified files are rejected.
+  - The website reads updater status through an instance-authenticated local Unix socket and does not mount the Docker socket.
+  - Initial managed handover loads both site and signed-release environment files, stops the standard production project before attaching its database directory, and calls out queue draining and the maintenance window.
+  - Phase A keeps the existing update planning, backup, and execution controls. Phases B and C will migrate transactional updates, automatic backups, verification, and rollback before those controls are removed.
+
 ## 2026-08-09
 
 ### v2.3.0
