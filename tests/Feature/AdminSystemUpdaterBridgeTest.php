@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Mockery\MockInterface;
+use RuntimeException;
 use Tests\TestCase;
 
 class AdminSystemUpdaterBridgeTest extends TestCase
@@ -56,16 +57,98 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         $response
             ->assertOk()
             ->assertSee(__('admin.system_updates.updater.title'))
-            ->assertSee(__('admin.system_updates.updater.status.connected'))
-            ->assertSee('https://github.com/yaojingang/GEOFlow', false)
+            ->assertSee(__('admin.system_updates.updater.readiness.ready'))
+            ->assertSee(__('admin.system_updates.updater.journey.title'))
+            ->assertSee('https://github.com/yaojingang/geoflow-updater', false)
             ->assertSee('name="updater_authorization_code"', false)
             ->assertSee(route('admin.system-updates.updater.update'), false)
             ->assertSee(route('admin.system-updates.runs.show', ['runUuid' => $run->run_uuid]), false)
             ->assertSee(route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]), false)
             ->assertSee(__('admin.system_updates.backup.status_available'))
+            ->assertDontSee(route('admin.system-updates.check'), false)
+            ->assertDontSee(route('admin.system-updates.updater.prepare'), false)
             ->assertDontSee('/system-updates/apply', false)
             ->assertDontSee('/system-updates/plan', false)
             ->assertDontSee('/system-updates/backups/'.$backup->backup_uuid.'/rollback', false);
+    }
+
+    public function test_disconnected_page_guides_the_admin_to_get_the_updater_without_fake_host_paths(): void
+    {
+        config(['geoflow.updater_host_root' => '']);
+        $this->mock(AgentClient::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('status')->once()->andThrow(new RuntimeException('agent unavailable'));
+        });
+        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('state')->once()->andReturn(null);
+        });
+
+        $response = $this->actingAs($this->createAdmin('phase_c_disconnected_admin'), 'admin')
+            ->get(route('admin.system-updates.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.updater.readiness.not_installed'))
+            ->assertSee(__('admin.system_updates.updater.journey.obtain'))
+            ->assertSee(__('admin.system_updates.updater.journey.install'))
+            ->assertSee(__('admin.system_updates.updater.journey.authorize'))
+            ->assertSee(__('admin.system_updates.updater.journey.operate'))
+            ->assertSee(__('admin.system_updates.updater.cta.get'))
+            ->assertSee(route('admin.system-updates.updater.prepare'), false)
+            ->assertDontSee('/absolute/path/to/GEOFlow', false)
+            ->assertDontSee(route('admin.system-updates.check'), false);
+    }
+
+    public function test_prepared_package_shows_a_download_entry_and_requires_a_real_host_root_before_commands(): void
+    {
+        config(['geoflow.updater_host_root' => '']);
+        $this->mock(AgentClient::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('status')->once()->andThrow(new RuntimeException('agent unavailable'));
+        });
+        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('state')->once()->andReturn([
+                'version' => '0.2.0',
+                'filename' => 'geoflow-updater_0.2.0_linux_amd64.tar.gz',
+                'sha256' => str_repeat('a', 64),
+            ]);
+        });
+
+        $response = $this->actingAs($this->createAdmin('phase_c_prepared_admin'), 'admin')
+            ->get(route('admin.system-updates.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.updater.readiness.installation_pending'))
+            ->assertSee(__('admin.system_updates.updater.cta.download'))
+            ->assertSee(route('admin.system-updates.updater.download'), false)
+            ->assertSee(__('admin.system_updates.updater.host_root_required_title'))
+            ->assertDontSee('sudo geoflow-updater enroll', false)
+            ->assertDontSee('/absolute/path/to/GEOFlow', false);
+    }
+
+    public function test_prepared_package_reveals_numbered_copyable_commands_when_host_root_is_configured(): void
+    {
+        config(['geoflow.updater_host_root' => '/srv/geoflow']);
+        $this->mock(AgentClient::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('status')->once()->andThrow(new RuntimeException('agent unavailable'));
+        });
+        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('state')->once()->andReturn([
+                'version' => '0.2.0',
+                'filename' => 'geoflow-updater_0.2.0_linux_amd64.tar.gz',
+                'sha256' => str_repeat('b', 64),
+            ]);
+        });
+
+        $response = $this->actingAs($this->createAdmin('phase_c_install_commands_admin'), 'admin')
+            ->get(route('admin.system-updates.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.updater.install_commands_title'))
+            ->assertSee('data-system-updater-copy=', false)
+            ->assertSee("--instance-root '/srv/geoflow'")
+            ->assertSee(__('admin.system_updates.updater.copy'))
+            ->assertDontSee('/absolute/path/to/GEOFlow', false);
     }
 
     public function test_super_admin_can_prepare_and_download_a_verified_updater_package(): void

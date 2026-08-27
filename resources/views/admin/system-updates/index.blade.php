@@ -3,7 +3,6 @@
 @section('content')
     @php
         $state = is_array($summary['state'] ?? null) ? $summary['state'] : [];
-        $links = is_array($summary['links'] ?? null) ? $summary['links'] : [];
         $recentRuns = $summary['recent_runs'] ?? collect();
         $recentBackups = $summary['recent_backups'] ?? collect();
         $historyScope = (string) ($summary['history_scope'] ?? 'recent');
@@ -35,15 +34,61 @@
             }
         }
         $preparedUpdater = is_array($updaterBridge['prepared'] ?? null) ? $updaterBridge['prepared'] : [];
-        $updaterHostRoot = (string) config('geoflow.updater_host_root');
-        $updaterEnrollRoot = $updaterHostRoot !== '' ? $updaterHostRoot : '/absolute/path/to/GEOFlow';
-        $updaterEnrollRootArg = "'".str_replace("'", "'\\''", $updaterEnrollRoot)."'";
-        $updaterEnvironmentArg = "'".str_replace("'", "'\\''", rtrim($updaterEnrollRoot, '/').'/.env.prod')."'";
-        $updaterStatusClass = match ($updaterConnection) {
-            'connected' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
-            'degraded' => 'border-amber-200 bg-amber-50 text-amber-700',
+        $hasPreparedUpdater = $preparedUpdater !== [];
+        $updaterHostRoot = trim((string) config('geoflow.updater_host_root'));
+        $updaterHostRootConfigured = str_starts_with($updaterHostRoot, '/');
+        $updaterInstanceId = (string) config('geoflow.updater_instance_id', 'primary');
+        $updaterProjectUrl = 'https://github.com/yaojingang/geoflow-updater';
+        $updaterPresent = $updaterConnection !== 'disconnected';
+        $updaterReady = $updaterConnection === 'connected' && $updaterOperationsAvailable && $mutationAuthorizationReady;
+        $updaterReadiness = match (true) {
+            !$updaterPresent && !$hasPreparedUpdater => 'not_installed',
+            !$updaterPresent => 'installation_pending',
+            $updaterConnection === 'degraded' || !$updaterOperationsAvailable => 'attention_required',
+            !$mutationAuthorizationReady => 'authorization_pending',
+            default => 'ready',
+        };
+        $updaterReadinessClass = match ($updaterReadiness) {
+            'ready' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            'attention_required', 'authorization_pending' => 'border-amber-200 bg-amber-50 text-amber-800',
+            'installation_pending' => 'border-blue-200 bg-blue-50 text-blue-700',
             default => 'border-slate-200 bg-slate-100 text-slate-700',
         };
+        $journeySteps = [
+            'obtain' => $updaterPresent || $hasPreparedUpdater ? 'complete' : 'current',
+            'install' => $updaterPresent ? 'complete' : ($hasPreparedUpdater ? ($updaterHostRootConfigured ? 'current' : 'attention') : 'pending'),
+            'authorize' => $mutationAuthorizationReady ? 'complete' : ($updaterPresent ? 'current' : 'pending'),
+            'operate' => $updaterReady ? 'complete' : ($updaterPresent && $updaterConnection === 'degraded' ? 'attention' : 'pending'),
+        ];
+        $journeyStateClasses = [
+            'complete' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+            'current' => 'border-blue-200 bg-blue-50 text-blue-800',
+            'attention' => 'border-amber-200 bg-amber-50 text-amber-900',
+            'pending' => 'border-gray-200 bg-gray-50 text-gray-500',
+        ];
+        $journeyStateIcons = [
+            'complete' => 'check',
+            'current' => 'circle-dot',
+            'attention' => 'triangle-alert',
+            'pending' => 'circle',
+        ];
+        $updaterInstallCommands = [];
+        if ($hasPreparedUpdater && $updaterHostRootConfigured) {
+            $archiveArg = escapeshellarg((string) ($preparedUpdater['filename'] ?? ''));
+            $updaterInstanceArg = escapeshellarg($updaterInstanceId);
+            $updaterEnrollRootArg = escapeshellarg($updaterHostRoot);
+            $updaterEnvironmentArg = escapeshellarg(rtrim($updaterHostRoot, '/').'/.env.prod');
+            $updaterReleaseEnvironmentArg = escapeshellarg('/var/lib/geoflow-updater/instances/'.$updaterInstanceId.'/release.env');
+            $updaterComposeArg = escapeshellarg('/var/lib/geoflow-updater/instances/'.$updaterInstanceId.'/docker-compose.managed.yml');
+            $updaterInstallCommands = [
+                'unpack' => 'tar -xzf '.$archiveArg,
+                'install' => 'sudo ./packaging/scripts/install.sh',
+                'enroll' => 'sudo geoflow-updater enroll --instance-id '.$updaterInstanceArg.' --instance-root '.$updaterEnrollRootArg,
+                'authorize' => 'sudo geoflow-updater authorization-uri --instance '.$updaterInstanceArg,
+                'activate' => 'sudo docker compose --env-file '.$updaterEnvironmentArg.' --env-file '.$updaterReleaseEnvironmentArg.' -f '.$updaterComposeArg." down --remove-orphans\n".'sudo docker compose --env-file '.$updaterEnvironmentArg.' --env-file '.$updaterReleaseEnvironmentArg.' -f '.$updaterComposeArg.' up -d --remove-orphans',
+                'doctor' => 'sudo geoflow-updater doctor --instance '.$updaterInstanceArg,
+            ];
+        }
         $readOnlyOperationDisabled = $updaterOperationBlocksMutations || !$updaterOperationsAvailable;
         $mutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || $updaterConnection !== 'connected' || !$mutationAuthorizationReady;
         $updateMutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || ($updaterConnection !== 'connected' && !$phaseBHandoverReady) || !$mutationAuthorizationReady;
@@ -56,21 +101,10 @@
                 <h1 class="text-3xl font-bold text-gray-900">{{ __('admin.system_updates.page_title') }}</h1>
                 <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.system_updates.page_subtitle') }}</p>
             </div>
-            <div class="flex flex-wrap gap-2">
-                <form method="POST" action="{{ route('admin.system-updates.check') }}">
-                    @csrf
-                    <button type="submit" class="inline-flex min-h-10 items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50">
-                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.system_updates.button.check') }}
-                    </button>
-                </form>
-                @if(filled($links['github'] ?? null))
-                    <a href="{{ $links['github'] }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-10 items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50">
-                        <i data-lucide="github" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.system_updates.button.open_github') }}
-                    </a>
-                @endif
-            </div>
+            <a href="{{ $updaterProjectUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-10 items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-gray-50">
+                <i data-lucide="github" class="mr-2 h-4 w-4"></i>
+                {{ __('admin.system_updates.updater.project_link') }}
+            </a>
         </div>
 
         @if(session('message'))
@@ -85,19 +119,52 @@
                 <div>
                     <div class="flex flex-wrap items-center gap-3">
                         <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.updater.title') }}</h2>
-                        <span class="inline-flex rounded-full border px-3 py-1 text-xs font-semibold {{ $updaterStatusClass }}">
-                            {{ __('admin.system_updates.updater.status.'.$updaterConnection) }}
+                        <span class="inline-flex rounded-full border px-3 py-1 text-xs font-semibold {{ $updaterReadinessClass }}">
+                            {{ __('admin.system_updates.updater.readiness.'.$updaterReadiness) }}
                         </span>
                     </div>
                     <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.description') }}</p>
                 </div>
-                <form method="POST" action="{{ route('admin.system-updates.updater.prepare') }}" class="flex-none">
-                    @csrf
-                    <button type="submit" class="inline-flex min-h-10 items-center rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">
-                        <i data-lucide="package-check" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.system_updates.updater.prepare') }}
-                    </button>
-                </form>
+                @if(!$updaterPresent && !$hasPreparedUpdater)
+                    <form method="POST" action="{{ route('admin.system-updates.updater.prepare') }}" class="flex-none">
+                        @csrf
+                        <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-blue-700">
+                            <i data-lucide="package-check" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.system_updates.updater.cta.get') }}
+                        </button>
+                    </form>
+                @elseif(!$updaterPresent)
+                    <a href="{{ route('admin.system-updates.updater.download') }}" class="inline-flex min-h-10 flex-none items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-blue-700">
+                        <i data-lucide="download" class="mr-2 h-4 w-4"></i>
+                        {{ __('admin.system_updates.updater.cta.download') }}
+                    </a>
+                @else
+                    <a href="{{ route('admin.system-updates.index') }}" class="inline-flex min-h-10 flex-none items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-gray-50">
+                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
+                        {{ __('admin.system_updates.updater.cta.refresh') }}
+                    </a>
+                @endif
+            </div>
+
+            <div class="border-b border-gray-100 bg-slate-50/70 px-6 py-5">
+                <div class="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                    <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.updater.journey.title') }}</h3>
+                    <p class="text-xs leading-5 text-gray-500">{{ __('admin.system_updates.updater.journey.hint') }}</p>
+                </div>
+                <ol class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    @foreach($journeySteps as $journeyStep => $journeyState)
+                        <li data-system-updater-journey="{{ $journeyStep }}" class="rounded-lg border p-4 {{ $journeyStateClasses[$journeyState] }}">
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/80">
+                                    <i data-lucide="{{ $journeyStateIcons[$journeyState] }}" class="h-4 w-4"></i>
+                                </span>
+                                <span class="text-xs font-semibold">{{ __('admin.system_updates.updater.journey.state.'.$journeyState) }}</span>
+                            </div>
+                            <p class="mt-3 text-sm font-semibold">{{ __('admin.system_updates.updater.journey.'.$journeyStep) }}</p>
+                            <p class="mt-1 text-xs leading-5 opacity-80">{{ __('admin.system_updates.updater.journey.'.$journeyStep.'_hint') }}</p>
+                        </li>
+                    @endforeach
+                </ol>
             </div>
 
             @if($updaterConnection !== 'disconnected')
@@ -122,9 +189,17 @@
 
                 @if($authorizationCheckFailed)
                     <div class="mx-6 mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
-                        <h3 class="text-sm font-semibold">{{ __('admin.system_updates.updater.authorization_setup_title') }}</h3>
-                        <p class="mt-1 text-sm leading-6">{{ __('admin.system_updates.updater.authorization_setup_hint') }}</p>
-                        <pre class="mt-3 overflow-x-auto rounded-md bg-gray-950 p-3 text-xs text-gray-100"><code>sudo geoflow-updater authorization-uri --instance primary</code></pre>
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <h3 class="text-sm font-semibold">{{ __('admin.system_updates.updater.authorization_setup_title') }}</h3>
+                                <p class="mt-1 text-sm leading-6">{{ __('admin.system_updates.updater.authorization_setup_hint') }}</p>
+                            </div>
+                            <button type="button" data-system-updater-copy="#updater-command-authorization" data-copied-label="{{ __('admin.system_updates.updater.copied') }}" data-copy-failed-label="{{ __('admin.system_updates.updater.copy_failed') }}" class="inline-flex min-h-10 flex-none items-center justify-center rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-amber-100">
+                                <i data-lucide="copy" class="mr-2 h-4 w-4"></i>
+                                <span data-system-updater-copy-label aria-live="polite">{{ __('admin.system_updates.updater.copy') }}</span>
+                            </button>
+                        </div>
+                        <pre class="mt-3 overflow-x-auto rounded-md bg-gray-950 p-3 text-xs text-gray-100"><code id="updater-command-authorization">sudo geoflow-updater authorization-uri --instance {{ escapeshellarg($updaterInstanceId) }}</code></pre>
                     </div>
                 @endif
 
@@ -247,26 +322,61 @@
                 <div class="px-6 py-6">
                     <p class="text-sm font-medium text-gray-700">{{ __('admin.system_updates.updater.not_available') }}</p>
                     <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-500">{{ __('admin.system_updates.updater.prepare_hint') }}</p>
-                    @if($preparedUpdater !== [])
+                    @if($hasPreparedUpdater)
                         <div class="mt-5 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
                             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                 <div>
                                     <p class="font-mono text-sm font-semibold text-gray-900">{{ (string) ($preparedUpdater['filename'] ?? '') }}</p>
                                     <p class="mt-1 break-all font-mono text-xs text-gray-600">{{ __('admin.system_updates.updater.package_digest') }}: {{ (string) ($preparedUpdater['sha256'] ?? '') }}</p>
                                 </div>
-                                <a href="{{ route('admin.system-updates.updater.download') }}" class="inline-flex min-h-10 items-center justify-center rounded-md border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">
+                                <a href="{{ route('admin.system-updates.updater.download') }}" class="inline-flex min-h-10 items-center justify-center rounded-md border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-emerald-100">
                                     <i data-lucide="download" class="mr-2 h-4 w-4"></i>
                                     {{ __('admin.system_updates.updater.download') }}
                                 </a>
                             </div>
-                            <pre class="mt-4 overflow-x-auto rounded-md bg-gray-950 p-4 text-xs leading-6 text-gray-100"><code>tar -xzf {{ (string) ($preparedUpdater['filename'] ?? '') }}
-sudo ./packaging/scripts/install.sh
-sudo geoflow-updater enroll --instance-id primary --instance-root {{ $updaterEnrollRootArg }}
-sudo geoflow-updater authorization-uri --instance primary
-sudo docker compose --env-file {{ $updaterEnvironmentArg }} --env-file /var/lib/geoflow-updater/instances/primary/release.env -f /var/lib/geoflow-updater/instances/primary/docker-compose.managed.yml down --remove-orphans
-sudo docker compose --env-file {{ $updaterEnvironmentArg }} --env-file /var/lib/geoflow-updater/instances/primary/release.env -f /var/lib/geoflow-updater/instances/primary/docker-compose.managed.yml up -d --remove-orphans
-sudo geoflow-updater doctor --instance primary</code></pre>
                         </div>
+
+                        @if(!$updaterHostRootConfigured)
+                            <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                                <div class="flex gap-3">
+                                    <i data-lucide="folder-cog" class="mt-0.5 h-5 w-5 flex-none"></i>
+                                    <div>
+                                        <h3 class="text-sm font-semibold">{{ __('admin.system_updates.updater.host_root_required_title') }}</h3>
+                                        <p class="mt-1 max-w-3xl text-sm leading-6">{{ __('admin.system_updates.updater.host_root_required_hint') }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        @else
+                            <details class="mt-4 rounded-lg border border-gray-200 bg-white">
+                                <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 text-sm font-semibold text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500">
+                                    <span class="inline-flex items-center">
+                                        <i data-lucide="square-terminal" class="mr-2 h-4 w-4 text-gray-500"></i>
+                                        {{ __('admin.system_updates.updater.install_commands_title') }}
+                                    </span>
+                                    <i data-lucide="chevron-down" class="h-4 w-4 text-gray-400"></i>
+                                </summary>
+                                <div class="border-t border-gray-100 px-4 pb-5 pt-4">
+                                    <p class="max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.install_commands_hint') }}</p>
+                                    <ol class="mt-4 space-y-4">
+                                        @foreach($updaterInstallCommands as $commandKey => $command)
+                                            <li class="rounded-lg bg-slate-50 p-4">
+                                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                    <p class="text-sm font-semibold text-gray-900">
+                                                        <span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-xs text-white">{{ $loop->iteration }}</span>
+                                                        {{ __('admin.system_updates.updater.command_step.'.$commandKey) }}
+                                                    </p>
+                                                    <button type="button" data-system-updater-copy="#updater-command-{{ $commandKey }}" data-copied-label="{{ __('admin.system_updates.updater.copied') }}" data-copy-failed-label="{{ __('admin.system_updates.updater.copy_failed') }}" class="inline-flex min-h-10 items-center justify-center self-start rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-gray-100 sm:self-auto">
+                                                        <i data-lucide="copy" class="mr-2 h-4 w-4"></i>
+                                                        <span data-system-updater-copy-label aria-live="polite">{{ __('admin.system_updates.updater.copy') }}</span>
+                                                    </button>
+                                                </div>
+                                                <pre class="mt-3 overflow-x-auto rounded-md bg-gray-950 p-3 text-xs leading-6 text-gray-100"><code id="updater-command-{{ $commandKey }}">{{ $command }}</code></pre>
+                                            </li>
+                                        @endforeach
+                                    </ol>
+                                </div>
+                            </details>
+                        @endif
                     @endif
                 </div>
             @endif

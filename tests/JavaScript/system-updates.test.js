@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+    copySystemUpdaterCommand,
     initializeSystemUpdaterAutoReload,
     updaterReloadDelay,
 } from '../../resources/js/admin/system-updates.js';
@@ -34,4 +35,33 @@ test('active updater schedules one page reload', () => {
 
     assert.equal(scheduledDelay, 5000);
     assert.equal(reloads, 1);
+});
+
+test('copy command reads the rendered command and updates the visible label', async () => {
+    let copied = '';
+    const label = { textContent: '复制命令' };
+    const button = {
+        dataset: {
+            systemUpdaterCopy: '#updater-command-install',
+            copiedLabel: '已复制',
+        },
+        querySelector: () => label,
+    };
+    const root = {
+        querySelector: (selector) => selector === '#updater-command-install'
+            ? { textContent: '  sudo geoflow-updater doctor --instance primary  ' }
+            : null,
+    };
+
+    const copiedSuccessfully = await copySystemUpdaterCommand(
+        button,
+        root,
+        async (value) => {
+            copied = value;
+        },
+    );
+
+    assert.equal(copiedSuccessfully, true);
+    assert.equal(copied, 'sudo geoflow-updater doctor --instance primary');
+    assert.equal(label.textContent, '已复制');
 });
