@@ -52,14 +52,14 @@ jobs:
       - name: Check PHP formatting
         run: vendor/bin/pint --test
 
+      - name: Build production assets
+        run: npm run build
+
       - name: Run PHP test suite
         run: composer test
 
       - name: Run JavaScript test suite
         run: npm run test:analytics
-
-      - name: Build production assets
-        run: npm run build
 
       - name: Audit PHP dependencies
         run: composer audit --locked --no-interaction
@@ -99,11 +99,23 @@ jobs:
           coverage: none
           tools: composer:v2
 
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+
       - name: Prepare test environment
         run: touch .env
 
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Build production assets
+        run: npm run build
 
       - name: Run PostgreSQL-specific tests
         env:
