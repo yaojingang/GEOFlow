@@ -539,9 +539,7 @@
                         labels.push(@json(__('admin.knowledge_bases.import_progress_saving')));
                     }
 
-                    submitButtons.forEach(function (button) {
-                        button.disabled = true;
-                    });
+                    window.GeoFlowAdminUi?.markSubmitControlsPending?.(submitButtons);
                     const submitLabel = submitter ? submitter.querySelector('[data-import-submit-label]') : null;
                     const submitIcon = submitter ? submitter.querySelector('[data-import-submit-icon]') : null;
                     if (submitLabel) {

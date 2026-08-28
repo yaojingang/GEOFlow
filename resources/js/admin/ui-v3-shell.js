@@ -320,17 +320,34 @@ function setupClipboard() {
     });
 }
 
-export function markFormSubmitting(form, submitter = null) {
+export function markSubmitControlsPending(controls) {
+    Array.from(controls ?? []).forEach((control) => {
+        if (typeof control?.setAttribute !== 'function') return;
+
+        control.setAttribute('aria-disabled', 'true');
+        control.setAttribute('data-gf-submit-pending', '');
+    });
+}
+
+function markFormSubmitting(form, submitter = null) {
     if (form.dataset.gfSubmitting === 'true') return false;
 
     form.dataset.gfSubmitting = 'true';
     form.setAttribute('aria-busy', 'true');
-    if (submitter && typeof submitter.setAttribute === 'function') {
-        submitter.setAttribute('aria-disabled', 'true');
-        submitter.setAttribute('data-gf-submit-pending', '');
-    }
+    markSubmitControlsPending(submitter ? [submitter] : []);
 
     return true;
+}
+
+export function handleTrackedFormSubmit(event, forms, dirtyForms) {
+    if (!(event.target instanceof HTMLFormElement) || !forms.includes(event.target) || event.defaultPrevented) return;
+
+    if (!markFormSubmitting(event.target, event.submitter)) {
+        event.preventDefault();
+        return;
+    }
+
+    dirtyForms.delete(event.target);
 }
 
 function resetFormSubmitting(form) {
@@ -340,6 +357,10 @@ function resetFormSubmitting(form) {
         submitter.removeAttribute('aria-disabled');
         submitter.removeAttribute('data-gf-submit-pending');
     });
+}
+
+export function resetTrackedFormSubmissions(forms) {
+    forms.forEach(resetFormSubmitting);
 }
 
 function setupUnsavedChanges() {
@@ -359,18 +380,9 @@ function setupUnsavedChanges() {
         form.addEventListener('gf:saved', () => { dirtyForms.delete(form); });
     });
 
-    window.addEventListener('submit', (event) => {
-        if (event.target instanceof HTMLFormElement && forms.includes(event.target) && !event.defaultPrevented) {
-            if (!markFormSubmitting(event.target, event.submitter)) {
-                event.preventDefault();
-                return;
-            }
+    window.addEventListener('submit', (event) => handleTrackedFormSubmit(event, forms, dirtyForms));
 
-            dirtyForms.delete(event.target);
-        }
-    });
-
-    window.addEventListener('pageshow', () => forms.forEach(resetFormSubmitting));
+    window.addEventListener('pageshow', () => resetTrackedFormSubmissions(forms));
 
     window.addEventListener('beforeunload', (event) => {
         if (dirtyForms.size === 0) return;
@@ -407,6 +419,7 @@ function setupFormAccessibility() {
 function setupIcons() {
     window.GeoFlowAdminUi = {
         ...(window.GeoFlowAdminUi ?? {}),
+        markSubmitControlsPending,
         refreshIcons,
         showToast,
     };
