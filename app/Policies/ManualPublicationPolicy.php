@@ -25,7 +25,11 @@ class ManualPublicationPolicy
 
     public function update(Admin $admin, ManualPublication $manualPublication): bool
     {
-        return $admin->isSuperAdmin() && $manualPublication->status !== ManualPublication::STATUS_COMPLETED;
+        return $admin->isSuperAdmin()
+            && in_array((string) $manualPublication->status, [
+                ManualPublication::STATUS_DRAFT,
+                ManualPublication::STATUS_READY,
+            ], true);
     }
 
     public function transition(Admin $admin, ManualPublication $manualPublication): bool

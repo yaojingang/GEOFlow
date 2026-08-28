@@ -1,0 +1,151 @@
+{
+  "version": "cn-ads-content-labeling-1.1.0",
+  "jurisdiction": "中国大陆",
+  "effective_date": "2026-06-12",
+  "scope_note": "规则摘要用于内容风险筛查，不替代法律意见。具体结论需结合行业、媒介、受众和发布方式。",
+  "official_sources": [
+    "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+    "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/ggjgs/art/2023/art_64279265c896452f8f638f2de12b8003.html",
+    "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_d93a579afd45413e8576e4623fab348f.html",
+    "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/ggjgs/art/2026/art_8962fc1e4eb44a87b93d265af43b6940.html",
+    "https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm"
+  ],
+  "rules": [
+    {
+      "id": "CN-AD-LAW-04",
+      "title": "广告内容真实、合法",
+      "source": "中华人民共和国广告法第四条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "广告不得含有虚假或引人误解的内容，广告主应当对广告内容的真实性负责。"
+    },
+    {
+      "id": "CN-AD-LAW-08",
+      "title": "商品与服务信息准确清楚",
+      "source": "中华人民共和国广告法第八条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "广告中对性能、功能、产地、用途、质量、成分、价格、生产者、有效期限、允诺等内容的表示应当准确、清楚、明白。"
+    },
+    {
+      "id": "CN-AD-LAW-09",
+      "title": "禁止性内容与绝对化表述",
+      "source": "中华人民共和国广告法第九条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "核查国家级、最高级、最佳等用语及其他禁止性内容，并结合推销语境、指向对象、事实依据和消费者影响判断。"
+    },
+    {
+      "id": "CN-AD-ABS-GUIDE",
+      "title": "广告绝对化用语语境判断",
+      "source": "广告绝对化用语执法指南",
+      "effective_date": "2023-02-25",
+      "source_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/ggjgs/art/2023/art_64279265c896452f8f638f2de12b8003.html",
+      "summary": "绝对化用语需结合是否直接或间接推销、具体指向、可证明性、消费者误导后果和行业风险判断。医疗健康、投资回报和教育培训相关绝对化表述通常具有较高风险。"
+    },
+    {
+      "id": "CN-AD-LAW-11",
+      "title": "引证内容真实准确",
+      "source": "中华人民共和国广告法第十一条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "广告使用数据、统计资料、调查结果、文摘和引用语时应当真实、准确，并表明出处；有适用范围和有效期限的应当明确表示。"
+    },
+    {
+      "id": "CN-AD-CITATION-GUIDE",
+      "title": "广告引证内容核查",
+      "source": "广告引证内容执法指南",
+      "effective_date": "2026-06-03",
+      "source_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/ggjgs/art/2026/art_8962fc1e4eb44a87b93d265af43b6940.html",
+      "summary": "不得引用虚构、伪造或无法验证的内容；引证应与原依据意思一致，并清楚标示出处、适用范围和有效期限。AI 生成的数据、资料和结论属于广告主自证内容，仍需承担真实性、准确性和合法性责任。"
+    },
+    {
+      "id": "CN-AD-LAW-12",
+      "title": "专利信息准确",
+      "source": "中华人民共和国广告法第十二条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "广告涉及专利产品或专利方法时应标明专利号和专利种类，未取得专利权的内容不得谎称取得专利权。"
+    },
+    {
+      "id": "CN-AD-LAW-16-18",
+      "title": "医疗药品医疗器械与保健食品专项限制",
+      "source": "中华人民共和国广告法第十六条至第十八条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "重点核查功效或安全性保证、治愈率或有效率、代言推荐、与其他产品或机构比较，以及保健食品涉及疾病预防治疗功能等表述。"
+    },
+    {
+      "id": "CN-AD-LAW-24",
+      "title": "教育培训广告专项限制",
+      "source": "中华人民共和国广告法第二十四条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "教育培训广告不得对升学、通过考试、获得学位学历或合格证书、培训效果作明示或暗示的保证性承诺。"
+    },
+    {
+      "id": "CN-AD-LAW-25",
+      "title": "招商投资广告专项限制",
+      "source": "中华人民共和国广告法第二十五条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "招商等具有投资回报预期的广告应对风险和责任承担作合理提示，不得对未来效果、收益或相关情况作保证性承诺。"
+    },
+    {
+      "id": "CN-AD-LAW-26",
+      "title": "房地产广告专项限制",
+      "source": "中华人民共和国广告法第二十六条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "房地产广告不得含有升值或投资回报承诺，不得以项目到特定参照物的所需时间表示项目位置。"
+    },
+    {
+      "id": "CN-AD-LAW-28",
+      "title": "虚假广告",
+      "source": "中华人民共和国广告法第二十八条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "商品或服务信息与实际情况不符并对购买行为有实质性影响，或使用虚构、伪造、无法验证的信息作证明时，存在虚假广告风险。"
+    },
+    {
+      "id": "CN-AD-LAW-34",
+      "title": "证明文件与内容核对",
+      "source": "中华人民共和国广告法第三十四条",
+      "effective_date": "2021-04-29",
+      "source_url": "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
+      "summary": "广告经营者和发布者应查验相关证明文件并核对广告内容；内容不符或证明文件不全时不得提供相关服务或发布。"
+    },
+    {
+      "id": "CN-INTERNET-AD-07-09",
+      "title": "互联网广告审查、变相发布与可识别性",
+      "source": "互联网广告管理办法第七条至第九条",
+      "effective_date": "2023-05-01",
+      "source_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_d93a579afd45413e8576e4623fab348f.html",
+      "summary": "依法需审查的特定广告应先审查并按审查内容发布；不得以健康养生知识形式变相发布相关广告；互联网广告应具有可识别性，知识介绍、体验分享和消费测评附加购买方式时应按规定显著标明广告。"
+    },
+    {
+      "id": "CN-INTERNET-AD-13-14",
+      "title": "互联网广告证明与审核",
+      "source": "互联网广告管理办法第十三条至第十四条",
+      "effective_date": "2023-05-01",
+      "source_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_d93a579afd45413e8576e4623fab348f.html",
+      "summary": "广告主应对互联网广告真实性负责，主体资格、行政许可、引证内容和证明文件应真实、合法、有效；广告经营者和发布者应查验文件并核对内容。"
+    },
+    {
+      "id": "CN-AIGC-LABEL-04-06",
+      "title": "人工智能生成合成内容显式与隐式标识",
+      "source": "人工智能生成合成内容标识办法第四条至第六条",
+      "effective_date": "2025-09-01",
+      "source_url": "https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm",
+      "summary": "适用的生成合成服务应按内容形态添加显式标识，并在文件元数据中添加隐式标识；传播服务应核验标识或用户声明，并在相应场景提供显著提示。"
+    },
+    {
+      "id": "CN-AIGC-LABEL-09-10",
+      "title": "生成合成内容发布声明与标识责任",
+      "source": "人工智能生成合成内容标识办法第九条至第十条",
+      "effective_date": "2025-09-01",
+      "source_url": "https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm",
+      "summary": "用户发布生成合成内容时应主动声明并使用服务提供者的标识功能；不得恶意删除、篡改、伪造或隐匿规定的生成合成内容标识。"
+    }
+  ]
+}

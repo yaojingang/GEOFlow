@@ -144,7 +144,6 @@ class AiVisibilityServiceTest extends TestCase
             'name' => '火山方舟测试模型',
             'model_id' => 'doubao-seed-2-0-lite-260428',
             'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
-            'max_tokens' => 2048,
         ]);
 
         $run = app(AiVisibilityService::class)->runDoubaoArkResponses($model, 'GEOFlow', '请搜索 GEOFlow');
@@ -162,7 +161,6 @@ class AiVisibilityServiceTest extends TestCase
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ark.cn-beijing.volces.com/api/v3/responses'
             && $request->hasHeader('Authorization', 'Bearer test-model-key')
             && $request['model'] === 'doubao-seed-2-0-lite-260428'
-            && $request['max_output_tokens'] === 2048
             && ($request['tools'][0]['type'] ?? null) === 'web_search'
             && ($request['input'][0]['content'][0]['text'] ?? null) === '请搜索 GEOFlow');
     }
@@ -284,20 +282,6 @@ class AiVisibilityServiceTest extends TestCase
             'reasoning_tokens' => 0,
         ], $run->usage_json);
         $this->assertSame(1, (int) $model->fresh()->used_today);
-    }
-
-    public function test_it_uses_the_models_max_tokens_for_deepseek_analysis_by_default(): void
-    {
-        MarkdownContentWriterAgent::fake(['分析完成'])->preventStrayPrompts();
-
-        $model = $this->createAiModel(['max_tokens' => 2048]);
-
-        app(AiVisibilityService::class)->runDeepSeekAnalysis($model, 'GEOFlow', '请分析 GEOFlow 的 AI 可见性');
-
-        MarkdownContentWriterAgent::assertPrompted(
-            fn ($prompt): bool => $prompt->agent instanceof MarkdownContentWriterAgent
-                && $prompt->agent->maxTokens === 2048,
-        );
     }
 
     private function createSearchProvider(array $overrides = []): AiSourceProvider

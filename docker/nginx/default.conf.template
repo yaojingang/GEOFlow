@@ -1,0 +1,110 @@
+map "${GEOFLOW_NGINX_PUBLIC_SCHEME}" $geoflow_forwarded_proto {
+    default "${GEOFLOW_NGINX_PUBLIC_SCHEME}";
+}
+
+map "${GEOFLOW_NGINX_PUBLIC_PORT}" $geoflow_forwarded_port {
+    default "${GEOFLOW_NGINX_PUBLIC_PORT}";
+}
+
+limit_req_zone $binary_remote_addr zone=geoflow_hosted_surface:10m rate=30r/s;
+
+map $geoflow_forwarded_proto $geoflow_https {
+    default "";
+    https on;
+}
+
+server {
+    listen 80 default_server;
+    server_name _;
+    access_log off;
+    return 444;
+}
+
+server {
+    listen 80;
+    server_name ${GEOFLOW_NGINX_PRIMARY_HOST} ${GEOFLOW_NGINX_PRIMARY_ALIASES};
+
+    include /etc/nginx/snippets/geoflow-app.conf;
+
+    location = /manifest.webmanifest {
+        access_log off;
+        default_type application/manifest+json;
+        add_header Cache-Control "no-cache, max-age=0, must-revalidate" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        try_files $uri =404;
+    }
+
+    location = /service-worker.js {
+        access_log off;
+        default_type application/javascript;
+        add_header Cache-Control "no-cache, max-age=0, must-revalidate" always;
+        add_header Service-Worker-Allowed "/" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        try_files $uri =404;
+    }
+
+    location ^~ /build/assets/ {
+        expires 1y;
+        access_log off;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        try_files $uri =404;
+    }
+
+    location ~* \.(?:css|js|jpg|jpeg|gif|png|svg|ico|webp|avif|ttf|otf|woff|woff2)$ {
+        expires 5m;
+        access_log off;
+        add_header Cache-Control "public, max-age=300";
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        try_files $uri =404;
+    }
+
+    location / {
+        add_header Cache-Control "no-store" always;
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # Reverb is intentionally available only through the primary site entrance.
+    location ~ ^/reverb/(app|apps)/ {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $geoflow_forwarded_proto;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $geoflow_forwarded_port;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        set $reverb_upstream reverb:18080;
+        proxy_pass http://$reverb_upstream;
+    }
+}
+
+server {
+    listen 80;
+    server_name *.${GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN};
+
+    limit_req zone=geoflow_hosted_surface burst=60 nodelay;
+
+    # Every hosted request resolves its Host and lifecycle state in Laravel first.
+    location / {
+        add_header Cache-Control "no-store" always;
+        try_files /__geoflow_host_must_resolve__ /index.php?$query_string;
+    }
+
+    include /etc/nginx/snippets/geoflow-app.conf;
+
+    location ~ ^/(?:geo_admin|api|horizon|reverb|broadcasting|up|telescope|_debugbar)(?:/|$) {
+        return 404;
+    }
+}

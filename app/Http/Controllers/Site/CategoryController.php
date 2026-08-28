@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
-use App\Models\Article;
 use App\Models\Category;
+use App\Services\Site\SiteScopedArticleQuery;
+use App\Services\Site\SiteUrlGenerator;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
@@ -17,9 +18,17 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 class CategoryController extends Controller
 {
+    public function __construct(
+        private readonly SiteScopedArticleQuery $siteArticles,
+        private readonly SiteUrlGenerator $urls,
+    ) {}
+
     public function show(string $slug): View
     {
-        $category = Category::query()->where('slug', $slug)->first();
+        $category = Category::query()
+            ->where('slug', $slug)
+            ->whereHas('articles', fn ($query) => $this->siteArticles->apply($query))
+            ->first();
         if (! $category instanceof Category) {
             throw new NotFoundHttpException(__('site.category_not_found'));
         }
@@ -30,9 +39,8 @@ class CategoryController extends Controller
         $siteDescription = (string) ($map['site_description'] ?? config('geoflow.site_description', ''));
         $siteKeywords = (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', ''));
 
-        $articles = Article::query()
+        $articles = $this->siteArticles->query()
             ->with(['category', 'author'])
-            ->published()
             ->where('category_id', $category->id)
             ->orderByDesc('published_at')
             ->orderByDesc('id')
@@ -48,9 +56,8 @@ class CategoryController extends Controller
 
         $hotArticles = collect();
         if (Schema::hasColumn('articles', 'is_hot')) {
-            $hotArticles = Article::query()
+            $hotArticles = $this->siteArticles->query()
                 ->with(['category', 'author'])
-                ->published()
                 ->where('category_id', $category->id)
                 ->where('is_hot', true)
                 ->orderByDesc('published_at')
@@ -77,7 +84,7 @@ class CategoryController extends Controller
             'pageDescription' => $pageDescription,
             'pageKeywords' => $siteKeywords,
             'pageOgType' => 'website',
-            'canonicalUrl' => route('site.category', $category->slug),
+            'canonicalUrl' => $this->urls->category($category),
         ]);
     }
 }

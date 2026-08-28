@@ -5,8 +5,10 @@ namespace App\Services\GeoFlow;
 use App\Exceptions\ApiException;
 use App\Models\AiModel;
 use App\Models\Article;
+use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\DistributionChannel;
 use App\Models\ImageLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
@@ -39,7 +41,9 @@ class TaskLifecycleService
     public function __construct(
         private JobQueueService $queueService,
         private TaskMonitoringQueryService $taskMonitoringQueryService,
-        private TaskRealtimeBroadcastService $taskRealtimeBroadcastService
+        private TaskRealtimeBroadcastService $taskRealtimeBroadcastService,
+        private TaskTitleReadinessService $taskTitleReadinessService,
+        private ArticleAiQualityInvalidationService $articleAiQualityInvalidationService,
     ) {}
 
     /**
@@ -73,6 +77,17 @@ class TaskLifecycleService
     public function createTask(array $data): array
     {
         $normalized = $this->normalizeTaskInput($data, false);
+        if ($normalized['status'] === 'active') {
+            $this->taskTitleReadinessService->assertCanActivate(
+                $this->taskTitleReadinessService->inspect(
+                    (int) $normalized['title_library_id'],
+                    (int) $normalized['article_limit'],
+                    (bool) $normalized['is_loop'],
+                    'active',
+                ),
+                422,
+            );
+        }
 
         $taskId = DB::transaction(function () use ($normalized): int {
             $task = Task::query()->create([
@@ -82,6 +97,11 @@ class TaskLifecycleService
                 'image_count' => $normalized['image_count'],
                 'prompt_id' => $normalized['prompt_id'],
                 'ai_model_id' => $normalized['ai_model_id'],
+                'ai_quality_enabled' => $normalized['ai_quality_enabled'],
+                'ai_quality_prompt_id' => $normalized['ai_quality_prompt_id'],
+                'ai_quality_model_id' => $normalized['ai_quality_model_id'],
+                'ai_quality_pass_score' => $normalized['ai_quality_pass_score'],
+                'ai_quality_manual_override_min_score' => $normalized['ai_quality_manual_override_min_score'],
                 'need_review' => $normalized['need_review'],
                 'publish_interval' => $normalized['publish_interval'],
                 'author_id' => $normalized['author_id'],
@@ -127,6 +147,107 @@ class TaskLifecycleService
     }
 
     /**
+     * Create a deliberately incomplete task draft for later configuration.
+     * Drafts stay paused and still receive the same scheduler initialization
+     * and realtime refresh used by the regular task lifecycle.
+     *
+     * @param  array<string,mixed>  $data
+     * @return array<string,mixed>
+     */
+    public function createDraftTask(array $data): array
+    {
+        $name = trim((string) ($data['name'] ?? ''));
+        if ($name === '') {
+            throw new ApiException('validation_failed', '任务名称不能为空', 422);
+        }
+        $articleLimit = max(1, min(100, (int) ($data['article_limit'] ?? 10)));
+        $publishInterval = max(60, min(2592000, (int) ($data['publish_interval'] ?? 3600)));
+
+        $taskId = DB::transaction(function () use ($name, $articleLimit, $publishInterval): int {
+            $dependencies = $this->resolveDraftTaskDependencies();
+            $task = Task::query()->create([
+                'name' => $name,
+                'title_library_id' => $dependencies['title_library_id'],
+                'prompt_id' => $dependencies['prompt_id'],
+                'ai_model_id' => $dependencies['ai_model_id'],
+                'image_count' => 0,
+                'need_review' => 1,
+                'publish_interval' => $publishInterval,
+                'auto_keywords' => 1,
+                'auto_description' => 1,
+                'draft_limit' => $articleLimit,
+                'article_limit' => $articleLimit,
+                'is_loop' => 0,
+                'model_selection_mode' => 'fixed',
+                'status' => 'paused',
+                'schedule_enabled' => 0,
+                'publish_scope' => 'local_only',
+                'distribution_strategy' => TaskDistributionChannelSelector::STRATEGY_BROADCAST,
+                'category_mode' => 'smart',
+                'max_retry_count' => 3,
+            ]);
+            $this->queueService->initializeTaskSchedule((int) $task->id);
+            Task::query()->whereKey($task->id)->update([
+                'schedule_enabled' => 0,
+                'next_run_at' => null,
+                'updated_at' => now(),
+            ]);
+
+            return (int) $task->id;
+        });
+
+        $task = $this->getTask($taskId);
+        $this->broadcastOverviewAfterCommit();
+
+        return $task;
+    }
+
+    /** @return array{title_library_id:int,prompt_id:int,ai_model_id:int} */
+    private function resolveDraftTaskDependencies(): array
+    {
+        $titleLibraryId = TitleLibrary::query()->orderByDesc('id')->value('id');
+        $promptId = Prompt::query()
+            ->where('type', 'content')
+            ->orderByDesc('id')
+            ->value('id');
+        $aiModelId = AiModel::query()
+            ->where('status', 'active')
+            ->where(function ($query): void {
+                $query->whereNull('model_type')
+                    ->orWhere('model_type', '')
+                    ->orWhere('model_type', 'chat');
+            })
+            ->orderBy('failover_priority')
+            ->orderByDesc('id')
+            ->value('id');
+
+        $missing = [];
+        if ($titleLibraryId === null) {
+            $missing[] = '标题库';
+        }
+        if ($promptId === null) {
+            $missing[] = '内容提示词';
+        }
+        if ($aiModelId === null) {
+            $missing[] = '已启用的对话模型';
+        }
+        if ($missing !== []) {
+            throw new ApiException(
+                'configuration_required',
+                '创建任务草稿前，请先配置'.implode('、', $missing).'。',
+                422,
+                ['missing' => $missing],
+            );
+        }
+
+        return [
+            'title_library_id' => (int) $titleLibraryId,
+            'prompt_id' => (int) $promptId,
+            'ai_model_id' => (int) $aiModelId,
+        ];
+    }
+
+    /**
      * 获取单任务详情（含任务运行摘要与文章统计摘要）。
      *
      * @return array<string,mixed>
@@ -152,7 +273,7 @@ class TaskLifecycleService
      * @param  array<string,mixed>  $data
      * @return array<string,mixed>
      */
-    public function updateTask(int $taskId, array $data): array
+    public function updateTask(int $taskId, array $data, bool $canManageHostedTask = false): array
     {
         $this->ensureTaskExists($taskId);
         $normalized = $this->normalizeTaskInput($data, true);
@@ -163,10 +284,61 @@ class TaskLifecycleService
         $status = $normalized['status'] ?? null;
         unset($normalized['status']);
         $knowledgeBaseIdsProvided = array_key_exists('knowledge_base_ids', $normalized);
+        $qualityConfigurationChanged = $knowledgeBaseIdsProvided || array_intersect(array_keys($normalized), [
+            'ai_quality_enabled',
+            'ai_quality_prompt_id',
+            'ai_quality_model_id',
+            'ai_quality_pass_score',
+            'ai_quality_manual_override_min_score',
+            'ai_model_id',
+            'model_selection_mode',
+            'publish_scope',
+            'distribution_strategy',
+        ]) !== [];
         $knowledgeBaseIds = $knowledgeBaseIdsProvided ? $normalized['knowledge_base_ids'] : [];
         unset($normalized['knowledge_base_ids']);
 
-        DB::transaction(function () use ($normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId): void {
+        DB::transaction(function () use ($normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask): void {
+            $current = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->firstOrFail([
+                    'id',
+                    'title_library_id',
+                    'article_limit',
+                    'created_count',
+                    'is_loop',
+                    'status',
+                    'knowledge_base_id',
+                    'ai_quality_enabled',
+                    'ai_quality_prompt_id',
+                    'ai_quality_model_id',
+                    'ai_quality_pass_score',
+                    'ai_quality_manual_override_min_score',
+                ]);
+            $this->assertCanManageHostedTask($current, $canManageHostedTask);
+            $effectiveStatus = $status ?? (string) $current->status;
+            if ($effectiveStatus === 'active') {
+                $effectiveTitleLibraryId = array_key_exists('title_library_id', $normalized)
+                    ? (int) ($normalized['title_library_id'] ?? 0)
+                    : (int) $current->title_library_id;
+                $this->taskTitleReadinessService->assertCanActivate(
+                    $this->taskTitleReadinessService->inspect(
+                        $effectiveTitleLibraryId,
+                        (int) ($normalized['article_limit'] ?? $current->article_limit),
+                        (bool) ($normalized['is_loop'] ?? $current->is_loop),
+                        'active',
+                        $taskId,
+                    ),
+                    422,
+                );
+            }
+
+            $effectiveKnowledgeBaseIds = $knowledgeBaseIdsProvided
+                ? (is_array($knowledgeBaseIds) ? $knowledgeBaseIds : [])
+                : $this->currentTaskKnowledgeBaseIds($taskId, $current->knowledge_base_id);
+            $this->assertEffectiveAiQualityConfiguration($current, $normalized, $effectiveKnowledgeBaseIds);
+
             if (! empty($normalized)) {
                 Task::query()->whereKey($taskId)->update($normalized);
             }
@@ -183,6 +355,10 @@ class TaskLifecycleService
 
         });
 
+        if ($qualityConfigurationChanged) {
+            $this->articleAiQualityInvalidationService->invalidateTask($taskId, '任务质检配置或知识依据已更新');
+        }
+
         $task = $this->getTask($taskId);
         $this->broadcastOverviewAfterCommit();
 
@@ -190,20 +366,62 @@ class TaskLifecycleService
     }
 
     /**
-     * 删除任务，并对齐后台删除逻辑：关联文章进入回收站后解除 task_id 绑定。
+     * 删除任务：任务保留在回收站 90 天，关联文章进入内容回收站后解除 task_id 绑定。
      *
      * @return array{id:int,name:string,deleted:bool}
      */
-    public function deleteTask(int $taskId): array
+    public function deleteTask(int $taskId, bool $canManageHostedTask = false): array
     {
-        $task = Task::query()->whereKey($taskId)->first(['id', 'name']);
-        if (! $task) {
-            throw new ApiException('task_not_found', '任务不存在', 404);
-        }
+        $taskName = DB::transaction(function () use ($taskId, $canManageHostedTask): string {
+            Article::withTrashed()
+                ->where('task_id', $taskId)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id']);
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->first(['id', 'name']);
+            if (! $task) {
+                throw new ApiException('task_not_found', '任务不存在', 404);
+            }
+            $this->assertCanManageHostedTask($task, $canManageHostedTask);
 
-        $taskName = (string) $task->name;
+            $this->pauseTask($taskId, '任务已删除');
+            TaskRun::query()
+                ->where('task_id', $taskId)
+                ->where('status', 'running')
+                ->update([
+                    'status' => 'cancelled',
+                    'finished_at' => now(),
+                    'error_message' => '任务已删除',
+                ]);
 
-        DB::transaction(function () use ($taskId): void {
+            $articleIds = Article::withTrashed()
+                ->where('task_id', $taskId)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->pluck('id');
+            $this->articleAiQualityInvalidationService->cancelArticles($articleIds, '任务已删除');
+            ArticleDistribution::query()
+                ->whereIn('article_id', $articleIds)
+                ->where('status', 'queued')
+                ->update([
+                    'status' => 'failed',
+                    'next_retry_at' => null,
+                    'last_error_message' => '任务已删除，待执行分发已取消。',
+                    'updated_at' => now(),
+                ]);
+            ArticleDistribution::query()
+                ->whereIn('article_id', $articleIds)
+                ->where('status', 'sending')
+                ->update([
+                    'status' => 'outcome_unknown',
+                    'next_retry_at' => null,
+                    'last_error_message' => '任务删除时外部分发已经开始，请人工核对远端结果。',
+                    'updated_at' => now(),
+                ]);
+
             Article::query()
                 ->where('task_id', $taskId)
                 ->whereNull('deleted_at')
@@ -212,7 +430,7 @@ class TaskLifecycleService
                     'updated_at' => now(),
                 ]);
 
-            foreach (['article_queue', 'task_materials', 'task_schedules', 'task_knowledge_bases', 'task_distribution_channels'] as $table) {
+            foreach (['article_queue', 'task_materials', 'task_schedules', 'task_distribution_channels'] as $table) {
                 if (Schema::hasTable($table)) {
                     DB::table($table)->where('task_id', $taskId)->delete();
                 }
@@ -225,7 +443,9 @@ class TaskLifecycleService
                     'updated_at' => now(),
                 ]);
 
-            Task::query()->whereKey($taskId)->delete();
+            $task->delete();
+
+            return (string) $task->name;
         });
 
         $this->broadcastOverviewAfterCommit();
@@ -243,10 +463,20 @@ class TaskLifecycleService
      * @param  bool  $enqueueNow  是否立即投递一条执行任务（手动启动场景）
      * @return array<string,mixed>
      */
-    public function startTask(int $taskId, bool $enqueueNow = false): array
+    public function startTask(int $taskId, bool $enqueueNow = false, bool $canManageHostedTask = false): array
     {
         $this->ensureTaskExists($taskId);
-        $jobId = DB::transaction(function () use ($taskId, $enqueueNow): ?int {
+        $jobId = DB::transaction(function () use ($taskId, $enqueueNow, $canManageHostedTask): ?int {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->firstOrFail(['id', 'title_library_id', 'article_limit', 'created_count', 'is_loop']);
+            $this->assertCanManageHostedTask($task, $canManageHostedTask);
+            $this->taskTitleReadinessService->assertCanActivate(
+                $this->taskTitleReadinessService->inspectTask($task),
+                409,
+            );
+
             // 手动“立即执行”场景下，不把 next_run_at 强行置为 now，
             // 避免与手动入队叠加导致一次点击触发两次执行。
             $this->activateTask($taskId, ! $enqueueNow);
@@ -283,10 +513,15 @@ class TaskLifecycleService
      *
      * @return array<string,mixed>
      */
-    public function stopTask(int $taskId): array
+    public function stopTask(int $taskId, bool $canManageHostedTask = false): array
     {
         $this->ensureTaskExists($taskId);
-        [$cancelledJobs, $runningJobs] = DB::transaction(function () use ($taskId): array {
+        [$cancelledJobs, $runningJobs] = DB::transaction(function () use ($taskId, $canManageHostedTask): array {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->firstOrFail(['id']);
+            $this->assertCanManageHostedTask($task, $canManageHostedTask);
             $cancelledJobs = $this->pauseTask($taskId, '任务已暂停');
             $runningJobs = TaskRun::query()
                 ->where('task_id', $taskId)
@@ -314,18 +549,41 @@ class TaskLifecycleService
      *
      * @throws ApiException 任务不存在、任务未启用、或已有进行中任务时抛出
      */
-    public function enqueueTask(int $taskId, string $jobType = 'generate_article', array $payload = []): array
-    {
-        $task = Task::query()->find($taskId, ['id', 'status', 'schedule_enabled']);
-        if (! $task) {
-            throw new ApiException('task_not_found', '任务不存在', 404);
-        }
+    public function enqueueTask(
+        int $taskId,
+        string $jobType = 'generate_article',
+        array $payload = [],
+        bool $canManageHostedTask = false,
+    ): array {
+        $jobId = DB::transaction(function () use ($taskId, $jobType, $payload, $canManageHostedTask): ?int {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->first([
+                    'id',
+                    'title_library_id',
+                    'article_limit',
+                    'created_count',
+                    'is_loop',
+                    'status',
+                    'schedule_enabled',
+                ]);
+            if (! $task) {
+                throw new ApiException('task_not_found', '任务不存在', 404);
+            }
+            $this->assertCanManageHostedTask($task, $canManageHostedTask);
 
-        if (($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
-            throw new ApiException('task_not_active', '任务未启用，无法入队', 409);
-        }
+            if (($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
+                throw new ApiException('task_not_active', '任务未启用，无法入队', 409);
+            }
 
-        $jobId = $this->queueService->enqueueTaskJob($taskId, $jobType, $payload);
+            $this->taskTitleReadinessService->assertCanActivate(
+                $this->taskTitleReadinessService->inspectTask($task),
+                409,
+            );
+
+            return $this->queueService->enqueueTaskJob($taskId, $jobType, $payload);
+        });
         if ($jobId === null) {
             throw new ApiException('job_already_exists', '任务已处于排队或执行中', 409);
         }
@@ -335,6 +593,19 @@ class TaskLifecycleService
             'job_id' => $jobId,
             'status' => 'pending',
         ];
+    }
+
+    private function assertCanManageHostedTask(Task $task, bool $canManageHostedTask): void
+    {
+        if ($canManageHostedTask) {
+            return;
+        }
+
+        if ($task->distributionChannels()
+            ->where('distribution_channels.channel_type', DistributionChannel::TYPE_HOSTED_SITE)
+            ->exists()) {
+            throw new ApiException('forbidden', '托管站点任务只能由超级管理员管理', 403);
+        }
     }
 
     /**
@@ -435,6 +706,8 @@ class TaskLifecycleService
             'image_library_id' => ['model' => ImageLibrary::class, 'message' => '选择的图片库不存在', 'required' => false],
             'prompt_id' => ['model' => Prompt::class, 'message' => '选择的内容提示词不存在', 'required' => ! $isUpdate, 'prompt_content' => true],
             'ai_model_id' => ['model' => AiModel::class, 'message' => '选择的AI模型不存在或未激活', 'required' => ! $isUpdate, 'ai_active_chat' => true],
+            'ai_quality_prompt_id' => ['model' => Prompt::class, 'message' => '选择的 AI 质检方案不存在', 'required' => false, 'prompt_quality' => true],
+            'ai_quality_model_id' => ['model' => AiModel::class, 'message' => '选择的 AI 质检模型不存在或未激活', 'required' => false, 'ai_active_chat' => true],
             'author_id' => ['model' => Author::class, 'message' => '选择的作者不存在', 'required' => false],
             'knowledge_base_id' => ['model' => KnowledgeBase::class, 'message' => '选择的知识库不存在', 'required' => false],
             'fixed_category_id' => ['model' => Category::class, 'message' => '固定分类不存在', 'required' => false],
@@ -478,6 +751,8 @@ class TaskLifecycleService
             // prompt 与 ai_model 的校验规则与普通外键不同，这里单独处理业务约束。
             if (! empty($config['prompt_content'])) {
                 $exists = Prompt::query()->whereKey($id)->where('type', 'content')->exists();
+            } elseif (! empty($config['prompt_quality'])) {
+                $exists = Prompt::query()->whereKey($id)->where('type', 'quality_check')->exists();
             } elseif (! empty($config['ai_active_chat'])) {
                 $exists = AiModel::query()
                     ->whereKey($id)
@@ -504,12 +779,48 @@ class TaskLifecycleService
             $output['knowledge_base_ids'] = $knowledgeBaseId > 0 ? [$knowledgeBaseId] : [];
         }
 
-        $flagFields = ['need_review', 'auto_keywords', 'auto_description', 'is_loop'];
+        $flagFields = ['need_review', 'auto_keywords', 'auto_description', 'is_loop', 'ai_quality_enabled'];
         foreach ($flagFields as $field) {
             if (array_key_exists($field, $data)) {
                 $output[$field] = $this->toFlag($data[$field]);
             } elseif (! $isUpdate) {
                 $output[$field] = in_array($field, ['need_review', 'auto_keywords', 'auto_description'], true) ? 1 : 0;
+            }
+        }
+
+        if (array_key_exists('ai_quality_pass_score', $data)) {
+            $passScore = (int) $data['ai_quality_pass_score'];
+            if ($passScore < 1 || $passScore > 100) {
+                $fieldErrors['ai_quality_pass_score'] = 'AI 质检自动通过分必须在 1 到 100 之间';
+            } else {
+                $output['ai_quality_pass_score'] = $passScore;
+            }
+        } elseif (! $isUpdate) {
+            $output['ai_quality_pass_score'] = 85;
+        }
+
+        if (array_key_exists('ai_quality_manual_override_min_score', $data)) {
+            $manualScore = (int) $data['ai_quality_manual_override_min_score'];
+            if ($manualScore < 0 || $manualScore > 99) {
+                $fieldErrors['ai_quality_manual_override_min_score'] = 'AI 质检人工放行最低分必须在 0 到 99 之间';
+            } else {
+                $output['ai_quality_manual_override_min_score'] = $manualScore;
+            }
+        } elseif (! $isUpdate) {
+            $output['ai_quality_manual_override_min_score'] = 70;
+        }
+
+        if (isset($output['ai_quality_pass_score'], $output['ai_quality_manual_override_min_score'])
+            && $output['ai_quality_manual_override_min_score'] >= $output['ai_quality_pass_score']) {
+            $fieldErrors['ai_quality_manual_override_min_score'] = '人工放行最低分必须低于自动通过分';
+        }
+
+        if (! $isUpdate && ! empty($output['ai_quality_enabled'])) {
+            if (empty($output['ai_quality_prompt_id'])) {
+                $fieldErrors['ai_quality_prompt_id'] = '开启 AI 质检后必须选择质检方案';
+            }
+            if (empty($output['knowledge_base_ids'])) {
+                $fieldErrors['knowledge_base_ids'] = '开启 AI 质检后必须选择至少一个知识库';
             }
         }
 
@@ -611,6 +922,62 @@ class TaskLifecycleService
         }
 
         return $output;
+    }
+
+    /**
+     * @param  array<string,mixed>  $normalized
+     * @param  list<int>  $knowledgeBaseIds
+     */
+    private function assertEffectiveAiQualityConfiguration(Task $current, array $normalized, array $knowledgeBaseIds): void
+    {
+        $enabled = array_key_exists('ai_quality_enabled', $normalized)
+            ? (bool) $normalized['ai_quality_enabled']
+            : (bool) $current->ai_quality_enabled;
+        if (! $enabled) {
+            return;
+        }
+
+        $promptId = array_key_exists('ai_quality_prompt_id', $normalized)
+            ? $normalized['ai_quality_prompt_id']
+            : $current->ai_quality_prompt_id;
+        $passScore = (int) ($normalized['ai_quality_pass_score'] ?? $current->ai_quality_pass_score ?? 85);
+        $manualScore = (int) ($normalized['ai_quality_manual_override_min_score'] ?? $current->ai_quality_manual_override_min_score ?? 70);
+        $fieldErrors = [];
+
+        if (empty($promptId)) {
+            $fieldErrors['ai_quality_prompt_id'] = '开启 AI 质检后必须选择质检方案';
+        }
+        if ($knowledgeBaseIds === []) {
+            $fieldErrors['knowledge_base_ids'] = '开启 AI 质检后必须选择至少一个知识库';
+        }
+        if ($manualScore >= $passScore) {
+            $fieldErrors['ai_quality_manual_override_min_score'] = '人工放行最低分必须低于自动通过分';
+        }
+
+        if ($fieldErrors !== []) {
+            throw new ApiException('validation_failed', '参数校验失败', 422, [
+                'field_errors' => $fieldErrors,
+            ]);
+        }
+    }
+
+    /** @return list<int> */
+    private function currentTaskKnowledgeBaseIds(int $taskId, mixed $legacyKnowledgeBaseId): array
+    {
+        $ids = Schema::hasTable('task_knowledge_bases')
+            ? DB::table('task_knowledge_bases')
+                ->where('task_id', $taskId)
+                ->orderBy('sort_order')
+                ->pluck('knowledge_base_id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all()
+            : [];
+
+        if ($ids === [] && (int) $legacyKnowledgeBaseId > 0) {
+            return [(int) $legacyKnowledgeBaseId];
+        }
+
+        return $ids;
     }
 
     /**

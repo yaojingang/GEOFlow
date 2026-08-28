@@ -1,7 +1,7 @@
 @php
     $projectGithubUrl = 'https://github.com/yaojingang/GEOFlow';
     $xProfileUrl = 'https://x.com/yaojingang';
-    $appVersion = (string) config('geoflow.app_version', '2.0');
+    $appVersion = (string) config('geoflow.app_version', '0.0.0-dev');
     $changelogUrl = app()->getLocale() === 'en'
         ? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md'
         : 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md';
@@ -54,7 +54,7 @@
         if (!path) return base + '/';
         return base + '/' + String(path).replace(/^\/+/, '');
     };
-    if (typeof lucide !== 'undefined') {
+    if (! window.GeoFlowAdminUi?.refreshIcons && typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
 </script>

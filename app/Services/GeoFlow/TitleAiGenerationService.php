@@ -2,20 +2,20 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Ai\Agents\TitleGeneratorAgent;
 use App\Models\AiModel;
+use App\Models\Title;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Throwable;
-
-use function Laravel\Ai\agent;
 
 /**
  * 标题 AI 生成服务。
  *
  * 该服务负责：
  * 1. 基于 ai_models 配置发起真实模型调用；
- * 2. 在模型不可用时使用模板兜底，保证流程可用性；
- * 3. 输出统一结构，便于控制器处理入库逻辑。
+ * 2. 将模型结果和失败原因转换为稳定的领域结果；
+ * 3. 记录成功调用及已发起的失败调用，执行每日额度保护。
  */
 class TitleAiGenerationService
 {
@@ -31,11 +31,6 @@ class TitleAiGenerationService
      * 生成标题列表。
      *
      * @param  list<string>  $keywords
-     * @return array{
-     *   titles:list<string>,
-     *   fallback_used:bool,
-     *   fallback_reason:?string
-     * }
      */
     public function generateTitles(
         AiModel $aiModel,
@@ -43,13 +38,20 @@ class TitleAiGenerationService
         int $count,
         string $style,
         string $customPrompt = ''
-    ): array {
+    ): TitleGenerationOutcome {
         $reservation = null;
 
         try {
             $reservation = $this->usageQuota->reserveModel($aiModel);
             if ($reservation === null) {
-                throw new \RuntimeException('ai_daily_limit_reached');
+                $available = AiModel::query()
+                    ->whereKey($aiModel->getKey())
+                    ->where('status', 'active')
+                    ->exists();
+
+                return $available
+                    ? TitleGenerationOutcome::quotaExhausted()
+                    : TitleGenerationOutcome::failed('ai_model_unavailable');
             }
 
             $content = $this->requestTitlesFromModel($aiModel, $keywords, $count, $style, $customPrompt);
@@ -61,33 +63,21 @@ class TitleAiGenerationService
                     report($exception);
                 }
 
-                return [
-                    'titles' => $titles,
-                    'fallback_used' => false,
-                    'fallback_reason' => null,
-                ];
+                return TitleGenerationOutcome::success($titles);
             }
         } catch (Throwable $exception) {
             if ($reservation instanceof AiUsageReservation) {
-                $this->usageQuota->releaseModel($reservation);
+                $this->recordAttempt($reservation);
             }
 
-            return [
-                'titles' => $this->generateMockTitles($keywords, $count, $style),
-                'fallback_used' => true,
-                'fallback_reason' => $exception->getMessage(),
-            ];
+            return TitleGenerationOutcome::failed($this->safeFailureCode($exception));
         }
 
         if ($reservation instanceof AiUsageReservation) {
-            $this->usageQuota->releaseModel($reservation);
+            $this->recordAttempt($reservation);
         }
 
-        return [
-            'titles' => $this->generateMockTitles($keywords, $count, $style),
-            'fallback_used' => true,
-            'fallback_reason' => 'empty_result',
-        ];
+        return TitleGenerationOutcome::failed('empty_result');
     }
 
     /**
@@ -132,19 +122,33 @@ class TitleAiGenerationService
         }
         $userPrompt .= "要求：\n1. 每个标题独占一行\n2. 标题要有吸引力和可读性\n3. 适合搜索引擎优化\n4. 不要添加序号或其他标记\n5. 直接输出标题内容";
 
+        $configuredMaxTokens = (int) ($aiModel->max_tokens ?? 0);
+        $outputTokenLimit = max(512, min(4096, $count * 64));
+        if ($configuredMaxTokens > 0) {
+            $outputTokenLimit = min($outputTokenLimit, $configuredMaxTokens);
+        }
+
         try {
-            $response = agent($systemPrompt)->prompt(
-                $userPrompt,
-                [],
-                $providerName,
-                (string) ($aiModel->model_id ?? '')
+            $response = (new TitleGeneratorAgent($systemPrompt, $outputTokenLimit))->prompt(
+                prompt: $userPrompt,
+                attachments: [],
+                provider: $providerName,
+                model: (string) ($aiModel->model_id ?? ''),
+                timeout: (int) config('geoflow.title_ai_request_timeout_seconds', 90),
             );
         } catch (Throwable $exception) {
-            throw new \RuntimeException(OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
+            throw new \RuntimeException('ai_provider_request_failed', 0, $exception);
         }
 
         $rawContent = (string) ($response->text ?? '');
         $content = OpenAiRuntimeProvider::normalizeGeneratedText($rawContent);
+
+        $maxCharacters = max(2000, $count * 600);
+        $maxLines = max(10, $count * 3);
+        if (mb_strlen($content, 'UTF-8') > $maxCharacters
+            || count(preg_split('/\R/u', $content) ?: []) > $maxLines) {
+            throw new \RuntimeException('ai_title_response_too_large');
+        }
 
         if ($content === '') {
             if (OpenAiRuntimeProvider::looksLikeSseCompletionPayload($rawContent)) {
@@ -164,10 +168,27 @@ class TitleAiGenerationService
      */
     private function parseGeneratedTitles(string $content): array
     {
+        $lines = array_values(array_filter(
+            preg_split('/\R/u', $content) ?: [],
+            static fn (string $line): bool => preg_match('/^\s*```/u', $line) !== 1,
+        ));
+        $candidate = trim(implode("\n", $lines));
+        $decoded = json_decode($candidate, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            if (! is_array($decoded) || ! array_is_list($decoded)) {
+                return [];
+            }
+            $lines = array_map(
+                static fn (mixed $title): string => is_string($title) || is_numeric($title)
+                    ? (string) $title
+                    : '',
+                $decoded,
+            );
+        }
+
         $titles = [];
-        foreach (preg_split('/\R/u', $content) ?: [] as $line) {
-            $title = preg_replace('/^\d+[\.\)\-、\s]*/u', '', trim($line));
-            $title = trim((string) $title);
+        foreach ($lines as $line) {
+            $title = self::normalizeTitle($line);
             if ($title === '') {
                 continue;
             }
@@ -175,6 +196,22 @@ class TitleAiGenerationService
         }
 
         return array_values(array_unique($titles));
+    }
+
+    public static function normalizeTitle(string $title): string
+    {
+        $normalized = Title::normalizeText($title);
+        if (preg_match('/^(?:```|#{1,6}\s|(?:以下|下面).{0,20}(?:标题|列表)|(?:here\s+are|titles?\s*:)|(?:aqui\s+est[aã]o|t[ií]tulos?\s*:))/iu', $normalized) === 1) {
+            return '';
+        }
+
+        $normalized = preg_replace(
+            '/^(?:\d+(?:(?:\.(?!\d)|[)）、])\s*|\s*[-:：]\s+(?!\d))|\s+|[-*•]\s*)/u',
+            '',
+            $normalized,
+        );
+
+        return Title::normalizeText((string) $normalized);
     }
 
     /**
@@ -185,47 +222,27 @@ class TitleAiGenerationService
         return $this->apiKeyCrypto->decrypt($storedApiKey);
     }
 
-    /**
-     * @return list<string>
-     */
-    private function generateMockTitles(array $keywords, int $count, string $style): array
+    private function safeFailureCode(Throwable $exception): string
     {
-        $styleTemplates = [
-            'professional' => [
-                '{keyword}的深度分析与研究',
-                '关于{keyword}的专业见解',
-                '{keyword}行业发展趋势报告',
-            ],
-            'attractive' => [
-                '你绝对不知道的{keyword}秘密',
-                '揭秘{keyword}背后的故事',
-                '{keyword}让人意想不到的用途',
-            ],
-            'seo' => [
-                '{keyword}完整指南：从入门到精通',
-                '{keyword}常见问题解答大全',
-                '如何选择最适合的{keyword}方案',
-            ],
-            'creative' => [
-                '重新定义{keyword}的可能性',
-                '如果{keyword}会说话，它会告诉你什么？',
-                '当{keyword}遇上创新思维',
-            ],
-            'question' => [
-                '{keyword}真的有用吗？',
-                '为什么{keyword}如此重要？',
-                '{keyword}的未来在哪里？',
-            ],
-        ];
+        $code = trim($exception->getMessage());
 
-        $templates = $styleTemplates[$style] ?? $styleTemplates['professional'];
-        $titles = [];
-        for ($index = 0; $index < $count; $index++) {
-            $keyword = $keywords[array_rand($keywords)];
-            $template = $templates[array_rand($templates)];
-            $titles[] = str_replace('{keyword}', $keyword, $template);
+        return in_array($code, [
+            'ai_url_missing',
+            'ai_key_missing',
+            'ai_model_unavailable',
+            'ai_provider_request_failed',
+            'ai_title_response_too_large',
+            'ai_empty_stream_content',
+            'ai_empty_content',
+        ], true) ? $code : 'ai_provider_request_failed';
+    }
+
+    private function recordAttempt(AiUsageReservation $reservation): void
+    {
+        try {
+            $this->usageQuota->recordModelAttempt($reservation);
+        } catch (Throwable $exception) {
+            report($exception);
         }
-
-        return $titles;
     }
 }

@@ -144,6 +144,7 @@ final class FinalOutboundSecurityPolicy
             $connectTimeout,
             $onHeaders,
             $curl,
+            $streamingRequested,
         );
 
         try {
@@ -228,6 +229,7 @@ final class FinalOutboundSecurityPolicy
         int|float $connectTimeout,
         callable $onHeaders,
         array $curl,
+        bool $streamingRequested,
     ): array {
         $secure = [
             'allow_redirects' => false,
@@ -239,7 +241,7 @@ final class FinalOutboundSecurityPolicy
             'http_errors' => false,
             'on_headers' => $onHeaders,
             'proxy' => '',
-            'stream' => false,
+            'stream' => $streamingRequested,
             'timeout' => $timeout,
             'verify' => true,
         ];

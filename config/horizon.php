@@ -98,6 +98,7 @@ return [
 
     'waits' => [
         'redis:geoflow' => 60,
+        'redis:distribution' => 60,
         'redis:knowledge' => 60,
     ],
 
@@ -208,7 +209,7 @@ return [
             'maxJobs' => 100,
             'memory' => 128,
             'tries' => 1,
-            'timeout' => 660,
+            'timeout' => 930,
             'nice' => 0,
         ],
         'supervisor-knowledge' => [

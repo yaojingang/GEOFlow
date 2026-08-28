@@ -47,9 +47,7 @@ final class DeepSeekAnalysisClient
 
         $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
         $providerName = OpenAiRuntimeProvider::registerProvider('ai_visibility_deepseek', $driver, $providerUrl, $apiKey);
-        $maxTokens = (int) ($options['max_tokens']
-            ?? $model->max_tokens
-            ?? config('geoflow.ai_visibility.default_analysis_max_tokens', 4096));
+        $maxTokens = (int) ($options['max_tokens'] ?? config('geoflow.ai_visibility.default_analysis_max_tokens', 4096));
         $agent = new MarkdownContentWriterAgent(
             instructions: '你是 GEO/AI 可见性分析助手。请基于输入的 AI 回答和信源做可执行分析，明确区分事实、推断和投放建议。',
             maxTokens: $maxTokens > 0 ? $maxTokens : null,

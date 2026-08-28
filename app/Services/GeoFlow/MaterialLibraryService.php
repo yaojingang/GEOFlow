@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Exceptions\ApiException;
+use App\Exceptions\SystemKnowledgeBaseDeletionException;
 use App\Models\Article;
 use App\Models\ArticleImage;
 use App\Models\Author;
@@ -16,6 +17,8 @@ use App\Models\KnowledgeChunk;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\AiWorkspace\SystemKnowledgeBaseManager;
+use App\Support\LibraryImportPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
@@ -47,6 +50,7 @@ class MaterialLibraryService
     public function __construct(
         private readonly KnowledgeChunkSyncCoordinator $chunkSyncCoordinator,
         private readonly ManagedImageFileService $managedImages,
+        private readonly SystemKnowledgeBaseManager $systemKnowledgeBases,
     ) {}
 
     /**
@@ -174,7 +178,7 @@ class MaterialLibraryService
                 'image-libraries' => $imageFilePaths = $this->deleteImageLibrary($id),
                 'knowledge-bases' => $this->deleteKnowledgeBase($row),
             };
-        });
+        }, 3);
         $cleanupFailed = $imageFilePaths !== []
             ? $this->managedImages->cleanupUnreferenced($imageFilePaths)
             : 0;
@@ -215,7 +219,7 @@ class MaterialLibraryService
                     'keyword-libraries' => $this->createKeywordItem($parentId, $data),
                     'title-libraries' => $this->createTitleItem($parentId, $data),
                 };
-            });
+            }, 3);
 
         return [
             'type' => $type,
@@ -229,7 +233,7 @@ class MaterialLibraryService
      *
      * @param  array<string,mixed>  $data
      */
-    public function withLegacyImagePathLock(string $type, array $data, callable $callback): mixed
+    public function withLegacyImagePathLock(string $type, int $parentId, array $data, callable $callback): mixed
     {
         $type = $this->normalizeWritableItemType($type);
         if ($type !== 'image-libraries' || ! (bool) config('geoflow.legacy_image_path_input', false)) {
@@ -238,20 +242,28 @@ class MaterialLibraryService
 
         $submittedPath = $this->requiredString($data, 'file_path', '图片 file_path 不能为空', 500);
         try {
-            return $this->managedImages->withExistingPathLock($submittedPath, fn (): mixed => $callback());
+            return DB::transaction(function () use ($callback, $parentId, $submittedPath): mixed {
+                ImageLibrary::query()->whereKey($parentId)->lockForUpdate()->firstOrFail();
+
+                return $this->managedImages->withExistingPathLock($submittedPath, fn (): mixed => $callback());
+            }, 3);
         } catch (\InvalidArgumentException) {
             $this->validationError('file_path', '图片 file_path 必须指向已存在的受管图片文件');
         }
     }
 
-    public function withUploadedImagePathLock(string $type, UploadedFile $image, callable $callback): mixed
+    public function withUploadedImagePathLock(string $type, int $parentId, UploadedFile $image, callable $callback): mixed
     {
         $type = $this->normalizeWritableItemType($type);
         if ($type !== 'image-libraries') {
             $this->validationError('image', '仅图片库支持图片上传');
         }
 
-        return $this->managedImages->withUploadedImagePathLock($image, $callback);
+        return DB::transaction(function () use ($callback, $image, $parentId): mixed {
+            ImageLibrary::query()->whereKey($parentId)->lockForUpdate()->firstOrFail();
+
+            return $this->managedImages->withUploadedImagePathLock($image, $callback);
+        }, 3);
     }
 
     /**
@@ -264,24 +276,29 @@ class MaterialLibraryService
             $this->validationError('image', '仅图片库支持图片上传');
         }
         $this->findMaterial($type, $parentId);
-        $stored = $this->managedImages->storeUploadedImage($image);
         $connection = DB::connection();
         $deferCompensation = $connection->transactionLevel() > 0;
+        $stored = null;
+
         if ($deferCompensation) {
-            $connection->afterRollBack(function () use ($stored): void {
-                $this->managedImages->discardStoredUpload($stored['file_path']);
+            $connection->afterRollBack(function () use (&$stored): void {
+                if (is_array($stored)) {
+                    $this->managedImages->discardStoredUpload($stored['file_path']);
+                }
             });
         }
 
         try {
-            $row = DB::transaction(function () use ($parentId, $stored): Image {
+            $row = DB::transaction(function () use ($image, $parentId, &$stored): Image {
+                ImageLibrary::query()->whereKey($parentId)->lockForUpdate()->firstOrFail();
+                $stored = $this->managedImages->storeUploadedImage($image);
                 $row = $this->createImageFromMetadata($parentId, $stored);
                 $this->refreshImageLibraryCount($parentId);
 
                 return $row;
-            });
+            }, 3);
         } catch (\Throwable $exception) {
-            if (! $deferCompensation) {
+            if (! $deferCompensation && is_array($stored)) {
                 $this->managedImages->discardStoredUpload($stored['file_path']);
             }
 
@@ -317,7 +334,7 @@ class MaterialLibraryService
                 'title-libraries' => $this->deleteTitleItems($parentId, $ids),
                 'image-libraries' => $this->deleteImageItems($parentId, $ids, $imageFilePaths),
             };
-        });
+        }, 3);
         $cleanupFailed = $imageFilePaths !== []
             ? $this->managedImages->cleanupUnreferenced($imageFilePaths)
             : 0;
@@ -396,12 +413,12 @@ class MaterialLibraryService
             'title-libraries' => TitleLibrary::query()
                 ->select(['id', 'name', 'description', 'title_count', 'generation_type', 'keyword_library_id', 'ai_model_id', 'prompt_id', 'generation_rounds', 'is_ai_generated', 'created_at', 'updated_at'])
                 ->withCount('titles as item_count')
-                ->withCount('tasks as task_count')
+                ->withCount(['tasks as task_count' => fn (Builder $q) => $q->withTrashed()])
                 ->orderByDesc('created_at'),
             'image-libraries' => ImageLibrary::query()
                 ->select(['id', 'name', 'description', 'image_count', 'used_task_count', 'created_at', 'updated_at'])
                 ->withCount('images as item_count')
-                ->withCount('tasks as task_count')
+                ->withCount(['tasks as task_count' => fn (Builder $q) => $q->withTrashed()])
                 ->withSum('images as total_size', 'file_size')
                 ->orderByDesc('created_at'),
             'knowledge-bases' => KnowledgeBase::query()
@@ -719,7 +736,11 @@ class MaterialLibraryService
             $payload['name'] = $this->requiredString($data, 'name', '素材库名称不能为空', 100);
         }
         if (array_key_exists('description', $data) || ! $isUpdate) {
-            $payload['description'] = $this->optionalString($data, 'description');
+            $payload['description'] = $this->optionalString(
+                $data,
+                'description',
+                LibraryImportPolicy::DESCRIPTION_MAX_CHARACTERS,
+            );
         }
 
         $this->ensureHasUpdates($payload);
@@ -738,6 +759,14 @@ class MaterialLibraryService
 
     private function updateKnowledgeBase(Model $row, array $data): void
     {
+        if ($row instanceof KnowledgeBase && $row->isSystemManaged()) {
+            throw new ApiException(
+                'system_knowledge_edit_requires_admin',
+                '系统知识库只能由具备受保护工作流权限的管理员在后台编辑。',
+                409,
+            );
+        }
+
         $payload = $this->normalizeKnowledgePayload($data, true);
         $contentChanged = array_key_exists('content', $payload);
         $row->update($payload);
@@ -808,17 +837,23 @@ class MaterialLibraryService
 
     private function createKeywordItem(int $parentId, array $data): Keyword
     {
-        $keyword = $this->requiredString($data, 'keyword', '关键词不能为空', 200);
-        if (Keyword::query()->where('library_id', $parentId)->where('keyword', $keyword)->exists()) {
-            throw new ApiException('material_item_exists', '关键词已存在', 409);
-        }
-
-        $row = Keyword::query()->create([
+        KeywordLibrary::query()->whereKey($parentId)->lockForUpdate()->firstOrFail();
+        $keyword = $this->requiredString(
+            $data,
+            'keyword',
+            __('admin.library_validation.keyword_required'),
+            LibraryImportPolicy::KEYWORD_MAX_CHARACTERS,
+        );
+        $row = Keyword::query()->createOrFirst([
             'library_id' => $parentId,
             'keyword' => $keyword,
+        ], [
             'used_count' => 0,
             'usage_count' => 0,
         ]);
+        if (! $row->wasRecentlyCreated) {
+            throw new ApiException('material_item_exists', '关键词已存在', 409);
+        }
         $this->refreshKeywordLibraryCount($parentId);
 
         return $row;
@@ -826,19 +861,43 @@ class MaterialLibraryService
 
     private function createTitleItem(int $parentId, array $data): Title
     {
-        $title = $this->requiredString($data, 'title', '标题不能为空', 500);
-        if (Title::query()->where('library_id', $parentId)->where('title', $title)->exists()) {
-            throw new ApiException('material_item_exists', '标题已存在', 409);
+        TitleLibrary::query()->whereKey($parentId)->lockForUpdate()->firstOrFail();
+        $title = LibraryImportPolicy::normalizeTitle($this->requiredString(
+            $data,
+            'title',
+            __('admin.library_validation.title_required'),
+            LibraryImportPolicy::TITLE_MAX_CHARACTERS,
+        ));
+        if ($title === '') {
+            $this->validationError('title', __('admin.library_validation.title_required'));
+        }
+        if (! LibraryImportPolicy::titleFitsStorage($title)) {
+            $this->validationError('title', __('admin.library_validation.title_too_long', [
+                'max' => LibraryImportPolicy::TITLE_MAX_CHARACTERS,
+            ]));
         }
 
-        $row = Title::query()->create([
+        $keyword = $this->optionalString($data, 'keyword', LibraryImportPolicy::TITLE_KEYWORD_MAX_CHARACTERS);
+
+        $fingerprint = Title::fingerprintFor($title);
+        $inserted = DB::table((new Title)->getTable())->insertOrIgnore([
             'library_id' => $parentId,
             'title' => $title,
-            'keyword' => $this->optionalString($data, 'keyword', 200),
+            'title_fingerprint' => $fingerprint,
+            'keyword' => $keyword,
             'is_ai_generated' => false,
             'used_count' => 0,
             'usage_count' => 0,
+            'created_at' => now(),
         ]);
+        if ($inserted === 0) {
+            throw new ApiException('material_item_exists', '标题已存在', 409);
+        }
+
+        $row = Title::query()
+            ->where('library_id', $parentId)
+            ->where('title_fingerprint', $fingerprint)
+            ->firstOrFail();
         $this->refreshTitleLibraryCount($parentId);
 
         return $row;
@@ -852,13 +911,14 @@ class MaterialLibraryService
 
         $submittedPath = $this->requiredString($data, 'file_path', '图片 file_path 不能为空', 500);
         try {
-            return $this->managedImages->withExistingPathLock($submittedPath, function (string $filePath) use ($parentId, $data): Image {
-                $filename = $this->optionalString($data, 'filename', 255);
-                if ($filename === '') {
-                    $filename = basename($filePath);
-                }
+            return DB::transaction(function () use ($data, $parentId, $submittedPath): Image {
+                ImageLibrary::query()->whereKey($parentId)->lockForUpdate()->firstOrFail();
 
-                return DB::transaction(function () use ($parentId, $data, $filePath, $filename): Image {
+                return $this->managedImages->withExistingPathLock($submittedPath, function (string $filePath) use ($parentId, $data): Image {
+                    $filename = $this->optionalString($data, 'filename', 255);
+                    if ($filename === '') {
+                        $filename = basename($filePath);
+                    }
                     $row = $this->createImageFromMetadata($parentId, [
                         'library_id' => $parentId,
                         'filename' => $filename,
@@ -876,7 +936,7 @@ class MaterialLibraryService
 
                     return $row;
                 });
-            });
+            }, 3);
         } catch (\InvalidArgumentException) {
             $this->validationError('file_path', '图片 file_path 必须指向已存在的受管图片文件');
         }
@@ -909,6 +969,7 @@ class MaterialLibraryService
      */
     private function deleteKeywordItems(int $parentId, array $ids): int
     {
+        KeywordLibrary::query()->whereKey($parentId)->lockForUpdate()->firstOrFail();
         $deleted = Keyword::query()->where('library_id', $parentId)->whereIn('id', $ids)->delete();
         $this->refreshKeywordLibraryCount($parentId);
 
@@ -920,6 +981,7 @@ class MaterialLibraryService
      */
     private function deleteTitleItems(int $parentId, array $ids): int
     {
+        TitleLibrary::query()->whereKey($parentId)->lockForUpdate()->firstOrFail();
         $deleted = Title::query()->where('library_id', $parentId)->whereIn('id', $ids)->delete();
         $this->refreshTitleLibraryCount($parentId);
 
@@ -931,6 +993,7 @@ class MaterialLibraryService
      */
     private function deleteImageItems(int $parentId, array $ids, array &$filePaths): int
     {
+        ImageLibrary::query()->whereKey($parentId)->lockForUpdate()->firstOrFail();
         $filePaths = Image::query()->where('library_id', $parentId)->whereIn('id', $ids)->pluck('file_path')->filter()->values()->all();
         ArticleImage::query()->whereIn('image_id', $ids)->delete();
         $deleted = Image::query()->where('library_id', $parentId)->whereIn('id', $ids)->delete();
@@ -941,15 +1004,28 @@ class MaterialLibraryService
 
     private function deleteCategory(int $id): void
     {
-        $count = Article::query()->where('category_id', $id)->count();
-        if ($count > 0) {
-            throw new ApiException('material_in_use', '分类仍有关联文章，无法删除', 409, ['article_count' => $count]);
+        $articleCount = Article::withTrashed()->where('category_id', $id)->count();
+        $taskCount = Task::withTrashed()->where('fixed_category_id', $id)->count();
+        if ($articleCount > 0 || $taskCount > 0) {
+            throw new ApiException('material_in_use', '分类仍被文章或任务引用，无法删除', 409, [
+                'article_count' => $articleCount,
+                'task_count' => $taskCount,
+            ]);
         }
         Category::query()->whereKey($id)->delete();
     }
 
     private function deleteAuthor(int $id): void
     {
+        $taskQuery = Task::withTrashed()->where('author_id', $id);
+        if (Schema::hasColumn('tasks', 'custom_author_id')) {
+            $taskQuery->orWhere('custom_author_id', $id);
+        }
+        $taskCount = $taskQuery->count();
+        if ($taskCount > 0) {
+            throw new ApiException('material_in_use', '作者仍被任务引用，无法删除', 409, ['task_count' => $taskCount]);
+        }
+
         $visibleCount = Article::query()->where('author_id', $id)->whereNull('deleted_at')->count();
         if ($visibleCount > 0) {
             throw new ApiException('material_in_use', '作者仍有关联文章，无法删除', 409, ['article_count' => $visibleCount]);
@@ -963,27 +1039,30 @@ class MaterialLibraryService
 
     private function deleteKeywordLibrary(int $id): void
     {
+        $library = KeywordLibrary::query()->whereKey($id)->lockForUpdate()->firstOrFail();
         $titleLibraryCount = TitleLibrary::query()->where('keyword_library_id', $id)->count();
         if ($titleLibraryCount > 0) {
             throw new ApiException('material_in_use', '关键词库仍被标题库引用，无法删除', 409, ['title_library_count' => $titleLibraryCount]);
         }
         Keyword::query()->where('library_id', $id)->delete();
-        KeywordLibrary::query()->whereKey($id)->delete();
+        $library->delete();
     }
 
     private function deleteTitleLibrary(int $id): void
     {
-        $taskCount = Task::query()->where('title_library_id', $id)->count();
+        $library = TitleLibrary::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+        $taskCount = Task::withTrashed()->where('title_library_id', $id)->count();
         if ($taskCount > 0) {
             throw new ApiException('material_in_use', '标题库仍被任务引用，无法删除', 409, ['task_count' => $taskCount]);
         }
         Title::query()->where('library_id', $id)->delete();
-        TitleLibrary::query()->whereKey($id)->delete();
+        $library->delete();
     }
 
     private function deleteImageLibrary(int $id): array
     {
-        $taskCount = Task::query()->where('image_library_id', $id)->count();
+        $library = ImageLibrary::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+        $taskCount = Task::withTrashed()->where('image_library_id', $id)->count();
         if ($taskCount > 0) {
             throw new ApiException('material_in_use', '图片库仍被任务引用，无法删除', 409, ['task_count' => $taskCount]);
         }
@@ -991,13 +1070,19 @@ class MaterialLibraryService
         $imageIds = Image::query()->where('library_id', $id)->pluck('id')->all();
         ArticleImage::query()->whereIn('image_id', $imageIds)->delete();
         Image::query()->where('library_id', $id)->delete();
-        ImageLibrary::query()->whereKey($id)->delete();
+        $library->delete();
 
         return $filePaths;
     }
 
     private function deleteKnowledgeBase(Model $row): void
     {
+        try {
+            $this->systemKnowledgeBases->assertDeletable($row);
+        } catch (SystemKnowledgeBaseDeletionException $exception) {
+            throw new ApiException('system_knowledge_protected', $exception->getMessage(), 409);
+        }
+
         $id = (int) $row->id;
         $taskCount = $this->knowledgeBaseTaskCount($id);
         if ($taskCount > 0) {
@@ -1010,7 +1095,7 @@ class MaterialLibraryService
 
     private function knowledgeBaseTaskCount(int $knowledgeBaseId): int
     {
-        $taskIds = Task::query()
+        $taskIds = Task::withTrashed()
             ->where('knowledge_base_id', $knowledgeBaseId)
             ->pluck('id')
             ->map(static fn (mixed $id): int => (int) $id)
@@ -1056,12 +1141,20 @@ class MaterialLibraryService
 
     private function requiredString(array $data, string $field, string $message, int $maxLength = 0): string
     {
-        $value = trim((string) ($data[$field] ?? ''));
+        $rawValue = $data[$field] ?? null;
+        if (! is_string($rawValue)) {
+            $this->validationError($field, __('admin.library_validation.field_string', ['field' => $field]));
+        }
+        $value = trim($rawValue);
         if ($value === '') {
             $this->validationError($field, $message);
         }
+        $this->assertStorableString($field, $value);
         if ($maxLength > 0 && mb_strlen($value, 'UTF-8') > $maxLength) {
-            $this->validationError($field, $field.' 长度不能超过 '.$maxLength.' 个字符');
+            $this->validationError($field, __('admin.library_validation.field_too_long', [
+                'field' => $field,
+                'max' => $maxLength,
+            ]));
         }
 
         return $value;
@@ -1069,17 +1162,38 @@ class MaterialLibraryService
 
     private function optionalString(array $data, string $field, int $maxLength = 0): string
     {
-        $value = trim((string) ($data[$field] ?? ''));
+        $rawValue = $data[$field] ?? null;
+        if ($rawValue === null) {
+            return '';
+        }
+        if (! is_string($rawValue)) {
+            $this->validationError($field, __('admin.library_validation.field_string', ['field' => $field]));
+        }
+        $value = trim($rawValue);
+        $this->assertStorableString($field, $value);
         if ($maxLength > 0 && mb_strlen($value, 'UTF-8') > $maxLength) {
-            $this->validationError($field, $field.' 长度不能超过 '.$maxLength.' 个字符');
+            $this->validationError($field, __('admin.library_validation.field_too_long', [
+                'field' => $field,
+                'max' => $maxLength,
+            ]));
         }
 
         return $value;
     }
 
+    private function assertStorableString(string $field, string $value): void
+    {
+        if (! LibraryImportPolicy::isValidUtf8($value)) {
+            $this->validationError($field, __('admin.library_validation.field_utf8', ['field' => $field]));
+        }
+        if (LibraryImportPolicy::containsNullByte($value)) {
+            $this->validationError($field, __('admin.library_validation.field_nul', ['field' => $field]));
+        }
+    }
+
     private function validationError(string $field, string $message): never
     {
-        throw new ApiException('validation_failed', '参数校验失败', 422, [
+        throw new ApiException('validation_failed', __('admin.library_validation.validation_failed'), 422, [
             'field_errors' => [$field => $message],
         ]);
     }

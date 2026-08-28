@@ -161,8 +161,12 @@ class KnowledgeRetrievalService
             $score = ($vectorScore * 0.45) + ($lexicalScore * 0.35) + ($titleScore * 0.12) + ($metadataScore * 0.08);
 
             $scored[] = [
+                'knowledge_base_id' => $knowledgeBaseId,
+                'chunk_id' => (int) ($row->id ?? 0),
                 'chunk_index' => $chunkIndex,
                 'content' => $content,
+                'content_hash' => (string) ($row->content_hash ?? hash('sha256', $content)),
+                'source_hash' => (string) ($row->source_hash ?? ''),
                 'chunk_title' => $title,
                 'section_path' => $sectionPath,
                 'metadata' => $metadata,
@@ -367,7 +371,8 @@ class KnowledgeRetrievalService
      */
     private function knowledgeChunkSelectColumns(): array
     {
-        return [
+        $columns = [
+            'id',
             'chunk_index',
             'content',
             'chunk_title',
@@ -377,6 +382,14 @@ class KnowledgeRetrievalService
             'embedding_model_id',
             'embedding_dimensions',
         ];
+
+        foreach (['content_hash', 'source_hash'] as $column) {
+            if (Schema::hasColumn('knowledge_chunks', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        return $columns;
     }
 
     /**

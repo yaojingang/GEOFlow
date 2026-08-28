@@ -6,6 +6,7 @@ use App\Models\Admin;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -20,7 +21,7 @@ class AuthenticateAdminWeb
     {
         $guard = Auth::guard('admin');
         if (! $guard->check()) {
-            return redirect()->route('admin.login');
+            return $this->unauthenticated($request);
         }
 
         $adminId = (int) ($guard->id() ?? 0);
@@ -49,6 +50,15 @@ class AuthenticateAdminWeb
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('admin.login');
+        return $this->unauthenticated($request);
+    }
+
+    private function unauthenticated(Request $request): Response
+    {
+        $routeName = (string) ($request->route()?->getName() ?? '');
+
+        return ($request->expectsJson() || Str::startsWith($routeName, 'admin.ai-workspace.'))
+            ? response()->json(['message' => __('admin.ai_workspace.unauthenticated_message'), 'code' => 'unauthenticated'], 401)
+            : redirect()->route('admin.login');
     }
 }

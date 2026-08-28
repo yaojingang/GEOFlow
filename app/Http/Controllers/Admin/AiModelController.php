@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\SiteSetting;
+use App\Models\TitleGenerationRun;
+use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiUsageReservation;
-use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
+use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
 use App\Services\Outbound\OutboundRequestBlockedException;
 use App\Services\Outbound\OutboundRequestFailedException;
 use App\Services\Outbound\SafeOutboundHttpClient;
@@ -20,6 +22,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -45,7 +48,8 @@ class AiModelController extends Controller
         private readonly SafeOutboundHttpClient $safeHttp,
         private readonly Factory $http,
         private readonly AiUsageQuotaService $usageQuota,
-        private readonly AiProviderEndpointPolicy $endpointPolicy,
+        private readonly AiWorkspaceModelCapabilityProbe $aiWorkspaceModelProbe,
+        private readonly ArticleAiQualityInvalidationService $qualityInvalidationService,
     ) {}
 
     /**
@@ -66,6 +70,52 @@ class AiModelController extends Controller
             'defaultEmbeddingModelId' => $this->getDefaultEmbeddingModelId(),
             'chunkingConfig' => $this->getChunkingConfig(),
             'pgvectorEnabled' => $this->isPgvectorEnabled(),
+            'contentMaxTokens' => $this->defaultContentMaxTokens(),
+            'supportsModelMaxTokens' => $this->supportsModelMaxTokens(),
+        ]);
+    }
+
+    /**
+     * AI 模型创建页。
+     */
+    public function create(): View
+    {
+        return view('admin.ai-models.create', [
+            'pageTitle' => __('admin.ai_models.create_page_title'),
+            'activeMenu' => 'ai_config',
+            'adminSiteName' => AdminWeb::siteName(),
+            'contentMaxTokens' => $this->defaultContentMaxTokens(),
+            'supportsModelMaxTokens' => $this->supportsModelMaxTokens(),
+        ]);
+    }
+
+    /**
+     * AI 模型编辑页。
+     */
+    public function edit(int $modelId): View
+    {
+        $columns = [
+            'id',
+            'name',
+            'version',
+            'model_id',
+            'model_type',
+            'api_url',
+            'failover_priority',
+            'daily_limit',
+            'status',
+        ];
+        if ($this->supportsModelMaxTokens()) {
+            $columns[] = 'max_tokens';
+        }
+
+        $model = AiModel::query()->select($columns)->whereKey($modelId)->firstOrFail();
+
+        return view('admin.ai-models.edit', [
+            'pageTitle' => __('admin.ai_models.modal_edit'),
+            'activeMenu' => 'ai_config',
+            'adminSiteName' => AdminWeb::siteName(),
+            'model' => $model,
             'contentMaxTokens' => $this->defaultContentMaxTokens(),
             'supportsModelMaxTokens' => $this->supportsModelMaxTokens(),
         ]);
@@ -106,12 +156,20 @@ class AiModelController extends Controller
 
             $createdModel = AiModel::query()->create($createData);
         } catch (\RuntimeException) {
-            return back()->withInput()->withErrors(__('admin.ai_models.error.crypto_key_missing'));
+            return back()
+                ->withInput(Arr::except($payload, ['api_key']))
+                ->withErrors(__('admin.ai_models.error.crypto_key_missing'));
         }
 
         // 当系统尚未指定默认 embedding 模型时，首次创建 embedding 模型自动兜底。
         if ($createdModel->model_type === 'embedding' && $this->getDefaultEmbeddingModelId() <= 0) {
             $this->setDefaultEmbeddingModelId((int) $createdModel->id);
+        }
+        if ($createdModel->model_type === 'chat') {
+            $this->qualityInvalidationService->invalidateModel(
+                (int) $createdModel->id,
+                'AI 质检智能切换候选模型已增加',
+            );
         }
 
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.create_success'));
@@ -151,27 +209,38 @@ class AiModelController extends Controller
         }
 
         $apiKey = trim((string) ($payload['api_key'] ?? ''));
-        $currentApiUrl = trim((string) ($model->api_url ?? ''));
-        $nextApiUrl = (string) $updateData['api_url'];
-        if ($apiKey === ''
-            && $currentApiUrl !== $nextApiUrl
-            && ! $this->endpointPolicy->sameOrigin($currentApiUrl, $nextApiUrl)) {
-            return back()
-                ->withInput($request->except('api_key'))
-                ->withErrors([
-                    'api_key' => __('admin.ai_models.error.api_key_required_for_origin_change'),
-                ]);
-        }
-
         if ($apiKey !== '') {
             try {
                 $updateData['api_key'] = $this->encryptApiKey($apiKey);
             } catch (\RuntimeException) {
-                return back()->withInput()->withErrors(__('admin.ai_models.error.crypto_key_missing'));
+                return back()
+                    ->withInput(Arr::except($payload, ['api_key']))
+                    ->withErrors(__('admin.ai_models.error.crypto_key_missing'));
             }
         }
 
-        $model->update($updateData);
+        $updated = DB::transaction(function () use ($model, $updateData): bool {
+            $lockedModel = AiModel::query()->whereKey($model->getKey())->lockForUpdate()->firstOrFail();
+            if ($this->activeTitleGenerationCount((int) $lockedModel->getKey()) > 0) {
+                return false;
+            }
+
+            $lockedModel->update($updateData);
+
+            return true;
+        }, 3);
+        if (! $updated) {
+            return back()
+                ->withInput(Arr::except($payload, ['api_key']))
+                ->withErrors(__('admin.ai_models.error.title_generation_in_use'));
+        }
+
+        $model->refresh();
+
+        $this->qualityInvalidationService->invalidateModel(
+            (int) $model->id,
+            'AI 质检模型配置已更新',
+        );
 
         $defaultEmbeddingModelId = $this->getDefaultEmbeddingModelId();
         if ($defaultEmbeddingModelId === (int) $model->id && ($modelType !== 'embedding' || $status !== 'active')) {
@@ -190,13 +259,31 @@ class AiModelController extends Controller
      */
     public function destroy(int $modelId): RedirectResponse
     {
-        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
-        $taskCount = $model->tasks()->count();
-        if ($taskCount > 0) {
-            return back()->withErrors(__('admin.ai_models.error.in_use', ['count' => $taskCount]));
+        $result = DB::transaction(function () use ($modelId): array {
+            $model = AiModel::query()->whereKey($modelId)->lockForUpdate()->firstOrFail();
+            if ($this->activeTitleGenerationCount((int) $model->getKey()) > 0) {
+                return ['model' => $model, 'error' => 'title_generation'];
+            }
+
+            $taskCount = $model->tasks()->withTrashed()->count()
+                + $model->qualityTasks()->withTrashed()->count();
+            if ($taskCount > 0) {
+                return ['model' => $model, 'error' => 'task', 'count' => $taskCount];
+            }
+
+            $model->delete();
+
+            return ['model' => $model, 'error' => null];
+        }, 3);
+        if ($result['error'] === 'title_generation') {
+            return back()->withErrors(__('admin.ai_models.error.title_generation_in_use'));
+        }
+        if ($result['error'] === 'task') {
+            return back()->withErrors(__('admin.ai_models.error.in_use', ['count' => $result['count']]));
         }
 
-        $model->delete();
+        /** @var AiModel $model */
+        $model = $result['model'];
         if ($this->getDefaultEmbeddingModelId() === (int) $model->id) {
             $this->setDefaultEmbeddingModelId(0);
         }
@@ -204,16 +291,28 @@ class AiModelController extends Controller
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.delete_success'));
     }
 
+    private function activeTitleGenerationCount(int $modelId): int
+    {
+        return TitleGenerationRun::query()
+            ->where('ai_model_id', $modelId)
+            ->whereIn('status', [
+                TitleGenerationRun::STATUS_QUEUED,
+                TitleGenerationRun::STATUS_RUNNING,
+            ])
+            ->count();
+    }
+
     /**
      * 测试单个 AI 模型的 API 连通性。
      *
      * 只发起最小化请求，并纳入统一每日额度与调用统计，不返回敏感密钥。
      */
-    public function testConnection(int $modelId): JsonResponse
+    public function testConnection(Request $request, int $modelId): JsonResponse
     {
         $model = AiModel::query()->whereKey($modelId)->firstOrFail();
         $startedAt = microtime(true);
         $reservation = null;
+        $workspaceProbeAttempted = false;
 
         try {
             $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
@@ -243,6 +342,32 @@ class AiModelController extends Controller
                     $startedAt,
                     $modelType,
                     $endpoint,
+                );
+            }
+
+            if ($modelType === 'chat' && (bool) $request->user('admin')?->isSuperAdmin()) {
+                $workspaceProbeAttempted = true;
+                $result = $this->aiWorkspaceModelProbe->probe($model);
+                try {
+                    $this->usageQuota->recordModelSuccess($reservation);
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+                $reservation = null;
+
+                return $this->modelTestResponse(
+                    true,
+                    __('admin.ai_models.test_success', ['type' => 'Chat']),
+                    $startedAt,
+                    $modelType,
+                    (string) $result['endpoint'],
+                    (int) $result['http_status'],
+                    [
+                        'workspace_ready' => true,
+                        'readiness_status' => (string) $result['readiness_status'],
+                        'readiness_profile' => (array) $result['profile'],
+                        'readiness_expires_at' => (string) $result['expires_at'],
+                    ],
                 );
             }
 
@@ -315,6 +440,9 @@ class AiModelController extends Controller
                 $response->status()
             );
         } catch (Throwable $exception) {
+            if ($workspaceProbeAttempted) {
+                $this->aiWorkspaceModelProbe->recordFailure($model, $exception);
+            }
             if ($reservation instanceof AiUsageReservation) {
                 $this->recordModelTestAttempt($reservation);
             }
@@ -433,10 +561,24 @@ class AiModelController extends Controller
         if ($supportsMaxTokens) {
             $columns[] = 'max_tokens';
         }
+        foreach ([
+            'ai_workspace_readiness_status',
+            'ai_workspace_readiness_profile',
+            'ai_workspace_readiness_checked_at',
+            'ai_workspace_readiness_expires_at',
+            'ai_workspace_readiness_failure_code',
+        ] as $workspaceColumn) {
+            if (Schema::hasColumn('ai_models', $workspaceColumn)) {
+                $columns[] = $workspaceColumn;
+            }
+        }
 
         $models = AiModel::query()
             ->select($columns)
-            ->withCount('tasks as task_count')
+            ->withCount([
+                'tasks as content_task_count' => fn ($query) => $query->withTrashed(),
+                'qualityTasks as quality_task_count' => fn ($query) => $query->withTrashed(),
+            ])
             ->addSelect([
                 'article_count' => Article::query()
                     ->selectRaw('COUNT(articles.id)')
@@ -450,6 +592,10 @@ class AiModelController extends Controller
 
         return $models->map(function (AiModel $model) use ($defaultEmbeddingModelId, $supportsMaxTokens): array {
             $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
+            $workspaceReadinessStatus = (string) ($model->ai_workspace_readiness_status ?? '');
+            if ($workspaceReadinessStatus === 'ready' && $model->ai_workspace_readiness_expires_at?->isPast()) {
+                $workspaceReadinessStatus = 'stale';
+            }
 
             return [
                 'id' => (int) $model->id,
@@ -464,10 +610,15 @@ class AiModelController extends Controller
                 'total_used' => (int) ($model->total_used ?? 0),
                 'status' => (string) ($model->status ?? 'active'),
                 'max_tokens' => $supportsMaxTokens && $model->max_tokens !== null ? (int) $model->max_tokens : null,
-                'task_count' => (int) ($model->task_count ?? 0),
+                'task_count' => (int) ($model->content_task_count ?? 0) + (int) ($model->quality_task_count ?? 0),
                 'article_count' => (int) ($model->article_count ?? 0),
                 'masked_api_key' => $this->maskApiKey((string) ($model->getRawOriginal('api_key') ?? '')),
                 'is_default_embedding' => $modelType === 'embedding' && $defaultEmbeddingModelId === (int) $model->id,
+                'workspace_readiness_status' => $workspaceReadinessStatus,
+                'workspace_readiness_profile' => (array) ($model->ai_workspace_readiness_profile ?? []),
+                'workspace_readiness_checked_at' => $model->ai_workspace_readiness_checked_at?->toISOString(),
+                'workspace_readiness_expires_at' => $model->ai_workspace_readiness_expires_at?->toISOString(),
+                'workspace_readiness_failure_code' => (string) ($model->ai_workspace_readiness_failure_code ?? ''),
             ];
         })->all();
     }
@@ -566,7 +717,7 @@ class AiModelController extends Controller
 
     private function defaultContentMaxTokens(): int
     {
-        return max(256, (int) config('geoflow.content_max_tokens', 8192));
+        return max(256, (int) config('geoflow.content_max_tokens', 16384));
     }
 
     private function supportsModelMaxTokens(): bool
@@ -877,7 +1028,8 @@ class AiModelController extends Controller
         float $startedAt,
         string $modelType,
         string $endpoint = '',
-        ?int $httpStatus = null
+        ?int $httpStatus = null,
+        array $extraMeta = [],
     ): JsonResponse {
         return response()->json([
             'success' => $success,
@@ -887,7 +1039,7 @@ class AiModelController extends Controller
                 'http_status' => $httpStatus,
                 'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                 'endpoint' => $success ? $endpoint : '',
-            ],
+            ] + $extraMeta,
         ], $success ? 200 : 422);
     }
 

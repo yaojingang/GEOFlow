@@ -4,6 +4,7 @@
  * Artisan 自定义命令注册（闭包命令或后续类命令）。
  */
 
+use App\Services\GeoFlow\ArticleMarkdownExportService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -52,6 +53,13 @@ Artisan::command('geoflow:prune-expired-cache {--limit=5000}', function (): int 
     return 0;
 })->purpose('Delete expired database cache rows used by rate limiters');
 
+Artisan::command('geoflow:prune-article-exports', function (ArticleMarkdownExportService $exports): int {
+    $deleted = $exports->pruneExpired();
+    $this->info(sprintf('Pruned article export artifacts: %d', $deleted));
+
+    return 0;
+})->purpose('Delete expired Markdown article export files');
+
 /**
  * Horizon 监控快照：用于沉淀队列吞吐、等待等时序指标。
  */
@@ -73,15 +81,39 @@ Schedule::command('geoflow:recover-knowledge-syncs')
     ->onOneServer()
     ->withoutOverlapping(10);
 
+Schedule::command('geoflow:recover-title-generations')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
+Schedule::command('geoflow:reconcile-ai-quality')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
 Schedule::command('geoflow:prune-expired-cache')
     ->hourly()
     ->onOneServer()
     ->withoutOverlapping(10);
 
-/**
- * 匿名部署活跃心跳：每天一次；同版本同日重复执行会在本地跳过。
- */
-Schedule::command('geoflow:telemetry:heartbeat')
-    ->dailyAt('03:17')
+Schedule::command('geoflow:prune-article-exports')
+    ->hourly()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
+Schedule::command('geoflow:prune-ai-workspace')
+    ->dailyAt('02:30')
+    ->onOneServer()
+    ->withoutOverlapping(60);
+
+Schedule::command('geoflow:prune-task-trash')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(60);
+
+Schedule::command('hosted-sites:reconcile', [
+    '--limit' => (int) config('geoflow.hosted_sites.reconcile_limit', 500),
+])
+    ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(10);

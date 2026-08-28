@@ -47,6 +47,7 @@
                     <i data-lucide="info" class="w-4 h-4 mr-1"></i>
                     关于
                 </a>
+
             </nav>
 
             <button type="button" class="mobile-menu-toggle md:hidden flex items-center justify-center w-11 h-11 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-50" onclick="toggleMobileMenu()">

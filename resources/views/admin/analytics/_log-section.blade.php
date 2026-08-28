@@ -3,8 +3,14 @@
     $logFilterData = $logFilters->toArray();
     $logPresetOptions = ['7d', '30d', '60d'];
     $trafficOptions = ['all', 'human', 'search_bot', 'ai_bot', 'other_bot', 'unknown'];
-    $logSourceOptions = ['all', 'local', 'server', 'channel'];
-    $sourceLabelKey = $logFilters->source === 'channel' ? 'channel_source' : $logFilters->source;
+    $logSourceOptions = [
+        'all' => null,
+        'local' => 'local',
+        'hosted_site' => 'hosted_site_source',
+        'server' => 'server',
+        'channel' => 'channel_source',
+    ];
+    $sourceLabelKey = $logSourceOptions[$logFilters->source] ?? $logFilters->source;
     $currentSourceLabel = $logFilters->source === 'all'
         ? __('admin.analytics.logs_all_supported_sources')
         : __('admin.analytics.filters.'.$sourceLabelKey);
@@ -97,9 +103,8 @@
                 <div>
                     <label class="mb-1 block text-sm font-medium text-gray-700" for="log-source">{{ __('admin.analytics.filters.log_source') }}</label>
                     <select id="log-source" name="log_source" class="block min-h-10 w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                        @foreach ($logSourceOptions as $option)
+                        @foreach ($logSourceOptions as $option => $labelKey)
                             @php
-                                $labelKey = $option === 'channel' ? 'channel_source' : $option;
                                 $label = $option === 'all' ? __('admin.analytics.logs_all_supported_sources') : __('admin.analytics.filters.'.$labelKey);
                             @endphp
                             <option value="{{ $option }}" @selected($logFilters->source === $option)>{{ $label }}</option>
@@ -167,10 +172,6 @@
     @else
         <div class="space-y-6 p-5 sm:p-6">
             <div>
-                <div class="mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">{{ __('admin.analytics.logs_title') }}</h3>
-                    <p class="mt-1 text-sm text-gray-500">{{ __('admin.analytics.logs_desc') }}</p>
-                </div>
                 <h4 class="mb-4 text-base font-semibold text-gray-900">{{ __('admin.analytics.logs_overview') }}</h4>
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     @foreach ([

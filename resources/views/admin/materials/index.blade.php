@@ -113,33 +113,33 @@
         <section class="mb-8 overflow-hidden rounded-lg border border-orange-100 bg-white shadow">
             <div class="border-b border-orange-100 bg-orange-50/50 px-6 py-5 lg:px-8">
                 <div class="space-y-5">
-                    <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-sm font-semibold text-orange-700 ring-1 ring-orange-200">
                             <i data-lucide="brain" class="mr-2 h-4 w-4"></i>
                             {{ __('admin.materials.knowledge_hub_label') }}
                         </span>
-                        <div class="grid w-full grid-cols-1 gap-3 sm:w-auto sm:grid-cols-2 lg:grid-cols-4 lg:min-w-[760px]">
-                            <a href="{{ route('admin.knowledge-bases.create') }}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-700">
-                                <i data-lucide="plus" class="mr-2 h-4 w-4"></i>
-                                {{ __('admin.materials.knowledge_hub_create') }}
-                            </a>
-                            <a href="{{ route('admin.enterprise-knowledge.create') }}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-50">
-                                <i data-lucide="sparkles" class="mr-2 h-4 w-4"></i>
-                                {{ __('admin.materials.knowledge_hub_enterprise') }}
-                            </a>
-                            <a href="{{ route('admin.knowledge-bases.index') }}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-50">
-                                <i data-lucide="database" class="mr-2 h-4 w-4"></i>
-                                {{ __('admin.materials.manage_knowledge_bases') }}
-                            </a>
-                            <a href="{{ route('admin.ai-models.index') }}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                                <i data-lucide="settings" class="mr-2 h-4 w-4"></i>
-                                {{ __('admin.materials.knowledge_hub_vector_config') }}
-                            </a>
-                        </div>
+                        <a href="{{ route('admin.knowledge-bases.create') }}" class="inline-flex min-h-10 w-fit items-center justify-center gap-2 whitespace-nowrap rounded-md border border-orange-600 bg-orange-600 px-4 text-sm font-semibold text-white transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-orange-700 [@media(hover:hover)]:hover:bg-orange-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600">
+                            <i data-lucide="plus" class="h-4 w-4"></i>
+                            {{ __('admin.materials.knowledge_hub_create') }}
+                        </a>
                     </div>
                     <div>
                         <h2 class="text-2xl font-bold tracking-tight text-gray-900">{{ __('admin.materials.knowledge_hub_title') }}</h2>
-                        <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.materials.knowledge_hub_desc') }}</p>
+                        <p class="mt-2 max-w-4xl text-sm leading-6 text-gray-600">{{ __('admin.materials.knowledge_hub_desc') }}</p>
+                        <nav class="-ml-2 mt-3 flex flex-wrap items-center gap-1" aria-label="{{ __('admin.materials.knowledge_hub_label') }}">
+                            <a href="{{ route('admin.enterprise-knowledge.create') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-orange-700 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-orange-800 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600">
+                                <i data-lucide="sparkles" class="h-4 w-4"></i>
+                                {{ __('admin.materials.knowledge_hub_enterprise') }}
+                            </a>
+                            <a href="{{ route('admin.knowledge-bases.index') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-orange-700 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-orange-800 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600">
+                                <i data-lucide="database" class="h-4 w-4"></i>
+                                {{ __('admin.materials.manage_knowledge_bases') }}
+                            </a>
+                            <a href="{{ route('admin.ai-models.index') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600">
+                                <i data-lucide="settings" class="h-4 w-4"></i>
+                                {{ __('admin.materials.knowledge_hub_vector_config') }}
+                            </a>
+                        </nav>
                     </div>
                 </div>
             </div>

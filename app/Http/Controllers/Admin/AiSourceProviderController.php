@@ -7,6 +7,7 @@ use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\SiteSetting;
+use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
 use App\Services\GeoFlow\AiVisibility\AiStructuredOutputHealthCheck;
@@ -36,6 +37,7 @@ class AiSourceProviderController extends Controller
         private readonly AiProviderEndpointPolicy $endpointPolicy,
         private readonly AiUsageQuotaService $usageQuota,
         private readonly AiVisibilityConfigurationResolver $configuration,
+        private readonly AiWorkspaceModelCapabilityProbe $aiWorkspaceModelProbe,
     ) {}
 
     public function index(): View
@@ -54,6 +56,33 @@ class AiSourceProviderController extends Controller
             'arkApiConfig' => $this->loadModelApiConfig($arkModelId, 'ark'),
             'deepSeekApiConfig' => $this->loadModelApiConfig($deepSeekModelId, 'deepseek'),
             'stats' => $this->loadStats(),
+            'defaultDoubaoEndpoint' => (string) config('geoflow.ai_visibility.doubao_search_endpoint', ''),
+        ]);
+    }
+
+    public function create(): View
+    {
+        return view('admin.ai-source-providers.create', [
+            'pageTitle' => __('admin.ai_source_providers.modal_create'),
+            'activeMenu' => 'ai_config',
+            'adminSiteName' => AdminWeb::siteName(),
+            'provider' => null,
+            'defaultDoubaoEndpoint' => (string) config('geoflow.ai_visibility.doubao_search_endpoint', ''),
+        ]);
+    }
+
+    public function edit(int $providerId): View
+    {
+        $provider = AiSourceProvider::query()
+            ->select(['id', 'name', 'provider_key', 'endpoint_url', 'status', 'daily_limit', 'metadata_json'])
+            ->whereKey($providerId)
+            ->firstOrFail();
+
+        return view('admin.ai-source-providers.edit', [
+            'pageTitle' => __('admin.ai_source_providers.modal_edit'),
+            'activeMenu' => 'ai_config',
+            'adminSiteName' => AdminWeb::siteName(),
+            'provider' => $this->providerFormData($provider),
             'defaultDoubaoEndpoint' => (string) config('geoflow.ai_visibility.doubao_search_endpoint', ''),
         ]);
     }
@@ -193,6 +222,8 @@ class AiSourceProviderController extends Controller
             'failover_priority' => $bindingType === 'ark' ? 40 : 45,
             'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
             'status' => 'active',
+            'ai_workspace_structured_output_status' => null,
+            'ai_workspace_structured_output_verified_at' => null,
         ];
         if ($this->supportsModelMaxTokens()) {
             $modelData['max_tokens'] = $this->normalizeModelMaxTokens($payload['max_tokens'] ?? null);
@@ -265,23 +296,37 @@ class AiSourceProviderController extends Controller
         $bindingType = (string) $payload['binding_type'];
         $model = AiModel::query()->whereKey((int) $payload['model_id'])->firstOrFail();
         $query = $this->normalizeTestQuery((string) ($payload['query'] ?? 'GEOFlow'));
+        $canUpdateWorkspaceReadiness = (bool) $request->user('admin')?->isSuperAdmin();
+
+        if ($bindingType === 'ark' && ! $this->isCallableArkModel($model)) {
+            return response()->json([
+                'success' => false,
+                'message' => __('admin.ai_source_providers.test_failed', [
+                    'message' => $this->previewMessage(__('admin.ai_source_providers.error.ark_model_unavailable')),
+                ]),
+            ], 422);
+        }
+        if ($bindingType === 'deepseek' && ! $this->isCallableDeepSeekModel($model)) {
+            return response()->json([
+                'success' => false,
+                'message' => __('admin.ai_source_providers.test_failed', [
+                    'message' => $this->previewMessage(__('admin.ai_source_providers.error.deepseek_model_unavailable')),
+                ]),
+            ], 422);
+        }
 
         $reservation = null;
         try {
-            if ($bindingType === 'ark' && ! $this->isCallableArkModel($model)) {
-                throw new RuntimeException(__('admin.ai_source_providers.error.ark_model_unavailable'));
-            }
-            if ($bindingType === 'deepseek' && ! $this->isCallableDeepSeekModel($model)) {
-                throw new RuntimeException(__('admin.ai_source_providers.error.deepseek_model_unavailable'));
-            }
             $reservation = $this->usageQuota->reserveModel($model);
             if ($reservation === null) {
                 throw new RuntimeException('模型已达到每日调用上限');
             }
 
-            $result = $bindingType === 'ark'
-                ? $this->structuredOutputHealthCheck->testArkResponsesStructuredOutput($model, $query)
-                : $this->structuredOutputHealthCheck->testDeepSeekJsonOutput($model, $query);
+            $result = $canUpdateWorkspaceReadiness
+                ? $this->aiWorkspaceModelProbe->probe($model)
+                : ($bindingType === 'ark'
+                    ? $this->structuredOutputHealthCheck->testArkResponsesStructuredOutput($model, $query)
+                    : $this->structuredOutputHealthCheck->testDeepSeekJsonOutput($model, $query));
             $this->usageQuota->recordModelSuccess($reservation);
             $reservation = null;
 
@@ -289,6 +334,9 @@ class AiSourceProviderController extends Controller
                 'provider' => $bindingType === 'ark' ? 'Ark Web Search' : 'DeepSeek',
             ]));
         } catch (Throwable $exception) {
+            if ($canUpdateWorkspaceReadiness) {
+                $this->aiWorkspaceModelProbe->recordFailure($model, $exception);
+            }
             if ($reservation !== null) {
                 $this->usageQuota->recordModelAttempt($reservation);
             }
@@ -343,6 +391,30 @@ class AiSourceProviderController extends Controller
                 ];
             })
             ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function providerFormData(AiSourceProvider $provider): array
+    {
+        $metadata = is_array($provider->metadata_json) ? $provider->metadata_json : [];
+
+        return [
+            'id' => (int) $provider->id,
+            'name' => (string) $provider->name,
+            'endpoint_url' => (string) ($provider->endpoint_url ?? ''),
+            'status' => (string) ($provider->status ?? 'active'),
+            'daily_limit' => (int) ($provider->daily_limit ?? 0),
+            'count' => (int) ($metadata['count'] ?? 10),
+            'content_formats' => (string) ($metadata['content_formats'] ?? 'Markdown'),
+            'need_summary' => (bool) ($metadata['need_summary'] ?? true),
+            'need_content' => (bool) ($metadata['need_content'] ?? true),
+            'need_url' => (bool) ($metadata['need_url'] ?? true),
+            'auth_info_level' => (string) ($metadata['auth_info_level'] ?? ''),
+            'sites' => $this->joinList($metadata['sites'] ?? []),
+            'block_hosts' => $this->joinList($metadata['block_hosts'] ?? []),
+        ];
     }
 
     /**
@@ -593,6 +665,8 @@ class AiSourceProviderController extends Controller
                 'endpoint' => $result['endpoint'],
                 'structured_output' => $result['structured_output'],
                 'answer_preview' => $result['raw_preview'],
+                'workspace_readiness' => $result['profile'] ?? null,
+                'workspace_readiness_expires_at' => $result['expires_at'] ?? null,
             ],
         ]);
     }

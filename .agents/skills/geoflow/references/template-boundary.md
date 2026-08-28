@@ -30,7 +30,7 @@ The `public_frontend` mode covers GEOFlow frontend template cloning, theme disco
 
 - rewriting GEOFlow business logic just to imitate a reference site
 - replacing existing PHP data queries with hard-coded mock content
-- changing routing rules such as `/article/{slug}`, `/category/{slug}`, or `/archive/...`
+- changing routing rules such as `/article/{slug}`, `/category/{slug}`, or `/about`
 - removing SEO or structured-data generation
 - direct production activation without preview and confirmation
 - editing the live target theme first when a preview fork has not yet been reviewed
@@ -44,7 +44,7 @@ The `public_frontend` mode covers GEOFlow frontend template cloning, theme disco
 - search, category, and category-missing states remain focused result pages unless explicitly redesigned
 - article detail remains data-driven by article, related articles, tags, SEO blocks, and the article detail ad slot
 - category page remains driven by category metadata and paginated article lists
-- archive page remains driven by archive overview or month-specific archive data
+- About page remains source-grounded in the current project and repository documentation
 - frontend continues to use GEOFlow routing, helpers, and data fields
 
 ## Safe Replacement Surface

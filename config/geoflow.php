@@ -10,28 +10,67 @@ $adminBasePath = $adminBasePath !== '' ? $adminBasePath : 'geo_admin';
 $defaultUpdateMetadataUrl = 'https://raw.githubusercontent.com/yaojingang/GEOFlow/main/version.json';
 $updateMetadataUrl = trim((string) env('GEOFLOW_UPDATE_METADATA_URL', $defaultUpdateMetadataUrl));
 $updateMetadataUrl = $updateMetadataUrl !== '' ? $updateMetadataUrl : $defaultUpdateMetadataUrl;
-$defaultTelemetryEndpoint = 'https://geoflow-telemetry-gateway.pages.dev/api/pulse';
-$telemetryEndpoint = trim((string) env('GEOFLOW_TELEMETRY_ENDPOINT', $defaultTelemetryEndpoint));
-$telemetryEndpoint = $telemetryEndpoint !== '' ? $telemetryEndpoint : $defaultTelemetryEndpoint;
+$telemetryEndpoint = trim((string) env('GEOFLOW_TELEMETRY_ENDPOINT', ''));
 $versionManifestPath = __DIR__.'/../version.json';
 $versionManifest = is_file($versionManifestPath)
     ? json_decode((string) file_get_contents($versionManifestPath), true)
     : [];
 $appVersion = is_array($versionManifest) ? trim((string) ($versionManifest['version'] ?? '')) : '';
 $appVersion = $appVersion !== '' ? $appVersion : '0.0.0-dev';
-$defaultAnalyticsCode = <<<'HTML'
-<script>
-var _hmt = _hmt || [];
-(function() {
-  var hm = document.createElement("script");
-  hm.src = "https://hm.baidu.com/hm.js?1743638f313788caa4cb55e299444a87";
-  var s = document.getElementsByTagName("script")[0];
-  s.parentNode.insertBefore(hm, s);
-})();
-</script>
-HTML;
+$normalizeHosts = static function (array $hosts): array {
+    $normalized = [];
+    foreach ($hosts as $host) {
+        $host = strtolower(rtrim(trim((string) $host), '.'));
+        if ($host !== ''
+            && preg_match('/^[a-z0-9.-]+$/', $host) === 1
+            && ! str_contains($host, '..')
+            && ! in_array($host, $normalized, true)) {
+            $normalized[] = $host;
+        }
+    }
+
+    return $normalized;
+};
+$rawConfiguredPrimaryHosts = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) env('GEOFLOW_PRIMARY_HOSTS', ''))
+)));
+$configuredPrimaryHosts = $rawConfiguredPrimaryHosts;
+$configuredPrimaryHosts[] = (string) parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST);
+$configuredPrimaryHosts[] = (string) parse_url((string) env('SITE_URL', 'http://localhost'), PHP_URL_HOST);
+$rawHostedRootDomains = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) env('GEOFLOW_HOSTED_SITE_ROOT_DOMAINS', ''))
+)));
+$hostedRootDomains = $normalizeHosts($rawHostedRootDomains);
+$normalizedPrimaryHostCandidates = $normalizeHosts($configuredPrimaryHosts);
+$primaryHosts = array_values(array_filter(
+    array_diff($normalizedPrimaryHostCandidates, $hostedRootDomains),
+    static function (string $hostname) use ($hostedRootDomains): bool {
+        foreach ($hostedRootDomains as $rootDomain) {
+            if (str_ends_with($hostname, '.'.$rootDomain)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+));
+$configurationErrors = [];
+if (count($hostedRootDomains) !== count(array_unique(array_map('strtolower', $rawHostedRootDomains)))) {
+    $configurationErrors[] = 'GEOFLOW_HOSTED_SITE_ROOT_DOMAINS contains an invalid or duplicate hostname.';
+}
+if (count($normalizeHosts($rawConfiguredPrimaryHosts)) !== count(array_unique(array_map('strtolower', $rawConfiguredPrimaryHosts)))) {
+    $configurationErrors[] = 'GEOFLOW_PRIMARY_HOSTS contains an invalid or duplicate hostname.';
+}
+if (array_diff($normalizedPrimaryHostCandidates, $primaryHosts) !== []) {
+    $configurationErrors[] = 'A primary host overlaps a hosted root domain or one of its subdomains.';
+}
 
 return [
+
+    // Admin UI V3 公共壳层。默认关闭，仅在独立 UI V3 环境显式开启。
+    'admin_ui_v3_enabled' => filter_var(env('GEOFLOW_ADMIN_UI_V3_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
 
     // 站点展示名称（页眉、标题等）
     'site_name' => env('SITE_NAME', 'GEOFlow'),
@@ -44,18 +83,53 @@ return [
     // SEO 关键词（逗号分隔等，依前端使用方式）
     'site_keywords' => env('SITE_KEYWORDS', ''),
 
+    'hosted_sites' => [
+        'enabled' => filter_var(env('GEOFLOW_HOSTED_SITES_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'root_domains' => $hostedRootDomains,
+        'primary_hosts' => $primaryHosts,
+        'configuration_errors' => $configurationErrors,
+        'nginx_primary_host' => strtolower(trim((string) env('GEOFLOW_NGINX_PRIMARY_HOST', ''))),
+        'nginx_root_domain' => strtolower(trim((string) env('GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN', ''))),
+        'nginx_public_scheme' => strtolower(trim((string) env('GEOFLOW_NGINX_PUBLIC_SCHEME', 'http'))),
+        'nginx_public_port' => max(1, (int) env('GEOFLOW_NGINX_PUBLIC_PORT', 80)),
+        'reserved_labels' => [
+            'www', 'admin', 'api', 'horizon', 'reverb', 'mail', 'smtp', 'ftp',
+            'cdn', 'static', 'assets', 'status', 'up', 'localhost',
+        ],
+        'resolver_positive_ttl' => max(1, (int) env('GEOFLOW_HOSTED_SITE_RESOLVER_POSITIVE_TTL', 300)),
+        'resolver_negative_ttl' => max(1, (int) env('GEOFLOW_HOSTED_SITE_RESOLVER_NEGATIVE_TTL', 30)),
+        'default_daily_publish_limit' => max(1, (int) env('GEOFLOW_HOSTED_SITE_DAILY_PUBLISH_LIMIT', 3)),
+        'default_min_publish_interval_minutes' => max(0, (int) env('GEOFLOW_HOSTED_SITE_MIN_PUBLISH_INTERVAL_MINUTES', 360)),
+        'default_min_articles_before_index' => max(1, (int) env('GEOFLOW_HOSTED_SITE_MIN_ARTICLES_BEFORE_INDEX', 10)),
+        'failure_cooldown_threshold' => max(1, (int) env('GEOFLOW_HOSTED_SITE_FAILURE_COOLDOWN_THRESHOLD', 3)),
+        'failure_cooldown_minutes' => max(1, (int) env('GEOFLOW_HOSTED_SITE_FAILURE_COOLDOWN_MINUTES', 60)),
+        'reservation_ttl_minutes' => max(1, (int) env('GEOFLOW_HOSTED_SITE_RESERVATION_TTL_MINUTES', 30)),
+        'reconcile_limit' => max(1, (int) env('GEOFLOW_HOSTED_SITE_RECONCILE_LIMIT', 500)),
+        'stale_sending_seconds' => max(90, (int) env('GEOFLOW_HOSTED_SITE_STALE_SENDING_SECONDS', 150)),
+        'certified_themes' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('GEOFLOW_HOSTED_SITE_CERTIFIED_THEMES', 'default'))
+        ))),
+        'network_preflight_enabled' => filter_var(
+            env('GEOFLOW_HOSTED_SITE_NETWORK_PREFLIGHT', env('APP_ENV') === 'production'),
+            FILTER_VALIDATE_BOOLEAN
+        ),
+        'preflight_timeout_seconds' => max(2, (int) env('GEOFLOW_HOSTED_SITE_PREFLIGHT_TIMEOUT', 8)),
+        'preflight_fresh_minutes' => max(1, (int) env('GEOFLOW_HOSTED_SITE_PREFLIGHT_FRESH_MINUTES', 15)),
+        'index_observation_minutes' => max(0, (int) env('GEOFLOW_HOSTED_SITE_INDEX_OBSERVATION_MINUTES', 30)),
+        'sitemap_url_limit' => 50000,
+    ],
+
     // 后台入口路径前缀，如 /geo_admin（勿与前台路由冲突）
     'admin_base_path' => '/'.$adminBasePath,
 
     // 前台 Blade 使用的 Laravel 翻译 locale（与 APP_LOCALE、后台会话语言独立；对齐旧站中文导航）
     'public_locale' => env('GEOFLOW_PUBLIC_LOCALE', 'zh_CN'),
     // 默认前台主题；后台未显式选择主题时使用
-    'default_theme' => env('GEOFLOW_DEFAULT_THEME', 'geoflow-template-21-enterprise-signature'),
-    // 仅在空库首次安装时写入；升级、重复安装和已有站点设置都不会覆盖。
-    'default_analytics_code' => $defaultAnalyticsCode,
-    // 是否在手动 db:seed 中导入前台参考内容。geoflow:install 仅在全新空库默认导入。
+    'default_theme' => env('GEOFLOW_DEFAULT_THEME', 'toutiao-news-20260426'),
+    // 兼容旧环境变量；默认 db:seed 与 geoflow:install 均不会读取该值或导入演示内容。
     'seed_frontend_demo' => filter_var(env('GEOFLOW_SEED_FRONTEND_DEMO', false), FILTER_VALIDATE_BOOLEAN),
-    // 参考内容默认只补缺，不覆盖用户已修改的作者、分类和文章；仅重置演示库时显式开启覆盖。
+    // 仅供测试环境显式调用 FrontendDemoSeeder 时控制覆盖行为。
     'seed_frontend_demo_overwrite' => filter_var(env('GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE', false), FILTER_VALIDATE_BOOLEAN),
 
     // 当前系统版本（底部展示、GitHub 更新检查对比）；默认跟随本地 version.json，避免已部署 .env 锁死版本号。
@@ -66,9 +140,9 @@ return [
     'initial_admin_email' => trim((string) env('GEOFLOW_ADMIN_EMAIL', 'admin@example.com')) ?: 'admin@example.com',
     'initial_admin_password' => (string) env('GEOFLOW_ADMIN_PASSWORD', ''),
     // 欢迎弹窗「介绍」文案版本：变更后所有管理员会再次看到介绍弹窗
-    'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '2.1'),
-    // 匿名使用统计：服务端发送随机实例 ID、版本和生命周期事件，后台 Pulse 额外发送管理员匿名摘要。
-    'telemetry_enabled' => filter_var(env('GEOFLOW_TELEMETRY_ENABLED', env('APP_ENV') === 'production'), FILTER_VALIDATE_BOOLEAN),
+    'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '3.0'),
+    // 匿名使用统计：只发送随机实例 ID、管理员摘要、版本和活跃事件；监控地址为空时不会产生请求。
+    'telemetry_enabled' => filter_var(env('GEOFLOW_TELEMETRY_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
     'telemetry_endpoint' => $telemetryEndpoint,
     'telemetry_interval_seconds' => max(3600, (int) env('GEOFLOW_TELEMETRY_INTERVAL_SECONDS', 86400)),
     // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
@@ -99,8 +173,30 @@ return [
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),
     // 后台列表每页条数
     'admin_items_per_page' => (int) env('GEOFLOW_ADMIN_ITEMS_PER_PAGE', 20),
-    // 标题库 AI 生成时从关键词库随机抽取的最大条数（1–100）
-    'title_ai_keyword_sample_limit' => max(1, min(100, (int) env('GEOFLOW_TITLE_AI_KEYWORD_SAMPLE_LIMIT', 10))),
+    // 标题库后台批量生成：任务目标上限、单批数量、模型限流和失败保护。
+    'title_ai_max_count' => max(1, min(100_000, (int) env('GEOFLOW_TITLE_AI_MAX_COUNT', 100_000))),
+    'title_ai_confirmation_threshold' => max(1, min(100_000, (int) env('GEOFLOW_TITLE_AI_CONFIRMATION_THRESHOLD', 1000))),
+    'title_ai_batch_size' => max(1, min(50, (int) env('GEOFLOW_TITLE_AI_BATCH_SIZE', 50))),
+    'title_ai_rate_per_minute' => max(1, min(60, (int) env('GEOFLOW_TITLE_AI_RATE_PER_MINUTE', 30))),
+    'title_ai_submit_rate_per_minute' => max(1, min(60, (int) env('GEOFLOW_TITLE_AI_SUBMIT_RATE_PER_MINUTE', 6))),
+    'title_ai_submit_ip_rate_per_minute' => max(1, min(120, (int) env('GEOFLOW_TITLE_AI_SUBMIT_IP_RATE_PER_MINUTE', 12))),
+    'title_ai_max_active_runs_per_admin' => max(1, min(20, (int) env('GEOFLOW_TITLE_AI_MAX_ACTIVE_RUNS_PER_ADMIN', 3))),
+    'title_ai_max_pending_titles_per_model' => max(100_000, min(10_000_000, (int) env('GEOFLOW_TITLE_AI_MAX_PENDING_TITLES_PER_MODEL', 300_000))),
+    'title_ai_batch_delay_seconds' => max(0, min(60, (int) env('GEOFLOW_TITLE_AI_BATCH_DELAY_SECONDS', 1))),
+    'title_ai_max_empty_batches' => max(1, min(10, (int) env('GEOFLOW_TITLE_AI_MAX_EMPTY_BATCHES', 3))),
+    'title_ai_max_batch_attempts' => max(1, min(10, (int) env('GEOFLOW_TITLE_AI_MAX_BATCH_ATTEMPTS', 3))),
+    'title_ai_max_manual_retries' => max(0, min(10, (int) env('GEOFLOW_TITLE_AI_MAX_MANUAL_RETRIES', 3))),
+    'title_ai_max_request_multiplier' => max(2, min(10, (int) env('GEOFLOW_TITLE_AI_MAX_REQUEST_MULTIPLIER', 3))),
+    'title_ai_recent_title_sample_limit' => max(0, min(50, (int) env('GEOFLOW_TITLE_AI_RECENT_TITLE_SAMPLE_LIMIT', 20))),
+    'title_ai_request_timeout_seconds' => max(10, min(300, (int) env('GEOFLOW_TITLE_AI_REQUEST_TIMEOUT_SECONDS', 90))),
+    'title_ai_lease_seconds' => max(420, min(600, (int) env('GEOFLOW_TITLE_AI_LEASE_SECONDS', 420))),
+    'title_ai_recovery_stale_seconds' => max(60, min(3600, (int) env('GEOFLOW_TITLE_AI_RECOVERY_STALE_SECONDS', 300))),
+    // 文章 AI 质检的单次模型与证据预算。
+    'ai_quality_request_timeout_seconds' => max(30, min(240, (int) env('GEOFLOW_AI_QUALITY_REQUEST_TIMEOUT_SECONDS', 180))),
+    'ai_quality_max_model_candidates' => max(1, min(10, (int) env('GEOFLOW_AI_QUALITY_MAX_MODEL_CANDIDATES', 3))),
+    'ai_quality_max_evidence' => max(4, min(64, (int) env('GEOFLOW_AI_QUALITY_MAX_EVIDENCE', 24))),
+    'ai_quality_max_evidence_characters' => max(2000, min(50000, (int) env('GEOFLOW_AI_QUALITY_MAX_EVIDENCE_CHARACTERS', 12000))),
+    'ai_quality_max_fact_retrievals' => max(10, min(200, (int) env('GEOFLOW_AI_QUALITY_MAX_FACT_RETRIEVALS', 60))),
     // 统一出站安全网关：仅此处列出的精确 host:port 可连接私网地址；不支持通配符或路径。
     'outbound_private_targets' => array_values(array_filter(array_map('trim', explode(',', (string) env('GEOFLOW_OUTBOUND_PRIVATE_TARGETS', ''))), static fn (string $target): bool => $target !== '')),
     'outbound_json_max_bytes' => max(1, (int) env('GEOFLOW_OUTBOUND_JSON_MAX_BYTES', 4 * 1024 * 1024)),
@@ -123,7 +219,7 @@ return [
     'worker_stale_seconds' => max(30, (int) env('GEOFLOW_WORKER_STALE_SECONDS', 120)),
     // 正文生成默认最大输出 token 数；当 AI 模型未单独配置 max_tokens 时使用此兜底值，
     // 避免依赖各服务商较小的默认上限（常见 4K）导致长文被截断。
-    'content_max_tokens' => max(256, (int) env('GEOFLOW_CONTENT_MAX_TOKENS', 8192)),
+    'content_max_tokens' => max(256, (int) env('GEOFLOW_CONTENT_MAX_TOKENS', 16384)),
     // AI 可见性查询底层能力：豆包 Ark Responses、豆包 Search Custom、DeepSeek 二次分析共用。
     'ai_visibility' => [
         'http_timeout_seconds' => max(5, (int) env('GEOFLOW_AI_VISIBILITY_HTTP_TIMEOUT', 60)),

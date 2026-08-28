@@ -20,7 +20,7 @@
     <div class="px-4 sm:px-0">
         <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div class="flex items-start gap-4">
-                <a href="{{ route('admin.system-updates.index') }}" class="mt-2 text-gray-400 hover:text-gray-600"><i data-lucide="arrow-left" class="h-5 w-5"></i></a>
+                <a href="{{ route('admin.system-updates.index') }}" aria-label="{{ __('admin.common.back') }}" class="mt-2 text-gray-400 hover:text-gray-600"><i data-lucide="arrow-left" class="h-5 w-5"></i></a>
                 <div>
                     <h1 class="text-3xl font-bold text-gray-900">{{ __('admin.system_updates.section.run_detail') }}</h1>
                     <p class="mt-2 text-sm text-gray-600">{{ __('admin.system_updates.history.read_only') }}</p>

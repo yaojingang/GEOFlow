@@ -35,6 +35,45 @@ class ApiTokenService
             ->all();
     }
 
+    /** @return list<array<string,mixed>> */
+    public function listBrowserTokens(Admin $viewer): array
+    {
+        /** @var Collection<int, PersonalAccessToken> $rows */
+        $rows = PersonalAccessToken::query()
+            ->where('tokenable_type', Admin::class)
+            ->with('tokenable:id,username')
+            ->when(! $viewer->isSuperAdmin(), fn ($query) => $query->where('tokenable_id', $viewer->getKey()))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get();
+
+        return $rows
+            ->filter(fn (PersonalAccessToken $row): bool => in_array('browser-operations:read', (array) $row->abilities, true))
+            ->map(function (PersonalAccessToken $row): array {
+                $data = $this->hydrate($row);
+                $data['created_by_username'] = (string) ($row->tokenable?->username ?? '');
+
+                return $data;
+            })
+            ->values()
+            ->all();
+    }
+
+    public function revokeBrowserToken(int $tokenId, Admin $viewer): void
+    {
+        $row = PersonalAccessToken::query()
+            ->where('tokenable_type', Admin::class)
+            ->whereKey($tokenId)
+            ->first();
+        if (! $row instanceof PersonalAccessToken
+            || ! in_array('browser-operations:read', (array) $row->abilities, true)
+            || (! $viewer->isSuperAdmin() && (int) $row->tokenable_id !== (int) $viewer->getKey())) {
+            throw new ApiException('token_not_found', '浏览器连接不存在', 404);
+        }
+
+        $row->delete();
+    }
+
     /**
      * 撤销指定 Token（Sanctum 语义为物理删除）。
      */
@@ -173,6 +212,17 @@ class ApiTokenService
      */
     public function getAvailableScopes(): array
     {
+        return array_values(array_unique(array_merge(
+            $this->getCliLoginScopes(),
+            $this->getBrowserClientScopes(),
+        )));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getCliLoginScopes(): array
+    {
         return [
             'catalog:read',
             'tasks:read',
@@ -183,6 +233,17 @@ class ApiTokenService
             'articles:publish',
             'materials:read',
             'materials:write',
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getBrowserClientScopes(): array
+    {
+        return [
+            'browser-operations:read',
+            'browser-operations:execute',
         ];
     }
 

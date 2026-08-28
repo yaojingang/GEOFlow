@@ -6,10 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\LeadForm;
+use App\Services\Site\SiteScopedArticleQuery;
+use App\Services\Site\SiteUrlGenerator;
 use App\Support\Site\ArticleHtmlPresenter;
+use App\Support\Site\CurrentSite;
 use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -19,6 +23,12 @@ use Illuminate\View\View;
  */
 class HomeController extends Controller
 {
+    public function __construct(
+        private readonly SiteScopedArticleQuery $siteArticles,
+        private readonly SiteUrlGenerator $urls,
+        private readonly CurrentSite $currentSite,
+    ) {}
+
     public function index(Request $request): View
     {
         $search = trim((string) $request->query('search', ''));
@@ -37,7 +47,7 @@ class HomeController extends Controller
         $homepageModules = HomepageModuleBuilder::fromRaw((string) ($map['homepage_modules'] ?? '[]'));
         $homepageStyle = HomepageModuleBuilder::styleFromRaw((string) ($map['homepage_style'] ?? '{}'));
         $leadForms = Schema::hasTable('lead_forms')
-            ? LeadForm::query()
+            ? $this->allowedLeadForms(LeadForm::query(), $map)
                 ->where('status', LeadForm::STATUS_ACTIVE)
                 ->orderBy('name')
                 ->get()
@@ -47,11 +57,14 @@ class HomeController extends Controller
         $category = null;
         $categoryMissing = false;
         if ($categoryId > 0) {
-            $category = Category::query()->find($categoryId);
+            $category = Category::query()
+                ->whereKey($categoryId)
+                ->whereHas('articles', fn ($query) => $this->siteArticles->apply($query))
+                ->first();
             $categoryMissing = ! $category instanceof Category;
         }
 
-        $query = Article::query()->with(['category', 'author'])->published();
+        $query = $this->siteArticles->query()->with(['category', 'author']);
 
         if ($search !== '') {
             $escaped = $this->escapeLike(mb_strtolower($search));
@@ -76,9 +89,8 @@ class HomeController extends Controller
         $hotArticles = collect();
         if ($search === '' && ! $category && $page === 1) {
             if (Schema::hasColumn('articles', 'is_featured')) {
-                $featuredArticles = Article::query()
+                $featuredArticles = $this->siteArticles->query()
                     ->with(['category', 'author'])
-                    ->published()
                     ->where('is_featured', true)
                     ->orderByDesc('published_at')
                     ->orderByDesc('id')
@@ -87,9 +99,8 @@ class HomeController extends Controller
             }
 
             if (Schema::hasColumn('articles', 'is_hot')) {
-                $hotArticles = Article::query()
+                $hotArticles = $this->siteArticles->query()
                     ->with(['category', 'author'])
-                    ->published()
                     ->where('is_hot', true)
                     ->orderByDesc('published_at')
                     ->orderByDesc('id')
@@ -137,13 +148,13 @@ class HomeController extends Controller
             }
         }
 
-        $canonicalUrl = route('site.home');
+        $canonicalUrl = $this->urls->home();
         if ($search !== '') {
-            $canonicalUrl = route('site.home', ['search' => $search]);
+            $canonicalUrl = $this->urls->home(['search' => $search]);
         } elseif ($category instanceof Category) {
-            $canonicalUrl = route('site.category', $category->slug);
+            $canonicalUrl = $this->urls->category($category);
         } elseif ($categoryMissing) {
-            $canonicalUrl = route('site.home', ['category' => $categoryId]);
+            $canonicalUrl = $this->urls->home(['category' => $categoryId]);
         }
 
         $showHomepageModules = $search === '' && ! $category && ! $categoryMissing && $page === 1;
@@ -180,6 +191,17 @@ class HomeController extends Controller
     private function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    private function allowedLeadForms(Builder $query, array $map): Builder
+    {
+        if (! $this->currentSite->isHosted()) {
+            return $query;
+        }
+
+        $slugs = json_decode((string) ($map['lead_form_slugs'] ?? '[]'), true);
+
+        return $query->whereIn('slug', is_array($slugs) ? array_values(array_filter($slugs, 'is_string')) : []);
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\AdminWeb;
+use App\Support\Site\CurrentSite;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
@@ -12,12 +14,19 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class SiteWebLocale
 {
+    public function __construct(private readonly CurrentSite $currentSite) {}
+
     /**
      * @param  Closure(Request): Response  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $locale = trim((string) config('geoflow.public_locale', 'zh_CN'));
+        $locale = $this->currentSite->isHosted()
+            ? trim((string) $this->currentSite->profile()?->locale)
+            : trim((string) config('geoflow.public_locale', 'zh_CN'));
+        if (! AdminWeb::isSupportedLocale($locale)) {
+            $locale = 'zh_CN';
+        }
         if ($locale !== '') {
             App::setLocale($locale);
         }

@@ -87,7 +87,7 @@ Preferred import shape:
       "subtitle": "Knowledge workflow",
       "body": "Organize value, proof, resources, and next actions on one homepage.",
       "link_text": "View resources",
-      "link_url": "/archive"
+      "link_url": "/about"
     },
     {
       "type": "article_collection",
@@ -178,7 +178,7 @@ Recommended order:
 3. Topic distribution chart
 4. Featured resources
 5. Latest resources
-6. Search/archive CTA
+6. Search/About CTA
 
 ### Homepage Builder Corporate Portal
 

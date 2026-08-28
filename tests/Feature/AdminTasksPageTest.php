@@ -9,15 +9,19 @@ use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\ImageLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\TaskRun;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use App\Services\GeoFlow\JobQueueService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -63,11 +67,20 @@ class AdminTasksPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        Category::query()->create([
+            'name' => '任务分类',
+            'slug' => 'task-create-ai-quality-category',
+        ]);
 
-        $this->actingAs($admin, 'admin')
+        $response = $this->actingAs($admin, 'admin')
             ->get(route('admin.tasks.create'))
             ->assertOk()
             ->assertSee(__('admin.task_create.page_heading'));
+
+        $response->assertSeeInOrder([
+            '<label class="relative inline-flex cursor-pointer items-center gap-3">',
+            'data-ai-quality-toggle',
+        ], false);
     }
 
     public function test_task_create_and_edit_forms_use_full_admin_content_width(): void
@@ -92,7 +105,6 @@ class AdminTasksPageTest extends TestCase
             'draft_limit' => 5,
             'article_limit' => 10,
         ]);
-
         $this->actingAs($admin, 'admin')
             ->get(route('admin.tasks.create'))
             ->assertOk()
@@ -143,7 +155,8 @@ class AdminTasksPageTest extends TestCase
             ->assertSee('data-distribution-channel-card', false)
             ->assertSee('data-distribution-channel-input', false)
             ->assertSee('data-distribution-strategy-input', false)
-            ->assertSee('syncDistributionChannelsByScope', false)
+            ->assertSee('data-task-form', false)
+            ->assertSee('data-title-readiness-url', false)
             ->assertSee('disabled data-distribution-channel-input', false)
             ->assertSee('disabled data-distribution-strategy-input', false)
             ->assertSee('data-distribution-channel-count', false)
@@ -304,6 +317,103 @@ class AdminTasksPageTest extends TestCase
         $this->assertDatabaseMissing('tasks', [
             'name' => '超过五个知识库任务',
         ]);
+    }
+
+    public function test_phase_one_hosted_task_contract_is_enforced_when_saving_the_task(): void
+    {
+        $admin = $this->createTaskFormAdmin('hosted_task_contract_admin');
+        $admin->update(['role' => 'super_admin']);
+        $dependencies = $this->createTaskFormDependencies();
+        $channels = collect(['alpha', 'beta'])->map(fn (string $label) => DistributionChannel::query()->create([
+            'name' => ucfirst($label).' hosted site',
+            'domain' => $label.'.sites.test',
+            'endpoint_url' => 'https://'.$label.'.sites.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]));
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.tasks.create'))
+            ->post(route('admin.tasks.store'), $this->validTaskPayload($dependencies, [
+                'task_name' => '托管站错误范围',
+                'publish_scope' => 'local_and_distribution',
+                'distribution_channel_ids' => [(string) $channels[0]->id],
+            ]))
+            ->assertRedirect(route('admin.tasks.create'))
+            ->assertSessionHasErrors('publish_scope');
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.tasks.create'))
+            ->post(route('admin.tasks.store'), $this->validTaskPayload($dependencies, [
+                'task_name' => '托管站数量超限',
+                'publish_scope' => 'distribution_only',
+                'distribution_channel_ids' => $channels->pluck('id')->map('strval')->all(),
+            ]))
+            ->assertRedirect(route('admin.tasks.create'))
+            ->assertSessionHasErrors('distribution_channel_ids');
+
+        $this->assertDatabaseMissing('tasks', ['name' => '托管站错误范围']);
+        $this->assertDatabaseMissing('tasks', ['name' => '托管站数量超限']);
+    }
+
+    public function test_regular_admin_cannot_see_bind_or_edit_a_hosted_site_task(): void
+    {
+        $admin = $this->createTaskFormAdmin('regular_hosted_task_admin');
+        $dependencies = $this->createTaskFormDependencies();
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Restricted hosted site',
+            'domain' => 'restricted.sites.test',
+            'endpoint_url' => 'https://restricted.sites.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.create'))
+            ->assertOk()
+            ->assertDontSee('Restricted hosted site');
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.tasks.create'))
+            ->post(route('admin.tasks.store'), $this->validTaskPayload($dependencies, [
+                'task_name' => 'Unauthorized hosted task',
+                'publish_scope' => 'distribution_only',
+                'distribution_channel_ids' => [(string) $channel->id],
+            ]))
+            ->assertRedirect(route('admin.tasks.create'))
+            ->assertSessionHasErrors('distribution_channel_ids');
+
+        $task = Task::query()->create([
+            'name' => 'Existing hosted task',
+            'status' => 'paused',
+            'publish_scope' => 'distribution_only',
+        ]);
+        $task->distributionChannels()->attach($channel->id);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('Existing hosted task')
+            ->assertSee(__('admin.tasks.action.super_admin_managed'))
+            ->assertDontSee('id="status-form-'.$task->id.'"', false)
+            ->assertDontSee('id="batch-btn-'.$task->id.'"', false)
+            ->assertDontSee('href="'.route('admin.tasks.edit', ['taskId' => $task->id]).'"', false)
+            ->assertDontSee('action="'.route('admin.tasks.delete', ['taskId' => $task->id]).'"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.edit', ['taskId' => $task->id]))
+            ->assertForbidden();
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.tasks.toggle-status', ['taskId' => $task->id]), ['status' => 'paused'])
+            ->assertForbidden();
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.tasks.batch'), ['task_id' => $task->id, 'action' => 'start'])
+            ->assertForbidden();
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.tasks.delete', ['taskId' => $task->id]))
+            ->assertForbidden();
+
+        $this->assertNotNull(Task::query()->find($task->id));
     }
 
     public function test_task_form_collapses_knowledge_bases_after_two_rows(): void
@@ -614,6 +724,16 @@ class AdminTasksPageTest extends TestCase
             'draft_limit' => 5,
             'article_limit' => 10,
         ]);
+        TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'completed',
+            'finished_at' => now(),
+        ]);
+        $runningRun = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'running',
+            'started_at' => now(),
+        ]);
 
         $this->actingAs($admin, 'admin')
             ->from(route('admin.tasks.index'))
@@ -622,7 +742,355 @@ class AdminTasksPageTest extends TestCase
             ->assertSessionHasNoErrors()
             ->assertSessionHas('message', __('admin.tasks.message.delete_success'));
 
-        $this->assertDatabaseMissing('tasks', ['id' => $task->id]);
+        $this->assertNull(Task::query()->find($task->id));
+        $this->assertNotNull(Task::onlyTrashed()->find($task->id));
+        $this->assertDatabaseHas('task_trash_entries', ['task_id' => $task->id]);
+        $this->assertDatabaseHas('task_runs', [
+            'id' => $runningRun->id,
+            'status' => 'cancelled',
+            'error_message' => '任务已删除',
+        ]);
+
+        $queueService = app(JobQueueService::class);
+        $queueService->completeJob((int) $runningRun->id, (int) $task->id, null, 10);
+        $queueService->failJob((int) $runningRun->id, (int) $task->id, 'late failure', 10, 1);
+        $this->assertSame('cancelled', (string) $runningRun->fresh()->status);
+
+        $trashResponse = $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('data-task-trash', false)
+            ->assertSee('data-task-trash-content', false)
+            ->assertSee('Delete Task Without Legacy Queue')
+            ->assertSee(__('admin.tasks.trash.retention', ['days' => Task::TRASH_RETENTION_DAYS]));
+
+        $trashHtml = (string) $trashResponse->getContent();
+        $this->assertLessThan(strpos($trashHtml, 'data-task-trash'), strpos($trashHtml, 'data-task-list'));
+        $this->assertGreaterThanOrEqual(2, substr_count($trashHtml, 'Delete Task Without Legacy Queue'));
+        $this->assertMatchesRegularExpression(
+            '/<details(?=[^>]*data-task-trash)(?![^>]*\sopen(?:\s|=|>))[^>]*>/',
+            $trashHtml,
+        );
+    }
+
+    public function test_task_delete_terminalizes_queued_and_in_flight_distributions(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_delete_distribution_admin');
+        $task = Task::query()->create([
+            'name' => 'Delete task with distributions',
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+        ]);
+        $category = Category::query()->create(['name' => 'Delete distribution category', 'slug' => 'delete-distribution-category']);
+        $author = Author::query()->create(['name' => 'Delete distribution author']);
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Delete distribution channel',
+            'domain' => 'delete-distribution.test',
+            'endpoint_url' => 'https://delete-distribution.test',
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Delete distribution article',
+            'slug' => 'delete-distribution-article',
+            'content' => 'Distribution body.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => $task->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        $queued = ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'queued',
+            'idempotency_key' => 'task-delete-queued-distribution',
+        ]);
+        $sending = ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'update',
+            'status' => 'sending',
+            'idempotency_key' => 'task-delete-sending-distribution',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.tasks.delete', ['taskId' => $task->id]))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('failed', (string) $queued->fresh()->status);
+        $this->assertNull($queued->fresh()->next_retry_at);
+        $this->assertSame('outcome_unknown', (string) $sending->fresh()->status);
+        $this->assertNull($sending->fresh()->next_retry_at);
+    }
+
+    public function test_task_trash_history_is_paginated_and_reopens_for_follow_up_pages(): void
+    {
+        $this->travelTo('2026-08-27 12:00:00.123456');
+        $admin = $this->createTaskFormAdmin('tasks_trash_pagination_admin');
+        $deletedAfterSnapshot = Task::query()->create([
+            'name' => 'trash-lower-id-after-snapshot-unique',
+            'status' => 'paused',
+        ]);
+        $first = Task::query()->create(['name' => 'trash-first-oldest-unique', 'status' => 'paused']);
+        $first->delete();
+
+        for ($index = 0; $index < 49; $index++) {
+            Task::query()->create(['name' => 'trash-middle-'.$index, 'status' => 'paused'])->delete();
+        }
+
+        $last = Task::query()->create(['name' => 'trash-newest-unique', 'status' => 'paused']);
+        $last->delete();
+
+        $firstPage = $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee(__('admin.tasks.trash.count', ['count' => 51]))
+            ->assertSee('trash-newest-unique')
+            ->assertDontSee('trash-first-oldest-unique');
+
+        $this->assertMatchesRegularExpression(
+            '/<details(?=[^>]*data-task-trash)(?![^>]*\sopen(?:\s|=|>))[^>]*>/',
+            (string) $firstPage->getContent(),
+        );
+        $this->assertMatchesRegularExpression(
+            '/trash_snapshot_id=\d+/',
+            (string) $firstPage->getContent(),
+        );
+        $snapshot = $firstPage->viewData('trashPagination');
+        $this->travelTo('2026-08-27 12:00:00.123456');
+        $deletedAfterSnapshot->delete();
+        $deletedAfterSnapshotSequence = (int) DB::table('task_trash_entries')
+            ->where('task_id', $deletedAfterSnapshot->id)
+            ->value('sequence');
+        $this->assertGreaterThan((int) $snapshot['snapshot_id'], $deletedAfterSnapshotSequence);
+
+        $secondPage = $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index', [
+                'trash_page' => 2,
+                'trash_snapshot_id' => (int) $snapshot['snapshot_id'],
+            ]))
+            ->assertOk()
+            ->assertSee('trash-first-oldest-unique')
+            ->assertDontSee('trash-newest-unique')
+            ->assertDontSee('trash-lower-id-after-snapshot-unique');
+
+        $this->assertSame(51, $secondPage->viewData('trashPagination')['total']);
+
+        $this->assertMatchesRegularExpression(
+            '/<details(?=[^>]*data-task-trash)(?=[^>]*\sopen(?:\s|=|>))[^>]*>/',
+            (string) $secondPage->getContent(),
+        );
+    }
+
+    public function test_malformed_task_trash_query_falls_back_without_hiding_active_tasks(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_trash_query_guard_admin');
+        Task::query()->create([
+            'name' => 'Visible task after malformed trash query',
+            'status' => 'paused',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index').'?trash_page[x]=1&trash_snapshot_at[x]=1&trash_snapshot_id[x]=1')
+            ->assertOk()
+            ->assertSee('Visible task after malformed trash query')
+            ->assertViewHas('legacyError', null)
+            ->assertViewHas('trashPagination', static fn (array $pagination): bool => $pagination['page'] === 1);
+    }
+
+    public function test_trashed_task_keeps_referenced_materials_protected_until_expiration(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_trash_material_guard_admin');
+        $dependencies = $this->createTaskFormDependencies();
+        $imageLibrary = ImageLibrary::query()->create(['name' => '任务回收站图片库']);
+        $knowledgeBases = $this->createKnowledgeBases(2);
+        $knowledgeBase = $knowledgeBases->firstOrFail();
+        $secondaryKnowledgeBase = $knowledgeBases->last();
+        $author = Author::query()->create(['name' => '任务回收站作者']);
+        $task = Task::query()->create([
+            'name' => 'Material reference retained in task trash',
+            'title_library_id' => $dependencies['title_library']->id,
+            'image_library_id' => $imageLibrary->id,
+            'knowledge_base_id' => $knowledgeBase->id,
+            'prompt_id' => $dependencies['prompt']->id,
+            'ai_model_id' => $dependencies['ai_model']->id,
+            'author_id' => $author->id,
+            'fixed_category_id' => $dependencies['category']->id,
+            'category_mode' => 'fixed',
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+        ]);
+        $task->knowledgeBases()->sync([
+            (int) $knowledgeBase->id => ['sort_order' => 0],
+            (int) $secondaryKnowledgeBase->id => ['sort_order' => 1],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.tasks.delete', ['taskId' => $task->id]))
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('task_knowledge_bases', 2);
+
+        $protectedResources = [
+            [route('admin.title-libraries.delete', ['libraryId' => $dependencies['title_library']->id]), TitleLibrary::class, $dependencies['title_library']->id],
+            [route('admin.image-libraries.delete', ['libraryId' => $imageLibrary->id]), ImageLibrary::class, $imageLibrary->id],
+            [route('admin.knowledge-bases.delete', ['knowledgeBaseId' => $knowledgeBase->id]), KnowledgeBase::class, $knowledgeBase->id],
+            [route('admin.knowledge-bases.delete', ['knowledgeBaseId' => $secondaryKnowledgeBase->id]), KnowledgeBase::class, $secondaryKnowledgeBase->id],
+            [route('admin.ai-prompts.delete', ['promptId' => $dependencies['prompt']->id]), Prompt::class, $dependencies['prompt']->id],
+            [route('admin.ai-models.delete', ['modelId' => $dependencies['ai_model']->id]), AiModel::class, $dependencies['ai_model']->id],
+            [route('admin.authors.delete', ['authorId' => $author->id]), Author::class, $author->id],
+            [route('admin.categories.delete', ['categoryId' => $dependencies['category']->id]), Category::class, $dependencies['category']->id],
+        ];
+
+        foreach ($protectedResources as [$url, $modelClass, $id]) {
+            $this->actingAs($admin, 'admin')
+                ->from(route('admin.tasks.index'))
+                ->post($url)
+                ->assertRedirect(route('admin.tasks.index'))
+                ->assertSessionHasErrors();
+            $this->assertNotNull($modelClass::query()->find($id));
+        }
+
+        Task::onlyTrashed()->findOrFail($task->id)->forceDelete();
+        $this->assertDatabaseCount('task_knowledge_bases', 0);
+    }
+
+    public function test_task_trash_hides_and_prunes_tasks_at_the_ninety_day_boundary(): void
+    {
+        $this->travelTo('2026-08-27 12:00:00');
+        $admin = $this->createTaskFormAdmin('tasks_trash_retention_admin');
+
+        $recent = Task::query()->create(['name' => 'Recent trashed task', 'status' => 'paused']);
+        $atBoundary = Task::query()->create(['name' => 'Boundary trashed task', 'status' => 'paused']);
+        $expired = Task::query()->create(['name' => 'Expired trashed task', 'status' => 'paused']);
+        $active = Task::query()->create(['name' => 'Active retained task', 'status' => 'paused']);
+
+        $recent->delete();
+        $atBoundary->delete();
+        $expired->delete();
+        Task::onlyTrashed()->whereKey($recent->id)->update(['deleted_at' => now()->subDays(89)]);
+        Task::onlyTrashed()->whereKey($atBoundary->id)->update(['deleted_at' => now()->subDays(90)]);
+        Task::onlyTrashed()->whereKey($expired->id)->update(['deleted_at' => now()->subDays(91)]);
+        DB::table('task_trash_entries')->where('task_id', $recent->id)->update(['deleted_at' => now()->subDays(89)]);
+        DB::table('task_trash_entries')->where('task_id', $atBoundary->id)->update(['deleted_at' => now()->subDays(90)]);
+        DB::table('task_trash_entries')->where('task_id', $expired->id)->update(['deleted_at' => now()->subDays(91)]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('Recent trashed task')
+            ->assertDontSee('Boundary trashed task')
+            ->assertDontSee('Expired trashed task')
+            ->assertSee('Active retained task');
+
+        $this->artisan('geoflow:prune-task-trash')
+            ->expectsOutput('Permanently deleted 2 expired tasks.')
+            ->assertSuccessful();
+
+        $this->assertNotNull(Task::onlyTrashed()->find($recent->id));
+        $this->assertNull(Task::withTrashed()->find($atBoundary->id));
+        $this->assertNull(Task::withTrashed()->find($expired->id));
+        $this->assertNotNull(Task::query()->find($active->id));
+
+        $this->artisan('geoflow:prune-task-trash')
+            ->expectsOutput('Permanently deleted 0 expired tasks.')
+            ->assertSuccessful();
+    }
+
+    public function test_task_delete_rolls_back_when_trash_history_cannot_be_created(): void
+    {
+        $task = Task::query()->create(['name' => 'Trash history invariant task', 'status' => 'paused']);
+        DB::table('task_trash_entries')->insert([
+            'task_id' => $task->id,
+            'sequence' => 1,
+            'deleted_at' => now()->format('Y-m-d H:i:s.u'),
+        ]);
+        DB::table('task_trash_state')->where('id', 1)->update(['last_sequence' => 1]);
+
+        try {
+            $task->delete();
+            $this->fail('Expected duplicate trash history to abort task deletion.');
+        } catch (\Throwable) {
+            $this->assertNotNull(Task::query()->find($task->id));
+            $this->assertSame(1, (int) DB::table('task_trash_state')->where('id', 1)->value('last_sequence'));
+            $this->assertDatabaseCount('task_trash_entries', 1);
+        }
+    }
+
+    public function test_restored_task_is_not_pruned_from_stale_trash_history(): void
+    {
+        $task = Task::query()->create(['name' => 'Restored retention task', 'status' => 'paused']);
+        $task->delete();
+        Task::onlyTrashed()->whereKey($task->id)->update(['deleted_at' => now()->subDays(91)]);
+        DB::table('task_trash_entries')->where('task_id', $task->id)->update(['deleted_at' => now()->subDays(91)]);
+
+        $restored = Task::onlyTrashed()->findOrFail($task->id);
+        $this->assertTrue($restored->restore());
+        $this->artisan('geoflow:prune-task-trash')
+            ->expectsOutput('Permanently deleted 0 expired tasks.')
+            ->assertSuccessful();
+
+        $this->assertNotNull(Task::query()->find($task->id));
+        $this->assertDatabaseMissing('task_trash_entries', ['task_id' => $task->id]);
+    }
+
+    public function test_task_delete_uses_an_accessible_centered_confirmation_dialog(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+
+        $admin = $this->createTaskFormAdmin('tasks_delete_dialog_admin');
+        Task::query()->create([
+            'name' => 'Dialog Preview Task',
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('data-task-delete-form', false)
+            ->assertSee('type="button"', false)
+            ->assertSee('data-task-delete-trigger', false)
+            ->assertSee('data-task-delete-submit hidden', false)
+            ->assertSee('data-task-name="Dialog Preview Task"', false)
+            ->assertSee('data-task-delete-dialog', false)
+            ->assertSee('data-deleting-label="'.__('admin.tasks.delete_dialog.deleting').'"', false)
+            ->assertSee('role="alertdialog"', false)
+            ->assertSee('aria-modal="true"', false)
+            ->assertSee('fixed inset-0 m-auto', false)
+            ->assertSee(__('admin.tasks.delete_dialog.title'))
+            ->assertSee(__('admin.tasks.delete_dialog.impact'))
+            ->assertDontSee('onsubmit="return confirm', false);
+    }
+
+    public function test_task_action_column_keeps_space_between_delete_button_and_table_edge(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+
+        $admin = $this->createTaskFormAdmin('tasks_action_spacing_admin');
+        Task::query()->create([
+            'name' => 'Action Spacing Task',
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between', false)
+            ->assertSee('data-task-list-table', false)
+            ->assertSee('min-w-[1200px]', false)
+            ->assertSee('w-[11.5rem] py-4 pl-3 pr-4 align-top sm:w-[12.5rem] sm:pl-4 sm:pr-5', false)
+            ->assertSee('flex items-center justify-end gap-1.5 sm:gap-2', false);
     }
 
     private function createTaskFormAdmin(string $username): Admin

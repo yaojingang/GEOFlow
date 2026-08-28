@@ -2,6 +2,8 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Exceptions\ArticleAiQualityGateException;
+use App\Exceptions\ArticleRiskGateException;
 use App\Exceptions\ManualPublicationConflictException;
 use App\Models\Admin;
 use App\Models\Article;
@@ -9,6 +11,7 @@ use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationPersona;
 use App\Models\ManualPublicationTransition;
+use App\Services\BrowserOperations\PublicationPayloadBuilder;
 use DomainException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
@@ -21,6 +24,8 @@ class ManualPublicationService
     public function __construct(
         private readonly ArticleRiskScanner $riskScanner,
         private readonly ManualPublicationDuplicateDetector $duplicateDetector,
+        private readonly PublicationPayloadBuilder $publicationPayloadBuilder,
+        private readonly ArticlePublicationQualityGate $publicationQualityGate,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -37,6 +42,9 @@ class ManualPublicationService
             $prepared['status_changed_at'] = now();
             $prepared['revision'] = 1;
             $this->ensureReadyRequirements($prepared);
+            if ($initialStatus === ManualPublication::STATUS_READY) {
+                $prepared['publication_payload'] = $this->publicationPayloadBuilder->build($prepared);
+            }
             $prepared['duplicate_warning_count'] = $this->duplicateDetector->find($prepared)->count();
 
             $publication = ManualPublication::query()->create($prepared);
@@ -49,8 +57,8 @@ class ManualPublicationService
     /** @param array<string, mixed> $data */
     public function update(ManualPublication $manualPublication, array $data, int $expectedRevision): ManualPublication
     {
-        if ($manualPublication->status === ManualPublication::STATUS_COMPLETED) {
-            throw new DomainException((string) __('admin.manual_publications.error.completed_immutable'));
+        if (! in_array((string) $manualPublication->status, [ManualPublication::STATUS_DRAFT, ManualPublication::STATUS_READY], true)) {
+            throw new DomainException((string) __('admin.manual_publications.error.claimed_immutable'));
         }
 
         $prepared = $this->prepare($data, $manualPublication);
@@ -58,6 +66,9 @@ class ManualPublicationService
         $prepared['duplicate_warning_count'] = $this->duplicateDetector
             ->find($prepared, (int) $manualPublication->getKey())
             ->count();
+        if ($manualPublication->status === ManualPublication::STATUS_READY) {
+            $prepared['publication_payload'] = $this->publicationPayloadBuilder->build($prepared);
+        }
         $prepared['updated_at'] = now();
         $prepared['revision'] = $expectedRevision + 1;
         $casted = (new ManualPublication)->forceFill($prepared);
@@ -84,7 +95,7 @@ class ManualPublicationService
         ?string $completionUrl = null,
         ?string $resultNote = null,
     ): ManualPublication {
-        return DB::transaction(function () use ($manualPublication, $targetStatus, $expectedRevision, $completionUrl, $resultNote, $actor): ManualPublication {
+        return DB::transaction(function () use ($manualPublication, $targetStatus, $expectedRevision, $actor, $completionUrl, $resultNote): ManualPublication {
             $current = ManualPublication::query()
                 ->whereKey($manualPublication->getKey())
                 ->lockForUpdate()
@@ -93,12 +104,27 @@ class ManualPublicationService
             if ((int) $current->revision !== $expectedRevision) {
                 throw new ManualPublicationConflictException;
             }
-
             $ability = $current->isReopenTransition($targetStatus) ? 'reopen' : 'transition';
             Gate::forUser($actor)->authorize($ability, $current);
-
             if (! $current->canTransitionTo($targetStatus)) {
                 throw new DomainException((string) __('admin.manual_publications.error.invalid_transition'));
+            }
+            if ($current->article_id !== null && in_array($targetStatus, [
+                ManualPublication::STATUS_READY,
+                ManualPublication::STATUS_IN_PROGRESS,
+                ManualPublication::STATUS_COMPLETED,
+            ], true)) {
+                $this->assertSourceArticleQuality((int) $current->article_id, 'manual_publication_transition');
+            }
+            if ($current->status === ManualPublication::STATUS_IN_PROGRESS
+                && $targetStatus === ManualPublication::STATUS_READY) {
+                $isBrowserClaim = $current->browser_claimed_at !== null;
+                $isStale = $current->browser_claimed_by_token_id === null
+                    || $current->browser_last_seen_at === null
+                    || $current->browser_last_seen_at->lte(now()->subMinutes(10));
+                if (! $isBrowserClaim || ! $isStale) {
+                    throw new DomainException((string) __('admin.manual_publications.error.browser_claim_active'));
+                }
             }
 
             $fromStatus = (string) $current->status;
@@ -115,6 +141,14 @@ class ManualPublicationService
                 $this->ensureReadyRequirements(array_merge($current->getAttributes(), ['status' => $targetStatus]));
                 $updates['completion_url'] = null;
                 $updates['completed_at'] = null;
+                $updates['execution_receipt'] = null;
+                $updates['browser_claimed_by_token_id'] = null;
+                $updates['browser_claimed_at'] = null;
+                $updates['browser_last_seen_at'] = null;
+                $updates['publication_payload'] = $this->publicationPayloadBuilder->build(array_merge(
+                    $current->getAttributes(),
+                    $updates,
+                ));
             }
 
             if ($targetStatus === ManualPublication::STATUS_COMPLETED) {
@@ -124,6 +158,18 @@ class ManualPublicationService
                 }
                 $updates['completion_url'] = $completionUrl;
                 $updates['completed_at'] = now();
+            }
+
+            if (in_array($targetStatus, [
+                ManualPublication::STATUS_COMPLETED,
+                ManualPublication::STATUS_FAILED,
+                ManualPublication::STATUS_SKIPPED,
+                ManualPublication::STATUS_CANCELLED,
+                ManualPublication::STATUS_OUTCOME_UNKNOWN,
+            ], true)) {
+                $updates['browser_claimed_by_token_id'] = null;
+                $updates['browser_claimed_at'] = null;
+                $updates['browser_last_seen_at'] = null;
             }
 
             $current->forceFill($updates)->save();
@@ -202,6 +248,10 @@ class ManualPublicationService
             if (! $article instanceof Article || ! in_array((string) $article->review_status, ['approved', 'auto_approved'], true)) {
                 throw new DomainException((string) __('admin.manual_publications.error.article_not_approved'));
             }
+            $targetStatus = (string) ($data['status'] ?? $existing?->status ?? ManualPublication::STATUS_DRAFT);
+            if (in_array($targetStatus, [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS], true)) {
+                $this->assertSourceArticleQuality((int) $article->id, 'manual_publication_prepare');
+            }
         }
 
         if (! empty($data['assigned_admin_id'])) {
@@ -215,7 +265,7 @@ class ManualPublicationService
         }
 
         $content = trim((string) $data['content']);
-        if ($content === '' || mb_strlen($content) > ManualPublication::MAX_CONTENT_CHARACTERS) {
+        if ($content === '' || mb_strlen($content) > ManualPublication::maxContentCharactersForType($type)) {
             throw new DomainException((string) __('admin.manual_publications.error.invalid_content'));
         }
         $targetUrl = trim((string) ($data['target_url'] ?? '')) ?: null;
@@ -330,5 +380,19 @@ class ManualPublicationService
             'result_note' => $resultNote,
             'created_at' => $createdAt ?? now(),
         ]);
+    }
+
+    private function assertSourceArticleQuality(int $articleId, string $trigger): void
+    {
+        $article = Article::query()->find($articleId);
+        if (! $article instanceof Article) {
+            throw new DomainException((string) __('admin.manual_publications.error.article_not_approved'));
+        }
+
+        try {
+            $this->publicationQualityGate->check($article, $trigger);
+        } catch (ArticleAiQualityGateException|ArticleRiskGateException $exception) {
+            throw new DomainException($exception->getMessage(), 0, $exception);
+        }
     }
 }

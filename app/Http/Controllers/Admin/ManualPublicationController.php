@@ -15,7 +15,6 @@ use App\Models\ManualPublicationPersona;
 use App\Services\GeoFlow\ManualPublicationService;
 use App\Support\AdminWeb;
 use DomainException;
-use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -94,10 +93,7 @@ class ManualPublicationController extends Controller
         $admin = $this->admin($request);
         $publication = ManualPublication::query()->whereKey($manualPublicationId)->firstOrFail();
         Gate::forUser($admin)->authorize('view', $publication);
-        $publication->load([
-            ...$this->relations(),
-            'transitions.actor:id,display_name,username',
-        ]);
+        $publication->load($this->relations());
 
         return view('admin.manual-publications.show', [
             'pageTitle' => __('admin.manual_publications.detail_title', ['id' => $publication->getKey()]),
@@ -159,13 +155,11 @@ class ManualPublicationController extends Controller
                 $targetStatus,
                 (int) $request->validated('revision'),
                 $admin,
-                $request->validated('completion_url'),
-                $request->validated('result_note'),
+                completionUrl: $request->validated('completion_url'),
+                resultNote: $request->validated('result_note'),
             );
         } catch (DomainException|ManualPublicationConflictException $exception) {
             return back()->withInput()->withErrors($exception->getMessage());
-        } catch (AuthorizationException $exception) {
-            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
 

@@ -9,12 +9,14 @@ use App\Models\ImageLibrary;
 use App\Models\Task;
 use App\Services\GeoFlow\ManagedImageFileService;
 use App\Support\AdminWeb;
+use App\Support\ImageLibraryUploadPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\File;
 use Illuminate\View\View;
 
@@ -69,6 +71,27 @@ class ImageLibraryController extends Controller
     }
 
     /**
+     * 指定图片库的独立上传页。
+     */
+    public function createImageUpload(int $libraryId): View
+    {
+        $library = ImageLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $maxUploadBytes = ImageLibraryUploadPolicy::maxBytes();
+
+        return view('admin.image-libraries.upload', [
+            'pageTitle' => __('admin.image_detail.modal_upload', ['name' => (string) $library->name]),
+            'activeMenu' => 'materials',
+            'adminSiteName' => AdminWeb::siteName(),
+            'library' => $library,
+            'maxUploadBytes' => $maxUploadBytes,
+            'maxUploadMegabytes' => round($maxUploadBytes / 1024 / 1024, 1),
+            'uploadAccept' => ImageLibraryUploadPolicy::accept(),
+            'uploadMimeTypes' => ImageLibraryUploadPolicy::MIME_TYPES,
+            'uploadExtensions' => ImageLibraryUploadPolicy::EXTENSIONS,
+        ]);
+    }
+
+    /**
      * 详情页更新图片库基本信息。
      */
     public function updateFromDetail(Request $request, int $libraryId): RedirectResponse
@@ -102,8 +125,8 @@ class ImageLibraryController extends Controller
             'images.*' => [
                 'required',
                 File::image()
-                    ->types(['jpg', 'jpeg', 'png', 'gif', 'webp'])
-                    ->max(max(1, (int) ceil((int) config('geoflow.max_upload_bytes', 2 * 1024 * 1024) / 1024))),
+                    ->types(ImageLibraryUploadPolicy::EXTENSIONS)
+                    ->max(ImageLibraryUploadPolicy::maxKilobytes()),
             ],
         ], [
             'images.required' => __('admin.image_detail.error.select_images'),
@@ -261,9 +284,10 @@ class ImageLibraryController extends Controller
     /**
      * 编辑表单页。
      */
-    public function edit(int $libraryId): View|RedirectResponse
+    public function edit(Request $request, int $libraryId): View|RedirectResponse
     {
         $library = ImageLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $editContext = $request->query('context') === 'detail' ? 'detail' : 'index';
 
         return view('admin.image-libraries.form', [
             'pageTitle' => __('admin.image_libraries.page_title'),
@@ -271,6 +295,7 @@ class ImageLibraryController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'isEdit' => true,
             'libraryId' => (int) $library->id,
+            'editContext' => $editContext,
             'libraryForm' => [
                 'name' => (string) $library->name,
                 'description' => (string) ($library->description ?? ''),
@@ -288,6 +313,7 @@ class ImageLibraryController extends Controller
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
+            'context' => ['nullable', 'string', Rule::in(['index', 'detail'])],
         ], [
             'name.required' => __('admin.image_libraries.error.name_required'),
         ]);
@@ -297,7 +323,14 @@ class ImageLibraryController extends Controller
             'description' => trim((string) ($payload['description'] ?? '')),
         ]);
 
-        return redirect()->route('admin.image-libraries.index')->with('message', __('admin.image_libraries.message.update_success'));
+        $redirectRoute = ($payload['context'] ?? 'index') === 'detail'
+            ? 'admin.image-libraries.detail'
+            : 'admin.image-libraries.index';
+        $redirectParameters = $redirectRoute === 'admin.image-libraries.detail'
+            ? ['libraryId' => $libraryId]
+            : [];
+
+        return redirect()->route($redirectRoute, $redirectParameters)->with('message', __('admin.image_libraries.message.update_success'));
     }
 
     /**
@@ -307,7 +340,7 @@ class ImageLibraryController extends Controller
     {
         $library = ImageLibrary::query()->whereKey($libraryId)->firstOrFail();
 
-        $taskCount = Task::query()->where('image_library_id', $libraryId)->count();
+        $taskCount = Task::withTrashed()->where('image_library_id', $libraryId)->count();
         if ($taskCount > 0) {
             return back()->withErrors(__('admin.image_libraries.error.in_use', ['count' => $taskCount]));
         }

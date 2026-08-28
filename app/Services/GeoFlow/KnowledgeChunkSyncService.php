@@ -48,6 +48,7 @@ class KnowledgeChunkSyncService
         private readonly SafeOutboundHttpClient $safeHttp,
         private readonly Factory $http,
         private readonly AiUsageQuotaService $usageQuota,
+        private readonly ArticleAiQualityInvalidationService $qualityInvalidationService,
     ) {}
 
     /**
@@ -296,7 +297,7 @@ class KnowledgeChunkSyncService
 
     public function finalizeStagingSync(int $knowledgeBaseId, string $syncToken): bool
     {
-        return DB::transaction(function () use ($knowledgeBaseId, $syncToken): bool {
+        $finalized = DB::transaction(function () use ($knowledgeBaseId, $syncToken): bool {
             $knowledgeBase = KnowledgeBase::query()
                 ->whereKey($knowledgeBaseId)
                 ->lockForUpdate()
@@ -362,6 +363,15 @@ class KnowledgeChunkSyncService
 
             return true;
         });
+
+        if ($finalized) {
+            $this->qualityInvalidationService->invalidateKnowledgeBase(
+                $knowledgeBaseId,
+                '知识库切片与证据索引已更新',
+            );
+        }
+
+        return $finalized;
     }
 
     public function discardStagingSync(int $knowledgeBaseId, string $syncToken): void

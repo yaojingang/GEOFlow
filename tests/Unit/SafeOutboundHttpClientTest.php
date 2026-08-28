@@ -428,7 +428,7 @@ class SafeOutboundHttpClientTest extends TestCase
         $this->assertSame('identity', $final['request']->getHeaderLine('Accept-Encoding'));
         $this->assertFalse($final['options']['allow_redirects']);
         $this->assertFalse($final['options']['decode_content']);
-        $this->assertFalse($final['options']['stream']);
+        $this->assertTrue($final['options']['stream']);
         $this->assertTrue($final['options']['verify']);
         $this->assertSame('', $final['options']['proxy']);
         $this->assertSame('v4', $final['options']['force_ip_resolve']);
@@ -584,7 +584,7 @@ class SafeOutboundHttpClientTest extends TestCase
         $this->assertSame('identity', $captured['request']->getHeaderLine('Accept-Encoding'));
         $this->assertFalse($captured['options']['allow_redirects']);
         $this->assertFalse($captured['options']['decode_content']);
-        $this->assertFalse($captured['options']['stream']);
+        $this->assertTrue($captured['options']['stream']);
         $this->assertTrue($captured['options']['verify']);
         $this->assertSame('', $captured['options']['proxy']);
         $this->assertSame(9, $captured['options']['timeout']);
@@ -1319,7 +1319,7 @@ class SafeOutboundHttpClientTest extends TestCase
     }
 
     #[Test]
-    public function direct_http_facade_limits_unknown_size_streaming_responses_while_forcing_the_terminal_to_non_streaming_mode(): void
+    public function direct_http_facade_limits_unknown_size_streaming_responses_without_buffering_the_terminal_response(): void
     {
         config(['geoflow.outbound_ai_max_bytes' => 1024]);
         $terminalStreamOption = null;
@@ -1345,7 +1345,7 @@ class SafeOutboundHttpClientTest extends TestCase
         $response = Http::withOptions(['stream' => true])->get('https://public.test/v1/models');
         $body = $response->toPsrResponse()->getBody();
 
-        $this->assertFalse($terminalStreamOption);
+        $this->assertTrue($terminalStreamOption);
         $this->assertInstanceOf(ResponseSizeLimitedStream::class, $body);
         $this->assertSame(str_repeat('x', 1024), $body->read(1024));
 

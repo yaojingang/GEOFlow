@@ -48,12 +48,14 @@ final class CommandSpec
             'material.item-create' => self::spec('material.item-create', ['material', 'item-create'], 4, ['json', 'idempotency-key'], 'material.item-create', false, 'material item-create TYPE ID --json FILE [--idempotency-key KEY]'),
             'material.item-upload' => self::spec('material.item-upload', ['material', 'item-upload'], 4, ['image', 'file', 'idempotency-key'], 'material.item-upload', false, 'material item-upload TYPE ID --image FILE [--idempotency-key KEY]'),
             'material.item-delete' => self::spec('material.item-delete', ['material', 'item-delete'], 4, ['ids', 'json', 'yes'], 'material.item-delete', true, 'material item-delete TYPE ID (--ids 1,2 | --json FILE) [--yes]'),
-            'article.list' => self::spec('article.list', ['article', 'list'], 2, ['page', 'per-page', 'task-id', 'status', 'review-status', 'author-id', 'search'], 'article.list', false, 'article list [--page N] [--per-page N] [--task-id ID] [--status STATUS] [--review-status STATUS] [--author-id ID] [--search TEXT]'),
+            'article.list' => self::spec('article.list', ['article', 'list'], 2, ['page', 'per-page', 'task-id', 'status', 'review-status', 'ai-quality-status', 'author-id', 'search'], 'article.list', false, 'article list [--page N] [--per-page N] [--task-id ID] [--status STATUS] [--review-status STATUS] [--ai-quality-status STATUS] [--author-id ID] [--search TEXT]'),
             'article.create' => self::spec('article.create', ['article', 'create'], 2, self::articleCreateOptions(), 'article.create', false, 'article create (--json FILE | direct fields) [--idempotency-key KEY]'),
             'article.get' => self::spec('article.get', ['article', 'get'], 3, [], 'article.get', false, 'article get ARTICLE_ID'),
             'article.update' => self::spec('article.update', ['article', 'update'], 3, self::articleUpdateOptions(), 'article.update', false, 'article update ARTICLE_ID (--json FILE | direct fields) [--idempotency-key KEY]'),
             'article.review' => self::spec('article.review', ['article', 'review'], 3, ['status', 'note', 'risk-override-reason', 'idempotency-key'], 'article.review', false, 'article review ARTICLE_ID --status STATUS [--note TEXT] [--risk-override-reason TEXT] [--idempotency-key KEY]'),
             'article.publish' => self::spec('article.publish', ['article', 'publish'], 3, ['idempotency-key'], 'article.publish', false, 'article publish ARTICLE_ID [--idempotency-key KEY]'),
+            'article.ai-quality-recheck' => self::spec('article.ai-quality-recheck', ['article', 'ai-quality-recheck'], 3, ['idempotency-key'], 'article.ai-quality-recheck', false, 'article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]'),
+            'article.ai-quality-override' => self::spec('article.ai-quality-override', ['article', 'ai-quality-override'], 3, ['reason', 'idempotency-key'], 'article.ai-quality-override', false, 'article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]'),
             'article.trash' => self::spec('article.trash', ['article', 'trash'], 3, ['idempotency-key'], 'article.trash', false, 'article trash ARTICLE_ID [--idempotency-key KEY]'),
         ];
     }
@@ -149,6 +151,8 @@ final class CommandSpec
             'article.update' => [['article', 'update', '10', '--json', '{json}'], ['article' => 10]],
             'article.review' => [['article', 'review', '10', '--status', 'approved'], ['article' => 10]],
             'article.publish' => [['article', 'publish', '10'], ['article' => 10]],
+            'article.ai-quality-recheck' => [['article', 'ai-quality-recheck', '10'], ['article' => 10]],
+            'article.ai-quality-override' => [['article', 'ai-quality-override', '10', '--reason', 'verified evidence'], ['article' => 10]],
             'article.trash' => [['article', 'trash', '10'], ['article' => 10]],
         ];
 

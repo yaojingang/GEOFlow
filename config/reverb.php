@@ -1,5 +1,15 @@
 <?php
 
+$allowedOrigins = array_values(array_filter(array_map(static function (string $origin): string {
+    $origin = trim($origin);
+    if ($origin === '*') {
+        return '*';
+    }
+    $host = parse_url(str_contains($origin, '://') ? $origin : '//'.$origin, PHP_URL_HOST);
+
+    return is_string($host) ? strtolower(rtrim($host, '.')) : '';
+}, explode(',', (string) env('REVERB_ALLOWED_ORIGINS', env('APP_URL', 'http://localhost'))))));
+
 return [
 
     /*
@@ -82,7 +92,7 @@ return [
                     'scheme' => env('REVERB_SCHEME', 'http'),
                     'useTLS' => env('REVERB_SCHEME', 'http') === 'https',
                 ],
-                'allowed_origins' => ['*'],
+                'allowed_origins' => $allowedOrigins,
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
                 'max_connections' => env('REVERB_APP_MAX_CONNECTIONS'),

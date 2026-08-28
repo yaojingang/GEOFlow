@@ -80,6 +80,13 @@ class AdminDashboardQuickStartTest extends TestCase
             ->assertSee(__('admin.dashboard.quick_start.api_title'))
             ->assertSee(__('admin.dashboard.quick_start.material_title'))
             ->assertSee(__('admin.dashboard.quick_start.task_title'))
+            ->assertSee(__('admin.analytics.navigation.overview'))
+            ->assertSee(__('admin.analytics.navigation.operations'))
+            ->assertSee(__('admin.analytics.navigation.content'))
+            ->assertSee(__('admin.analytics.navigation.traffic'))
+            ->assertSee(__('admin.analytics.navigation.ai_visibility'))
+            ->assertSee(__('admin.analytics.navigation.leads'))
+            ->assertSee(__('admin.analytics.navigation.distribution'))
             ->assertDontSee(__('admin.dashboard.analytics_card_title'))
             ->assertDontSee(__('admin.dashboard.analytics_card_button'))
             ->assertDontSee(__('admin.dashboard.category_distribution'))
@@ -102,6 +109,11 @@ class AdminDashboardQuickStartTest extends TestCase
             ->assertSee(route('admin.site-settings.index'), false)
             ->assertSee(route('admin.dashboard'), false)
             ->assertSee(route('admin.analytics'), false)
+            ->assertSee(route('admin.analytics.content'), false)
+            ->assertSee(route('admin.analytics.traffic'), false)
+            ->assertSee(route('admin.analytics.ai-visibility'), false)
+            ->assertSee(route('admin.analytics.leads'), false)
+            ->assertSee(route('admin.analytics.distribution'), false)
             ->assertSee(route('admin.ai-prompts'), false)
             ->assertSee(route('admin.ai-special-prompts'), false)
             ->assertSee(route('admin.admin-users.index'), false)
@@ -138,6 +150,37 @@ class AdminDashboardQuickStartTest extends TestCase
             $this->assertDashboardDescriptionsDoNotEndWithSentencePeriods(
                 trans('admin.dashboard'),
                 'admin.dashboard'
+            );
+        }
+    }
+
+    public function test_dashboard_header_actions_match_analytics_bottom_alignment(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'dashboard_header_alignment_admin',
+            'password' => 'secret-123',
+            'email' => 'dashboard-header-alignment@example.com',
+            'display_name' => 'Dashboard Header Alignment Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        foreach (['admin.dashboard', 'admin.analytics'] as $routeName) {
+            $response = $this->actingAs($admin, 'admin')->get(route($routeName))->assertOk();
+            $document = new \DOMDocument;
+            $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+            $headings = (new \DOMXPath($document))->query('//h1');
+
+            $this->assertNotFalse($headings);
+            $this->assertSame(1, $headings->length, $routeName.' should render one page title.');
+
+            $headerRow = $headings->item(0)->parentNode?->parentNode;
+
+            $this->assertInstanceOf(\DOMElement::class, $headerRow);
+            $this->assertContains(
+                'lg:items-end',
+                preg_split('/\s+/', trim($headerRow->getAttribute('class'))),
+                $routeName.' actions should align with the bottom of the title block.',
             );
         }
     }

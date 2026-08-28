@@ -19,6 +19,7 @@ final class ArticleHandler
                 'task_id' => $this->runtime->optionalInteger('task-id'),
                 'status' => $this->runtime->context->options['status'] ?? null,
                 'review_status' => $this->runtime->context->options['review-status'] ?? null,
+                'ai_quality_status' => $this->runtime->context->options['ai-quality-status'] ?? null,
                 'author_id' => $this->runtime->optionalInteger('author-id'),
                 'search' => $this->runtime->context->options['search'] ?? null,
             ]),
@@ -31,6 +32,10 @@ final class ArticleHandler
                 'risk_override_reason' => trim((string) ($this->runtime->context->options['risk-override-reason'] ?? '')),
             ], idempotencyKey: $this->runtime->idempotencyKey()),
             'publish' => $this->runtime->send('article.publish', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
+            'ai-quality-recheck' => $this->runtime->send('article.ai-quality-recheck', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
+            'ai-quality-override' => $this->runtime->send('article.ai-quality-override', ['article' => $articleId()], body: [
+                'reason' => $this->runtime->requiredOption('reason'),
+            ], idempotencyKey: $this->runtime->idempotencyKey()),
             'trash' => $this->runtime->send('article.trash', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
         };
     }

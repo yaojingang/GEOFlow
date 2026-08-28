@@ -7,7 +7,7 @@ use Illuminate\Support\Carbon;
 class AnalyticsLogFilter
 {
     /** @var list<string> */
-    private const SUPPORTED_SOURCES = ['local', 'server', 'channel'];
+    private const SUPPORTED_SOURCES = ['local', 'hosted_site', 'server', 'channel'];
 
     /**
      * @param  array<string, mixed>  $input

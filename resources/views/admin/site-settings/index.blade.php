@@ -73,6 +73,45 @@
             ],
         ],
     ];
+
+    if (auth('admin')->user()?->canManageProtectedWorkflows()) {
+        $siteSettingsGroupRows[] = [
+            [
+                'title' => __('admin.ui_v3.system_management'),
+                'desc' => __('admin.ui_v3.system_management_hint'),
+                'columns' => 'lg:grid-cols-3',
+                'items' => [
+                    [
+                        'title' => __('admin.ui_v3.users_permissions'),
+                        'desc' => __('admin.ui_v3.user_settings_hint'),
+                        'href' => route('admin.admin-users.index'),
+                        'target' => null,
+                        'icon' => 'users-round',
+                        'iconClass' => 'bg-blue-50 text-blue-600 ring-blue-100',
+                        'action' => __('admin.site_settings.manage_module'),
+                    ],
+                    [
+                        'title' => __('admin.ui_v3.security_audit'),
+                        'desc' => __('admin.ui_v3.audit_settings_hint'),
+                        'href' => route('admin.admin-activity-logs'),
+                        'target' => null,
+                        'icon' => 'shield-check',
+                        'iconClass' => 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+                        'action' => __('admin.site_settings.manage_module'),
+                    ],
+                    [
+                        'title' => __('admin.ui_v3.system_updates'),
+                        'desc' => __('admin.ui_v3.system_updates_hint'),
+                        'href' => route('admin.system-updates.index'),
+                        'target' => null,
+                        'icon' => 'refresh-cw',
+                        'iconClass' => 'bg-violet-50 text-violet-600 ring-violet-100',
+                        'action' => __('admin.site_settings.manage_module'),
+                    ],
+                ],
+            ],
+        ];
+    }
 @endphp
 
 @section('content')
@@ -468,8 +507,7 @@
                                 <i data-lucide="layout-dashboard" class="mr-1.5 h-3.5 w-3.5"></i>
                                 {{ __('admin.site_settings.homepage.badge') }}
                             </div>
-                            <h4 class="mt-3 text-base font-semibold text-gray-900">{{ __('admin.site_settings.homepage.section_title') }}</h4>
-                            <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.homepage.section_desc') }}</p>
+                            <p class="mt-3 max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.site_settings.homepage.section_desc') }}</p>
                         </div>
                         <div class="flex shrink-0 flex-wrap gap-2">
                             <button type="button" id="add-homepage-module" class="inline-flex min-h-10 items-center rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
@@ -1242,9 +1280,8 @@
                 bindRemove(item);
                 refreshState();
 
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
+                if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(item);
+                else window.lucide?.createIcons?.();
             });
 
             list.querySelectorAll('.homepage-module-item').forEach(bindRemove);
@@ -1314,7 +1351,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            if (typeof lucide !== 'undefined') {
+            if (! window.GeoFlowAdminUi?.refreshIcons && typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
 
@@ -1359,9 +1396,8 @@
                 bindRemove(adItem);
                 refreshState();
 
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
+                if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(adItem);
+                else window.lucide?.createIcons?.();
             });
 
             adList.querySelectorAll('.article-ad-item').forEach(bindRemove);
@@ -1589,9 +1625,8 @@
                     bindColorPicker(linkItem);
                     refreshTextAdLinks(scope);
 
-                    if (typeof lucide !== 'undefined') {
-                        lucide.createIcons();
-                    }
+                    if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(linkItem);
+                    else window.lucide?.createIcons?.();
                 });
             }
 
@@ -1643,9 +1678,8 @@
                 bindTextAdModule(textAdItem);
                 refreshTextAdState();
 
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
+                if (window.GeoFlowAdminUi?.refreshIcons) window.GeoFlowAdminUi.refreshIcons(textAdItem);
+                else window.lucide?.createIcons?.();
             });
 
             textAdList.querySelectorAll('.article-text-ad-item').forEach(function (item) {

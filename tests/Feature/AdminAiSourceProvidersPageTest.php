@@ -11,6 +11,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\MessageBag;
+use Illuminate\Support\ViewErrorBag;
 use Tests\TestCase;
 
 class AdminAiSourceProvidersPageTest extends TestCase
@@ -59,6 +61,181 @@ class AdminAiSourceProvidersPageTest extends TestCase
             ->assertSee(__('admin.ai_source_providers.deepseek_config_title'))
             ->assertSee(__('admin.ai_source_providers.doubao_ark_config_title'))
             ->assertSee('test-search', false);
+    }
+
+    public function test_provider_index_links_to_dedicated_create_and_edit_pages(): void
+    {
+        $provider = $this->createSearchProvider();
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-source-providers.index'));
+
+        $response->assertOk()
+            ->assertSee(route('admin.ai-source-providers.create'), false)
+            ->assertSee(route('admin.ai-source-providers.edit', ['providerId' => $provider->id]), false)
+            ->assertDontSee('id="providerModal"', false)
+            ->assertDontSee('showCreateProviderModal', false)
+            ->assertDontSee('editProvider(', false);
+    }
+
+    public function test_provider_index_keeps_delete_fail_closed_and_announces_async_test_results(): void
+    {
+        $this->createSearchProvider();
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-source-providers.index'));
+
+        $response->assertOk()
+            ->assertSee('data-provider-delete-submit', false)
+            ->assertSee('disabled aria-disabled="true"', false);
+
+        $html = $response->getContent();
+        $this->assertSame(5, substr_count($html, 'role="status" aria-live="polite" aria-atomic="true"'));
+        $this->assertSame(5, substr_count($html, 'data-connection-test-button disabled aria-disabled="true"'));
+        $this->assertSame(5, substr_count($html, 'data-connection-test-result role="status"'));
+        $this->assertStringContainsString('data-test-initialization-error="', $html);
+    }
+
+    public function test_admin_can_open_provider_create_and_edit_forms_without_exposing_the_api_key(): void
+    {
+        $provider = $this->createSearchProvider([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('provider-secret-must-stay-hidden'),
+        ]);
+        $this->actingAs($this->createAdmin(), 'admin');
+
+        $this->get(route('admin.ai-source-providers.create'))
+            ->assertOk()
+            ->assertSee('action="'.route('admin.ai-source-providers.store').'"', false)
+            ->assertSee('name="api_key"', false)
+            ->assertSee('name="_token"', false)
+            ->assertDontSee('provider-secret-must-stay-hidden', false);
+
+        $this->get(route('admin.ai-source-providers.edit', ['providerId' => $provider->id]))
+            ->assertOk()
+            ->assertSee('action="'.route('admin.ai-source-providers.update', ['providerId' => $provider->id]).'"', false)
+            ->assertSee('name="_method" value="PUT"', false)
+            ->assertSee('name="api_key"', false)
+            ->assertDontSee('provider-secret-must-stay-hidden', false);
+    }
+
+    public function test_provider_form_pages_require_admin_authentication(): void
+    {
+        $provider = $this->createSearchProvider();
+
+        $this->get(route('admin.ai-source-providers.create'))
+            ->assertRedirect(route('admin.login'));
+        $this->get(route('admin.ai-source-providers.edit', ['providerId' => $provider->id]))
+            ->assertRedirect(route('admin.login'));
+    }
+
+    public function test_provider_forms_render_array_shaped_old_input_without_flashing_or_rendering_the_api_key(): void
+    {
+        $provider = $this->createSearchProvider();
+        $admin = $this->createAdmin();
+        $oldInput = [
+            'name' => ['unexpected'],
+            'endpoint_url' => ['https://array-input.test'],
+            'api_key' => 'old-provider-secret-must-stay-hidden',
+            'daily_limit' => ['20'],
+            'count' => ['5'],
+            'content_formats' => ['Markdown'],
+            'need_summary' => ['1'],
+            'need_content' => ['1'],
+            'need_url' => ['1'],
+            'auth_info_level' => ['unexpected'],
+            'sites' => ['unexpected'],
+            'block_hosts' => ['unexpected'],
+            'status' => ['active'],
+        ];
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['_old_input' => $oldInput])
+            ->get(route('admin.ai-source-providers.create'))
+            ->assertOk()
+            ->assertDontSee('old-provider-secret-must-stay-hidden', false);
+
+        $this->withSession(['_old_input' => $oldInput])
+            ->get(route('admin.ai-source-providers.edit', ['providerId' => $provider->id]))
+            ->assertOk()
+            ->assertDontSee('old-provider-secret-must-stay-hidden', false);
+    }
+
+    public function test_provider_form_errors_are_accessibly_associated_with_every_validated_control(): void
+    {
+        $provider = $this->createSearchProvider();
+        $this->actingAs($this->createAdmin(), 'admin');
+        $fields = [
+            'name',
+            'daily_limit',
+            'status',
+            'endpoint_url',
+            'api_key',
+            'count',
+            'content_formats',
+            'need_summary',
+            'need_content',
+            'need_url',
+            'auth_info_level',
+            'sites',
+            'block_hosts',
+        ];
+
+        $errors = (new ViewErrorBag)->put(
+            'default',
+            new MessageBag(array_fill_keys($fields, 'Accessible validation error')),
+        );
+
+        $response = $this
+            ->withSession(['errors' => $errors])
+            ->get(route('admin.ai-source-providers.edit', ['providerId' => $provider->id]));
+
+        $response->assertOk();
+        $html = $response->getContent();
+
+        foreach ($fields as $field) {
+            $errorId = 'ai-source-provider-'.str_replace('_', '-', $field).'-error';
+            $this->assertSame(1, substr_count($html, 'id="'.$errorId.'"'), $field);
+            $this->assertMatchesRegularExpression('/aria-describedby="[^"]*\b'.preg_quote($errorId, '/').'\b[^"]*"/', $html, $field);
+        }
+
+        $this->assertSame(count($fields), substr_count($html, 'aria-invalid="true"'));
+        $this->assertStringContainsString(
+            'aria-describedby="ai-source-provider-api-key-help ai-source-provider-api-key-error"',
+            $html,
+        );
+    }
+
+    public function test_provider_id_routes_reject_non_numeric_parameters(): void
+    {
+        $this->actingAs($this->createAdmin(), 'admin');
+
+        $this->get(route('admin.ai-source-providers.edit', ['providerId' => 'not-a-number']))->assertNotFound();
+        $this->put(route('admin.ai-source-providers.update', ['providerId' => 'not-a-number']))->assertNotFound();
+        $this->post(route('admin.ai-source-providers.test', ['providerId' => 'not-a-number']))->assertNotFound();
+        $this->post(route('admin.ai-source-providers.delete', ['providerId' => 'not-a-number']))->assertNotFound();
+    }
+
+    public function test_provider_id_routes_reject_zero_and_oversized_numeric_parameters(): void
+    {
+        $this->actingAs($this->createAdmin(), 'admin');
+
+        foreach (['0', '9999999999999999999'] as $providerId) {
+            $this->get(route('admin.ai-source-providers.edit', ['providerId' => $providerId]))->assertNotFound();
+            $this->put(route('admin.ai-source-providers.update', ['providerId' => $providerId]))->assertNotFound();
+            $this->post(route('admin.ai-source-providers.test', ['providerId' => $providerId]))->assertNotFound();
+            $this->post(route('admin.ai-source-providers.delete', ['providerId' => $providerId]))->assertNotFound();
+        }
+    }
+
+    public function test_provider_id_routes_return_not_found_for_a_missing_positive_integer(): void
+    {
+        $this->actingAs($this->createAdmin(), 'admin');
+        $providerId = '999999';
+
+        $this->get(route('admin.ai-source-providers.edit', ['providerId' => $providerId]))->assertNotFound();
+        $this->put(route('admin.ai-source-providers.update', ['providerId' => $providerId]))->assertNotFound();
+        $this->post(route('admin.ai-source-providers.test', ['providerId' => $providerId]))->assertNotFound();
+        $this->post(route('admin.ai-source-providers.delete', ['providerId' => $providerId]))->assertNotFound();
     }
 
     public function test_admin_can_create_doubao_search_custom_provider(): void
@@ -505,6 +682,31 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->assertSame(1, (int) $model->used_today);
         $this->assertSame(0, (int) $model->total_used);
         Http::assertSentCount(2);
+    }
+
+    public function test_regular_admin_probe_failure_cannot_clear_workspace_model_readiness(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://api.deepseek.com/v1/chat/completions' => Http::response('Provider unavailable', 503),
+        ]);
+        $model = $this->createAiModel([
+            'name' => 'Ready Workspace Model',
+            'model_id' => 'deepseek-ready',
+            'api_url' => 'https://api.deepseek.com',
+            'ai_workspace_structured_output_status' => 'ready',
+            'ai_workspace_structured_output_verified_at' => now(),
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
+                'binding_type' => 'deepseek',
+                'model_id' => (int) $model->id,
+            ])
+            ->assertUnprocessable();
+
+        self::assertSame('ready', $model->fresh()->ai_workspace_structured_output_status);
+        self::assertNotNull($model->fresh()->ai_workspace_structured_output_verified_at);
     }
 
     public function test_admin_can_test_doubao_ark_structured_output(): void

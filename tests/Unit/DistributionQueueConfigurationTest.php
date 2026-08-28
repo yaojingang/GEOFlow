@@ -18,6 +18,8 @@ class DistributionQueueConfigurationTest extends TestCase
             $contents = file_get_contents($composeFile);
             $this->assertIsString($contents);
             $this->assertStringContainsString('--queue=system-updates,geoflow,distribution,theme-replication,default', $contents, basename($composeFile));
+            $this->assertStringNotContainsString('--queue=ai-workspace-interactive', $contents, basename($composeFile));
+            $this->assertStringNotContainsString('--queue=ai-workspace', $contents, basename($composeFile));
             $this->assertStringContainsString('--queue=knowledge', $contents, basename($composeFile));
         }
     }
@@ -165,23 +167,82 @@ class DistributionQueueConfigurationTest extends TestCase
         $this->assertStringContainsString('https://*) session_secure_cookie=true', $script);
         $this->assertStringContainsString('*) session_secure_cookie=false', $script);
         $this->assertStringContainsString('SESSION_SECURE_COOKIE "$session_secure_cookie"', $script);
-        $this->assertStringContainsString('GEOFLOW_TRUSTED_PROXIES:-}', $script);
+        $this->assertStringContainsString('GEOFLOW_TRUSTED_PROXIES:-REMOTE_ADDR}', $script);
         $this->assertStringNotContainsString('GEOFLOW_TRUSTED_PROXIES:-*}', $script);
+    }
+
+    public function test_deploy_script_drains_old_services_around_database_migrations(): void
+    {
+        $script = file_get_contents(dirname(__DIR__, 2).'/deploy-scripts/geoflow-docker-deploy.sh');
+
+        $this->assertIsString($script);
+        $maintenanceLogAt = strpos($script, 'Entering maintenance mode and draining existing application services.');
+        $maintenanceAt = strpos($script, "\n  enter_maintenance_mode\n", $maintenanceLogAt === false ? 0 : $maintenanceLogAt);
+        $stopAt = strpos($script, 'stop web app queue knowledge-queue system-update-queue scheduler reverb');
+        $migrationAt = strpos($script, '"${COMPOSE[@]}" up init');
+        $resumeAt = strpos($script, 'php artisan up');
+        $internalHealthAt = strpos($script, "\n  run_healthcheck 1\n");
+        $resumeCallAt = strpos($script, "\n  resume_traffic\n");
+        $externalHealthAt = strpos($script, "\n  run_healthcheck 0\n");
+        $this->assertNotFalse($maintenanceLogAt);
+        $this->assertNotFalse($maintenanceAt);
+        $this->assertNotFalse($stopAt);
+        $this->assertNotFalse($migrationAt);
+        $this->assertNotFalse($resumeAt);
+        $this->assertNotFalse($internalHealthAt);
+        $this->assertNotFalse($resumeCallAt);
+        $this->assertNotFalse($externalHealthAt);
+        $this->assertLessThan($stopAt, $maintenanceAt);
+        $this->assertLessThan($migrationAt, $stopAt);
+        $this->assertLessThan($resumeAt, $migrationAt);
+        $this->assertLessThan($resumeCallAt, $internalHealthAt);
+        $this->assertLessThan($externalHealthAt, $resumeCallAt);
+        $this->assertStringNotContainsString('ps --all --services | grep -qx app', $script);
+        $this->assertStringNotContainsString('ps --status running --services | grep -qx app', $script);
+        $maintenanceFunctionAt = strpos($script, 'enter_maintenance_mode()');
+        $maintenanceFunctionEnd = strpos($script, "\n}\n", $maintenanceFunctionAt === false ? 0 : $maintenanceFunctionAt);
+        $this->assertNotFalse($maintenanceFunctionAt);
+        $this->assertNotFalse($maintenanceFunctionEnd);
+        $maintenanceBlock = substr($script, (int) $maintenanceFunctionAt, (int) $maintenanceFunctionEnd - (int) $maintenanceFunctionAt);
+        $this->assertStringContainsString('"${COMPOSE[@]}" run --rm --no-deps', $maintenanceBlock);
+        $this->assertStringContainsString('-e AUTO_WAIT_FOR_DB=false', $maintenanceBlock);
+        $this->assertStringContainsString('-e AUTO_MIGRATE=false', $maintenanceBlock);
+        $this->assertStringContainsString('-e AUTO_INSTALL_ONCE=false', $maintenanceBlock);
+        $this->assertStringContainsString('-e AUTO_OPTIMIZE=false', $maintenanceBlock);
+        $this->assertStringContainsString('if enter_maintenance_mode; then', $script);
+
+        $healthcheck = file_get_contents(dirname(__DIR__, 2).'/deploy-scripts/geoflow-healthcheck.sh');
+        $this->assertIsString($healthcheck);
+        $this->assertStringContainsString('GEOFLOW_SKIP_HTTP_CHECK', $healthcheck);
+        $this->assertStringContainsString('fail "HTTP health endpoint failed:', $healthcheck);
     }
 
     public function test_nginx_forwards_client_ip_chain_to_laravel_rate_limiters(): void
     {
-        $nginx = file_get_contents(dirname(__DIR__, 2).'/docker/nginx/default.conf');
+        $root = dirname(__DIR__, 2);
+        $nginxTemplate = file_get_contents($root.'/docker/nginx/default.conf.template');
+        $nginxApp = file_get_contents($root.'/docker/nginx/geoflow-app.conf');
 
-        $this->assertIsString($nginx);
+        $this->assertIsString($nginxTemplate);
+        $this->assertIsString($nginxApp);
+        $this->assertStringContainsString('listen 80 default_server;', $nginxTemplate);
+        $this->assertStringContainsString('server_name *.${GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN};', $nginxTemplate);
         $this->assertStringContainsString(
             'fastcgi_param HTTP_X_FORWARDED_FOR $proxy_add_x_forwarded_for;',
-            $nginx
+            $nginxApp
         );
         $this->assertStringContainsString(
             'fastcgi_param HTTP_X_REAL_IP $remote_addr;',
-            $nginx
+            $nginxApp
         );
+        $this->assertStringContainsString('GEOFLOW_NGINX_PUBLIC_PORT', $nginxTemplate);
+        $this->assertStringContainsString('HTTP_X_FORWARDED_PORT $geoflow_forwarded_port', $nginxApp);
+        $this->assertStringContainsString('geoflow_hosted_surface', $nginxTemplate);
+        $this->assertStringContainsString('/__geoflow_host_must_resolve__', $nginxTemplate);
+        $wildcardServer = substr($nginxTemplate, strpos($nginxTemplate, 'server_name *.${GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN};'));
+        $this->assertIsString($wildcardServer);
+        $this->assertStringNotContainsString('try_files $uri', $wildcardServer);
+        $this->assertStringContainsString('location / {', $wildcardServer);
     }
 
     public function test_php_fpm_concurrency_fits_the_application_memory_envelope(): void

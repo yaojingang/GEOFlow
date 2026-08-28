@@ -12,7 +12,10 @@ class SystemUpdateStateService
 {
     private const RECENT_HISTORY_DAYS = 90;
 
-    public function __construct(private readonly AdminUpdateMetadataService $metadataService) {}
+    public function __construct(
+        private readonly AdminUpdateMetadataService $metadataService,
+        private readonly SystemUpdateManualCommandService $manualCommands,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -36,6 +39,7 @@ class SystemUpdateStateService
             'archived_backup_count' => $this->archivedCount(SystemUpdateBackup::class, $cutoff),
             'has_legacy_active_run' => $this->hasLegacyActiveRun(),
             'admin_password_required' => (bool) config('geoflow.update_require_admin_password', true),
+            'manual_commands' => $this->manualCommands->manualCommands(),
         ];
     }
 

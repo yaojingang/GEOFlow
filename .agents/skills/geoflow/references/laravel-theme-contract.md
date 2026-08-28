@@ -84,8 +84,7 @@ resources/views/theme/{theme_id}/
   home.blade.php
   article.blade.php
   category.blade.php
-  archive-index.blade.php
-  archive-month.blade.php
+  about.blade.php
   layout.blade.php
   partials/
     header.blade.php
@@ -181,8 +180,7 @@ Stable template names:
 - `home`
 - `article`
 - `category`
-- `archive-index`
-- `archive-month`
+- `about`
 - `layout`
 - `partials.header`
 - `partials.footer`
@@ -193,8 +191,8 @@ Stable public routes:
 - `/`
 - `/article/{slug}`
 - `/category/{slug}`
-- `/archive`
-- `/archive/{year}/{month}`
+- `/about`
+- `/archive` and `/archive/{year}/{month}` remain named compatibility redirects to `/about`
 
 Stable public data/rendering expectations:
 

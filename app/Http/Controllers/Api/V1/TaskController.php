@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Models\Admin;
 use App\Services\Api\IdempotencyService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use Illuminate\Http\JsonResponse;
@@ -68,7 +69,11 @@ class TaskController extends BaseApiController
         return IdempotencyService::executeJson(
             $request,
             'PATCH /tasks/{id}',
-            fn (): JsonResponse => $this->success($request, $tasks->updateTask($task, $request->all())),
+            fn (): JsonResponse => $this->success($request, $tasks->updateTask(
+                $task,
+                $request->all(),
+                $this->canManageHostedTask($request),
+            )),
         );
     }
 
@@ -77,7 +82,7 @@ class TaskController extends BaseApiController
      */
     public function destroy(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        return $this->success($request, $tasks->deleteTask($task));
+        return $this->success($request, $tasks->deleteTask($task, $this->canManageHostedTask($request)));
     }
 
     /**
@@ -92,7 +97,11 @@ class TaskController extends BaseApiController
         return IdempotencyService::executeJson(
             $request,
             'POST /tasks/{id}/start',
-            fn (): JsonResponse => $this->success($request, $tasks->startTask($task, $enqueueNow)),
+            fn (): JsonResponse => $this->success($request, $tasks->startTask(
+                $task,
+                $enqueueNow,
+                $this->canManageHostedTask($request),
+            )),
         );
     }
 
@@ -106,7 +115,10 @@ class TaskController extends BaseApiController
         return IdempotencyService::executeJson(
             $request,
             'POST /tasks/{id}/stop',
-            fn (): JsonResponse => $this->success($request, $tasks->stopTask($task)),
+            fn (): JsonResponse => $this->success($request, $tasks->stopTask(
+                $task,
+                $this->canManageHostedTask($request),
+            )),
         );
     }
 
@@ -125,8 +137,20 @@ class TaskController extends BaseApiController
         return IdempotencyService::executeJson(
             $request,
             'POST /tasks/{id}/enqueue',
-            fn (): JsonResponse => $this->success($request, $tasks->enqueueTask($task, $jobType, $payload), 201),
+            fn (): JsonResponse => $this->success($request, $tasks->enqueueTask(
+                $task,
+                $jobType,
+                $payload,
+                $this->canManageHostedTask($request),
+            ), 201),
         );
+    }
+
+    private function canManageHostedTask(Request $request): bool
+    {
+        $admin = Admin::query()->find($this->auth($request)->auditAdminId);
+
+        return $admin?->isSuperAdmin() === true;
     }
 
     /**

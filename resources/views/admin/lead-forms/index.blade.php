@@ -54,7 +54,7 @@
                 <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.lead_forms.list_title') }}</h2>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
+                <table class="min-w-full divide-y divide-gray-200" data-sticky-actions>
                     <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{{ __('admin.lead_forms.column.name') }}</th>

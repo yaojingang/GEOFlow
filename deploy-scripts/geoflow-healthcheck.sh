@@ -47,10 +47,10 @@ check_http() {
     if curl -fsS --max-time 10 "$url" >/dev/null; then
       log "HTTP health endpoint passed: ${url}"
     else
-      warn "HTTP health endpoint failed: ${url}. If an external reverse proxy is used, check Nginx/proxy config."
+      fail "HTTP health endpoint failed: ${url}. Check Nginx and external proxy configuration."
     fi
   else
-    warn "curl is not installed; skipping HTTP health endpoint check."
+    fail "curl is required for the HTTP health endpoint check."
   fi
 }
 
@@ -88,7 +88,11 @@ main() {
     fail "Required services are not running: ${missing_services[*]}"
   fi
 
-  check_http "$web_port"
+  if [ "${GEOFLOW_SKIP_HTTP_CHECK:-0}" = "1" ]; then
+    log "HTTP health check deferred until maintenance mode is lifted."
+  else
+    check_http "$web_port"
+  fi
 
   log "Checking Laravel database connection."
   if "${COMPOSE[@]}" exec -T app php artisan migrate:status --pending=1 --no-interaction >/dev/null; then

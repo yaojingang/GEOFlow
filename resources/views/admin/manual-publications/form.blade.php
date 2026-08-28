@@ -9,6 +9,7 @@
     $selectedAssigneeId = (string) old('assigned_admin_id', $publication?->assigned_admin_id ?? '');
     $selectedPlatform = (string) old('platform', $publication?->platform ?? 'zhihu');
     $content = (string) old('content', $publication?->content ?? $prefilledContent);
+    $contentLimit = \App\Models\ManualPublication::maxContentCharactersForType($selectedType);
     $articleSearchAction = $isEdit
         ? route('admin.manual-publications.edit', ['manualPublicationId' => $publication->id])
         : route('admin.manual-publications.create');
@@ -85,8 +86,8 @@
                     </div>
                     <div class="md:col-span-2">
                         <label for="content" class="block text-sm font-medium text-gray-700">{{ __('admin.manual_publications.field.content') }} *</label>
-                        <textarea id="content" name="content" rows="12" maxlength="{{ \App\Models\ManualPublication::MAX_CONTENT_CHARACTERS }}" required class="mt-1 w-full rounded-md border-gray-300 font-mono text-sm leading-6 shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ $content }}</textarea>
-                        <p class="mt-1 text-xs text-gray-500">{{ __('admin.manual_publications.help.content', ['count' => \App\Models\ManualPublication::MAX_CONTENT_CHARACTERS]) }}</p>
+                        <textarea id="content" name="content" rows="12" maxlength="{{ $contentLimit }}" required class="mt-1 w-full rounded-md border-gray-300 font-mono text-sm leading-6 shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ $content }}</textarea>
+                        <p id="content-limit-help" data-template="{{ __('admin.manual_publications.help.content', ['count' => '{count}']) }}" class="mt-1 text-xs text-gray-500">{{ __('admin.manual_publications.help.content', ['count' => $contentLimit]) }}</p>
                     </div>
                 </div>
             </section>
@@ -178,3 +179,26 @@
     </form>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const type = document.getElementById('type');
+        const content = document.getElementById('content');
+        const help = document.getElementById('content-limit-help');
+        if (!type || !content || !help) return;
+
+        const limits = {
+            post: @json(\App\Models\ManualPublication::MAX_POST_CONTENT_CHARACTERS),
+            comment: @json(\App\Models\ManualPublication::MAX_COMMENT_CONTENT_CHARACTERS),
+        };
+        const applyLimit = function () {
+            const limit = limits[type.value] || limits.post;
+            content.maxLength = limit;
+            help.textContent = help.dataset.template.replace('{count}', String(limit));
+        };
+        type.addEventListener('change', applyLimit);
+        applyLimit();
+    });
+</script>
+@endpush

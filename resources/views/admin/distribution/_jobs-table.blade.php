@@ -2,7 +2,7 @@
     <div class="px-6 py-8 text-sm text-gray-500">{{ __('admin.distribution.empty_jobs') }}</div>
 @else
     <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200">
+        <table class="min-w-full divide-y divide-gray-200" data-sticky-actions aria-label="{{ __('admin.distribution.jobs_title') }}">
             <thead class="bg-gray-50">
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">{{ __('admin.distribution.field.article') }}</th>
@@ -22,12 +22,14 @@
                         'sending' => 'bg-amber-100 text-amber-800',
                         'synced' => 'bg-green-100 text-green-800',
                         'failed' => 'bg-red-100 text-red-800',
+                        'outcome_unknown' => 'bg-purple-100 text-purple-800',
                     ])
                     @php($jobActionKey = 'admin.distribution.action.'.(string) $job->action)
                     @php($jobActionLabel = trans()->has($jobActionKey) ? __($jobActionKey) : (string) $job->action)
                     @php($jobStatusKey = 'admin.distribution.job_status.'.(string) $job->status)
                     @php($jobStatusLabel = trans()->has($jobStatusKey) ? __($jobStatusKey) : (string) $job->status)
                     @php($isDeletedRemoteCopy = (string) $job->action === 'delete' && (string) $job->status === 'synced')
+                    @php($isOutcomeUnknown = (string) $job->status === 'outcome_unknown')
                     <tr>
                         <td class="min-w-[28rem] max-w-[42rem] break-words px-6 py-4 text-sm font-medium text-gray-900">{{ $job->article?->title ?? __('admin.common.none') }}</td>
                         <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-600">{{ $job->channel?->name ?? __('admin.common.none') }}</td>
@@ -46,7 +48,9 @@
                         <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-600">{{ $job->last_error_message ?: __('admin.common.none') }}</td>
                         <td class="whitespace-nowrap px-4 py-4 text-sm text-gray-600" data-distribution-delete-status>
                             <div class="flex flex-nowrap items-center gap-3">
-                            @if ($isDeletedRemoteCopy)
+                            @if ($isOutcomeUnknown)
+                                <span class="text-purple-700">{{ __('admin.distribution.job_state.manual_reconciliation_required') }}</span>
+                            @elseif ($isDeletedRemoteCopy)
                                 <span class="text-gray-400">{{ __('admin.distribution.job_state.remote_copy_deleted') }}</span>
                             @elseif ($job->article)
                                 <a href="{{ route('admin.distribution.article.edit', ['distributionId' => (int) $job->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.distribution.button.edit_remote_article') }}</a>

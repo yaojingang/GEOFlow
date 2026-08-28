@@ -34,8 +34,6 @@ http://127.0.0.1:4173/previews/geoflow-admin-ui-v2/index.html
 scripts/page-definitions.mjs
 ```
 
-路由标签使用 `{adminBasePath}` 表示 Laravel 可配置的 `geoflow.admin_base_path`，原型不假定固定的 `/admin` 路径。
-
 修改后重新生成：
 
 ```bash

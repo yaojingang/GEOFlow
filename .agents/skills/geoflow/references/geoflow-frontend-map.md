@@ -36,8 +36,8 @@ Do not change these public routes during a design-only run:
 - `/`
 - `/article/{slug}`
 - `/category/{slug}`
-- `/archive`
-- `/archive/{year}/{month}`
+- `/about`
+- `/archive` and `/archive/{year}/{month}` as permanent compatibility redirects to `/about`
 - `/forms/{slug}`
 - `/forms/{slug}/submissions`
 
@@ -86,8 +86,7 @@ mapping.json
 home.blade.php
 article.blade.php
 category.blade.php
-archive-index.blade.php
-archive-month.blade.php
+about.blade.php
 layout.blade.php
 partials/header.blade.php
 partials/footer.blade.php
@@ -114,8 +113,8 @@ Stable built-in views:
 - `resources/views/site/home.blade.php`
 - `resources/views/site/article.blade.php`
 - `resources/views/site/category.blade.php`
-- `resources/views/site/archive-index.blade.php`
-- `resources/views/site/archive-month.blade.php`
+- `resources/views/site/about.blade.php`
+- `resources/views/site/partials/about-content.blade.php`
 - `resources/views/site/partials/header.blade.php`
 - `resources/views/site/partials/footer.blade.php`
 - `resources/views/site/partials/article-card.blade.php`
@@ -142,7 +141,7 @@ Owns:
 - site name / logo
 - Home link
 - category navigation
-- archive link when present
+- About link when present
 - responsive navigation
 
 Inputs are controller-provided site settings and category collections. Do not query the database directly in a theme.
@@ -282,7 +281,7 @@ Agent output can be imported as JSON through `homepage-modules/import`. Preferre
       "title": "Enterprise GEO Hub",
       "body": "Use homepage modules to present value, proof, resources, and next actions.",
       "link_text": "View resources",
-      "link_url": "/archive"
+      "link_url": "/about"
     },
     {
       "type": "lead_form",
@@ -347,24 +346,23 @@ Typical data:
 Important rendering rule: do not show image captions that are only filenames such as `333.png`; keep article images visual unless the system provides meaningful captions.
 Important markdown rule: article content is passed to the theme as rendered HTML. The theme should style standard HTML nodes such as `h2`, `h3`, `p`, `ul`, `ol`, `blockquote`, `table`, `pre`, and `code`; it should not expose raw markdown markers in list cards or article detail views.
 
-## 10. Archive Modules
+## 10. About Page Modules
 
-Views: `archive-index`, `archive-month`
+View: `about`
 
 Stable modules:
 
-- `archive.overview`
-- `archive.month_group`
-- `archive.article_list`
-- `archive.article_card`
-- `archive.pagination`
+- `about.hero`
+- `about.prose_shell`
+- `about.table_of_contents`
+- `about.repository_link`
 
 Typical data:
 
-- archive months
-- selected year/month
-- articles
-- pagination metadata
+- site title and SEO settings
+- canonical URL
+- source-grounded project introduction
+- repository URL
 
 ## 11. Safe Editing Surface
 

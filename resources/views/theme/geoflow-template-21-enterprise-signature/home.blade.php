@@ -422,7 +422,7 @@
                         <span class="ent-kicker">Ideas and evidence</span>
                         <h2 id="insights-title">GEOFlow 实践与洞察</h2>
                     </div>
-                    <a href="{{ route('site.archive') }}" class="ent-text-link">查看全部归档 <i data-lucide="arrow-right" aria-hidden="true"></i></a>
+                    <a href="{{ route('site.about') }}" class="ent-text-link">了解 GEOFlow <i data-lucide="arrow-right" aria-hidden="true"></i></a>
                 </div>
 
                 <div class="ent-featured-grid">
@@ -430,13 +430,13 @@
                         @include('theme.geoflow-template-21-enterprise-signature.partials.article-card', ['article' => $article, 'showFeaturedBadge' => true])
                     @empty
                         <article class="ent-demo-resource">
-                            <span>DEMO RESOURCE 01</span><h3>全球企业如何建立 GEO 知识证据体系</h3><p>演示资源，用于表现深度报告卡片。</p><a href="{{ route('site.archive') }}">浏览内容归档</a>
+                            <span>DEMO RESOURCE 01</span><h3>全球企业如何建立 GEO 知识证据体系</h3><p>演示资源，用于表现深度报告卡片。</p><a href="{{ route('site.about') }}">了解项目</a>
                         </article>
                         <article class="ent-demo-resource">
-                            <span>DEMO RESOURCE 02</span><h3>从内容发布到 AI 来源观测的完整闭环</h3><p>演示资源，用于表现产品实践卡片。</p><a href="{{ route('site.archive') }}">浏览内容归档</a>
+                            <span>DEMO RESOURCE 02</span><h3>从内容发布到 AI 来源观测的完整闭环</h3><p>演示资源，用于表现产品实践卡片。</p><a href="{{ route('site.about') }}">了解项目</a>
                         </article>
                         <article class="ent-demo-resource">
-                            <span>DEMO RESOURCE 03</span><h3>开源架构如何支撑企业级 GEO 协作</h3><p>演示资源，用于表现技术洞察卡片。</p><a href="{{ route('site.archive') }}">浏览内容归档</a>
+                            <span>DEMO RESOURCE 03</span><h3>开源架构如何支撑企业级 GEO 协作</h3><p>演示资源，用于表现技术洞察卡片。</p><a href="{{ route('site.about') }}">了解项目</a>
                         </article>
                     @endforelse
                 </div>
@@ -461,7 +461,7 @@
                             <div class="ent-empty-state">
                                 <span>Content runway</span>
                                 <h3>在后台发布文章后，最新洞察会自动出现在这里</h3>
-                                <p>当前主题已经接入 GEOFlow 的文章、分类和归档数据。</p>
+                                <p>当前主题已经接入 GEOFlow 的文章、分类与关于页面。</p>
                             </div>
                         @endforelse
                     </div>
@@ -577,8 +577,8 @@
                         <div class="ent-empty-state ent-empty-state--wide">
                             <span>0 results</span>
                             <h2>{{ __('site.home_empty_title') }}</h2>
-                            <p>尝试使用更简短的关键词，或返回内容归档继续浏览。</p>
-                            <a href="{{ route('site.archive') }}" class="ent-text-link">查看归档 <i data-lucide="arrow-right" aria-hidden="true"></i></a>
+                            <p>尝试使用更简短的关键词，或前往关于页面了解 GEOFlow。</p>
+                            <a href="{{ route('site.about') }}" class="ent-text-link">关于 GEOFlow <i data-lucide="arrow-right" aria-hidden="true"></i></a>
                         </div>
                     @endforelse
                 </div>

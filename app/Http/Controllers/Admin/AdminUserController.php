@@ -44,6 +44,34 @@ class AdminUserController extends Controller
         ]);
     }
 
+    public function create(): View
+    {
+        return view('admin.admin-users.create', [
+            'pageTitle' => __('admin.admin_users.modal_create'),
+            'activeMenu' => 'admin_users',
+            'adminSiteName' => AdminWeb::siteName(),
+        ]);
+    }
+
+    public function edit(int $adminId): View
+    {
+        $targetAdmin = Admin::query()
+            ->select(['id', 'username', 'display_name', 'email', 'role', 'status'])
+            ->whereKey($adminId)
+            ->firstOrFail();
+        $isSelf = (int) $targetAdmin->id === (int) (auth('admin')->id() ?? 0);
+
+        abort_if($targetAdmin->isSuperAdmin() && ! $isSelf, 403);
+
+        return view('admin.admin-users.edit', [
+            'pageTitle' => __('admin.admin_users.modal_edit'),
+            'activeMenu' => 'admin_users',
+            'adminSiteName' => AdminWeb::siteName(),
+            'targetAdmin' => $targetAdmin,
+            'isSelf' => $isSelf,
+        ]);
+    }
+
     /**
      * 编辑管理员基础信息；超级管理员只能编辑自己，密码留空时不修改。
      */
@@ -108,7 +136,11 @@ class AdminUserController extends Controller
 
             return redirect()->route('admin.admin-users.index')->with('message', __('admin.admin_users.message.update_success'));
         } catch (Throwable $exception) {
-            return back()->withErrors(__('admin.admin_users.message.update_error', ['message' => $exception->getMessage()]))->withInput();
+            report($exception);
+
+            return back()
+                ->withErrors(__('admin.admin_users.message.update_error'))
+                ->withInput($request->except(['password', 'confirm_password']));
         }
     }
 
@@ -147,7 +179,11 @@ class AdminUserController extends Controller
 
             return redirect()->route('admin.admin-users.index')->with('message', __('admin.admin_users.message.create_success'));
         } catch (Throwable $exception) {
-            return back()->withErrors(__('admin.admin_users.message.create_error', ['message' => $exception->getMessage()]))->withInput();
+            report($exception);
+
+            return back()
+                ->withErrors(__('admin.admin_users.message.create_error'))
+                ->withInput($request->except(['password', 'confirm_password']));
         }
     }
 
@@ -186,7 +222,9 @@ class AdminUserController extends Controller
 
             return redirect()->route('admin.admin-users.index')->with('message', __($messageKey));
         } catch (Throwable $exception) {
-            return back()->withErrors(__('admin.admin_users.message.toggle_error', ['message' => $exception->getMessage()]));
+            report($exception);
+
+            return back()->withErrors(__('admin.admin_users.message.toggle_error'));
         }
     }
 
@@ -227,7 +265,9 @@ class AdminUserController extends Controller
 
             return redirect()->route('admin.admin-users.index')->with('message', __('admin.admin_users.message.delete_success'));
         } catch (Throwable $exception) {
-            return back()->withErrors(__('admin.admin_users.message.delete_error', ['message' => $exception->getMessage()]));
+            report($exception);
+
+            return back()->withErrors(__('admin.admin_users.message.delete_error'));
         }
     }
 

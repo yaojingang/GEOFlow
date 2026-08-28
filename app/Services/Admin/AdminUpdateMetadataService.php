@@ -126,7 +126,7 @@ class AdminUpdateMetadataService
 
     public function currentVersion(): string
     {
-        return trim((string) config('geoflow.app_version', '2.0'));
+        return trim((string) config('geoflow.app_version', '0.0.0-dev'));
     }
 
     public function metadataUrl(): string

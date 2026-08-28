@@ -116,7 +116,7 @@
                             $statusClass = match((string) $publication->status) {
                                 'completed' => 'bg-emerald-50 text-emerald-700',
                                 'in_progress' => 'bg-purple-50 text-purple-700',
-                                'ready' => 'bg-amber-50 text-amber-700',
+                                'ready', 'outcome_unknown' => 'bg-amber-50 text-amber-700',
                                 'failed', 'cancelled' => 'bg-red-50 text-red-700',
                                 'skipped' => 'bg-gray-100 text-gray-700',
                                 default => 'bg-blue-50 text-blue-700',
@@ -136,7 +136,7 @@
                             </td>
                             <td class="px-5 py-4 text-sm text-gray-700">
                                 <div>{{ $publication->platformDisplayName() }}</div>
-                                <div class="mt-1 text-xs text-gray-500">{{ $publication->accountDisplayName() ?? __('admin.manual_publications.none') }}</div>
+                                <div class="mt-1 text-xs text-gray-500">{{ $publication->account?->account_name ?? __('admin.manual_publications.none') }}</div>
                             </td>
                             <td class="px-5 py-4 text-sm text-gray-700">{{ $publication->assignee?->name ?? __('admin.manual_publications.unassigned') }}</td>
                             <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">{{ $publication->scheduled_at?->format('Y-m-d H:i') ?? __('admin.manual_publications.unscheduled') }}</td>

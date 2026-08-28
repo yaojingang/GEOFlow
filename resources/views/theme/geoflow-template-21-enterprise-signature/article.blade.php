@@ -101,19 +101,20 @@
     </article>
 
     @if($relatedArticles->isNotEmpty())
-        <section class="ent-related">
-            <div class="ent-shell">
+        <section class="ent-related" aria-labelledby="ent-related-title">
+            <div class="ent-article-shell">
                 <div class="ent-related__heading">
-                    <h2>{{ __('site.article_related') }}</h2>
+                    <h2 id="ent-related-title">{{ __('site.article_related') }}</h2>
                 </div>
-                <div class="ent-related__grid">
-                    @foreach($relatedArticles as $related)
-                        <a href="{{ route('site.article', $related->slug) }}">
-                            <span>{{ str_pad((string) $loop->iteration, 2, '0', STR_PAD_LEFT) }}</span>
-                            <strong>{{ $related->title }}</strong>
-                        </a>
+                <ul class="ent-related__list">
+                    @foreach($relatedArticles->take(5) as $related)
+                        <li>
+                            <a href="{{ route('site.article', $related->slug) }}">
+                                <strong>{{ $related->title }}</strong>
+                            </a>
+                        </li>
                     @endforeach
-                </div>
+                </ul>
             </div>
         </section>
     @endif

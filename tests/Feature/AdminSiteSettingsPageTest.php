@@ -23,29 +23,6 @@ class AdminSiteSettingsPageTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_super_admin_sees_analytics_example_notice(): void
-    {
-        SiteSetting::query()->create([
-            'setting_key' => 'analytics_code',
-            'setting_value' => (string) config('geoflow.default_analytics_code'),
-        ]);
-
-        $admin = Admin::query()->create([
-            'username' => 'site_analytics_super_admin',
-            'password' => 'secret-123',
-            'email' => 'site-analytics-super-admin@example.com',
-            'display_name' => 'Site Analytics Super Admin',
-            'role' => 'super_admin',
-            'status' => 'active',
-        ]);
-
-        $this->actingAs($admin, 'admin')
-            ->get(route('admin.site-settings.index'))
-            ->assertOk()
-            ->assertSee('将会插入到页面 <head> 标签中，此处为示例代码，请改成你的统计代码')
-            ->assertSee((string) config('geoflow.default_analytics_code'));
-    }
-
     public function test_authenticated_admin_can_view_admin_base_path_setting(): void
     {
         $admin = Admin::query()->create([

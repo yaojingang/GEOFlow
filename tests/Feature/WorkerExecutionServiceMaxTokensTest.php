@@ -106,6 +106,20 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
             && ($request['max_tokens'] ?? null) === 5000);
     }
 
+    public function test_generate_content_uses_the_system_default_max_tokens(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response($this->completion('# 标题'."\n\n".'完整正文。')),
+        ]);
+
+        $model = $this->createChatModel(['max_tokens' => null]);
+
+        $this->generateContent($model, '写一篇文章。');
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
+            && ($request['max_tokens'] ?? null) === 16384);
+    }
+
     public function test_generate_content_logs_warning_when_output_looks_truncated(): void
     {
         // 结尾停在未闭合代码块中间，模拟输出 token 用尽被截断。

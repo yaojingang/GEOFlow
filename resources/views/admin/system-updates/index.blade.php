@@ -101,6 +101,7 @@
         $mutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || $updaterConnection !== 'connected' || !$mutationAuthorizationReady;
         $updateMutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || ($updaterConnection !== 'connected' && !$phaseBHandoverReady) || !$mutationAuthorizationReady;
         $authorizationCheckFailed = !$mutationAuthorizationReady;
+        $manualCommands = is_array($summary['manual_commands'] ?? null) ? $summary['manual_commands'] : [];
     @endphp
 
     <div class="px-4 sm:px-0" @if($updaterOperationNeedsPolling) data-system-updater-auto-reload="5000" @endif>
@@ -120,6 +121,36 @@
         @endif
         @if($errors->any())
             <div class="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ $errors->first() }}</div>
+        @endif
+
+        @if($manualCommands !== [])
+            <section class="mb-6 overflow-hidden rounded-xl border border-blue-200 bg-blue-50 shadow-sm">
+                <div class="border-b border-blue-100 px-6 py-4">
+                    <h2 class="text-base font-semibold text-blue-950">{{ __('admin.system_updates.manual_commands.title') }}</h2>
+                    <p class="mt-1 text-sm leading-6 text-blue-800">{{ __('admin.system_updates.manual_commands.description') }}</p>
+                </div>
+                <div class="space-y-3 px-6 py-5">
+                    @foreach($manualCommands as $manualCommand)
+                        <div class="rounded-lg border border-blue-200 bg-white p-4">
+                            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <h3 class="text-sm font-semibold text-gray-900">{{ (string) ($manualCommand['label'] ?? '') }}</h3>
+                                        @if(!empty($manualCommand['required']))
+                                            <span class="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">{{ __('admin.system_updates.manual_commands.required') }}</span>
+                                        @endif
+                                        <span class="rounded-full px-2.5 py-0.5 text-xs font-semibold {{ ($manualCommand['status'] ?? 'pending') === 'complete' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800' }}">
+                                            {{ __('admin.system_updates.manual_commands.'.($manualCommand['status'] ?? 'pending')) }}
+                                        </span>
+                                    </div>
+                                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ (string) ($manualCommand['description'] ?? '') }}</p>
+                                </div>
+                                <code class="max-w-full overflow-x-auto rounded-md bg-gray-950 px-3 py-2 text-xs text-gray-100">{{ (string) ($manualCommand['command'] ?? '') }}</code>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </section>
         @endif
 
         <section class="rounded-xl border border-gray-200 bg-white shadow-sm">

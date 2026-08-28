@@ -4,8 +4,7 @@
   "reference_urls": {
     "home": "local:/Users/laoyao/AI Coding/01-Projects/Active/tokhub/web/static/recommend",
     "category": "base:netease-news-20260507/category",
-    "article": "base:netease-news-20260507/article",
-    "archive": "theme:apihot-recommend-20260623/archive"
+    "article": "base:netease-news-20260507/article"
   },
   "omitted_reference_modules": [
     "static app shell scripts that are not needed for GEOFlow routing",
@@ -33,17 +32,13 @@
     "article.hero": "API recommendation style article title card with pill metadata and soft-blue excerpt block.",
     "article.prose_shell": "Readable white-card article body styling for rendered markdown HTML, images, tables, lists, and blockquotes.",
     "article.related_articles": "Rounded related-content cards using the same numbered badge language as homepage latest articles.",
-    "article.sticky_ad": "Converted from floating sticky ad to a soft-blue inline optional ad slot.",
-    "archive.overview_row": "API recommendation style archive month cards for the homepage More destination.",
-    "archive.article_card": "Archive month article list reuses the same rounded latest-article cards as category pages."
+    "article.sticky_ad": "Converted from floating sticky ad to a soft-blue inline optional ad slot."
   },
   "edited_files": [
     "layout.blade.php",
     "home.blade.php",
     "category.blade.php",
     "article.blade.php",
-    "archive-index.blade.php",
-    "archive-month.blade.php",
     "partials/header.blade.php",
     "partials/sidebar.blade.php",
     "partials/footer.blade.php",

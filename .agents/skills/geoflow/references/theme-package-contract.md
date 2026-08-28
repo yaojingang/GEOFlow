@@ -25,8 +25,7 @@ resources/views/theme/
     home.blade.php
     category.blade.php
     article.blade.php
-    archive-index.blade.php
-    archive-month.blade.php
+    about.blade.php
     partials/
       header.blade.php
       footer.blade.php
@@ -55,8 +54,7 @@ resources/views/theme/
     home.blade.php
     category.blade.php
     article.blade.php
-    archive-index.blade.php
-    archive-month.blade.php
+    about.blade.php
     partials/
       header.blade.php
       footer.blade.php
@@ -103,7 +101,7 @@ Preferred JSON shape:
       "body": "Organize homepage content with custom modules.",
       "image_url": "",
       "link_text": "View resources",
-      "link_url": "/archive",
+      "link_url": "/about",
       "lead_form_slug": "",
       "limit": 4,
       "custom_html": "",
@@ -189,8 +187,8 @@ Recommended Laravel fields:
 - `article.prose_shell`
 - `article.related_articles`
 - `article.sticky_ad`
-- `archive.overview_row`
-- `archive.article_card`
+- `about.hero`
+- `about.prose_shell`
 - When `mode = edit_theme` or `mode = optimize`:
   - `change_scope`
   - `unchanged_contracts`
@@ -211,7 +209,7 @@ The package should be previewed on at least:
 - homepage preview
 - category preview
 - article detail preview
-- archive overview preview
+- About page preview
 
 Current Laravel GEOFlow may not provide isolated `/preview/{theme}` URLs. Preview theme edit sessions should clearly say whether review uses static preview artifacts, temporary admin activation, or a real preview route discovered in `routes/web.php`.
 

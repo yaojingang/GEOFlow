@@ -114,7 +114,7 @@ final class ArticleContentGenerationService
             return $configured;
         }
 
-        return max(256, (int) config('geoflow.content_max_tokens', 8192));
+        return max(256, (int) config('geoflow.content_max_tokens', 16384));
     }
 
     /**

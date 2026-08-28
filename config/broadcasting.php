@@ -15,7 +15,7 @@ return [
     |
     */
 
-    'default' => env('BROADCAST_CONNECTION', 'reverb'),
+    'default' => env('BROADCAST_CONNECTION', 'null'),
 
     /*
     |--------------------------------------------------------------------------
@@ -45,7 +45,8 @@ return [
                 'path' => ($path = env('REVERB_BROADCAST_PATH', env('REVERB_SERVER_PATH', ''))) === '' ? '' : rtrim($path, '/').'/',
             ],
             'client_options' => [
-                // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+                'connect_timeout' => 0.5,
+                'timeout' => 1.0,
             ],
         ],
 

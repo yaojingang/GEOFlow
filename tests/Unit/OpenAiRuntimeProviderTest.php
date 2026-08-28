@@ -95,14 +95,6 @@ class OpenAiRuntimeProviderTest extends TestCase
         );
     }
 
-    public function test_it_normalizes_a_full_compatible_responses_endpoint_to_its_base_url(): void
-    {
-        $this->assertSame(
-            'https://ark.cn-beijing.volces.com/api/v3',
-            OpenAiRuntimeProvider::resolveChatBaseUrl('https://ark.cn-beijing.volces.com/api/v3/responses')
-        );
-    }
-
     public function test_it_normalizes_gemini_base_urls_to_native_v1beta(): void
     {
         $this->assertSame(

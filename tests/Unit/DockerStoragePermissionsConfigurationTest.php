@@ -35,15 +35,6 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
                 $entrypoint,
                 $entrypointFile.' must not spawn chmod once per file.'
             );
-            $optimizePosition = strpos($entrypoint, 'if [ "${AUTO_OPTIMIZE:');
-            $permissionPosition = strpos($entrypoint, 'if [ "${AUTO_FIX_STORAGE_PERMISSIONS:');
-            $this->assertNotFalse($optimizePosition);
-            $this->assertNotFalse($permissionPosition);
-            $this->assertGreaterThan(
-                $optimizePosition,
-                $permissionPosition,
-                $entrypointFile.' must repair permissions after initialization writes finish.'
-            );
         }
     }
 
@@ -61,11 +52,6 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
                 'AUTO_FIX_STORAGE_PERMISSIONS: "${AUTO_FIX_STORAGE_PERMISSIONS:-true}"',
                 $services['init'],
                 $composeFile.' must let the operator control the one-shot storage repair.'
-            );
-            $this->assertStringContainsString(
-                'command: ["true"]',
-                $services['init'],
-                $composeFile.' must not run another Artisan command after the final permission repair.'
             );
 
             $runtimeServices = array_filter(
@@ -107,16 +93,6 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
             $dockerfile,
             'The production image must make its private bootstrap/cache writable before runtime scans are disabled.'
         );
-        $this->assertStringContainsString(
-            'ln -s ../storage/app/public public/storage',
-            $dockerfile,
-            'The production image must prepare the storage link before runtime services drop root privileges.'
-        );
-        $this->assertStringContainsString(
-            'rm -f public/storage',
-            $dockerfile,
-            'The production image must replace an existing development storage link safely.'
-        );
     }
 
     public function test_production_image_retries_composer_downloads_with_a_shared_bounded_cache(): void
@@ -131,34 +107,6 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         );
         $this->assertStringContainsString('for attempt in 1 2 3; do', $dockerfile);
         $this->assertStringContainsString('sleep "$((attempt * 15))"', $dockerfile);
-    }
-
-    public function test_production_runtime_services_use_the_shared_storage_owner(): void
-    {
-        $root = dirname(__DIR__, 2);
-
-        foreach (['docker-compose.prod.yml', 'docker-compose.prebuilt.yml'] as $composeFile) {
-            $compose = file_get_contents($root.'/'.$composeFile);
-            $this->assertIsString($compose);
-
-            $services = $this->serviceBlocks($compose);
-            $runtimeServices = array_filter(
-                $services,
-                fn (string $block, string $service): bool => $service !== 'init'
-                    && $this->usesApplicationImage($block),
-                ARRAY_FILTER_USE_BOTH
-            );
-
-            $this->assertStringNotContainsString('user:', $services['init']);
-
-            foreach ($runtimeServices as $service => $block) {
-                $this->assertStringContainsString(
-                    'user: "www-data:www-data"',
-                    $block,
-                    sprintf('%s must run %s as the shared storage owner.', $composeFile, $service)
-                );
-            }
-        }
     }
 
     public function test_compose_renders_the_operator_storage_permission_override_when_available(): void

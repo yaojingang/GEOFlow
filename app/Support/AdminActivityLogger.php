@@ -4,7 +4,9 @@ namespace App\Support;
 
 use App\Models\Admin;
 use App\Models\AdminActivityLog;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -52,8 +54,13 @@ final class AdminActivityLogger
                 'ip_address' => trim((string) ($context['ip_address'] ?? '')),
                 'details' => $details,
             ]);
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             // 日志写入失败不能影响主流程。
+            Log::error('Admin activity log write failed.', [
+                'admin_id' => (int) $admin->id,
+                'action' => mb_substr(trim($action), 0, 120),
+                'exception' => $exception::class,
+            ]);
         }
     }
 
@@ -66,6 +73,12 @@ final class AdminActivityLogger
     {
         // 尝试从路由参数中推断目标对象（如 taskId/libraryId），用于日志检索和追踪。
         [$targetType, $targetId] = self::guessTarget($request);
+        $explicitTargetType = $request->attributes->get('admin_activity_target_type');
+        $explicitTargetId = $request->attributes->get('admin_activity_target_id');
+        if (is_string($explicitTargetType) && $explicitTargetType !== '') {
+            $targetType = $explicitTargetType;
+            $targetId = is_numeric($explicitTargetId) ? (int) $explicitTargetId : null;
+        }
 
         self::log($admin, $action, [
             'request_method' => (string) $request->method(),
@@ -85,6 +98,7 @@ final class AdminActivityLogger
     {
         $sensitiveKeys = [
             'password',
+            'password_confirmation',
             'package_password',
             'current_password',
             'current_admin_password',
@@ -93,12 +107,17 @@ final class AdminActivityLogger
             'api_key',
             '_token',
             'csrf_token',
+            'user_code',
+            'device_code',
         ];
 
         $result = [];
         foreach ($payload as $key => $value) {
             $field = (string) $key;
-            if (in_array($field, $sensitiveKeys, true)) {
+            $knownNonSecret = ['max_tokens', 'token_count', 'ack_credentials'];
+            $matchesSecretPattern = ! in_array(strtolower($field), $knownNonSecret, true)
+                && preg_match('/password|secret|credential|api[_-]?key|(?:^|_)(?:access_|refresh_|bearer_|oauth_)?token(?:$|_value$)/i', $field) === 1;
+            if (in_array($field, $sensitiveKeys, true) || $matchesSecretPattern) {
                 $result[$field] = '[redacted]';
 
                 continue;
@@ -151,6 +170,9 @@ final class AdminActivityLogger
         }
 
         foreach ((array) $route->parameters() as $name => $value) {
+            if ($value instanceof Model) {
+                return [(string) $name, is_numeric($value->getKey()) ? (int) $value->getKey() : null];
+            }
             if (! str_ends_with((string) $name, 'Id')) {
                 continue;
             }

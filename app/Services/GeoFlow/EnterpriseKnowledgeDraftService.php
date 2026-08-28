@@ -3,13 +3,16 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\EnterpriseKnowledgeProject;
+use App\Models\EnterpriseKnowledgeRevision;
 use App\Models\KnowledgeBase;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Throwable;
@@ -72,6 +75,31 @@ final class EnterpriseKnowledgeDraftService
         private readonly KnowledgeChunkSyncCoordinator $chunkSyncCoordinator,
         private readonly AiUsageQuotaService $usageQuota,
     ) {}
+
+    /** @param array<string,mixed> $data */
+    public function createWorkspaceDraft(array $data, Admin $admin): EnterpriseKnowledgeProject
+    {
+        return DB::transaction(function () use ($data, $admin): EnterpriseKnowledgeProject {
+            $content = trim((string) ($data['content'] ?? ''));
+            $project = EnterpriseKnowledgeProject::query()->create([
+                'name' => trim((string) ($data['name'] ?? '')),
+                'description' => trim((string) ($data['description'] ?? '')),
+                'status' => 'draft',
+                'draft_content' => $content,
+                'created_by_admin_id' => (int) $admin->id,
+            ]);
+            EnterpriseKnowledgeRevision::query()->create([
+                'enterprise_knowledge_project_id' => (int) $project->id,
+                'content' => $content,
+                'summary' => 'AI 工作台创建的初始草稿',
+                'source' => 'ai_workspace',
+                'created_by_admin_id' => (int) $admin->id,
+                'content_hash' => hash('sha256', $content),
+            ]);
+
+            return $project;
+        });
+    }
 
     /**
      * @return array{content:string,source:string,model_id:?int,error:?string}

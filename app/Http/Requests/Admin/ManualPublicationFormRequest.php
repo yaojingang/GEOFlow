@@ -59,7 +59,16 @@ abstract class ManualPublicationFormRequest extends FormRequest
                 'string',
                 'max:5000',
             ],
-            'content' => ['required', 'string', 'max:'.ManualPublication::MAX_CONTENT_CHARACTERS],
+            'content' => [
+                'required',
+                'string',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $limit = ManualPublication::maxContentCharactersForType((string) $this->input('type'));
+                    if (mb_strlen((string) $value) > $limit) {
+                        $fail(__('admin.manual_publications.error.invalid_content'));
+                    }
+                },
+            ],
             'scheduled_at' => ['nullable', 'date'],
         ];
 

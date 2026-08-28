@@ -7,14 +7,12 @@
     "layout",
     "home",
     "category",
-    "article",
-    "archive-index",
-    "archive-month"
+    "article"
   ],
   "notes": [
     "Homepage is derived from the local recommend static page and adapted into a GEOFlow Blade theme.",
     "Default homepage shows the API recommendation modules plus the latest 10 published articles using the existing article paginator.",
-    "Search, category, article, archive, SEO meta, JSON-LD, route helpers, and article rendering contracts are preserved.",
+    "Search, category, article, About, SEO meta, JSON-LD, route helpers, and article rendering contracts are preserved.",
     "The original netease-news-20260507 theme is not modified."
   ],
   "base_theme_id": "netease-news-20260507",
@@ -26,6 +24,6 @@
     "/",
     "/category/{slug}",
     "/article/{slug}",
-    "/archive"
+    "/about"
   ]
 }

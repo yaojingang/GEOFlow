@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true">
+    <testsuites>
+        <testsuite name="PostgreSQL concurrency">
+            <directory>tests/PostgreSQL</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <ini name="memory_limit" value="512M"/>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_KEY" value="base64:F8W2mzf4t4dfHiV8x1GOf0HA+aOg8Z8BQPjiRT0Dh1o=" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1" force="false"/>
+        <env name="DB_PORT" value="55439" force="false"/>
+        <env name="DB_DATABASE" value="geoflow_hosted_test" force="false"/>
+        <env name="DB_USERNAME" value="geoflow_test" force="false"/>
+        <env name="DB_PASSWORD" value="geoflow_test_password" force="false"/>
+        <env name="DB_URL" value="" force="true"/>
+        <env name="GEOFLOW_HOSTED_SITES_ENABLED" value="true" force="true"/>
+        <env name="GEOFLOW_HOSTED_SITE_ROOT_DOMAINS" value="sites.test" force="true"/>
+        <env name="GEOFLOW_PG_CONCURRENCY" value="1" force="true"/>
+        <env name="GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED" value="true" force="true"/>
+        <env name="QUEUE_CONNECTION" value="null" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+    </php>
+</phpunit>

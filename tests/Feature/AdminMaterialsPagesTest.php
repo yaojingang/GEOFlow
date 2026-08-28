@@ -7,15 +7,18 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Image;
 use App\Models\ImageLibrary;
+use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\ManagedImageFileService;
+use App\Services\GeoFlow\UrlImportProcessingService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -163,6 +166,25 @@ class AdminMaterialsPagesTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.url-import.history'))
             ->assertForbidden();
+    }
+
+    public function test_title_library_creation_uses_the_standalone_form_page(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'title_library_create_admin',
+            'password' => 'secret-123',
+            'email' => 'title-library-create-admin@example.com',
+            'display_name' => 'Title Library Create Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.title-libraries.index'))
+            ->assertOk()
+            ->assertSee('href="'.route('admin.title-libraries.create').'"', false)
+            ->assertDontSee('showCreateModal()', false)
+            ->assertDontSee('id="create-modal"', false);
     }
 
     public function test_materials_page_counts_high_risk_unreviewed_knowledge_as_pending(): void
@@ -1028,6 +1050,80 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
     }
 
+    public function test_url_import_commit_skips_null_keywords_and_titles_that_expand_past_storage_limit(): void
+    {
+        $result = [
+            'page' => [
+                'title' => 'Policy Import',
+                'text' => '可用的知识库正文',
+            ],
+            'analysis' => [
+                'library_name' => 'Policy Import',
+                'summary' => '导入策略测试',
+                'knowledge_markdown' => '# Policy Import',
+                'keywords' => ['有效关键词', "bad\0keyword", "boundary-null\0", '0', '0e1'],
+                'titles' => [str_repeat('ﬃ', 500), '有效标题', '0', '0e1'],
+            ],
+            'import' => [
+                'status' => 'preview',
+                'summary' => null,
+            ],
+        ];
+        $job = UrlImportJob::query()->create([
+            'url' => 'https://example.test/policy',
+            'normalized_url' => 'https://example.test/policy',
+            'source_domain' => 'example.test',
+            'page_title' => 'Policy Import',
+            'status' => 'completed',
+            'current_step' => 'preview',
+            'progress_percent' => 100,
+            'result_json' => json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'created_by' => 'policy-test',
+        ]);
+
+        $summary = app(UrlImportProcessingService::class)->commit($job);
+
+        $this->assertSame(3, $summary['keywords']);
+        $this->assertSame(3, $summary['titles']);
+        $this->assertSame(['有效关键词', '0', '0e1'], Keyword::query()->orderBy('id')->pluck('keyword')->all());
+        $this->assertSame(['有效标题', '0', '0e1'], Title::query()->orderBy('id')->pluck('title')->all());
+    }
+
+    public function test_url_import_commit_rejects_a_preview_without_any_storable_title(): void
+    {
+        $job = UrlImportJob::query()->create([
+            'url' => 'https://example.test/invalid-titles',
+            'normalized_url' => 'https://example.test/invalid-titles',
+            'source_domain' => 'example.test',
+            'page_title' => 'Invalid Titles',
+            'status' => 'completed',
+            'current_step' => 'preview',
+            'progress_percent' => 100,
+            'result_json' => json_encode([
+                'page' => ['title' => 'Invalid Titles', 'text' => '可用正文'],
+                'analysis' => [
+                    'library_name' => 'Invalid Titles',
+                    'knowledge_markdown' => '# Invalid Titles',
+                    'keywords' => ['有效关键词'],
+                    'titles' => [str_repeat('ﬃ', 500)],
+                ],
+                'import' => ['status' => 'preview', 'summary' => null],
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'created_by' => 'policy-test',
+        ]);
+
+        try {
+            app(UrlImportProcessingService::class)->commit($job);
+            $this->fail('Expected an import without storable titles to be rejected.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame(__('admin.url_import.error.ai_titles_missing'), $exception->getMessage());
+        }
+
+        $this->assertDatabaseCount('knowledge_bases', 0);
+        $this->assertDatabaseCount('keyword_libraries', 0);
+        $this->assertDatabaseCount('title_libraries', 0);
+    }
+
     public function test_url_import_analysis_prefers_active_ai_model_and_backend_prompts(): void
     {
         Http::fake([
@@ -1549,6 +1645,7 @@ class AdminMaterialsPagesTest extends TestCase
 
     public function test_admin_can_upload_image_and_knowledge_file_from_detail_flow(): void
     {
+        Storage::fake('local');
         Storage::fake('public');
 
         $admin = Admin::query()->create([

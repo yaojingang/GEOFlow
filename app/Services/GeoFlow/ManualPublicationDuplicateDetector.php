@@ -63,6 +63,7 @@ class ManualPublicationDuplicateDetector
             ->get($columns);
 
         $normalizedContent = $this->normalizeContent($attributes['content']);
+
         $similarMatches = $similarityCandidates->filter(function (ManualPublication $candidate) use ($normalizedContent): bool {
             similar_text($normalizedContent, $this->normalizeContent((string) $candidate->content), $similarity);
 
