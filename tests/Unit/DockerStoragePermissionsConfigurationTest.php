@@ -119,6 +119,20 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         );
     }
 
+    public function test_production_image_retries_composer_downloads_with_a_shared_bounded_cache(): void
+    {
+        $dockerfile = file_get_contents(dirname(__DIR__, 2).'/docker/Dockerfile.prod');
+
+        $this->assertIsString($dockerfile);
+        $this->assertStringContainsString('COMPOSER_MAX_PARALLEL_HTTP=4', $dockerfile);
+        $this->assertStringContainsString(
+            '--mount=type=cache,id=geoflow-composer-dist,target=/tmp/composer-cache,sharing=locked',
+            $dockerfile,
+        );
+        $this->assertStringContainsString('for attempt in 1 2 3; do', $dockerfile);
+        $this->assertStringContainsString('sleep "$((attempt * 15))"', $dockerfile);
+    }
+
     public function test_production_runtime_services_use_the_shared_storage_owner(): void
     {
         $root = dirname(__DIR__, 2);
