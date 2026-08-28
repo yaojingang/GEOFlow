@@ -2,16 +2,13 @@
 
 namespace App\Console\Commands;
 
-use App\Models\SiteSetting;
 use App\Models\SystemState;
-use App\Services\GeoFlow\AnonymousUsageTelemetry;
-use App\Support\Site\SiteSettingsBag;
+use App\Services\AiWorkspace\SystemKnowledgeBaseManager;
+use App\Services\AiWorkspace\SystemKnowledgeMediaManager;
 use Database\Seeders\AdminUserSeeder;
-use Database\Seeders\FrontendReferenceSeeder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use RuntimeException;
 use Throwable;
 
 class GeoFlowInstallCommand extends Command
@@ -19,10 +16,9 @@ class GeoFlowInstallCommand extends Command
     public const INSTALLATION_STATE_KEY = 'geoflow.installation';
 
     protected $signature = 'geoflow:install
-        {--force : Run first-install seeders even if an installation marker or existing data is present}
-        {--without-demo : Skip the frontend reference pack on a fresh install}';
+        {--force : Run first-install seeders even if an installation marker or existing data is present}';
 
-    protected $description = 'Initialize GEOFlow once, including the default frontend reference pack on a fresh database';
+    protected $description = 'Run GEOFlow first-install seeders only for an empty database';
 
     /**
      * Tables that indicate the database already contains user or business data.
@@ -50,11 +46,18 @@ class GeoFlowInstallCommand extends Command
      *
      * @var list<string>
      */
-    private array $migrationDefaultSiteSettings = [
-        'active_theme' => 'toutiao-news-20260426',
+    private array $migrationDefaultSiteSettingKeys = [
+        'active_theme',
     ];
 
-    public function handle(AnonymousUsageTelemetry $telemetry): int
+    public function __construct(
+        private readonly SystemKnowledgeBaseManager $systemKnowledgeBases,
+        private readonly SystemKnowledgeMediaManager $systemKnowledgeMedia,
+    ) {
+        parent::__construct();
+    }
+
+    public function handle(): int
     {
         if (! Schema::hasTable('system_states')) {
             $this->error('The system_states table is missing. Run php artisan migrate --force before geoflow:install.');
@@ -66,7 +69,6 @@ class GeoFlowInstallCommand extends Command
         $existingState = SystemState::query()->where('key', self::INSTALLATION_STATE_KEY)->first();
 
         if ($existingState instanceof SystemState && ! $force) {
-            $this->reportTelemetry($telemetry, true);
             $this->components->info('GEOFlow has already been initialized; first-install seeders were skipped.');
 
             return self::SUCCESS;
@@ -77,7 +79,6 @@ class GeoFlowInstallCommand extends Command
             $this->markInstalled('backfilled_existing_database', [
                 'detected_tables' => $tablesWithData,
             ]);
-            $this->reportTelemetry($telemetry, false);
 
             $this->components->warn('Existing application data was detected. GEOFlow recorded the installation marker and skipped first-install seeders.');
 
@@ -88,49 +89,24 @@ class GeoFlowInstallCommand extends Command
             ? 'Running GEOFlow first-install seeders with --force.'
             : 'Running GEOFlow first-install seeders for an empty database.');
 
-        $isPristineDatabase = ! $existingState instanceof SystemState && $tablesWithData === [];
-        $seedFrontendReference = ! (bool) $this->option('without-demo')
-            && ($isPristineDatabase || ($force && (bool) config('geoflow.seed_frontend_demo', false)));
-
         try {
-            DB::transaction(function () use ($force, $isPristineDatabase, $seedFrontendReference): void {
-                if ($this->call('db:seed', [
-                    '--class' => AdminUserSeeder::class,
-                    '--force' => true,
-                ]) !== self::SUCCESS) {
-                    throw new RuntimeException('Administrator seeding returned a failure status.');
-                }
+            $this->call('db:seed', [
+                '--class' => AdminUserSeeder::class,
+                '--force' => true,
+            ]);
 
-                if ($seedFrontendReference && $this->call('db:seed', [
-                    '--class' => FrontendReferenceSeeder::class,
-                    '--force' => true,
-                ]) !== self::SUCCESS) {
-                    throw new RuntimeException('Frontend reference seeding returned a failure status.');
-                }
+            $this->systemKnowledgeBases->sync();
+            $this->systemKnowledgeMedia->syncBundled();
 
-                if ($isPristineDatabase) {
-                    $this->seedInitialSiteSettings($seedFrontendReference);
-                }
-
-                $this->markInstalled($force ? 'forced_install' : 'fresh_install', [
-                    'seed_frontend_reference' => $seedFrontendReference,
-                    'reference_content_version' => $seedFrontendReference
-                        ? FrontendReferenceSeeder::PACK_VERSION
-                        : null,
-                    'default_theme' => $isPristineDatabase && $seedFrontendReference
-                        ? 'geoflow-template-21-enterprise-signature'
-                        : null,
-                ]);
-            });
+            $this->markInstalled($force ? 'forced_install' : 'fresh_install');
         } catch (Throwable $e) {
             $this->error('GEOFlow first-install seeders failed: '.$e->getMessage());
 
             return self::FAILURE;
         }
 
-        $this->reportTelemetry($telemetry, $existingState instanceof SystemState);
-
         $this->components->info('GEOFlow installation marker has been written.');
+        $this->components->info('AI Workspace system knowledge and media have been synchronized.');
 
         return self::SUCCESS;
     }
@@ -159,33 +135,12 @@ class GeoFlowInstallCommand extends Command
     {
         if ($table === 'site_settings') {
             return DB::table($table)
-                ->get(['setting_key', 'setting_value'])
-                ->contains(function (object $setting): bool {
-                    $key = (string) $setting->setting_key;
-
-                    return ! array_key_exists($key, $this->migrationDefaultSiteSettings)
-                        || (string) $setting->setting_value !== $this->migrationDefaultSiteSettings[$key];
-                });
+                ->whereNotIn('setting_key', $this->migrationDefaultSiteSettingKeys)
+                ->limit(1)
+                ->exists();
         }
 
         return DB::table($table)->limit(1)->exists();
-    }
-
-    private function seedInitialSiteSettings(bool $seedFrontendReference): void
-    {
-        SiteSetting::query()->firstOrCreate(
-            ['setting_key' => 'analytics_code'],
-            ['setting_value' => (string) config('geoflow.default_analytics_code', '')],
-        );
-
-        if ($seedFrontendReference) {
-            SiteSetting::query()->updateOrCreate(
-                ['setting_key' => 'active_theme'],
-                ['setting_value' => 'geoflow-template-21-enterprise-signature'],
-            );
-        }
-
-        SiteSettingsBag::forget();
     }
 
     /**
@@ -203,20 +158,5 @@ class GeoFlowInstallCommand extends Command
                 ],
             ],
         );
-    }
-
-    private function reportTelemetry(AnonymousUsageTelemetry $telemetry, bool $updated): void
-    {
-        try {
-            if ($updated) {
-                $telemetry->reportUpdated();
-
-                return;
-            }
-
-            $telemetry->reportInstalled();
-        } catch (Throwable) {
-            // Anonymous telemetry cannot change the outcome of installation.
-        }
     }
 }

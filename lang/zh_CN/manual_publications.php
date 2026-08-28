@@ -19,19 +19,23 @@ return [
     'risk_clean_help' => '当前内容未命中启用中的敏感词规则。',
     'button' => [
         'create' => '创建工单', 'edit' => '编辑', 'save' => '保存修改', 'view' => '查看', 'back' => '返回',
-        'settings' => '身份与账号', 'export' => '导出 CSV', 'copy' => '复制内容', 'copied' => '已复制',
+        'settings' => '身份与账号', 'export' => '导出 CSV', 'copy' => '复制内容', 'copied' => '已复制', 'open_in_chrome' => '在 Chrome 中执行',
     ],
     'stats' => ['total' => '全部工单', 'ready' => '待执行', 'in_progress' => '执行中', 'completed' => '已完成'],
     'type' => ['post' => '发帖', 'comment' => '评论'],
     'status' => [
         'draft' => '草稿', 'ready' => '待执行', 'in_progress' => '执行中', 'completed' => '已完成',
-        'failed' => '失败', 'skipped' => '已跳过', 'cancelled' => '已取消',
+        'failed' => '失败', 'skipped' => '已跳过', 'cancelled' => '已取消', 'outcome_unknown' => '结果待核验',
     ],
     'action' => [
         'ready' => '设为待执行', 'in_progress' => '开始执行', 'completed' => '确认完成',
-        'failed' => '标记失败', 'skipped' => '跳过', 'cancelled' => '取消',
+        'failed' => '标记失败', 'skipped' => '跳过', 'cancelled' => '取消', 'outcome_unknown' => '标记待核验',
     ],
     'risk' => ['clean' => '内容正常', 'warning' => '存在提醒', 'blocked' => '高风险'],
+    'browser' => [
+        'connection' => 'Chrome 浏览器连接', 'active' => '连接正常，心跳持续上报',
+        'lost' => '连接已失联，恢复前请先核实平台结果', 'last_seen' => '最近心跳：:time',
+    ],
     'platform' => [
         'zhihu' => '知乎', 'xiaohongshu' => '小红书', 'weibo' => '微博', 'wechat' => '微信公众号',
         'douyin' => '抖音', 'bilibili' => 'Bilibili', 'reddit' => 'Reddit', 'x' => 'X', 'linkedin' => 'LinkedIn', 'custom' => '自定义平台',
@@ -48,7 +52,7 @@ return [
     'section' => [
         'content' => '发布内容', 'target' => '目标与上下文', 'assignment' => '身份与分配',
         'publish_content' => '最终发布内容', 'risk' => '风险与重复检查', 'complete' => '完成凭据',
-        'details' => '工单详情', 'result' => '执行结果', 'history' => '状态历史', 'actions' => '状态操作',
+        'details' => '工单详情', 'result' => '执行结果', 'actions' => '状态操作',
     ],
     'field' => [
         'type' => '工单类型', 'article' => '来源文章', 'content' => '最终内容', 'target_url' => '目标地址',
@@ -70,6 +74,8 @@ return [
         'article_not_approved' => '发帖工单必须关联已通过审核或自动审核的文章。',
         'assignee_inactive' => '所选执行人当前不可用。',
         'completed_immutable' => '已完成工单不能继续编辑。',
+        'claimed_immutable' => '已领取或已结束的工单不可编辑，请先释放浏览器工作单。',
+        'browser_claim_active' => '浏览器连接仍处于活动状态，失联超过十分钟后才能恢复。',
         'completion_url_required' => '完成工单时必须填写有效的 HTTP 或 HTTPS 发布地址。',
         'invalid_transition' => '当前状态不支持这项操作。',
         'persona_inactive' => '所选发布身份当前不可用。',

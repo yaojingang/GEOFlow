@@ -5,6 +5,7 @@
     $selectedTaskId = (int) ($filters['task_id'] ?? 0);
     $selectedStatus = (string) ($filters['status'] ?? '');
     $selectedReviewStatus = (string) ($filters['review_status'] ?? '');
+    $selectedAiQualityStatus = (string) ($filters['ai_quality_status'] ?? '');
     $selectedAuthorId = (int) ($filters['author_id'] ?? 0);
     $selectedDistributionChannelIds = collect($filters['distribution_channel_ids'] ?? [])
         ->map(fn ($id) => (int) $id)
@@ -32,42 +33,30 @@
         [
             'icon' => 'shield-check',
             'title' => __('admin.articles.workbench.review_title'),
-            'desc' => __('admin.articles.workbench.review_desc'),
             'count' => (int) ($stats['pending_review'] ?? 0),
             'href' => $reviewCenterUrl,
             'iconClass' => 'bg-amber-50 text-amber-600 ring-amber-100',
-            'countClass' => 'text-amber-700',
-            'linkClass' => 'text-amber-700 group-hover:text-amber-800',
         ],
         [
             'icon' => 'edit',
             'title' => __('admin.articles.workbench.optimize_title'),
-            'desc' => __('admin.articles.workbench.optimize_desc'),
             'count' => (int) ($stats['draft'] ?? 0),
             'href' => route('admin.articles.index', ['status' => 'draft']).$articleListAnchor,
             'iconClass' => 'bg-blue-50 text-blue-600 ring-blue-100',
-            'countClass' => 'text-blue-700',
-            'linkClass' => 'text-blue-700 group-hover:text-blue-800',
         ],
         [
             'icon' => 'send',
             'title' => __('admin.articles.workbench.distribution_title'),
-            'desc' => __('admin.articles.workbench.distribution_desc'),
             'count' => (int) ($stats['published'] ?? 0),
             'href' => route('admin.articles.index', ['status' => 'published']).$articleListAnchor,
             'iconClass' => 'bg-emerald-50 text-emerald-600 ring-emerald-100',
-            'countClass' => 'text-emerald-700',
-            'linkClass' => 'text-emerald-700 group-hover:text-emerald-800',
         ],
         [
             'icon' => 'chart-no-axes-combined',
             'title' => __('admin.articles.workbench.observation_title'),
-            'desc' => __('admin.articles.workbench.observation_desc'),
             'count' => (int) ($stats['observed'] ?? 0),
             'href' => route('admin.analytics'),
             'iconClass' => 'bg-purple-50 text-purple-600 ring-purple-100',
-            'countClass' => 'text-purple-700',
-            'linkClass' => 'text-purple-700 group-hover:text-purple-800',
         ],
     ];
     $workbenchPriority = collect($contentWorkbenchItems)
@@ -78,49 +67,49 @@
 
 @section('content')
     <div class="px-4 sm:px-0">
-        <div class="mb-8 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ $pageTitle }}</h1>
-                <p class="mt-1 text-sm text-gray-600">{{ $isTrashView ? __('admin.articles.trash.subtitle') : __('admin.articles.page_subtitle') }}</p>
+        <header class="mb-6 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0 max-w-3xl">
+                <h1 class="text-3xl font-bold leading-9 tracking-tight text-gray-900">{{ $pageTitle }}</h1>
+                <p class="mt-2 text-[15px] leading-6 text-gray-600">{{ $isTrashView ? __('admin.articles.trash.subtitle') : __('admin.articles.page_subtitle') }}</p>
+                @if(!$isTrashView)
+                    <nav class="-ml-2 mt-3 flex flex-wrap items-center gap-1" aria-label="{{ __('admin.articles.page_title') }}">
+                        <a href="{{ $categoryManageUrl }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                            <i data-lucide="folder" class="h-4 w-4"></i>
+                            {{ __('admin.button.category_manage') }}
+                        </a>
+                        <a href="{{ $reviewCenterUrl }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                            <i data-lucide="eye" class="h-4 w-4"></i>
+                            {{ __('admin.button.review_center') }}
+                        </a>
+                        <a href="{{ $trashUrl }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                            <i data-lucide="trash-2" class="h-4 w-4"></i>
+                            {{ __('admin.button.trash') }}
+                        </a>
+                    </nav>
+                @endif
             </div>
-            <div class="flex flex-wrap justify-start gap-2 xl:justify-end">
+            <div class="flex shrink-0 flex-wrap justify-start gap-2 xl:justify-end">
                 @if($isTrashView)
-                    <a href="{{ $articlesIndexUrl }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                        <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
+                    <a href="{{ $articlesIndexUrl }}" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-gray-400 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                        <i data-lucide="arrow-left" class="h-4 w-4"></i>
                         {{ __('admin.articles.trash.back') }}
                     </a>
-                    <button type="button" onclick="submitEmptyTrash()" class="inline-flex items-center px-4 py-2 border border-red-200 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50">
-                        <i data-lucide="trash-2" class="w-4 h-4 mr-2"></i>
+                    <button type="button" onclick="submitEmptyTrash()" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-red-300 [@media(hover:hover)]:hover:bg-red-50 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600">
+                        <i data-lucide="trash-2" class="h-4 w-4"></i>
                         {{ __('admin.articles.trash.empty') }}
                     </button>
                 @else
-                    <a href="{{ route('admin.articles.create') }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                        <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
+                    <a href="{{ route('admin.articles.create') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-blue-600 bg-blue-600 px-4 text-sm font-semibold text-white transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-blue-700 [@media(hover:hover)]:hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                        <i data-lucide="plus" class="h-4 w-4"></i>
                         {{ __('admin.button.create_article') }}
                     </a>
-                    <a href="{{ route('admin.manual-publications.index') }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                        <i data-lucide="send" class="w-4 h-4 mr-2"></i>
+                    <a href="{{ route('admin.manual-publications.index') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-gray-400 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                        <i data-lucide="send" class="h-4 w-4"></i>
                         {{ __('admin.manual_publications.nav') }}
                     </a>
-                    <a href="{{ $categoryManageUrl }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                        <i data-lucide="folder" class="w-4 h-4 mr-2"></i>
-                        {{ __('admin.button.category_manage') }}
-                    </a>
-                    <a href="{{ $reviewCenterUrl }}" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
-                        <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
-                        {{ __('admin.button.review_center') }}
-                    </a>
                 @endif
-                <a href="{{ $isTrashView ? $articlesIndexUrl : $trashUrl }}" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
-                    <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                    {{ $isTrashView ? __('admin.articles.page_title') : __('admin.button.trash') }}
-                </a>
-                <button type="button" onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
-                    <i data-lucide="check-square" class="w-4 h-4 mr-1"></i>
-                    {{ __('admin.button.bulk_actions') }}
-                </button>
             </div>
-        </div>
+        </header>
 
         @if($isTrashView)
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -137,19 +126,9 @@
             </div>
         </div>
         @else
-        <section class="mb-8">
-            <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                    <p class="text-xs font-semibold uppercase tracking-wide text-blue-600">{{ __('admin.articles.workbench.eyebrow') }}</p>
-                    <h2 class="mt-1 text-xl font-semibold text-gray-900">{{ __('admin.articles.workbench.title') }}</h2>
-                    <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">{{ __('admin.articles.workbench.desc') }}</p>
-                </div>
-                <a href="{{ route('admin.tasks.create') }}" class="inline-flex w-fit items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">
-                    <i data-lucide="workflow" class="mr-2 h-4 w-4"></i>
-                    {{ __('admin.articles.workbench.create_task') }}
-                </a>
-            </div>
-            <div class="mb-4 rounded-lg border border-blue-100 bg-white p-4 shadow-sm">
+        <section class="mb-8" aria-labelledby="content-workbench-heading">
+            <h2 id="content-workbench-heading" class="sr-only">{{ __('admin.articles.workbench.title') }}</h2>
+            <div class="rounded-lg border border-blue-100 bg-white p-4 shadow-sm">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div class="flex items-start gap-3">
                         <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-md ring-1 {{ $workbenchHasPriority ? $workbenchPriority['iconClass'] : 'bg-blue-50 text-blue-600 ring-blue-100' }}">
@@ -174,28 +153,6 @@
                         <i data-lucide="arrow-right" class="ml-1.5 h-4 w-4"></i>
                     </a>
                 </div>
-            </div>
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                @foreach ($contentWorkbenchItems as $item)
-                    <a href="{{ $item['href'] }}" class="group flex min-h-44 flex-col justify-between rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
-                        <div>
-                            <div class="flex items-start justify-between gap-4">
-                                <div class="flex h-11 w-11 items-center justify-center rounded-md ring-1 {{ $item['iconClass'] }}">
-                                    <i data-lucide="{{ $item['icon'] }}" class="h-5 w-5"></i>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-2xl font-semibold {{ $item['countClass'] }}">{{ $item['count'] }}</div>
-                                </div>
-                            </div>
-                            <h3 class="mt-5 text-base font-semibold text-gray-900">{{ $item['title'] }}</h3>
-                            <p class="mt-2 text-sm leading-6 text-gray-500">{{ $item['desc'] }}</p>
-                        </div>
-                        <div class="mt-5 inline-flex items-center text-sm font-semibold {{ $item['linkClass'] }}">
-                            {{ __('admin.articles.workbench.open') }}
-                            <i data-lucide="arrow-right" class="ml-1.5 h-4 w-4 transition group-hover:translate-x-0.5"></i>
-                        </div>
-                    </a>
-                @endforeach
             </div>
         </section>
 
@@ -279,7 +236,7 @@
                     @if($isTrashView)
                         <input type="hidden" name="trashed" value="1">
                     @endif
-                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.task') }}</label>
                             <select name="task_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
@@ -307,6 +264,19 @@
                                 <option value="approved" @selected($selectedReviewStatus === 'approved')>{{ __('admin.articles.review.approved') }}</option>
                                 <option value="rejected" @selected($selectedReviewStatus === 'rejected')>{{ __('admin.articles.review.rejected') }}</option>
                                 <option value="auto_approved" @selected($selectedReviewStatus === 'auto_approved')>{{ __('admin.articles.review.auto_approved') }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.ai_quality_status') }}</label>
+                            <select name="ai_quality_status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="">{{ __('admin.articles.filters.all_ai_quality') }}</option>
+                                <option value="passed" @selected($selectedAiQualityStatus === 'passed')>{{ __('admin.articles.ai_quality.passed') }}</option>
+                                <option value="needs_review" @selected($selectedAiQualityStatus === 'needs_review')>{{ __('admin.articles.ai_quality.needs_review') }}</option>
+                                <option value="blocked" @selected($selectedAiQualityStatus === 'blocked')>{{ __('admin.articles.ai_quality.blocked') }}</option>
+                                <option value="pending" @selected($selectedAiQualityStatus === 'pending')>{{ __('admin.articles.ai_quality.pending') }}</option>
+                                <option value="failed" @selected($selectedAiQualityStatus === 'failed')>{{ __('admin.articles.ai_quality.failed') }}</option>
+                                <option value="stale" @selected($selectedAiQualityStatus === 'stale')>{{ __('admin.articles.ai_quality.stale') }}</option>
+                                <option value="disabled" @selected($selectedAiQualityStatus === 'disabled')>{{ __('admin.articles.ai_quality.disabled_short') }}</option>
                             </select>
                         </div>
                         @endif
@@ -412,7 +382,7 @@
                             <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
                             {{ $isTrashView ? __('admin.articles.page_title') : __('admin.button.trash') }}
                         </a>
-                        <button type="button" onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
+                        <button type="button" onclick="toggleBatchActions()" data-article-batch-control class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
                             <i data-lucide="check-square" class="w-4 h-4 mr-1"></i>
                             {{ __('admin.button.bulk_actions') }}
                         </button>
@@ -439,10 +409,10 @@
                 </div>
             @else
                 <div id="batch-actions" class="hidden px-6 py-3 bg-gray-50 border-b border-gray-200">
-                    <form method="POST" action="{{ \App\Support\AdminWeb::routePath('admin.articles.batch.update-status') }}" id="batch-form">
+                    <form method="POST" action="{{ \App\Support\AdminWeb::routePath('admin.articles.batch.update-status') }}" id="batch-form" data-csrf-token="{{ csrf_token() }}">
                         @csrf
                         <div id="batch-selected-ids"></div>
-                        <div class="flex items-center space-x-4">
+                        <div class="flex flex-wrap items-center gap-3">
                             <span class="text-sm text-gray-600">
                                 @if(__('admin.articles.bulk.selected_prefix') !== '')
                                     <span>{{ __('admin.articles.bulk.selected_prefix') }}</span>
@@ -450,7 +420,7 @@
                                 <span id="selected-count">0</span>
                                 <span>{{ __('admin.articles.bulk.selected_suffix') }}</span>
                             </span>
-                            <select name="action" id="batch-action" class="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                            <select name="action" id="batch-action" data-article-batch-control class="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm disabled:cursor-wait disabled:opacity-60">
                                 <option value="">{{ __('admin.articles.bulk.select_action') }}</option>
                                 @if($isTrashView)
                                     <option value="batch_restore">{{ __('admin.articles.trash.action_restore') }}</option>
@@ -458,26 +428,27 @@
                                 @else
                                     <option value="batch_update_status">{{ __('admin.articles.bulk.status_to') }}</option>
                                     <option value="batch_update_review">{{ __('admin.articles.bulk.review_to') }}</option>
+                                    <option value="export_markdown" data-article-batch-export-option disabled>{{ __('admin.articles.export.action') }}</option>
                                     <option value="delete_articles">{{ __('admin.articles.bulk.delete') }}</option>
                                 @endif
                             </select>
                             @if(!$isTrashView)
-                            <select name="new_status" id="status-select" class="hidden border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                            <select name="new_status" id="status-select" data-article-batch-control class="hidden border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm disabled:cursor-wait disabled:opacity-60">
                                 <option value="draft">{{ __('admin.articles.status.draft') }}</option>
                                 <option value="published">{{ __('admin.articles.status.published') }}</option>
                                 <option value="private">{{ __('admin.articles.status.private') }}</option>
                             </select>
-                            <select name="review_status" id="review-select" class="hidden border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                            <select name="review_status" id="review-select" data-article-batch-control class="hidden border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm disabled:cursor-wait disabled:opacity-60">
                                 <option value="pending">{{ __('admin.articles.review.pending') }}</option>
                                 <option value="approved">{{ __('admin.articles.review.approved') }}</option>
                                 <option value="rejected">{{ __('admin.articles.review.rejected') }}</option>
                                 <option value="auto_approved">{{ __('admin.articles.review.auto_approved') }}</option>
                             </select>
                             @endif
-                            <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
+                            <button type="submit" data-batch-execute data-article-batch-control class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
                                 {{ __('admin.button.execute') }}
                             </button>
-                            <button type="button" onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
+                            <button type="button" onclick="toggleBatchActions()" data-article-batch-control class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
                                 {{ __('admin.button.cancel') }}
                             </button>
                         </div>
@@ -485,20 +456,21 @@
                 </div>
 
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
+                    <table class="w-full min-w-[1080px] table-fixed divide-y divide-gray-200" data-sticky-actions data-article-list-table>
                         <thead class="bg-gray-50">
                         <tr>
-                            <th class="batch-checkbox hidden px-6 py-3 text-left">
-                                <input type="checkbox" id="select-all" class="rounded border-gray-300 text-blue-600 shadow-sm">
+                            <th class="batch-checkbox hidden w-12 px-3 py-3 text-left">
+                                <input type="checkbox" id="select-all" data-article-batch-control class="rounded border-gray-300 text-blue-600 shadow-sm disabled:cursor-wait disabled:opacity-60">
                             </th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.id') }}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.info') }}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.task_author') }}</th>
+                            <th class="w-16 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.id') }}</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.info') }}</th>
+                            <th class="w-40 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.task_author') }}</th>
                             @if(!$isTrashView)
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.workflow') }}</th>
+                            <th class="w-36 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.workflow') }}</th>
+                            <th class="w-36 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.ai_quality') }}</th>
                             @endif
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $isTrashView ? __('admin.articles.trash.column.deleted_at') : __('admin.articles.column.created_at') }}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.actions') }}</th>
+                            <th class="w-40 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $isTrashView ? __('admin.articles.trash.column.deleted_at') : __('admin.articles.column.created_at') }}</th>
+                            <th class="w-36 py-3 pl-3 pr-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.actions') }}</th>
                         </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -515,7 +487,30 @@
                                     'rejected' => 'bg-red-100 text-red-800 border border-red-200',
                                     default => 'bg-yellow-100 text-yellow-800 border border-yellow-200'
                                 };
+                                $publishStatusLabel = __('admin.articles.publish_prefix').': '.__('admin.articles.status.'.(string) $article->status);
+                                $reviewStatusLabel = __('admin.articles.review_prefix').': '.__('admin.articles.review.'.(string) $article->review_status);
                                 $distributionTotal = (int) ($article->distribution_total_count ?? 0);
+                                $aiQualityCheck = $article->latestAiQualityCheck;
+                                $aiQualityEnabled = (bool) $article->ai_quality_required_at_creation
+                                    || (bool) ($article->task->ai_quality_enabled ?? false);
+                                $aiQualityPresentation = [
+                                    'label' => __('admin.articles.ai_quality.disabled_short'),
+                                    'class' => 'bg-gray-100 text-gray-600 ring-gray-200',
+                                    'icon' => 'shield-off',
+                                ];
+                                if ($aiQualityEnabled && $aiQualityCheck === null) {
+                                    $aiQualityPresentation = ['label' => __('admin.articles.ai_quality.pending'), 'class' => 'bg-sky-50 text-sky-700 ring-sky-100', 'icon' => 'loader-circle'];
+                                } elseif ($aiQualityCheck !== null) {
+                                    $aiQualityPresentation = match (true) {
+                                        in_array((string) $aiQualityCheck->status, ['queued', 'running'], true) => ['label' => __('admin.articles.ai_quality.pending'), 'class' => 'bg-sky-50 text-sky-700 ring-sky-100', 'icon' => 'loader-circle'],
+                                        (string) $aiQualityCheck->status === 'stale' => ['label' => __('admin.articles.ai_quality.stale'), 'class' => 'bg-slate-100 text-slate-700 ring-slate-200', 'icon' => 'refresh-cw'],
+                                        (string) $aiQualityCheck->status === 'failed' || (string) $aiQualityCheck->decision === 'error' => ['label' => __('admin.articles.ai_quality.failed'), 'class' => 'bg-red-50 text-red-700 ring-red-100', 'icon' => 'triangle-alert'],
+                                        (string) $aiQualityCheck->decision === 'passed' => ['label' => __('admin.articles.ai_quality.passed'), 'class' => 'bg-emerald-50 text-emerald-700 ring-emerald-100', 'icon' => 'shield-check'],
+                                        (string) $aiQualityCheck->decision === 'needs_review' && (bool) $aiQualityCheck->is_overridden => ['label' => __('admin.articles.ai_quality.overridden'), 'class' => 'bg-blue-50 text-blue-700 ring-blue-100', 'icon' => 'user-check'],
+                                        (string) $aiQualityCheck->decision === 'needs_review' => ['label' => __('admin.articles.ai_quality.needs_review'), 'class' => 'bg-amber-50 text-amber-700 ring-amber-100', 'icon' => 'user-round-check'],
+                                        default => ['label' => __('admin.articles.ai_quality.blocked'), 'class' => 'bg-red-50 text-red-700 ring-red-100', 'icon' => 'shield-x'],
+                                    };
+                                }
                                 $distributionSynced = (int) ($article->distribution_synced_count ?? 0);
                                 $distributionFailed = (int) ($article->distribution_failed_count ?? 0);
                                 $distributionPending = max(0, $distributionTotal - $distributionSynced - $distributionFailed);
@@ -603,11 +598,11 @@
                                 }
                             @endphp
                             <tr class="hover:bg-gray-50">
-                                <td class="batch-checkbox hidden px-6 py-4">
+                                <td class="batch-checkbox hidden px-3 py-4">
                                     <input type="checkbox" value="{{ (int) $article->id }}" class="article-checkbox rounded border-gray-300 text-blue-600 shadow-sm">
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">#{{ (int) $article->id }}</td>
-                                <td class="px-6 py-4">
+                                <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">#{{ (int) $article->id }}</td>
+                                <td class="px-4 py-4">
                                     <div class="text-sm font-medium text-gray-900 truncate">
                                         @if($isTrashView)
                                             <span>{{ $article->title }}</span>
@@ -641,7 +636,7 @@
                                         </div>
                                     @endif
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-500">
+                                <td class="px-4 py-4 text-sm text-gray-500">
                                     <div class="space-y-1.5">
                                         @if((string) ($article->task->name ?? '') !== '')
                                             <div class="max-w-[220px] truncate font-medium text-blue-600" title="{{ $article->task->name }}">{{ $article->task->name }}</div>
@@ -668,18 +663,27 @@
                                     </div>
                                 </td>
                                 @if(!$isTrashView)
-                                <td class="px-6 py-4 whitespace-nowrap">
+                                <td class="px-3 py-4 align-top">
                                     <div class="flex flex-col gap-1">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ $statusClass }}">
-                                            {{ __('admin.articles.publish_prefix') }}: {{ __('admin.articles.status.'.(string) $article->status) }}
+                                        <span class="inline-flex max-w-full self-start rounded px-2 py-0.5 text-xs font-medium {{ $statusClass }}" title="{{ $publishStatusLabel }}">
+                                            <span class="min-w-0 whitespace-normal break-words leading-4 [overflow-wrap:anywhere]">{{ $publishStatusLabel }}</span>
                                         </span>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ $reviewClass }}">
-                                            {{ __('admin.articles.review_prefix') }}: {{ __('admin.articles.review.'.(string) $article->review_status) }}
+                                        <span class="inline-flex max-w-full self-start rounded px-2 py-0.5 text-xs font-medium {{ $reviewClass }}" title="{{ $reviewStatusLabel }}">
+                                            <span class="min-w-0 whitespace-normal break-words leading-4 [overflow-wrap:anywhere]">{{ $reviewStatusLabel }}</span>
                                         </span>
                                     </div>
                                 </td>
+                                <td class="px-4 py-4 whitespace-nowrap">
+                                    <a href="{{ route('admin.articles.edit', ['articleId' => (int) $article->id]).'#ai-quality-result' }}" class="inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $aiQualityPresentation['class'] }}">
+                                        <i data-lucide="{{ $aiQualityPresentation['icon'] }}" class="mr-1.5 h-3.5 w-3.5 shrink-0"></i>
+                                        <span class="truncate">{{ $aiQualityPresentation['label'] }}</span>
+                                        @if($aiQualityCheck !== null && $aiQualityCheck->score !== null)
+                                            <span class="ml-1 shrink-0 font-mono">{{ (int) $aiQualityCheck->score }}</span>
+                                        @endif
+                                    </a>
+                                </td>
                                 @endif
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <td class="px-3 py-4 whitespace-nowrap text-sm leading-5 text-gray-500">
                                     @if($isTrashView)
                                         <div>{{ optional($article->deleted_at)->format('Y-m-d H:i') }}</div>
                                         <div class="text-xs text-gray-400">{{ __('admin.articles.trash.created_prefix') }} {{ optional($article->created_at)->format('m-d H:i') }}</div>
@@ -690,9 +694,9 @@
                                         @endif
                                     @endif
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <td class="py-4 pl-3 pr-4 whitespace-nowrap text-sm font-medium">
                                     @if($isTrashView)
-                                        <div class="flex items-center space-x-2">
+                                        <div class="flex items-center justify-end gap-2">
                                             <form method="POST" action="{{ route('admin.articles.restore', ['articleId' => (int) $article->id]) }}" class="inline" onsubmit="return confirm(@json(__('admin.articles.trash.confirm_restore')))">
                                                 @csrf
                                                 <button type="submit" class="text-green-600 hover:text-green-800" title="{{ __('admin.articles.trash.action_restore') }}">
@@ -707,7 +711,7 @@
                                             </form>
                                         </div>
                                     @else
-                                        <div class="flex items-center space-x-2">
+                                        <div class="flex items-center justify-end gap-2">
                                             @if($primaryPublishedLink !== null)
                                                 <a href="{{ $primaryPublishedLink['url'] }}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800" title="{{ $primaryPublishedLink['title'] }}">
                                                     <i data-lucide="external-link" class="w-4 h-4"></i>
@@ -778,6 +782,97 @@
             @endif
         </div>
     </div>
+    @if(!$isTrashView)
+        <dialog
+            data-article-batch-export
+            data-prepare-url="{{ \App\Support\AdminWeb::routePath('admin.articles.batch.export-markdown.prepare') }}"
+            data-max-articles="{{ $articleExportMaxArticles }}"
+            data-select-articles-message="{{ __('admin.articles.export.errors.select_articles') }}"
+            data-too-many-message="{{ __('admin.articles.export.errors.too_many', ['max' => $articleExportMaxArticles]) }}"
+            data-invalid-response-message="{{ __('admin.articles.export.errors.invalid_response') }}"
+            data-network-error-message="{{ __('admin.articles.export.errors.network') }}"
+            data-expired-message="{{ __('admin.articles.export.errors.expired') }}"
+            data-csrf-expired-message="{{ __('admin.articles.export.errors.csrf_expired') }}"
+            data-rate-limited-message="{{ __('admin.articles.export.errors.rate_limited') }}"
+            data-request-too-large-message="{{ __('admin.articles.export.errors.request_too_large') }}"
+            aria-modal="true"
+            aria-labelledby="article-export-dialog-label"
+            class="m-auto max-h-[calc(100dvh-2rem)] w-[min(30rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-0 text-left shadow-2xl backdrop:bg-slate-950/40"
+        >
+            <h2 id="article-export-dialog-label" class="sr-only">{{ __('admin.articles.export.dialog_label') }}</h2>
+            <div data-export-state="loading" role="status" aria-live="polite" aria-busy="true" class="px-6 py-7 sm:px-8 sm:py-8">
+                <div class="flex items-start gap-4">
+                    <div class="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 ring-1 ring-blue-100">
+                        <span class="absolute h-9 w-9 animate-ping rounded-full bg-blue-200/50 motion-reduce:animate-none"></span>
+                        <i data-lucide="archive" class="relative h-5 w-5 text-blue-600"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">{{ __('admin.articles.export.loading_eyebrow') }}</p>
+                        <h2 data-export-loading-focus tabindex="-1" class="mt-1 text-lg font-semibold text-slate-950 outline-none">{{ __('admin.articles.export.loading_title') }}</h2>
+                        <p class="mt-2 text-sm leading-6 text-slate-600">{{ __('admin.articles.export.loading_desc') }}</p>
+                    </div>
+                </div>
+                <div class="mt-6 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+                    <div class="flex items-center justify-between gap-4">
+                        <p class="text-sm font-medium text-blue-950">
+                            {{ __('admin.articles.export.selected_prefix') }}
+                            <span data-export-selected-count>0</span>
+                            {{ __('admin.articles.export.selected_suffix') }}
+                        </p>
+                        <div class="flex items-center gap-1.5" aria-hidden="true">
+                            <span class="h-2 w-2 animate-pulse rounded-full bg-blue-600 motion-reduce:animate-none"></span>
+                            <span class="h-2 w-2 animate-pulse rounded-full bg-blue-500 [animation-delay:150ms] motion-reduce:animate-none"></span>
+                            <span class="h-2 w-2 animate-pulse rounded-full bg-blue-400 [animation-delay:300ms] motion-reduce:animate-none"></span>
+                        </div>
+                    </div>
+                    <p class="mt-1 text-xs leading-5 text-blue-700">{{ __('admin.articles.export.loading_help', ['max' => $articleExportMaxArticles]) }}</p>
+                </div>
+            </div>
+
+            <div data-export-state="success" hidden role="status" aria-live="polite" class="px-6 py-7 sm:px-8 sm:py-8">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 ring-1 ring-emerald-100">
+                        <i data-lucide="circle-check-big" class="h-6 w-6 text-emerald-600"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 data-export-success-focus tabindex="-1" class="text-lg font-semibold text-slate-950 outline-none">{{ __('admin.articles.export.success_title') }}</h2>
+                        <p class="mt-2 text-sm leading-6 text-slate-600">{{ __('admin.articles.export.success_desc') }}</p>
+                    </div>
+                </div>
+                <div class="mt-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <i data-lucide="file-archive" class="h-5 w-5 shrink-0 text-slate-500"></i>
+                    <span data-export-filename class="min-w-0 truncate text-sm font-medium text-slate-700"></span>
+                </div>
+                <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                    <button type="button" data-export-close class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                        {{ __('admin.articles.export.close') }}
+                    </button>
+                    <button type="button" data-export-retry class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 active:scale-[0.98]">
+                        <i data-lucide="download" class="mr-2 h-4 w-4"></i>
+                        {{ __('admin.articles.export.retry_download') }}
+                    </button>
+                </div>
+            </div>
+
+            <div data-export-state="error" hidden role="alert" aria-live="assertive" class="px-6 py-7 sm:px-8 sm:py-8">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-50 ring-1 ring-red-100">
+                        <i data-lucide="circle-alert" class="h-6 w-6 text-red-600"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 data-export-error-focus tabindex="-1" class="text-lg font-semibold text-slate-950 outline-none">{{ __('admin.articles.export.error_title') }}</h2>
+                        <p data-export-error-message class="mt-2 text-sm leading-6 text-red-700"></p>
+                        <p class="mt-2 text-xs leading-5 text-slate-500">{{ __('admin.articles.export.error_help') }}</p>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end">
+                    <button type="button" data-export-close class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 active:scale-[0.98]">
+                        {{ __('admin.articles.export.close') }}
+                    </button>
+                </div>
+            </div>
+        </dialog>
+    @endif
 @endsection
 
 @push('scripts')

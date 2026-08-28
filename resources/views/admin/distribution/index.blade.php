@@ -6,30 +6,36 @@
     @php($canDeleteChannels = auth('admin')->user() instanceof \App\Models\Admin && auth('admin')->user()->isSuperAdmin())
 
     <div class="space-y-8 px-4 sm:px-0">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
+        <header class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0 max-w-3xl">
                 <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.distribution.page_heading') }}</h1>
-                <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.page_subtitle') }}</p>
+                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.distribution.page_subtitle') }}</p>
+                <nav class="-ml-2 mt-3 flex flex-wrap items-center gap-1" aria-label="{{ __('admin.distribution.page_heading') }}">
+                    <a href="{{ route('admin.distribution.hosted-sites.index') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                        <i data-lucide="network" class="h-4 w-4"></i>
+                        托管渠道站点
+                    </a>
+                    <a href="{{ route('admin.distribution.jobs') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                        <i data-lucide="list-checks" class="h-4 w-4"></i>
+                        {{ __('admin.distribution.button.jobs') }}
+                    </a>
+                    <a href="{{ route('admin.distribution.sync-settings-all.preview') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                        <i data-lucide="scan-search" class="h-4 w-4"></i>
+                        {{ __('admin.distribution.button.sync_settings_all') }}
+                    </a>
+                </nav>
             </div>
-            <div class="flex flex-wrap items-center gap-3 lg:justify-end">
-                <button type="button" data-selected-sync-open class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
+            <div class="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+                <button type="button" data-selected-sync-open class="inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-gray-400 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                    <i data-lucide="list-checks" class="h-4 w-4"></i>
                     {{ __('admin.distribution.button.sync_settings_selected') }}
                 </button>
-                <a href="{{ route('admin.distribution.sync-settings-all.preview') }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i data-lucide="scan-search" class="mr-2 h-4 w-4"></i>
-                    {{ __('admin.distribution.button.sync_settings_all') }}
-                </a>
-                <a href="{{ route('admin.distribution.jobs') }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
-                    {{ __('admin.distribution.button.jobs') }}
-                </a>
-                <a href="{{ route('admin.distribution.create') }}" class="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                    <i data-lucide="plus" class="mr-2 h-4 w-4"></i>
+                <a href="{{ route('admin.distribution.create') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-blue-600 bg-blue-600 px-4 text-sm font-medium text-white transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-blue-700 [@media(hover:hover)]:hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                    <i data-lucide="plus" class="h-4 w-4"></i>
                     {{ __('admin.distribution.button.create') }}
                 </a>
             </div>
-        </div>
+        </header>
 
         <div data-selected-sync-modal class="fixed inset-0 z-50 hidden overflow-y-auto px-4 py-6 sm:px-6 lg:px-8" aria-labelledby="selected-sync-title" role="dialog" aria-modal="true">
             <div class="fixed inset-0 bg-gray-900/40" data-selected-sync-close></div>
@@ -219,7 +225,7 @@
                 </div>
             @else
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
+                    <table class="min-w-full divide-y divide-gray-200" data-sticky-actions>
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="px-6 py-3 text-left text-xs font-medium uppercase text-gray-500">{{ __('admin.distribution.field.name') }}</th>
@@ -249,13 +255,15 @@
                                     </td>
                                     <td class="px-6 py-4 text-sm">
                                         <div class="flex items-center gap-3">
-                                            <a href="{{ route('admin.distribution.show', ['channelId' => (int) $channel->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.button.view') }}</a>
+                                            <a href="{{ $channel->isHostedSite() ? route('admin.distribution.hosted-sites.show', $channel) : route('admin.distribution.show', ['channelId' => (int) $channel->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.button.view') }}</a>
                                             @if ($channel->status === 'deleting')
                                                 @if ($canDeleteChannels)
                                                     <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="font-medium text-amber-700 hover:text-amber-900">{{ __('admin.distribution.delete.button.continue') }}</a>
                                                 @endif
                                             @else
-                                                <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="text-gray-600 hover:text-gray-800">{{ __('admin.button.edit') }}</a>
+                                                @unless ($channel->isHostedSite())
+                                                    <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="text-gray-600 hover:text-gray-800">{{ __('admin.button.edit') }}</a>
+                                                @endunless
                                                 @if ($canDeleteChannels)
                                                     <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="text-red-600 hover:text-red-800">{{ __('admin.distribution.delete.button.open') }}</a>
                                                 @endif

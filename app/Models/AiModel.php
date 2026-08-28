@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 
 class AiModel extends Model
 {
@@ -28,6 +29,13 @@ class AiModel extends Model
         'total_used',
         'status',
         'max_tokens',
+        'ai_workspace_structured_output_status',
+        'ai_workspace_structured_output_verified_at',
+        'ai_workspace_readiness_status',
+        'ai_workspace_readiness_profile',
+        'ai_workspace_readiness_checked_at',
+        'ai_workspace_readiness_expires_at',
+        'ai_workspace_readiness_failure_code',
     ];
 
     protected function casts(): array
@@ -39,7 +47,28 @@ class AiModel extends Model
             'usage_date' => 'date',
             'total_used' => 'integer',
             'max_tokens' => 'integer',
+            'ai_workspace_structured_output_verified_at' => 'datetime',
+            'ai_workspace_readiness_profile' => 'array',
+            'ai_workspace_readiness_checked_at' => 'immutable_datetime',
+            'ai_workspace_readiness_expires_at' => 'immutable_datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (AiModel $model): void {
+            if ($model->isDirty(['version', 'model_id', 'model_type', 'api_url', 'api_key', 'status', 'max_tokens'])) {
+                $model->ai_workspace_structured_output_status = null;
+                $model->ai_workspace_structured_output_verified_at = null;
+                if (Schema::hasColumn('ai_models', 'ai_workspace_readiness_status')) {
+                    $model->ai_workspace_readiness_status = 'stale';
+                    $model->ai_workspace_readiness_profile = null;
+                    $model->ai_workspace_readiness_checked_at = null;
+                    $model->ai_workspace_readiness_expires_at = null;
+                    $model->ai_workspace_readiness_failure_code = null;
+                }
+            }
+        });
     }
 
     public function titleLibraries(): HasMany
@@ -50,6 +79,11 @@ class AiModel extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'ai_model_id');
+    }
+
+    public function qualityTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'ai_quality_model_id');
     }
 
     public function visibilityRuns(): HasMany

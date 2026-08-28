@@ -34,6 +34,8 @@ class Article extends Model
         'is_hot',
         'is_featured',
         'published_at',
+        'ai_quality_required_at_creation',
+        'ai_quality_policy_snapshot',
     ];
 
     protected function casts(): array
@@ -48,6 +50,8 @@ class Article extends Model
             'is_hot' => 'boolean',
             'is_featured' => 'boolean',
             'published_at' => 'datetime',
+            'ai_quality_required_at_creation' => 'boolean',
+            'ai_quality_policy_snapshot' => 'array',
         ];
     }
 
@@ -91,6 +95,16 @@ class Article extends Model
         return $this->hasOne(ArticleRiskScan::class, 'article_id')->latestOfMany('scanned_at');
     }
 
+    public function aiQualityChecks(): HasMany
+    {
+        return $this->hasMany(ArticleAiQualityCheck::class);
+    }
+
+    public function latestAiQualityCheck(): HasOne
+    {
+        return $this->hasOne(ArticleAiQualityCheck::class)->latestOfMany();
+    }
+
     public function taskRuns(): HasMany
     {
         return $this->hasMany(TaskRun::class, 'article_id');
@@ -99,6 +113,16 @@ class Article extends Model
     public function distributions(): HasMany
     {
         return $this->hasMany(ArticleDistribution::class, 'article_id');
+    }
+
+    public function hostedSiteAssignment(): HasOne
+    {
+        return $this->hasOne(HostedSiteArticleAssignment::class);
+    }
+
+    public function hostedSiteAllocationRequest(): HasOne
+    {
+        return $this->hasOne(HostedSiteAllocationRequest::class);
     }
 
     public function syncedRemoteDistributions(): HasMany

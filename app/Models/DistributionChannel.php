@@ -13,6 +13,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DistributionChannel extends Model
 {
+    public const TYPE_GEOFLOW_AGENT = 'geoflow_agent';
+
+    public const TYPE_HOSTED_SITE = 'hosted_site';
+
     public const STATUS_ACTIVE = 'active';
 
     public const STATUS_PAUSED = 'paused';
@@ -128,6 +132,11 @@ class DistributionChannel extends Model
         $stored = is_array($this->channel_config) ? $this->channel_config : [];
 
         return self::normalizeFrontendExperienceMode($stored['frontend_experience_mode'] ?? null);
+    }
+
+    public function hostedSiteProfile(): HasOne
+    {
+        return $this->hasOne(HostedSiteProfile::class);
     }
 
     /**
@@ -419,7 +428,7 @@ class DistributionChannel extends Model
     {
         $type = (string) ($this->channel_type ?? 'geoflow_agent');
 
-        return in_array($type, ['geoflow_agent', 'wordpress_rest', 'generic_http_api'], true) ? $type : 'geoflow_agent';
+        return in_array($type, ['geoflow_agent', 'wordpress_rest', 'generic_http_api', self::TYPE_HOSTED_SITE], true) ? $type : 'geoflow_agent';
     }
 
     public function isGeoFlowAgent(): bool
@@ -435,6 +444,11 @@ class DistributionChannel extends Model
     public function isGenericHttpApi(): bool
     {
         return $this->channelType() === 'generic_http_api';
+    }
+
+    public function isHostedSite(): bool
+    {
+        return $this->channelType() === self::TYPE_HOSTED_SITE;
     }
 
     /**

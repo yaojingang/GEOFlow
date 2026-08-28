@@ -51,7 +51,7 @@ services:
       - ./.env.prod
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "${AUTO_FIX_STORAGE_PERMISSIONS:-true}"
-    command: ["true"]
+    command: ["php", "artisan", "about"]
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -69,7 +69,6 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    user: "www-data:www-data"
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -88,6 +87,12 @@ services:
     container_name: geoflow-web-prod
     ports:
       - "${WEB_PORT:-18080}:80"
+    environment:
+      GEOFLOW_NGINX_PRIMARY_HOST: "${GEOFLOW_NGINX_PRIMARY_HOST:-localhost}"
+      GEOFLOW_NGINX_PRIMARY_ALIASES: "${GEOFLOW_NGINX_PRIMARY_ALIASES:-}"
+      GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN: "${GEOFLOW_NGINX_HOSTED_ROOT_DOMAIN:-invalid}"
+      GEOFLOW_NGINX_PUBLIC_SCHEME: "${GEOFLOW_NGINX_PUBLIC_SCHEME:-http}"
+      GEOFLOW_NGINX_PUBLIC_PORT: "${GEOFLOW_NGINX_PUBLIC_PORT:-80}"
     volumes:
       - ./storage:/var/www/html/storage:ro
     depends_on:
@@ -96,7 +101,7 @@ services:
       reverb:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --header='Host: $${GEOFLOW_NGINX_PRIMARY_HOST}' -O /dev/null http://127.0.0.1/up || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -108,10 +113,9 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    user: "www-data:www-data"
-    command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=660", "--memory=128", "--max-jobs=100", "--max-time=3600"]
+    command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates,geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=930", "--memory=128", "--max-jobs=100", "--max-time=3600"]
     mem_limit: ${QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
-    stop_grace_period: 690s
+    stop_grace_period: 960s
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -128,30 +132,9 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    user: "www-data:www-data"
     command: ["php", "-d", "memory_limit=160M", "artisan", "queue:work", "redis", "--queue=knowledge", "--sleep=1", "--tries=1", "--timeout=210", "--memory=128", "--max-jobs=20", "--max-time=1800"]
     mem_limit: ${KNOWLEDGE_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
     stop_grace_period: 240s
-    volumes:
-      - ./.env.prod:/var/www/html/.env
-      - ./storage:/var/www/html/storage
-    depends_on:
-      init:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
-  system-update-queue:
-    image: ${GEOFLOW_APP_IMAGE:?GEOFLOW_APP_IMAGE is required for prebuilt deployment}
-    container_name: geoflow-system-update-queue-prod
-    working_dir: /var/www/html
-    environment:
-      AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    user: "www-data:www-data"
-    command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates", "--sleep=1", "--tries=1", "--timeout=930", "--memory=256", "--max-jobs=10", "--max-time=3600"]
-    mem_limit: ${SYSTEM_UPDATE_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
-    stop_grace_period: 960s
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -168,7 +151,6 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    user: "www-data:www-data"
     command: ["php", "artisan", "schedule:work"]
     volumes:
       - ./.env.prod:/var/www/html/.env
@@ -184,11 +166,10 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    user: "www-data:www-data"
-    # 端口由 .env.prod 的 REVERB_SERVER_PORT 决定（见 config/reverb.php）；nginx /reverb 反代端口须与之对齐
+    # 阶段一的 Nginx /reverb 内部反代固定使用 18080，应用启动时会校验该约束。
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0"]
-    ports:
-      - "${REVERB_EXPOSE_PORT:-18081}:${REVERB_SERVER_PORT:-18080}"
+    expose:
+      - "${REVERB_SERVER_PORT:-18080}"
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage

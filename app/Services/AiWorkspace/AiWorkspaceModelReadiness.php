@@ -1,0 +1,166 @@
+<?php
+
+namespace App\Services\AiWorkspace;
+
+use App\Models\AiModel;
+use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Illuminate\Support\Facades\Schema;
+
+final class AiWorkspaceModelReadiness
+{
+    public const PROFILE_VERSION = 2;
+
+    /** @return array{ready:bool,reason:string|null,model_id:int|null} */
+    public function status(): array
+    {
+        $conversationConnection = config('ai.conversations.connection');
+        if (is_string($conversationConnection)
+            && $conversationConnection !== ''
+            && $conversationConnection !== (string) config('database.default')) {
+            return ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_database_mismatch'), 'model_id' => null];
+        }
+
+        if (! Schema::hasTable('ai_models')) {
+            return ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_models_table_missing'), 'model_id' => null];
+        }
+
+        $query = AiModel::query()
+            ->where('status', 'active')
+            ->where(function ($builder): void {
+                $builder->whereNull('model_type')->orWhereNotIn('model_type', ['embedding', 'image']);
+            });
+
+        $models = $query->orderBy('failover_priority')->orderBy('id')->get();
+        $model = $models->first(fn (AiModel $model): bool => $this->canAttempt($model));
+
+        return $model instanceof AiModel
+            ? ['ready' => true, 'reason' => null, 'model_id' => (int) $model->id]
+            : ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_no_verified_model'), 'model_id' => null];
+    }
+
+    public function canAttempt(AiModel $model): bool
+    {
+        if (! (bool) config('ai-workspace.require_verified_model', true)) {
+            return true;
+        }
+
+        if ($this->hasPlainTextReadiness($model)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function prefersPlainTextFallback(AiModel $model): bool
+    {
+        return data_get($model->ai_workspace_readiness_profile, 'streaming.status') === 'degraded'
+            && data_get($model->ai_workspace_readiness_profile, 'streaming.observed') === true
+            && data_get($model->ai_workspace_readiness_profile, 'streaming.fallback') === 'non_streaming';
+    }
+
+    /** @param array<string, int|null> $performance */
+    public function recordRuntimeSuccess(AiModel $model, bool $streamingObserved, array $performance = []): void
+    {
+        if (! Schema::hasColumn('ai_models', 'ai_workspace_readiness_status')) {
+            return;
+        }
+
+        $currentModel = AiModel::query()->find($model->getKey());
+        if (! $currentModel instanceof AiModel
+            || ! hash_equals($this->configurationFingerprint($model), $this->configurationFingerprint($currentModel))) {
+            return;
+        }
+
+        $checkedAt = now();
+        $currentModel->forceFill([
+            'ai_workspace_structured_output_status' => null,
+            'ai_workspace_structured_output_verified_at' => null,
+            'ai_workspace_readiness_status' => 'ready',
+            'ai_workspace_readiness_profile' => [
+                'version' => self::PROFILE_VERSION,
+                'configuration' => [
+                    'status' => 'ready',
+                    'observed' => true,
+                    'fingerprint' => $this->configurationFingerprint($currentModel),
+                ],
+                'authentication' => ['status' => 'ready', 'observed' => true],
+                'plain_text' => ['status' => 'ready', 'observed' => true],
+                'streaming' => $streamingObserved
+                    ? ['status' => 'ready', 'observed' => true]
+                    : $this->streamingProfileAfterPlainTextSuccess($currentModel),
+                'structured_output' => ['status' => 'not_required', 'observed' => false],
+                'tool_schema' => ['status' => 'not_required', 'observed' => false, 'business_tools_enabled' => false],
+                'tool_roundtrip' => ['status' => 'not_required', 'observed' => false, 'business_tools_enabled' => false],
+                'cancellation' => ['status' => 'guarded', 'observed' => false],
+                'performance' => array_filter([
+                    'status' => 'ready',
+                    'provider_first_event_ms' => $performance['provider_first_event_ms'] ?? null,
+                    'ttft_ms' => $performance['ttft_ms'] ?? null,
+                    'total_ms' => $performance['total_ms'] ?? null,
+                ], static fn (mixed $value): bool => $value !== null),
+                'model' => (string) $currentModel->model_id,
+                'endpoint_digest' => $this->endpointDigest($currentModel),
+            ],
+            'ai_workspace_readiness_checked_at' => $checkedAt,
+            'ai_workspace_readiness_expires_at' => $checkedAt->copy()->addDays(7),
+            'ai_workspace_readiness_failure_code' => null,
+        ])->save();
+    }
+
+    /** @return array<string, mixed> */
+    private function streamingProfileAfterPlainTextSuccess(AiModel $model): array
+    {
+        if ($this->prefersPlainTextFallback($model)) {
+            return array_filter([
+                'status' => 'degraded',
+                'observed' => true,
+                'fallback' => 'non_streaming',
+                'failure_code' => data_get($model->ai_workspace_readiness_profile, 'streaming.failure_code'),
+            ], static fn (mixed $value): bool => $value !== null && $value !== '');
+        }
+
+        return ['status' => 'unknown', 'observed' => false];
+    }
+
+    private function hasPlainTextReadiness(AiModel $model): bool
+    {
+        if (Schema::hasColumn('ai_models', 'ai_workspace_readiness_status')) {
+            return (string) $model->ai_workspace_readiness_status === 'ready'
+                && $model->ai_workspace_readiness_expires_at?->isFuture()
+                && data_get($model->ai_workspace_readiness_profile, 'plain_text.status') === 'ready'
+                && $this->readinessMatchesCurrentConfiguration($model);
+        }
+
+        return false;
+    }
+
+    public function configurationFingerprint(AiModel $model): string
+    {
+        return hash('sha256', json_encode([
+            'version' => trim((string) $model->version),
+            'model_id' => trim((string) $model->model_id),
+            'model_type' => trim((string) $model->model_type),
+            'api_url' => OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url),
+            'api_key' => (string) $model->getRawOriginal('api_key'),
+            'status' => trim((string) $model->status),
+            'max_tokens' => $model->max_tokens,
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    private function readinessMatchesCurrentConfiguration(AiModel $model): bool
+    {
+        $fingerprint = trim((string) data_get($model->ai_workspace_readiness_profile, 'configuration.fingerprint'));
+        if ($fingerprint !== '') {
+            return hash_equals($fingerprint, $this->configurationFingerprint($model));
+        }
+
+        $endpointDigest = trim((string) data_get($model->ai_workspace_readiness_profile, 'endpoint_digest'));
+
+        return $endpointDigest !== '' && hash_equals($endpointDigest, $this->endpointDigest($model));
+    }
+
+    private function endpointDigest(AiModel $model): string
+    {
+        return hash('sha256', OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url));
+    }
+}

@@ -9,6 +9,7 @@ use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
 use App\Services\GeoFlow\UrlImportProcessingService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,23 +39,32 @@ class UrlImportController extends Controller
             'source_label' => ['nullable', 'string', 'max:120'],
             'content_language' => ['nullable', 'string', 'max:20'],
             'notes' => ['nullable', 'string', 'max:1000'],
-            'outputs' => ['array'],
-            'outputs.*' => ['string', 'in:knowledge,keywords,titles'],
+            'outputs' => ['array', 'max:3'],
+            'outputs.*' => ['string', 'distinct', 'in:knowledge,keywords,titles'],
         ]);
+        $safeOldInput = collect($validated)->only([
+            'url', 'project_name', 'source_label', 'content_language', 'notes', 'outputs',
+        ])->all();
 
         try {
             $normalized = $this->urlImportProcessingService->normalizeInputUrl((string) $validated['url']);
         } catch (\InvalidArgumentException $exception) {
-            return back()->withInput()->withErrors(['url' => $exception->getMessage()]);
+            report($exception);
+
+            return back()->withInput($safeOldInput)->withErrors([
+                'url' => __('admin.url_import.error.invalid_url'),
+            ]);
         }
 
         try {
             $this->urlImportProcessingService->assertAnalysisModelReady();
         } catch (\Throwable $exception) {
+            report($exception);
+
             return redirect()
                 ->route('admin.ai-models.index')
-                ->withInput()
-                ->withErrors(['ai_model' => $exception->getMessage()]);
+                ->withInput($safeOldInput)
+                ->withErrors(['ai_model' => __('admin.url_import.error.ai_model_required')]);
         }
 
         $job = UrlImportJob::query()->create([
@@ -95,10 +105,12 @@ class UrlImportController extends Controller
             try {
                 $this->urlImportProcessingService->assertAnalysisModelReady();
             } catch (\Throwable $exception) {
+                report($exception);
+                $message = __('admin.url_import.error.ai_model_required');
                 $job->update([
                     'status' => 'failed',
                     'progress_percent' => max(1, (int) $job->progress_percent),
-                    'error_message' => $exception->getMessage(),
+                    'error_message' => $message,
                     'finished_at' => now(),
                 ]);
 
@@ -106,7 +118,7 @@ class UrlImportController extends Controller
                     'job_id' => $job->id,
                     'step' => $job->current_step ?: 'queued',
                     'level' => 'error',
-                    'message' => __('admin.url_import.log.failed', ['message' => $exception->getMessage()]),
+                    'message' => __('admin.url_import.log.failed', ['message' => $message]),
                 ]);
 
                 return response()->json($this->statusPayload($job->refresh()), 422);
@@ -146,7 +158,9 @@ class UrlImportController extends Controller
         try {
             $summary = $this->urlImportProcessingService->commit($job);
         } catch (\Throwable $exception) {
-            return back()->withErrors(__('admin.url_import.error.commit_failed').': '.$exception->getMessage());
+            $this->reportCommitFailure($exception, $jobId);
+
+            return back()->withErrors(__('admin.url_import.error.commit_failed'));
         }
 
         return redirect()
@@ -235,6 +249,22 @@ class UrlImportController extends Controller
         exec($command, $output, $exitCode);
 
         return $exitCode === 0;
+    }
+
+    private function reportCommitFailure(\Throwable $exception, int $jobId): void
+    {
+        if ($exception instanceof QueryException) {
+            $sqlState = preg_match('/^[A-Z0-9]{5}$/', (string) $exception->getCode()) === 1
+                ? (string) $exception->getCode()
+                : 'unknown';
+            report(new \RuntimeException(
+                "URL import database commit failed for job {$jobId} (SQLSTATE {$sqlState})."
+            ));
+
+            return;
+        }
+
+        report($exception);
     }
 
     /**

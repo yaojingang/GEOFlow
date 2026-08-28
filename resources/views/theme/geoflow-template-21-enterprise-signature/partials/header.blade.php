@@ -32,7 +32,6 @@
             @foreach($navCategories->take(2) as $categoryItem)
                 <a href="{{ route('site.category', $categoryItem->slug) }}" class="{{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
             @endforeach
-            <a href="{{ route('site.archive') }}" class="{{ request()->routeIs('site.archive*') ? 'is-active' : '' }}">洞察</a>
             <a href="{{ route('site.about') }}" class="{{ request()->routeIs('site.about') ? 'is-active' : '' }}">关于</a>
         </nav>
 
@@ -86,7 +85,6 @@
             @foreach($navCategories as $categoryItem)
                 <a href="{{ route('site.category', $categoryItem->slug) }}" class="{{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
             @endforeach
-            <a href="{{ route('site.archive') }}">洞察归档</a>
             <a href="{{ route('site.about') }}" class="{{ request()->routeIs('site.about') ? 'is-active' : '' }}">关于 GEOFlow</a>
             <a href="{{ $repositoryUrl }}" target="_blank" rel="noopener noreferrer">GitHub 开源仓库</a>
         </div>

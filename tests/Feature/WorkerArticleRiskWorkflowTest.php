@@ -12,6 +12,7 @@ use App\Services\GeoFlow\ArticleRiskGate;
 use App\Services\GeoFlow\WorkerExecutionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use ReflectionMethod;
 use Tests\TestCase;
 
@@ -40,6 +41,29 @@ class WorkerArticleRiskWorkflowTest extends TestCase
         $this->assertSame('clean', $article->latestRiskScan?->status);
         $this->assertSame('worker_publish', $article->latestRiskScan?->trigger);
         $this->assertSame(1, (int) $task->fresh()->published_count);
+    }
+
+    public function test_worker_locks_article_before_task_when_publishing_a_due_draft(): void
+    {
+        [$task] = $this->createTaskArticle();
+        $lockedTables = [];
+        DB::listen(function ($query) use (&$lockedTables): void {
+            if (DB::transactionLevel() === 0 || ! str_starts_with(ltrim(strtolower((string) $query->sql)), 'select')) {
+                return;
+            }
+            preg_match('/\bfrom\s+"([^"]+)"/', strtolower((string) $query->sql), $firstTable);
+            if (in_array($firstTable[1] ?? null, ['articles', 'tasks'], true)) {
+                $lockedTables[] = $firstTable[1];
+            }
+        });
+
+        $this->publishDueDraft($task);
+
+        $articleIndex = array_search('articles', $lockedTables, true);
+        $taskIndex = array_search('tasks', $lockedTables, true);
+        $this->assertIsInt($articleIndex);
+        $this->assertIsInt($taskIndex);
+        $this->assertLessThan($taskIndex, $articleIndex);
     }
 
     public function test_worker_downgrades_unoverridden_warning_to_pending_without_counting_a_publish(): void

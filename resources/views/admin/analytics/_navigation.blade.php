@@ -1,6 +1,7 @@
 @php
     $analyticsNavigation = [
         ['key' => 'overview', 'route' => 'admin.analytics', 'tone' => 'bg-blue-600'],
+        ['key' => 'operations', 'route' => 'admin.dashboard', 'tone' => 'bg-slate-600'],
         ['key' => 'content', 'route' => 'admin.analytics.content', 'tone' => 'bg-emerald-500'],
         ['key' => 'traffic', 'route' => 'admin.analytics.traffic', 'tone' => 'bg-cyan-500'],
         ['key' => 'ai_visibility', 'route' => 'admin.analytics.ai-visibility', 'tone' => 'bg-violet-500'],

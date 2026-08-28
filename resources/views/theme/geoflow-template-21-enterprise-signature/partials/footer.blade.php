@@ -9,7 +9,6 @@
             </div>
             <div>
                 <span class="ent-footer__label">Resources</span>
-                <a href="{{ route('site.archive') }}">洞察归档</a>
                 <a href="{{ route('site.about') }}">关于 GEOFlow</a>
                 @foreach($navCategories->take(3) as $categoryItem)
                     <a href="{{ route('site.category', $categoryItem->slug) }}">{{ $categoryItem->name }}</a>

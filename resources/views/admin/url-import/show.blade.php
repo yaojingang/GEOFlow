@@ -39,7 +39,7 @@
     >
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div class="flex items-start gap-4">
-                <a href="{{ route('admin.url-import') }}" class="mt-1 text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.url-import') }}" aria-label="{{ __('admin.common.back') }}" class="mt-1 text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
                 <div>

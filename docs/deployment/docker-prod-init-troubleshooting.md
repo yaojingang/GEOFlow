@@ -63,7 +63,7 @@ $COMPOSE_PROD run --rm app php artisan optimize
 
 也就是说：命令从容器外的服务器项目目录执行，但实际运行在 `app` 容器内。
 
-`geoflow:install` 是首次安装入口：全新空库会创建默认管理员、启用 21 号主题并导入 50 篇参考文章，使用 `--without-demo` 可进行极简安装。检测到已有业务数据时，命令只补初始化标记，并保留当前主题、网站设置、作者、分类和文章。如果确实需要手动导入参考内容，可临时设置 `GEOFLOW_SEED_FRONTEND_DEMO=true` 后执行 `php artisan db:seed --force`；默认只补缺，只有额外设置 `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` 时才会更新同 slug 的参考行。
+`geoflow:install` 是首次安装入口：空库时创建默认管理员；如果检测到已有业务数据，则只补初始化标记。正式安装与默认 `db:seed` 都不会调用 `FrontendDemoSeeder`，因此不会写入或覆盖前台演示分类、文章、网站设置、广告和提示词。演示数据只允许在测试环境显式调用专用 Seeder。
 
 也可以先进容器后执行：
 
@@ -114,7 +114,7 @@ REDIS_HOST=redis
 如果刚改过 `.env.prod`，需要重建相关容器：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app web queue knowledge-queue system-update-queue scheduler
+$COMPOSE_PROD up -d --force-recreate app web queue knowledge-queue scheduler
 ```
 
 然后查看 Laravel 的真实错误日志：
@@ -173,7 +173,7 @@ $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up -d init
 $COMPOSE_PROD logs --tail=200 init
-$COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler reverb
+$COMPOSE_PROD up -d app web queue knowledge-queue scheduler reverb
 ```
 
 仅在全新空库首次安装时，可以一次性启动：
@@ -187,5 +187,5 @@ $COMPOSE_PROD up -d --build
 首次部署后，如果修改了 `.env.prod`，建议至少重建应用相关容器：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app web queue knowledge-queue system-update-queue scheduler reverb
+$COMPOSE_PROD up -d --force-recreate app web queue knowledge-queue scheduler reverb
 ```

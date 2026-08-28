@@ -137,7 +137,7 @@
     <div class="enterprise-knowledge-workspace px-4 sm:px-0 xl:-mx-6 2xl:-mx-12">
         <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div class="flex items-start gap-4">
-                <a href="{{ route('admin.enterprise-knowledge.index') }}" class="mt-1 text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.enterprise-knowledge.index') }}" aria-label="{{ __('admin.common.back') }}" class="mt-1 text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="h-5 w-5"></i>
                 </a>
                 <div>
@@ -376,7 +376,7 @@
                             </div>
                         </div>
                     @empty
-                        <div class="px-6 py-8 text-center text-sm text-gray-500">{{ __('admin.no_data') }}</div>
+                        <div class="px-6 py-8 text-center text-sm text-gray-500">{{ __('admin.common.none') }}</div>
                     @endforelse
                 </div>
             </section>
@@ -701,9 +701,7 @@
                     },
                     after() {
                         textarea.value = getEditorContent();
-                        if (window.lucide) {
-                            window.lucide.createIcons();
-                        }
+                        window.GeoFlowAdminUi?.refreshIcons?.(editorNode);
                     },
                 });
             };

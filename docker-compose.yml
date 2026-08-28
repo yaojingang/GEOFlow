@@ -50,9 +50,10 @@ services:
       - ./.env
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "${AUTO_FIX_STORAGE_PERMISSIONS:-true}"
+      AUTO_INIT_ONCE: "true"
       GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED: "true"
     # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / geoflow:install）
-    command: ["true"]
+    command: ["php", "artisan", "about"]
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -74,9 +75,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
-    ports:
-      - "${APP_PORT:-18080}:8080"
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080", "--no-reload"]
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -84,6 +83,21 @@ services:
         condition: service_completed_successfully
       init:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    image: nginx:1.27-alpine
+    container_name: geoflow-web
+    ports:
+      - "127.0.0.1:${APP_PORT:-18080}:80"
+    volumes:
+      - ./:/var/www/html:ro
+      - ./docker/nginx/local.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      app:
+        condition: service_started
+      reverb:
+        condition: service_started
     restart: unless-stopped
 
   queue:
@@ -98,9 +112,11 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=660", "--memory=128", "--max-jobs=100", "--max-time=3600"]
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
+    command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates,geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=930", "--memory=128", "--max-jobs=100", "--max-time=3600"]
     mem_limit: ${QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
-    stop_grace_period: 690s
+    stop_grace_period: 960s
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -120,31 +136,11 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=160M", "artisan", "queue:work", "redis", "--queue=knowledge", "--sleep=1", "--tries=1", "--timeout=210", "--memory=128", "--max-jobs=20", "--max-time=1800"]
     mem_limit: ${KNOWLEDGE_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
     stop_grace_period: 240s
-    volumes:
-      - ./:/var/www/html
-    depends_on:
-      init:
-        condition: service_completed_successfully
-    restart: unless-stopped
-
-  system-update-queue:
-    image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
-    container_name: geoflow-system-update-queue
-    working_dir: /var/www/html
-    environment:
-      AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates", "--sleep=1", "--tries=1", "--timeout=930", "--memory=256", "--max-jobs=10", "--max-time=3600"]
-    mem_limit: ${SYSTEM_UPDATE_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
-    stop_grace_period: 960s
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -164,6 +160,8 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
     command: ["php", "artisan", "schedule:work"]
     volumes:
       - ./:/var/www/html
@@ -184,9 +182,11 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
-    ports:
-      - "${REVERB_EXPOSE_PORT:-18081}:8080"
+    expose:
+      - "8080"
     volumes:
       - ./:/var/www/html
     depends_on:

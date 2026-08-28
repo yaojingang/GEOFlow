@@ -80,4 +80,29 @@ class SiteThemeCatalog
     {
         return array_map(static fn (array $theme): string => (string) $theme['id'], $this->all());
     }
+
+    /**
+     * @return array<int, array{id:string,name:string,version:string,description:string}>
+     */
+    public function hostedCompatible(): array
+    {
+        $certifiedIds = array_values(array_unique(array_map(
+            'strval',
+            (array) config('geoflow.hosted_sites.certified_themes', ['default'])
+        )));
+
+        return array_values(array_filter(
+            $this->all(),
+            static fn (array $theme): bool => in_array((string) $theme['id'], $certifiedIds, true)
+        ));
+    }
+
+    /** @return array<int,string> */
+    public function hostedCompatibleIds(): array
+    {
+        return array_map(
+            static fn (array $theme): string => (string) $theme['id'],
+            $this->hostedCompatible()
+        );
+    }
 }

@@ -45,26 +45,6 @@ class EnterpriseSignatureThemeTest extends TestCase
         $this->assertStringNotContainsString('|演示数据', $metricModule['body']);
     }
 
-    public function test_theme_is_published_with_about_and_archive_pages(): void
-    {
-        $manifest = json_decode(
-            (string) file_get_contents(resource_path('views/theme/'.self::THEME_ID.'/manifest.json')),
-            true,
-            512,
-            JSON_THROW_ON_ERROR,
-        );
-
-        $this->assertSame('published', $manifest['session_state'] ?? null);
-        $this->assertFalse($manifest['requires_admin_activation'] ?? true);
-        $this->assertEqualsCanonicalizing(
-            ['home', 'category', 'article', 'archive-index', 'archive-month', 'about'],
-            $manifest['compatible_pages'] ?? [],
-        );
-        $this->assertContains('/about', $manifest['preview_routes'] ?? []);
-        $this->assertContains('/archive', $manifest['preview_routes'] ?? []);
-        $this->assertContains('/archive/{year}/{month}', $manifest['preview_routes'] ?? []);
-    }
-
     public function test_homepage_visual_rules_avoid_forced_title_breaks_and_dark_feature_panels(): void
     {
         $css = (string) file_get_contents(public_path('themes/'.self::THEME_ID.'/theme.css'));
@@ -214,7 +194,7 @@ class EnterpriseSignatureThemeTest extends TestCase
             ->assertDontSee('action="'.route('site.lead-forms.submit', ['slug' => 'enterprise-geo']).'"', false);
     }
 
-    public function test_category_article_about_and_archive_pages_render_with_the_theme(): void
+    public function test_category_article_and_about_pages_render_with_the_theme(): void
     {
         $this->activateTheme();
         $article = $this->createPublishedArticle();
@@ -252,10 +232,13 @@ class EnterpriseSignatureThemeTest extends TestCase
             ->assertSee('data-ent-article-toc', false)
             ->assertSee('data-ent-article-content', false)
             ->assertSee('AboutPage')
-            ->assertSee('https://github.com/yaojingang/GEOFlow');
+            ->assertSee('https://github.com/yaojingang/GEOFlow')
+            ->assertDontSee('文章信息')
+            ->assertDontSee('次阅读');
 
         $this->get(route('site.archive'))
             ->assertOk()
+            ->assertSee(__('site.archive_title'))
             ->assertSee('Archive ledger');
 
         $this->get(route('site.archive.month', [
@@ -283,6 +266,28 @@ class EnterpriseSignatureThemeTest extends TestCase
             ->assertSee('https://github.com/yaojingang/GEOFlow');
     }
 
+    public function test_legacy_apple_theme_uses_the_about_navigation(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'apple_support_clone'],
+        );
+        SiteSettingsBag::forget();
+        $article = $this->createPublishedArticle();
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('href="'.route('site.about').'"', false)
+            ->assertSee('关于 GEOFlow')
+            ->assertDontSee(__('site.archive_title'));
+
+        $this->get(route('site.category', ['slug' => $article->category->slug]))
+            ->assertOk()
+            ->assertSee('href="'.route('site.about').'"', false)
+            ->assertSee('关于 GEOFlow')
+            ->assertDontSee(__('site.archive_title'));
+    }
+
     public function test_article_related_heading_and_footer_use_the_compact_copy(): void
     {
         $this->activateTheme();
@@ -295,7 +300,7 @@ class EnterpriseSignatureThemeTest extends TestCase
         );
         $this->assertSame(1, substr_count($css, '.ent-related h2'));
 
-        foreach (range(2, 4) as $index) {
+        foreach (range(2, 8) as $index) {
             $copy = $article->replicate();
             $copy->title = 'Related enterprise evidence '.$index;
             $copy->slug = 'related-enterprise-evidence-'.$index;
@@ -304,20 +309,50 @@ class EnterpriseSignatureThemeTest extends TestCase
             $copy->save();
         }
 
-        $this->get(route('site.article', ['slug' => $article->slug]))
+        $response = $this->get(route('site.article', ['slug' => $article->slug]))
             ->assertOk()
             ->assertSee('ent-related__heading', false)
+            ->assertSee('ent-related__list', false)
+            ->assertDontSee('ent-related__lead', false)
+            ->assertDontSee('ent-related__layout', false)
+            ->assertDontSee('ent-related__grid', false)
             ->assertSee(__('site.article_related'))
             ->assertDontSee('全部洞察')
             ->assertDontSee('面向全球团队的 GEO 开源生态与企业知识工作流。')
             ->assertDontSee('参与开源生态')
             ->assertDontSee('ent-footer__lead', false);
+
+        $this->assertMatchesRegularExpression(
+            '/<section class="ent-related".*?<\/section>/s',
+            (string) $response->getContent()
+        );
+        preg_match(
+            '/<section class="ent-related".*?<\/section>/s',
+            (string) $response->getContent(),
+            $relatedSection
+        );
+
+        $this->assertSame(5, substr_count($relatedSection[0], '<a href='));
+        $this->assertSame(5, substr_count($relatedSection[0], '<li>'));
+        $this->assertStringContainsString('class="ent-article-shell"', $relatedSection[0]);
+        $this->assertStringNotContainsString('>01<', $relatedSection[0]);
     }
 
     public function test_category_pagination_uses_the_compact_theme_row(): void
     {
         $this->activateTheme();
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'per_page'],
+            ['setting_value' => '12']
+        );
+        SiteSettingsBag::forget();
         $article = $this->createPublishedArticle();
+        $css = (string) file_get_contents(public_path('themes/'.self::THEME_ID.'/theme.css'));
+
+        $this->assertMatchesRegularExpression(
+            '/\.ent-resource-grid--category\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/s',
+            $css
+        );
 
         foreach (range(2, 13) as $index) {
             $copy = $article->replicate();
@@ -328,13 +363,25 @@ class EnterpriseSignatureThemeTest extends TestCase
             $copy->save();
         }
 
-        $this->get(route('site.category', ['slug' => $article->category->slug]))
+        $firstPage = $this->get(route('site.category', ['slug' => $article->category->slug]))
             ->assertOk()
+            ->assertViewHas('articles', static fn ($articles): bool => $articles->perPage() === 12 && $articles->count() === 12)
             ->assertSee('ent-pagination__nav', false)
             ->assertSee('ent-pagination__summary', false)
             ->assertSee('下一页')
+            ->assertSee('显示第 <strong>1</strong> 到 <strong>12</strong> 条', false)
             ->assertSee('共 <strong>13</strong> 条结果', false)
             ->assertDontSee('sm:hidden', false);
+
+        $this->assertSame(12, substr_count((string) $firstPage->getContent(), 'ent-article-card--category'));
+        $this->assertSame(12, substr_count((string) $firstPage->getContent(), '"@type": "ListItem"'));
+
+        $secondPage = $this->get(route('site.category', ['slug' => $article->category->slug, 'page' => 2]))
+            ->assertOk()
+            ->assertViewHas('articles', static fn ($articles): bool => $articles->perPage() === 12 && $articles->count() === 1)
+            ->assertSee('显示第 <strong>13</strong> 到 <strong>13</strong> 条', false);
+
+        $this->assertSame(1, substr_count((string) $secondPage->getContent(), 'ent-article-card--category'));
     }
 
     public function test_article_excerpt_is_rendered_as_compact_plain_text(): void

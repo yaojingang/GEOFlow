@@ -42,7 +42,7 @@
             "sort_order": 30,
             "title": "GEOFlow 企业能力",
             "subtitle": "开放架构，统一工作流",
-            "body": "知识证据库|连接企业资料并形成可检索的知识证据|/archive\nGEO 内容工作流|从选题、生成、审核到发布形成闭环|/archive\nAI 可见性观测|追踪重点问题、来源与品牌提及|/archive\n多渠道分发|通过可扩展通道完成内容交付|/archive",
+            "body": "知识证据库|连接企业资料并形成可检索的知识证据|/about\nGEO 内容工作流|从选题、生成、审核到发布形成闭环|/about\nAI 可见性观测|追踪重点问题、来源与品牌提及|/about\n多渠道分发|通过可扩展通道完成内容交付|/about",
             "alignment": "left"
         },
         {

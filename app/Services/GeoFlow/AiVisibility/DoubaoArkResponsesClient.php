@@ -33,9 +33,7 @@ final class DoubaoArkResponsesClient
         $endpoint = $this->responsesEndpoint($model);
         $apiKey = $this->apiKey($model);
 
-        $payload = $this->buildPayload($modelId, $prompt, array_replace([
-            'max_output_tokens' => $model->max_tokens,
-        ], $options));
+        $payload = $this->buildPayload($modelId, $prompt, $options);
         $startedAt = hrtime(true);
         $response = $this->httpClientFactory
             ->jsonRequest($apiKey)
@@ -92,7 +90,7 @@ final class DoubaoArkResponsesClient
         ];
 
         foreach (['temperature', 'top_p', 'max_output_tokens'] as $key) {
-            if (array_key_exists($key, $options) && $options[$key] !== null) {
+            if (array_key_exists($key, $options)) {
                 $payload[$key] = $options[$key];
             }
         }

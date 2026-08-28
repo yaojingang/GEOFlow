@@ -27,9 +27,9 @@
                     <i data-lucide="layout-grid" class="w-6 h-6"></i>
                     <span>{{ __('front.nav.all_articles') }}</span>
                 </a>
-                <a href="{{ route('site.archive') }}">
-                    <i data-lucide="archive" class="w-6 h-6"></i>
-                    <span>{{ __('site.archive_title') }}</span>
+                <a href="{{ route('site.about') }}">
+                    <i data-lucide="info" class="w-6 h-6"></i>
+                    <span>关于 GEOFlow</span>
                 </a>
                 <a href="{{ route('site.home', ['search' => $category->name]) }}">
                     <i data-lucide="search" class="w-6 h-6"></i>

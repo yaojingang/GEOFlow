@@ -76,6 +76,35 @@ class GrowthOverviewServiceTest extends TestCase
         $this->assertSame(route('admin.distribution.jobs', ['status' => 'failed']), $overview['alert']['href']);
     }
 
+    public function test_contacting_a_new_lead_clears_the_new_queue_while_keeping_it_in_followups(): void
+    {
+        $form = $this->activeForm();
+        $lead = LeadSubmission::query()->create([
+            'lead_form_id' => $form->id,
+            'status' => LeadSubmission::STATUS_NEW,
+            'payload' => ['name' => '待联系访客'],
+            'source_url' => '/',
+            'ip_address' => '10.0.0.4',
+        ]);
+
+        $beforeFollowup = app(GrowthOverviewService::class)->snapshot(false);
+
+        $this->assertSame(1, $beforeFollowup['metrics']['new_leads']);
+        $this->assertSame(1, $beforeFollowup['metrics']['pending_followups']);
+        $this->assertSame('new_leads', $beforeFollowup['alert']['type']);
+
+        $lead->update([
+            'status' => LeadSubmission::STATUS_CONTACTED,
+            'handled_at' => now(),
+        ]);
+
+        $afterFollowup = app(GrowthOverviewService::class)->snapshot(false);
+
+        $this->assertSame(0, $afterFollowup['metrics']['new_leads']);
+        $this->assertSame(1, $afterFollowup['metrics']['pending_followups']);
+        $this->assertNotSame('new_leads', $afterFollowup['alert']['type'] ?? null);
+    }
+
     public function test_traffic_snapshot_counts_get_requests_only(): void
     {
         Carbon::setTestNow('2026-08-02 12:00:00');
@@ -100,15 +129,24 @@ class GrowthOverviewServiceTest extends TestCase
                 'user_agent' => 'ChatGPT-User/1.0',
                 'created_at' => now(),
             ],
+            [
+                'source' => 'hosted_site',
+                'method' => 'GET',
+                'path' => '/hosted-article',
+                'status_code' => 200,
+                'ip_address' => '10.0.0.3',
+                'user_agent' => 'ChatGPT-User/1.0',
+                'created_at' => now(),
+            ],
         ]);
 
         $overview = app(GrowthOverviewService::class)->snapshot(false);
 
-        $this->assertSame(1, $overview['metrics']['today_visits']);
+        $this->assertSame(2, $overview['metrics']['today_visits']);
         $this->assertSame([
-            'pv' => 1,
-            'unique_ip' => 1,
-            'ai' => 0,
+            'pv' => 2,
+            'unique_ip' => 2,
+            'ai' => 1,
         ], $overview['cards']['traffic']);
     }
 

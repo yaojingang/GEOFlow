@@ -1,0 +1,83 @@
+name: geoflow-ui-v3
+
+services:
+  postgres:
+    container_name: geoflow-ui-v3-postgres
+    ports:
+      - "127.0.0.1:${DB_EXPOSE_PORT:-35432}:5432"
+    volumes:
+      - geoflow-ui-v3-postgres-data:/var/lib/postgresql/data
+
+  redis:
+    container_name: geoflow-ui-v3-redis
+    ports:
+      - "127.0.0.1:${REDIS_EXPOSE_PORT:-36379}:6379"
+
+  assets:
+    container_name: geoflow-ui-v3-assets
+
+  init:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-init
+
+  app:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-app
+    entrypoint: []
+    ports: !reset []
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      PHP_CLI_SERVER_WORKERS: "${UI_V3_APP_WORKERS:-4}"
+    tmpfs:
+      - /var/www/html/storage/framework/testing
+
+  web:
+    image: nginx:1.27-alpine
+    container_name: geoflow-ui-v3-web
+    ports:
+      - "127.0.0.1:${APP_PORT:-28080}:80"
+    volumes:
+      - ./:/var/www/html:ro
+      - ./docker/nginx/local.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      app:
+        condition: service_started
+    restart: unless-stopped
+
+  queue:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-queue
+
+  knowledge-queue:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-knowledge-queue
+
+  system-update-queue:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-system-update-queue
+
+  scheduler:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-scheduler
+
+  reverb:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-reverb
+    entrypoint: []
+    ports: !reset []
+    expose:
+      - "8080"
+
+volumes:
+  geoflow-node-modules:
+    name: geoflow-ui-v3-node-modules
+  geoflow-ui-v3-postgres-data:
+    name: geoflow-ui-v3-postgres-data
+
+networks:
+  default:
+    name: geoflow-ui-v3-network
+    ipam:
+      config:
+        - subnet: 10.254.217.0/24
+          gateway: 10.254.217.1

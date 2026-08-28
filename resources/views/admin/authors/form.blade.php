@@ -4,59 +4,54 @@
     $formAction = $isEdit
         ? route('admin.authors.update', ['authorId' => (int) $authorId])
         : route('admin.authors.store');
+    $authorName = is_string($authorForm['name'] ?? null) || is_numeric($authorForm['name'] ?? null)
+        ? (string) $authorForm['name']
+        : '';
 @endphp
 
 @section('content')
-    <div class="px-4 sm:px-0">
-        <div class="mb-8 flex items-center space-x-4">
-            <a href="{{ route('admin.authors.index') }}" class="text-gray-400 hover:text-gray-600">
-                <i data-lucide="arrow-left" class="w-5 h-5"></i>
+    <div class="mx-auto max-w-5xl px-4 sm:px-0">
+        <header class="mb-6 flex items-start gap-4 sm:mb-8">
+            <a href="{{ route('admin.authors.index') }}" aria-label="{{ __('admin.common.back') }}" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 shadow ring-1 ring-gray-200 transition-[color,background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 [@media(hover:hover)]:hover:text-gray-800 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                <i data-lucide="arrow-left" class="h-5 w-5"></i>
             </a>
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ $isEdit ? __('admin.authors.modal_edit') : __('admin.authors.modal_create') }}</h1>
-                <p class="mt-1 text-sm text-gray-600">{{ __('admin.authors.page_subtitle') }}</p>
+            <div class="min-w-0">
+                <h1 class="text-balance break-words text-2xl font-bold text-gray-900">{{ $isEdit ? __('admin.authors.modal_edit').' · '.$authorName : __('admin.authors.modal_create') }}</h1>
+                <p class="mt-1 max-w-3xl text-pretty text-sm leading-6 text-gray-600">{{ __('admin.authors.page_subtitle') }}</p>
             </div>
-        </div>
+        </header>
 
-        <div class="bg-white shadow rounded-lg">
-            <div class="px-6 py-6">
-                <form method="POST" action="{{ $formAction }}" class="space-y-6">
-                    @csrf
-                    @if ($isEdit)
-                        @method('PUT')
-                    @endif
+        <form method="POST" action="{{ $formAction }}" class="overflow-hidden rounded-xl bg-white shadow">
+            @csrf
+            @if ($isEdit)
+                @method('PUT')
+            @endif
 
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.authors.field_name') }}</label>
-                        <input type="text" name="name" required value="{{ old('name', (string) ($authorForm['name'] ?? '')) }}" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="{{ __('admin.authors.placeholder_name') }}">
+            <div class="border-b border-gray-200 px-5 py-5 sm:px-6">
+                <div class="flex items-start gap-3">
+                    <span class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                        <i data-lucide="{{ $isEdit ? 'user-round-pen' : 'user-plus' }}" class="h-4.5 w-4.5"></i>
+                    </span>
+                    <div class="min-w-0">
+                        <h2 class="break-words text-lg font-semibold text-gray-900">{{ $isEdit ? $authorName : __('admin.authors.modal_create') }}</h2>
+                        <p class="mt-1 text-pretty text-sm leading-6 text-gray-600">{{ __('admin.authors.page_subtitle') }}</p>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.authors.field_email') }}</label>
-                        <input type="text" name="email" value="{{ old('email', (string) ($authorForm['email'] ?? '')) }}" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="{{ __('admin.authors.placeholder_email') }}">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.authors.field_bio') }}</label>
-                        <textarea name="bio" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="{{ __('admin.authors.placeholder_bio') }}">{{ old('bio', (string) ($authorForm['bio'] ?? '')) }}</textarea>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.authors.field_website') }}</label>
-                        <input type="text" name="website" value="{{ old('website', (string) ($authorForm['website'] ?? '')) }}" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="https://example.com">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.authors.field_social') }}</label>
-                        <textarea name="social_links" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="{{ __('admin.authors.placeholder_social') }}">{{ old('social_links', (string) ($authorForm['social_links'] ?? '')) }}</textarea>
-                    </div>
-
-                    <div class="flex justify-end gap-3">
-                        <a href="{{ route('admin.authors.index') }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                            {{ __('admin.button.cancel') }}
-                        </a>
-                        <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
-                            {{ $isEdit ? __('admin.authors.save_edit') : __('admin.authors.save_create') }}
-                        </button>
-                    </div>
-                </form>
+                </div>
             </div>
-        </div>
+
+            <div class="px-5 py-6 sm:px-6">
+                <x-admin.author-form-fields :author-form="$authorForm" />
+            </div>
+
+            <div class="flex flex-wrap items-center justify-start gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4 sm:justify-end sm:px-6">
+                <a href="{{ route('admin.authors.index') }}" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-[color,background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                    {{ __('admin.button.cancel') }}
+                </a>
+                <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                    <i data-lucide="save" class="mr-2 h-4 w-4"></i>
+                    {{ $isEdit ? __('admin.authors.save_edit') : __('admin.authors.save_create') }}
+                </button>
+            </div>
+        </form>
     </div>
 @endsection

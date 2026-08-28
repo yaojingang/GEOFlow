@@ -23,6 +23,6 @@
     "/",
     "/category/{slug}",
     "/article/{slug}",
-    "/archive"
+    "/about"
   ]
 }

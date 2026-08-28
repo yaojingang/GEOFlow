@@ -3,3 +3,17 @@ Copyright 2026 Yao Jingang
 
 GEOFlow is licensed under the Apache License, Version 2.0.
 See the LICENSE file for the full license text.
+
+The AI Workspace run-status projection, task motion, event timeline, model
+readiness and Agent Turn patterns include adaptations inspired by DeepSeek
+Harness and DeepSeek Harness Desktop 2.0.2.
+
+DeepSeek Harness
+Copyright (c) 2026 DeepSeek
+Licensed under the MIT License. The complete license text is available at
+docs/licenses/deepseek-harness-MIT.txt.
+
+DeepSeek Harness Desktop 2.0.2
+Copyright (c) 2026 Anywhere Labs
+Licensed under the MIT License. The complete license text is available at
+docs/licenses/deepseek-harness-desktop-MIT.txt.

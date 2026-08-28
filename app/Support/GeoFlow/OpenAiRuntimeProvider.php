@@ -25,7 +25,8 @@ final class OpenAiRuntimeProvider
             return self::resolveGeminiBaseUrl($normalized);
         }
 
-        if (preg_match('#/responses$#', $normalized) === 1) {
+        $host = strtolower((string) (parse_url($normalized, PHP_URL_HOST) ?? ''));
+        if ($host === 'api.openai.com' && preg_match('#/responses$#', $normalized) === 1) {
             $normalized = substr($normalized, 0, -strlen('/responses'));
         }
 

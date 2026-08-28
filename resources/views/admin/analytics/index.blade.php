@@ -4,11 +4,18 @@
     $metrics = $overview['metrics'] ?? [];
     $cards = $overview['cards'] ?? [];
     $alert = $overview['alert'] ?? null;
+    $newLeadCount = (int) ($metrics['new_leads'] ?? 0);
     $metricCards = [
         ['key' => 'today_visits', 'icon' => 'mouse-pointer-click', 'tone' => 'text-blue-600', 'period' => 'today'],
         ['key' => 'published_7d', 'icon' => 'send', 'tone' => 'text-emerald-600', 'period' => '7d'],
         ['key' => 'brand_visibility_60d', 'icon' => 'sparkles', 'tone' => 'text-violet-600', 'period' => '60d', 'suffix' => '%'],
-        ['key' => 'new_leads', 'icon' => 'inbox', 'tone' => 'text-amber-600', 'period' => 'current'],
+        [
+            'key' => 'new_leads',
+            'icon' => $newLeadCount > 0 ? 'inbox' : 'circle-check',
+            'tone' => $newLeadCount > 0 ? 'text-amber-600' : 'text-emerald-600',
+            'period' => 'current',
+            'state' => $newLeadCount > 0 ? 'attention' : 'clear',
+        ],
         ['key' => 'pending_followups', 'icon' => 'phone-call', 'tone' => 'text-rose-600', 'period' => 'current'],
     ];
     $modules = [
@@ -96,7 +103,16 @@
 
         <section class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" aria-label="{{ __('admin.analytics.overview.metrics_label') }}">
             @foreach ($metricCards as $card)
-                <article class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+                <article
+                    @class([
+                        'rounded-lg border p-4 shadow-sm sm:p-5',
+                        'border-gray-200 bg-white' => ! isset($card['state']),
+                        'border-amber-200 bg-amber-50/40' => ($card['state'] ?? null) === 'attention',
+                        'border-emerald-200 bg-emerald-50/40' => ($card['state'] ?? null) === 'clear',
+                    ])
+                    data-analytics-metric="{{ $card['key'] }}"
+                    data-state="{{ $card['state'] ?? 'default' }}"
+                >
                     <div class="flex items-start justify-between gap-3">
                         <p class="text-sm font-medium leading-5 text-gray-500">{{ __('admin.analytics.overview.metrics.'.$card['key']) }}</p>
                         <i data-lucide="{{ $card['icon'] }}" class="h-5 w-5 shrink-0 {{ $card['tone'] }}"></i>
@@ -110,7 +126,7 @@
         </section>
 
         @if ($alert)
-            <aside class="mb-6 flex flex-col gap-4 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between" data-analytics-priority-alert>
+            <aside class="mb-6 flex flex-col gap-4 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between" data-analytics-priority-alert data-alert-type="{{ $alert['type'] }}">
                 <div class="flex items-start gap-3">
                     <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
                         <i data-lucide="bell-ring" class="h-5 w-5"></i>

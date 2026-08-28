@@ -43,6 +43,10 @@ class ArticleController extends BaseApiController
         if (is_string($reviewStatus) && trim($reviewStatus) !== '') {
             $filters['review_status'] = trim($reviewStatus);
         }
+        $aiQualityStatus = $request->query('ai_quality_status');
+        if (is_string($aiQualityStatus) && trim($aiQualityStatus) !== '') {
+            $filters['ai_quality_status'] = trim($aiQualityStatus);
+        }
         $search = $request->query('search');
         if (is_string($search) && trim($search) !== '') {
             $filters['search'] = trim($search);
@@ -145,6 +149,40 @@ class ArticleController extends BaseApiController
                 return $this->riskBlockedResponse($request, $exception);
             }
         });
+    }
+
+    /**
+     * 按最新文章、知识库、提示词、模型和规则重新执行 AI 质检。
+     */
+    public function recheckAiQuality(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
+    {
+        $auth = $this->auth($request);
+
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /articles/{id}/ai-quality/recheck',
+            fn (): JsonResponse => $this->success($request, $articles->recheckAiQuality(
+                $article,
+                $auth->auditAdminId,
+                (int) ($auth->token['id'] ?? 0),
+            )),
+        );
+    }
+
+    /**
+     * 对达到人工审核最低分的 needs_review 结果记录依据并放行。
+     */
+    public function overrideAiQuality(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
+    {
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /articles/{id}/ai-quality/override',
+            fn (): JsonResponse => $this->success($request, $articles->overrideAiQuality(
+                $article,
+                trim((string) $request->input('reason', '')),
+                $this->auth($request)->auditAdminId,
+            )),
+        );
     }
 
     /**

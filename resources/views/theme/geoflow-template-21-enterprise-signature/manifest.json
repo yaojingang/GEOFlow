@@ -2,20 +2,18 @@
     "id": "geoflow-template-21-enterprise-signature",
     "name": "GEOFlow 21 Enterprise Signature",
     "version": "1.0.0",
-    "description": "面向全球企业官网的纯白高质感主题，覆盖品牌、产品、开源生态、行业方案、案例、洞察与线索转化。",
+    "description": "面向全球企业官网的纯白高质感主题，覆盖品牌、产品、开源生态、行业方案、案例、项目介绍与线索转化。",
     "framework": "laravel",
     "geoflow_contract": "site-theme-view-resolver",
     "mode": "full_new_theme",
-    "session_state": "published",
+    "session_state": "preview",
     "created_at": "2026-07-26T12:00:00+08:00",
-    "requires_admin_activation": false,
+    "requires_admin_activation": true,
     "variant_number": 21,
     "compatible_pages": [
         "home",
         "category",
         "article",
-        "archive-index",
-        "archive-month",
         "about"
     ],
     "compatible_modules": [
@@ -35,8 +33,6 @@
         "home",
         "category",
         "article",
-        "archive-index",
-        "archive-month",
         "about",
         "partials.header",
         "partials.footer",
@@ -46,8 +42,6 @@
         "/",
         "/category/{slug}",
         "/article/{slug}",
-        "/archive",
-        "/archive/{year}/{month}",
         "/about"
     ],
     "reference_direction": [
@@ -60,7 +54,7 @@
     "notes": [
         "参考站点仅用于设计逻辑提炼，未复制其品牌、素材、文案或专有代码。",
         "首页中的客户、案例、全球覆盖与业务指标均为界面演示信息，并在页面中提供可见标识。",
-        "真实文章、分类、SEO、归档、开源仓库地址和首页模块明确指定的线索表单继续使用 GEOFlow 现有数据契约。",
-        "主题已发布，首次安装时作为默认官网模板，已有站点升级时保留原有激活主题。"
+        "真实文章、分类、SEO、项目介绍、开源仓库地址和首页模块明确指定的线索表单继续使用 GEOFlow 现有数据契约。",
+        "主题加入后台后会自动出现在模板列表中，保持未启用状态，需管理员确认后激活。"
     ]
 }

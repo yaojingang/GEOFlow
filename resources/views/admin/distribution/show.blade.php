@@ -63,74 +63,83 @@
 
 @section('content')
     <div class="space-y-8 px-4 sm:px-0">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.distribution.index') }}" class="text-gray-400 hover:text-gray-600">
+        <header class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div class="flex min-w-0 items-start gap-3 sm:gap-4">
+                <a href="{{ route('admin.distribution.index') }}" aria-label="{{ __('admin.common.back') }}" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-gray-400 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
                     <i data-lucide="arrow-left" class="h-5 w-5"></i>
                 </a>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ $channel->name }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ $channel->domain }}</p>
+                <div class="min-w-0">
+                    <h1 class="break-words text-2xl font-bold text-gray-900">{{ $channel->name }}</h1>
+                    <p class="mt-1 break-all text-sm leading-6 text-gray-600">{{ $channel->domain }}</p>
                 </div>
             </div>
-            <div class="flex flex-wrap items-center justify-end gap-3">
+            <div class="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
                 @if ($channel->status === \App\Models\DistributionChannel::STATUS_DELETING)
                     @if ($canDeleteChannel)
-                        <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">
-                            <i data-lucide="shield-alert" class="mr-2 h-4 w-4"></i>
+                        <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-amber-600 bg-amber-600 px-4 text-sm font-semibold text-white transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-amber-700 [@media(hover:hover)]:hover:bg-amber-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600">
+                            <i data-lucide="shield-alert" class="h-4 w-4"></i>
                             {{ __('admin.distribution.delete.button.continue') }}
                         </a>
                     @endif
                 @else
-                <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i data-lucide="pencil" class="mr-2 h-4 w-4"></i>
-                    {{ __('admin.button.edit') }}
-                </a>
-                <form method="POST" action="{{ $channel->status === 'active' ? route('admin.distribution.pause', ['channelId' => (int) $channel->id]) : route('admin.distribution.activate', ['channelId' => (int) $channel->id]) }}">
-                    @csrf
-                    <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                        <i data-lucide="{{ $channel->status === 'active' ? 'pause-circle' : 'play-circle' }}" class="mr-2 h-4 w-4"></i>
-                        {{ $channel->status === 'active' ? __('admin.distribution.button.pause') : __('admin.distribution.button.activate') }}
-                    </button>
-                </form>
-                @if ($channel->isGeoFlowAgent())
-                    <form method="POST" action="{{ route('admin.distribution.rotate-secret', ['channelId' => (int) $channel->id]) }}" onsubmit="return confirm('{{ __('admin.distribution.confirm.rotate_secret') }}')">
+                    <a href="{{ route('admin.distribution.edit', ['channelId' => (int) $channel->id]) }}" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-gray-400 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                        <i data-lucide="pencil" class="h-4 w-4"></i>
+                        {{ __('admin.button.edit') }}
+                    </a>
+                    <form method="POST" action="{{ $channel->status === 'active' ? route('admin.distribution.pause', ['channelId' => (int) $channel->id]) : route('admin.distribution.activate', ['channelId' => (int) $channel->id]) }}">
                         @csrf
-                        <button type="submit" class="inline-flex items-center rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50">
-                            <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
-                            {{ __('admin.distribution.button.rotate_secret') }}
+                        <button type="submit" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-blue-600 bg-blue-600 px-4 text-sm font-medium text-white transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-blue-700 [@media(hover:hover)]:hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                            <i data-lucide="{{ $channel->status === 'active' ? 'pause-circle' : 'play-circle' }}" class="h-4 w-4"></i>
+                            {{ $channel->status === 'active' ? __('admin.distribution.button.pause') : __('admin.distribution.button.activate') }}
                         </button>
                     </form>
-                @endif
-                <form method="POST" action="{{ route('admin.distribution.health', ['channelId' => (int) $channel->id]) }}">
-                    @csrf
-                    <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                        <i data-lucide="activity" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.distribution.button.health') }}
-                    </button>
-                </form>
-                @if ($channel->isGeoFlowAgent())
-                    <form method="POST" action="{{ route('admin.distribution.frontend-capabilities.refresh', ['channelId' => (int) $channel->id]) }}">
-                        @csrf
-                        <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            <i data-lucide="radar" class="mr-2 h-4 w-4"></i>
-                            刷新远端能力
-                        </button>
-                    </form>
-                @endif
-                <a href="{{ route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i data-lucide="scan-search" class="mr-2 h-4 w-4"></i>
-                    同步预览
-                </a>
-                    @if ($canDeleteChannel)
-                        <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="inline-flex items-center rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">
-                            <i data-lucide="trash-2" class="mr-2 h-4 w-4"></i>
-                            {{ __('admin.distribution.delete.button.open') }}
-                        </a>
-                    @endif
+                    <details class="relative">
+                        <summary class="inline-flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,transform] duration-150 marker:content-none [@media(hover:hover)]:hover:border-gray-400 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 [&::-webkit-details-marker]:hidden">
+                            <i data-lucide="ellipsis" class="h-4 w-4"></i>
+                            {{ __('admin.common.actions') }}
+                            <i data-lucide="chevron-down" class="h-4 w-4 text-gray-400"></i>
+                        </summary>
+                        <div class="absolute right-0 top-[calc(100%+8px)] z-20 grid w-56 gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+                            <form method="POST" action="{{ route('admin.distribution.health', ['channelId' => (int) $channel->id]) }}">
+                                @csrf
+                                <button type="submit" class="inline-flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium text-gray-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.98]">
+                                    <i data-lucide="activity" class="h-4 w-4"></i>
+                                    {{ __('admin.distribution.button.health') }}
+                                </button>
+                            </form>
+                            @if ($channel->isGeoFlowAgent())
+                                <form method="POST" action="{{ route('admin.distribution.frontend-capabilities.refresh', ['channelId' => (int) $channel->id]) }}">
+                                    @csrf
+                                    <button type="submit" class="inline-flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium text-gray-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.98]">
+                                        <i data-lucide="radar" class="h-4 w-4"></i>
+                                        刷新远端能力
+                                    </button>
+                                </form>
+                            @endif
+                            <a href="{{ route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]) }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-gray-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.98]">
+                                <i data-lucide="scan-search" class="h-4 w-4"></i>
+                                同步预览
+                            </a>
+                            @if ($channel->isGeoFlowAgent())
+                                <form method="POST" action="{{ route('admin.distribution.rotate-secret', ['channelId' => (int) $channel->id]) }}" onsubmit="return confirm('{{ __('admin.distribution.confirm.rotate_secret') }}')">
+                                    @csrf
+                                    <button type="submit" class="inline-flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium text-amber-800 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-amber-50 active:scale-[0.98]">
+                                        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                                        {{ __('admin.distribution.button.rotate_secret') }}
+                                    </button>
+                                </form>
+                            @endif
+                            @if ($canDeleteChannel)
+                                <a href="{{ route('admin.distribution.delete', ['channelId' => (int) $channel->id]) }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-red-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-red-50 active:scale-[0.98]">
+                                    <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                    {{ __('admin.distribution.delete.button.open') }}
+                                </a>
+                            @endif
+                        </div>
+                    </details>
                 @endif
             </div>
-        </div>
+        </header>
 
         @if ($channel->status === \App\Models\DistributionChannel::STATUS_DELETING)
             <div class="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-950">

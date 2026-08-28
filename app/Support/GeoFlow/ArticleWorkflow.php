@@ -6,6 +6,13 @@ use App\Models\Article;
 
 final class ArticleWorkflow
 {
+    public const PUBLISHABLE_REVIEW_STATUSES = ['approved', 'auto_approved'];
+
+    public static function isPublishableReviewStatus(mixed $status): bool
+    {
+        return in_array((string) $status, self::PUBLISHABLE_REVIEW_STATUSES, true);
+    }
+
     public static function normalizeState(string $status, string $reviewStatus, ?string $publishedAt = null): array
     {
         $allowedStatuses = ['draft', 'published', 'private'];

@@ -99,7 +99,10 @@ class MaterialController extends BaseApiController
     {
         $routeKey = 'POST /materials/{type}/{id}/items';
         $image = $request->file('image');
-        $payload = $request->except('image');
+        $normalizedType = str_replace('_', '-', $type);
+        $payload = in_array($normalizedType, ['keyword-libraries', 'keywords', 'title-libraries', 'titles'], true)
+            ? $request->validated()
+            : $request->except('image');
         $operation = function () use ($request, $type, $id, $materials, $image, $payload): JsonResponse {
             $result = $image !== null
                 ? $materials->createUploadedImageItem($type, $id, $image)
@@ -108,8 +111,8 @@ class MaterialController extends BaseApiController
             return $this->success($request, $result, 201);
         };
         $operationGuard = $image !== null
-            ? fn (Closure $callback): JsonResponse => $materials->withUploadedImagePathLock($type, $image, $callback)
-            : fn (Closure $callback): JsonResponse => $materials->withLegacyImagePathLock($type, $payload, $callback);
+            ? fn (Closure $callback): JsonResponse => $materials->withUploadedImagePathLock($type, $id, $image, $callback)
+            : fn (Closure $callback): JsonResponse => $materials->withLegacyImagePathLock($type, $id, $payload, $callback);
 
         return IdempotencyService::executeJson($request, $routeKey, $operation, $operationGuard);
     }

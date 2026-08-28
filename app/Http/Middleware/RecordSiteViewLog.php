@@ -2,7 +2,8 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\Article;
+use App\Services\Site\SiteScopedArticleQuery;
+use App\Support\Site\CurrentSite;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,11 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class RecordSiteViewLog
 {
+    public function __construct(
+        private readonly CurrentSite $currentSite,
+        private readonly SiteScopedArticleQuery $siteArticles,
+    ) {}
+
     /**
      * @param  Closure(Request): Response  $next
      */
@@ -32,7 +38,8 @@ class RecordSiteViewLog
         try {
             DB::table('view_logs')->insert([
                 'article_id' => $this->resolveArticleId($request, $response),
-                'source' => 'local',
+                'hosted_site_profile_id' => $this->currentSite->profileId(),
+                'source' => $this->currentSite->isHosted() ? 'hosted_site' : 'local',
                 'method' => strtoupper((string) $request->method()),
                 'path' => $this->path($request),
                 'route_name' => $request->route()?->getName(),
@@ -60,9 +67,8 @@ class RecordSiteViewLog
             return null;
         }
 
-        $articleId = Article::query()
+        $articleId = $this->siteArticles->query()
             ->where('slug', $slug)
-            ->whereNull('deleted_at')
             ->value('id');
 
         return $articleId !== null ? (int) $articleId : null;

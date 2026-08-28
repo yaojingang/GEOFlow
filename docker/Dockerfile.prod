@@ -25,20 +25,34 @@ RUN set -eux; \
 ARG COMPOSER_PACKAGIST_MIRROR=
 ENV COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_MEMORY_LIMIT=-1 \
-    COMPOSER_PROCESS_TIMEOUT=2000
+    COMPOSER_PROCESS_TIMEOUT=2000 \
+    COMPOSER_MAX_PARALLEL_HTTP=4
 
 RUN if [ -n "${COMPOSER_PACKAGIST_MIRROR}" ]; then \
         composer config -g repo.packagist composer "${COMPOSER_PACKAGIST_MIRROR}"; \
     fi
 
 COPY composer.json composer.lock ./
-RUN composer install \
-    --no-dev \
-    --no-interaction \
-    --prefer-dist \
-    --ignore-platform-req=ext-pcntl \
-    --classmap-authoritative \
-    --no-scripts
+RUN --mount=type=cache,id=geoflow-composer-dist,target=/tmp/composer-cache,sharing=locked \
+    set -eu; \
+    export COMPOSER_CACHE_DIR=/tmp/composer-cache; \
+    for attempt in 1 2 3; do \
+        if composer install \
+            --no-dev \
+            --no-interaction \
+            --prefer-dist \
+            --ignore-platform-req=ext-pcntl \
+            --classmap-authoritative \
+            --no-scripts; then \
+            break; \
+        fi; \
+        if [ "$attempt" -eq 3 ]; then \
+            echo "Composer dependency download failed after three attempts." >&2; \
+            exit 1; \
+        fi; \
+        echo "Composer dependency download failed; retrying attempt $((attempt + 1)) of 3." >&2; \
+        sleep "$((attempt * 15))"; \
+    done
 
 COPY . .
 
@@ -125,10 +139,8 @@ RUN chmod +x /usr/local/bin/geoflow-entrypoint-prod
 COPY --from=vendor /app /var/www/html
 COPY --from=assets /app/public/build /var/www/html/public/build
 
-# Runtime services run as www-data and skip recursive permission repair.
-RUN rm -f public/storage \
-    && ln -s ../storage/app/public public/storage \
-    && chown -R www-data:www-data storage bootstrap/cache
+# 递归权限修复集中在 init；镜像内的 bootstrap/cache 需预先对 PHP-FPM 用户可写。
+RUN chown -R www-data:www-data storage bootstrap/cache
 
 ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint-prod"]
 CMD ["php-fpm", "-F"]

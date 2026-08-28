@@ -38,8 +38,7 @@ Legacy PHP workspaces may still use `/themes`, `includes/theme_preview.php`, and
   - `home.blade.php`
   - `category.blade.php`
   - `article.blade.php`
-  - `archive-index.blade.php`
-  - `archive-month.blade.php`
+  - `about.blade.php`
   - `layout.blade.php`
   - `partials/*.blade.php`
   - `assets/theme.css`
@@ -108,7 +107,7 @@ Homepage builder path:
 
 ### 5. Review Preview
 
-- inspect preview URLs for home, category, article, and archive
+- inspect preview URLs for home, category, article, and About
 - call out what changed, what remained fixed, and where risks still exist
 - verify default homepage richness separately from search and category result states
 - review `homepage-design.json` separately when the builder path is used, including style tokens, module order, links, article sources, and import mode

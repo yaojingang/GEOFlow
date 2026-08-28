@@ -7,7 +7,6 @@
             "published articles",
             "featured articles",
             "hot articles",
-            "archive records",
             "active lead forms",
             "homepage builder modules"
         ],
@@ -39,10 +38,10 @@
         "category.article_card": "editorial enterprise resource card",
         "article.hero": "article metadata and reading introduction",
         "article.prose_shell": "rendered GEOFlow article HTML",
-        "article.related_articles": "related resource grid",
+        "article.related_articles": "borderless single-column editorial list aligned with the article body",
         "article.sticky_ad": "existing article CTA contract",
-        "archive.overview_row": "year and month archive ledger",
-        "archive.article_card": "month archive article card"
+        "about.hero": "project positioning and repository entry",
+        "about.prose_shell": "source-grounded GEOFlow project introduction and page table of contents"
     },
     "unchanged_contracts": [
         "public route names",

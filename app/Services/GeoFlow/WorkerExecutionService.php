@@ -2,7 +2,9 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
+use App\Exceptions\TaskTitleReadinessException;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleImage;
@@ -40,6 +42,9 @@ class WorkerExecutionService
         private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
         private readonly ArticleContentPromptRenderer $articleContentPromptRenderer,
         private readonly ArticleContentGenerationService $articleContentGenerationService,
+        private readonly TaskTitleReadinessService $taskTitleReadinessService,
+        private readonly ArticleAiQualityPolicyResolver $articleAiQualityPolicyResolver,
+        private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
     ) {}
 
     /**
@@ -98,8 +103,10 @@ class WorkerExecutionService
             'review_status' => (int) ($task->need_review ?? 1) === 1 ? 'pending' : 'approved',
             'published_at' => null,
         ];
+        $qualityPolicy = $this->articleAiQualityPolicyResolver->fromTask($task);
+        $qualityPolicySnapshot = $this->articleAiQualityPolicyResolver->snapshot($qualityPolicy);
 
-        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $workflow, $selectedImages): int {
+        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $workflow, $selectedImages, $qualityPolicy, $qualityPolicySnapshot): int {
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
@@ -130,6 +137,8 @@ class WorkerExecutionService
                 'is_ai_generated' => 1,
                 'published_at' => $pendingWorkflow['published_at'],
                 'view_count' => 0,
+                'ai_quality_required_at_creation' => (bool) ($qualityPolicy['required'] ?? false),
+                'ai_quality_policy_snapshot' => $qualityPolicySnapshot,
             ]);
 
             $this->articleRiskScanner->record($article, 'worker_generation');
@@ -145,7 +154,7 @@ class WorkerExecutionService
                         false,
                         $pendingWorkflow,
                     );
-                } catch (ArticleRiskGateException) {
+                } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
                     // 风险扫描和待审状态随当前生成事务一并保留。
                 }
             }
@@ -180,6 +189,14 @@ class WorkerExecutionService
             return (int) $article->id;
         });
 
+        $qualityCheck = null;
+        if ($qualityPolicy['required'] ?? false) {
+            $qualityCheck = $this->articleAiQualityInspectionService->createOrReuse(
+                Article::query()->findOrFail($articleId),
+                trigger: 'worker_generation',
+            );
+        }
+
         return [
             'article_id' => $articleId,
             'title' => (string) $titleRow->title,
@@ -196,6 +213,11 @@ class WorkerExecutionService
                 'used_model_id' => (int) $aiModel->id,
                 'used_model_name' => (string) $aiModel->name,
                 'model_attempts' => $generation['attempts'],
+                'ai_quality' => [
+                    'required' => (bool) ($qualityPolicy['required'] ?? false),
+                    'check_id' => $qualityCheck?->id,
+                    'status' => $qualityCheck?->status,
+                ],
             ],
         ];
     }
@@ -211,9 +233,33 @@ class WorkerExecutionService
             return null;
         }
 
-        return DB::transaction(function () use ($task): ?array {
+        $candidateArticleId = Article::query()
+            ->where('task_id', (int) $task->id)
+            ->where('status', 'draft')
+            ->whereIn('review_status', ['approved', 'auto_approved'])
+            ->whereNull('deleted_at')
+            ->orderBy('id')
+            ->value('id');
+        if (! $candidateArticleId) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($task, $candidateArticleId): ?array {
+            /** @var Article|null $article */
+            $article = Article::query()
+                ->whereKey((int) $candidateArticleId)
+                ->where('task_id', (int) $task->id)
+                ->where('status', 'draft')
+                ->whereIn('review_status', ['approved', 'auto_approved'])
+                ->whereNull('deleted_at')
+                ->lockForUpdate()
+                ->first(['id', 'task_id', 'title', 'review_status']);
+            if (! $article) {
+                return null;
+            }
+
             $freshTask = Task::query()
-                ->whereKey((int) $task->id)
+                ->whereKey((int) $article->task_id)
                 ->lockForUpdate()
                 ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
             if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
@@ -221,19 +267,6 @@ class WorkerExecutionService
             }
 
             if ($freshTask->next_publish_at !== null && $freshTask->next_publish_at->greaterThan(now())) {
-                return null;
-            }
-
-            /** @var Article|null $article */
-            $article = Article::query()
-                ->where('task_id', (int) $freshTask->id)
-                ->where('status', 'draft')
-                ->whereIn('review_status', ['approved', 'auto_approved'])
-                ->whereNull('deleted_at')
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->first(['id', 'title', 'review_status']);
-            if (! $article) {
                 return null;
             }
 
@@ -253,7 +286,7 @@ class WorkerExecutionService
                     $reviewStatus !== 'auto_approved',
                     $fallbackWorkflow,
                 );
-            } catch (ArticleRiskGateException) {
+            } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
                 return null;
             }
 
@@ -461,7 +494,10 @@ class WorkerExecutionService
     {
         $libraryId = (int) ($task->title_library_id ?? 0);
         if ($libraryId <= 0) {
-            throw new RuntimeException('任务未配置标题库');
+            throw new TaskTitleReadinessException(
+                $this->taskTitleReadinessService->inspectTask($task),
+                409,
+            );
         }
 
         $query = Title::query()->where('library_id', $libraryId);
@@ -478,7 +514,10 @@ class WorkerExecutionService
             ->first();
 
         if (! $title) {
-            throw new RuntimeException((int) ($task->is_loop ?? 0) === 1 ? '没有可用的标题' : '标题库已用尽');
+            throw new TaskTitleReadinessException(
+                $this->taskTitleReadinessService->inspectTask($task),
+                409,
+            );
         }
 
         return $title;

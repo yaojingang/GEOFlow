@@ -30,7 +30,7 @@ GEOFlow は [Apache License 2.0](../../LICENSE) の下で公開されていま�
 | 📊 データ分析 | システム概要、単一サイト運用、マルチサイト配信、アクセスログ、Top コンテンツ、AI クローラー識別、トレンド |
 | 🔍 SEO と LLM 向け出力 | SEO メタ、OG、Schema、GFM Markdown、独立 CSS、画像同期、sitemap、TXT マップ |
 | 🎨 フロントとテーマ | テーマ、プレビュー、管理画面でのテーマ切替、リモートサイトのタイトル・著作権・テーマ・カテゴリ同期 |
-| 🌍 管理画面 i18n | 中国語、英語、日本語、スペイン語、ロシア語、ポルトガル語（ブラジル）。GEOFlow 2.0 モジュールも対象 |
+| 🌍 管理画面 i18n | 中国語、英語、日本語、スペイン語、ロシア語、ポルトガル語（ブラジル）。Admin UI V3 モジュールも対象 |
 | 🔔 バージョン通知 | GitHub `version.json` を確認し、新バージョンを管理画面で通知 |
 | 🐳 すぐデプロイ | **Docker Compose**：PostgreSQL（pgvector）、Redis、アプリ、キュー、スケジューラ、Reverb、本番 Nginx/php-fpm |
 
@@ -67,18 +67,19 @@ GEOFlow は [Apache License 2.0](../../LICENSE) の下で公開されていま�
 
 ## 🆕 新バージョンの主な更新点
 
-GEOFlow 2.0 の主な変更点は次のとおりです。
+GEOFlow 3.0は、管理画面、AI、配信、運用連携をまとめて更新するメジャーリリースです。
 
-- **管理画面を運用ナビゲーション化**：3 ステップ導線を残し、単一サイト運用、マルチサイト配信、関連 skill リソースに整理。
-- **Gemini と OpenAI 互換 Provider を両方サポート**：モデル設定で OpenAI 互換ルートと Gemini ネイティブ chat / embedding を扱えます。
-- **ナレッジ分割にセマンティック計画を追加**：ルールベース、自動、任意の LLM セマンティック計画を選択できます。LLM は境界だけを計画し、最終 chunk は原文から安定的に再構築されます。
-- **データ分析ページを独立化**：システム概要、コンテンツ運用、タスク/素材の健全性、配信状況、アクセスログ、AI クローラートレンドを `/admin/analytics` に集約。
-- **配信管理が実運用可能に**：GEOFlow Agent、WordPress REST、汎用 HTTP API チャネル、シークレット、接続テスト、ターゲットサイトパッケージ、静的/rewrite モード、リモート設定同期、キュー、ログ、リモート編集/削除を提供。
-- **公開範囲を明確化**：本体サイト＋チャネル、チャネルのみ、本体サイトのみを選択可能。本体サイトのみではチャネル選択が無効になります。
-- **ターゲットサイトを静的運用可能に**：配信時にホーム、記事ページ、sitemap、TXT マップ、`llms.txt`、画像、独立 CSS を再生成。
-- **素材と RAG を強化**：ナレッジ分割、ベクトル化状態、タイトル、キーワード、画像、作者、プロンプトをタスク入力層として統合。
-- **デプロイと安全性を改善**：本番 Docker は Nginx + PHP-FPM、既存管理者を seed で上書きせず、Docker/Composer ミラーを設定可能。
-- **現在の管理画面キーを多言語でカバー**：2.0 新モジュールで裸の翻訳 key や英語フォールバックが出にくくなりました。
+- **Admin UI V3を全体に適用**：新しいサイドバー、トップバー、ナビゲーション、操作ルールを管理画面で共有し、最近の操作、サイドバー幅の調整、レスポンシブ表示、アクセシビリティ状態、ローカルアセットを追加しました。
+- **AI Workspaceを図解付きヘルプアシスタントへ更新**：システム知識は15の管理テーマ、24枚の匿名化済み画面、72問の固定評価を備えます。SSEで本文を配信し、機能リンクは現在の管理者権限に合わせて絞り込みます。旧Run、Plan、Approval、Capability、Traceワークフローは新規リクエストの受付を終了し、履歴データは保持します。
+- **記事AI品質検査を公開ゲートに追加**：知識の根拠、広告ルール、公開文脈を評価し、スコア、原文位置、法的根拠、改善提案、監査可能な承認を提供します。長文はキュー上で分段ごとに継続します。
+- **ホスト型チャネルサイトのライフサイクルを追加**：サブドメイン割り当て、状態管理、記事割り当て、公開上限、クールダウン、技術チェック、キャッシュ無効化、整合処理を、プライマリホストと信頼済みプロキシの境界内で管理できます。
+- **人工公開とChrome運用アシスタントを接続**：デバイス連携と最小権限Tokenで作業を取得し、ハートビート、アカウント確認、知乎のテキスト回答下書き入力、実行証跡の返送を行います。最終公開はユーザーが確認します。
+- **管理画面をPWAとしてインストール可能**：ローカルアイコン、Webアプリマニフェスト、Service Worker、更新フローにより、独立した作業画面として利用できます。
+- **タスクとモデル設定の安全性を向上**：タスク開始前にタイトルライブラリの容量と競合を確認し、モデル検査では実際のストリーミング対応、通常テキストへのフォールバック、フェイルオーバー、準備状態を記録します。
+- **長時間のコンテンツ処理を再開可能に**：タイトルライブラリは最大10万件を分割生成でき、タスクのゴミ箱は90日間の監査情報を保持し、選択した記事はMarkdown ZIPとして出力できます。
+- **APIとCLIが日常運用をカバー**：API v1と`bin/geoflow`から、カタログ、タスク、実行記録、素材、記事、ブラウザ運用を構造化入出力と安全確認付きで操作できます。
+- **独立アップデーターが高リスク操作を担当**：ローカルUnix socket APIから更新、完全バックアップ、環境検証、復元を依頼します。GEOFlow 3.0の最終コミットとイメージダイジェストに結び付いた署名済み互換版を使用します。
+- **インストールとデプロイ条件を整理**：新規インストールは必要なデータだけで開始し、デモ記事を自動投入しません。アップグレードではマイグレーション、フロントエンド再構築、プロセス再起動を行い、ホスト型サイトはワイルドカードDNS、ワイルドカードTLS、信頼済みプロキシ、Nginxの設定後に有効化します。
 
 ---
 
@@ -206,7 +207,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 - フロント／管理は `web`（Nginx）経由、PHP は `app`（php-fpm）。
-- **初回インストール:** 本番の `init` サービスはマイグレーション後に `php artisan geoflow:install` を実行します。新規の空データベースでは、Enterprise Signature 21 テーマと 50 件の参考記事が導入されます。既存サイトは現在のテーマとコンテンツを保持し、`../../docs/deployment/DEPLOYMENT.md` 3.1 節の停止・ドレイン手順を実行してください。
+- **初回インストール:** 本番の `init` サービスはマイグレーション後に `php artisan geoflow:install` を実行します。この手順は空のデータベース専用です。データまたはマイグレーション履歴がある環境では、`../../docs/deployment/DEPLOYMENT.md` 3.1 節の停止・ドレイン手順を実行してください。
 - 手順の詳細は **`../../docs/deployment/DEPLOYMENT.md`** を参照してください。
 
 ### 方法 2：ローカル PHP
@@ -256,9 +257,9 @@ php artisan reverb:start
 | ユーザー名 | `GEOFLOW_ADMIN_USERNAME`、既定は `admin` |
 | パスワード | ローカル開発では既定 `password`。本番では `GEOFLOW_ADMIN_PASSWORD` を設定してください。未設定でアカウントがまだ存在しない場合、インストーラは一回限りのランダムパスワードを init / `geoflow:install` ログに出力します。 |
 
-`geoflow:install` は新規の空データベースで管理者、Enterprise Signature 21 テーマ、50 件の参考記事を追加します。最小構成には `--without-demo` を使用できます。既存の業務データを検出した場合はマーカーのみを書き込み、現在のテーマ、設定、カテゴリ、著者、記事を保持します。Admin seeder も冪等です。
+`geoflow:install` は空のデータベースでのみ初期 seeders を実行します。ユーザーや業務データを検出した場合はインストール済みマーカーだけを書き込み、seed はスキップします。Admin seeder 自体も冪等で、既存のユーザー名、メール、パスワードは上書きしません。
 
-参考パックを手動導入する場合は、`GEOFLOW_SEED_FRONTEND_DEMO=true` を設定して `php artisan db:seed --force` を実行します。既定で不足した著者、カテゴリ、記事だけを追加します。`GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` はリセット可能なデモデータベースに限定してください。
+通常のインストールと`db:seed`は`FrontendDemoSeeder`を実行しません。デモデータは専用Seederを明示的に呼び出すテストだけで使用します。デプロイ環境では`GEOFLOW_SEED_FRONTEND_DEMO=false`と`GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=false`を維持してください。
 
 ### ログイン失敗時のロックと手動解除
 
@@ -267,7 +268,7 @@ php artisan reverb:start
 - 解除コマンド:
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoflow:admin-unlock USERNAME
 ```
 
 例:
@@ -280,7 +281,7 @@ php artisan geoflow:admin-unlock admin
 
 ## Docker 補足
 
-**開発**（`docker-compose.yml`）: `postgres` / `redis` / `init` / `app`（`${APP_PORT:-18080}:8080`）/ `queue` / `scheduler` / `reverb`（`${REVERB_EXPOSE_PORT:-18081}:8080`）。`docker/entrypoint.sh` の変数は [README_en.md](README_en.md) と同趣旨です。
+**開発**（`docker-compose.yml`）：`web`がNginxの統一ゲートウェイを`127.0.0.1:${APP_PORT:-18080}:80`で公開します。`app`と`reverb`は内部ネットワークに置き、WebSocketは同一オリジンの`/reverb`を使用します。ほかに`postgres`、`redis`、`assets`、`init`、`queue`、`scheduler`が含まれます。`docker/entrypoint.sh`の変数は[README_en.md](README_en.md)と同趣旨です。
 
 **本番**（`docker-compose.prod.yml`）: `docker compose --env-file .env.prod -f docker-compose.prod.yml …` で起動（上記「補足：Docker（本番）」および **`../../docs/deployment/DEPLOYMENT.md`**）。
 

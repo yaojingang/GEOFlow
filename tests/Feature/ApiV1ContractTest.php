@@ -4,20 +4,28 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\Author;
+use App\Models\Category;
+use App\Models\DistributionChannel;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
+use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Services\GeoFlow\TaskRealtimeBroadcastService;
+use App\Services\GeoFlow\TaskTitleReadinessService;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Tests\TestCase;
 
@@ -133,6 +141,8 @@ class ApiV1ContractTest extends TestCase
 
     public function test_login_temporarily_limits_username_and_ip_after_repeated_password_failures(): void
     {
+        $this->travelTo(now()->startOfMinute());
+
         $admin = $this->createActiveAdmin('lock_me', 'right-pass');
 
         for ($i = 0; $i < 4; $i++) {
@@ -328,6 +338,53 @@ class ApiV1ContractTest extends TestCase
             ->assertJsonPath('data.pagination.total', 1);
     }
 
+    public function test_keyword_and_title_item_inputs_reject_null_bytes_and_nfkc_expansion(): void
+    {
+        $admin = $this->createActiveAdmin('material_policy_writer', 'p');
+        $bearer = $this->createBearerToken($admin, ['materials:write']);
+        $keywordLibrary = KeywordLibrary::query()->create([
+            'name' => 'Policy Keywords',
+            'description' => '',
+            'keyword_count' => 0,
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'name' => 'Policy Titles',
+            'description' => '',
+            'title_count' => 0,
+            'generation_type' => 'manual',
+            'generation_rounds' => 1,
+            'is_ai_generated' => 0,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/materials/keyword-libraries/{$keywordLibrary->id}/items", [
+                'keyword' => "boundary\0null",
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'validation_failed')
+            ->assertJsonPath('error.details.field_errors.keyword', '关键词不能包含 NUL 字符');
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/materials/title-libraries/{$titleLibrary->id}/items", [
+                'title' => '有效标题',
+                'keyword' => "boundary\0null",
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'validation_failed')
+            ->assertJsonPath('error.details.field_errors.keyword', '关联关键词不能包含 NUL 字符');
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/materials/title-libraries/{$titleLibrary->id}/items", [
+                'title' => str_repeat('ﬃ', 500),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'validation_failed')
+            ->assertJsonPath('error.details.field_errors.title', '标题长度不能超过 500 个字符');
+
+        $this->assertDatabaseCount('keywords', 0);
+        $this->assertDatabaseCount('titles', 0);
+    }
+
     public function test_delete_material_items_refreshes_counts(): void
     {
         $admin = $this->createActiveAdmin('u7', 'p');
@@ -358,7 +415,7 @@ class ApiV1ContractTest extends TestCase
     public function test_task_delete_api_removes_task(): void
     {
         $admin = $this->createActiveAdmin('u8', 'p');
-        $bearer = $this->createBearerToken($admin, ['tasks:write']);
+        $bearer = $this->createBearerToken($admin, ['tasks:read', 'tasks:write']);
         $task = Task::query()->create([
             'name' => 'API delete task',
             'status' => 'paused',
@@ -370,7 +427,151 @@ class ApiV1ContractTest extends TestCase
             ->assertJsonPath('data.deleted', true)
             ->assertJsonPath('data.id', $task->id);
 
-        $this->assertDatabaseMissing('tasks', ['id' => $task->id]);
+        $this->assertNull(Task::query()->find($task->id));
+        $this->assertNotNull(Task::onlyTrashed()->find($task->id));
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson("/api/v1/tasks/{$task->id}")
+            ->assertNotFound();
+    }
+
+    public function test_regular_admin_api_cannot_manage_a_hosted_site_task(): void
+    {
+        $admin = $this->createActiveAdmin('hosted_delete_api_admin', 'p');
+        $bearer = $this->createBearerToken($admin, ['tasks:write']);
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Protected hosted task channel',
+            'domain' => 'protected-hosted-task.test',
+            'endpoint_url' => 'https://protected-hosted-task.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+        $task = Task::query()->create([
+            'name' => 'Protected hosted API task',
+            'status' => 'paused',
+            'publish_scope' => 'distribution_only',
+        ]);
+        $task->distributionChannels()->attach($channel->id);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->patchJson("/api/v1/tasks/{$task->id}", ['name' => 'Unauthorized update'])
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/tasks/{$task->id}/start")
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/tasks/{$task->id}/stop")
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/tasks/{$task->id}/enqueue")
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->deleteJson("/api/v1/tasks/{$task->id}")
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+
+        $this->assertNotNull(Task::query()->find($task->id));
+        $this->assertDatabaseHas('task_distribution_channels', [
+            'task_id' => $task->id,
+            'distribution_channel_id' => $channel->id,
+        ]);
+    }
+
+    public function test_super_admin_api_can_manage_a_hosted_site_task(): void
+    {
+        Queue::fake();
+        $admin = $this->createActiveAdmin('hosted_super_admin', 'p');
+        $admin->forceFill(['role' => 'super_admin'])->save();
+        $bearer = $this->createBearerToken($admin, ['tasks:read', 'tasks:write']);
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Super admin hosted task channel',
+            'domain' => 'super-admin-hosted-task.test',
+            'endpoint_url' => 'https://super-admin-hosted-task.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+        $library = TitleLibrary::query()->create([
+            'name' => 'Super admin hosted titles',
+            'description' => '',
+            'title_count' => 1,
+        ]);
+        Title::query()->create([
+            'library_id' => $library->id,
+            'title' => 'Hosted task title',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        $task = Task::query()->create([
+            'name' => 'Super admin hosted API task',
+            'status' => 'paused',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'title_library_id' => $library->id,
+            'article_limit' => 1,
+            'created_count' => 0,
+            'is_loop' => false,
+        ]);
+        $task->distributionChannels()->attach($channel->id);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->patchJson("/api/v1/tasks/{$task->id}", ['name' => 'Updated hosted API task'])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Updated hosted API task');
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/tasks/{$task->id}/start", ['enqueue_now' => false])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active');
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/tasks/{$task->id}/enqueue")
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'pending');
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson("/api/v1/tasks/{$task->id}/stop")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'paused');
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->deleteJson("/api/v1/tasks/{$task->id}")
+            ->assertOk()
+            ->assertJsonPath('data.deleted', true);
+
+        $this->assertNotNull(Task::onlyTrashed()->find($task->id));
+    }
+
+    public function test_article_task_reference_is_locked_inside_the_create_transaction(): void
+    {
+        $admin = $this->createActiveAdmin('article_task_lock_admin', 'p');
+        $task = Task::query()->create(['name' => 'Article reference lock task', 'status' => 'paused']);
+        $category = Category::query()->create(['name' => 'Article lock category', 'slug' => 'article-lock-category']);
+        $author = Author::query()->create(['name' => 'Article lock author']);
+        $events = [];
+
+        DB::listen(function (QueryExecuted $query) use (&$events): void {
+            $sql = strtolower($query->sql);
+            if (str_starts_with(ltrim($sql), 'select') && str_contains($sql, 'from "tasks"')) {
+                $events[] = ['type' => 'task_select', 'transaction_level' => DB::transactionLevel()];
+            }
+            if (str_starts_with(ltrim($sql), 'insert') && str_contains($sql, 'into "articles"')) {
+                $events[] = ['type' => 'article_insert', 'transaction_level' => DB::transactionLevel()];
+            }
+        });
+
+        app(ArticleGeoFlowService::class)->createArticle([
+            'title' => 'Article task lock regression',
+            'content' => 'A safe article body.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => $task->id,
+        ], (int) $admin->id);
+
+        $insertIndex = collect($events)->search(fn (array $event): bool => $event['type'] === 'article_insert');
+        $this->assertIsInt($insertIndex);
+        $this->assertTrue(collect($events)->take($insertIndex)->contains(
+            fn (array $event): bool => $event['type'] === 'task_select' && $event['transaction_level'] > 0,
+        ), json_encode($events));
     }
 
     public function test_task_create_accepts_omitted_optional_material_fields(): void
@@ -529,6 +730,8 @@ class ApiV1ContractTest extends TestCase
             app(JobQueueService::class),
             $monitoring,
             $realtime,
+            app(TaskTitleReadinessService::class),
+            app(ArticleAiQualityInvalidationService::class),
         );
 
         $baselineTransactionLevel = DB::transactionLevel();
@@ -574,5 +777,30 @@ class ApiV1ContractTest extends TestCase
         $this->assertDatabaseHas('knowledge_bases', [
             'id' => (int) $knowledgeBase->id,
         ]);
+    }
+
+    public function test_material_api_cannot_delete_category_referenced_by_trashed_task(): void
+    {
+        $admin = $this->createActiveAdmin('category_task_guard_admin', 'p');
+        $bearer = $this->createBearerToken($admin, ['materials:write']);
+        $category = Category::query()->create([
+            'name' => 'Protected task category',
+            'slug' => 'protected-task-category',
+        ]);
+        $task = Task::query()->create([
+            'name' => 'Task retaining fixed category',
+            'status' => 'paused',
+            'category_mode' => 'fixed',
+            'fixed_category_id' => $category->id,
+        ]);
+        $task->delete();
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->deleteJson('/api/v1/materials/categories/'.(int) $category->id)
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'material_in_use')
+            ->assertJsonPath('error.details.task_count', 1);
+
+        $this->assertNotNull(Category::query()->find($category->id));
     }
 }

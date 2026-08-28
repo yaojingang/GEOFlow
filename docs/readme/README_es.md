@@ -30,7 +30,7 @@ GEOFlow se publica bajo la [Apache License 2.0](../../LICENSE). Puedes usarlo, c
 | 📊 Analítica | Vista global, operación de sitio único, distribución multi-sitio, logs de acceso, top contenidos, crawlers de IA y tendencias |
 | 🔍 Salida SEO y LLM-friendly | SEO, Open Graph, Schema, Markdown GFM, CSS independiente, sincronización de imágenes, sitemap y mapas TXT |
 | 🎨 Front y temas | Temas, preview, cambio desde admin y sincronización remota de título, copyright, tema y categorías |
-| 🌍 i18n del admin | Chino, inglés, japonés, español, ruso y portugués (Brasil), con módulos GEOFlow 2.0 cubiertos |
+| 🌍 i18n del admin | Chino, inglés, japonés, español, ruso y portugués (Brasil), incluidos los módulos de Admin UI V3 |
 | 🔔 Avisos de versión | Consulta `version.json` de GitHub y avisa cuando hay una versión nueva |
 | 🐳 Listo para desplegar | **Docker Compose**: Postgres (pgvector), Redis, app, cola, scheduler, Reverb y producción con Nginx/php-fpm |
 
@@ -67,18 +67,19 @@ Cubre el panel admin, analítica, tareas, materiales, configuración de modelos 
 
 ## 🆕 Puntos clave de la nueva versión
 
-GEOFlow 2.0 incluye estos cambios clave:
+GEOFlow 3.0 es una actualización mayor del panel, la IA, la distribución y los flujos operativos:
 
-- **Panel como hub operativo**: conserva la guía de tres pasos y organiza entradas por operación de sitio único, distribución multi-sitio y skills complementarias.
-- **Gemini y proveedores OpenAI-compatible**: la configuración de modelos cubre rutas OpenAI-style y Gemini nativo para chat / embedding.
-- **Fragmentación semántica de conocimiento**: permite reglas estructuradas, modo automático o planificación semántica opcional con LLM; el LLM solo planifica límites y los chunks finales se reconstruyen desde el texto original.
-- **Página de analítica independiente**: vista global, operación de contenido, salud de tareas/materiales, estado de distribución, logs de acceso y tendencias de crawlers de IA en `/admin/analytics`.
-- **Distribución usable de extremo a extremo**: canales GEOFlow Agent, WordPress REST y HTTP API genéricos, secretos, pruebas de conexión, paquetes de sitio destino, modos estático/rewrite, sincronización de ajustes remotos, colas, logs, edición y eliminación remota.
-- **Alcance de publicación explícito**: una tarea puede publicar en local y canales, solo en canales o solo en el sitio GEOFlow local; el modo local desactiva la selección de canales.
-- **Sitios destino en modo estático**: la distribución regenera home remota, páginas de artículo, sitemap, mapas TXT, `llms.txt`, imágenes y CSS independiente.
-- **Materiales y RAG más completos**: fragmentos, estado de vectorización, títulos, palabras clave, imágenes, autores y prompts forman la capa de entrada de las tareas.
-- **Despliegue y seguridad mejorados**: Docker de producción usa Nginx + PHP-FPM, el seeder no sobrescribe admins existentes y los mirrors Docker/Composer son configurables.
-- **Cobertura i18n para los módulos actuales**: los módulos GEOFlow 2.0 ya no dependen de claves sin traducir ni fallback en inglés.
+- **Admin UI V3 unifica toda la interfaz**: las páginas comparten la nueva barra lateral, barra superior, navegación y patrones de interacción, con actividad reciente, ancho ajustable, diseño adaptable, estados accesibles y recursos locales.
+- **AI Workspace pasa a ser un asistente de ayuda ilustrado**: el conocimiento del sistema cubre 15 temas, con 24 capturas saneadas y 72 preguntas de evaluación. Transmite el contenido por SSE y muestra solo las funciones permitidas para el administrador actual. El flujo anterior de Run, Plan, Approval, Capability y Trace deja de aceptar solicitudes nuevas, y conserva los datos históricos.
+- **La inspección de calidad con IA actúa como puerta de publicación**: evalúa evidencia, reglas publicitarias y contexto, y devuelve puntuaciones, ubicaciones, referencias legales y recomendaciones auditables. Los artículos largos continúan por segmentos en la cola.
+- **Los sitios de canal alojados tienen un ciclo de vida completo**: incluye asignación de subdominios, gestión de estados, asignación de artículos, cuotas, periodos de espera, preflight técnico, invalidación de caché y reconciliación con límites de host principal y proxy de confianza.
+- **Publicación manual se conecta con el asistente de operaciones para Chrome**: la extensión usa emparejamiento de dispositivo y tokens de privilegio mínimo para reclamar trabajos, enviar heartbeats, validar cuentas, completar borradores de respuestas de texto en Zhihu y devolver evidencia. La publicación final requiere confirmación del usuario.
+- **El panel se puede instalar como PWA**: iconos locales, manifiesto, Service Worker y flujo de actualización ofrecen un espacio de trabajo independiente.
+- **La configuración de tareas y modelos es más segura**: antes de activar una tarea se comprueba la capacidad y los conflictos de la biblioteca de títulos; las pruebas de modelos registran streaming real, fallback de texto, conmutación por error y estados de disponibilidad.
+- **Las operaciones largas de contenido tienen recuperación**: las bibliotecas generan hasta 100.000 títulos por lotes, la papelera de tareas conserva 90 días de auditoría y los artículos seleccionados se exportan como Markdown ZIP.
+- **API y CLI cubren la operación diaria**: API v1 y `bin/geoflow` gestionan catálogos, tareas, ejecuciones, materiales, artículos y operaciones del navegador con entrada y salida estructuradas y controles de seguridad.
+- **El actualizador independiente gestiona operaciones de alto riesgo**: una API local de Unix socket solicita actualizaciones, copias completas, validación del entorno y restauración. La versión firmada compatible se publica con el commit final y los digests de GEOFlow 3.0.
+- **Los límites de instalación y despliegue son más claros**: las instalaciones nuevas parten de los datos necesarios y no importan artículos de demostración. Las actualizaciones ejecutan migraciones, reconstruyen el frontend y reinician procesos; los sitios alojados se habilitan después de configurar DNS comodín, TLS comodín, proxies de confianza y Nginx.
 
 ---
 
@@ -248,7 +249,7 @@ Admin: `http://127.0.0.1:8080/geo_admin/login`. **Producción:** Nginx + PHP-FPM
 
 `geoflow:install` solo ejecuta datos iniciales cuando la base está vacía. Si detecta datos de usuario o negocio, solo escribe el marcador de instalación y omite el seed. El seeder de admin sigue siendo idempotente y no sobrescribe usuario, correo ni contraseña existentes.
 
-En una base de datos nueva y vacía, `geoflow:install` activa Enterprise Signature 21 e importa el paquete de 50 artículos de referencia. Usa `--without-demo` para una instalación mínima. Los sitios con datos conservan su tema, configuración, autores, categorías y artículos. Para una importación manual, configura `GEOFLOW_SEED_FRONTEND_DEMO=true` y ejecuta `php artisan db:seed --force`; el modo predeterminado solo completa filas ausentes. Reserva `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=true` para bases demo reiniciables.
+La instalación normal y el comando `db:seed` no ejecutan `FrontendDemoSeeder`. Los datos demo quedan reservados para pruebas que llaman al seeder de forma explícita; mantén `GEOFLOW_SEED_FRONTEND_DEMO=false` y `GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=false` en cualquier entorno desplegado.
 
 ### Bloqueo por intentos fallidos y desbloqueo manual
 
@@ -257,7 +258,7 @@ En una base de datos nueva y vacía, `geoflow:install` activa Enterprise Signatu
 - Comando de desbloqueo:
 
 ```bash
-php artisan geoflow:admin-unlock <username>
+php artisan geoflow:admin-unlock USERNAME
 ```
 
 Ejemplo:
@@ -270,7 +271,7 @@ php artisan geoflow:admin-unlock admin
 
 ## Docker (resumen)
 
-**Desarrollo** (`docker-compose.yml`): `postgres`, `redis`, `init`, `app` (`${APP_PORT:-18080}:8080`), `queue`, `scheduler`, `reverb` (`${REVERB_EXPOSE_PORT:-18081}:8080`). Variables de `docker/entrypoint.sh`: como en [README_en.md](README_en.md).
+**Desarrollo** (`docker-compose.yml`): `web` publica la puerta de enlace Nginx en `127.0.0.1:${APP_PORT:-18080}:80`; `app` y `reverb` permanecen en la red interna, y WebSocket usa la ruta del mismo origen `/reverb`. La pila también incluye `postgres`, `redis`, `assets`, `init`, `queue` y `scheduler`. Variables de `docker/entrypoint.sh`: como en [README_en.md](README_en.md).
 
 **Producción** (`docker-compose.prod.yml`): use `docker compose --env-file .env.prod -f docker-compose.prod.yml …` (véase el suplemento arriba y `../../docs/deployment/DEPLOYMENT.md`).
 

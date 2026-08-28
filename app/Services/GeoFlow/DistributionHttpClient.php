@@ -154,7 +154,7 @@ class DistributionHttpClient
     /**
      * @return array<string,mixed>
      */
-    public function syncSiteSettings(DistributionChannel $channel): array
+    public function syncSiteSettings(DistributionChannel $channel, ?string $idempotencyKey = null, ?array $settings = null): array
     {
         $channel->loadMissing('activeSecret');
         $secret = $channel->activeSecret;
@@ -164,8 +164,8 @@ class DistributionHttpClient
 
         $path = '/geoflow-agent/v1/site-settings';
 
-        return $this->sendChannelSignedJson($channel, $secret, $path, 'site.settings.update', 'site-settings-channel-'.(int) $channel->id.'-'.time(), [
-            'settings' => $channel->targetSiteSettingsPayload(),
+        return $this->sendChannelSignedJson($channel, $secret, $path, 'site.settings.update', $idempotencyKey ?: 'site-settings-channel-'.(int) $channel->id.'-'.time(), [
+            'settings' => $settings ?? $channel->targetSiteSettingsPayload(),
         ], '目标站点设置同步');
     }
 

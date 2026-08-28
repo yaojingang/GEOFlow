@@ -21,6 +21,40 @@ class Title extends Model
         'usage_count',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (Title $title): void {
+            if (! $title->exists || $title->isDirty(['library_id', 'title'])) {
+                $title->title = self::normalizeText((string) $title->title);
+                $title->title_fingerprint = self::fingerprintFor((string) $title->title);
+            }
+        });
+    }
+
+    public static function fingerprintFor(string $title): string
+    {
+        return hash('sha256', self::normalizeText($title));
+    }
+
+    public static function normalizeText(string $title): string
+    {
+        $normalized = $title;
+        if (class_exists(\Normalizer::class)) {
+            $candidate = \Normalizer::normalize($title, \Normalizer::FORM_KC);
+            if (is_string($candidate)) {
+                $normalized = $candidate;
+            }
+        }
+        $normalized = preg_replace(
+            '/[\x{0000}-\x{001F}\x{007F}-\x{009F}\x{200B}\x{2060}\x{FEFF}]/u',
+            '',
+            $normalized,
+        );
+        $normalized = preg_replace('/\s+/u', ' ', (string) $normalized);
+
+        return trim((string) $normalized);
+    }
+
     protected function casts(): array
     {
         return [

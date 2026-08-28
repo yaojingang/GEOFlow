@@ -54,6 +54,11 @@ class TitleLibrary extends Model
         return $this->hasMany(Title::class, 'library_id');
     }
 
+    public function generationRuns(): HasMany
+    {
+        return $this->hasMany(TitleGenerationRun::class);
+    }
+
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'title_library_id');

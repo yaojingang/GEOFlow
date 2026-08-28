@@ -44,4 +44,18 @@ final class DistributionChannelOperationLeaseService
                 ->delete();
         }
     }
+
+    public function assertNoActiveLease(DistributionChannel $lockedChannel): void
+    {
+        if (DB::transactionLevel() === 0) {
+            throw new \LogicException('Channel mutation guards require an active database transaction.');
+        }
+        $activeLeaseExists = DistributionChannelOperation::query()
+            ->where('distribution_channel_id', (int) $lockedChannel->id)
+            ->where('expires_at', '>', now())
+            ->exists();
+        if ($activeLeaseExists) {
+            throw new DistributionChannelDeletionBlocked('operation_in_progress');
+        }
+    }
 }

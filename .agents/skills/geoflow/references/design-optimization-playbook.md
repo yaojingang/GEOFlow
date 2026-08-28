@@ -24,7 +24,7 @@ Use this reference when the request is to improve an existing GEOFlow theme rath
 
 - header density and navigation clarity
 - hero hierarchy and section rhythm
-- card consistency across home/category/archive
+- card consistency across home/category/article/About
 - article readability, metadata treatment, and related-content treatment
 - ad block tone and how aggressive it feels
 - mobile spacing, stacking, and overflow risk

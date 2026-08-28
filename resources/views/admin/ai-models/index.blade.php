@@ -4,7 +4,7 @@
     <div class="px-4 sm:px-0">
         <div class="flex items-center justify-between mb-8">
             <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.ai.configurator') }}" class="text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.ai.configurator') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
                 <div>
@@ -12,10 +12,10 @@
                     <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_models.page_subtitle') }}</p>
                 </div>
             </div>
-            <button type="button" onclick="showCreateModelModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+            <a href="{{ route('admin.ai-models.create') }}" class="inline-flex min-h-10 items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                 <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
                 {{ __('admin.ai_models.create') }}
-            </button>
+            </a>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -114,7 +114,7 @@
             </div>
 
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
+                <table class="min-w-full divide-y divide-gray-200" data-sticky-actions>
                     <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.info') }}</th>
@@ -131,9 +131,9 @@
                             <td colspan="6" class="px-6 py-4 text-center text-gray-500">
                                 <i data-lucide="cpu" class="w-8 h-8 mx-auto mb-2 text-gray-400"></i>
                                 <p>{{ __('admin.ai_models.empty') }}</p>
-                                <button type="button" onclick="showCreateModelModal()" class="mt-2 text-blue-600 hover:text-blue-800">
+                                <a href="{{ route('admin.ai-models.create') }}" class="mt-2 inline-flex min-h-10 items-center rounded-lg px-3 text-blue-600 transition-[color,background-color,transform] duration-150 hover:bg-blue-50 hover:text-blue-800 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                                     {{ __('admin.ai_models.add_first') }}
-                                </button>
+                                </a>
                             </td>
                         </tr>
                     @else
@@ -172,6 +172,30 @@
                                     @else
                                         <span class="text-green-600">{{ __('admin.ai_models.limit_unlimited') }}</span>
                                     @endif
+                                    @if ($model['model_type'] === 'chat')
+                                        <details class="mt-2 max-w-xs whitespace-normal text-xs text-slate-600" data-workspace-readiness>
+                                            <summary class="cursor-pointer font-medium text-slate-700">
+                                                {{ __('admin.ai_models.readiness_title') }}
+                                                @if ($model['workspace_readiness_status'] !== '')
+                                                    · {{ __('admin.ai_models.readiness_status.'.$model['workspace_readiness_status']) }}
+                                                @endif
+                                            </summary>
+                                            <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+                                                @forelse (collect($model['workspace_readiness_profile'])->only(['configuration', 'authentication', 'plain_text', 'streaming', 'structured_output', 'tool_schema', 'tool_roundtrip', 'cancellation', 'performance']) as $check => $result)
+                                                    <span>{{ __('admin.ai_models.readiness_checks.'.$check) }}</span>
+                                                    <span class="text-right font-medium">{{ __('admin.ai_models.readiness_status.'.(is_array($result) ? ($result['status'] ?? 'unknown') : 'unknown')) }}</span>
+                                                @empty
+                                                    <span class="col-span-2 text-slate-400">{{ __('admin.ai_models.readiness_not_checked') }}</span>
+                                                @endforelse
+                                            </div>
+                                            @if ($model['workspace_readiness_expires_at'])
+                                                <p class="mt-2 text-slate-400">{{ __('admin.ai_models.readiness_valid_until', ['time' => $model['workspace_readiness_expires_at']]) }}</p>
+                                            @endif
+                                            @if ($model['workspace_readiness_failure_code'] !== '')
+                                                <p class="mt-1 text-red-600">{{ __('admin.ai_models.readiness_failure', ['code' => $model['workspace_readiness_failure_code']]) }}</p>
+                                            @endif
+                                        </details>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     @if ($model['status'] === 'active')
@@ -190,9 +214,9 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <div class="flex items-center gap-3">
-                                        <button type="button" onclick="testModelConnection({{ (int) $model['id'] }}, this)" class="text-emerald-600 hover:text-emerald-900">{{ __('admin.ai_models.test') }}</button>
-                                        <button type="button" onclick='editModel(@json($model, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP))' class="text-blue-600 hover:text-blue-900">{{ __('admin.ai_models.edit') }}</button>
-                                        <button type="button" onclick="deleteModel({{ (int) $model['id'] }}, @js($model['name']))" class="text-red-600 hover:text-red-900">{{ __('admin.ai_models.delete') }}</button>
+                                        <button type="button" onclick="testModelConnection({{ (int) $model['id'] }}, this)" class="min-h-10 text-emerald-600 transition-[color,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2">{{ __('admin.ai_models.test') }}</button>
+                                        <a href="{{ route('admin.ai-models.edit', ['modelId' => $model['id']]) }}" class="inline-flex min-h-10 items-center text-blue-600 transition-[color,transform] duration-150 hover:text-blue-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{{ __('admin.ai_models.edit') }}</a>
+                                        <button type="button" onclick="deleteModel({{ (int) $model['id'] }}, @js($model['name']))" class="min-h-10 text-red-600 transition-[color,transform] duration-150 hover:text-red-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2">{{ __('admin.ai_models.delete') }}</button>
                                     </div>
                                     <div id="model-test-result-{{ (int) $model['id'] }}" class="mt-2 text-xs whitespace-normal max-w-xs"></div>
                                 </td>
@@ -205,208 +229,22 @@
         </div>
     </div>
 
-    <div id="modelModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-        <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-medium text-gray-900" id="modalTitle">{{ __('admin.ai_models.modal_create') }}</h3>
-                    <button type="button" onclick="closeModelModal()" class="text-gray-400 hover:text-gray-600">
-                        <i data-lucide="x" class="w-6 h-6"></i>
-                    </button>
-                </div>
-
-                <form id="modelForm" method="POST" action="{{ route('admin.ai-models.store') }}" class="space-y-6">
-                    @csrf
-                    <input type="hidden" name="_method" id="formMethod" value="POST">
-                    <input type="hidden" name="id" id="modelId" value="">
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.ai_models.quick_chat') }}</label>
-                        <div class="flex flex-wrap gap-2">
-                            <button type="button" onclick="fillPreset('minimax')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">MiniMax</button>
-                            <button type="button" onclick="fillPreset('minimax_m27')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">MiniMax M2.7</button>
-                            <button type="button" onclick="fillPreset('minimax_highspeed')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">MiniMax Highspeed</button>
-                            <button type="button" onclick="fillPreset('openai')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">OpenAI</button>
-                            <button type="button" onclick="fillPreset('atlascloud')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Atlas Cloud</button>
-                            <button type="button" onclick="fillPreset('gemini')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Gemini</button>
-                            <button type="button" onclick="fillPreset('deepseek')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">DeepSeek V4 Flash</button>
-                            <button type="button" onclick="fillPreset('deepseek_v4_pro')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">DeepSeek V4 Pro</button>
-                            <button type="button" onclick="fillPreset('zhipu')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Zhipu GLM</button>
-                            <button type="button" onclick="fillPreset('volcengine_ark')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Volcengine Ark</button>
-                        </div>
-                        <label class="block text-sm font-medium text-gray-700 mt-4 mb-2">{{ __('admin.ai_models.quick_embedding') }}</label>
-                        <div class="flex flex-wrap gap-2">
-                            <button type="button" onclick="fillPreset('openai_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">OpenAI Embedding</button>
-                            <button type="button" onclick="fillPreset('gemini_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Gemini Embedding</button>
-                            <button type="button" onclick="fillPreset('volcengine_ark_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Doubao Embedding</button>
-                            <button type="button" onclick="fillPreset('zhipu_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Zhipu Embedding</button>
-                        </div>
-                        <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.quick_help') }}</p>
-                        <p class="mt-2 text-xs text-amber-700">{{ __('admin.ai_models.gemini_embedding_notice') }}</p>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label for="name" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_name') }}</label>
-                            <input type="text" name="name" id="name" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.placeholder_name') }}">
-                        </div>
-                        <div>
-                            <label for="version" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_version') }}</label>
-                            <input type="text" name="version" id="version" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.placeholder_version') }}">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label for="model_type" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_type') }}</label>
-                        <select name="model_type" id="model_type" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <option value="chat">{{ __('admin.ai_models.type_chat_option') }}</option>
-                            <option value="embedding">{{ __('admin.ai_models.type_embedding_option') }}</option>
-                        </select>
-                        <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.type_help') }}</p>
-                    </div>
-
-                    <div>
-                        <label for="model_id" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_model_id') }}</label>
-                        <input type="text" name="model_id" id="model_id" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.placeholder_model_id') }}">
-                    </div>
-
-                    <div>
-                        <label for="api_key" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_api_key') }}</label>
-                        <input type="password" name="api_key" id="api_key" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.placeholder_api_key') }}">
-                        <p id="apiKeyHelp" class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.api_key_help_create') }}</p>
-                    </div>
-
-                    <div>
-                        <label for="api_url" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_api_url') }}</label>
-                        <input type="url" name="api_url" id="api_url" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" value="https://api.deepseek.com" placeholder="{{ __('admin.ai_models.placeholder_api_url') }}">
-                        <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.api_url_help') }}</p>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label for="failover_priority" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_failover_priority') }}</label>
-                            <input type="number" name="failover_priority" id="failover_priority" min="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" value="100">
-                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.failover_priority_help') }}</p>
-                        </div>
-                        <div>
-                            <label for="daily_limit" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_daily_limit') }}</label>
-                            <input type="number" name="daily_limit" id="daily_limit" min="0" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="0">
-                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.limit_help') }}</p>
-                        </div>
-                        <div id="maxTokensField" class="{{ ($supportsModelMaxTokens ?? false) ? '' : 'hidden' }}">
-                            <label for="max_tokens" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_max_tokens') }}</label>
-                            <input type="number" name="max_tokens" id="max_tokens" min="1" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.max_tokens_placeholder', ['tokens' => (int) ($contentMaxTokens ?? 8192)]) }}">
-                            <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.max_tokens_help') }}</p>
-                        </div>
-                        <div id="statusField" class="hidden">
-                            <label for="status" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_status') }}</label>
-                            <select name="status" id="status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                <option value="active">{{ __('admin.ai_models.status_active') }}</option>
-                                <option value="inactive">{{ __('admin.ai_models.status_inactive') }}</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-end space-x-3 pt-4">
-                        <button type="button" onclick="closeModelModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                            {{ __('admin.button.cancel') }}
-                        </button>
-                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                            {{ __('admin.button.save') }}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @push('scripts')
     <script>
         const AI_MODELS_I18N = {
-            modalCreate: @json(__('admin.ai_models.modal_create')),
-            modalEdit: @json(__('admin.ai_models.modal_edit')),
-            apiKeyPlaceholder: @json(__('admin.ai_models.placeholder_api_key')),
-            apiKeyPlaceholderKeep: @json(__('admin.ai_models.placeholder_api_key_keep')),
-            apiKeyHelpCreate: @json(__('admin.ai_models.api_key_help_create')),
-            apiKeyHelpEdit: @json(__('admin.ai_models.api_key_help_edit')),
-            apiKeyHelpOriginChange: @json(__('admin.ai_models.api_key_help_origin_change')),
             confirmDelete: @json(__('admin.ai_models.confirm_delete', ['name' => '__NAME__'])),
             test: @json(__('admin.ai_models.test')),
             testing: @json(__('admin.ai_models.testing')),
             testSuccessPrefix: @json(__('admin.ai_models.test_success_prefix')),
             testFailedPrefix: @json(__('admin.ai_models.test_failed_prefix')),
             testNetworkError: @json(__('admin.ai_models.test_network_error')),
+            readinessTitle: @json(__('admin.ai_models.readiness_title')),
+            readinessReady: @json(__('admin.ai_models.readiness_status.ready')),
         };
-        const SUPPORTS_MODEL_MAX_TOKENS = @json((bool) ($supportsModelMaxTokens ?? false));
-        const UPDATE_URL_TEMPLATE = @json(\App\Support\AdminWeb::routePath('admin.ai-models.update', ['modelId' => '__MODEL_ID__']));
         const DELETE_URL_TEMPLATE = @json(\App\Support\AdminWeb::routePath('admin.ai-models.delete', ['modelId' => '__MODEL_ID__']));
         const TEST_URL_TEMPLATE = @json(\App\Support\AdminWeb::routePath('admin.ai-models.test', ['modelId' => '__MODEL_ID__']));
-
-        const PROVIDER_PRESETS = {
-            minimax: {name: 'MiniMax M3', version: 'M3', model_id: 'MiniMax-M3', api_url: 'https://api.minimax.io', model_type: 'chat'},
-            minimax_m27: {name: 'MiniMax M2.7', version: 'M2.7', model_id: 'MiniMax-M2.7', api_url: 'https://api.minimax.io', model_type: 'chat'},
-            minimax_highspeed: {name: 'MiniMax M2.7 Highspeed', version: 'M2.7', model_id: 'MiniMax-M2.7-highspeed', api_url: 'https://api.minimax.io', model_type: 'chat'},
-            atlascloud: {name: 'Atlas Cloud DeepSeek V4 Pro', version: 'v4', model_id: 'deepseek-ai/deepseek-v4-pro', api_url: 'https://api.atlascloud.ai/v1', model_type: 'chat'},
-            openai: {name: 'GPT-5.6 Terra', version: '5.6', model_id: 'gpt-5.6-terra', api_url: 'https://api.openai.com', model_type: 'chat'},
-            gemini: {name: 'Gemini 3.6 Flash', version: 'v1beta', model_id: 'gemini-3.6-flash', api_url: 'https://generativelanguage.googleapis.com/v1beta', model_type: 'chat'},
-            deepseek: {name: 'DeepSeek V4 Flash', version: 'v4', model_id: 'deepseek-v4-flash', api_url: 'https://api.deepseek.com', model_type: 'chat'},
-            deepseek_v4_pro: {name: 'DeepSeek V4 Pro', version: 'v4', model_id: 'deepseek-v4-pro', api_url: 'https://api.deepseek.com', model_type: 'chat'},
-            zhipu: {name: '智谱 GLM-5.2', version: 'v4', model_id: 'glm-5.2', api_url: 'https://open.bigmodel.cn/api/paas/v4', model_type: 'chat'},
-            volcengine_ark: {name: '火山方舟 Chat', version: 'v3', model_id: '', api_url: 'https://ark.cn-beijing.volces.com/api/v3', model_type: 'chat'},
-            openai_embedding: {name: 'OpenAI Embedding 3 Small', version: '', model_id: 'text-embedding-3-small', api_url: 'https://api.openai.com', model_type: 'embedding'},
-            gemini_embedding: {name: 'Gemini Embedding 2', version: 'v1beta', model_id: 'gemini-embedding-2', api_url: 'https://generativelanguage.googleapis.com/v1beta', model_type: 'embedding'},
-            volcengine_ark_embedding: {name: 'Doubao Embedding', version: 'v3', model_id: 'doubao-embedding-text-240515', api_url: 'https://ark.cn-beijing.volces.com/api/v3', model_type: 'embedding'},
-            zhipu_embedding: {name: '智谱 Embedding-3', version: 'v4', model_id: 'embedding-3', api_url: 'https://open.bigmodel.cn/api/paas/v4', model_type: 'embedding'},
-        };
-
-        function showCreateModelModal() {
-            document.getElementById('modalTitle').textContent = AI_MODELS_I18N.modalCreate;
-            document.getElementById('modelForm').action = @json(route('admin.ai-models.store'));
-            document.getElementById('formMethod').value = 'POST';
-            document.getElementById('modelId').value = '';
-            document.getElementById('statusField').classList.add('hidden');
-            document.getElementById('modelForm').reset();
-            document.getElementById('model_type').value = 'chat';
-            document.getElementById('api_key').required = true;
-            document.getElementById('api_key').placeholder = AI_MODELS_I18N.apiKeyPlaceholder;
-            document.getElementById('apiKeyHelp').textContent = AI_MODELS_I18N.apiKeyHelpCreate;
-            const apiUrlField = document.getElementById('api_url');
-            apiUrlField.value = 'https://api.deepseek.com';
-            apiUrlField.dataset.originalOrigin = '';
-            document.getElementById('failover_priority').value = 100;
-            syncMaxTokensVisibility();
-            document.getElementById('modelModal').classList.remove('hidden');
-        }
-
-        function editModel(model) {
-            document.getElementById('modalTitle').textContent = AI_MODELS_I18N.modalEdit;
-            document.getElementById('modelForm').action = UPDATE_URL_TEMPLATE.replace('__MODEL_ID__', String(model.id));
-            document.getElementById('formMethod').value = 'PUT';
-            document.getElementById('modelId').value = model.id;
-            document.getElementById('name').value = model.name;
-            document.getElementById('version').value = model.version || '';
-            document.getElementById('model_id').value = model.model_id;
-            document.getElementById('model_type').value = model.model_type || 'chat';
-            document.getElementById('api_key').value = '';
-            document.getElementById('api_key').required = false;
-            document.getElementById('api_key').placeholder = AI_MODELS_I18N.apiKeyPlaceholderKeep;
-            document.getElementById('apiKeyHelp').textContent = AI_MODELS_I18N.apiKeyHelpEdit;
-            const apiUrlField = document.getElementById('api_url');
-            apiUrlField.value = model.api_url || '';
-            apiUrlField.dataset.originalOrigin = providerOrigin(apiUrlField.value);
-            document.getElementById('failover_priority').value = model.failover_priority || 100;
-            document.getElementById('daily_limit').value = model.daily_limit || 0;
-            document.getElementById('max_tokens').value = model.max_tokens ?? '';
-            document.getElementById('status').value = model.status || 'active';
-            document.getElementById('statusField').classList.remove('hidden');
-            syncMaxTokensVisibility();
-            document.getElementById('modelModal').classList.remove('hidden');
-        }
-
-        function closeModelModal() {
-            document.getElementById('modelModal').classList.add('hidden');
-        }
 
         function deleteModel(id, name) {
             if (!confirm(AI_MODELS_I18N.confirmDelete.replace('__NAME__', name))) {
@@ -444,10 +282,13 @@
                 const data = await response.json().catch(() => ({}));
                 const message = data.message || (response.ok ? AI_MODELS_I18N.testSuccessPrefix : AI_MODELS_I18N.testFailedPrefix);
                 const duration = data.meta && data.meta.duration_ms ? ` · ${data.meta.duration_ms}ms` : '';
+                const readiness = data.meta && data.meta.readiness_status === 'ready'
+                    ? ` · ${AI_MODELS_I18N.readinessTitle}: ${AI_MODELS_I18N.readinessReady}`
+                    : '';
                 setModelTestResult(
                     resultEl,
                     response.ok && data.success ? 'success' : 'failed',
-                    `${response.ok && data.success ? AI_MODELS_I18N.testSuccessPrefix : AI_MODELS_I18N.testFailedPrefix}${message}${duration}`
+                    `${response.ok && data.success ? AI_MODELS_I18N.testSuccessPrefix : AI_MODELS_I18N.testFailedPrefix}${message}${duration}${readiness}`
                 );
             } catch (error) {
                 setModelTestResult(resultEl, 'failed', AI_MODELS_I18N.testNetworkError);
@@ -471,77 +312,5 @@
             element.textContent = message;
         }
 
-        function fillPreset(provider) {
-            const preset = PROVIDER_PRESETS[provider];
-            if (!preset) {
-                return;
-            }
-            const apiUrlField = document.getElementById('api_url');
-            const apiKeyField = document.getElementById('api_key');
-            if (document.getElementById('formMethod').value === 'PUT'
-                && providerOrigin(apiUrlField.value) !== providerOrigin(preset.api_url)) {
-                apiKeyField.value = '';
-            }
-            document.getElementById('name').value = preset.name;
-            document.getElementById('version').value = preset.version;
-            document.getElementById('model_id').value = preset.model_id;
-            apiUrlField.value = preset.api_url;
-            document.getElementById('model_type').value = preset.model_type;
-            syncApiKeyRequirement();
-            syncMaxTokensVisibility();
-        }
-
-        function providerOrigin(value) {
-            try {
-                return new URL(String(value || '').trim()).origin.toLowerCase();
-            } catch (error) {
-                return String(value || '').trim().toLowerCase();
-            }
-        }
-
-        function syncApiKeyRequirement() {
-            if (document.getElementById('formMethod').value !== 'PUT') {
-                return;
-            }
-
-            const apiUrlField = document.getElementById('api_url');
-            const apiKeyField = document.getElementById('api_key');
-            const providerChanged = (apiUrlField.dataset.originalOrigin || '') !== providerOrigin(apiUrlField.value);
-            apiKeyField.required = providerChanged;
-            apiKeyField.placeholder = providerChanged
-                ? AI_MODELS_I18N.apiKeyPlaceholder
-                : AI_MODELS_I18N.apiKeyPlaceholderKeep;
-            document.getElementById('apiKeyHelp').textContent = providerChanged
-                ? AI_MODELS_I18N.apiKeyHelpOriginChange
-                : AI_MODELS_I18N.apiKeyHelpEdit;
-        }
-
-        document.getElementById('api_url')?.addEventListener('input', syncApiKeyRequirement);
-
-        function syncMaxTokensVisibility() {
-            const field = document.getElementById('maxTokensField');
-            const input = document.getElementById('max_tokens');
-            const modelType = document.getElementById('model_type')?.value || 'chat';
-            if (!field || !input) {
-                return;
-            }
-
-            const visible = SUPPORTS_MODEL_MAX_TOKENS && modelType === 'chat';
-            field.classList.toggle('hidden', !visible);
-            input.disabled = !visible;
-            if (!visible) {
-                input.value = '';
-            }
-        }
-
-        document.getElementById('model_type')?.addEventListener('change', syncMaxTokensVisibility);
-        syncMaxTokensVisibility();
-
-        window.addEventListener('click', function (event) {
-            const modal = document.getElementById('modelModal');
-            if (event.target === modal) {
-                closeModelModal();
-            }
-        });
     </script>
 @endpush

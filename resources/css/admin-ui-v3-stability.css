@@ -1,0 +1,232 @@
+/* UI V3 first-paint stability. Keep these rules after the shared design system. */
+
+:where(i[data-lucide]) {
+    display: inline-block;
+    flex: 0 0 auto;
+    overflow: hidden;
+    vertical-align: -0.125em;
+}
+
+.gf-admin-v3 svg.lucide {
+    flex: 0 0 auto;
+}
+
+:where(i[data-lucide]:not([class*='h-']):not([class*='size-'])) {
+    height: 1em;
+}
+
+:where(i[data-lucide]:not([class*='w-']):not([class*='size-'])) {
+    width: 1em;
+}
+
+.gf-admin-v3 .gf-sidebar__link > :where(i[data-lucide]) {
+    flex-basis: 20px;
+    height: 20px;
+    width: 20px;
+}
+
+.gf-admin-v3 .gf-icon-button > :where(i[data-lucide]) {
+    height: 20px;
+    width: 20px;
+}
+
+.gf-admin-v3 .gf-icon-button--small > :where(i[data-lucide]) {
+    height: 17px;
+    width: 17px;
+}
+
+.gf-admin-v3 .gf-button > :where(i[data-lucide]) {
+    height: 17px;
+    width: 17px;
+}
+
+.gf-admin-v3 .gf-flash > :where(i[data-lucide]) {
+    flex-basis: 18px;
+    height: 18px;
+    margin-top: 2px;
+    width: 18px;
+}
+
+.gf-admin-v3 .gf-ai-demo-badge > :where(i[data-lucide]) {
+    height: 13px;
+    width: 13px;
+}
+
+.gf-admin-v3 .gf-ai-suggestions__items :where(i[data-lucide]) {
+    height: 17px;
+    width: 17px;
+}
+
+.gf-admin-v3 .gf-ai-agent-message__identity :where(i[data-lucide]) {
+    height: 20px;
+    width: 20px;
+}
+
+.gf-admin-v3 .gf-ai-runtime-notice > :where(i[data-lucide]) {
+    flex-basis: 17px;
+    height: 17px;
+    width: 17px;
+}
+
+.gf-admin-v3 .gf-ai-workbench__head .gf-button > :where(i[data-lucide]) {
+    height: 15px;
+    width: 15px;
+}
+
+.gf-admin-v3 .gf-ai-workbench > .gf-ai-composer .gf-ai-composer__toolbar > span :where(i[data-lucide]) {
+    flex-basis: 13px;
+    height: 13px;
+    width: 13px;
+}
+
+.gf-admin-v3 .gf-ai-send > :where(i[data-lucide]) {
+    height: 19px;
+    width: 19px;
+}
+
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar {
+    width: var(--gf-sidebar-collapsed);
+}
+
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-shell__body {
+    margin-left: var(--gf-sidebar-collapsed);
+}
+
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-wordmark,
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__heading,
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__link > span:last-child,
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__recent,
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-account-name,
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__account > svg,
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__account > :where(i[data-lucide]) {
+    display: none;
+}
+
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__brand {
+    justify-content: center;
+    padding: 0;
+}
+
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__group {
+    margin-top: 4px;
+}
+
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__link {
+    justify-content: center;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__account-bar {
+    flex-direction: column;
+    padding: 8px 14px;
+}
+
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__account {
+    flex: 0 0 40px;
+    justify-content: center;
+    padding: 0;
+    width: 40px;
+}
+
+html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 [data-sidebar-collapse] svg {
+    transform: rotate(180deg);
+}
+
+.gf-admin-v3 .gf-main {
+    scrollbar-gutter: stable;
+}
+
+.gf-admin-v3 #content-editor {
+    min-height: 560px;
+}
+
+.gf-admin-v3 #enterprise-draft-editor {
+    min-height: 720px;
+}
+
+html:not([data-gf-ui-booting]) .gf-admin-v3 .gf-sidebar {
+    transition: width 160ms ease-out, transform 180ms ease-out;
+}
+
+html:not([data-gf-ui-booting]) .gf-admin-v3 .gf-shell__body {
+    transition: margin-left 160ms ease-out;
+}
+
+html[data-gf-sidebar-resizing] .gf-admin-v3 .gf-sidebar,
+html[data-gf-sidebar-resizing] .gf-admin-v3 .gf-shell__body {
+    transition: none;
+}
+
+html[data-gf-ui-booting] .gf-admin-v3 *,
+html[data-gf-ui-booting] .gf-admin-v3 *::before,
+html[data-gf-ui-booting] .gf-admin-v3 *::after {
+    animation-duration: 0s !important;
+    transition-duration: 0s !important;
+}
+
+@media (max-width: 767px) {
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar {
+        width: min(var(--gf-sidebar-default-width), calc(100vw - 24px));
+    }
+
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-wordmark,
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__heading,
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-account-name,
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__account > svg,
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__account > :where(i[data-lucide]) {
+        display: block;
+    }
+
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__recent {
+        display: flex;
+    }
+
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__link > span:last-child {
+        display: inline;
+    }
+
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__brand {
+        justify-content: space-between;
+        padding: 0 16px;
+    }
+
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__group {
+        margin-top: 12px;
+    }
+
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__link {
+        justify-content: flex-start;
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__account-bar {
+        flex-direction: row;
+        padding: 10px 12px 12px;
+    }
+
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__account {
+        flex: 1 1 auto;
+        justify-content: flex-start;
+        padding: 0 8px;
+        width: auto;
+    }
+
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-shell__body {
+        margin-left: 0;
+    }
+}
+
+@media (max-width: 767px) and (max-height: 628px) {
+    html[data-gf-sidebar-state='collapsed'] .gf-admin-v3 .gf-sidebar__recent {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gf-admin-v3 .gf-sidebar,
+    .gf-admin-v3 .gf-shell__body {
+        transition: none;
+    }
+}

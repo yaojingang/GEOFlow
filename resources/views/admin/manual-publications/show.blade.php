@@ -3,10 +3,15 @@
 @php
     $riskMatches = is_array($publication->risk_result) ? ($publication->risk_result['matches'] ?? []) : [];
     $nextStatuses = \App\Models\ManualPublication::allowedNextStatuses((string) $publication->status);
+    $browserClaimStale = $publication->browser_claimed_at !== null && (
+        $publication->browser_claimed_by_token_id === null
+        || $publication->browser_last_seen_at === null
+        || $publication->browser_last_seen_at->lte(now()->subMinutes(10))
+    );
     $statusClass = match((string) $publication->status) {
         'completed' => 'bg-emerald-50 text-emerald-700 ring-emerald-100',
         'in_progress' => 'bg-purple-50 text-purple-700 ring-purple-100',
-        'ready' => 'bg-amber-50 text-amber-700 ring-amber-100',
+        'ready', 'outcome_unknown' => 'bg-amber-50 text-amber-700 ring-amber-100',
         'failed', 'cancelled' => 'bg-red-50 text-red-700 ring-red-100',
         default => 'bg-gray-100 text-gray-700 ring-gray-200',
     };
@@ -23,6 +28,11 @@
             <p class="mt-1 text-sm text-gray-600">{{ __('admin.manual_publications.type.'.$publication->type) }} · {{ $publication->platformDisplayName() }}</p>
         </div>
         <div class="flex flex-wrap gap-2">
+            @if($publication->publication_payload && $publication->target_url && (($publication->publication_payload['target_action'] ?? null) !== 'zhihu_answer' || $publication->account?->profile_url) && in_array($publication->status, [\App\Models\ManualPublication::STATUS_READY, \App\Models\ManualPublication::STATUS_IN_PROGRESS], true))
+                <a href="{{ route('admin.account.browser-clients.index') }}" class="inline-flex items-center gap-2 rounded-lg bg-gray-950 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">
+                    <i data-lucide="panel-right-open" class="h-4 w-4"></i>{{ __('admin.manual_publications.button.open_in_chrome') }}
+                </a>
+            @endif
             <a href="{{ route('admin.manual-publications.index') }}" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                 <i data-lucide="arrow-left" class="h-4 w-4"></i>{{ __('admin.manual_publications.button.back') }}
             </a>
@@ -47,7 +57,7 @@
                     </button>
                 </div>
                 <div class="p-6">
-                    <textarea id="manual-publication-content" readonly rows="14" class="w-full rounded-lg border-gray-200 bg-gray-50 font-mono text-sm leading-6 text-gray-800">{{ $publication->content }}</textarea>
+                    <textarea id="manual-publication-content" readonly rows="14" aria-label="{{ __('admin.manual_publications.section.publish_content') }}" class="w-full rounded-lg border-gray-200 bg-gray-50 font-mono text-sm leading-6 text-gray-800">{{ $publication->content }}</textarea>
                     @if($publication->disclosure_snapshot)
                         <div class="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
                             <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">{{ __('admin.manual_publications.field.disclosure') }}</div>
@@ -99,7 +109,7 @@
                 @endif
             </section>
 
-            @if($canTransition && $publication->status === \App\Models\ManualPublication::STATUS_IN_PROGRESS)
+            @if($canTransition && in_array($publication->status, [\App\Models\ManualPublication::STATUS_IN_PROGRESS, \App\Models\ManualPublication::STATUS_OUTCOME_UNKNOWN], true))
                 <section class="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
                     <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.manual_publications.section.complete') }}</h2>
                     <form method="POST" action="{{ route('admin.manual-publications.transition', ['manualPublicationId' => $publication->id]) }}" class="mt-5 space-y-4">
@@ -126,10 +136,17 @@
             <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.manual_publications.section.details') }}</h2>
                 <dl class="mt-5 space-y-4 text-sm">
+                    @if($publication->browser_claimed_at)
+                        <div class="rounded-lg {{ $browserClaimStale ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900' }} px-3 py-3">
+                            <dt class="text-xs font-semibold uppercase tracking-wide">{{ __('admin.manual_publications.browser.connection') }}</dt>
+                            <dd class="mt-1 font-semibold">{{ __('admin.manual_publications.browser.'.($browserClaimStale ? 'lost' : 'active')) }}</dd>
+                            <dd class="mt-1 text-xs opacity-80">{{ __('admin.manual_publications.browser.last_seen', ['time' => $publication->browser_last_seen_at?->format('Y-m-d H:i:s') ?? __('admin.manual_publications.none')]) }}</dd>
+                        </div>
+                    @endif
                     @foreach([
                         __('admin.manual_publications.field.article') => $publication->article?->title ?? __('admin.manual_publications.none'),
-                        __('admin.manual_publications.field.persona') => $publication->personaDisplayName() ?? __('admin.manual_publications.none'),
-                        __('admin.manual_publications.field.account') => $publication->accountDisplayName() ?? __('admin.manual_publications.none'),
+                        __('admin.manual_publications.field.persona') => $publication->persona?->name ?? __('admin.manual_publications.none'),
+                        __('admin.manual_publications.field.account') => $publication->account?->account_name ?? __('admin.manual_publications.none'),
                         __('admin.manual_publications.field.assignee') => $publication->assignee?->name ?? __('admin.manual_publications.unassigned'),
                         __('admin.manual_publications.field.scheduled_at') => $publication->scheduled_at?->format('Y-m-d H:i') ?? __('admin.manual_publications.unscheduled'),
                         __('admin.manual_publications.field.creator') => $publication->creator?->name ?? __('admin.manual_publications.none'),
@@ -167,36 +184,6 @@
                 </section>
             @endif
 
-            @if($publication->transitions->isNotEmpty())
-                <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                    <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.manual_publications.section.history') }}</h2>
-                    <div class="mt-5 space-y-4">
-                        @foreach($publication->transitions->sortByDesc('id') as $transition)
-                            <div class="border-l-2 border-blue-200 pl-4">
-                                <div class="text-sm font-semibold text-gray-900">
-                                    @if($transition->from_status)
-                                        {{ __('admin.manual_publications.status.'.$transition->from_status) }} →
-                                    @endif
-                                    {{ __('admin.manual_publications.status.'.$transition->to_status) }}
-                                </div>
-                                <div class="mt-1 text-xs text-gray-500">
-                                    {{ $transition->created_at?->format('Y-m-d H:i:s') }}
-                                    @if($transition->actor)
-                                        · {{ $transition->actor->name }}
-                                    @endif
-                                </div>
-                                @if($transition->result_note)
-                                    <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">{{ $transition->result_note }}</p>
-                                @endif
-                                @if($transition->completion_url)
-                                    <a href="{{ $transition->completion_url }}" target="_blank" rel="noopener noreferrer" class="mt-2 block break-all text-sm font-medium text-blue-600 underline">{{ $transition->completion_url }}</a>
-                                @endif
-                            </div>
-                        @endforeach
-                    </div>
-                </section>
-            @endif
-
             @if($canTransition && !empty($nextStatuses))
                 <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                     <h2 class="text-lg font-semibold text-gray-900">{{ __('admin.manual_publications.section.actions') }}</h2>
@@ -206,7 +193,13 @@
                             <input type="hidden" name="revision" value="{{ $publication->revision }}">
                             <textarea name="result_note" rows="3" maxlength="5000" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.manual_publications.field.result_note') }}">{{ old('result_note') }}</textarea>
                             <div class="flex flex-wrap gap-2">
-                                @foreach([\App\Models\ManualPublication::STATUS_FAILED, \App\Models\ManualPublication::STATUS_SKIPPED, \App\Models\ManualPublication::STATUS_CANCELLED] as $targetStatus)
+                                @foreach(array_filter([
+                                    $browserClaimStale ? \App\Models\ManualPublication::STATUS_READY : null,
+                                    \App\Models\ManualPublication::STATUS_OUTCOME_UNKNOWN,
+                                    \App\Models\ManualPublication::STATUS_FAILED,
+                                    \App\Models\ManualPublication::STATUS_SKIPPED,
+                                    \App\Models\ManualPublication::STATUS_CANCELLED,
+                                ]) as $targetStatus)
                                     <button type="submit" name="target_status" value="{{ $targetStatus }}" class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">{{ __('admin.manual_publications.action.'.$targetStatus) }}</button>
                                 @endforeach
                             </div>

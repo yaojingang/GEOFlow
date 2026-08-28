@@ -27,7 +27,7 @@ class AdminAnalyticsPageTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_analytics_page_renders_after_dashboard_nav_item(): void
+    public function test_analytics_page_renders_data_center_and_operations_routes(): void
     {
         $response = $this->actingAs($this->admin(), 'admin')
             ->get(route('admin.analytics'));
@@ -49,10 +49,6 @@ class AdminAnalyticsPageTest extends TestCase
         $html = $response->getContent();
         $this->assertStringContainsString(route('admin.dashboard'), $html);
         $this->assertStringContainsString(route('admin.analytics'), $html);
-        $this->assertLessThan(
-            strpos($html, route('admin.analytics')),
-            strpos($html, route('admin.dashboard'))
-        );
     }
 
     public function test_analytics_page_renders_before_lead_tables_are_migrated(): void
@@ -372,6 +368,42 @@ class AdminAnalyticsPageTest extends TestCase
             ->assertOk()
             ->assertSee(__('admin.analytics.logs_kpi.pv'))
             ->assertSee('1');
+
+        Carbon::setTestNow();
+    }
+
+    public function test_traffic_report_counts_and_filters_hosted_site_logs(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+        $this->ensureViewLogsTable();
+        DB::table('view_logs')->insert([
+            'source' => 'hosted_site',
+            'method' => 'GET',
+            'path' => '/hosted-article',
+            'route_name' => 'hosted.article',
+            'status_code' => 200,
+            'ip_address' => '10.0.0.8',
+            'user_agent' => 'Mozilla/5.0',
+            'created_at' => Carbon::parse('2026-05-21 11:00:00'),
+        ]);
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics.traffic', [
+                'log_preset' => 'custom',
+                'log_date_from' => '2026-05-21',
+                'log_date_to' => '2026-05-21',
+                'log_source' => 'hosted_site',
+            ]));
+
+        $response
+            ->assertOk()
+            ->assertSee(__('admin.analytics.filters.hosted_site_source'))
+            ->assertSee('value="hosted_site" selected', false);
+
+        $this->assertSame('hosted_site', $response->viewData('logFilters')->source);
+        $this->assertSame(1, $response->viewData('logSummary')['kpis']['pv']);
+        $this->assertSame(0, $response->viewData('logSummary')['excluded_source_rows']);
 
         Carbon::setTestNow();
     }

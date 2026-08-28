@@ -1,22 +1,27 @@
 {
-    "name": "geoflow",
     "$schema": "https://www.schemastore.org/package.json",
+    "name": "geoflow",
     "private": true,
     "license": "Apache-2.0",
     "type": "module",
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:analytics": "node --test tests/JavaScript/analytics.test.js"
+        "test:analytics": "node --test tests/JavaScript/*.test.js",
+        "test:browser-extension": "node --test tests/JavaScript/browser-extension.test.js",
+        "test:system-updates": "node --test tests/JavaScript/system-updates.test.js"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
         "axios": "^1.11.0",
         "concurrently": "^9.0.1",
         "cropperjs": "^1.6.2",
-        "laravel-echo": "^2.3.4",
+        "dompurify": "^3.2.6",
+        "laravel-echo": "^2.4.0",
         "laravel-vite-plugin": "^2.0.0",
-        "pusher-js": "^8.5.0",
+        "marked": "^15.0.12",
+        "pusher-js": "^8.6.0",
+        "qrcode": "^1.5.4",
         "tailwindcss": "^4.0.0",
         "vditor": "^3.11.2",
         "vite": "^7.0.7"

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\Task;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -149,6 +150,10 @@ class CategoryController extends Controller
 
         if ((int) ($category->all_articles_count ?? 0) > 0) {
             return back()->withErrors(__('admin.categories.error.delete_blocked', ['count' => (int) $category->all_articles_count]));
+        }
+        $taskCount = Task::withTrashed()->where('fixed_category_id', $categoryId)->count();
+        if ($taskCount > 0) {
+            return back()->withErrors(__('admin.categories.error.delete_tasks', ['count' => $taskCount]));
         }
 
         Category::query()->whereKey($categoryId)->delete();

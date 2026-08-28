@@ -17,7 +17,7 @@ class AdminAnalyticsNavigationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_growth_center_exposes_overview_and_five_topic_pages(): void
+    public function test_data_center_exposes_overview_operations_and_five_topic_pages(): void
     {
         $admin = $this->admin();
 
@@ -26,6 +26,8 @@ class AdminAnalyticsNavigationTest extends TestCase
 
         $response
             ->assertOk()
+            ->assertSee(route('admin.dashboard'), false)
+            ->assertSee(__('admin.analytics.navigation.operations'))
             ->assertSee(route('admin.analytics.content'), false)
             ->assertSee(route('admin.analytics.traffic'), false)
             ->assertSee(route('admin.analytics.ai-visibility'), false)
@@ -41,6 +43,35 @@ class AdminAnalyticsNavigationTest extends TestCase
 
         foreach (['content', 'traffic', 'ai-visibility', 'leads', 'distribution'] as $page) {
             $this->get(route("admin.analytics.{$page}"))->assertOk();
+        }
+    }
+
+    public function test_each_analytics_page_starts_its_content_header_with_the_page_title(): void
+    {
+        $this->actingAs($this->admin(), 'admin');
+
+        $pages = [
+            'admin.analytics' => __('admin.analytics.overview.title'),
+            'admin.analytics.content' => __('admin.analytics.pages.content.title'),
+            'admin.analytics.traffic' => __('admin.analytics.pages.traffic.title'),
+            'admin.analytics.ai-visibility' => __('admin.analytics.pages.ai_visibility.title'),
+            'admin.analytics.leads' => __('admin.analytics.pages.leads.title'),
+            'admin.analytics.distribution' => __('admin.analytics.pages.distribution.title'),
+        ];
+
+        foreach ($pages as $routeName => $title) {
+            $response = $this->get(route($routeName))->assertOk();
+            $document = new \DOMDocument;
+            $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+            $headings = (new \DOMXPath($document))->query('//h1');
+
+            $this->assertNotFalse($headings);
+            $this->assertSame(1, $headings->length, $routeName.' should render one page title.');
+            $this->assertSame($title, trim($headings->item(0)->textContent));
+            $this->assertNull(
+                $headings->item(0)->previousElementSibling,
+                $routeName.' should not render an eyebrow above the page title.',
+            );
         }
     }
 
@@ -84,6 +115,47 @@ class AdminAnalyticsNavigationTest extends TestCase
             ->assertDontSee(__('admin.analytics.overview.alerts.ai_unconfigured.title'));
 
         $this->assertSame(1, substr_count($response->getContent(), 'data-analytics-priority-alert'));
+    }
+
+    public function test_following_up_a_new_lead_clears_its_overview_reminder_state(): void
+    {
+        $admin = $this->admin();
+        $form = LeadForm::query()->create([
+            'name' => '提醒状态表单',
+            'slug' => 'overview-reminder-state',
+            'status' => LeadForm::STATUS_ACTIVE,
+            'fields' => [],
+        ]);
+        $lead = LeadSubmission::query()->create([
+            'lead_form_id' => $form->id,
+            'status' => LeadSubmission::STATUS_NEW,
+            'payload' => ['name' => '等待跟进访客'],
+            'source_url' => '/',
+            'ip_address' => '10.0.0.5',
+        ]);
+
+        $beforeFollowup = $this->actingAs($admin, 'admin')->get(route('admin.analytics'));
+
+        $beforeFollowup
+            ->assertOk()
+            ->assertSee('data-analytics-metric="new_leads"', false)
+            ->assertSee('data-state="attention"', false)
+            ->assertSee('data-alert-type="new_leads"', false)
+            ->assertSee(__('admin.analytics.overview.alerts.new_leads.title', ['count' => 1]));
+
+        $this->put(route('admin.leads.update', ['submissionId' => $lead->id]), [
+            'status' => LeadSubmission::STATUS_CONTACTED,
+            'note' => '已完成首次联系',
+        ])->assertRedirect(route('admin.leads.show', ['submissionId' => $lead->id]));
+
+        $afterFollowup = $this->get(route('admin.analytics'));
+
+        $afterFollowup
+            ->assertOk()
+            ->assertSee('data-analytics-metric="new_leads"', false)
+            ->assertSee('data-state="clear"', false)
+            ->assertDontSee('data-alert-type="new_leads"', false)
+            ->assertDontSee(__('admin.analytics.overview.alerts.new_leads.title', ['count' => 1]));
     }
 
     public function test_content_report_does_not_render_dashboard_health_modules(): void

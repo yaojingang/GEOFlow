@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -56,6 +57,79 @@ class TaskMonitoringQueryService
     public function buildTaskSnapshot(): array
     {
         return $this->listTasksPaginated(1, 100)['items'];
+    }
+
+    /**
+     * 管理后台任务回收站，过期记录即使等待定时物理清理也不再展示。
+     *
+     * @return array{
+     *     items:list<array{id:int,name:string,created_at:?string,deleted_at:string,expires_at:string}>,
+     *     pagination:array{page:int,per_page:int,total:int,total_pages:int,snapshot_id:int}
+     * }
+     */
+    public function trashedTaskHistory(
+        int $page = 1,
+        int $perPage = 50,
+        ?int $snapshotId = null,
+    ): array {
+        $page = max(1, $page);
+        $perPage = max(1, min(100, $perPage));
+        $retentionCutoff = now()
+            ->subDays(Task::TRASH_RETENTION_DAYS)
+            ->format('Y-m-d H:i:s.u');
+        $baseQuery = Task::onlyTrashed()
+            ->join('task_trash_entries as task_trash', 'task_trash.task_id', '=', 'tasks.id')
+            ->where('task_trash.deleted_at', '>', $retentionCutoff);
+        $snapshotSequence = $this->taskTrashSnapshot($baseQuery, $snapshotId);
+        $query = (clone $baseQuery)
+            ->where('task_trash.sequence', '<=', $snapshotSequence)
+            ->orderByDesc('task_trash.sequence');
+        $total = (clone $query)->count();
+        $totalPages = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $totalPages);
+
+        $items = $query
+            ->forPage($page, $perPage)
+            ->get([
+                'tasks.id',
+                'tasks.name',
+                'tasks.created_at',
+                'task_trash.deleted_at as deleted_at',
+            ])
+            ->map(static fn (Task $task): array => [
+                'id' => (int) $task->id,
+                'name' => (string) $task->name,
+                'created_at' => $task->created_at?->toDateTimeString(),
+                'deleted_at' => $task->deleted_at?->toDateTimeString() ?? '',
+                'expires_at' => $task->deleted_at?->copy()
+                    ->addDays(Task::TRASH_RETENTION_DAYS)
+                    ->toDateTimeString() ?? '',
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'items' => $items,
+            'pagination' => [
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'total_pages' => $totalPages,
+                'snapshot_id' => $snapshotSequence,
+            ],
+        ];
+    }
+
+    /**
+     * @param  Builder<Task>  $baseQuery
+     */
+    private function taskTrashSnapshot($baseQuery, ?int $snapshotId): int
+    {
+        $latestSequence = (int) ((clone $baseQuery)->max('task_trash.sequence') ?? 0);
+
+        return is_int($snapshotId) && $snapshotId > 0
+            ? min($snapshotId, $latestSequence)
+            : $latestSequence;
     }
 
     /**
@@ -162,6 +236,43 @@ class TaskMonitoringQueryService
                 ],
             ]);
 
+        $qualityStats = collect();
+        if (Schema::hasTable('article_ai_quality_checks')) {
+            $latestQualityCheckIds = DB::table('article_ai_quality_checks')
+                ->selectRaw('article_id, MAX(id) AS latest_id')
+                ->groupBy('article_id');
+            $qualityStats = DB::table('article_ai_quality_checks as quality_checks')
+                ->joinSub($latestQualityCheckIds, 'latest_quality_checks', function ($join): void {
+                    $join->on('quality_checks.id', '=', 'latest_quality_checks.latest_id');
+                })
+                ->join('articles', 'articles.id', '=', 'quality_checks.article_id')
+                ->selectRaw("
+                    articles.task_id,
+                    COUNT(*) AS inspected_count,
+                    SUM(CASE WHEN quality_checks.status = 'completed' AND quality_checks.decision = 'passed' THEN 1 ELSE 0 END) AS passed_count,
+                    SUM(CASE WHEN quality_checks.status = 'completed' AND quality_checks.decision = 'needs_review' AND quality_checks.is_overridden IS FALSE THEN 1 ELSE 0 END) AS needs_review_count,
+                    SUM(CASE WHEN quality_checks.status = 'completed' AND quality_checks.decision = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
+                    SUM(CASE WHEN quality_checks.status IN ('queued','running') THEN 1 ELSE 0 END) AS pending_count,
+                    SUM(CASE WHEN quality_checks.status = 'failed' OR quality_checks.decision = 'error' THEN 1 ELSE 0 END) AS failed_count,
+                    SUM(CASE WHEN quality_checks.status = 'stale' THEN 1 ELSE 0 END) AS stale_count
+                ")
+                ->whereIn('articles.task_id', $taskIds)
+                ->whereNull('articles.deleted_at')
+                ->groupBy('articles.task_id')
+                ->get()
+                ->mapWithKeys(fn ($row): array => [
+                    (int) $row->task_id => [
+                        'inspected_count' => (int) ($row->inspected_count ?? 0),
+                        'passed_count' => (int) ($row->passed_count ?? 0),
+                        'needs_review_count' => (int) ($row->needs_review_count ?? 0),
+                        'blocked_count' => (int) ($row->blocked_count ?? 0),
+                        'pending_count' => (int) ($row->pending_count ?? 0),
+                        'failed_count' => (int) ($row->failed_count ?? 0),
+                        'stale_count' => (int) ($row->stale_count ?? 0),
+                    ],
+                ]);
+        }
+
         // 运行统计（业务真相）：pending/running/completed/failed+cancelled 数量。
         // 说明：这里把 cancelled 归入 failed_jobs，用于任务页“失败”概览展示。
         $runStats = TaskRun::query()
@@ -205,16 +316,33 @@ class TaskMonitoringQueryService
             ->whereIn('id', $tasks->pluck('ai_model_id')->filter()->all())
             ->pluck('name', 'id');
 
+        $qualityPromptNames = DB::table('prompts')
+            ->whereIn('id', $tasks->pluck('ai_quality_prompt_id')->filter()->all())
+            ->pluck('name', 'id');
+
+        $qualityModelNames = DB::table('ai_models')
+            ->whereIn('id', $tasks->pluck('ai_quality_model_id')->filter()->all())
+            ->pluck('name', 'id');
+
         $legacyKnowledgeBaseNames = DB::table('knowledge_bases')
             ->whereIn('id', $tasks->pluck('knowledge_base_id')->filter()->all())
             ->pluck('name', 'id');
 
         $taskKnowledgeBaseLinks = $this->loadTaskKnowledgeBaseLinks($taskIds);
 
-        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $runStats, $latestRuns, $titleNames, $modelNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks): array {
+        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $qualityStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityPromptNames, $qualityModelNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks): array {
             $taskId = (int) $task->id;
             $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0, 'draft_articles' => 0, 'publishable_drafts' => 0]);
             $distributions = $distributionStats->get($taskId, ['distribution_total_count' => 0, 'distribution_synced_count' => 0, 'distribution_failed_count' => 0]);
+            $quality = $qualityStats->get($taskId, [
+                'inspected_count' => 0,
+                'passed_count' => 0,
+                'needs_review_count' => 0,
+                'blocked_count' => 0,
+                'pending_count' => 0,
+                'failed_count' => 0,
+                'stale_count' => 0,
+            ]);
             $runs = $runStats->get($taskId, ['pending_jobs' => 0, 'running_jobs' => 0, 'completed_jobs' => 0, 'failed_jobs' => 0]);
             /** @var TaskRun|null $latestRun */
             $latestRun = $latestRuns->get($taskId);
@@ -253,6 +381,13 @@ class TaskMonitoringQueryService
                 'title_library_id' => $this->nullableInt($task->title_library_id),
                 'prompt_id' => $this->nullableInt($task->prompt_id),
                 'ai_model_id' => $this->nullableInt($task->ai_model_id),
+                'ai_quality_enabled' => (bool) ($task->ai_quality_enabled ?? false),
+                'ai_quality_prompt_id' => $this->nullableInt($task->ai_quality_prompt_id),
+                'ai_quality_prompt_name' => (string) ($qualityPromptNames[(int) ($task->ai_quality_prompt_id ?? 0)] ?? ''),
+                'ai_quality_model_id' => $this->nullableInt($task->ai_quality_model_id),
+                'ai_quality_model_name' => (string) ($qualityModelNames[(int) ($task->ai_quality_model_id ?? 0)] ?? ''),
+                'ai_quality_pass_score' => (int) ($task->ai_quality_pass_score ?? 85),
+                'ai_quality_manual_override_min_score' => (int) ($task->ai_quality_manual_override_min_score ?? 70),
                 'knowledge_base_id' => $legacyKnowledgeBaseId,
                 'knowledge_base_ids' => $knowledgeBaseIds,
                 'knowledge_bases' => $knowledgeBases,
@@ -290,6 +425,15 @@ class TaskMonitoringQueryService
                 'distribution_total_count' => (int) $distributions['distribution_total_count'],
                 'distribution_synced_count' => (int) $distributions['distribution_synced_count'],
                 'distribution_failed_count' => (int) $distributions['distribution_failed_count'],
+                'ai_quality_stats' => [
+                    'inspected' => (int) $quality['inspected_count'],
+                    'passed' => (int) $quality['passed_count'],
+                    'needs_review' => (int) $quality['needs_review_count'],
+                    'blocked' => (int) $quality['blocked_count'],
+                    'pending' => (int) $quality['pending_count'],
+                    'failed' => (int) $quality['failed_count'],
+                    'stale' => (int) $quality['stale_count'],
+                ],
                 'pending_jobs' => (int) $runs['pending_jobs'],
                 'running_jobs' => (int) $runs['running_jobs'],
                 'batch_success_count' => (int) $runs['completed_jobs'],
@@ -459,7 +603,7 @@ class TaskMonitoringQueryService
     {
         return TaskRun::query()
             ->select(['id', 'task_id', 'status', 'error_message', 'created_at'])
-            ->with(['task:id,name'])
+            ->with(['task' => fn ($query) => $query->withTrashed()->select(['id', 'name'])])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit(5)

@@ -98,7 +98,7 @@ class GenericHttpApiPublisher implements DistributionPublisherInterface
         ];
     }
 
-    public function syncSiteSettings(DistributionChannel $channel): array
+    public function syncSiteSettings(DistributionChannel $channel, ?string $idempotencyKey = null, ?array $settings = null): array
     {
         $config = $channel->resolvedGenericHttpConfig();
         $path = trim((string) $config['generic_settings_path']);
@@ -118,10 +118,10 @@ class GenericHttpApiPublisher implements DistributionPublisherInterface
                 'version' => '1.0',
                 'source' => 'geoflow',
                 'event' => 'site.settings.update',
-                'settings' => $channel->targetSiteSettingsPayload(),
+                'settings' => $settings ?? $channel->targetSiteSettingsPayload(),
             ],
             'site.settings.update',
-            'channel-'.(int) $channel->id.'-settings-v1',
+            $idempotencyKey ?: 'channel-'.(int) $channel->id.'-settings-v1',
             '通用 API 站点设置同步'
         );
 

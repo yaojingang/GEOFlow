@@ -98,8 +98,8 @@ return [
 
     'waits' => [
         'redis:geoflow' => 60,
+        'redis:distribution' => 60,
         'redis:knowledge' => 60,
-        'redis:system-updates' => 60,
     ],
 
     /*
@@ -201,7 +201,7 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['geoflow', 'distribution', 'theme-replication', 'default'],
+            'queue' => ['system-updates', 'geoflow', 'distribution', 'theme-replication', 'default'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
@@ -209,7 +209,7 @@ return [
             'maxJobs' => 100,
             'memory' => 128,
             'tries' => 1,
-            'timeout' => 660,
+            'timeout' => 930,
             'nice' => 0,
         ],
         'supervisor-knowledge' => [
@@ -222,18 +222,6 @@ return [
             'memory' => 128,
             'tries' => 1,
             'timeout' => 210,
-            'nice' => 0,
-        ],
-        'supervisor-system-updates' => [
-            'connection' => 'redis',
-            'queue' => ['system-updates'],
-            'balance' => 'simple',
-            'maxProcesses' => 1,
-            'maxTime' => 3600,
-            'maxJobs' => 10,
-            'memory' => 256,
-            'tries' => 1,
-            'timeout' => 930,
             'nice' => 0,
         ],
     ],

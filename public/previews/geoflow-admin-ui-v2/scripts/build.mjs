@@ -5,6 +5,7 @@ import { expectedPageCount, groups, pages } from './page-definitions.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(scriptDir, '..');
+const assetRevision = '20260822-sidebar-density-7';
 
 const escapeHtml = (value) => String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -31,13 +32,13 @@ const htmlForPage = (page) => `<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex,nofollow">
     <title>${escapeHtml(page.title)} · GEOFlow Admin UI V2</title>
-    <link rel="stylesheet" href="../../assets/css/prototype.css">
-    <script src="../../assets/vendor/lucide.min.js" defer></script>
-    <script src="../../assets/js/page-data.js" defer></script>
-    <script src="../../assets/js/geoflow-components.js" defer></script>
-    <script src="../../assets/js/geoflow-shell.js" defer></script>
-    <script src="../../assets/js/interactions.js" defer></script>
-    <script src="../../assets/js/app.js" defer></script>
+    <link rel="stylesheet" href="../../assets/css/prototype.css?v=${assetRevision}">
+    <script src="../../assets/vendor/lucide.min.js?v=${assetRevision}" defer></script>
+    <script src="../../assets/js/page-data.js?v=${assetRevision}" defer></script>
+    <script src="../../assets/js/geoflow-components.js?v=${assetRevision}" defer></script>
+    <script src="../../assets/js/geoflow-shell.js?v=${assetRevision}" defer></script>
+    <script src="../../assets/js/interactions.js?v=${assetRevision}" defer></script>
+    <script src="../../assets/js/app.js?v=${assetRevision}" defer></script>
 </head>
 <body data-page-id="${escapeHtml(page.id)}">
     <div id="prototype-root"></div>

@@ -13,6 +13,8 @@ NONINTERACTIVE="${GEOFLOW_NONINTERACTIVE:-0}"
 YES="${GEOFLOW_YES:-0}"
 INSTALL_DOCKER="${GEOFLOW_INSTALL_DOCKER:-auto}"
 SELF_DELETE="${GEOFLOW_SELF_DELETE:-0}"
+MAINTENANCE_MODE_ENTERED=0
+TRAFFIC_RESUMED=0
 
 log() {
   printf '\033[1;34m[geoflow]\033[0m %s\n' "$*"
@@ -27,8 +29,29 @@ fail() {
   exit 1
 }
 
+enter_maintenance_mode() {
+  "${COMPOSE[@]}" run --rm --no-deps \
+    -e AUTO_WAIT_FOR_DB=false \
+    -e AUTO_MIGRATE=false \
+    -e AUTO_INSTALL_ONCE=false \
+    -e AUTO_OPTIMIZE=false \
+    app php artisan down --retry=60 --refresh=15
+}
+
 on_error() {
   local line="$1"
+  if [ "$MAINTENANCE_MODE_ENTERED" = "1" ]; then
+    if [ "$TRAFFIC_RESUMED" = "1" ] && declare -p COMPOSE >/dev/null 2>&1; then
+      if enter_maintenance_mode; then
+        warn "Health verification failed after traffic resumed; maintenance mode was restored."
+      else
+        warn "Health verification failed and maintenance mode could not be restored automatically."
+      fi
+    else
+      warn "GEOFlow remains in maintenance mode to protect data."
+    fi
+    warn "Fix the reported error and rerun this script."
+  fi
   fail "Deployment failed near line ${line}. Check the logs above, then rerun this script."
 }
 trap 'on_error $LINENO' ERR
@@ -179,14 +202,10 @@ check_resources() {
 
 check_ports() {
   local web_port="$1"
-  local reverb_port="$2"
 
   if command_exists ss; then
     if ss -ltn | awk '{print $4}' | grep -Eq "[:.]${web_port}$"; then
       warn "Port ${web_port} already appears to be in use. Change GEOFLOW_WEB_PORT if deployment fails."
-    fi
-    if ss -ltn | awk '{print $4}' | grep -Eq "[:.]${reverb_port}$"; then
-      warn "Port ${reverb_port} already appears to be in use. Change GEOFLOW_REVERB_PORT if deployment fails."
     fi
   fi
 }
@@ -250,18 +269,16 @@ prepare_env() {
     log ".env.prod already exists; preserving existing values unless explicitly set by this script."
   fi
 
-  local default_ip current_app_url current_admin_path current_web_port current_reverb_port
-  local app_url admin_path web_port reverb_port db_password redis_password reverb_secret session_secure_cookie
+  local default_ip current_app_url current_admin_path current_web_port
+  local app_url app_authority app_host app_scheme app_public_port admin_path web_port db_password redis_password reverb_secret session_secure_cookie
   default_ip="$(detect_primary_ip || true)"
   default_ip="${default_ip:-127.0.0.1}"
 
   current_web_port="$(get_env_value .env.prod WEB_PORT)"
-  current_reverb_port="$(get_env_value .env.prod REVERB_EXPOSE_PORT)"
   current_app_url="$(get_env_value .env.prod APP_URL)"
   current_admin_path="$(get_env_value .env.prod ADMIN_BASE_PATH)"
 
   web_port="$(prompt_value GEOFLOW_WEB_PORT "Public web port" "${current_web_port:-18080}")"
-  reverb_port="$(prompt_value GEOFLOW_REVERB_PORT "Public Reverb port" "${current_reverb_port:-18081}")"
   app_url="$(prompt_value GEOFLOW_APP_URL "Public APP_URL, including protocol and optional subdirectory" "${current_app_url:-http://${default_ip}:${web_port}}")"
   admin_path="$(prompt_value GEOFLOW_ADMIN_BASE_PATH "Admin base path without leading slash" "${current_admin_path:-geo_admin}")"
 
@@ -275,14 +292,22 @@ prepare_env() {
     https://*) session_secure_cookie=true ;;
     *) session_secure_cookie=false ;;
   esac
+  app_scheme="${app_url%%://*}"
+  app_authority="${app_url#*://}"
+  app_authority="${app_authority%%/*}"
+  app_host="${app_authority%%:*}"
+  case "$app_authority" in
+    *:*) app_public_port="${app_authority##*:}" ;;
+    *) [ "$app_scheme" = "https" ] && app_public_port=443 || app_public_port=80 ;;
+  esac
   session_secure_cookie="${GEOFLOW_SESSION_SECURE_COOKIE:-$session_secure_cookie}"
 
-  check_ports "$web_port" "$reverb_port"
+  check_ports "$web_port"
 
   set_env_value .env.prod APP_ENV production
   set_env_value .env.prod APP_DEBUG false
   set_env_value .env.prod APP_URL "$app_url"
-  set_env_value .env.prod TRUSTED_PROXIES "${GEOFLOW_TRUSTED_PROXIES:-}"
+  set_env_value .env.prod TRUSTED_PROXIES "${GEOFLOW_TRUSTED_PROXIES:-REMOTE_ADDR}"
   set_env_value .env.prod BOOST_BROWSER_LOGS_WATCHER false
   set_env_value .env.prod ADMIN_BASE_PATH "$admin_path"
   set_env_value .env.prod DB_CONNECTION pgsql
@@ -294,8 +319,18 @@ prepare_env() {
   set_env_value .env.prod REDIS_HOST redis
   set_env_value .env.prod REDIS_PASSWORD "$redis_password"
   set_env_value .env.prod WEB_PORT "$web_port"
-  set_env_value .env.prod REVERB_EXPOSE_PORT "$reverb_port"
   set_env_value .env.prod REVERB_APP_SECRET "$reverb_secret"
+  set_env_value .env.prod REVERB_HOST "$app_host"
+  set_env_value .env.prod REVERB_PORT "$app_public_port"
+  set_env_value .env.prod REVERB_SCHEME "$app_scheme"
+  set_env_value .env.prod REVERB_SERVER_PORT 18080
+  set_env_value .env.prod REVERB_SERVER_PATH /reverb
+  set_env_value .env.prod REVERB_ALLOWED_ORIGINS "$app_host"
+  set_env_value .env.prod GEOFLOW_PRIMARY_HOSTS "$app_host"
+  set_env_value .env.prod GEOFLOW_NGINX_PRIMARY_HOST "$app_host"
+  set_env_value .env.prod GEOFLOW_NGINX_PRIMARY_ALIASES ""
+  set_env_value .env.prod GEOFLOW_NGINX_PUBLIC_SCHEME "$app_scheme"
+  set_env_value .env.prod GEOFLOW_NGINX_PUBLIC_PORT "$app_public_port"
   set_env_value .env.prod SESSION_LIFETIME 43200
   set_env_value .env.prod SESSION_SECURE_COOKIE "$session_secure_cookie"
   set_env_value .env.prod GEOFLOW_SESSION_TIMEOUT 2592000
@@ -313,27 +348,46 @@ deploy_stack() {
   log "Building production images."
   "${COMPOSE[@]}" build
 
+  if "${DOCKER_CMD[@]}" container inspect geoflow-system-update-queue-prod >/dev/null 2>&1; then
+    log "Stopping the retired system update worker before the Phase C cutover."
+    "${DOCKER_CMD[@]}" stop --time 900 geoflow-system-update-queue-prod
+  fi
+
   log "Starting PostgreSQL and Redis."
   "${COMPOSE[@]}" up -d postgres redis
+
+  log "Entering maintenance mode and draining existing application services."
+  enter_maintenance_mode
+  MAINTENANCE_MODE_ENTERED=1
+  "${COMPOSE[@]}" stop web app queue knowledge-queue system-update-queue scheduler reverb
 
   log "Running initialization and database migrations."
   "${COMPOSE[@]}" up init
 
   log "Starting GEOFlow services."
-  "${COMPOSE[@]}" up -d app web queue knowledge-queue system-update-queue scheduler reverb
+  "${COMPOSE[@]}" up -d --remove-orphans app web queue knowledge-queue scheduler reverb
 
   log "Clearing and rebuilding Laravel caches."
   "${COMPOSE[@]}" run --rm app php artisan optimize:clear
   "${COMPOSE[@]}" run --rm app php artisan optimize
+
 }
 
 run_healthcheck() {
   cd "$APP_DIR"
+  local skip_http="${1:-0}"
   if [ -x deploy-scripts/geoflow-healthcheck.sh ]; then
-    GEOFLOW_APP_DIR="$APP_DIR" bash deploy-scripts/geoflow-healthcheck.sh
+    GEOFLOW_APP_DIR="$APP_DIR" GEOFLOW_SKIP_HTTP_CHECK="$skip_http" bash deploy-scripts/geoflow-healthcheck.sh
   else
-    warn "Healthcheck script is missing; skipping."
+    fail "Healthcheck script is missing."
   fi
+}
+
+resume_traffic() {
+  cd "$APP_DIR"
+  log "Leaving maintenance mode for the final HTTP health check."
+  "${COMPOSE[@]}" exec -T app php artisan up
+  TRAFFIC_RESUMED=1
 }
 
 print_summary() {
@@ -370,7 +424,11 @@ main() {
   clone_or_update_repo
   prepare_env
   deploy_stack
-  run_healthcheck
+  run_healthcheck 1
+  resume_traffic
+  run_healthcheck 0
+  MAINTENANCE_MODE_ENTERED=0
+  TRAFFIC_RESUMED=0
   print_summary
   self_delete_if_requested
 }

@@ -33,7 +33,7 @@
                     @csrf @method('PUT')
                     <div class="flex items-center justify-between gap-3"><h3 class="font-semibold text-gray-900">#{{ $persona->id }} · {{ $persona->name }}</h3><span class="text-xs text-gray-500">{{ __('admin.manual_publications.settings.account_count', ['count' => $persona->accounts_count]) }}</span></div>
                     <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <input name="name" value="{{ $persona->name }}" required maxlength="120" class="rounded-md border-gray-300 text-sm shadow-sm">
+                        <input name="name" value="{{ $persona->name }}" required maxlength="120" aria-label="{{ __('admin.manual_publications.settings.name') }}" class="rounded-md border-gray-300 text-sm shadow-sm">
                         <input name="tone" value="{{ $persona->tone }}" maxlength="120" class="rounded-md border-gray-300 text-sm shadow-sm" placeholder="{{ __('admin.manual_publications.settings.tone') }}">
                         <input name="domain" value="{{ $persona->domain }}" maxlength="255" class="rounded-md border-gray-300 text-sm shadow-sm" placeholder="{{ __('admin.manual_publications.settings.domain') }}">
                         <label class="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700"><input type="hidden" name="is_active" value="0"><input type="checkbox" name="is_active" value="1" @checked($persona->is_active) class="rounded border-gray-300 text-blue-600">{{ __('admin.manual_publications.settings.active') }}</label>
@@ -66,9 +66,9 @@
                     @csrf @method('PUT')
                     <h3 class="font-semibold text-gray-900">#{{ $account->id }} · {{ $account->account_name }}</h3>
                     <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <select name="persona_id" required class="rounded-md border-gray-300 text-sm shadow-sm">@foreach($personas as $persona)<option value="{{ $persona->id }}" @selected($account->persona_id === $persona->id)>{{ $persona->name }}</option>@endforeach</select>
-                        <select name="platform" required class="rounded-md border-gray-300 text-sm shadow-sm">@foreach($platforms as $platform)<option value="{{ $platform }}" @selected($account->platform === $platform)>{{ __('admin.manual_publications.platform.'.$platform) }}</option>@endforeach</select>
-                        <input name="account_name" value="{{ $account->account_name }}" required maxlength="160" class="rounded-md border-gray-300 text-sm shadow-sm">
+                        <select name="persona_id" required aria-label="{{ __('admin.manual_publications.field.persona') }}" class="rounded-md border-gray-300 text-sm shadow-sm">@foreach($personas as $persona)<option value="{{ $persona->id }}" @selected($account->persona_id === $persona->id)>{{ $persona->name }}</option>@endforeach</select>
+                        <select name="platform" required aria-label="{{ __('admin.manual_publications.field.platform') }}" class="rounded-md border-gray-300 text-sm shadow-sm">@foreach($platforms as $platform)<option value="{{ $platform }}" @selected($account->platform === $platform)>{{ __('admin.manual_publications.platform.'.$platform) }}</option>@endforeach</select>
+                        <input name="account_name" value="{{ $account->account_name }}" required maxlength="160" aria-label="{{ __('admin.manual_publications.field.account') }}" class="rounded-md border-gray-300 text-sm shadow-sm">
                         <input name="custom_platform" value="{{ $account->custom_platform }}" maxlength="120" class="rounded-md border-gray-300 text-sm shadow-sm" placeholder="{{ __('admin.manual_publications.field.custom_platform') }}">
                         <input type="url" name="profile_url" value="{{ $account->profile_url }}" maxlength="1000" class="sm:col-span-2 rounded-md border-gray-300 text-sm shadow-sm" placeholder="{{ __('admin.manual_publications.settings.profile_url') }}">
                         <textarea name="notes" rows="2" maxlength="5000" class="sm:col-span-2 rounded-md border-gray-300 text-sm shadow-sm" placeholder="{{ __('admin.manual_publications.settings.notes') }}">{{ $account->notes }}</textarea>

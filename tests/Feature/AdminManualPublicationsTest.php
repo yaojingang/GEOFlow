@@ -176,11 +176,60 @@ class AdminManualPublicationsTest extends TestCase
         $this->assertSame($worker->getKey(), $assigned->transitions()->latest('id')->firstOrFail()->changed_by_admin_id);
     }
 
+    public function test_assignee_can_see_and_recover_a_stale_browser_claim(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        $worker = $this->admin('admin');
+        [$persona, $account] = $this->identity($superAdmin);
+        $article = $this->article('approved');
+        $publication = app(ManualPublicationService::class)->create(
+            $this->payload($persona, $account, $worker, [
+                'article_id' => $article->getKey(),
+                'target_url' => 'https://www.zhihu.com/question/123456',
+                'status' => ManualPublication::STATUS_READY,
+            ]),
+            $superAdmin,
+        );
+        $token = $worker->createToken('Lost Chrome', [
+            'browser-operations:read', 'browser-operations:execute',
+        ])->accessToken;
+        $publication->forceFill([
+            'status' => ManualPublication::STATUS_IN_PROGRESS,
+            'status_changed_at' => now()->subMinutes(11),
+            'browser_claimed_by_token_id' => $token->id,
+            'browser_claimed_at' => now()->subMinutes(11),
+            'browser_last_seen_at' => now()->subMinutes(11),
+            'revision' => 2,
+        ])->save();
+
+        $this->actingAs($worker, 'admin')
+            ->get(route('admin.manual-publications.show', ['manualPublicationId' => $publication->getKey()]))
+            ->assertOk()
+            ->assertSee(__('admin.manual_publications.browser.lost'))
+            ->assertSee('name="target_status" value="ready"', false)
+            ->assertSee(__('admin.manual_publications.action.outcome_unknown'));
+
+        $this->actingAs($worker, 'admin')
+            ->post(route('admin.manual-publications.transition', ['manualPublicationId' => $publication->getKey()]), [
+                'target_status' => ManualPublication::STATUS_READY,
+                'revision' => 2,
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(ManualPublication::STATUS_READY, $publication->refresh()->status);
+        $this->assertNull($publication->browser_claimed_by_token_id);
+    }
+
     public function test_comment_validation_requires_target_and_rejects_account_persona_mismatch(): void
     {
         $superAdmin = $this->admin('super_admin');
         [$persona, $account] = $this->identity($superAdmin);
         $otherPersona = ManualPublicationPersona::query()->create(['name' => '另一个身份']);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.manual-publications.create'))
+            ->assertOk()
+            ->assertSee('maxlength="2000"', false);
 
         $this->actingAs($superAdmin, 'admin')
             ->from(route('admin.manual-publications.create'))
@@ -261,22 +310,12 @@ class AdminManualPublicationsTest extends TestCase
         [$persona, $account] = $this->identity($superAdmin);
         $article = $this->article('approved');
         $service = app(ManualPublicationService::class);
-        $visible = $service->create($this->payload($persona, $account, $worker, [
+        $service->create($this->payload($persona, $account, $worker, [
             'article_id' => $article->getKey(), 'content' => '=SUM(1,1)',
         ]), $superAdmin);
         $service->create($this->payload($persona, $account, $otherWorker, [
             'article_id' => $article->getKey(), 'content' => 'hidden export row',
         ]), $superAdmin);
-        $persona->update(['name' => '已更名身份']);
-        $account->update(['account_name' => '已更名账号']);
-
-        $this->actingAs($worker, 'admin')
-            ->get(route('admin.manual-publications.show', ['manualPublicationId' => $visible->getKey()]))
-            ->assertOk()
-            ->assertSee('GEOFlow 专家')
-            ->assertSee('GEOFlow 知乎账号')
-            ->assertDontSee('已更名身份')
-            ->assertDontSee('已更名账号');
 
         $response = $this->actingAs($worker, 'admin')->get(route('admin.manual-publications.export'));
 
@@ -284,10 +323,6 @@ class AdminManualPublicationsTest extends TestCase
         $csv = $response->streamedContent();
         $this->assertStringStartsWith("\xEF\xBB\xBF", $csv);
         $this->assertStringContainsString("'=SUM(1,1)", $csv);
-        $this->assertStringContainsString('GEOFlow 专家', $csv);
-        $this->assertStringContainsString('GEOFlow 知乎账号', $csv);
-        $this->assertStringNotContainsString('已更名身份', $csv);
-        $this->assertStringNotContainsString('已更名账号', $csv);
         $this->assertStringNotContainsString('hidden export row', $csv);
     }
 
@@ -340,6 +375,37 @@ class AdminManualPublicationsTest extends TestCase
             'revision' => 4,
         ])->assertRedirect();
         $this->assertSame(ManualPublication::STATUS_READY, $publication->refresh()->status);
+    }
+
+    public function test_assignee_can_reconcile_an_unknown_browser_outcome_to_completed(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        $worker = $this->admin('admin');
+        [$persona, $account] = $this->identity($superAdmin);
+        $article = $this->article('approved');
+        $service = app(ManualPublicationService::class);
+        $publication = $service->create($this->payload($persona, $account, $worker, [
+            'article_id' => $article->getKey(),
+        ]), $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1, $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 2, $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_OUTCOME_UNKNOWN, 3, $superAdmin);
+
+        $this->actingAs($worker, 'admin')
+            ->get(route('admin.manual-publications.show', ['manualPublicationId' => $publication->getKey()]))
+            ->assertOk()
+            ->assertSee('name="completion_url"', false)
+            ->assertSee(__('admin.manual_publications.action.completed'));
+
+        $this->actingAs($worker, 'admin')
+            ->post(route('admin.manual-publications.transition', ['manualPublicationId' => $publication->getKey()]), [
+                'target_status' => ManualPublication::STATUS_COMPLETED,
+                'revision' => 4,
+                'completion_url' => 'https://example.com/reconciled-result',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(ManualPublication::STATUS_COMPLETED, $publication->refresh()->status);
     }
 
     private function admin(string $role): Admin

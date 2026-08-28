@@ -272,7 +272,7 @@ Knowledge-base items are generated chunks and are read-only. Update the parent k
 ### Articles
 
 ```text
-geoflow article list [--page N] [--per-page N] [--task-id ID] [--status STATUS]
+geoflow article list [--page N] [--per-page N] [--task-id ID] [--status STATUS] [--ai-quality-status STATUS]
   [--review-status STATUS] [--author-id ID] [--search TEXT]
 geoflow article create (--json FILE | direct fields) [--idempotency-key KEY]
 geoflow article get ARTICLE_ID
@@ -280,8 +280,12 @@ geoflow article update ARTICLE_ID (--json FILE | direct fields) [--idempotency-k
 geoflow article review ARTICLE_ID --status STATUS [--note TEXT]
   [--risk-override-reason TEXT] [--idempotency-key KEY]
 geoflow article publish ARTICLE_ID [--idempotency-key KEY]
+geoflow article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]
+geoflow article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]
 geoflow article trash ARTICLE_ID [--idempotency-key KEY]
 ```
+
+An AI quality recheck invalidates the previous result and queues a new run against the current article and task policy. Manual approval applies only above the configured floor when no critical issue remains, and `--reason` must contain an auditable basis.
 
 Article create and update share these direct fields:
 

@@ -53,7 +53,51 @@ class AdminArticlesPageTest extends TestCase
             ->assertViewHas('filters');
     }
 
-    public function test_articles_page_shows_content_engineering_workbench_with_pipeline_counts(): void
+    public function test_article_list_can_filter_articles_that_do_not_require_ai_quality_inspection(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_ai_quality_disabled_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-ai-quality-disabled@example.com',
+            'display_name' => 'Articles AI Quality Filter Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => 'AI 质检筛选分类',
+            'slug' => 'ai-quality-filter-category',
+        ]);
+        $author = Author::query()->create(['name' => 'AI 质检筛选作者']);
+        Article::query()->create([
+            'title' => '未启用 AI 质检文章',
+            'slug' => 'ai-quality-disabled-article',
+            'content' => '未启用质检的正文。',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+            'ai_quality_required_at_creation' => false,
+        ]);
+        Article::query()->create([
+            'title' => '必须 AI 质检文章',
+            'slug' => 'ai-quality-required-article',
+            'content' => '必须质检的正文。',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+            'ai_quality_required_at_creation' => true,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.index', ['ai_quality_status' => 'disabled']))
+            ->assertOk()
+            ->assertSee('value="disabled" selected', false)
+            ->assertSee('未启用 AI 质检文章')
+            ->assertDontSee('必须 AI 质检文章');
+    }
+
+    public function test_articles_page_shows_current_priority_action_without_pipeline_cards(): void
     {
         $admin = Admin::query()->create([
             'username' => 'articles_workbench_admin',
@@ -108,11 +152,14 @@ class AdminArticlesPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.articles.index'))
             ->assertOk()
+            ->assertSee(__('admin.articles.page_subtitle'))
             ->assertSee(__('admin.articles.workbench.title'))
-            ->assertSee(__('admin.articles.workbench.review_title'))
-            ->assertSee(__('admin.articles.workbench.optimize_title'))
+            ->assertDontSee(__('admin.articles.workbench.eyebrow'))
             ->assertSee(__('admin.articles.workbench.distribution_title'))
-            ->assertSee(__('admin.articles.workbench.observation_title'))
+            ->assertDontSee(__('admin.articles.workbench.review_desc'))
+            ->assertDontSee(__('admin.articles.workbench.optimize_desc'))
+            ->assertDontSee(__('admin.articles.workbench.distribution_desc'))
+            ->assertDontSee(__('admin.articles.workbench.observation_desc'))
             ->assertSee(__('admin.articles.workbench.current_action_title'))
             ->assertSee(__('admin.articles.workbench.current_action_desc', [
                 'count' => 2,
@@ -121,9 +168,7 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee(__('admin.articles.workbench.current_action_button'))
             ->assertSee('id="article-list"', false)
             ->assertSee(route('admin.articles.index', ['review_status' => 'pending']).'#article-list', false)
-            ->assertSee(route('admin.articles.index', ['status' => 'draft']).'#article-list', false)
             ->assertSee(route('admin.articles.index', ['status' => 'published']).'#article-list', false)
-            ->assertSee(route('admin.analytics'), false)
             ->assertViewHas('stats', fn (array $stats): bool => $stats['pending_review'] === 1
                 && $stats['draft'] === 1
                 && $stats['published'] === 2

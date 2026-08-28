@@ -31,13 +31,48 @@
     $publishScope = (string) old('publish_scope', (string) ($taskForm['publish_scope'] ?? 'local_and_distribution'));
     $distributionStrategy = (string) old('distribution_strategy', (string) ($taskForm['distribution_strategy'] ?? 'broadcast'));
     $distributionChannelsDisabled = $publishScope === 'local_only';
+    $selectedTitleLibraryId = (string) old('title_library_id', (string) ($taskForm['title_library_id'] ?? ''));
+    $selectedTitleLibrary = collect($formOptions['titleLibraries'] ?? [])->first(
+        static fn (array $library): bool => (string) ($library['id'] ?? '') === $selectedTitleLibraryId
+    );
+    $createdCount = max(0, (int) ($taskForm['created_count'] ?? 0));
+    $articleLimit = max(1, (int) old('article_limit', (int) ($taskForm['article_limit'] ?? 10)));
+    $plannedRemaining = max(0, $articleLimit - $createdCount);
+    $taskFormI18n = [
+        'checking' => $t('task_create.readiness.checking'),
+        'blockedTitle' => $t('task_create.readiness.dialog_blocked_title'),
+        'warningTitle' => $t('task_create.readiness.dialog_warning_title'),
+        'requestFailed' => $t('task_create.readiness.request_failed'),
+        'knowledgeBaseLimit' => $t('task_create.error.knowledge_base_limit'),
+        'distributionCount' => $t('task_create.label.distribution_channel_selected_count', ['count' => '__COUNT__']),
+        'knowledgeBaseCount' => $t('task_create.label.knowledge_base_selected_count', ['count' => '__COUNT__', 'max' => 5]),
+        'adjustLimit' => $t('task_create.readiness.actions.adjust_limit', ['count' => '__COUNT__']),
+        'savePaused' => $t('task_create.readiness.actions.save_paused'),
+        'saveExistingPaused' => $t('task_create.readiness.actions.save_existing_paused'),
+        'requestFailedIssue' => [
+            'code' => 'request_failed',
+            'severity' => 'warning',
+            'title' => $t('task_create.readiness.issue.request_failed.title'),
+            'message' => $t('task_create.readiness.issue.request_failed.message'),
+            'impact' => $t('task_create.readiness.issue.request_failed.impact'),
+            'suggestions' => [
+                $t('task_create.readiness.issue.request_failed.suggestion_1'),
+                $t('task_create.readiness.issue.request_failed.suggestion_2'),
+            ],
+        ],
+    ];
+    $initialTitleReadinessReport = session('title_readiness_report');
+    $qualityEnabled = (bool) old('ai_quality_enabled', (bool) ($taskForm['ai_quality_enabled'] ?? false));
+    $qualityPrompts = $formOptions['qualityPrompts'] ?? [];
+    $defaultQualityPromptId = (string) (collect($qualityPrompts)->firstWhere('system_managed', true)['id'] ?? ($qualityPrompts[0]['id'] ?? ''));
+    $qualityPromptId = (string) old('ai_quality_prompt_id', (string) ($taskForm['ai_quality_prompt_id'] ?? $defaultQualityPromptId));
 @endphp
 
 @section('content')
     <div class="px-4 sm:px-0">
         <div class="flex items-center justify-between mb-6">
             <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.tasks.index') }}" class="text-gray-400 hover:text-gray-600">
+                <a href="{{ route('admin.tasks.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </a>
                 <div>
@@ -89,7 +124,15 @@
                     </div>
                 </div>
             @else
-            <form method="POST" action="{{ $isEdit ? route('admin.tasks.update', ['taskId' => $taskId]) : route('admin.tasks.store') }}" class="grid grid-cols-1 gap-6 xl:grid-cols-12">
+            <form
+                method="POST"
+                action="{{ $isEdit ? route('admin.tasks.update', ['taskId' => $taskId]) : route('admin.tasks.store') }}"
+                class="grid grid-cols-1 gap-6 xl:grid-cols-12"
+                data-task-form
+                data-title-readiness-url="{{ route('admin.tasks.title-readiness') }}"
+                data-task-id="{{ $taskId ?? '' }}"
+                data-created-count="{{ $createdCount }}"
+            >
                 @csrf
                 @if ($isEdit)
                     @method('PUT')
@@ -114,11 +157,25 @@
                                 <select name="title_library_id" id="title_library_id" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                     <option value="">{{ $t('task_create.option.select_title_library') }}</option>
                                     @foreach ($formOptions['titleLibraries'] as $library)
-                                        <option value="{{ $library['id'] }}" @selected((string) old('title_library_id', (string) ($taskForm['title_library_id'] ?? '')) === (string) $library['id'])>
-                                            {{ $t('task_create.option.library_count', ['name' => $library['name'], 'count' => $library['count']]) }}
+                                        <option
+                                            value="{{ $library['id'] }}"
+                                            data-title-name="{{ $library['name'] }}"
+                                            data-title-total="{{ $library['count'] }}"
+                                            data-title-used="{{ $library['used'] }}"
+                                            data-title-available="{{ $library['available'] }}"
+                                            data-title-manage-url="{{ $library['manage_url'] }}"
+                                            @selected($selectedTitleLibraryId === (string) $library['id'])
+                                        >
+                                            {{ $t('task_create.option.library_readiness_count', ['name' => $library['name'], 'available' => $library['available'], 'total' => $library['count']]) }}
                                         </option>
                                     @endforeach
                                 </select>
+                                <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs leading-5 text-gray-500" data-task-title-stats aria-live="polite">
+                                    <span>{{ $t('task_create.readiness.stats.total') }} <strong class="font-semibold text-gray-700 tabular-nums" data-task-title-stat="total">{{ (int) ($selectedTitleLibrary['count'] ?? 0) }}</strong></span>
+                                    <span>{{ $t('task_create.readiness.stats.used') }} <strong class="font-semibold text-gray-700 tabular-nums" data-task-title-stat="used">{{ (int) ($selectedTitleLibrary['used'] ?? 0) }}</strong></span>
+                                    <span>{{ $t('task_create.readiness.stats.available') }} <strong class="font-semibold text-gray-700 tabular-nums" data-task-title-stat="available">{{ (int) ($selectedTitleLibrary['available'] ?? 0) }}</strong></span>
+                                    <span>{{ $t('task_create.readiness.stats.remaining') }} <strong class="font-semibold text-gray-700 tabular-nums" data-task-title-stat="remaining">{{ $plannedRemaining }}</strong></span>
+                                </div>
                             </div>
                             <div>
                                 <label for="status" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.task_status') }}</label>
@@ -287,6 +344,101 @@
                         </div>
                     </div>
                 </div>
+
+                <section class="bg-white shadow rounded-lg xl:col-span-12" data-ai-quality-card>
+                    <div class="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="flex items-start gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600">
+                                <i data-lucide="shield-check" class="h-5 w-5"></i>
+                            </div>
+                            <div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.ai_quality.title') }}</h3>
+                                    <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600" data-ai-quality-state
+                                          data-enabled-label="{{ $t('task_create.ai_quality.enabled') }}"
+                                          data-disabled-label="{{ $t('task_create.ai_quality.disabled') }}">
+                                        {{ $qualityEnabled ? $t('task_create.ai_quality.enabled') : $t('task_create.ai_quality.disabled') }}
+                                    </span>
+                                </div>
+                                <p class="mt-1 text-sm leading-6 text-gray-600">{{ $t('task_create.ai_quality.description') }}</p>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex cursor-pointer items-center gap-3">
+                            <span class="text-sm font-medium text-gray-700">{{ $t('task_create.ai_quality.switch_label') }}</span>
+                            <input type="checkbox" name="ai_quality_enabled" id="ai_quality_enabled" value="1" @checked($qualityEnabled)
+                                   class="peer sr-only" data-ai-quality-toggle>
+                            <span class="relative h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"></span>
+                        </label>
+                    </div>
+
+                    <div @class(['px-6 py-5 space-y-5', 'hidden' => ! $qualityEnabled]) data-ai-quality-settings>
+                        @if (empty($qualityPrompts))
+                            <div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                                {{ $t('task_create.ai_quality.no_prompt') }}
+                                <a href="{{ route('admin.ai-prompts.index') }}" class="font-semibold underline">{{ $t('task_create.ai_quality.configure_prompt') }}</a>
+                            </div>
+                        @endif
+
+                        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                            <div>
+                                <label for="ai_quality_prompt_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.ai_quality.prompt_label') }}</label>
+                                <select name="ai_quality_prompt_id" id="ai_quality_prompt_id" data-ai-quality-required
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="">{{ $t('task_create.ai_quality.prompt_placeholder') }}</option>
+                                    @foreach ($qualityPrompts as $qualityPrompt)
+                                        <option value="{{ $qualityPrompt['id'] }}" @selected($qualityPromptId === (string) $qualityPrompt['id'])>
+                                            {{ $qualityPrompt['name'] }}{{ $qualityPrompt['version'] !== '' ? ' · v'.$qualityPrompt['version'] : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.ai_quality.prompt_help') }}</p>
+                                @error('ai_quality_prompt_id')<p class="mt-2 text-sm text-red-600">{{ $message }}</p>@enderror
+                            </div>
+                            <div>
+                                <label for="ai_quality_model_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.ai_quality.model_label') }}</label>
+                                <select name="ai_quality_model_id" id="ai_quality_model_id"
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="">{{ $t('task_create.ai_quality.follow_content_model') }}</option>
+                                    @foreach ($formOptions['aiModels'] as $model)
+                                        <option value="{{ $model['id'] }}" @selected((string) old('ai_quality_model_id', (string) ($taskForm['ai_quality_model_id'] ?? '')) === (string) $model['id'])>{{ $model['name'] }}</option>
+                                    @endforeach
+                                </select>
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.ai_quality.model_help') }}</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                            <div>
+                                <label for="ai_quality_pass_score" class="block text-sm font-medium text-gray-700">{{ $t('task_create.ai_quality.pass_score') }}</label>
+                                <input type="number" min="1" max="100" name="ai_quality_pass_score" id="ai_quality_pass_score"
+                                       value="{{ old('ai_quality_pass_score', (string) ($taskForm['ai_quality_pass_score'] ?? 85)) }}"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.ai_quality.pass_score_help') }}</p>
+                            </div>
+                            <div>
+                                <label for="ai_quality_manual_override_min_score" class="block text-sm font-medium text-gray-700">{{ $t('task_create.ai_quality.manual_score') }}</label>
+                                <input type="number" min="0" max="99" name="ai_quality_manual_override_min_score" id="ai_quality_manual_override_min_score"
+                                       value="{{ old('ai_quality_manual_override_min_score', (string) ($taskForm['ai_quality_manual_override_min_score'] ?? 70)) }}"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.ai_quality.manual_score_help') }}</p>
+                            </div>
+                        </div>
+
+                        <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-4">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">{{ $t('task_create.ai_quality.workflow_title') }}</p>
+                            <div class="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-700" data-ai-quality-workflow
+                                 data-manual-label="{{ $t('task_create.ai_quality.workflow_manual') }}"
+                                 data-auto-label="{{ $t('task_create.ai_quality.workflow_auto') }}">
+                                <span class="rounded-md bg-white px-3 py-2 shadow-sm">{{ $t('task_create.ai_quality.workflow_generate') }}</span>
+                                <i data-lucide="arrow-right" class="h-4 w-4 text-gray-400"></i>
+                                <span class="rounded-md bg-white px-3 py-2 font-medium text-blue-700 shadow-sm">{{ $t('task_create.ai_quality.workflow_inspect') }}</span>
+                                <i data-lucide="arrow-right" class="h-4 w-4 text-gray-400"></i>
+                                <span class="rounded-md bg-white px-3 py-2 shadow-sm" data-ai-quality-workflow-tail>{{ $t('task_create.ai_quality.workflow_manual') }}</span>
+                            </div>
+                            <p class="mt-3 text-xs leading-5 text-blue-800">{{ $t('task_create.ai_quality.workflow_help') }}</p>
+                        </div>
+                    </div>
+                </section>
 
                 <div class="bg-white shadow rounded-lg xl:col-span-12">
                     <div class="px-6 py-4 border-b border-gray-200">
@@ -530,7 +682,7 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label for="article_limit" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.article_limit') }}</label>
-                                <input type="number" name="article_limit" id="article_limit" min="1" value="{{ old('article_limit', (string) ($taskForm['article_limit'] ?? 10)) }}"
+                                <input type="number" name="article_limit" id="article_limit" min="1" max="99999" required value="{{ old('article_limit', (string) ($taskForm['article_limit'] ?? 10)) }}"
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                 <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.article_limit') }}</p>
                             </div>
@@ -556,320 +708,75 @@
                     <a href="{{ route('admin.tasks.index') }}" class="px-6 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                         {{ __('admin.button.cancel') }}
                     </a>
-                    <button type="submit" class="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                        {{ $isEdit ? __('admin.task_edit.button.save_changes') : __('admin.button.create_task') }}
+                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-md border border-transparent bg-blue-600 px-6 py-2 text-sm font-medium text-white shadow-sm transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] disabled:cursor-wait disabled:bg-blue-400" data-task-form-submit>
+                        <span data-task-form-submit-label>{{ $isEdit ? __('admin.task_edit.button.save_changes') : __('admin.button.create_task') }}</span>
                     </button>
                 </div>
             </form>
             @endif
         </div>
     </div>
+
+    @if ($hasCategories)
+        <dialog
+            class="fixed inset-0 m-auto w-[min(600px,calc(100vw-2rem))] max-w-none overflow-hidden overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-gray-950/45"
+            data-task-title-readiness-dialog
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="task-title-readiness-title"
+            aria-describedby="task-title-readiness-summary task-title-readiness-recommendation"
+        >
+            <div class="flex max-h-[min(760px,calc(100dvh-2rem))] flex-col">
+                <header class="flex items-start gap-4 px-6 pb-5 pt-6 max-[520px]:px-5">
+                    <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600" data-task-readiness-icon-wrap aria-hidden="true">
+                        <i data-lucide="triangle-alert" class="h-5 w-5" data-task-readiness-icon></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">{{ $t('task_create.readiness.dialog_eyebrow') }}</p>
+                        <h2 id="task-title-readiness-title" class="mt-1 text-xl font-semibold leading-7 text-gray-900 text-balance" data-task-readiness-title>{{ $t('task_create.readiness.dialog_blocked_title') }}</h2>
+                    </div>
+                    <button type="button" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 [@media(hover:hover)]:hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:scale-[.96]" data-task-readiness-close aria-label="{{ $t('task_create.readiness.actions.close') }}">
+                        <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+                    </button>
+                </header>
+
+                <div class="grid grid-cols-4 divide-x divide-gray-200 border-y border-gray-200 bg-gray-50 max-[520px]:grid-cols-2 max-[520px]:divide-x-0">
+                    @foreach ([
+                        'remaining' => $t('task_create.readiness.stats.remaining'),
+                        'total' => $t('task_create.readiness.stats.total'),
+                        'used' => $t('task_create.readiness.stats.used'),
+                        'available' => $t('task_create.readiness.stats.available'),
+                    ] as $statKey => $statLabel)
+                        <div class="px-4 py-3 max-[520px]:border-b max-[520px]:border-gray-200 max-[520px]:px-5">
+                            <p class="text-[11px] font-medium leading-4 text-gray-500">{{ $statLabel }}</p>
+                            <p class="mt-0.5 text-lg font-semibold leading-6 text-gray-900 tabular-nums" data-task-readiness-stat="{{ $statKey }}">0</p>
+                        </div>
+                    @endforeach
+                </div>
+
+                <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5 max-[520px]:px-5">
+                    <p id="task-title-readiness-summary" class="text-sm leading-6 text-gray-700 text-pretty" data-task-readiness-summary></p>
+                    <div class="mt-5 space-y-3" data-task-readiness-issues></div>
+                    <div class="mt-5 rounded-xl bg-gray-50 px-4 py-3.5">
+                        <p id="task-title-readiness-recommendation" class="text-sm leading-6 text-gray-700 text-pretty" data-task-readiness-recommendation></p>
+                        <p class="mt-2 hidden text-sm font-medium leading-6 text-amber-800" data-task-readiness-paused-hint hidden></p>
+                    </div>
+                </div>
+
+                <footer class="flex flex-wrap justify-end gap-2.5 border-t border-gray-100 bg-gray-50 px-6 py-4 max-[520px]:flex-col max-[520px]:px-5">
+                    <button type="button" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-task-readiness-close>{{ $t('task_create.readiness.actions.close') }}</button>
+                    <a href="#" target="_blank" rel="noopener" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-task-readiness-manage>{{ $t('task_create.readiness.actions.manage_library') }}</a>
+                    <button type="button" class="hidden inline-flex min-h-10 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-task-readiness-adjust hidden></button>
+                    <button type="button" class="hidden inline-flex min-h-10 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-task-readiness-loop hidden>{{ $t('task_create.readiness.actions.enable_loop') }}</button>
+                    <button type="button" class="hidden inline-flex min-h-10 items-center justify-center rounded-lg bg-gray-800 px-4 text-sm font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-600 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-task-readiness-pause hidden>{{ $t('task_create.readiness.actions.save_paused') }}</button>
+                    <button type="button" class="hidden inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-task-readiness-acknowledge hidden>{{ $t('task_create.readiness.actions.acknowledge') }}</button>
+                    <button type="button" class="hidden inline-flex min-h-10 items-center justify-center rounded-lg border border-blue-300 bg-blue-50 px-4 text-sm font-semibold text-blue-800 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-task-readiness-retry hidden>{{ $t('task_create.readiness.actions.retry') }}</button>
+                    <button type="button" class="hidden inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-task-readiness-server hidden>{{ $t('task_create.readiness.actions.server_check') }}</button>
+                </footer>
+            </div>
+        </dialog>
+
+        <script type="application/json" data-task-form-i18n>@json($taskFormI18n)</script>
+        <script type="application/json" data-task-title-readiness-initial>@json($initialTitleReadinessReport)</script>
+    @endif
 @endsection
-
-@push('scripts')
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const isEditMode = @json($isEdit);
-
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
-
-            const imageLibrarySelect = document.getElementById('image_library_id');
-            const imageCountSelect = document.getElementById('image_count');
-            const needReviewCheckbox = document.getElementById('need_review');
-            const publishIntervalInput = document.getElementById('publish_interval');
-            const articleLimitInput = document.getElementById('article_limit');
-            const draftLimitInput = document.getElementById('draft_limit');
-            const fixedCategorySection = document.getElementById('fixed-category-section');
-            const fixedCategorySelect = document.getElementById('fixed_category_id');
-            const categoryModeRadios = document.querySelectorAll('input[name="category_mode"]');
-            const publishScopeRadios = document.querySelectorAll('[data-publish-scope-option]');
-            const distributionChannelInputs = document.querySelectorAll('[data-distribution-channel-input]');
-            const distributionStrategyInputs = document.querySelectorAll('[data-distribution-strategy-input]');
-            const distributionStrategyCards = document.querySelectorAll('[data-distribution-strategy-card]');
-            const distributionChannelCount = document.querySelector('[data-distribution-channel-count]');
-            const distributionChannelToggle = document.querySelector('[data-distribution-channel-toggle]');
-            const collapsedDistributionChannelCards = document.querySelectorAll('[data-distribution-channel-collapsed="true"]');
-            const distributionSelectAllButton = document.querySelector('[data-distribution-channel-select-all]');
-            const distributionClearButton = document.querySelector('[data-distribution-channel-clear]');
-            const knowledgeBaseInputs = document.querySelectorAll('[data-knowledge-base-input]');
-            const knowledgeBaseCount = document.querySelector('[data-knowledge-base-count]');
-            const knowledgeBaseToggle = document.querySelector('[data-knowledge-base-toggle]');
-            const collapsedKnowledgeBaseCards = document.querySelectorAll('[data-knowledge-base-collapsed="true"]');
-            const form = document.querySelector('form');
-            let distributionChannelsExpanded = false;
-            let knowledgeBaseExpanded = false;
-
-            if (!form) {
-                return;
-            }
-
-            function toggleImageCountByLibrary() {
-                if (!imageLibrarySelect.value) {
-                    imageCountSelect.value = '0';
-                    imageCountSelect.disabled = true;
-                } else {
-                    imageCountSelect.disabled = false;
-                    if (imageCountSelect.value === '0') {
-                        imageCountSelect.value = '1';
-                    }
-                }
-            }
-
-            function togglePublishInterval() {
-                if (needReviewCheckbox.checked) {
-                    publishIntervalInput.disabled = true;
-                    publishIntervalInput.parentElement.style.opacity = '0.5';
-                } else {
-                    publishIntervalInput.disabled = false;
-                    publishIntervalInput.parentElement.style.opacity = '1';
-                }
-            }
-
-            function handleCategoryModeChange() {
-                const selected = document.querySelector('input[name="category_mode"]:checked');
-                if (!selected) {
-                    return;
-                }
-
-                if (selected.value === 'fixed') {
-                    fixedCategorySection.classList.remove('hidden');
-                    fixedCategorySelect.required = true;
-                } else {
-                    fixedCategorySection.classList.add('hidden');
-                    fixedCategorySelect.required = false;
-                    fixedCategorySelect.value = '';
-                }
-            }
-
-            function syncDraftLimitMax() {
-                const articleLimit = Math.max(1, Number(articleLimitInput.value || 1));
-                draftLimitInput.max = String(articleLimit);
-                if (Number(draftLimitInput.value || 1) > articleLimit) {
-                    draftLimitInput.value = String(articleLimit);
-                }
-            }
-
-            function syncDistributionChannelsByScope() {
-                const selectedScope = document.querySelector('input[name="publish_scope"]:checked');
-                const isLocalOnly = selectedScope && selectedScope.value === 'local_only';
-
-                distributionStrategyInputs.forEach((input) => {
-                    input.disabled = isLocalOnly;
-                });
-
-                distributionStrategyCards.forEach((card) => {
-                    card.classList.toggle('cursor-pointer', !isLocalOnly);
-                    card.classList.toggle('hover:border-blue-300', !isLocalOnly);
-                    card.classList.toggle('hover:bg-blue-50', !isLocalOnly);
-                    card.classList.toggle('cursor-not-allowed', isLocalOnly);
-                    card.classList.toggle('bg-gray-50', isLocalOnly);
-                    card.classList.toggle('opacity-50', isLocalOnly);
-                });
-
-                distributionChannelInputs.forEach((input) => {
-                    input.disabled = isLocalOnly;
-                    if (isLocalOnly) {
-                        input.checked = false;
-                    }
-
-                    const card = input.closest('[data-distribution-channel-card]');
-                    if (!card) {
-                        return;
-                    }
-
-                    card.classList.toggle('cursor-pointer', !isLocalOnly);
-                    card.classList.toggle('hover:border-blue-300', !isLocalOnly);
-                    card.classList.toggle('hover:bg-blue-50', !isLocalOnly);
-                    card.classList.toggle('cursor-not-allowed', isLocalOnly);
-                    card.classList.toggle('bg-gray-50', isLocalOnly);
-                    card.classList.toggle('opacity-50', isLocalOnly);
-                });
-
-                [distributionSelectAllButton, distributionClearButton].forEach((button) => {
-                    if (button) {
-                        button.disabled = isLocalOnly;
-                    }
-                });
-
-                syncDistributionChannelCount();
-                syncDistributionChannelVisibility();
-            }
-
-            function syncDistributionChannelCount() {
-                if (!distributionChannelCount) {
-                    return;
-                }
-
-                const selectedCount = Array.from(distributionChannelInputs).filter((input) => input.checked).length;
-                distributionChannelCount.textContent = @json($t('task_create.label.distribution_channel_selected_count', ['count' => '__COUNT__'])).replace('__COUNT__', String(selectedCount));
-            }
-
-            function syncDistributionChannelVisibility() {
-                if (!distributionChannelToggle || collapsedDistributionChannelCards.length === 0) {
-                    return;
-                }
-
-                const hiddenCards = [];
-
-                collapsedDistributionChannelCards.forEach((card) => {
-                    const input = card.querySelector('[data-distribution-channel-input]');
-                    const shouldHide = !distributionChannelsExpanded && !(input && input.checked);
-                    card.classList.toggle('hidden', shouldHide);
-
-                    if (shouldHide) {
-                        hiddenCards.push(card);
-                    }
-                });
-
-                const expandLabel = distributionChannelToggle.dataset.expandLabel || '';
-                const collapseLabel = distributionChannelToggle.dataset.collapseLabel || '';
-                distributionChannelToggle.textContent = distributionChannelsExpanded
-                    ? collapseLabel
-                    : expandLabel.replace('__COUNT__', String(hiddenCards.length));
-                distributionChannelToggle.setAttribute('aria-expanded', distributionChannelsExpanded ? 'true' : 'false');
-                distributionChannelToggle.classList.toggle('hidden', !distributionChannelsExpanded && hiddenCards.length === 0);
-            }
-
-            function syncKnowledgeBaseCount() {
-                if (!knowledgeBaseCount) {
-                    return;
-                }
-
-                const selectedCount = Array.from(knowledgeBaseInputs).filter((input) => input.checked).length;
-                knowledgeBaseCount.textContent = @json($t('task_create.label.knowledge_base_selected_count', ['count' => '__COUNT__', 'max' => 5])).replace('__COUNT__', String(selectedCount));
-            }
-
-            function syncKnowledgeBaseVisibility() {
-                if (!knowledgeBaseToggle || collapsedKnowledgeBaseCards.length === 0) {
-                    return;
-                }
-
-                const hiddenCards = [];
-
-                collapsedKnowledgeBaseCards.forEach((card) => {
-                    const input = card.querySelector('[data-knowledge-base-input]');
-                    const shouldHide = !knowledgeBaseExpanded && !(input && input.checked);
-                    card.classList.toggle('hidden', shouldHide);
-
-                    if (shouldHide) {
-                        hiddenCards.push(card);
-                    }
-                });
-
-                const expandLabel = knowledgeBaseToggle.dataset.expandLabel || '';
-                const collapseLabel = knowledgeBaseToggle.dataset.collapseLabel || '';
-                knowledgeBaseToggle.textContent = knowledgeBaseExpanded
-                    ? collapseLabel
-                    : expandLabel.replace('__COUNT__', String(hiddenCards.length));
-                knowledgeBaseToggle.setAttribute('aria-expanded', knowledgeBaseExpanded ? 'true' : 'false');
-                knowledgeBaseToggle.classList.toggle('hidden', !knowledgeBaseExpanded && hiddenCards.length === 0);
-            }
-
-            imageLibrarySelect.addEventListener('change', toggleImageCountByLibrary);
-            needReviewCheckbox.addEventListener('change', togglePublishInterval);
-            articleLimitInput.addEventListener('input', syncDraftLimitMax);
-            categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
-            publishScopeRadios.forEach((radio) => radio.addEventListener('change', syncDistributionChannelsByScope));
-            distributionChannelInputs.forEach((input) => {
-                input.addEventListener('change', function () {
-                    syncDistributionChannelCount();
-                    syncDistributionChannelVisibility();
-                });
-            });
-            if (distributionSelectAllButton) {
-                distributionSelectAllButton.addEventListener('click', function () {
-                    distributionChannelInputs.forEach((input) => {
-                        if (!input.disabled) {
-                            input.checked = true;
-                        }
-                    });
-                    syncDistributionChannelCount();
-                    syncDistributionChannelVisibility();
-                });
-            }
-            if (distributionClearButton) {
-                distributionClearButton.addEventListener('click', function () {
-                    distributionChannelInputs.forEach((input) => {
-                        if (!input.disabled) {
-                            input.checked = false;
-                        }
-                    });
-                    syncDistributionChannelCount();
-                    syncDistributionChannelVisibility();
-                });
-            }
-            if (distributionChannelToggle) {
-                distributionChannelToggle.addEventListener('click', function () {
-                    distributionChannelsExpanded = !distributionChannelsExpanded;
-                    syncDistributionChannelVisibility();
-                });
-            }
-            if (knowledgeBaseToggle) {
-                knowledgeBaseToggle.addEventListener('click', function () {
-                    knowledgeBaseExpanded = !knowledgeBaseExpanded;
-                    syncKnowledgeBaseVisibility();
-                });
-            }
-            knowledgeBaseInputs.forEach((input) => {
-                input.addEventListener('change', function () {
-                    const selectedCount = Array.from(knowledgeBaseInputs).filter((item) => item.checked).length;
-                    if (selectedCount > 5) {
-                        input.checked = false;
-                        alert(@json($t('task_create.error.knowledge_base_limit')));
-                    }
-
-                    syncKnowledgeBaseCount();
-                    syncKnowledgeBaseVisibility();
-                });
-            });
-
-            form.addEventListener('submit', function (event) {
-                if (!document.getElementById('task_name').value.trim()) {
-                    alert(@json(__('admin.task_create.error.name_required')));
-                    event.preventDefault();
-                    return;
-                }
-
-                if (!document.getElementById('title_library_id').value) {
-                    alert(@json(__('admin.task_create.error.title_library_required')));
-                    event.preventDefault();
-                    return;
-                }
-
-                if (!document.getElementById('prompt_id').value) {
-                    alert(@json(__('admin.task_create.error.prompt_required')));
-                    event.preventDefault();
-                    return;
-                }
-
-                if (!document.getElementById('ai_model_id').value) {
-                    alert(@json(__('admin.task_create.error.ai_model_required')));
-                    event.preventDefault();
-                    return;
-                }
-
-                if (Number(draftLimitInput.value || 0) > Number(articleLimitInput.value || 0)) {
-                    alert(@json(__('admin.task_create.error.draft_limit_too_large')));
-                    event.preventDefault();
-                    return;
-                }
-
-                if (!isEditMode && !confirm(@json(__('admin.task_create.confirm.create')))) {
-                    event.preventDefault();
-                }
-            });
-
-            toggleImageCountByLibrary();
-            togglePublishInterval();
-            handleCategoryModeChange();
-            syncDraftLimitMax();
-            syncDistributionChannelsByScope();
-            syncDistributionChannelCount();
-            syncDistributionChannelVisibility();
-            syncKnowledgeBaseCount();
-            syncKnowledgeBaseVisibility();
-        });
-    </script>
-@endpush

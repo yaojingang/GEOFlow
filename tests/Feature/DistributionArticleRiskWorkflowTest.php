@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Workspace\AiPlanCompiler;
 use App\Exceptions\ArticleRiskGateException;
 use App\Jobs\ProcessArticleDistributionJob;
 use App\Models\Article;
@@ -13,6 +14,9 @@ use App\Models\DistributionChannelSecret;
 use App\Models\SensitiveWord;
 use App\Models\Task;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use App\Services\GeoFlow\DistributionPayloadBuilder;
+use App\Services\GeoFlow\DistributionRetryPolicy;
+use App\Services\GeoFlow\TaskLifecycleService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -60,6 +64,116 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         $this->assertSame('clean', $article->fresh()->latestRiskScan?->status);
         $this->assertSame('distribution_enqueue', $article->fresh()->latestRiskScan?->trigger);
         Queue::assertPushed(ProcessArticleDistributionJob::class, 1);
+    }
+
+    public function test_ai_workspace_enqueue_surfaces_an_approved_payload_mismatch(): void
+    {
+        [$article] = $this->createDistributionArticle('Safe content.');
+
+        try {
+            app(DistributionOrchestrator::class)->enqueueForArticle($article, 'publish', [
+                'expected_payload_digest' => str_repeat('f', 64),
+            ]);
+            $this->fail('Expected the AI workspace payload mismatch to be surfaced.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('AI 工作台分发载荷在审批后已变化。', $exception->getMessage());
+            $this->assertDatabaseCount('article_distributions', 0);
+            Queue::assertNothingPushed();
+        }
+    }
+
+    public function test_ai_workspace_distribution_rejects_a_channel_changed_after_enqueue(): void
+    {
+        [$article, , $channel] = $this->createDistributionArticle('Immutable target content.');
+        $summary = app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', [
+            'article_ids' => [$article->id],
+            'channel_ids' => [$channel->id],
+        ]);
+        $channelRevision = (string) data_get($summary, 'channel_snapshots.0.revision');
+        $distributionIds = app(DistributionOrchestrator::class)->enqueueForArticle($article, 'publish', [
+            'expected_payload_digest' => (string) data_get($summary, 'article_snapshots.0.outbound_payload_digest'),
+            'approved_channel_revisions' => [$channel->id => $channelRevision],
+        ]);
+        $this->assertCount(1, $distributionIds);
+        $channel->forceFill(['endpoint_url' => 'https://changed-target.example.com/api'])->save();
+        Http::fake();
+
+        try {
+            app(DistributionOrchestrator::class)->process(ArticleDistribution::query()->findOrFail($distributionIds[0]));
+            $this->fail('Expected the changed AI workspace target to be rejected.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('AI 工作台分发目标在审批后已变化。', $exception->getMessage());
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_ai_workspace_distribution_rejects_a_secret_rotated_after_approval(): void
+    {
+        [$article, , $channel] = $this->createDistributionArticle('Immutable credential target.');
+        $oldSecret = DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'approved-secret',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('approved-secret-value'),
+            'status' => 'active',
+            'scopes' => ['article.publish'],
+        ]);
+        $summary = app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', [
+            'article_ids' => [$article->id],
+            'channel_ids' => [$channel->id],
+        ]);
+        $approvedRevision = (string) data_get($summary, 'channel_snapshots.0.revision');
+        $oldSecret->forceFill(['last_used_at' => now()])->save();
+        $afterUseSummary = app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', [
+            'article_ids' => [$article->id],
+            'channel_ids' => [$channel->id],
+        ]);
+        $this->assertSame($approvedRevision, (string) data_get($afterUseSummary, 'channel_snapshots.0.revision'));
+        $distributionIds = app(DistributionOrchestrator::class)->enqueueForArticle($article, 'publish', [
+            'expected_payload_digest' => (string) data_get($summary, 'article_snapshots.0.outbound_payload_digest'),
+            'approved_channel_revisions' => [
+                $channel->id => $approvedRevision,
+            ],
+        ]);
+        $oldSecret->forceFill(['status' => 'revoked'])->save();
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => (int) $channel->id,
+            'key_id' => 'rotated-secret',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('rotated-secret-value'),
+            'status' => 'active',
+            'scopes' => ['article.publish'],
+        ]);
+        Http::fake();
+
+        try {
+            app(DistributionOrchestrator::class)->process(ArticleDistribution::query()->findOrFail($distributionIds[0]));
+            $this->fail('Expected the changed AI workspace credential target to be rejected.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('AI 工作台分发目标在审批后已变化。', $exception->getMessage());
+            Http::assertNothingSent();
+        }
+    }
+
+    public function test_ai_workspace_enqueue_does_not_claim_an_existing_sending_distribution(): void
+    {
+        [$article, , $channel] = $this->createDistributionArticle('Already sending content.');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $orchestrator->enqueueForArticle($article);
+        $distribution = ArticleDistribution::query()->firstOrFail();
+        $distribution->forceFill(['status' => 'sending'])->save();
+        $summary = app(AiPlanCompiler::class)->targetSummaryFor('distribution.publish', [
+            'article_ids' => [$article->id],
+            'channel_ids' => [$channel->id],
+        ]);
+
+        $distributionIds = $orchestrator->enqueueForArticle($article, 'publish', [
+            'expected_payload_digest' => (string) data_get($summary, 'article_snapshots.0.outbound_payload_digest'),
+            'approved_channel_revisions' => [
+                $channel->id => (string) data_get($summary, 'channel_snapshots.0.revision'),
+            ],
+        ]);
+
+        $this->assertSame([], $distributionIds);
+        $this->assertNull(data_get($distribution->fresh()->remote_meta, 'ai_workspace_guard'));
     }
 
     public function test_distribution_send_rechecks_content_changed_after_enqueue(): void
@@ -221,6 +335,205 @@ class DistributionArticleRiskWorkflowTest extends TestCase
 
         $this->assertSame('synced', $distribution->fresh()->status);
         $this->assertDatabaseCount('distribution_channel_operations', 0);
+    }
+
+    public function test_in_flight_distribution_cannot_overwrite_task_deletion_outcome(): void
+    {
+        [$article, $task, $channel] = $this->createDistributionArticle('Delete during external delivery.');
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'queued',
+            'idempotency_key' => 'task-delete-during-distribution',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => $channel->id,
+            'key_id' => 'gfk_delete_during_distribution',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_delete_during_distribution'),
+            'status' => 'active',
+            'scopes' => ['article.publish'],
+        ]);
+        Http::fake(function () use ($task) {
+            $this->assertDatabaseHas('article_distributions', [
+                'status' => 'sending',
+            ]);
+            app(TaskLifecycleService::class)->deleteTask((int) $task->id);
+
+            return Http::response([
+                'ok' => true,
+                'remote_id' => 'remote-after-task-delete',
+                'remote_url' => 'https://risk-target.example.com/articles/remote-after-task-delete',
+            ]);
+        });
+
+        $processed = app(DistributionOrchestrator::class)->process($distribution);
+
+        $this->assertFalse($processed);
+        $this->assertSame('outcome_unknown', (string) $distribution->fresh()->status);
+        $this->assertNull($distribution->fresh()->next_retry_at);
+        $this->assertNull(Task::query()->find($task->id));
+        Http::assertSentCount(1);
+    }
+
+    public function test_distribution_failure_after_task_deletion_preserves_outcome_unknown(): void
+    {
+        [$article, $task, $channel] = $this->createDistributionArticle('Fail after task deletion.');
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'queued',
+            'idempotency_key' => 'task-delete-during-failed-distribution',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => $channel->id,
+            'key_id' => 'gfk_delete_during_failed_distribution',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_delete_during_failed_distribution'),
+            'status' => 'active',
+            'scopes' => ['article.publish'],
+        ]);
+        Http::fake(function () use ($task) {
+            app(TaskLifecycleService::class)->deleteTask((int) $task->id);
+
+            return Http::response(['message' => 'remote failure'], 500);
+        });
+
+        (new ProcessArticleDistributionJob((int) $distribution->id))->handle(
+            app(DistributionOrchestrator::class),
+            app(DistributionRetryPolicy::class),
+        );
+
+        $this->assertSame('outcome_unknown', (string) $distribution->fresh()->status);
+        $this->assertNull($distribution->fresh()->next_retry_at);
+        Http::assertSentCount(1);
+    }
+
+    public function test_retry_decision_cannot_overwrite_task_deletion_outcome(): void
+    {
+        [$article, $task, $channel] = $this->createDistributionArticle('Delete during retry decision.');
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'queued',
+            'idempotency_key' => 'task-delete-during-retry-decision',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('process')
+            ->once()
+            ->andReturnUsing(function (ArticleDistribution $candidate): never {
+                $candidate->forceFill(['status' => 'sending', 'attempt_count' => 1])->save();
+
+                throw new \RuntimeException('500 remote failure');
+            });
+        $retryPolicy = new class((int) $task->id) extends DistributionRetryPolicy
+        {
+            public function __construct(private readonly int $taskId) {}
+
+            public function shouldRetry(\Throwable $exception, int $attemptCount, int $maxAttempts): bool
+            {
+                app(TaskLifecycleService::class)->deleteTask($this->taskId);
+
+                return true;
+            }
+        };
+
+        (new ProcessArticleDistributionJob((int) $distribution->id))->handle($orchestrator, $retryPolicy);
+
+        $this->assertSame('outcome_unknown', (string) $distribution->fresh()->status);
+        $this->assertNull($distribution->fresh()->next_retry_at);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_stale_enqueue_snapshot_cannot_queue_after_task_deletion(): void
+    {
+        [$article, $task] = $this->createDistributionArticle('Delete after payload snapshot.');
+        $payloadBuilder = \Mockery::mock(DistributionPayloadBuilder::class);
+        $payloadBuilder->shouldReceive('build')
+            ->once()
+            ->andReturnUsing(function () use ($task): array {
+                app(TaskLifecycleService::class)->deleteTask((int) $task->id);
+
+                return ['title' => 'Stale payload'];
+            });
+        $this->app->instance(DistributionPayloadBuilder::class, $payloadBuilder);
+
+        $queued = app(DistributionOrchestrator::class)->enqueueForArticle($article);
+
+        $this->assertSame([], $queued);
+        $this->assertDatabaseCount('article_distributions', 0);
+        $this->assertNull(Task::query()->find($task->id));
+        Queue::assertNothingPushed();
+    }
+
+    public function test_immediate_update_cannot_claim_after_task_deletion(): void
+    {
+        Http::fake();
+        [$article, $task, $channel] = $this->createDistributionArticle('Delete after immediate update payload.');
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'synced',
+            'remote_id' => 'remote-before-update-delete',
+            'idempotency_key' => 'immediate-update-after-task-delete',
+        ]);
+        $payloadBuilder = \Mockery::mock(DistributionPayloadBuilder::class);
+        $payloadBuilder->shouldReceive('build')
+            ->once()
+            ->andReturnUsing(function () use ($task): array {
+                app(TaskLifecycleService::class)->deleteTask((int) $task->id);
+
+                return ['title' => 'Stale immediate update'];
+            });
+        $this->app->instance(DistributionPayloadBuilder::class, $payloadBuilder);
+
+        try {
+            app(DistributionOrchestrator::class)->updateRemoteArticle($distribution);
+            $this->fail('Expected immediate update claim to reject a deleted task.');
+        } catch (\RuntimeException) {
+            $this->assertSame('synced', (string) $distribution->fresh()->status);
+        }
+
+        $this->assertNull(Task::query()->find($task->id));
+        Http::assertSentCount(0);
+    }
+
+    public function test_immediate_delete_result_cannot_overwrite_task_deletion_outcome(): void
+    {
+        [$article, $task, $channel] = $this->createDistributionArticle('Delete during immediate remote delete.');
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'synced',
+            'remote_id' => 'remote-delete-race',
+            'idempotency_key' => 'immediate-delete-task-race',
+        ]);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => $channel->id,
+            'key_id' => 'gfk_immediate_delete_task_race',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_immediate_delete_task_race'),
+            'status' => 'active',
+            'scopes' => ['article.delete'],
+        ]);
+        Http::fake(function () use ($task) {
+            $this->assertDatabaseHas('article_distributions', [
+                'status' => 'sending',
+                'action' => 'delete',
+            ]);
+            app(TaskLifecycleService::class)->deleteTask((int) $task->id);
+
+            return Http::response(['ok' => true, 'remote_id' => 'remote-delete-race']);
+        });
+
+        app(DistributionOrchestrator::class)->deleteRemoteArticle($distribution);
+
+        $this->assertSame('outcome_unknown', (string) $distribution->fresh()->status);
+        $this->assertNull($distribution->fresh()->next_retry_at);
+        $this->assertNull(Task::query()->find($task->id));
+        Http::assertSentCount(1);
     }
 
     /** @return array{Article, Task, DistributionChannel} */

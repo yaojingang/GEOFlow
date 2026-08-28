@@ -93,9 +93,9 @@ class AdminSiteThemeReplicationTest extends TestCase
             $content = File::get(base_path($composeFile));
 
             $this->assertStringContainsString(
-                '--queue=geoflow,distribution,theme-replication,default',
+                '--queue=system-updates,geoflow,distribution,theme-replication,default',
                 $content,
-                $composeFile.' must consume the queue used by theme replication jobs.'
+                $composeFile.' must retire legacy update jobs before consuming active application queues.'
             );
         }
     }
@@ -423,10 +423,10 @@ class AdminSiteThemeReplicationTest extends TestCase
         $this->assertStringNotContainsString('vw', $css);
         $headerBlade = Storage::disk('local')->get("geoflow-theme-replications/{$replication->id}/draft/1/views/partials/header.blade.php");
         $homeNavPosition = strpos($headerBlade, 'data-nav-item="home"');
-        $archivePosition = strpos($headerBlade, "route('site.archive')");
+        $aboutPosition = strpos($headerBlade, "route('site.about')");
         $this->assertNotFalse($homeNavPosition);
-        $this->assertNotFalse($archivePosition);
-        $this->assertLessThan($archivePosition, $homeNavPosition);
+        $this->assertNotFalse($aboutPosition);
+        $this->assertLessThan($aboutPosition, $homeNavPosition);
         $footerBlade = Storage::disk('local')->get("geoflow-theme-replications/{$replication->id}/draft/1/views/partials/footer.blade.php");
         $this->assertStringContainsString("@include('site.partials.footer-filing')", $footerBlade);
         $homeBlade = Storage::disk('local')->get("geoflow-theme-replications/{$replication->id}/draft/1/views/home.blade.php");

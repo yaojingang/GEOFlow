@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Site;
 use App\Http\Controllers\Controller;
 use App\Models\LeadForm;
 use App\Models\LeadSubmission;
+use App\Services\Site\SiteUrlGenerator;
 use App\Support\Lead\LeadFormFields;
+use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteSettingsBag;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,6 +17,11 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class LeadFormController extends Controller
 {
+    public function __construct(
+        private readonly CurrentSite $currentSite,
+        private readonly SiteUrlGenerator $urls,
+    ) {}
+
     public function show(string $slug): View
     {
         $leadForm = $this->activeForm($slug);
@@ -31,7 +38,7 @@ class LeadFormController extends Controller
             'pageDescription' => trim((string) $leadForm->description) !== '' ? (string) $leadForm->description : $siteDescription,
             'pageKeywords' => (string) ($map['site_keywords'] ?? ''),
             'pageOgType' => 'website',
-            'canonicalUrl' => route('site.lead-forms.show', ['slug' => $leadForm->slug]),
+            'canonicalUrl' => $this->urls->form($leadForm->slug),
         ]);
     }
 
@@ -55,6 +62,7 @@ class LeadFormController extends Controller
 
         LeadSubmission::query()->create([
             'lead_form_id' => $leadForm->id,
+            'hosted_site_profile_id' => $this->currentSite->profileId(),
             'status' => LeadSubmission::STATUS_NEW,
             'payload' => $payload,
             'source_url' => mb_substr((string) ($request->input('source_url') ?: $request->headers->get('referer') ?: url()->current()), 0, 500),
@@ -67,7 +75,7 @@ class LeadFormController extends Controller
 
     private function redirectTarget(Request $request, LeadForm $leadForm): string
     {
-        $fallback = route('site.lead-forms.show', ['slug' => $leadForm->slug]);
+        $fallback = $this->urls->form($leadForm->slug);
         $referer = trim((string) $request->headers->get('referer', ''));
         if ($referer === '') {
             return $fallback;
@@ -96,6 +104,14 @@ class LeadFormController extends Controller
             ->where('slug', $slug)
             ->where('status', LeadForm::STATUS_ACTIVE)
             ->first();
+
+        if ($leadForm instanceof LeadForm && $this->currentSite->isHosted()) {
+            $settings = SiteSettingsBag::all();
+            $slugs = json_decode((string) ($settings['lead_form_slugs'] ?? '[]'), true);
+            if (! is_array($slugs) || ! in_array($leadForm->slug, $slugs, true)) {
+                $leadForm = null;
+            }
+        }
 
         if (! $leadForm instanceof LeadForm) {
             throw new NotFoundHttpException(__('site.lead_forms.not_found'));

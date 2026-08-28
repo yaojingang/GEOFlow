@@ -5,6 +5,8 @@
     $seoKeywords = trim((string) ($pageKeywords ?? ($siteKeywords ?? '')));
     $seoCanonical = trim((string) ($canonicalUrl ?? url()->current()));
     $seoOgType = trim((string) ($pageOgType ?? 'website'));
+    $pwaCurrentSite = app(\App\Support\Site\CurrentSite::class);
+    $pwaEnabled = $pwaCurrentSite->isResolved() && $pwaCurrentSite->isPrimary();
 
     if ($seoTitle === '') {
         $seoTitle = $seoSiteName;
@@ -14,8 +16,15 @@
         $seoOgType = 'website';
     }
 @endphp
+@if($pwaEnabled)
+    <x-pwa-head />
+    @vite('resources/js/pwa.js')
+@endif
 <title>{{ $seoTitle }}</title>
 <meta name="description" content="{{ $seoDescription }}">
+@if(isset($siteIndexingAllowed) && !$siteIndexingAllowed)
+    <meta name="robots" content="noindex, nofollow">
+@endif
 @if($seoKeywords !== '')
     <meta name="keywords" content="{{ $seoKeywords }}">
 @endif

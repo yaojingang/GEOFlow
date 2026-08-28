@@ -1,8 +1,10 @@
-# GEOFlow 系统更新中心实施方案
+# GEOFlow 系统更新中心历史实施方案
+
+> 本文记录已退役的 Laravel 站内更新执行器，仅供历史审计。当前架构、部署门禁和操作方式见 [`deployment/SYSTEM_UPDATER_PHASE_C.md`](deployment/SYSTEM_UPDATER_PHASE_C.md)。
 
 版本：v0.1
 日期：2026-06-01
-状态：待确认
+状态：已废弃，由 Phase C 独立更新工具方案取代
 
 ## 1. 背景
 
