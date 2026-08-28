@@ -190,6 +190,13 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         $emptyEnvFile = tempnam(sys_get_temp_dir(), 'geoflow-compose-env-');
         $this->assertNotFalse($emptyEnvFile);
 
+        $runtimeEnvFile = $root.'/.env.prod';
+        $createdRuntimeEnvFile = false;
+        if (! file_exists($runtimeEnvFile) && ! is_link($runtimeEnvFile)) {
+            $this->assertNotFalse(file_put_contents($runtimeEnvFile, ''));
+            $createdRuntimeEnvFile = true;
+        }
+
         $process = new Process(
             [
                 'docker',
@@ -217,6 +224,9 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
             $process->run();
         } finally {
             unlink($emptyEnvFile);
+            if ($createdRuntimeEnvFile) {
+                unlink($runtimeEnvFile);
+            }
         }
 
         $this->assertTrue($process->isSuccessful(), trim($process->getErrorOutput()));
