@@ -84,7 +84,30 @@ export function initializeSystemUpdaterCopy(root = document) {
     });
 }
 
+export function initializeSystemUpdaterErrorDialog(root = document) {
+    const dialog = root.querySelector('[data-system-updater-error-dialog]');
+    if (!dialog || typeof dialog.showModal !== 'function' || typeof dialog.close !== 'function') {
+        return null;
+    }
+
+    const close = () => {
+        if (dialog.open) {
+            dialog.close();
+        }
+    };
+    const closeButtons = Array.from(dialog.querySelectorAll('[data-system-updater-error-close]'));
+
+    if (dialog.open) {
+        dialog.close();
+    }
+    dialog.showModal();
+    closeButtons[0]?.focus();
+
+    return { close };
+}
+
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     initializeSystemUpdaterAutoReload();
     initializeSystemUpdaterCopy();
+    initializeSystemUpdaterErrorDialog();
 }

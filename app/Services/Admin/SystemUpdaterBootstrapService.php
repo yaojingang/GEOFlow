@@ -2,6 +2,9 @@
 
 namespace App\Services\Admin;
 
+use App\Exceptions\SystemUpdaterPreparationException;
+use App\Services\Outbound\OutboundRequestBlockedException;
+use App\Services\Outbound\OutboundRequestFailedException;
 use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\SystemUpdater\SystemUpdaterPlatform;
 use App\Services\SystemUpdater\TufBootstrapVerifier;
@@ -39,29 +42,44 @@ class SystemUpdaterBootstrapService
 
         $trustedRoot = $this->trustedRoot();
 
-        $manifestResponse = $this->safeHttp->get(
-            $this->http->acceptJson()->connectTimeout(5)->timeout(15),
-            $manifestUrl,
-            self::MANIFEST_MAX_BYTES,
-            2,
-            [],
-            $this->validateRedirect(...),
-        )->throw();
+        try {
+            $manifestResponse = $this->safeHttp->get(
+                $this->http->acceptJson()->connectTimeout(5)->timeout(15),
+                $manifestUrl,
+                self::MANIFEST_MAX_BYTES,
+                2,
+                [],
+                $this->validateRedirect(...),
+            );
+        } catch (OutboundRequestBlockedException|OutboundRequestFailedException $exception) {
+            $this->throwOutboundFailure($exception);
+        }
+        $manifestResponse->throw();
         $envelope = $manifestResponse->body();
         if (mb_strlen($envelope, '8bit') > self::MANIFEST_MAX_BYTES) {
-            throw new RuntimeException('Updater bootstrap manifest exceeded the size limit.');
+            throw SystemUpdaterPreparationException::verificationFailed(
+                new RuntimeException('Updater bootstrap manifest exceeded the size limit.'),
+            );
         }
 
         $manifest = $this->verifier->verify($envelope, $trustedRoot);
         $releaseSequence = (int) ($manifest['release_sequence'] ?? 0);
         $disk = Storage::disk('local');
         if ($releaseSequence < $this->highestAcceptedSequence($disk)) {
-            throw new RuntimeException('Updater bootstrap release rollback was rejected.');
+            throw SystemUpdaterPreparationException::verificationFailed(
+                new RuntimeException('Updater bootstrap release rollback was rejected.'),
+            );
         }
-        $platform = $this->platform->current();
+        try {
+            $platform = $this->platform->current();
+        } catch (Throwable $exception) {
+            throw SystemUpdaterPreparationException::platformUnsupported($exception);
+        }
         $asset = is_array($manifest['assets'][$platform] ?? null) ? $manifest['assets'][$platform] : null;
         if ($asset === null) {
-            throw new RuntimeException('The signed updater release has no package for this host.');
+            throw SystemUpdaterPreparationException::platformUnsupported(
+                new RuntimeException('The signed updater release has no package for this host.'),
+            );
         }
 
         $version = (string) ($manifest['updater_version'] ?? '');
@@ -72,7 +90,9 @@ class SystemUpdaterBootstrapService
         $expectedFilename = 'geoflow-updater_'.$version.'_'.str_replace('-', '_', $platform).'.tar.gz';
         $maxBytes = (int) config('geoflow.updater_bootstrap_max_bytes', 100 * 1024 * 1024);
         if ($filename !== $expectedFilename || $size < 1 || $size > $maxBytes) {
-            throw new RuntimeException('The signed updater package description is invalid.');
+            throw SystemUpdaterPreparationException::verificationFailed(
+                new RuntimeException('The signed updater package description is invalid.'),
+            );
         }
 
         $relativePath = 'system-updater/bootstrap/'.$version.'/'.$filename;
@@ -83,30 +103,41 @@ class SystemUpdaterBootstrapService
         $temporary = $destination.'.part.'.bin2hex(random_bytes(8));
 
         try {
-            $archiveResponse = $this->safeHttp->get(
-                $this->http->accept('application/gzip')
-                    ->connectTimeout(5)
-                    ->timeout(120)
-                    ->sink($temporary),
-                $url,
-                $maxBytes,
-                1,
-                [],
-                $this->validateRedirect(...),
-            )->throw();
+            try {
+                $archiveResponse = $this->safeHttp->get(
+                    $this->http->accept('application/gzip')
+                        ->connectTimeout(5)
+                        ->timeout(120)
+                        ->sink($temporary),
+                    $url,
+                    $maxBytes,
+                    1,
+                    [],
+                    $this->validateRedirect(...),
+                );
+            } catch (OutboundRequestBlockedException|OutboundRequestFailedException $exception) {
+                $this->throwOutboundFailure($exception);
+            }
+            $archiveResponse->throw();
             $contentLength = $archiveResponse->header('Content-Length');
             if (is_string($contentLength) && ctype_digit($contentLength) && (int) $contentLength !== $size) {
-                throw new RuntimeException('Updater package length does not match the signed manifest.');
+                throw SystemUpdaterPreparationException::verificationFailed(
+                    new RuntimeException('Updater package length does not match the signed manifest.'),
+                );
             }
             if (! is_file($temporary)
                 || filesize($temporary) !== $size
                 || ! hash_equals($digest, (string) hash_file('sha256', $temporary))) {
-                throw new RuntimeException('Updater package integrity validation failed.');
+                throw SystemUpdaterPreparationException::verificationFailed(
+                    new RuntimeException('Updater package integrity validation failed.'),
+                );
             }
 
             chmod($temporary, 0640);
             if (! rename($temporary, $destination)) {
-                throw new RuntimeException('Updater package could not be staged.');
+                throw SystemUpdaterPreparationException::storageFailed(
+                    new RuntimeException('Updater package could not be staged.'),
+                );
             }
 
             $this->writePrivateFile($disk, $envelopePath, $envelope);
@@ -331,7 +362,9 @@ class SystemUpdaterBootstrapService
     {
         $trustedRoot = @file_get_contents((string) config('geoflow.updater_trusted_root_path'));
         if (! is_string($trustedRoot) || $trustedRoot === '') {
-            throw new RuntimeException('Updater trusted root is unavailable.');
+            throw SystemUpdaterPreparationException::verificationFailed(
+                new RuntimeException('Updater trusted root is unavailable.'),
+            );
         }
 
         return $trustedRoot;
@@ -347,18 +380,24 @@ class SystemUpdaterBootstrapService
             || (($info['mode'] ?? 0) & 0170000) !== 0100000
             || ($info['size'] ?? 0) < 1
             || ($info['size'] ?? 0) > 1024) {
-            throw new RuntimeException('Updater bootstrap sequence state is invalid.');
+            throw SystemUpdaterPreparationException::verificationFailed(
+                new RuntimeException('Updater bootstrap sequence state is invalid.'),
+            );
         }
         try {
             $decoded = json_decode($disk->get(self::SEQUENCE_PATH), true, 4, JSON_THROW_ON_ERROR);
         } catch (Throwable $exception) {
-            throw new RuntimeException('Updater bootstrap sequence state is invalid.', 0, $exception);
+            throw SystemUpdaterPreparationException::verificationFailed(
+                new RuntimeException('Updater bootstrap sequence state is invalid.', 0, $exception),
+            );
         }
         if (! is_array($decoded)
             || array_keys($decoded) !== ['release_sequence']
             || ! is_int($decoded['release_sequence'])
             || $decoded['release_sequence'] < 1) {
-            throw new RuntimeException('Updater bootstrap sequence state is invalid.');
+            throw SystemUpdaterPreparationException::verificationFailed(
+                new RuntimeException('Updater bootstrap sequence state is invalid.'),
+            );
         }
 
         return $decoded['release_sequence'];
@@ -375,24 +414,36 @@ class SystemUpdaterBootstrapService
 
     private function writePrivateFile(FilesystemAdapter $disk, string $path, string $contents): void
     {
-        $this->ensureSafeDirectory(dirname($disk->path($path)));
-        $temporaryPath = $path.'.tmp.'.bin2hex(random_bytes(8));
-        if (! $disk->put($temporaryPath, $contents)) {
-            throw new RuntimeException('Updater package state could not be stored.');
-        }
-        @chmod($disk->path($temporaryPath), 0640);
-        if (! $disk->move($temporaryPath, $path)) {
-            $disk->delete($temporaryPath);
-            throw new RuntimeException('Updater package state could not be stored.');
+        try {
+            $this->ensureSafeDirectory(dirname($disk->path($path)));
+            $temporaryPath = $path.'.tmp.'.bin2hex(random_bytes(8));
+            if (! $disk->put($temporaryPath, $contents)) {
+                throw new RuntimeException('Updater package state could not be stored.');
+            }
+            @chmod($disk->path($temporaryPath), 0640);
+            if (! $disk->move($temporaryPath, $path)) {
+                $disk->delete($temporaryPath);
+                throw new RuntimeException('Updater package state could not be stored.');
+            }
+        } catch (SystemUpdaterPreparationException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            throw SystemUpdaterPreparationException::storageFailed($exception);
         }
     }
 
     private function ensureSafeDirectory(string $path): void
     {
-        File::ensureDirectoryExists($path, 0750, true);
+        try {
+            File::ensureDirectoryExists($path, 0750, true);
+        } catch (Throwable $exception) {
+            throw SystemUpdaterPreparationException::storageFailed($exception);
+        }
         $info = @lstat($path);
         if (! is_array($info) || (($info['mode'] ?? 0) & 0170000) !== 0040000) {
-            throw new RuntimeException('Updater bootstrap storage path is unsafe.');
+            throw SystemUpdaterPreparationException::storageFailed(
+                new RuntimeException('Updater bootstrap storage path is unsafe.'),
+            );
         }
     }
 
@@ -432,7 +483,19 @@ class SystemUpdaterBootstrapService
                 'objects.githubusercontent.com',
                 'release-assets.githubusercontent.com',
             ], true)) {
-            throw new RuntimeException('Updater download redirect left the official GitHub release service.');
+            throw SystemUpdaterPreparationException::verificationFailed(
+                new RuntimeException('Updater download redirect left the official GitHub release service.'),
+            );
         }
+    }
+
+    private function throwOutboundFailure(OutboundRequestBlockedException|OutboundRequestFailedException $exception): never
+    {
+        if ($exception instanceof OutboundRequestFailedException
+            || $exception->reasonCode === 'dns_resolution_failed') {
+            throw SystemUpdaterPreparationException::connectionFailed($exception);
+        }
+
+        throw SystemUpdaterPreparationException::verificationFailed($exception);
     }
 }

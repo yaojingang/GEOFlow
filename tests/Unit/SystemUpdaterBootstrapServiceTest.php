@@ -3,9 +3,17 @@
 namespace Tests\Unit;
 
 use App\Contracts\Outbound\HostResolver;
+use App\Contracts\Outbound\OutboundTransport;
+use App\Exceptions\SystemUpdaterPreparationException;
 use App\Services\Admin\SystemUpdaterBootstrapService;
+use App\Services\Outbound\OutboundRequestBlockedException;
+use App\Services\Outbound\OutboundRequestFailedException;
+use App\Services\Outbound\ResolvedOutboundTarget;
+use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\SystemUpdater\SystemUpdaterPlatform;
 use App\Services\SystemUpdater\TufBootstrapVerifier;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Mockery\MockInterface;
@@ -64,6 +72,52 @@ class SystemUpdaterBootstrapServiceTest extends TestCase
         Storage::disk('local')->assertExists('system-updater/bootstrap/current.json');
         $this->assertSame($archive, Storage::disk('local')->get($prepared['path']));
         $this->assertSame($prepared['path'], app(SystemUpdaterBootstrapService::class)->download()['path']);
+    }
+
+    public function test_it_maps_safe_outbound_failures_to_stable_preparation_reasons(): void
+    {
+        Storage::fake('local');
+        $manifestUrl = 'https://github.com/yaojingang/geoflow-updater/releases/latest/download/bootstrap-manifest.json';
+        config(['geoflow.updater_bootstrap_manifest_url' => $manifestUrl]);
+        $this->mock(TufBootstrapVerifier::class, function (MockInterface $mock): void {
+            $mock->shouldNotReceive('verify');
+        });
+
+        $scenarios = [
+            'transport failure' => [new OutboundRequestFailedException, 'connection_failed'],
+            'DNS failure' => [new OutboundRequestBlockedException('dns_resolution_failed'), 'connection_failed'],
+            'oversized response' => [new OutboundRequestBlockedException('response_too_large'), 'verification_failed'],
+            'blocked destination' => [new OutboundRequestBlockedException('unsafe_address'), 'verification_failed'],
+        ];
+
+        foreach ($scenarios as $label => [$outboundFailure, $expectedReason]) {
+            $transport = new class($outboundFailure) implements OutboundTransport
+            {
+                public function __construct(private readonly \Throwable $failure) {}
+
+                public function send(
+                    PendingRequest $request,
+                    string $method,
+                    ResolvedOutboundTarget $target,
+                    array $data,
+                    int $maxBytes,
+                    bool $crossOrigin = false,
+                ): Response {
+                    throw $this->failure;
+                }
+            };
+            $this->app->instance(
+                SafeOutboundHttpClient::class,
+                new SafeOutboundHttpClient(app(HostResolver::class), $transport),
+            );
+
+            try {
+                app(SystemUpdaterBootstrapService::class)->prepare();
+                $this->fail($label.' did not fail preparation.');
+            } catch (SystemUpdaterPreparationException $exception) {
+                $this->assertSame($expectedReason, $exception->failureReason(), $label);
+            }
+        }
     }
 
     public function test_it_removes_a_download_when_the_archive_digest_is_wrong(): void

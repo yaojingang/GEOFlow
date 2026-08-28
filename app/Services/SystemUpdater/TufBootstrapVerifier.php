@@ -2,9 +2,11 @@
 
 namespace App\Services\SystemUpdater;
 
+use App\Exceptions\SystemUpdaterPreparationException;
 use DateTimeImmutable;
 use DateTimeZone;
 use RuntimeException;
+use Throwable;
 
 class TufBootstrapVerifier
 {
@@ -16,6 +18,20 @@ class TufBootstrapVerifier
      * @return array<string, mixed>
      */
     public function verify(string $envelopeJson, string $trustedRootJson): array
+    {
+        try {
+            return $this->verifySignedEnvelope($envelopeJson, $trustedRootJson);
+        } catch (SystemUpdaterPreparationException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            throw SystemUpdaterPreparationException::verificationFailed($exception);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function verifySignedEnvelope(string $envelopeJson, string $trustedRootJson): array
     {
         if (mb_strlen($envelopeJson, '8bit') > self::MAX_MANIFEST_BYTES
             || mb_strlen($trustedRootJson, '8bit') > self::MAX_MANIFEST_BYTES) {

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
     copySystemUpdaterCommand,
     initializeSystemUpdaterAutoReload,
+    initializeSystemUpdaterErrorDialog,
     updaterReloadDelay,
 } from '../../resources/js/admin/system-updates.js';
 
@@ -64,4 +65,50 @@ test('copy command reads the rendered command and updates the visible label', as
     assert.equal(copiedSuccessfully, true);
     assert.equal(copied, 'sudo geoflow-updater doctor --instance primary');
     assert.equal(label.textContent, '已复制');
+});
+
+test('updater error dialog opens in the center and can be dismissed', () => {
+    let showCount = 0;
+    let closeCount = 0;
+    let focusCount = 0;
+    const closeButton = {
+        focus: () => {
+            focusCount++;
+        },
+    };
+    const dialog = {
+        open: true,
+        querySelectorAll: () => [closeButton],
+        showModal: () => {
+            dialog.open = true;
+            showCount++;
+        },
+        close: () => {
+            dialog.open = false;
+            closeCount++;
+        },
+    };
+    const root = {
+        querySelector: () => dialog,
+    };
+
+    const controller = initializeSystemUpdaterErrorDialog(root);
+
+    assert.ok(controller);
+    assert.equal(showCount, 1);
+    assert.equal(focusCount, 1);
+    assert.equal(closeCount, 1);
+
+    controller.close();
+    assert.equal(closeCount, 2);
+});
+
+test('updater error remains server-visible when the dialog API is unavailable', () => {
+    const dialog = { open: true };
+    const root = { querySelector: () => dialog };
+
+    const controller = initializeSystemUpdaterErrorDialog(root);
+
+    assert.equal(controller, null);
+    assert.equal(dialog.open, true);
 });

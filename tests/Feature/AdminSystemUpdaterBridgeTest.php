@@ -3,17 +3,23 @@
 namespace Tests\Feature;
 
 use App\Contracts\SystemUpdater\AgentClient;
+use App\Exceptions\SystemUpdaterPreparationException;
 use App\Models\Admin;
 use App\Models\AdminActivityLog;
 use App\Models\SystemUpdateBackup;
 use App\Models\SystemUpdateRun;
 use App\Services\Admin\SystemUpdaterBootstrapService;
 use App\Services\Admin\SystemUpdaterBridgeService;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Mockery\MockInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -169,6 +175,112 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ->get(route('admin.system-updates.updater.download'))
             ->assertOk()
             ->assertDownload(basename($path));
+    }
+
+    public function test_missing_updater_release_opens_an_actionable_error_dialog_without_a_duplicate_error_banner(): void
+    {
+        $this->mock(AgentClient::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('status')->once()->andThrow(new RuntimeException('agent unavailable'));
+        });
+        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock): void {
+            $response = new Response(new Psr7Response(404, [], '{"error":"Not Found"}'));
+
+            $mock->shouldReceive('prepare')->once()->andThrow(new RequestException($response));
+            $mock->shouldReceive('state')->once()->andReturn(null);
+        });
+
+        $admin = $this->createAdmin('phase_c_missing_release_admin');
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.updater.prepare'))
+            ->assertRedirect(route('admin.system-updates.index'))
+            ->assertSessionHas('system_updater_error', ['reason' => 'release_not_found'])
+            ->assertSessionHasNoErrors();
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.system-updates.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee('data-system-updater-error-dialog', false)
+            ->assertSee(__('admin.system_updates.updater.error_dialog.title.release_not_found'))
+            ->assertSee('https://github.com/yaojingang/geoflow-updater/releases', false)
+            ->assertSee('https://github.com/yaojingang/geoflow-updater/actions/workflows/release-candidate.yml', false)
+            ->assertSee('https://github.com/yaojingang/geoflow-updater/actions/workflows/release.yml', false)
+            ->assertDontSee(__('admin.system_updates.updater.prepare_failed'));
+        $this->assertMatchesRegularExpression(
+            '/<dialog(?=[^>]*\bopen\b)(?=[^>]*data-system-updater-error-dialog)[^>]*>/',
+            (string) $response->getContent(),
+        );
+        $this->assertSame(2, substr_count((string) $response->getContent(), 'method="dialog"'));
+    }
+
+    #[DataProvider('updaterPreparationFailureReasons')]
+    public function test_updater_preparation_failures_are_classified_for_actionable_guidance(
+        string $expectedReason,
+        \Throwable $exception,
+    ): void {
+        $this->mock(SystemUpdaterBootstrapService::class, function (MockInterface $mock) use ($exception): void {
+            $mock->shouldReceive('prepare')->once()->andThrow($exception);
+        });
+
+        $admin = $this->createAdmin('phase_c_failure_'.$expectedReason);
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.system-updates.updater.prepare'))
+            ->assertRedirect(route('admin.system-updates.index'))
+            ->assertSessionHas('system_updater_error', ['reason' => $expectedReason])
+            ->assertSessionHasNoErrors();
+    }
+
+    /** @return array<string, array{string, \Throwable}> */
+    public static function updaterPreparationFailureReasons(): array
+    {
+        return [
+            'release unavailable through previous exception' => [
+                'release_unavailable',
+                new RuntimeException('wrapped', 0, new RequestException(new Response(new Psr7Response(503)))),
+            ],
+            'connection failure' => [
+                'connection_failed',
+                SystemUpdaterPreparationException::connectionFailed(new ConnectionException('connection refused')),
+            ],
+            'unsupported platform' => [
+                'platform_unsupported',
+                SystemUpdaterPreparationException::platformUnsupported(
+                    new RuntimeException('The signed updater release has no package for this host.'),
+                ),
+            ],
+            'expired signature metadata' => [
+                'verification_failed',
+                SystemUpdaterPreparationException::verificationFailed(new RuntimeException('Signed metadata has expired.')),
+            ],
+            'invalid expiry' => [
+                'verification_failed',
+                SystemUpdaterPreparationException::verificationFailed(new RuntimeException('Signed metadata expiry is invalid.')),
+            ],
+            'unsupported manifest schema' => [
+                'verification_failed',
+                SystemUpdaterPreparationException::verificationFailed(new RuntimeException('Bootstrap manifest schema is unsupported.')),
+            ],
+            'unofficial asset URL' => [
+                'verification_failed',
+                SystemUpdaterPreparationException::verificationFailed(new RuntimeException('Bootstrap asset URL is outside the official release.')),
+            ],
+            'invalid signed asset size' => [
+                'verification_failed',
+                SystemUpdaterPreparationException::verificationFailed(new RuntimeException('Bootstrap asset size is invalid.')),
+            ],
+            'download length mismatch' => [
+                'verification_failed',
+                SystemUpdaterPreparationException::verificationFailed(
+                    new RuntimeException('Updater package length does not match the signed manifest.'),
+                ),
+            ],
+            'storage directory creation' => [
+                'storage_failed',
+                SystemUpdaterPreparationException::storageFailed(new RuntimeException('Unable to create directory at /private/path.')),
+            ],
+            'unclassified failure' => ['unexpected', new RuntimeException('unclassified preparation failure')],
+        ];
     }
 
     public function test_mutating_agent_operation_requires_password_and_one_time_authorization_code(): void

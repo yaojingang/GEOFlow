@@ -39,6 +39,14 @@
         $updaterHostRootConfigured = str_starts_with($updaterHostRoot, '/');
         $updaterInstanceId = (string) config('geoflow.updater_instance_id', 'primary');
         $updaterProjectUrl = 'https://github.com/yaojingang/geoflow-updater';
+        $updaterReleasesUrl = $updaterProjectUrl.'/releases';
+        $updaterReleaseCandidateWorkflowUrl = $updaterProjectUrl.'/actions/workflows/release-candidate.yml';
+        $updaterReleaseWorkflowUrl = $updaterProjectUrl.'/actions/workflows/release.yml';
+        $updaterError = is_array(session('system_updater_error')) ? session('system_updater_error') : [];
+        $updaterErrorReasons = ['release_not_found', 'release_unavailable', 'connection_failed', 'platform_unsupported', 'verification_failed', 'storage_failed', 'unexpected'];
+        $updaterErrorReason = in_array((string) ($updaterError['reason'] ?? ''), $updaterErrorReasons, true)
+            ? (string) $updaterError['reason']
+            : 'unexpected';
         $updaterPresent = $updaterConnection !== 'disconnected';
         $updaterReady = $updaterConnection === 'connected' && $updaterOperationsAvailable && $mutationAuthorizationReady;
         $updaterReadiness = match (true) {
@@ -418,4 +426,112 @@
             </div>
         </section>
     </div>
+
+    @if($updaterError !== [])
+        <dialog
+            open
+            data-system-updater-error-dialog
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="system-updater-error-title"
+            aria-describedby="system-updater-error-summary"
+            class="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white p-0 text-left shadow-2xl backdrop:bg-slate-950/50 backdrop:backdrop-blur-[2px]"
+        >
+            <div class="flex max-h-[calc(100dvh-2rem)] flex-col">
+                <div class="flex items-start gap-4 border-b border-gray-100 px-5 py-5 sm:px-6">
+                    <span class="inline-flex h-11 w-11 flex-none items-center justify-center rounded-full bg-red-50 text-red-600">
+                        <i data-lucide="package-x" class="h-5 w-5"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{{ __('admin.system_updates.updater.error_dialog.eyebrow') }}</p>
+                        <h2 id="system-updater-error-title" class="mt-1 text-xl font-semibold text-gray-950 sm:text-2xl">
+                            {{ __('admin.system_updates.updater.error_dialog.title.'.$updaterErrorReason) }}
+                        </h2>
+                        <p id="system-updater-error-summary" class="mt-2 text-sm leading-6 text-gray-600">
+                            {{ __('admin.system_updates.updater.error_dialog.summary.'.$updaterErrorReason) }}
+                        </p>
+                    </div>
+                    <form method="dialog" class="flex-none">
+                        <button type="submit" data-system-updater-error-close class="inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="{{ __('admin.system_updates.updater.error_dialog.close') }}">
+                            <i data-lucide="x" class="h-5 w-5"></i>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="overflow-y-auto px-5 py-5 sm:px-6">
+                    <section class="rounded-xl border border-red-100 bg-red-50/70 p-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="text-sm font-semibold text-red-950">{{ __('admin.system_updates.updater.error_dialog.reason_label') }}</h3>
+                            @if($updaterErrorReason === 'release_not_found')
+                                <span class="rounded-full border border-red-200 bg-white px-2.5 py-1 font-mono text-xs font-semibold text-red-700">HTTP 404</span>
+                            @endif
+                        </div>
+                        <p class="mt-2 text-sm leading-6 text-red-900">{{ __('admin.system_updates.updater.error_dialog.reason.'.$updaterErrorReason) }}</p>
+                    </section>
+
+                    <section class="mt-5">
+                        <h3 class="text-sm font-semibold text-gray-950">{{ __('admin.system_updates.updater.error_dialog.solution_title') }}</h3>
+                        <ol class="mt-3 space-y-3">
+                            @foreach(__('admin.system_updates.updater.error_dialog.steps.'.$updaterErrorReason) as $step)
+                                <li class="flex gap-3 text-sm leading-6 text-gray-700">
+                                    <span class="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">{{ $loop->iteration }}</span>
+                                    <span>{{ $step }}</span>
+                                </li>
+                            @endforeach
+                        </ol>
+                    </section>
+
+                    <div class="mt-5 flex gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-blue-950">
+                        <i data-lucide="shield-check" class="mt-0.5 h-5 w-5 flex-none text-blue-600"></i>
+                        <p>{{ __('admin.system_updates.updater.error_dialog.safety_note') }}</p>
+                    </div>
+
+                    <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                        @if($updaterErrorReason === 'release_not_found')
+                            <a href="{{ $updaterReleaseCandidateWorkflowUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                <i data-lucide="package-plus" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.system_updates.updater.error_dialog.open_candidate_workflow') }}
+                            </a>
+                            <a href="{{ $updaterReleaseWorkflowUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                <i data-lucide="workflow" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.system_updates.updater.error_dialog.open_release_workflow') }}
+                            </a>
+                        @else
+                            <a href="{{ $updaterReleasesUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                <i data-lucide="external-link" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.system_updates.updater.error_dialog.view_releases') }}
+                            </a>
+                            <a href="{{ $updaterProjectUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                <i data-lucide="github" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.system_updates.updater.project_link') }}
+                            </a>
+                        @endif
+                    </div>
+                    @if($updaterErrorReason === 'release_not_found')
+                        <p class="mt-3 text-center text-xs text-gray-500">
+                            {{ __('admin.system_updates.updater.error_dialog.release_status_hint') }}
+                            <a href="{{ $updaterReleasesUrl }}" target="_blank" rel="noopener noreferrer" class="font-semibold text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-800">
+                                {{ __('admin.system_updates.updater.error_dialog.view_releases') }}
+                            </a>
+                        </p>
+                    @endif
+                </div>
+
+                <div class="flex flex-col-reverse gap-3 border-t border-gray-100 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
+                    <form method="dialog">
+                        <button type="submit" data-system-updater-error-close class="inline-flex min-h-10 w-full items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:w-auto">
+                            {{ __('admin.system_updates.updater.error_dialog.close') }}
+                        </button>
+                    </form>
+                    <form method="POST" action="{{ route('admin.system-updates.updater.prepare') }}">
+                        @csrf
+                        <button type="submit" class="inline-flex min-h-10 w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                            <i data-lucide="rotate-cw" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.system_updates.updater.error_dialog.retry') }}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </dialog>
+    @endif
 @endsection

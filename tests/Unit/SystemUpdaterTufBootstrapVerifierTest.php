@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Exceptions\SystemUpdaterPreparationException;
 use App\Services\SystemUpdater\TufBootstrapVerifier;
 use PHPUnit\Framework\TestCase;
 
@@ -26,6 +27,7 @@ class SystemUpdaterTufBootstrapVerifierTest extends TestCase
         [$root, $envelope] = $this->signedFixture();
         $envelope['signed']['assets']['linux-amd64']['sha256'] = str_repeat('b', 64);
 
+        $this->expectException(SystemUpdaterPreparationException::class);
         $this->expectExceptionMessage('signature threshold');
 
         (new TufBootstrapVerifier)->verify($this->encode($envelope), $this->encode($root));
