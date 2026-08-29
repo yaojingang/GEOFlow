@@ -95,6 +95,20 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         );
     }
 
+    public function test_production_image_retries_composer_downloads_with_a_shared_bounded_cache(): void
+    {
+        $dockerfile = file_get_contents(dirname(__DIR__, 2).'/docker/Dockerfile.prod');
+
+        $this->assertIsString($dockerfile);
+        $this->assertStringContainsString('COMPOSER_MAX_PARALLEL_HTTP=4', $dockerfile);
+        $this->assertStringContainsString(
+            '--mount=type=cache,id=geoflow-composer-dist,target=/tmp/composer-cache,sharing=locked',
+            $dockerfile,
+        );
+        $this->assertStringContainsString('for attempt in 1 2 3; do', $dockerfile);
+        $this->assertStringContainsString('sleep "$((attempt * 15))"', $dockerfile);
+    }
+
     public function test_compose_renders_the_operator_storage_permission_override_when_available(): void
     {
         $docker = new Process(['docker', 'compose', 'version']);
@@ -176,6 +190,13 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         $emptyEnvFile = tempnam(sys_get_temp_dir(), 'geoflow-compose-env-');
         $this->assertNotFalse($emptyEnvFile);
 
+        $runtimeEnvFile = $root.'/.env.prod';
+        $createdRuntimeEnvFile = false;
+        if (! file_exists($runtimeEnvFile) && ! is_link($runtimeEnvFile)) {
+            $this->assertNotFalse(file_put_contents($runtimeEnvFile, ''));
+            $createdRuntimeEnvFile = true;
+        }
+
         $process = new Process(
             [
                 'docker',
@@ -203,6 +224,9 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
             $process->run();
         } finally {
             unlink($emptyEnvFile);
+            if ($createdRuntimeEnvFile) {
+                unlink($runtimeEnvFile);
+            }
         }
 
         $this->assertTrue($process->isSuccessful(), trim($process->getErrorOutput()));

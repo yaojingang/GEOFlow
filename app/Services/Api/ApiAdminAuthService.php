@@ -61,7 +61,7 @@ class ApiAdminAuthService
                 'admin' => $admin,
                 'token' => $this->tokenService->createToken(
                     'CLI Login '.$username.' '.date('Y-m-d H:i:s'),
-                    $this->tokenService->getAvailableScopes(),
+                    $this->tokenService->getCliLoginScopes(),
                     (int) $admin->id
                 ),
             ];

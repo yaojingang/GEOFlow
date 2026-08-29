@@ -310,7 +310,7 @@ CSS;
 
     private function buildJs(): string
     {
-        return <<<JS
+        return <<<'JS'
 document.addEventListener('DOMContentLoaded', () => {
     document.documentElement.classList.add('rep-ready');
 });

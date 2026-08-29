@@ -2,17 +2,13 @@
 
 @section('content')
     <div class="space-y-8 px-4 sm:px-0">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.distribution.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
-                    <i data-lucide="arrow-left" class="h-5 w-5"></i>
-                </a>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.distribution.jobs_heading') }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.jobs_subtitle') }}</p>
-                </div>
+        <header>
+            <div class="sr-only">
+                <h1>{{ __('admin.distribution.jobs_heading') }}</h1>
+                <p>{{ __('admin.distribution.jobs_subtitle') }}</p>
             </div>
-        </div>
+            <x-admin.v3.distribution-subnav active="distribution-jobs" />
+        </header>
 
         <div class="rounded-lg bg-white shadow">
             <form method="GET" action="{{ route('admin.distribution.jobs') }}" class="grid grid-cols-1 gap-4 border-b border-gray-200 px-6 py-4 md:grid-cols-4">
@@ -44,9 +40,6 @@
                     </a>
                 </div>
             </form>
-            <div class="border-b border-gray-200 px-6 py-4">
-                <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.jobs_title') }}</h2>
-            </div>
             @include('admin.distribution._jobs-table', ['jobs' => $jobs])
         </div>
     </div>

@@ -1,0 +1,67 @@
+{
+  "version": "golden-v1-starter",
+  "description": "Synthetic and desensitized starter cases for the AI quality evaluation framework.",
+  "requirements": {
+    "total_cases": 240,
+    "calibration": 120,
+    "regression": 60,
+    "blind": 60,
+    "annotation": "Two independent reviewers with third-reviewer adjudication"
+  },
+  "cases": [
+    {
+      "id": "cal-safe-guidance",
+      "split": "calibration",
+      "article": {"title": "GEO 内容优化步骤", "content": "先整理用户问题，再补充清晰的小标题和可核验来源。"},
+      "facts": [],
+      "evidence": [],
+      "expected": {"decision": "passed", "issue_codes": []},
+      "prediction": {"decision": "passed", "issue_codes": [], "latency_ms": 12000, "prompt_tokens": 2200, "completion_tokens": 240}
+    },
+    {
+      "id": "cal-unverified-statistic",
+      "split": "calibration",
+      "article": {"title": "企业增长", "content": "企业客户增长率达到 48%。"},
+      "facts": [{"claim_hash": "claim-growth-48", "normalized_claim": "企业客户增长率达到48%", "materiality": "high"}],
+      "evidence": [],
+      "expected": {"decision": "needs_review", "issue_codes": ["citation_missing"]},
+      "prediction": {"decision": "needs_review", "issue_codes": ["citation_missing"], "latency_ms": 18000, "prompt_tokens": 2600, "completion_tokens": 380}
+    },
+    {
+      "id": "cal-absolute-advertising",
+      "split": "calibration",
+      "article": {"title": "行业第一的服务", "content": "这是行业第一且绝对安全的服务。"},
+      "facts": [],
+      "evidence": [],
+      "expected": {"decision": "blocked", "issue_codes": ["ad_absolute_claim"]},
+      "prediction": {"decision": "blocked", "issue_codes": ["ad_absolute_claim"], "latency_ms": 16000, "prompt_tokens": 2400, "completion_tokens": 330}
+    },
+    {
+      "id": "reg-k-marker-display-only",
+      "split": "regression",
+      "article": {"title": "引用编号回归", "content": "企业已经完成管理体系认证。[K1]"},
+      "facts": [],
+      "evidence": [{"id": "K2", "stable_key": "1:8:verified", "content": "企业已经完成管理体系认证。"}],
+      "expected": {"decision": "passed", "issue_codes": []},
+      "prediction": {"decision": "passed", "issue_codes": [], "latency_ms": 14000, "prompt_tokens": 2500, "completion_tokens": 260}
+    },
+    {
+      "id": "reg-content-summary-gap",
+      "split": "regression",
+      "article": {"title": "完整内容", "excerpt": "摘要缺少核心结论", "content": "正文包含方法、步骤和实施结论。"},
+      "facts": [],
+      "evidence": [],
+      "expected": {"decision": "needs_review", "issue_codes": ["content_integrity"]},
+      "prediction": {"decision": "needs_review", "issue_codes": ["content_integrity"], "latency_ms": 15000, "prompt_tokens": 2300, "completion_tokens": 300}
+    },
+    {
+      "id": "blind-confirmed-data-conflict",
+      "split": "blind",
+      "article": {"title": "服务数据", "content": "平台已服务 8000 家客户。"},
+      "facts": [{"claim_hash": "claim-customer-count", "normalized_claim": "平台已服务8000家客户", "materiality": "high"}],
+      "evidence": [{"id": "K1", "stable_key": "1:9:customer-count", "content": "平台已服务 800 家客户。"}],
+      "expected": {"decision": "blocked", "issue_codes": ["data_mismatch"]},
+      "prediction": {"decision": "blocked", "issue_codes": ["data_mismatch"], "latency_ms": 21000, "prompt_tokens": 2900, "completion_tokens": 420}
+    }
+  ]
+}

@@ -13,10 +13,11 @@ use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnforceCurrentSiteSurface;
 use App\Http\Middleware\EnsureAdminUiV3Enabled;
-use App\Http\Middleware\EnsureAiWorkspaceRuntimeEnabled;
 use App\Http\Middleware\EnsureApiScope;
+use App\Http\Middleware\EnsureBrowserOperationsProtocol;
 use App\Http\Middleware\EnsureHostedSitesEnabled;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\LimitArticleMarkdownExportRequestSize;
 use App\Http\Middleware\LogAdminActivity;
 use App\Http\Middleware\NormalizeRequestHost;
 use App\Http\Middleware\RecordSiteViewLog;
@@ -45,6 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prepend(LimitArticleMarkdownExportRequestSize::class);
         $middleware->trustHosts(static function (): array {
             $patterns = [];
             foreach (config('geoflow.hosted_sites.primary_hosts', []) as $hostname) {
@@ -70,6 +72,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.auth' => AuthenticateApiToken::class,
             // 校验 Token scopes，如 api.scope:catalog:read
             'api.scope' => EnsureApiScope::class,
+            'browser.protocol' => EnsureBrowserOperationsProtocol::class,
             // Blade 后台：管理员会话鉴权（失败跳转 admin.login）
             'admin.auth' => AuthenticateAdminWeb::class,
             // Blade 后台：session locale
@@ -87,7 +90,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.recent' => TrackAdminRecentPage::class,
             // Blade 后台：V3 独占页面在功能开关关闭时不可访问
             'admin.ui-v3' => EnsureAdminUiV3Enabled::class,
-            'ai-workspace.enabled' => EnsureAiWorkspaceRuntimeEnabled::class,
         ]);
 
         // 已登录的管理员访问登录页(guest:admin)时，重定向到后台仪表盘，而不是 Laravel 默认的 "/"。
@@ -96,7 +98,18 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn () => route('admin.dashboard'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->dontFlash(['api_key']);
+        $exceptions->dontFlash([
+            'api_key',
+            'package_password',
+            'current_password',
+            'current_admin_password',
+            'updater_authorization_code',
+            'new_password',
+            'confirm_password',
+            'keywords_text',
+            'titles_text',
+            'outputs',
+        ]);
 
         $exceptions->render(function (Throwable $e, Request $request) {
             $routeName = (string) ($request->route()?->getName() ?? '');

@@ -1,816 +1,1051 @@
-const terminalStates = new Set(['completed', 'partially_completed', 'failed', 'cancelled', 'outcome_unknown', 'rejected']);
-const pollingStates = new Set(['received', 'answering', 'planning', 'validating_plan', 'queued', 'running', 'cancel_requested']);
+import { createStreamingMarkdownRenderer, normalizeAnswerMarkdown, renderMarkdownInto } from './ai-workspace/markdown.js';
 
-export function shouldAcceptRunSnapshot(current, incoming) {
-    if (!incoming?.id) return false;
-    if (!current || current.id !== incoming.id) return true;
+export function parseSseBuffer(buffer, chunk = '', flush = false) {
+    const source = `${buffer ?? ''}${chunk ?? ''}`.replace(/\r\n/gu, '\n');
+    const blocks = source.split('\n\n');
+    const rest = flush ? '' : blocks.pop() ?? '';
+    const events = [];
 
-    const currentSequence = Number(current.sequence ?? 0);
-    const incomingSequence = Number(incoming.sequence ?? 0);
-    if (incomingSequence !== currentSequence) return incomingSequence > currentSequence;
+    blocks.forEach((block) => {
+        let event = 'message';
+        const data = [];
+        block.split('\n').forEach((line) => {
+            if (line.startsWith('event:')) event = line.slice(6).trim();
+            if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+        });
+        if (data.length === 0) return;
+        const raw = data.join('\n');
+        let payload = raw;
+        try {
+            payload = JSON.parse(raw);
+        } catch {
+            payload = raw;
+        }
+        events.push({ event, data: payload });
+    });
 
-    return Number(incoming.version ?? 0) > Number(current.version ?? 0);
+    if (flush && source.trim() !== '' && blocks.length === 0) {
+        return parseSseBuffer('', `${source}\n\n`, false);
+    }
+
+    return { events, rest };
 }
 
-export function shouldApplyRunSnapshot(current, incoming, allowRunSwitch = false) {
-    if (current?.id && incoming?.id && current.id !== incoming.id) return allowRunSwitch;
+export function createSseParser(onEvent) {
+    let buffer = '';
 
-    return shouldAcceptRunSnapshot(current, incoming);
-}
-
-export function shouldFetchRunUpdate(current, event, activeConversationId) {
-    if (!event?.run_id || event.conversation_id !== activeConversationId) return false;
-    if (current?.id && current.id !== event.run_id) return false;
-    if (!current) return true;
-
-    return Number(event.sequence ?? 0) > Number(current.sequence ?? 0)
-        || Number(event.version ?? 0) > Number(current.version ?? 0);
-}
-
-export function isSubmissionCurrent(currentGeneration, expectedGeneration, currentConversationId, expectedConversationId) {
-    return currentGeneration === expectedGeneration && currentConversationId === expectedConversationId;
-}
-
-export function shouldSubmitPrompt(event) {
-    return event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229;
-}
-
-export function composerControlsState(_runtimeEnabled, submissionInFlight, hasPrompt) {
     return {
-        inputDisabled: submissionInFlight,
-        submitDisabled: submissionInFlight || !hasPrompt,
+        push(chunk) {
+            const parsed = parseSseBuffer(buffer, chunk);
+            buffer = parsed.rest;
+            parsed.events.forEach(onEvent);
+        },
+        finish() {
+            const parsed = parseSseBuffer(buffer, '', true);
+            buffer = '';
+            parsed.events.forEach(onEvent);
+        },
     };
 }
 
-export function requestErrorKind(status, code, hasJsonResponse = true) {
-    if ([401, 419].includes(status) || !hasJsonResponse) return 'session';
-    if (status === 503 && ['ai_workspace_disabled', 'ai_workspace_model_unavailable'].includes(code)) return 'runtime';
-
-    return 'generic';
-}
-
-export function errorDialogContent(kind, message, labels) {
-    if (kind === 'runtime') {
-        return {
-            kind,
-            title: labels.errorRuntimeTitle,
-            description: labels.errorRuntimeDescription,
-            detail: message,
-            hint: labels.errorRuntimeHint,
-            closeLabel: labels.continueEditing,
-            primaryAction: 'configurator',
-            primaryLabel: labels.openConfigurator,
-        };
-    }
-    if (kind === 'session') {
-        return {
-            kind,
-            title: labels.errorSessionTitle,
-            description: labels.errorSessionDescription,
-            detail: message,
-            hint: labels.errorSessionHint,
-            closeLabel: labels.returnToPage,
-            primaryAction: 'reload',
-            primaryLabel: labels.refreshPage,
-        };
-    }
-    if (kind === 'network') {
-        return {
-            kind,
-            title: labels.errorNetworkTitle,
-            description: labels.errorNetworkDescription,
-            detail: message,
-            hint: labels.errorNetworkHint,
-            closeLabel: labels.returnToPage,
-            primaryAction: null,
-            primaryLabel: null,
-        };
-    }
-
-    return {
-        kind: 'generic',
-        title: labels.errorTitle,
-        description: message,
-        detail: '',
-        hint: labels.errorHint,
-        closeLabel: labels.returnToPage,
-        primaryAction: null,
-        primaryLabel: null,
-    };
-}
-
-export function runProgressStage(state) {
-    if (state === 'received' || state === 'answering') return 'intake';
-    if (state === 'planning' || state === 'validating_plan') return 'planning';
-    if (state === 'queued' || state === 'running' || state === 'cancel_requested') return 'execution';
-
-    return null;
-}
-
-export function shouldAcceptAnswerDelta(currentRun, stream, event) {
-    if (!event?.run_id || !event?.delta) return false;
-    if (currentRun && currentRun.id !== event.run_id) return false;
-    if (currentRun?.id === event.run_id && terminalStates.has(currentRun.state)) return false;
-    const runSequence = Number(event.run_sequence ?? 0);
-    if (currentRun?.id === event.run_id && runSequence < Number(currentRun.sequence ?? 0)) return false;
-    if (!stream || stream.runId !== event.run_id) return true;
-    if (runSequence !== Number(stream.runSequence ?? 0)) return runSequence > Number(stream.runSequence ?? 0);
-
-    return Number(event.chunk_sequence ?? 0) > Number(stream.sequence ?? 0);
-}
-
-export function runStateGroup(state) {
-    if (state === 'completed') return 'success';
-    if (state === 'partially_completed' || state === 'outcome_unknown' || state === 'skipped') return 'warning';
-    if (state === 'failed' || state === 'rejected') return 'danger';
-    if (state === 'cancelled') return 'neutral';
-    if (state === 'awaiting_approval' || state === 'awaiting_step_approval' || state === 'clarifying') return 'attention';
-
-    return 'active';
-}
-
-function element(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text !== undefined && text !== null) node.textContent = String(text);
-
-    return node;
-}
-
-function requestKey() {
-    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-
-    return `aiw-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function safeResultUrl(value) {
+export function trustedFeatureUrl(value, origin, adminBasePath = '/admin') {
     try {
-        const url = new URL(String(value), window.location.origin);
-        return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+        const url = new URL(String(value ?? ''), origin);
+        const normalizedBase = `/${String(adminBasePath ?? '/admin').replace(/^\/+|\/+$/gu, '')}`;
+        if (!['http:', 'https:'].includes(url.protocol)) return null;
+        if (url.origin !== origin || url.username || url.password) return null;
+        if (url.pathname !== normalizedBase && !url.pathname.startsWith(`${normalizedBase}/`)) return null;
+
+        return url.href;
     } catch {
         return null;
     }
 }
 
-function initializeAiWorkspace() {
-    const root = document.querySelector('[data-ai-workspace]');
-    if (!root) return;
+export function fallbackConversationTitle(value, lowInformationTitle = '日常交流') {
+    const title = String(value ?? '').replace(/\s+/gu, ' ').trim();
+    const compact = title.toLocaleLowerCase().replace(/[\p{P}\p{S}\s]+/gu, '');
+    const lowInformation = /^(?:(?:你+好+)|(?:您+好+)|(?:嗨+)|(?:哈+喽+)|(?:在+吗+)|(?:hello+)|(?:hi+))+$/iu;
+    if (compact === '' || lowInformation.test(compact)) return lowInformationTitle;
 
-    const labels = JSON.parse(root.querySelector('[data-ai-labels]')?.textContent ?? '{}');
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
-    const runtimeEnabled = root.dataset.runtimeEnabled === 'true';
-    const runtimeUnavailableMessage = root.dataset.runtimeUnavailableMessage || labels.runtimeUnavailable;
+    return Array.from(title).slice(0, 15).join('');
+}
+
+function replaceTemplate(template, id) {
+    return String(template ?? '').replace('__ID__', encodeURIComponent(String(id)));
+}
+
+function csrfToken(documentRef) {
+    return documentRef.querySelector('meta[name="csrf-token"]')?.content ?? '';
+}
+
+function isAbortError(error) {
+    return error?.name === 'AbortError';
+}
+
+function setupAiWorkspace(root, { documentRef = document, windowRef = window, fetcher = window.fetch.bind(window) } = {}) {
+    const form = root.querySelector('[data-ai-form]');
+    const input = root.querySelector('[data-ai-input]');
+    const send = root.querySelector('[data-ai-send]');
+    const stop = root.querySelector('[data-ai-stop]');
     const start = root.querySelector('[data-ai-start]');
     const thread = root.querySelector('[data-ai-thread]');
     const messages = root.querySelector('[data-ai-messages]');
-    const runs = root.querySelector('[data-ai-runs]');
-    const historyList = document.querySelector('[data-ai-history-list]');
-    const form = root.querySelector('[data-ai-form]');
-    const input = root.querySelector('[data-ai-input]');
+    const threadTitle = root.querySelector('[data-ai-thread-title]');
+    const jumpLatest = root.querySelector('[data-ai-jump-latest]');
+    const loadEarlier = root.querySelector('[data-ai-load-earlier]');
+    const rename = root.querySelector('[data-ai-rename]');
     const alert = root.querySelector('[data-ai-alert]');
-    const errorDialog = root.querySelector('[data-ai-error-dialog]');
-    const errorTitle = errorDialog?.querySelector('[data-ai-error-title]');
-    const errorDescription = errorDialog?.querySelector('[data-ai-error-description]');
-    const errorDetail = errorDialog?.querySelector('[data-ai-error-detail]');
-    const errorHint = errorDialog?.querySelector('[data-ai-error-hint]');
-    const errorSecondary = errorDialog?.querySelector('[data-ai-error-secondary]');
-    const errorConfigurator = errorDialog?.querySelector('[data-ai-error-configurator]');
-    const errorConfiguratorLabel = errorDialog?.querySelector('[data-ai-error-configurator-label]');
-    const errorReload = errorDialog?.querySelector('[data-ai-error-reload]');
-    const errorReloadLabel = errorDialog?.querySelector('[data-ai-error-reload-label]');
-    let activeConversationId = null;
-    let activeRun = null;
-    let activeAnswerStream = null;
-    let pollTimer = null;
-    let viewGeneration = 0;
-    let submissionGeneration = 0;
-    let submissionInFlight = false;
-    const submitButton = form?.querySelector('button[type="submit"]');
+    const composerError = root.querySelector('[data-ai-composer-error]');
+    const showcase = root.querySelector('[data-ai-showcase]');
+    const showcaseSlides = Array.from(root.querySelectorAll('[data-ai-showcase-slide]'));
+    const showcaseDots = Array.from(root.querySelectorAll('[data-ai-showcase-dot]'));
+    const showcasePrevious = root.querySelector('[data-ai-showcase-prev]');
+    const showcaseNext = root.querySelector('[data-ai-showcase-next]');
+    const labelsNode = root.querySelector('[data-ai-labels]');
+    if (!form || !input || !send || !stop || !start || !thread || !messages || !threadTitle) return null;
 
-    const endpoint = (template, id) => String(template ?? '').replace('__ID__', encodeURIComponent(id));
-    const formatDate = (value) => value ? new Date(value).toLocaleDateString(document.documentElement.lang || undefined, {
-        month: 'numeric',
-        day: 'numeric',
-    }) : '';
+    let labels = {};
+    try {
+        labels = JSON.parse(labelsNode?.textContent ?? '{}');
+    } catch {
+        labels = {};
+    }
 
-    const resizeInput = () => {
-        if (!input) return;
+    const state = {
+        conversationId: new URL(windowRef.location.href).searchParams.get('conversation'),
+        title: '',
+        generating: false,
+        controller: null,
+        nextCursor: null,
+        hasMore: false,
+        loadingEarlier: false,
+        generationId: 0,
+        viewId: 0,
+    };
+    const scrollRoot = root.closest('.gf-main') ?? documentRef.scrollingElement ?? documentRef.documentElement;
+    let activeConversationLoad = null;
+    let conversationLoadController = null;
+
+    const refreshIcons = (scope = root) => windowRef.lucide?.createIcons?.({ attrs: { 'stroke-width': 1.8 }, nameAttr: 'data-lucide', root: scope });
+    const scrollToLatest = (behavior = 'smooth') => scrollRoot.scrollTo({ top: scrollRoot.scrollHeight, behavior });
+    const isNearBottom = () => scrollRoot.scrollHeight - scrollRoot.scrollTop - scrollRoot.clientHeight < 180;
+
+    const announce = (message) => {
+        if (!alert) return;
+        alert.textContent = message;
+        alert.hidden = message === '';
+    };
+
+    const showComposerError = (message = '') => {
+        if (!composerError) return;
+        composerError.textContent = message;
+        composerError.hidden = message === '';
+        input.setAttribute('aria-invalid', String(message !== ''));
+    };
+
+    const autoResize = () => {
         input.style.height = 'auto';
-        const nextHeight = Math.min(Math.max(input.scrollHeight, 88), 144);
-        input.style.height = `${nextHeight}px`;
-        input.style.overflowY = input.scrollHeight > 144 ? 'auto' : 'hidden';
+        input.style.height = `${Math.min(180, Math.max(28, input.scrollHeight))}px`;
     };
 
     const syncComposer = () => {
-        const hasPrompt = Boolean(input?.value.trim());
-        const controls = composerControlsState(runtimeEnabled, submissionInFlight, hasPrompt);
-        if (input) input.disabled = controls.inputDisabled;
-        if (submitButton) submitButton.disabled = controls.submitDisabled;
-        resizeInput();
+        const hasPrompt = input.value.trim() !== '';
+        send.disabled = state.generating || !hasPrompt;
+        send.hidden = state.generating;
+        stop.hidden = !state.generating;
+        input.setAttribute('aria-busy', String(state.generating));
     };
 
-    const syncConversationUrl = (conversationId = null) => {
-        const url = new URL(window.location.href);
+    let showcaseIndex = 0;
+    let showcaseTimer = null;
+    const prefersReducedMotion = windowRef.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+    const stopShowcase = () => {
+        if (showcaseTimer === null) return;
+        windowRef.clearInterval(showcaseTimer);
+        showcaseTimer = null;
+    };
+    const showShowcaseSlide = (index, { restart = false } = {}) => {
+        if (showcaseSlides.length === 0) return;
+        showcaseIndex = (Number(index) + showcaseSlides.length) % showcaseSlides.length;
+        showcaseSlides.forEach((slide, position) => { slide.hidden = position !== showcaseIndex; });
+        showcaseDots.forEach((dot, position) => {
+            if (position === showcaseIndex) dot.setAttribute('aria-current', 'true');
+            else dot.removeAttribute('aria-current');
+        });
+        if (restart) {
+            stopShowcase();
+            startShowcase();
+        }
+    };
+    const startShowcase = () => {
+        if (!showcase || showcaseSlides.length < 2 || prefersReducedMotion || documentRef.hidden || start.hidden) return;
+        stopShowcase();
+        showcaseTimer = windowRef.setInterval(() => showShowcaseSlide(showcaseIndex + 1), 6000);
+    };
+
+    const updateLocation = (conversationId) => {
+        const url = new URL(windowRef.location.href);
         if (conversationId) url.searchParams.set('conversation', conversationId);
         else url.searchParams.delete('conversation');
-        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+        windowRef.history.replaceState({}, '', url);
+        windowRef.GeoFlowAdminUi?.setRecentConversationActive?.(conversationId || null);
     };
 
-    const showAlert = (issue, requestedKind = 'auto') => {
-        const message = issue instanceof Error ? issue.message : String(issue ?? labels.networkError);
-        const issueKind = issue instanceof Error ? issue.kind : null;
-        const kind = requestedKind !== 'auto'
-            ? requestedKind
-            : issueKind && issueKind !== 'generic'
-                ? issueKind
-                : message === labels.sessionExpired
-                ? 'session'
-                : message === labels.networkError ? 'network' : 'generic';
-        const content = errorDialogContent(kind, message, labels);
-        alert.textContent = message;
-        alert.hidden = false;
-        if (!errorDialog) return;
-        errorDialog.dataset.kind = content.kind;
-        errorTitle.textContent = content.title;
-        errorDescription.textContent = content.description;
-        errorDetail.textContent = content.detail;
-        errorDetail.closest('.gf-ai-error-dialog__detail').hidden = content.detail === '';
-        errorHint.textContent = content.hint;
-        errorSecondary.textContent = content.closeLabel;
-        errorConfigurator.hidden = content.primaryAction !== 'configurator';
-        errorConfigurator.href = root.dataset.aiConfiguratorUrl;
-        errorConfiguratorLabel.textContent = content.primaryLabel ?? labels.openConfigurator;
-        errorReload.hidden = content.primaryAction !== 'reload';
-        errorReloadLabel.textContent = content.primaryLabel ?? labels.refreshPage;
-        document.dispatchEvent(new CustomEvent('geoflow:modal:open', {
-            detail: { name: 'ai-workspace-error', opener: input },
-        }));
+    const showThread = () => {
+        start.hidden = true;
+        thread.hidden = false;
+        stopShowcase();
     };
 
-    const clearAlert = () => {
-        alert.hidden = true;
-        alert.textContent = '';
-        if (errorDialog?.classList.contains('is-open')) {
-            document.dispatchEvent(new CustomEvent('geoflow:modal:close', {
-                detail: { name: 'ai-workspace-error' },
-            }));
-        }
+    const applyConversationTitle = (value) => {
+        const title = String(value ?? '').trim();
+        if (title === '') return false;
+        state.title = title;
+        threadTitle.textContent = title;
+
+        return true;
     };
 
-    const setSubmitting = (submitting) => {
-        submissionInFlight = submitting;
-        syncComposer();
-    };
-
-    const invalidateSubmission = () => {
-        submissionGeneration += 1;
-        setSubmitting(false);
-    };
-
-    const request = async (url, options = {}) => {
-        let response;
-        try {
-            response = await fetch(url, {
-                credentials: 'same-origin',
-                ...options,
-                headers: {
-                    Accept: 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    ...(options.headers ?? {}),
-                },
-            });
-        } catch {
-            const error = new Error(labels.networkError);
-            error.kind = 'network';
-            throw error;
-        }
-        const contentType = response.headers.get('content-type') ?? '';
-        if (response.status === 401 || !contentType.includes('application/json')) {
-            const error = new Error(labels.sessionExpired);
-            error.kind = requestErrorKind(response.status, null, contentType.includes('application/json'));
-            throw error;
-        }
-        const payload = await response.json();
-        if (!response.ok) {
-            const error = new Error(payload.message ?? labels.networkError);
-            error.kind = requestErrorKind(response.status, payload.code);
-            throw error;
-        }
-
-        return payload.data;
-    };
-
-    const setThreadVisible = (visible) => {
-        start.hidden = visible;
-        thread.hidden = !visible;
-        root.classList.toggle('is-conversation-active', visible);
-    };
-
-    const appendMessage = (role, content, meta = {}) => {
-        const item = element('article', `gf-ai-message gf-ai-message--${role}`);
-        if (meta.pending) {
-            item.classList.add('is-pending');
-            item.setAttribute('aria-label', labels.messageSending);
-        }
-        const bubble = element('div', 'gf-ai-message__bubble', content);
-        item.append(bubble);
-        if (meta.system_operations_executed === false) {
-            item.append(element('small', 'gf-ai-no-operation', labels.systemNotExecuted));
-        }
-        messages.append(item);
-
-        return item;
-    };
-
-    const renderRunActivity = (state, statusMessage = '') => {
-        const stage = runProgressStage(state);
-        if (!stage) return null;
-        const activity = element('div', `gf-ai-run-activity is-${stage}`);
-        activity.setAttribute('role', 'status');
-        activity.setAttribute('aria-live', 'polite');
-        const signal = element('span', 'gf-ai-run-activity__signal');
-        signal.setAttribute('aria-hidden', 'true');
-        const copy = element('div', 'gf-ai-run-activity__copy');
-        copy.append(element('strong', null, labels.activityStages?.[stage] ?? labels.activityTitle));
-        copy.append(element('span', null, statusMessage || labels.submissionPending));
-        const dots = element('span', 'gf-ai-run-activity__dots');
-        dots.setAttribute('aria-hidden', 'true');
-        dots.append(element('i'), element('i'), element('i'));
-        activity.append(signal, copy, dots);
-
-        return activity;
-    };
-
-    const renderSubmissionPending = () => {
-        runs.querySelector('[data-ai-submission-pending]')?.remove();
-        const card = element('article', 'gf-ai-run-card is-active gf-ai-submission-pending');
-        card.dataset.aiSubmissionPending = 'true';
-        card.setAttribute('aria-busy', 'true');
-        card.append(renderRunActivity('received', labels.submissionPending));
-        runs.prepend(card);
-    };
-
-    const renderHistory = (items) => {
-        if (!historyList) return;
-        historyList.replaceChildren();
-        if (!items.length) {
-            historyList.append(element('p', 'gf-sidebar__empty', labels.historyEmpty));
-            return;
-        }
-        items.slice(0, 3).forEach((conversation) => {
-            const row = element('div', 'gf-ai-history__item');
-            if (conversation.id === activeConversationId) row.classList.add('is-active');
-            const open = element('a', 'gf-ai-history__open');
-            const conversationUrl = new URL(window.location.href);
-            conversationUrl.searchParams.set('conversation', conversation.id);
-            open.href = `${conversationUrl.pathname}${conversationUrl.search}${conversationUrl.hash}`;
-            open.dataset.conversationId = conversation.id;
-            if (conversation.id === activeConversationId) open.setAttribute('aria-current', 'page');
-            open.append(element('span', null, conversation.title));
-            open.append(element('small', null, formatDate(conversation.updated_at)));
-            const archive = element('button', 'gf-ai-history__archive', labels.archive);
-            archive.type = 'button';
-            archive.dataset.archiveConversation = conversation.id;
-            row.append(open, archive);
-            historyList.append(row);
-        });
-    };
-
-    const loadHistory = async () => {
-        try {
-            const conversations = await request(root.dataset.conversationsUrl);
-            renderHistory(conversations);
-            return conversations;
-        } catch (error) {
-            showAlert(error);
-            return [];
-        }
-    };
-
-    const renderStep = (step, runState, payloadPruned = false) => {
-        const item = element('li', 'gf-ai-plan-step');
-        item.classList.add(`is-${step.state}`);
-        item.dataset.stepId = step.id;
-        const head = element('div', 'gf-ai-plan-step__head');
-        head.append(element('strong', null, `${step.position}. ${step.capability_name ?? step.capability}`));
-        head.append(element('span', `gf-ai-step-state is-${runStateGroup(step.state)}`, labels.statuses?.[step.state] ?? step.state));
-        item.append(head);
-        const facts = element('div', 'gf-ai-plan-step__facts');
-        facts.append(element('span', null, labels.risks?.[step.risk_level] ?? step.risk_level));
-        facts.append(element('span', null, labels.scopes?.[step.execution_scope] ?? step.execution_scope));
-        facts.append(element('span', null, `v${step.capability_version}`));
-        item.append(facts);
-        if (step.state === 'running') {
-            const activity = element('span', 'gf-ai-plan-step__activity', labels.stepRunning);
-            activity.prepend(element('i'));
-            item.append(activity);
-        }
-        const parameters = element('pre', 'gf-ai-plan-step__parameters', JSON.stringify(step.parameters ?? {}, null, 2));
-        item.append(parameters);
-        if (step.result_summary?.summary) item.append(element('p', 'gf-ai-plan-step__result', step.result_summary.summary));
-        if (step.error_message) item.append(element('p', 'gf-ai-plan-step__error', step.error_message));
-        if (!payloadPruned && step.state === 'failed' && ['failed', 'partially_completed'].includes(runState)
-            && String(step.execution_scope) !== 'external_write') {
-            const retry = element('button', 'gf-button gf-button--quiet', labels.retry);
-            retry.type = 'button';
-            retry.dataset.retryStep = step.id;
-            item.append(retry);
-        }
-
-        return item;
-    };
-
-    const renderPlanEditor = (snapshot) => {
-        const editor = element('form', 'gf-ai-plan-editor');
-        editor.dataset.planEditor = snapshot.id;
-        editor.dataset.planVersion = snapshot.plan_version;
-        snapshot.steps.forEach((step) => {
-            const label = element('label', null, step.capability);
-            const textarea = element('textarea', 'gf-field');
-            textarea.rows = 6;
-            textarea.dataset.stepParameters = step.id;
-            textarea.value = JSON.stringify(step.parameters ?? {}, null, 2);
-            label.append(textarea);
-            editor.append(label);
-        });
-        const actions = element('div', 'gf-ai-card__actions');
-        const save = element('button', 'gf-button gf-button--primary', labels.savePlan);
-        save.type = 'submit';
-        actions.append(save);
-        editor.append(actions);
-
-        return editor;
-    };
-
-    const renderRun = (snapshot, { allowRunSwitch = false } = {}) => {
-        if (!shouldApplyRunSnapshot(activeRun, snapshot, allowRunSwitch)) {
-            if (activeRun?.id === snapshot.id) schedulePolling(activeRun);
-            return;
-        }
-        activeRun = snapshot;
-        activeAnswerStream = null;
-        runs.replaceChildren();
-        const card = element('article', `gf-ai-run-card is-${runStateGroup(snapshot.state)}`);
-        card.dataset.runId = snapshot.id;
-        const header = element('header', 'gf-ai-run-card__head');
-        const title = element('div');
-        title.append(element('strong', null, labels.statuses?.[snapshot.state] ?? snapshot.state));
-        title.append(element('small', null, snapshot.status_message ?? ''));
-        header.append(title);
-        header.append(element('span', 'gf-ai-run-card__version', `#${String(snapshot.id).slice(0, 8)} · v${snapshot.version}`));
-        card.append(header);
-        const activity = renderRunActivity(snapshot.state, snapshot.status_message);
-        if (activity) card.append(activity);
-
-        if (snapshot.resolution_score !== null && snapshot.resolution_score !== undefined) {
-            card.append(element('div', 'gf-ai-resolution-score', `${labels.intentConfidence} ${(Number(snapshot.resolution_score) * 100).toFixed(0)}%`));
-        }
-        if (snapshot.answer) {
-            const answer = element('div', 'gf-ai-run-answer');
-            String(snapshot.answer).split('\n').forEach((line) => answer.append(element('p', null, line || ' ')));
-            card.append(answer);
-        }
-        if (snapshot.system_operations_executed === false && terminalStates.has(snapshot.state)) {
-            card.append(element('div', 'gf-ai-no-operation', labels.systemNotExecuted));
-        }
-
-        if (snapshot.steps?.length) {
-            const plan = element('section', 'gf-ai-plan');
-            const planHead = element('div', 'gf-ai-plan__head');
-            planHead.append(element('h2', null, labels.planTitle));
-            planHead.append(element('span', null, String(labels.planVersion).replace(':version', snapshot.plan_version)));
-            plan.append(planHead);
-            const list = element('ol', 'gf-ai-plan__steps');
-            snapshot.steps.forEach((step) => list.append(renderStep(step, snapshot.state, snapshot.payload_pruned)));
-            plan.append(list);
-            if (!snapshot.payload_pruned
-                && ['awaiting_approval', 'awaiting_step_approval', 'failed'].includes(snapshot.state)
-                && !snapshot.steps.some((step) => step.state === 'completed')) {
-                const edit = element('button', 'gf-button gf-button--quiet', labels.editPlan);
-                edit.type = 'button';
-                edit.dataset.editPlan = snapshot.id;
-                plan.append(edit, renderPlanEditor(snapshot));
-                plan.querySelector('[data-plan-editor]').hidden = true;
-            }
-            card.append(plan);
-        }
-
-        const pendingApprovals = (snapshot.approvals ?? []).filter((approval) => approval.status === 'pending');
-        pendingApprovals.forEach((approval) => {
-            const approvalCard = element('section', 'gf-ai-approval');
-            approvalCard.append(element('strong', null, labels.statuses?.awaiting_approval ?? 'Awaiting approval'));
-            approvalCard.append(element('small', null, formatDate(approval.expires_at)));
-            const actions = element('div', 'gf-ai-card__actions');
-            const reject = element('button', 'gf-button gf-button--quiet', labels.reject);
-            reject.type = 'button';
-            reject.dataset.rejectApproval = approval.id;
-            const approve = element('button', 'gf-button gf-button--primary', labels.approve);
-            approve.type = 'button';
-            approve.dataset.approveApproval = approval.id;
-            actions.append(reject, approve);
-            approvalCard.append(actions);
-            card.append(approvalCard);
-        });
-
-        if (snapshot.artifacts?.length) {
-            const artifacts = element('section', 'gf-ai-artifacts');
-            artifacts.append(element('h2', null, labels.sources));
-            snapshot.artifacts.forEach((artifact) => {
-                const item = element('div', 'gf-ai-artifact');
-                const copy = element('div');
-                copy.append(element('strong', null, artifact.name));
-                copy.append(element('p', null, artifact.content ?? ''));
-                item.append(copy);
-                const resultUrl = artifact.source_url ? safeResultUrl(artifact.source_url) : null;
-                if (resultUrl) {
-                    const link = element('a', 'gf-button gf-button--quiet', labels.openResult);
-                    link.href = resultUrl;
-                    if (new URL(resultUrl).origin !== window.location.origin) {
-                        link.target = '_blank';
-                        link.rel = 'noopener noreferrer';
-                    }
-                    item.append(link);
-                }
-                artifacts.append(item);
-            });
-            card.append(artifacts);
-        }
-
-        if (snapshot.failure?.message) card.append(element('div', 'gf-ai-run-error', snapshot.failure.message));
-        if (!terminalStates.has(snapshot.state)) {
-            const actions = element('div', 'gf-ai-card__actions');
-            const cancel = element('button', 'gf-button gf-button--quiet', labels.cancel);
-            cancel.type = 'button';
-            cancel.dataset.cancelRun = snapshot.id;
-            actions.append(cancel);
-            card.append(actions);
-        }
-        runs.append(card);
-        window.lucide?.createIcons?.();
-        schedulePolling(snapshot);
-    };
-
-    const renderAnswerDelta = (event) => {
-        if (event.conversation_id !== activeConversationId || !event.run_id || !event.delta) return;
-        if (!shouldAcceptAnswerDelta(activeRun, activeAnswerStream, event)) return;
-        const incomingRunSequence = Number(event.run_sequence ?? 0);
-        if (!activeAnswerStream || activeAnswerStream.runId !== event.run_id
-            || activeAnswerStream.runSequence !== incomingRunSequence) {
-            activeAnswerStream = { runId: event.run_id, runSequence: incomingRunSequence, sequence: 0, text: '' };
-        }
-        const incomingSequence = Number(event.chunk_sequence ?? 0);
-        if (incomingSequence <= activeAnswerStream.sequence) return;
-        activeAnswerStream.sequence = incomingSequence;
-        activeAnswerStream.text += String(event.delta);
-
-        let card = runs.querySelector('[data-ai-stream-answer]');
-        if (!card) {
-            card = element('article', 'gf-ai-run-card is-active gf-ai-stream-answer');
-            card.dataset.aiStreamAnswer = event.run_id;
-            card.append(element('strong', null, labels.statuses?.answering ?? 'Answering'));
-            card.append(element('p', 'gf-ai-stream-answer__text'));
-            runs.replaceChildren(card);
-        }
-        card.querySelector('.gf-ai-stream-answer__text').textContent = activeAnswerStream.text;
-    };
-
-    const schedulePolling = (snapshot) => {
-        window.clearTimeout(pollTimer);
-        if (!pollingStates.has(snapshot.state)) return;
-        const expectedConversationId = activeConversationId;
-        const expectedGeneration = viewGeneration;
-        pollTimer = window.setTimeout(async () => {
-            try {
-                const fresh = await request(endpoint(root.dataset.runUrlTemplate, snapshot.id));
-                if (viewGeneration !== expectedGeneration
-                    || activeConversationId !== expectedConversationId
-                    || activeRun?.id !== snapshot.id
-                    || fresh.id !== snapshot.id) return;
-                clearAlert();
-                renderRun(fresh);
-            } catch (error) {
-                if (viewGeneration !== expectedGeneration || activeConversationId !== expectedConversationId) return;
-                showAlert(error);
-                schedulePolling(snapshot);
-            }
-        }, 1500);
-    };
-
-    const openConversation = async (id) => {
-        invalidateSubmission();
-        const expectedGeneration = ++viewGeneration;
-        clearAlert();
-        const conversation = await request(endpoint(root.dataset.conversationUrlTemplate, id));
-        if (viewGeneration !== expectedGeneration) return;
-        activeConversationId = conversation.id;
-        activeRun = null;
+    const showStart = () => {
+        conversationLoadController?.abort();
+        conversationLoadController = null;
+        activeConversationLoad = null;
+        state.viewId += 1;
+        state.generationId += 1;
+        state.generating = false;
+        state.controller = null;
+        start.hidden = false;
+        thread.hidden = true;
         messages.replaceChildren();
-        runs.replaceChildren();
-        conversation.messages.forEach((message) => appendMessage(message.role, message.content, message.meta));
-        setThreadVisible(conversation.messages.length > 0 || conversation.runs.length > 0);
-        if (conversation.runs.length) renderRun(conversation.runs[0]);
-        syncConversationUrl(conversation.id);
-        document.body.classList.remove('gf-sidebar-open');
-        await loadHistory();
-    };
-
-    const createConversation = async (expectedGeneration) => {
-        const conversation = await request(root.dataset.conversationsUrl, { method: 'POST', body: JSON.stringify({}) });
-        if (viewGeneration !== expectedGeneration) return null;
-        activeConversationId = conversation.id;
-        syncConversationUrl(conversation.id);
-        await loadHistory();
-        return conversation;
-    };
-
-    const resetWorkspace = () => {
-        invalidateSubmission();
-        viewGeneration += 1;
-        window.clearTimeout(pollTimer);
-        activeConversationId = null;
-        activeRun = null;
-        messages.replaceChildren();
-        runs.replaceChildren();
-        setThreadVisible(false);
-        clearAlert();
+        state.conversationId = null;
+        state.title = '';
+        state.nextCursor = null;
+        state.hasMore = false;
+        state.loadingEarlier = false;
+        if (loadEarlier) {
+            loadEarlier.hidden = true;
+            loadEarlier.disabled = false;
+            loadEarlier.textContent = labels.loadEarlier ?? '加载更早消息';
+        }
+        updateLocation(null);
         input.value = '';
-        syncConversationUrl();
+        showComposerError('');
+        autoResize();
         syncComposer();
-        input.focus();
-        loadHistory();
+        startShowcase();
+        input.focus({ preventScroll: true });
     };
 
-    const submitPrompt = async () => {
-        const prompt = input.value.trim();
-        if (!prompt || submissionInFlight) return;
-        if (!runtimeEnabled) {
-            showAlert(runtimeUnavailableMessage, 'runtime');
-            return;
-        }
-        const expectedGeneration = viewGeneration;
-        const expectedSubmissionGeneration = ++submissionGeneration;
-        let optimisticMessage = null;
-        clearAlert();
-        setSubmitting(true);
-        try {
-            if (!activeConversationId && !await createConversation(expectedGeneration)) return;
-            const expectedConversationId = activeConversationId;
-            if (submissionGeneration !== expectedSubmissionGeneration) return;
-            setThreadVisible(true);
-            optimisticMessage = appendMessage('user', prompt, { pending: true });
-            renderSubmissionPending();
-            input.value = '';
-            syncComposer();
-            const snapshot = await request(endpoint(root.dataset.messageUrlTemplate, activeConversationId), {
-                method: 'POST',
-                body: JSON.stringify({ prompt, request_key: requestKey() }),
-            });
-            if (submissionGeneration === expectedSubmissionGeneration
-                && isSubmissionCurrent(viewGeneration, expectedGeneration, activeConversationId, expectedConversationId)) {
-                optimisticMessage.classList.remove('is-pending');
-                optimisticMessage.removeAttribute('aria-label');
-                renderRun(snapshot, { allowRunSwitch: true });
+    const createIcon = (name) => {
+        const icon = documentRef.createElement('i');
+        icon.dataset.lucide = name;
+        return icon;
+    };
+
+    const createAvatar = (role) => {
+        const avatar = documentRef.createElement('span');
+        avatar.className = `gf-ai-help__avatar gf-ai-help__avatar--${role}`;
+        avatar.setAttribute('aria-hidden', 'true');
+        if (role === 'assistant') avatar.append(createIcon('sparkles'));
+        else avatar.textContent = String(root.dataset.userInitial ?? '').trim().slice(0, 1) || 'U';
+
+        return avatar;
+    };
+
+    const renderFeatureLinks = (target, features) => {
+        const safeFeatures = (Array.isArray(features) ? features : []).map((feature) => {
+            const url = trustedFeatureUrl(feature?.url, windowRef.location.origin, root.dataset.adminBasePath);
+            return url ? { ...feature, url } : null;
+        }).filter(Boolean).slice(0, 3);
+        if (safeFeatures.length === 0) return;
+
+        const section = documentRef.createElement('section');
+        section.className = 'gf-ai-help__related';
+        const heading = documentRef.createElement('h3');
+        heading.textContent = labels.relatedFeatures ?? '相关功能';
+        const list = documentRef.createElement('div');
+        safeFeatures.forEach((feature) => {
+            const link = documentRef.createElement('a');
+            link.href = feature.url;
+            link.className = 'gf-ai-help__feature';
+            const icon = documentRef.createElement('span');
+            icon.append(createIcon(String(feature.icon ?? 'arrow-up-right')));
+            const copy = documentRef.createElement('span');
+            const title = documentRef.createElement('strong');
+            title.textContent = String(feature.title ?? '');
+            const description = documentRef.createElement('small');
+            description.textContent = String(feature.description ?? '');
+            copy.append(title, description);
+            link.append(icon, copy, createIcon('arrow-right'));
+            list.append(link);
+        });
+        section.append(heading, list);
+        target.append(section);
+    };
+
+    const renderKnowledgeSources = (target, sources) => {
+        const items = (Array.isArray(sources) ? sources : []).map((source) => ({
+            section: String(source?.section_path ?? '').trim(),
+            version: String(source?.official_version ?? '').trim(),
+        })).filter((source) => source.section !== '').filter((source, index, list) => (
+            list.findIndex((candidate) => candidate.section === source.section && candidate.version === source.version) === index
+        )).slice(0, 4);
+        if (items.length === 0) return;
+
+        const section = documentRef.createElement('section');
+        section.className = 'gf-ai-help__sources';
+        const heading = documentRef.createElement('h3');
+        heading.textContent = labels.referenceSections ?? '参考章节';
+        const list = documentRef.createElement('div');
+        items.forEach((source) => {
+            const item = documentRef.createElement('span');
+            item.append(createIcon('book-open-text'));
+            const text = documentRef.createElement('span');
+            text.textContent = source.section;
+            item.append(text);
+            if (source.version !== '') {
+                const version = documentRef.createElement('small');
+                version.textContent = `v${source.version}`;
+                item.append(version);
             }
-            await loadHistory();
+            list.append(item);
+        });
+        section.append(heading, list);
+        target.append(section);
+    };
+
+    const renderRelatedMedia = (target, mediaItems) => {
+        const items = (Array.isArray(mediaItems) ? mediaItems : []).map((item) => {
+            const url = trustedFeatureUrl(item?.url, windowRef.location.origin, root.dataset.adminBasePath);
+            const thumbnailUrl = trustedFeatureUrl(item?.thumbnail_url ?? item?.url, windowRef.location.origin, root.dataset.adminBasePath);
+            return url && thumbnailUrl ? { ...item, url, thumbnailUrl } : null;
+        }).filter(Boolean).slice(0, 3);
+        if (items.length === 0) return;
+
+        const section = documentRef.createElement('section');
+        section.className = 'gf-ai-help__media';
+        const heading = documentRef.createElement('h3');
+        heading.textContent = labels.knowledgeImages ?? '相关截图';
+        const gallery = documentRef.createElement('div');
+        items.forEach((item) => {
+            const figure = documentRef.createElement('figure');
+            const button = documentRef.createElement('button');
+            button.type = 'button';
+            button.className = 'gf-ai-help__media-open';
+            const image = documentRef.createElement('img');
+            image.src = item.thumbnailUrl;
+            image.alt = String(item.alt ?? item.title ?? '');
+            image.loading = 'lazy';
+            image.decoding = 'async';
+            if (Number(item.width) > 0) image.width = Number(item.width);
+            if (Number(item.height) > 0) image.height = Number(item.height);
+            image.addEventListener('error', () => {
+                figure.remove();
+                if (gallery.childElementCount === 0) section.remove();
+            });
+            button.append(image);
+            button.addEventListener('click', () => {
+                const dialog = documentRef.createElement('dialog');
+                dialog.className = 'gf-ai-help__media-dialog';
+                dialog.setAttribute('aria-label', String(item.title ?? item.alt ?? labels.knowledgeImages ?? '图片预览'));
+
+                const toolbar = documentRef.createElement('div');
+                toolbar.className = 'gf-ai-help__media-dialog-toolbar';
+                const controls = documentRef.createElement('div');
+                controls.className = 'gf-ai-help__media-dialog-controls';
+                const close = documentRef.createElement('button');
+                close.type = 'button';
+                close.className = 'gf-ai-help__media-dialog-close';
+                close.setAttribute('aria-label', labels.closePreview ?? '关闭预览');
+                close.append(createIcon('x'));
+
+                const preview = image.cloneNode();
+                preview.src = item.url;
+                preview.loading = 'eager';
+                preview.draggable = false;
+                const viewport = documentRef.createElement('div');
+                viewport.className = 'gf-ai-help__media-dialog-viewport';
+                viewport.append(preview);
+
+                const zoomMinimum = 0.5;
+                const zoomMaximum = 2;
+                const zoomStep = 0.25;
+                let zoom = 1;
+                const zoomOut = documentRef.createElement('button');
+                zoomOut.type = 'button';
+                zoomOut.className = 'gf-ai-help__media-dialog-zoom-out';
+                zoomOut.setAttribute('aria-label', labels.zoomOut ?? '缩小图片');
+                zoomOut.append(createIcon('minus'));
+                const zoomReset = documentRef.createElement('button');
+                zoomReset.type = 'button';
+                zoomReset.className = 'gf-ai-help__media-dialog-zoom-reset';
+                zoomReset.setAttribute('aria-label', labels.resetZoom ?? '重置缩放');
+                const zoomValue = documentRef.createElement('span');
+                zoomValue.className = 'gf-ai-help__media-dialog-zoom-value';
+                zoomValue.setAttribute('aria-live', 'polite');
+                zoomValue.setAttribute('aria-label', labels.zoomLevel ?? '图片缩放比例');
+                zoomReset.append(zoomValue);
+                const zoomIn = documentRef.createElement('button');
+                zoomIn.type = 'button';
+                zoomIn.className = 'gf-ai-help__media-dialog-zoom-in';
+                zoomIn.setAttribute('aria-label', labels.zoomIn ?? '放大图片');
+                zoomIn.append(createIcon('plus'));
+
+                const updateZoom = (nextZoom) => {
+                    zoom = Math.min(zoomMaximum, Math.max(zoomMinimum, Math.round(nextZoom / zoomStep) * zoomStep));
+                    preview.style.width = `${zoom * 100}%`;
+                    zoomValue.textContent = `${Math.round(zoom * 100)}%`;
+                    zoomOut.disabled = zoom <= zoomMinimum;
+                    zoomIn.disabled = zoom >= zoomMaximum;
+                };
+                zoomOut.addEventListener('click', () => updateZoom(zoom - zoomStep));
+                zoomReset.addEventListener('click', () => updateZoom(1));
+                zoomIn.addEventListener('click', () => updateZoom(zoom + zoomStep));
+                controls.append(zoomOut, zoomReset, zoomIn);
+                toolbar.append(controls, close);
+
+                const caption = documentRef.createElement('p');
+                caption.textContent = String(item.caption ?? item.title ?? '');
+                close.addEventListener('click', () => dialog.close());
+                dialog.addEventListener('keydown', (event) => {
+                    const nextZoom = ['+', '='].includes(event.key)
+                        ? zoom + zoomStep
+                        : event.key === '-'
+                            ? zoom - zoomStep
+                            : event.key === '0'
+                                ? 1
+                                : null;
+                    if (nextZoom === null) return;
+                    event.preventDefault();
+                    updateZoom(nextZoom);
+                });
+                dialog.addEventListener('close', () => {
+                    dialog.remove();
+                    button.focus({ preventScroll: true });
+                });
+                dialog.append(toolbar, viewport, caption);
+                documentRef.body.append(dialog);
+                updateZoom(1);
+                refreshIcons(dialog);
+                dialog.showModal();
+            });
+            const caption = documentRef.createElement('figcaption');
+            const title = documentRef.createElement('strong');
+            title.textContent = String(item.title ?? '');
+            const copy = documentRef.createElement('span');
+            copy.textContent = String(item.caption ?? '');
+            caption.append(title, copy);
+            figure.append(button, caption);
+            gallery.append(figure);
+        });
+        section.append(heading, gallery);
+        target.append(section);
+    };
+
+    const renderSuggestions = (target, suggestions) => {
+        const items = [...new Set((Array.isArray(suggestions) ? suggestions : []).map((item) => String(item).trim()).filter(Boolean))].slice(0, 3);
+        if (items.length === 0) return;
+
+        const section = documentRef.createElement('section');
+        section.className = 'gf-ai-help__followups';
+        const heading = documentRef.createElement('h3');
+        heading.textContent = labels.suggestedQuestions ?? '你还可以问';
+        const list = documentRef.createElement('div');
+        items.forEach((question) => {
+            const button = documentRef.createElement('button');
+            button.type = 'button';
+            button.dataset.aiSuggestion = question;
+            const text = documentRef.createElement('span');
+            text.textContent = question;
+            button.append(text, createIcon('arrow-up-right'));
+            list.append(button);
+        });
+        section.append(heading, list);
+        target.append(section);
+    };
+
+    const addCopyAction = (target, content) => {
+        const copyContent = normalizeAnswerMarkdown(content);
+        const action = documentRef.createElement('button');
+        action.type = 'button';
+        action.className = 'gf-ai-help__copy';
+        action.append(createIcon('copy'), documentRef.createTextNode(labels.copyAnswer ?? '复制回答'));
+        action.addEventListener('click', async () => {
+            try {
+                await windowRef.navigator.clipboard.writeText(copyContent);
+                action.lastChild.textContent = labels.copied ?? '已复制';
+            } catch {
+                action.lastChild.textContent = labels.copyFailed ?? '复制失败';
+            }
+            windowRef.setTimeout(() => {
+                action.lastChild.textContent = labels.copyAnswer ?? '复制回答';
+            }, 1400);
+        });
+        target.append(action);
+    };
+
+    const createMessage = (role, content = '', meta = {}) => {
+        const row = documentRef.createElement('article');
+        row.className = `gf-ai-help__message is-${role}`;
+        row.dataset.role = role;
+        row.setAttribute('aria-label', role === 'assistant'
+            ? labels.assistantRole ?? 'AI assistant'
+            : labels.userRole ?? 'You');
+        const body = documentRef.createElement('div');
+        body.className = 'gf-ai-help__message-body';
+
+        if (role === 'assistant') {
+            const answer = documentRef.createElement('div');
+            answer.className = 'gf-ai-help__answer gf-ai-markdown';
+            renderMarkdownInto(answer, content, labels);
+            body.append(answer);
+            if (content.trim() !== '') addCopyAction(body, content);
+            renderRelatedMedia(body, meta.related_media);
+            renderKnowledgeSources(body, meta.knowledge_sources);
+            renderFeatureLinks(body, meta.related_features);
+            renderSuggestions(body, meta.suggestions);
+            row.append(createAvatar('assistant'), body);
+        } else {
+            const bubble = documentRef.createElement('div');
+            bubble.className = 'gf-ai-help__user-bubble';
+            bubble.textContent = content;
+            body.append(bubble);
+            row.append(body, createAvatar('user'));
+        }
+
+        refreshIcons(row);
+
+        return row;
+    };
+
+    const createPendingAnswer = () => {
+        const row = documentRef.createElement('article');
+        row.className = 'gf-ai-help__message is-assistant is-pending';
+        row.setAttribute('aria-label', labels.assistantRole ?? 'AI assistant');
+        const body = documentRef.createElement('div');
+        body.className = 'gf-ai-help__message-body';
+        const status = documentRef.createElement('div');
+        status.className = 'gf-ai-help__thinking';
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        status.setAttribute('aria-atomic', 'true');
+        const statusIcon = documentRef.createElement('span');
+        statusIcon.append(createIcon('search'));
+        const statusText = documentRef.createElement('span');
+        statusText.textContent = '';
+        const dots = documentRef.createElement('span');
+        dots.className = 'gf-ai-help__dots';
+        dots.setAttribute('aria-hidden', 'true');
+        dots.append(documentRef.createElement('i'), documentRef.createElement('i'), documentRef.createElement('i'));
+        status.append(statusIcon, statusText, dots);
+        const answer = documentRef.createElement('div');
+        answer.className = 'gf-ai-help__answer gf-ai-markdown';
+        answer.setAttribute('aria-busy', 'true');
+        answer.hidden = true;
+        body.append(status, answer);
+        row.append(createAvatar('assistant'), body);
+        refreshIcons(row);
+
+        return {
+            row,
+            body,
+            status,
+            statusIcon,
+            statusText,
+            answer,
+            content: '',
+            renderer: createStreamingMarkdownRenderer(answer, labels),
+            statusTimers: [],
+        };
+    };
+
+    const clearStatusTimers = (pending) => {
+        pending.statusTimers.forEach((timer) => windowRef.clearTimeout(timer));
+        pending.statusTimers = [];
+    };
+
+    const startStatusTimers = (pending) => {
+        pending.statusTimers = [
+            windowRef.setTimeout(() => {
+                if (pending.content === '' && pending.row.classList.contains('is-pending')) {
+                    pending.statusText.textContent = labels.statusSlow ?? '模型正在生成';
+                }
+            }, 3_000),
+            windowRef.setTimeout(() => {
+                if (pending.content === '' && pending.row.classList.contains('is-pending')) {
+                    pending.statusText.textContent = labels.statusVerySlow ?? '回答需要一点时间';
+                }
+            }, 8_000),
+        ];
+    };
+
+    const renderCompletion = (pending, data) => {
+        clearStatusTimers(pending);
+        pending.renderer.finish(pending.content);
+        pending.row.classList.remove('is-pending');
+        pending.answer.classList.remove('is-streaming');
+        pending.answer.setAttribute('aria-busy', 'false');
+        pending.status.remove();
+        addCopyAction(pending.body, pending.content);
+        renderRelatedMedia(pending.body, data?.related_media);
+        renderKnowledgeSources(pending.body, data?.knowledge_sources);
+        renderFeatureLinks(pending.body, data?.related_features);
+        renderSuggestions(pending.body, data?.suggestions);
+        refreshIcons(pending.row);
+    };
+
+    const renderError = (pending, data) => {
+        clearStatusTimers(pending);
+        if (pending.content.trim() !== '') {
+            pending.answer.hidden = false;
+            pending.renderer.finish(pending.content);
+        }
+        pending.row.classList.remove('is-pending');
+        pending.answer.classList.remove('is-streaming');
+        pending.answer.setAttribute('aria-busy', 'false');
+        pending.status.remove();
+        if (pending.content.trim() === '') pending.answer.remove();
+        const error = documentRef.createElement('div');
+        error.className = 'gf-ai-help__error';
+        error.append(createIcon('circle-alert'));
+        const copy = documentRef.createElement('span');
+        copy.textContent = String(data?.message ?? labels.networkError ?? '暂时无法获取回答');
+        error.append(copy);
+        pending.body.append(error);
+        renderFeatureLinks(pending.body, data?.related_features);
+        renderSuggestions(pending.body, data?.suggestions);
+        refreshIcons(pending.row);
+    };
+
+    const renderStopped = (pending) => {
+        clearStatusTimers(pending);
+        pending.row.classList.remove('is-pending');
+        pending.answer.classList.remove('is-streaming');
+        pending.answer.setAttribute('aria-busy', 'false');
+        pending.status.remove();
+        if (pending.content.trim() === '') {
+            pending.answer.remove();
+            const stopped = documentRef.createElement('div');
+            stopped.className = 'gf-ai-help__stopped';
+            stopped.append(createIcon('square'), documentRef.createTextNode(labels.answerStopped ?? '已停止生成'));
+            pending.body.append(stopped);
+            refreshIcons(pending.row);
+
+            return true;
+        }
+
+        pending.answer.hidden = false;
+        pending.renderer.finish(pending.content);
+        const stopped = documentRef.createElement('div');
+        stopped.className = 'gf-ai-help__stopped';
+        stopped.append(createIcon('square'), documentRef.createTextNode(labels.answerStopped ?? '已停止生成'));
+        pending.body.append(stopped);
+        addCopyAction(pending.body, pending.content);
+        refreshIcons(pending.row);
+
+        return true;
+    };
+
+    const fetchJson = async (url, options = {}) => {
+        const response = await fetcher(url, {
+            credentials: 'same-origin',
+            ...options,
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(documentRef),
+                ...(options.headers ?? {}),
+            },
+        });
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            const error = new Error(payload.message ?? `Request failed with ${response.status}`);
+            error.status = response.status;
+            throw error;
+        }
+
+        return response.json();
+    };
+
+    const createConversation = async (signal) => {
+        const payload = await fetchJson(root.dataset.conversationsUrl, { method: 'POST', body: '{}', signal });
+        state.conversationId = String(payload.data.id);
+        state.title = String(payload.data.title ?? '');
+        state.loadingEarlier = false;
+        if (loadEarlier) {
+            loadEarlier.disabled = false;
+            loadEarlier.textContent = labels.loadEarlier ?? '加载更早消息';
+        }
+        threadTitle.textContent = state.title;
+        updateLocation(state.conversationId);
+
+        return state.conversationId;
+    };
+
+    const applyHistory = (payload, { prepend = false } = {}) => {
+        const history = (Array.isArray(payload.messages) ? payload.messages : []).map((message) => createMessage(
+            String(message.role ?? 'assistant'),
+            String(message.content ?? ''),
+            message.meta ?? {},
+        ));
+        if (prepend) messages.prepend(...history);
+        else messages.replaceChildren(...history);
+        state.hasMore = Boolean(payload.message_page?.has_more);
+        state.nextCursor = payload.message_page?.next_cursor ?? null;
+        if (loadEarlier) loadEarlier.hidden = !state.hasMore;
+        refreshIcons(messages);
+    };
+
+    const loadConversation = async (conversationId, signal) => {
+        const viewId = ++state.viewId;
+        const payload = await fetchJson(replaceTemplate(root.dataset.conversationUrlTemplate, conversationId), { signal });
+        if (viewId !== state.viewId) return false;
+        state.conversationId = String(payload.data.id);
+        state.title = String(payload.data.title ?? '');
+        threadTitle.textContent = state.title;
+        applyHistory(payload.data);
+        showThread();
+        updateLocation(state.conversationId);
+        windowRef.requestAnimationFrame(() => scrollToLatest('auto'));
+
+        return true;
+    };
+
+    const beginConversationLoad = (conversationId) => {
+        conversationLoadController?.abort();
+        const controller = new AbortController();
+        conversationLoadController = controller;
+        const promise = loadConversation(conversationId, controller.signal);
+        activeConversationLoad = promise;
+        void promise.finally(() => {
+            if (activeConversationLoad !== promise) return;
+            activeConversationLoad = null;
+            if (conversationLoadController === controller) conversationLoadController = null;
+        }).catch(() => {});
+
+        return promise;
+    };
+
+    const finishGeneration = (generationId) => {
+        if (generationId !== state.generationId) return;
+        state.generating = false;
+        state.controller = null;
+        syncComposer();
+        autoResize();
+    };
+
+    const sendQuestion = async (question) => {
+        if (state.generating || question === '') return;
+        const generationId = ++state.generationId;
+        state.generating = true;
+        state.controller = new AbortController();
+        const controller = state.controller;
+        announce('');
+        showComposerError('');
+        syncComposer();
+
+        let completed = false;
+        let appError = null;
+        let renderFrame = null;
+        let recentRefreshRequested = false;
+        let pending = null;
+        let userMessage = null;
+        let responseAccepted = false;
+        const renderAnswer = () => {
+            renderFrame = null;
+            if (!pending) return;
+            const shouldFollow = isNearBottom();
+            pending.renderer.update(pending.content);
+            if (shouldFollow) scrollToLatest('auto');
+        };
+        const scheduleAnswer = () => {
+            if (!pending || renderFrame !== null) return;
+            renderFrame = windowRef.requestAnimationFrame(renderAnswer);
+        };
+        const parser = createSseParser(({ event, data }) => {
+            if (!pending || generationId !== state.generationId || completed) return;
+            if (event === 'status') {
+                if (pending.content === '') pending.statusText.textContent = String(data?.label ?? '');
+                pending.statusIcon.replaceChildren(createIcon(data?.stage === 'retrieving' ? 'search' : data?.stage === 'composing' ? 'wand-sparkles' : 'message-circle-more'));
+                refreshIcons(pending.statusIcon);
+            }
+            if (event === 'delta') {
+                clearStatusTimers(pending);
+                pending.status.hidden = true;
+                pending.answer.hidden = false;
+                pending.answer.classList.add('is-streaming');
+                pending.content += String(data?.content ?? '');
+                scheduleAnswer();
+            }
+            if (event === 'title' && applyConversationTitle(data?.title)) {
+                recentRefreshRequested = true;
+                windowRef.GeoFlowAdminUi?.refreshRecentConversations?.({ force: true });
+            }
+            if (event === 'done') {
+                completed = true;
+                applyConversationTitle(data?.conversation_title);
+                if (renderFrame !== null) windowRef.cancelAnimationFrame(renderFrame);
+                renderAnswer();
+                renderCompletion(pending, data);
+                announce(labels.answerComplete ?? '回答已生成');
+            }
+            if (event === 'error') appError = data;
+        });
+
+        try {
+            if (activeConversationLoad) {
+                try {
+                    await activeConversationLoad;
+                } catch (error) {
+                    if (generationId !== state.generationId) return;
+                    showStart();
+                    input.value = question;
+                    autoResize();
+                    syncComposer();
+                    if (isAbortError(error)) {
+                        announce(labels.answerStopped ?? '已停止生成');
+                    } else {
+                        const message = [401, 419].includes(error.status) ? labels.sessionExpired : error.message;
+                        showComposerError(message);
+                        announce(message);
+                    }
+
+                    return;
+                }
+            }
+            if (generationId !== state.generationId) return;
+            state.viewId += 1;
+            if (!state.conversationId) await createConversation(controller.signal);
+            if (generationId !== state.generationId) return;
+
+            showThread();
+            input.value = '';
+            autoResize();
+            userMessage = createMessage('user', question);
+            pending = createPendingAnswer();
+            messages.append(userMessage, pending.row);
+            refreshIcons(messages);
+            scrollToLatest();
+            startStatusTimers(pending);
+
+            const defaultTitles = Array.isArray(labels.defaultTitles) ? labels.defaultTitles : [labels.defaultTitle ?? '新对话', '新对话'];
+            if (state.title === '' || defaultTitles.includes(state.title)) {
+                applyConversationTitle(fallbackConversationTitle(question, labels.casualConversationTitle ?? '日常交流'));
+            }
+
+            const response = await fetcher(replaceTemplate(root.dataset.messageUrlTemplate, state.conversationId), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'text/event-stream',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(documentRef),
+                },
+                body: JSON.stringify({ prompt: question }),
+                signal: controller.signal,
+            });
+            if (!response.ok || !response.body) {
+                const payload = await response.json().catch(() => ({}));
+                const error = new Error(payload.message ?? labels.networkError ?? 'Request failed');
+                error.status = response.status;
+                throw error;
+            }
+            responseAccepted = true;
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                parser.push(decoder.decode(value, { stream: true }));
+                if (completed) {
+                    await reader.cancel();
+                    break;
+                }
+            }
+            parser.push(decoder.decode());
+            parser.finish();
+
+            if (appError) {
+                if (appError.persisted === false) {
+                    clearStatusTimers(pending);
+                    pending.row.remove();
+                    userMessage?.remove();
+                    pending = null;
+                    input.value = question;
+                    autoResize();
+                    showComposerError(String(appError.message ?? labels.networkError ?? 'Request failed'));
+                    announce(String(appError.message ?? labels.networkError ?? 'Request failed'));
+                } else {
+                    renderError(pending, appError);
+                }
+                if (!recentRefreshRequested) windowRef.GeoFlowAdminUi?.refreshRecentConversations?.({ force: true });
+            }
+            else if (!completed) throw new Error(labels.networkError ?? 'Stream ended before completion');
+            else {
+                if (!recentRefreshRequested) windowRef.GeoFlowAdminUi?.refreshRecentConversations?.({ force: true });
+            }
         } catch (error) {
-            if (submissionGeneration === expectedSubmissionGeneration && viewGeneration === expectedGeneration) {
-                optimisticMessage?.remove();
-                runs.querySelector('[data-ai-submission-pending]')?.remove();
-                if (!input.value.trim()) input.value = prompt;
-                syncComposer();
-                showAlert(error);
+            if (generationId !== state.generationId) return;
+            if (completed) return;
+            if (isAbortError(error)) {
+                if (!pending) {
+                    input.value = question;
+                    autoResize();
+                } else {
+                    renderStopped(pending);
+                }
+                announce(labels.answerStopped ?? '已停止生成');
+            } else {
+                const message = [401, 419].includes(error.status) ? labels.sessionExpired : error.message;
+                if (pending && responseAccepted) {
+                    renderError(pending, { message });
+                } else {
+                    if (pending) clearStatusTimers(pending);
+                    pending?.row.remove();
+                    userMessage?.remove();
+                    pending = null;
+                    input.value = question;
+                    autoResize();
+                    showComposerError(message);
+                }
+                announce(message);
             }
         } finally {
-            if (submissionGeneration === expectedSubmissionGeneration) {
-                setSubmitting(false);
-                input.focus();
-            }
+            if (pending) clearStatusTimers(pending);
+            if (renderFrame !== null) windowRef.cancelAnimationFrame(renderFrame);
+            finishGeneration(generationId);
         }
     };
 
-    form?.addEventListener('submit', (event) => {
+    form.addEventListener('submit', (event) => {
         event.preventDefault();
-        submitPrompt();
+        void sendQuestion(input.value.trim());
     });
-    errorReload?.addEventListener('click', () => window.location.reload());
-    input?.addEventListener('keydown', (event) => {
-        if (shouldSubmitPrompt(event)) {
-            event.preventDefault();
-            if (!submissionInFlight) form.requestSubmit();
-        }
-    });
-    input?.addEventListener('input', syncComposer);
-    root.querySelectorAll('[data-ai-suggestion]').forEach((button) => button.addEventListener('click', () => {
-        input.value = button.dataset.aiSuggestion;
-        root.querySelectorAll('[data-ai-suggestion]').forEach((item) => item.classList.toggle('is-active', item === button));
+    input.addEventListener('input', () => {
+        showComposerError('');
+        autoResize();
         syncComposer();
-        input.focus();
-    }));
-    document.querySelectorAll('[data-ai-new]').forEach((button) => button.addEventListener('click', resetWorkspace));
-
-    historyList?.addEventListener('click', async (event) => {
-        const open = event.target.closest('[data-conversation-id]');
-        const archive = event.target.closest('[data-archive-conversation]');
-        if (open || archive) event.preventDefault();
-        try {
-            if (open) await openConversation(open.dataset.conversationId);
-            if (archive) {
-                await request(`${endpoint(root.dataset.conversationUrlTemplate, archive.dataset.archiveConversation)}/archive`, { method: 'POST', body: '{}' });
-                if (activeConversationId === archive.dataset.archiveConversation) resetWorkspace();
-                else await loadHistory();
-            }
-        } catch (error) {
-            showAlert(error);
-        }
     });
-
-    runs?.addEventListener('click', async (event) => {
-        const approve = event.target.closest('[data-approve-approval]');
-        const reject = event.target.closest('[data-reject-approval]');
-        const cancel = event.target.closest('[data-cancel-run]');
-        const retry = event.target.closest('[data-retry-step]');
-        const edit = event.target.closest('[data-edit-plan]');
-        if (edit) {
-            const editor = runs.querySelector('[data-plan-editor]');
-            editor.hidden = !editor.hidden;
-            return;
-        }
-        const expectedGeneration = viewGeneration;
-        const expectedConversationId = activeConversationId;
-        const expectedRunId = activeRun?.id;
-        try {
-            let snapshot = null;
-            if (approve) snapshot = await request(endpoint(root.dataset.approvalUrlTemplate, approve.dataset.approveApproval), { method: 'POST', body: '{}' });
-            if (reject) snapshot = await request(endpoint(root.dataset.rejectUrlTemplate, reject.dataset.rejectApproval), { method: 'POST', body: '{}' });
-            if (cancel) snapshot = await request(endpoint(root.dataset.cancelUrlTemplate, cancel.dataset.cancelRun), { method: 'POST', body: '{}' });
-            if (retry) snapshot = await request(endpoint(root.dataset.retryUrlTemplate, retry.dataset.retryStep), { method: 'POST', body: '{}' });
-            if (snapshot
-                && viewGeneration === expectedGeneration
-                && activeConversationId === expectedConversationId
-                && snapshot.id === expectedRunId) renderRun(snapshot);
-        } catch (error) {
-            if (viewGeneration === expectedGeneration && activeConversationId === expectedConversationId) showAlert(error);
-        }
-    });
-
-    runs?.addEventListener('submit', async (event) => {
-        const editor = event.target.closest('[data-plan-editor]');
-        if (!editor) return;
+    input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
         event.preventDefault();
-        const expectedGeneration = viewGeneration;
-        const expectedConversationId = activeConversationId;
-        const expectedRunId = activeRun?.id;
-        const stepParameters = {};
+        form.requestSubmit();
+    });
+    stop.addEventListener('click', () => {
+        state.controller?.abort();
+        conversationLoadController?.abort();
+    });
+    root.querySelectorAll('[data-ai-fill-prompt]').forEach((button) => button.addEventListener('click', () => {
+        if (state.generating) return;
+        input.value = button.dataset.aiFillPrompt ?? '';
+        showComposerError('');
+        autoResize();
+        syncComposer();
+        input.focus({ preventScroll: true });
+    }));
+    showcasePrevious?.addEventListener('click', () => showShowcaseSlide(showcaseIndex - 1, { restart: true }));
+    showcaseNext?.addEventListener('click', () => showShowcaseSlide(showcaseIndex + 1, { restart: true }));
+    showcaseDots.forEach((dot) => dot.addEventListener('click', () => showShowcaseSlide(Number(dot.dataset.aiShowcaseDot), { restart: true })));
+    showcase?.addEventListener('mouseenter', stopShowcase);
+    showcase?.addEventListener('mouseleave', startShowcase);
+    showcase?.addEventListener('focusin', stopShowcase);
+    showcase?.addEventListener('focusout', (event) => {
+        if (!showcase.contains(event.relatedTarget)) startShowcase();
+    });
+    documentRef.addEventListener('visibilitychange', () => {
+        if (documentRef.hidden) stopShowcase();
+        else startShowcase();
+    });
+    root.addEventListener('click', (event) => {
+        const suggestion = event.target.closest('[data-ai-suggestion]');
+        if (!suggestion || state.generating) return;
+        input.value = suggestion.dataset.aiSuggestion ?? '';
+        autoResize();
+        syncComposer();
+        void sendQuestion(input.value.trim());
+    });
+    root.querySelectorAll('[data-ai-new]').forEach((button) => button.addEventListener('click', () => {
+        state.controller?.abort();
+        showStart();
+    }));
+    rename?.addEventListener('click', async () => {
+        if (!state.conversationId || state.generating) return;
+        const conversationId = state.conversationId;
+        const viewId = state.viewId;
+        const title = windowRef.prompt(labels.renamePrompt ?? '输入新的会话名称', state.title)?.trim();
+        if (!title) return;
         try {
-            editor.querySelectorAll('[data-step-parameters]').forEach((textarea) => {
-                stepParameters[textarea.dataset.stepParameters] = JSON.parse(textarea.value);
+            const payload = await fetchJson(replaceTemplate(root.dataset.updateUrlTemplate, conversationId), {
+                method: 'PATCH',
+                body: JSON.stringify({ title }),
             });
-            const snapshot = await request(endpoint(root.dataset.planUrlTemplate, editor.dataset.planEditor), {
-                method: 'PUT',
-                body: JSON.stringify({ plan_version: Number(editor.dataset.planVersion), step_parameters: stepParameters }),
-            });
-            if (viewGeneration === expectedGeneration
-                && activeConversationId === expectedConversationId
-                && snapshot.id === expectedRunId) renderRun(snapshot);
+            if (conversationId !== state.conversationId || viewId !== state.viewId) return;
+            state.title = String(payload.data.title);
+            threadTitle.textContent = state.title;
+            windowRef.GeoFlowAdminUi?.refreshRecentConversations?.({ force: true });
         } catch (error) {
-            if (viewGeneration === expectedGeneration && activeConversationId === expectedConversationId) {
-                showAlert(error instanceof SyntaxError ? labels.invalidJson : error);
+            if (conversationId === state.conversationId && viewId === state.viewId) {
+                announce([401, 419].includes(error.status) ? labels.sessionExpired : error.message);
             }
         }
     });
+    loadEarlier?.addEventListener('click', async () => {
+        if (!state.conversationId || !state.nextCursor || state.loadingEarlier) return;
+        const conversationId = state.conversationId;
+        const viewId = state.viewId;
+        state.loadingEarlier = true;
+        loadEarlier.disabled = true;
+        loadEarlier.textContent = labels.loadingEarlier ?? '正在加载';
+        const previousHeight = scrollRoot.scrollHeight;
+        try {
+            const url = new URL(replaceTemplate(root.dataset.conversationUrlTemplate, conversationId), windowRef.location.origin);
+            url.searchParams.set('before', state.nextCursor);
+            const payload = await fetchJson(url);
+            if (viewId !== state.viewId || conversationId !== state.conversationId) return;
+            applyHistory(payload.data, { prepend: true });
+            scrollRoot.scrollBy({ top: scrollRoot.scrollHeight - previousHeight, behavior: 'auto' });
+        } catch (error) {
+            if (viewId === state.viewId && conversationId === state.conversationId) {
+                announce([401, 419].includes(error.status) ? labels.sessionExpired : error.message);
+            }
+        } finally {
+            if (viewId === state.viewId && conversationId === state.conversationId) {
+                state.loadingEarlier = false;
+                loadEarlier.disabled = false;
+                loadEarlier.textContent = labels.loadEarlier ?? '加载更早消息';
+            }
+        }
+    });
+    jumpLatest?.addEventListener('click', () => scrollToLatest());
+    scrollRoot.addEventListener('scroll', () => {
+        if (jumpLatest) jumpLatest.hidden = isNearBottom();
+    }, { passive: true });
+    documentRef.addEventListener('geoflow:conversation-archived', (event) => {
+        if (String(event.detail?.conversationId ?? '') === state.conversationId) {
+            state.controller?.abort();
+            showStart();
+        }
+    });
 
+    autoResize();
     syncComposer();
-    const requestedConversationId = new URL(window.location.href).searchParams.get('conversation');
-    loadHistory();
-    if (requestedConversationId) {
-        openConversation(requestedConversationId).catch((error) => {
-            syncConversationUrl(null);
-            showAlert(error);
+    showShowcaseSlide(0);
+    startShowcase();
+    refreshIcons(root);
+    if (state.conversationId) {
+        void beginConversationLoad(state.conversationId).catch(() => {
+            if (!state.generating) showStart();
         });
+    } else {
+        input.focus({ preventScroll: true });
     }
-    if (runtimeEnabled) {
-        const adminId = Number(root.dataset.adminId);
-        window.Echo?.private(`admin.ai-workspace.${adminId}`)
-            .listen('.ai-workspace.run.updated', async (event) => {
-                if (!shouldFetchRunUpdate(activeRun, event, activeConversationId)) return;
-                const expectedConversationId = activeConversationId;
-                const expectedGeneration = viewGeneration;
-                try {
-                    const fresh = await request(endpoint(root.dataset.runUrlTemplate, event.run_id));
-                    if (viewGeneration !== expectedGeneration || activeConversationId !== expectedConversationId) return;
-                    renderRun(fresh, { allowRunSwitch: !activeRun });
-                } catch (error) {
-                    if (viewGeneration === expectedGeneration && activeConversationId === expectedConversationId) {
-                        showAlert(error);
-                    }
-                }
-            })
-            .listen('.ai-workspace.answer.delta', renderAnswerDelta);
-    }
+
+    return { sendQuestion, loadConversation: beginConversationLoad, showStart };
 }
 
-if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeAiWorkspace);
-    else initializeAiWorkspace();
-}
+const workspace = globalThis.document?.querySelector?.('[data-ai-workspace]');
+if (workspace) setupAiWorkspace(workspace);
+
+export { createStreamingMarkdownRenderer, setupAiWorkspace };

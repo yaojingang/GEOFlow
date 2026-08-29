@@ -50,7 +50,8 @@ class LogAdminActivity
             ? $this->aiWorkspaceAuditSummary($request, $response)
             : $request->except([
                 'password', 'password_confirmation', 'package_password',
-                'current_password', 'new_password', 'confirm_password',
+                'current_password', 'current_admin_password', 'updater_authorization_code',
+                'new_password', 'confirm_password',
             ]);
         $explicitDetails = $request->attributes->get('admin_activity_details');
         if (is_array($explicitDetails)) {

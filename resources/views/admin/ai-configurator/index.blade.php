@@ -2,14 +2,46 @@
 
 @section('content')
     <div class="px-4 sm:px-0">
-        <div class="flex items-center justify-between mb-8">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.ai_configurator.heading') }}</h1>
-                <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_configurator.subtitle') }}</p>
-            </div>
+        <div class="sr-only">
+            <h1>{{ __('admin.ai_configurator.heading') }}</h1>
+            <p>{{ __('admin.ai_configurator.subtitle') }}</p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+        <section class="overflow-hidden rounded-lg bg-white shadow" data-ai-configurator-overview aria-labelledby="ai-configurator-overview-heading">
+            <div class="border-b border-gray-200 px-6 py-4">
+                <h2 id="ai-configurator-overview-heading" class="text-lg font-medium text-gray-900">{{ __('admin.ai_configurator.overview') }}</h2>
+            </div>
+            <div class="px-6 py-6">
+                <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-6">
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-blue-600">{{ (int) ($stats['model_count'] ?? 0) }}</div>
+                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.active_models') }}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-green-600">{{ (int) ($stats['prompt_count'] ?? 0) }}</div>
+                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.prompt_templates') }}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-purple-600">{{ number_format((int) ($stats['total_usage'] ?? 0)) }}</div>
+                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.total_calls') }}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-orange-600">{{ number_format((int) ($stats['today_usage'] ?? 0)) }}</div>
+                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.today_calls') }}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-teal-600">{{ (int) ($stats['search_provider_count'] ?? 0) }}</div>
+                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.active_search_providers') }}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-rose-600">{{ number_format((int) ($stats['visibility_failed_runs'] ?? 0)) }}</div>
+                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.visibility_failed_runs') }}</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4" data-ai-configurator-modules>
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="p-6">
                     <div class="flex items-center">
@@ -106,40 +138,6 @@
                         <a href="{{ route('admin.ai-source-providers.index') }}" class="font-medium text-teal-600 hover:text-teal-500">
                             {{ __('admin.ai_configurator.search_action') }} <span aria-hidden="true">&rarr;</span>
                         </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="bg-white shadow rounded-lg">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_configurator.overview') }}</h3>
-            </div>
-            <div class="px-6 py-6">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-6">
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-blue-600">{{ (int) ($stats['model_count'] ?? 0) }}</div>
-                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.active_models') }}</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-green-600">{{ (int) ($stats['prompt_count'] ?? 0) }}</div>
-                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.prompt_templates') }}</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-purple-600">{{ number_format((int) ($stats['total_usage'] ?? 0)) }}</div>
-                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.total_calls') }}</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-orange-600">{{ number_format((int) ($stats['today_usage'] ?? 0)) }}</div>
-                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.today_calls') }}</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-teal-600">{{ (int) ($stats['search_provider_count'] ?? 0) }}</div>
-                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.active_search_providers') }}</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-2xl font-bold text-rose-600">{{ number_format((int) ($stats['visibility_failed_runs'] ?? 0)) }}</div>
-                        <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.visibility_failed_runs') }}</div>
                     </div>
                 </div>
             </div>

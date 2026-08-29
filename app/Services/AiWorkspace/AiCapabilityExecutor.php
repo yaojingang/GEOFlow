@@ -25,6 +25,7 @@ use App\Models\Task;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
 use App\Services\AiWorkspace\Capabilities\AiCapabilityHandler;
+use App\Services\AiWorkspace\Capabilities\AiWorkspaceCapabilityDriver;
 use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPublisherManager;
@@ -37,7 +38,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 
-final readonly class AiCapabilityExecutor
+final readonly class AiCapabilityExecutor implements AiWorkspaceCapabilityDriver
 {
     public function __construct(
         private AiCapabilityRegistry $registry,
@@ -62,19 +63,34 @@ final readonly class AiCapabilityExecutor
             return app($capability->handler)->execute($parameters, $admin, $executionKey);
         }
 
-        return match ($capability->handler) {
-            'catalog' => $this->catalog($admin),
-            'operational_report' => $this->operationalReport($capabilityKey, $parameters),
-            'visibility_diagnosis' => $this->visibilityDiagnosis($parameters),
-            'content_opportunities' => $this->contentOpportunities($parameters),
-            'url_import_preview' => $this->urlImportPreview($parameters, $executionKey),
-            'url_import_commit' => $this->urlImportCommit($parameters),
-            'distribution_preview' => $this->distributionPreview($parameters),
-            'task_status' => $this->taskStatus($parameters),
-            'distribution_publish' => $this->distributionPublish($parameters, $executionKey),
-            'site_settings_sync' => $this->siteSettingsSync($parameters, $executionKey),
-            'hosted_site_preflight' => $this->hostedSitePreflight($parameters),
-            default => throw new RuntimeException('该能力没有可执行处理器。'),
+        throw new RuntimeException('该能力没有可执行处理器。');
+    }
+
+    /**
+     * Execute the domain action selected by an independently registered handler.
+     *
+     * @param  array<string,mixed>  $parameters
+     */
+    public function executeRegisteredAction(
+        string $capabilityKey,
+        array $parameters,
+        Admin $admin,
+        ?string $executionKey = null,
+    ): AiCapabilityResult {
+        return match ($capabilityKey) {
+            'system.capabilities.explain', 'content.catalog', 'site.operations' => $this->catalog($admin),
+            'analytics.daily_report', 'analytics.weekly_report' => $this->operationalReport($capabilityKey, $parameters, $admin),
+            'visibility.diagnose' => $this->visibilityDiagnosis($parameters),
+            'content.opportunities' => $this->contentOpportunities($parameters),
+            'url_import.preview' => $this->urlImportPreview($parameters, $executionKey),
+            'url_import.commit' => $this->urlImportCommit($parameters),
+            'distribution.preview' => $this->distributionPreview($parameters),
+            'task.status.change' => $this->taskStatus($parameters, $admin),
+            'distribution.publish' => $this->distributionPublish($parameters, $executionKey),
+            'distribution.site_settings_sync' => $this->siteSettingsSync($parameters, $executionKey),
+            'hosted_site.preflight' => $this->hostedSitePreflight($parameters),
+            'admin.governance', 'managed.operations' => throw new RuntimeException('该能力只允许导航说明，不能执行。'),
+            default => throw new RuntimeException('该能力没有已注册的领域动作。'),
         };
     }
 
@@ -228,7 +244,7 @@ final readonly class AiCapabilityExecutor
     }
 
     /** @param array<string,mixed> $parameters */
-    private function operationalReport(string $key, array $parameters): AiCapabilityResult
+    private function operationalReport(string $key, array $parameters, Admin $admin): AiCapabilityResult
     {
         $days = $key === 'analytics.weekly_report' ? 7 : 1;
         $end = Carbon::parse((string) ($parameters['end_date'] ?? $parameters['date'] ?? now()->toDateString()))->endOfDay();
@@ -237,14 +253,31 @@ final readonly class AiCapabilityExecutor
             'period' => ['from' => $start->toDateString(), 'to' => $end->toDateString()],
             'articles_created' => Article::query()->whereBetween('created_at', [$start, $end])->count(),
             'articles_published' => Article::query()->where('status', 'published')->whereBetween('published_at', [$start, $end])->count(),
+            'total_tasks' => Task::query()->count(),
             'active_tasks' => Task::query()->where('status', 'active')->count(),
             'new_leads' => LeadSubmission::query()->whereBetween('created_at', [$start, $end])->count(),
-            'successful_distributions' => ArticleDistribution::query()->where('status', 'synced')->whereBetween('updated_at', [$start, $end])->count(),
             'visibility_runs' => AiVisibilityRun::query()->whereBetween('created_at', [$start, $end])->count(),
         ];
+        if ($admin->isSuperAdmin()) {
+            $payload['successful_distributions'] = DB::table('article_distributions as ad')
+                ->join('articles as a', 'ad.article_id', '=', 'a.id')
+                ->whereNull('a.deleted_at')
+                ->where('ad.status', 'synced')
+                ->whereBetween('ad.created_at', [$start, $end])
+                ->count();
+        }
 
         return new AiCapabilityResult(
-            summary: sprintf('%s至%s：新增文章 %d 篇，发布 %d 篇，新增线索 %d 条。', $payload['period']['from'], $payload['period']['to'], $payload['articles_created'], $payload['articles_published'], $payload['new_leads']),
+            summary: sprintf(
+                '%s至%s：新增文章 %d 篇，发布 %d 篇，新增线索 %d 条。当前任务共 %d 个，其中运行中 %d 个。',
+                $payload['period']['from'],
+                $payload['period']['to'],
+                $payload['articles_created'],
+                $payload['articles_published'],
+                $payload['new_leads'],
+                $payload['total_tasks'],
+                $payload['active_tasks'],
+            ),
             payload: $payload,
             artifactType: 'operational_report',
             artifactName: $days === 7 ? 'GEOFlow 运营周报' : 'GEOFlow 运营日报',
@@ -428,11 +461,11 @@ final readonly class AiCapabilityExecutor
     }
 
     /** @param array<string,mixed> $parameters */
-    private function taskStatus(array $parameters): AiCapabilityResult
+    private function taskStatus(array $parameters, Admin $admin): AiCapabilityResult
     {
         $result = $parameters['action'] === 'stop'
-            ? $this->taskLifecycle->stopTask((int) $parameters['task_id'])
-            : $this->taskLifecycle->startTask((int) $parameters['task_id']);
+            ? $this->taskLifecycle->stopTask((int) $parameters['task_id'], $admin->isSuperAdmin())
+            : $this->taskLifecycle->startTask((int) $parameters['task_id'], false, $admin->isSuperAdmin());
 
         return new AiCapabilityResult(
             summary: $parameters['action'] === 'stop' ? '任务已暂停。' : '任务已启用。',

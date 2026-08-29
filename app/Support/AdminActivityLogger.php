@@ -101,11 +101,14 @@ final class AdminActivityLogger
             'password_confirmation',
             'package_password',
             'current_password',
+            'current_admin_password',
             'new_password',
             'confirm_password',
             'api_key',
             '_token',
             'csrf_token',
+            'user_code',
+            'device_code',
         ];
 
         $result = [];

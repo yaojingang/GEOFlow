@@ -28,10 +28,22 @@ final class InfrastructureGatewayConfigurationTest extends TestCase
 
         self::assertStringContainsString('location ^~ /build/assets/', $nginx);
         self::assertStringContainsString('max-age=31536000, immutable', $nginx);
+        $this->assertPwaAssetsRemainRevalidatable($nginx);
         self::assertStringContainsString('location ~ ^/reverb/(app|apps)/', $nginx);
         self::assertStringContainsString('proxy_set_header Upgrade $http_upgrade;', $nginx);
         self::assertStringContainsString('set $geoflow_reverb reverb:8080;', $nginx);
         self::assertStringContainsString('add_header Cache-Control "no-store" always;', $nginx);
+    }
+
+    public function test_fresh_checkout_uses_an_inert_broadcast_default_until_the_environment_enables_reverb(): void
+    {
+        $broadcasting = $this->read('config/broadcasting.php');
+        $localEnvironment = $this->read('.env.example');
+        $productionEnvironment = $this->read('.env.prod.example');
+
+        self::assertStringContainsString("env('BROADCAST_CONNECTION', 'null')", $broadcasting);
+        self::assertStringContainsString('BROADCAST_CONNECTION=reverb', $localEnvironment);
+        self::assertStringContainsString('BROADCAST_CONNECTION=reverb', $productionEnvironment);
     }
 
     public function test_production_nginx_does_not_mark_mutable_assets_as_immutable(): void
@@ -41,6 +53,7 @@ final class InfrastructureGatewayConfigurationTest extends TestCase
         self::assertStringContainsString('location ^~ /build/assets/', $nginx);
         self::assertStringContainsString('max-age=31536000, immutable', $nginx);
         self::assertStringContainsString('max-age=300', $nginx);
+        $this->assertPwaAssetsRemainRevalidatable($nginx);
 
         $mutableAssets = substr(
             $nginx,
@@ -71,6 +84,15 @@ final class InfrastructureGatewayConfigurationTest extends TestCase
         self::assertIsString($contents);
 
         return $contents;
+    }
+
+    private function assertPwaAssetsRemainRevalidatable(string $nginx): void
+    {
+        self::assertStringContainsString('location = /manifest.webmanifest', $nginx);
+        self::assertStringContainsString('location = /service-worker.js', $nginx);
+        self::assertStringContainsString('default_type application/manifest+json;', $nginx);
+        self::assertStringContainsString('add_header Service-Worker-Allowed "/" always;', $nginx);
+        self::assertGreaterThanOrEqual(2, substr_count($nginx, 'no-cache, max-age=0, must-revalidate'));
     }
 
     private function serviceBlock(string $compose, string $service, ?string $nextService): string

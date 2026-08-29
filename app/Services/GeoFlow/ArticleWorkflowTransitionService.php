@@ -2,13 +2,15 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
 use App\Models\Article;
+use App\Models\Task;
 use Illuminate\Support\Facades\DB;
 
 class ArticleWorkflowTransitionService
 {
-    public function __construct(private readonly ArticleRiskGate $articleRiskGate) {}
+    public function __construct(private readonly ArticlePublicationQualityGate $publicationQualityGate) {}
 
     /**
      * @param  array{status: string, review_status: string, published_at: mixed}  $workflowState
@@ -34,26 +36,39 @@ class ArticleWorkflowTransitionService
             $allowExistingOverride,
             $rejectedWorkflowState,
             $lockedGuard,
-        ): Article|ArticleRiskGateException {
+        ): Article|ArticleRiskGateException|ArticleAiQualityGateException {
             $lockedArticle = Article::query()
                 ->whereKey($article->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            if ($lockedArticle->task_id) {
+                $lockedTask = Task::withTrashed()
+                    ->whereKey((int) $lockedArticle->task_id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($lockedTask instanceof Task) {
+                    $lockedTask->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                    $lockedArticle->setRelation('task', $lockedTask);
+                }
+            }
 
             if ($lockedGuard !== null) {
                 $lockedGuard($lockedArticle);
             }
 
             try {
-                $this->articleRiskGate->check(
+                $this->publicationQualityGate->check(
                     $lockedArticle,
                     $trigger,
                     $adminId,
                     $overrideReason,
                     $allowExistingOverride,
                 );
-            } catch (ArticleRiskGateException $exception) {
-                if ($rejectedWorkflowState !== null) {
+            } catch (ArticleRiskGateException|ArticleAiQualityGateException $exception) {
+                $preservePublishedArticle = $exception instanceof ArticleAiQualityGateException
+                    && (string) $lockedArticle->status === 'published';
+                if ($rejectedWorkflowState !== null && ! $preservePublishedArticle) {
                     $lockedArticle->update([
                         'status' => $rejectedWorkflowState['status'],
                         'review_status' => $rejectedWorkflowState['review_status'],
@@ -73,7 +88,7 @@ class ArticleWorkflowTransitionService
             return $lockedArticle->refresh();
         });
 
-        if ($result instanceof ArticleRiskGateException) {
+        if ($result instanceof ArticleRiskGateException || $result instanceof ArticleAiQualityGateException) {
             throw $result;
         }
 

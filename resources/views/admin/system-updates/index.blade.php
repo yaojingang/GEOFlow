@@ -3,838 +3,566 @@
 @section('content')
     @php
         $state = is_array($summary['state'] ?? null) ? $summary['state'] : [];
-        $links = is_array($summary['links'] ?? null) ? $summary['links'] : [];
-        $deployment = is_array($summary['deployment'] ?? null) ? $summary['deployment'] : [];
-        $deploymentDiagnostics = is_array($summary['deployment_diagnostics'] ?? null) ? $summary['deployment_diagnostics'] : [];
-        $diagnosticItems = is_array($deploymentDiagnostics['items'] ?? null) ? $deploymentDiagnostics['items'] : [];
-        $diagnosticFacts = is_array($deploymentDiagnostics['facts'] ?? null) ? $deploymentDiagnostics['facts'] : [];
-        $diagnosticCommands = is_array($deploymentDiagnostics['commands'] ?? null) ? $deploymentDiagnostics['commands'] : [];
-        $diagnosticLog = is_array($deploymentDiagnostics['log'] ?? null) ? $deploymentDiagnostics['log'] : [];
-        $diagnosticDocs = is_array($deploymentDiagnostics['docs'] ?? null) ? $deploymentDiagnostics['docs'] : [];
-        $latestPlan = $summary['latest_plan'] ?? null;
-        $preflight = is_array($summary['preflight'] ?? null) ? $summary['preflight'] : [];
-        $preflightItems = is_array($preflight['items'] ?? null) ? $preflight['items'] : [];
-        $queueHealth = is_array($summary['queue_health'] ?? null) ? $summary['queue_health'] : [];
-        $queueHealthItems = is_array($queueHealth['items'] ?? null) ? $queueHealth['items'] : [];
-        $recentBackups = $summary['recent_backups'] ?? collect();
         $recentRuns = $summary['recent_runs'] ?? collect();
-        $hasActiveUpdateRun = !empty($summary['has_active_run']);
-        $planJson = $latestPlan && is_array($latestPlan->plan_json) ? $latestPlan->plan_json : [];
-        $planCounts = is_array($planJson['summary'] ?? null) ? $planJson['summary'] : [];
-        $planFlags = is_array($planJson['flags'] ?? null) ? $planJson['flags'] : [];
-        $changes = is_array($planJson['changes'] ?? null) ? $planJson['changes'] : [];
-        $manualCommands = is_array($planJson['manual_commands'] ?? null) ? $planJson['manual_commands'] : [];
-        $updateScript = (string) ($planJson['update_script'] ?? '');
-        $commandStatuses = is_array($planJson['manual_command_statuses'] ?? null) ? $planJson['manual_command_statuses'] : [];
-        $payload = is_array($state['payload'] ?? null) ? $state['payload'] : [];
-        $executionReady = !empty($summary['execution_enabled']) && !empty($summary['archive_apply_enabled']);
-        $rollbackReady = !empty($summary['rollback_enabled']);
+        $recentBackups = $summary['recent_backups'] ?? collect();
+        $historyScope = (string) ($summary['history_scope'] ?? 'recent');
+        $historyDays = (int) ($summary['history_days'] ?? 90);
+        $archivedCount = (int) ($summary['archived_run_count'] ?? 0) + (int) ($summary['archived_backup_count'] ?? 0);
         $passwordRequired = !empty($summary['admin_password_required']);
-        $status = (string) ($state['status'] ?? 'unavailable');
-        $planStatus = is_array($summary['plan_status'] ?? null) ? $summary['plan_status'] : [];
-        $canGeneratePlan = !empty($planStatus['can_plan']);
-        $planStatusKey = (string) ($planStatus['key'] ?? 'no_update');
-        $planStatusMessage = (string) ($planStatus['message'] ?? '');
-        $planStatusClass = $canGeneratePlan
-            ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
-            : ($status === 'available' ? 'border-amber-100 bg-amber-50 text-amber-700' : 'border-slate-100 bg-slate-50 text-slate-600');
-        $localeForChangelog = app()->getLocale() === 'en' ? 'en' : 'zh-CN';
-        $summaryText = (string) ($localeForChangelog === 'en'
-            ? ($payload['summary_en'] ?? '')
-            : ($payload['summary_zh'] ?? ($payload['summary_en'] ?? '')));
-        $statusClass = match ($status) {
-            'available' => 'bg-amber-50 text-amber-700 border-amber-200',
-            'current' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            'disabled' => 'bg-slate-50 text-slate-600 border-slate-200',
-            default => 'bg-red-50 text-red-700 border-red-200',
+        $legacyActiveRun = !empty($summary['has_legacy_active_run']);
+        $updaterBridge = is_array($summary['updater_bridge'] ?? null) ? $summary['updater_bridge'] : [];
+        $updaterConnection = (string) ($updaterBridge['connection'] ?? 'disconnected');
+        $updaterInstance = is_array($updaterBridge['instance'] ?? null) ? $updaterBridge['instance'] : [];
+        $updaterChecks = is_array($updaterBridge['checks'] ?? null) ? array_values(array_filter($updaterBridge['checks'], 'is_array')) : [];
+        $updaterDoctorStatus = (string) ($updaterBridge['doctor_status'] ?? 'unavailable');
+        $updaterOperationsAvailable = !empty($updaterBridge['operations_available']);
+        $mutationAuthorizationReady = !empty($updaterBridge['mutation_authorization_ready']);
+        $phaseBHandoverReady = !empty($updaterBridge['phase_b_handover_ready']);
+        $legacyWorkerAbsent = !empty($updaterBridge['legacy_worker_absent']);
+        $legacyCutoverBlocked = $legacyActiveRun && !$legacyWorkerAbsent;
+        $updaterOperation = is_array($updaterBridge['current_operation'] ?? null) ? $updaterBridge['current_operation'] : [];
+        $updaterOperationStages = is_array($updaterOperation['stages'] ?? null) ? array_values(array_filter($updaterOperation['stages'], 'is_array')) : [];
+        $updaterOperationStatus = (string) ($updaterOperation['status'] ?? '');
+        $updaterOperationBlocksMutations = in_array($updaterOperationStatus, ['queued', 'running', 'recovery_required'], true);
+        $updaterOperationNeedsPolling = in_array($updaterOperationStatus, ['queued', 'running'], true);
+        $updaterRecoveryPoints = is_array($updaterBridge['recovery_points'] ?? null) ? array_values(array_filter($updaterBridge['recovery_points'], 'is_array')) : [];
+        $webRollbackPointId = null;
+        foreach ($updaterRecoveryPoints as $recoveryPoint) {
+            if (str_starts_with((string) ($recoveryPoint['reason'] ?? ''), 'update-to-')) {
+                $webRollbackPointId = (string) ($recoveryPoint['id'] ?? '');
+                break;
+            }
+        }
+        $preparedUpdater = is_array($updaterBridge['prepared'] ?? null) ? $updaterBridge['prepared'] : [];
+        $hasPreparedUpdater = $preparedUpdater !== [];
+        $updaterHostRoot = trim((string) config('geoflow.updater_host_root'));
+        $updaterHostRootConfigured = str_starts_with($updaterHostRoot, '/');
+        $updaterInstanceId = (string) config('geoflow.updater_instance_id', 'primary');
+        $updaterProjectUrl = 'https://github.com/yaojingang/geoflow-updater';
+        $updaterReleasesUrl = $updaterProjectUrl.'/releases';
+        $updaterReleaseCandidateWorkflowUrl = $updaterProjectUrl.'/actions/workflows/release-candidate.yml';
+        $updaterReleaseWorkflowUrl = $updaterProjectUrl.'/actions/workflows/release.yml';
+        $updaterError = is_array(session('system_updater_error')) ? session('system_updater_error') : [];
+        $updaterErrorReasons = ['release_not_found', 'release_unavailable', 'connection_failed', 'platform_unsupported', 'verification_failed', 'storage_failed', 'unexpected'];
+        $updaterErrorReason = in_array((string) ($updaterError['reason'] ?? ''), $updaterErrorReasons, true)
+            ? (string) $updaterError['reason']
+            : 'unexpected';
+        $updaterPresent = $updaterConnection !== 'disconnected';
+        $updaterReady = $updaterConnection === 'connected' && $updaterOperationsAvailable && $mutationAuthorizationReady;
+        $updaterReadiness = match (true) {
+            !$updaterPresent && !$hasPreparedUpdater => 'not_installed',
+            !$updaterPresent => 'installation_pending',
+            $updaterConnection === 'degraded' || !$updaterOperationsAvailable => 'attention_required',
+            !$mutationAuthorizationReady => 'authorization_pending',
+            default => 'ready',
         };
-        $risk = (string) ($latestPlan->risk_level ?? ($planJson['risk_level'] ?? 'low'));
-        $riskClass = match ($risk) {
-            'high' => 'bg-red-50 text-red-700 border-red-200',
-            'medium' => 'bg-amber-50 text-amber-700 border-amber-200',
-            default => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        $updaterReadinessClass = match ($updaterReadiness) {
+            'ready' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            'attention_required', 'authorization_pending' => 'border-amber-200 bg-amber-50 text-amber-800',
+            'installation_pending' => 'border-blue-200 bg-blue-50 text-blue-700',
+            default => 'border-slate-200 bg-slate-100 text-slate-700',
         };
-        $preflightStatus = (string) ($preflight['status'] ?? 'info');
-        $preflightClass = match ($preflightStatus) {
-            'fail' => 'bg-red-50 text-red-700 border-red-200',
-            'warn' => 'bg-amber-50 text-amber-700 border-amber-200',
-            'pass' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            default => 'bg-slate-50 text-slate-600 border-slate-200',
-        };
-        $diagnosticStatus = (string) ($deploymentDiagnostics['status'] ?? 'info');
-        $diagnosticClass = match ($diagnosticStatus) {
-            'fail' => 'bg-red-50 text-red-700 border-red-200',
-            'warn' => 'bg-amber-50 text-amber-700 border-amber-200',
-            'pass' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            default => 'bg-slate-50 text-slate-600 border-slate-200',
-        };
-        $diagnosticLogStatus = (string) ($diagnosticLog['status'] ?? 'info');
-        $diagnosticLogClass = match ($diagnosticLogStatus) {
-            'warn' => 'bg-amber-50 text-amber-700',
-            'pass' => 'bg-emerald-50 text-emerald-700',
-            default => 'bg-slate-50 text-slate-600',
-        };
-        $preflightItemClasses = [
-            'pass' => 'border-emerald-100 bg-emerald-50 text-emerald-700',
-            'warn' => 'border-amber-100 bg-amber-50 text-amber-700',
-            'fail' => 'border-red-100 bg-red-50 text-red-700',
-            'info' => 'border-slate-100 bg-slate-50 text-slate-600',
+        $journeySteps = [
+            'obtain' => $updaterPresent || $hasPreparedUpdater ? 'complete' : 'current',
+            'install' => $updaterPresent ? 'complete' : ($hasPreparedUpdater ? ($updaterHostRootConfigured ? 'current' : 'attention') : 'pending'),
+            'authorize' => $mutationAuthorizationReady ? 'complete' : ($updaterPresent ? 'current' : 'pending'),
+            'operate' => $updaterReady ? 'complete' : ($updaterPresent && $updaterConnection === 'degraded' ? 'attention' : 'pending'),
         ];
-        $queueHealthStatus = (string) ($queueHealth['status'] ?? 'info');
-        $queueHealthClass = match ($queueHealthStatus) {
-            'fail' => 'bg-red-50 text-red-700 border-red-200',
-            'warn' => 'bg-amber-50 text-amber-700 border-amber-200',
-            'pass' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            default => 'bg-slate-50 text-slate-600 border-slate-200',
-        };
-        $commandLevelClasses = [
-            'required' => 'border-red-200 bg-red-50 text-red-700',
-            'deployment' => 'border-blue-200 bg-blue-50 text-blue-700',
-            'recommended' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        $journeyStateClasses = [
+            'complete' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+            'current' => 'border-blue-200 bg-blue-50 text-blue-800',
+            'attention' => 'border-amber-200 bg-amber-50 text-amber-900',
+            'pending' => 'border-gray-200 bg-gray-50 text-gray-500',
         ];
-        $githubUrl = (string) ($links['github'] ?? 'https://github.com/yaojingang/GEOFlow');
-        $changelogLinks = is_array($links['changelog'] ?? null) ? $links['changelog'] : [];
-        $changelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
-        $flagLabels = [
-            'requires_composer' => __('admin.system_updates.plan.requires_composer'),
-            'requires_npm_build' => __('admin.system_updates.plan.requires_npm_build'),
-            'requires_migration' => __('admin.system_updates.plan.requires_migration'),
-            'touches_docker' => __('admin.system_updates.plan.touches_docker'),
-            'touches_config' => __('admin.system_updates.plan.touches_config'),
-            'touches_routes' => __('admin.system_updates.plan.touches_routes'),
+        $journeyStateIcons = [
+            'complete' => 'check',
+            'current' => 'circle-dot',
+            'attention' => 'triangle-alert',
+            'pending' => 'circle',
         ];
+        $updaterInstallCommands = [];
+        if ($hasPreparedUpdater && $updaterHostRootConfigured) {
+            $archiveArg = escapeshellarg((string) ($preparedUpdater['filename'] ?? ''));
+            $updaterInstanceArg = escapeshellarg($updaterInstanceId);
+            $updaterEnrollRootArg = escapeshellarg($updaterHostRoot);
+            $updaterEnvironmentArg = escapeshellarg(rtrim($updaterHostRoot, '/').'/.env.prod');
+            $updaterReleaseEnvironmentArg = escapeshellarg('/var/lib/geoflow-updater/instances/'.$updaterInstanceId.'/release.env');
+            $updaterComposeArg = escapeshellarg('/var/lib/geoflow-updater/instances/'.$updaterInstanceId.'/docker-compose.managed.yml');
+            $updaterInstallCommands = [
+                'unpack' => 'tar -xzf '.$archiveArg,
+                'install' => 'sudo ./packaging/scripts/install.sh',
+                'enroll' => 'sudo geoflow-updater enroll --instance-id '.$updaterInstanceArg.' --instance-root '.$updaterEnrollRootArg,
+                'authorize' => 'sudo geoflow-updater authorization-uri --instance '.$updaterInstanceArg,
+                'activate' => 'sudo docker compose --env-file '.$updaterEnvironmentArg.' --env-file '.$updaterReleaseEnvironmentArg.' -f '.$updaterComposeArg." down --remove-orphans\n".'sudo docker compose --env-file '.$updaterEnvironmentArg.' --env-file '.$updaterReleaseEnvironmentArg.' -f '.$updaterComposeArg.' up -d --remove-orphans',
+                'doctor' => 'sudo geoflow-updater doctor --instance '.$updaterInstanceArg,
+            ];
+        }
+        $readOnlyOperationDisabled = $updaterOperationBlocksMutations || !$updaterOperationsAvailable;
+        $mutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || $updaterConnection !== 'connected' || !$mutationAuthorizationReady;
+        $updateMutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || ($updaterConnection !== 'connected' && !$phaseBHandoverReady) || !$mutationAuthorizationReady;
+        $authorizationCheckFailed = !$mutationAuthorizationReady;
+        $manualCommands = is_array($summary['manual_commands'] ?? null) ? $summary['manual_commands'] : [];
     @endphp
 
-    <div class="px-4 sm:px-0">
+    <div class="px-4 sm:px-0" @if($updaterOperationNeedsPolling) data-system-updater-auto-reload="5000" @endif>
         <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900">{{ __('admin.system_updates.page_title') }}</h1>
-                <p class="mt-2 text-sm text-gray-600">{{ __('admin.system_updates.page_subtitle') }}</p>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.system_updates.page_subtitle') }}</p>
             </div>
-            <div class="flex flex-wrap gap-3">
-                <form method="POST" action="{{ route('admin.system-updates.check') }}">
-                    @csrf
-                    <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
-                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.system_updates.button.check') }}
-                    </button>
-                </form>
-                <a href="{{ $githubUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
-                    <i data-lucide="git-branch" class="mr-2 h-4 w-4"></i>
-                    {{ __('admin.system_updates.button.open_github') }}
-                </a>
-            </div>
+            <a href="{{ $updaterProjectUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-10 items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-gray-50">
+                <i data-lucide="github" class="mr-2 h-4 w-4"></i>
+                {{ __('admin.system_updates.updater.project_link') }}
+            </a>
         </div>
 
-        <div class="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
-            <section class="rounded-xl border border-gray-200 bg-white shadow-sm">
-                <div class="border-b border-gray-100 px-6 py-5">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                            <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.overview') }}</h2>
-                            <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.overview_desc') }}</p>
-                        </div>
-                        <div class="flex flex-wrap items-center justify-start gap-3 sm:justify-end">
-                            <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold {{ $statusClass }}">
-                                {{ __('admin.system_updates.status.'.$status) }}
-                            </span>
-                            @if($status === 'available')
-                                <form method="POST" action="{{ route('admin.system-updates.plan') }}">
-                                    @csrf
-                                    <button type="submit" @disabled(! $canGeneratePlan) class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
-                                        <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
-                                        {{ __('admin.system_updates.button.generate_plan') }}
-                                    </button>
-                                </form>
-                            @endif
-                        </div>
-                    </div>
+        @if(session('message'))
+            <div class="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('message') }}</div>
+        @endif
+        @if($errors->any())
+            <div class="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ $errors->first() }}</div>
+        @endif
+
+        @if($manualCommands !== [])
+            <section class="mb-6 overflow-hidden rounded-xl border border-blue-200 bg-blue-50 shadow-sm">
+                <div class="border-b border-blue-100 px-6 py-4">
+                    <h2 class="text-base font-semibold text-blue-950">{{ __('admin.system_updates.manual_commands.title') }}</h2>
+                    <p class="mt-1 text-sm leading-6 text-blue-800">{{ __('admin.system_updates.manual_commands.description') }}</p>
                 </div>
-                <div class="grid gap-4 px-6 py-6 sm:grid-cols-2 xl:grid-cols-4">
-                    <div class="rounded-lg bg-gray-50 p-4">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.label.current_version') }}</div>
-                        <div class="mt-2 text-2xl font-bold text-gray-900">v{{ (string) ($state['current_version'] ?? config('geoflow.app_version', '2.0')) }}</div>
-                    </div>
-                    <div class="rounded-lg bg-gray-50 p-4">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.label.latest_version') }}</div>
-                        <div class="mt-2 text-2xl font-bold text-gray-900">{{ filled($state['latest_version'] ?? null) ? 'v'.(string) $state['latest_version'] : __('admin.common.none') }}</div>
-                    </div>
-                    <div class="rounded-lg bg-gray-50 p-4">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.label.current_commit') }}</div>
-                        <div class="mt-2 truncate font-mono text-sm font-semibold text-gray-900">{{ (string) ($deployment['current_commit'] ?? '') ?: __('admin.common.none') }}</div>
-                    </div>
-                    <div class="rounded-lg bg-gray-50 p-4">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.label.checked_at') }}</div>
-                        <div class="mt-2 text-sm font-semibold text-gray-900">{{ (string) ($state['checked_at'] ?? '') ?: __('admin.common.none') }}</div>
-                    </div>
-                </div>
-                @if($summaryText !== '')
-                    <div class="border-t border-gray-100 px-6 py-5">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.label.release_summary') }}</div>
-                        <p class="mt-2 text-sm leading-6 text-gray-700">{{ $summaryText }}</p>
-                    </div>
-                @endif
-                @if($status === 'available' && $planStatusMessage !== '')
-                    <div class="border-t border-gray-100 px-6 py-5">
-                        <div class="rounded-lg border px-4 py-3 text-sm leading-6 {{ $planStatusClass }}">
-                            <div class="flex items-start gap-3">
-                                <i data-lucide="{{ $canGeneratePlan ? 'check-circle-2' : 'alert-triangle' }}" class="mt-0.5 h-4 w-4 flex-none"></i>
+                <div class="space-y-3 px-6 py-5">
+                    @foreach($manualCommands as $manualCommand)
+                        <div class="rounded-lg border border-blue-200 bg-white p-4">
+                            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                 <div>
-                                    <p class="font-semibold">{{ $planStatusMessage }}</p>
-                                    @if(! $canGeneratePlan && $planStatusKey !== 'active_run')
-                                        <p class="mt-1 opacity-90">{{ __('admin.system_updates.plan_status.disabled_hint') }}</p>
-                                    @endif
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <h3 class="text-sm font-semibold text-gray-900">{{ (string) ($manualCommand['label'] ?? '') }}</h3>
+                                        @if(!empty($manualCommand['required']))
+                                            <span class="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">{{ __('admin.system_updates.manual_commands.required') }}</span>
+                                        @endif
+                                        <span class="rounded-full px-2.5 py-0.5 text-xs font-semibold {{ ($manualCommand['status'] ?? 'pending') === 'complete' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800' }}">
+                                            {{ __('admin.system_updates.manual_commands.'.($manualCommand['status'] ?? 'pending')) }}
+                                        </span>
+                                    </div>
+                                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ (string) ($manualCommand['description'] ?? '') }}</p>
                                 </div>
+                                <code class="max-w-full overflow-x-auto rounded-md bg-gray-950 px-3 py-2 text-xs text-gray-100">{{ (string) ($manualCommand['command'] ?? '') }}</code>
                             </div>
                         </div>
-                    </div>
-                @endif
-            </section>
-
-            <section class="rounded-xl border border-gray-200 bg-white shadow-sm">
-                <div class="border-b border-gray-100 px-6 py-5">
-                    <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.deployment') }}</h2>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.deployment_desc') }}</p>
+                    @endforeach
                 </div>
-                <div class="space-y-4 px-6 py-6">
-                    <div class="rounded-lg bg-gray-50 p-4">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.label.deployment_mode') }}</div>
-                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ (string) ($deployment['label'] ?? __('admin.common.none')) }}</div>
-                        <p class="mt-2 text-sm leading-6 text-gray-600">{{ (string) ($deployment['reason'] ?? '') }}</p>
-                    </div>
-                    <div class="grid grid-cols-2 gap-3 text-sm">
-                        <div class="rounded-lg border border-gray-100 p-3">
-                            <div class="text-gray-500">{{ __('admin.system_updates.label.writable') }}</div>
-                            <div class="mt-1 font-semibold text-gray-900">{{ !empty($deployment['writable']) ? __('admin.common.yes') : __('admin.common.no') }}</div>
-                        </div>
-                        <div class="rounded-lg border border-gray-100 p-3">
-                            <div class="text-gray-500">{{ __('admin.system_updates.label.git_available') }}</div>
-                            <div class="mt-1 font-semibold text-gray-900">{{ !empty($deployment['git_available']) ? __('admin.common.yes') : __('admin.common.no') }}</div>
-                        </div>
-                    </div>
-                    <div class="flex flex-wrap gap-3">
-                        <a href="{{ $changelogUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            {{ __('admin.system_updates.button.view_changelog') }}
-                        </a>
-                        <span class="inline-flex items-center rounded-md bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">
-                            {{ __('admin.system_updates.label.backup_keep', ['count' => (int) ($summary['backup_keep'] ?? 10)]) }}
+            </section>
+        @endif
+
+        <section class="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.updater.title') }}</h2>
+                        <span class="inline-flex rounded-full border px-3 py-1 text-xs font-semibold {{ $updaterReadinessClass }}">
+                            {{ __('admin.system_updates.updater.readiness.'.$updaterReadiness) }}
                         </span>
                     </div>
+                    <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.description') }}</p>
                 </div>
-            </section>
-        </div>
-
-        <section class="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div class="border-b border-gray-100 px-6 py-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.deployment_diagnostics') }}</h2>
-                        <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.deployment_diagnostics_desc') }}</p>
-                    </div>
-                    <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold {{ $diagnosticClass }}">
-                        {{ __('admin.system_updates.diagnostics.status_'.$diagnosticStatus) }}
-                    </span>
-                </div>
+                @if(!$updaterPresent && !$hasPreparedUpdater)
+                    <form method="POST" action="{{ route('admin.system-updates.updater.prepare') }}" class="flex-none">
+                        @csrf
+                        <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-blue-700">
+                            <i data-lucide="package-check" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.system_updates.updater.cta.get') }}
+                        </button>
+                    </form>
+                @elseif(!$updaterPresent)
+                    <a href="{{ route('admin.system-updates.updater.download') }}" class="inline-flex min-h-10 flex-none items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-blue-700">
+                        <i data-lucide="download" class="mr-2 h-4 w-4"></i>
+                        {{ __('admin.system_updates.updater.cta.download') }}
+                    </a>
+                @else
+                    <a href="{{ route('admin.system-updates.index') }}" class="inline-flex min-h-10 flex-none items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-gray-50">
+                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4"></i>
+                        {{ __('admin.system_updates.updater.cta.refresh') }}
+                    </a>
+                @endif
             </div>
 
-            <div class="grid gap-6 px-6 py-6 xl:grid-cols-[1fr_.95fr]">
-                <div class="space-y-5">
-                    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                        @foreach($diagnosticItems as $item)
-                            @php($itemStatus = (string) ($item['status'] ?? 'info'))
-                            @php($itemClass = $preflightItemClasses[$itemStatus] ?? $preflightItemClasses['info'])
-                            <div class="rounded-lg border p-4 {{ $itemClass }}">
-                                <div class="flex items-start gap-3">
-                                    <i data-lucide="{{ $itemStatus === 'pass' ? 'check-circle-2' : ($itemStatus === 'fail' ? 'x-circle' : ($itemStatus === 'warn' ? 'alert-triangle' : 'info')) }}" class="mt-0.5 h-4 w-4 shrink-0"></i>
-                                    <div>
-                                        <div class="text-sm font-semibold">{{ (string) ($item['title'] ?? '') }}</div>
-                                        <p class="mt-1 text-xs leading-5 opacity-90">{{ (string) ($item['message'] ?? '') }}</p>
-                                    </div>
-                                </div>
+            <div class="border-b border-gray-100 bg-slate-50/70 px-6 py-5">
+                <div class="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                    <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.updater.journey.title') }}</h3>
+                    <p class="text-xs leading-5 text-gray-500">{{ __('admin.system_updates.updater.journey.hint') }}</p>
+                </div>
+                <ol class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    @foreach($journeySteps as $journeyStep => $journeyState)
+                        <li data-system-updater-journey="{{ $journeyStep }}" class="rounded-lg border p-4 {{ $journeyStateClasses[$journeyState] }}">
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/80">
+                                    <i data-lucide="{{ $journeyStateIcons[$journeyState] }}" class="h-4 w-4"></i>
+                                </span>
+                                <span class="text-xs font-semibold">{{ __('admin.system_updates.updater.journey.state.'.$journeyState) }}</span>
                             </div>
-                        @endforeach
-                    </div>
+                            <p class="mt-3 text-sm font-semibold">{{ __('admin.system_updates.updater.journey.'.$journeyStep) }}</p>
+                            <p class="mt-1 text-xs leading-5 opacity-80">{{ __('admin.system_updates.updater.journey.'.$journeyStep.'_hint') }}</p>
+                        </li>
+                    @endforeach
+                </ol>
+            </div>
 
-                    <div class="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                        <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.diagnostics.facts_title') }}</h3>
-                        <div class="mt-4 grid gap-3 sm:grid-cols-2">
-                            @foreach($diagnosticFacts as $fact)
-                                <div class="min-w-0 rounded-md bg-white px-3 py-2 text-sm">
-                                    <div class="text-xs font-medium text-gray-500">{{ (string) ($fact['label'] ?? '') }}</div>
-                                    <div class="mt-1 truncate font-semibold text-gray-900">{{ (string) ($fact['value'] ?? __('admin.common.none')) }}</div>
-                                </div>
-                            @endforeach
-                        </div>
+            @if($updaterConnection !== 'disconnected')
+                <div class="grid gap-4 px-6 py-6 sm:grid-cols-2 xl:grid-cols-4">
+                    <div class="rounded-lg bg-gray-50 p-4">
+                        <div class="text-sm text-gray-500">{{ __('admin.system_updates.updater.version') }}</div>
+                        <div class="mt-2 font-semibold text-gray-900">{{ (string) ($updaterBridge['updater_version'] ?? __('admin.common.none')) }}</div>
                     </div>
+                    <div class="rounded-lg bg-gray-50 p-4">
+                        <div class="text-sm text-gray-500">{{ __('admin.system_updates.updater.instance') }}</div>
+                        <div class="mt-2 font-semibold text-gray-900">{{ (string) ($updaterInstance['id'] ?? __('admin.common.none')) }}</div>
+                    </div>
+                    <div class="rounded-lg bg-gray-50 p-4">
+                        <div class="text-sm text-gray-500">{{ __('admin.system_updates.updater.release') }}</div>
+                        <div class="mt-2 font-semibold text-gray-900">{{ filled($updaterInstance['version'] ?? null) ? 'v'.(string) $updaterInstance['version'] : __('admin.common.none') }}</div>
+                    </div>
+                    <div class="rounded-lg bg-gray-50 p-4">
+                        <div class="text-sm text-gray-500">{{ __('admin.system_updates.updater.doctor') }}</div>
+                        <div class="mt-2 font-semibold text-gray-900">{{ __('admin.system_updates.updater.doctor_status.'.$updaterDoctorStatus) }}</div>
+                    </div>
+                </div>
 
-                    <div class="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                        <div class="flex flex-wrap items-start justify-between gap-3">
+                @if($authorizationCheckFailed)
+                    <div class="mx-6 mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
-                                <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.diagnostics.log_title') }}</h3>
-                                <p class="mt-1 text-xs leading-5 text-gray-500">{{ __('admin.system_updates.diagnostics.log_desc', ['path' => (string) ($diagnosticLog['path'] ?? '')]) }}</p>
+                                <h3 class="text-sm font-semibold">{{ __('admin.system_updates.updater.authorization_setup_title') }}</h3>
+                                <p class="mt-1 text-sm leading-6">{{ __('admin.system_updates.updater.authorization_setup_hint') }}</p>
                             </div>
-                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $diagnosticLogClass }}">
-                                {{ __('admin.system_updates.diagnostics.log_status_'.$diagnosticLogStatus) }}
-                            </span>
+                            <button type="button" data-system-updater-copy="#updater-command-authorization" data-copied-label="{{ __('admin.system_updates.updater.copied') }}" data-copy-failed-label="{{ __('admin.system_updates.updater.copy_failed') }}" class="inline-flex min-h-10 flex-none items-center justify-center rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-amber-100">
+                                <i data-lucide="copy" class="mr-2 h-4 w-4"></i>
+                                <span data-system-updater-copy-label aria-live="polite">{{ __('admin.system_updates.updater.copy') }}</span>
+                            </button>
                         </div>
-                        @if(!empty($diagnosticLog['lines']) && is_array($diagnosticLog['lines']))
-                            <div class="mt-4 space-y-2">
-                                @foreach($diagnosticLog['lines'] as $line)
-                                    <div class="rounded-md bg-white px-3 py-2 font-mono text-xs leading-5 text-gray-700">{{ (string) $line }}</div>
-                                @endforeach
+                        <pre class="mt-3 overflow-x-auto rounded-md bg-gray-950 p-3 text-xs text-gray-100"><code id="updater-command-authorization">sudo geoflow-updater authorization-uri --instance {{ escapeshellarg($updaterInstanceId) }}</code></pre>
+                    </div>
+                @endif
+
+                @if($phaseBHandoverReady)
+                    <div class="mx-6 mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+                        {{ __('admin.system_updates.updater.phase_b_handover_hint') }}
+                    </div>
+                @endif
+
+                @if($updaterOperationsAvailable)
+                    <div class="border-t border-gray-100 px-6 py-6">
+                        <div>
+                            <div class="max-w-2xl">
+                                <h3 class="text-base font-semibold text-gray-900">{{ __('admin.system_updates.updater.operations_title') }}</h3>
+                                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.operations_hint') }}</p>
+                                <p class="mt-2 text-xs leading-5 text-gray-500">{{ __('admin.system_updates.updater.authorization_hint') }}</p>
                             </div>
-                        @else
-                            <div class="mt-4 rounded-md bg-white px-3 py-3 text-sm text-gray-500">{{ __('admin.system_updates.diagnostics.log_empty') }}</div>
+                            <div class="mt-5 grid w-full gap-3 md:grid-cols-3">
+                                @foreach(['update', 'backup'] as $operationKind)
+                                    @php($operationDisabled = $operationKind === 'update' ? $updateMutationDisabled : $mutationDisabled)
+                                    <form method="POST" action="{{ route('admin.system-updates.updater.'.$operationKind) }}" class="flex flex-col gap-2">
+                                        @csrf
+                                        <label class="sr-only" for="updater-{{ $operationKind }}-authorization">{{ __('admin.system_updates.updater.authorization_label') }}</label>
+                                        <input id="updater-{{ $operationKind }}-authorization" type="text" name="updater_authorization_code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="{{ __('admin.system_updates.updater.authorization_label') }}" @disabled($operationDisabled) class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100">
+                                        @if($passwordRequired)
+                                            <label class="sr-only" for="updater-{{ $operationKind }}-password">{{ __('admin.system_updates.label.current_admin_password') }}</label>
+                                            <input id="updater-{{ $operationKind }}-password" type="password" name="current_admin_password" autocomplete="current-password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($operationDisabled) class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100">
+                                        @endif
+                                        <button type="submit" @disabled($operationDisabled) class="inline-flex min-h-10 items-center justify-center rounded-md {{ $operationKind === 'update' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50' }} px-4 py-2 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400">
+                                            <i data-lucide="{{ $operationKind === 'update' ? 'rocket' : 'archive' }}" class="mr-2 h-4 w-4"></i>
+                                            {{ __('admin.system_updates.updater.action.'.$operationKind) }}
+                                        </button>
+                                    </form>
+                                @endforeach
+                                <form method="POST" action="{{ route('admin.system-updates.updater.verify') }}">
+                                    @csrf
+                                    <button type="submit" @disabled($readOnlyOperationDisabled) class="inline-flex min-h-10 w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
+                                        <i data-lucide="shield-check" class="mr-2 h-4 w-4"></i>
+                                        {{ __('admin.system_updates.updater.action.verify') }}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        @if($updaterOperation !== [])
+                            <div class="mt-5 rounded-lg border {{ in_array($updaterOperationStatus, ['failed', 'recovery_required'], true) ? 'border-red-200 bg-red-50 text-red-800' : 'border-blue-200 bg-blue-50 text-blue-800' }} p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <p class="text-sm font-semibold">{{ __('admin.system_updates.updater.operation_kind.'.(string) ($updaterOperation['kind'] ?? 'verify')) }} · {{ __('admin.system_updates.updater.operation_status.'.$updaterOperationStatus) }}</p>
+                                        <p class="mt-1 break-all font-mono text-xs opacity-80">{{ (string) ($updaterOperation['id'] ?? '') }}</p>
+                                    </div>
+                                    @if(filled($updaterOperation['current_stage'] ?? null))
+                                        <span class="rounded-full border border-current/20 bg-white/60 px-3 py-1 text-xs font-semibold">{{ __('admin.system_updates.updater.stage_name.'.(string) $updaterOperation['current_stage']) }}</span>
+                                    @endif
+                                </div>
+                                @if($updaterOperationStages !== [])
+                                    <ol class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                        @foreach($updaterOperationStages as $stage)
+                                            <li class="rounded-md border border-current/15 bg-white/60 px-3 py-2">
+                                                <p class="text-xs font-semibold">{{ __('admin.system_updates.updater.stage_name.'.(string) ($stage['name'] ?? 'verify')) }}</p>
+                                                <p class="mt-1 text-xs opacity-80">{{ __('admin.system_updates.updater.stage_status.'.(string) ($stage['status'] ?? 'running')) }}</p>
+                                            </li>
+                                        @endforeach
+                                    </ol>
+                                @endif
+                            </div>
                         @endif
                     </div>
-                </div>
 
-                <div class="space-y-4">
-                    <div class="rounded-lg border border-blue-100 bg-blue-50 p-4">
-                        <div class="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                                <h3 class="text-sm font-semibold text-blue-900">{{ __('admin.system_updates.diagnostics.docs_title') }}</h3>
-                                <p class="mt-1 text-xs leading-5 text-blue-700">{{ __('admin.system_updates.diagnostics.docs_desc') }}</p>
-                            </div>
-                            <a href="{{ (string) ($diagnosticDocs['url'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/deployment/DEPLOYMENT.md') }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-md bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">
-                                <i data-lucide="external-link" class="mr-1.5 h-3.5 w-3.5"></i>
-                                {{ __('admin.system_updates.diagnostics.open_docs') }}
-                            </a>
-                        </div>
-                    </div>
-
-                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.diagnostics.commands_title') }}</h3>
-                        <p class="mt-1 text-xs leading-5 text-gray-600">{{ __('admin.system_updates.diagnostics.commands_desc') }}</p>
+                    <div class="border-t border-gray-100 px-6 py-6">
+                        <h3 class="text-base font-semibold text-gray-900">{{ __('admin.system_updates.updater.recovery_title') }}</h3>
+                        <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.recovery_hint') }}</p>
                         <div class="mt-4 space-y-3">
-                            @foreach($diagnosticCommands as $commandGroup)
-                                @php($commands = is_array($commandGroup['commands'] ?? null) ? $commandGroup['commands'] : [])
-                                <div class="rounded-md bg-white p-3">
-                                    <div class="flex flex-wrap items-start justify-between gap-2">
-                                        <div>
-                                            <div class="text-sm font-semibold text-gray-900">{{ (string) ($commandGroup['title'] ?? '') }}</div>
-                                            <p class="mt-1 text-xs leading-5 text-gray-500">{{ (string) ($commandGroup['description'] ?? '') }}</p>
-                                        </div>
-                                        @if($commands !== [])
-                                            <button type="button" data-system-update-copy data-copy-text="{{ implode("\n", $commands) }}" data-default-label="{{ __('admin.system_updates.button.copy_command') }}" data-copied-label="{{ __('admin.system_updates.commands.copied') }}" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50">
-                                                <i data-lucide="copy" class="mr-1.5 h-3.5 w-3.5"></i>
-                                                <span>{{ __('admin.system_updates.button.copy_command') }}</span>
+                            @forelse($updaterRecoveryPoints as $recoveryPoint)
+                                <div class="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50/70 p-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div class="min-w-0">
+                                        <p class="break-all font-mono text-sm font-semibold text-gray-900">{{ (string) ($recoveryPoint['id'] ?? '') }}</p>
+                                        <p class="mt-1 text-xs text-gray-500">v{{ (string) ($recoveryPoint['version'] ?? '') }} · {{ (string) ($recoveryPoint['created_at'] ?? '') }}</p>
+                                    </div>
+                                    @if((string) ($recoveryPoint['id'] ?? '') === $webRollbackPointId)
+                                        <form method="POST" action="{{ route('admin.system-updates.updater.rollback') }}" class="grid gap-2 sm:grid-cols-3">
+                                            @csrf
+                                            <input type="hidden" name="recovery_point_id" value="{{ (string) ($recoveryPoint['id'] ?? '') }}">
+                                            <label class="sr-only" for="rollback-authorization-{{ $loop->index }}">{{ __('admin.system_updates.updater.authorization_label') }}</label>
+                                            <input id="rollback-authorization-{{ $loop->index }}" type="text" name="updater_authorization_code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="{{ __('admin.system_updates.updater.authorization_label') }}" @disabled($mutationDisabled) class="rounded-md border-gray-300 text-sm shadow-sm disabled:bg-gray-100">
+                                            @if($passwordRequired)
+                                                <label class="sr-only" for="rollback-password-{{ $loop->index }}">{{ __('admin.system_updates.label.current_admin_password') }}</label>
+                                                <input id="rollback-password-{{ $loop->index }}" type="password" name="current_admin_password" autocomplete="current-password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($mutationDisabled) class="rounded-md border-gray-300 text-sm shadow-sm disabled:bg-gray-100">
+                                            @endif
+                                            <button type="submit" @disabled($mutationDisabled) class="inline-flex min-h-10 items-center justify-center rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400">
+                                                <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
+                                                {{ __('admin.system_updates.updater.action.rollback') }}
                                             </button>
-                                        @endif
-                                    </div>
-                                    <div class="mt-3 space-y-2">
-                                        @foreach($commands as $command)
-                                            <code class="block break-all rounded-md bg-slate-50 px-3 py-2 font-mono text-xs text-gray-900">{{ (string) $command }}</code>
-                                        @endforeach
-                                    </div>
+                                        </form>
+                                    @else
+                                        <span class="inline-flex rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600">{{ __('admin.system_updates.updater.history_only') }}</span>
+                                    @endif
                                 </div>
+                            @empty
+                                <p class="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">{{ __('admin.system_updates.updater.no_recovery_points') }}</p>
+                            @endforelse
+                        </div>
+                    </div>
+                @endif
+
+                @if($updaterChecks !== [])
+                    <div class="border-t border-gray-100 px-6 py-6">
+                        <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.updater.checks') }}</h3>
+                        <ul class="mt-3 grid gap-3 lg:grid-cols-2">
+                            @foreach($updaterChecks as $check)
+                                <li class="rounded-lg border px-4 py-3 {{ ($check['status'] ?? null) === 'pass' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : (($check['status'] ?? null) === 'warn' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-red-200 bg-red-50 text-red-800') }}">
+                                    <p class="font-mono text-xs font-semibold">{{ (string) ($check['id'] ?? __('admin.common.none')) }}</p>
+                                    <p class="mt-1 text-sm leading-5">{{ (string) ($check['message'] ?? __('admin.common.none')) }}</p>
+                                </li>
                             @endforeach
-                        </div>
+                        </ul>
                     </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div class="border-b border-gray-100 px-6 py-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.preflight') }}</h2>
-                        <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.preflight_desc') }}</p>
-                    </div>
-                    <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold {{ $preflightClass }}">
-                        {{ __('admin.system_updates.preflight.status_'.$preflightStatus) }}
-                    </span>
-                </div>
-            </div>
-            <div class="grid gap-4 px-6 py-6 lg:grid-cols-3">
-                <div class="rounded-lg bg-gray-50 p-4">
-                    <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.preflight.summary') }}</div>
-                    <div class="mt-3 grid grid-cols-4 gap-2 text-center text-sm">
-                        <div class="rounded-md bg-white p-2">
-                            <div class="text-lg font-bold text-emerald-700">{{ (int) ($preflight['pass'] ?? 0) }}</div>
-                            <div class="text-xs text-gray-500">{{ __('admin.system_updates.preflight.pass') }}</div>
-                        </div>
-                        <div class="rounded-md bg-white p-2">
-                            <div class="text-lg font-bold text-amber-700">{{ (int) ($preflight['warn'] ?? 0) }}</div>
-                            <div class="text-xs text-gray-500">{{ __('admin.system_updates.preflight.warn') }}</div>
-                        </div>
-                        <div class="rounded-md bg-white p-2">
-                            <div class="text-lg font-bold text-red-700">{{ (int) ($preflight['fail'] ?? 0) }}</div>
-                            <div class="text-xs text-gray-500">{{ __('admin.system_updates.preflight.fail') }}</div>
-                        </div>
-                        <div class="rounded-md bg-white p-2">
-                            <div class="text-lg font-bold text-slate-600">{{ (int) ($preflight['info'] ?? 0) }}</div>
-                            <div class="text-xs text-gray-500">{{ __('admin.system_updates.preflight.info') }}</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="grid gap-3 lg:col-span-2 sm:grid-cols-2 xl:grid-cols-3">
-                    @foreach($preflightItems as $item)
-                        @php($itemStatus = (string) ($item['status'] ?? 'info'))
-                        @php($itemClass = $preflightItemClasses[$itemStatus] ?? $preflightItemClasses['info'])
-                        <div class="rounded-lg border p-4 {{ $itemClass }}">
-                            <div class="flex items-start gap-3">
-                                <i data-lucide="{{ $itemStatus === 'pass' ? 'check-circle-2' : ($itemStatus === 'fail' ? 'x-circle' : ($itemStatus === 'warn' ? 'alert-triangle' : 'info')) }}" class="mt-0.5 h-4 w-4 shrink-0"></i>
+                @endif
+            @else
+                <div class="px-6 py-6">
+                    <p class="text-sm font-medium text-gray-700">{{ __('admin.system_updates.updater.not_available') }}</p>
+                    <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-500">{{ __('admin.system_updates.updater.prepare_hint') }}</p>
+                    @if($hasPreparedUpdater)
+                        <div class="mt-5 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
+                            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                 <div>
-                                    <div class="text-sm font-semibold">{{ (string) ($item['title'] ?? '') }}</div>
-                                    <p class="mt-1 text-xs leading-5 opacity-90">{{ (string) ($item['message'] ?? '') }}</p>
+                                    <p class="font-mono text-sm font-semibold text-gray-900">{{ (string) ($preparedUpdater['filename'] ?? '') }}</p>
+                                    <p class="mt-1 break-all font-mono text-xs text-gray-600">{{ __('admin.system_updates.updater.package_digest') }}: {{ (string) ($preparedUpdater['sha256'] ?? '') }}</p>
                                 </div>
+                                <a href="{{ route('admin.system-updates.updater.download') }}" class="inline-flex min-h-10 items-center justify-center rounded-md border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-emerald-100">
+                                    <i data-lucide="download" class="mr-2 h-4 w-4"></i>
+                                    {{ __('admin.system_updates.updater.download') }}
+                                </a>
                             </div>
                         </div>
-                    @endforeach
-                </div>
-            </div>
-        </section>
 
-        <section class="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div class="border-b border-gray-100 px-6 py-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.queue_health') }}</h2>
-                        <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.queue_health_desc') }}</p>
-                    </div>
-                    <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold {{ $queueHealthClass }}">
-                        {{ __('admin.system_updates.queue_health.status_'.$queueHealthStatus) }}
-                    </span>
-                </div>
-            </div>
-            <div class="grid gap-4 px-6 py-6 lg:grid-cols-[.9fr_1.1fr]">
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <div class="rounded-lg bg-gray-50 p-4">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.queue_health.driver') }}</div>
-                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ (string) ($queueHealth['driver'] ?? __('admin.common.none')) }}</div>
-                        <div class="mt-1 text-xs text-gray-500">{{ __('admin.system_updates.queue_health.connection_driver') }}：{{ (string) ($queueHealth['connection_driver'] ?? __('admin.common.none')) }}</div>
-                    </div>
-                    <div class="rounded-lg bg-gray-50 p-4">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.queue_health.stale_after') }}</div>
-                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ (int) ($queueHealth['stale_after_minutes'] ?? 15) }} {{ __('admin.common.minutes') }}</div>
-                        <div class="mt-1 text-xs text-gray-500">{{ __('admin.system_updates.queue_health.stale_after_desc') }}</div>
-                    </div>
-                    <div class="rounded-lg bg-gray-50 p-4">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.queue_health.active_runs') }}</div>
-                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ (int) ($queueHealth['active_run_count'] ?? 0) }}</div>
-                    </div>
-                    <div class="rounded-lg bg-gray-50 p-4">
-                        <div class="text-sm font-medium text-gray-500">{{ __('admin.system_updates.queue_health.stale_runs') }}</div>
-                        <div class="mt-2 text-lg font-semibold text-gray-900">{{ (int) ($queueHealth['stale_run_count'] ?? 0) }}</div>
-                    </div>
-                </div>
-                <div class="grid gap-3 sm:grid-cols-2">
-                    @foreach($queueHealthItems as $item)
-                        @php($itemStatus = (string) ($item['status'] ?? 'info'))
-                        @php($itemClass = $preflightItemClasses[$itemStatus] ?? $preflightItemClasses['info'])
-                        @php($messageKey = (string) ($item['message_key'] ?? 'active_runs_clear'))
-                        @php($context = is_array($item['context'] ?? null) ? $item['context'] : [])
-                        <div class="rounded-lg border p-4 {{ $itemClass }}">
-                            <div class="flex items-start gap-3">
-                                <i data-lucide="{{ $itemStatus === 'pass' ? 'check-circle-2' : ($itemStatus === 'fail' ? 'x-circle' : ($itemStatus === 'warn' ? 'alert-triangle' : 'info')) }}" class="mt-0.5 h-4 w-4 shrink-0"></i>
-                                <div>
-                                    <div class="text-sm font-semibold">{{ __('admin.system_updates.queue_health.'.(string) ($item['key'] ?? 'active_runs')) }}</div>
-                                    <p class="mt-1 text-xs leading-5 opacity-90">{{ __('admin.system_updates.queue_health.'.$messageKey, $context) }}</p>
+                        @if(!$updaterHostRootConfigured)
+                            <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                                <div class="flex gap-3">
+                                    <i data-lucide="folder-cog" class="mt-0.5 h-5 w-5 flex-none"></i>
+                                    <div>
+                                        <h3 class="text-sm font-semibold">{{ __('admin.system_updates.updater.host_root_required_title') }}</h3>
+                                        <p class="mt-1 max-w-3xl text-sm leading-6">{{ __('admin.system_updates.updater.host_root_required_hint') }}</p>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    @endforeach
+                        @else
+                            <details class="mt-4 rounded-lg border border-gray-200 bg-white">
+                                <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 text-sm font-semibold text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500">
+                                    <span class="inline-flex items-center">
+                                        <i data-lucide="square-terminal" class="mr-2 h-4 w-4 text-gray-500"></i>
+                                        {{ __('admin.system_updates.updater.install_commands_title') }}
+                                    </span>
+                                    <i data-lucide="chevron-down" class="h-4 w-4 text-gray-400"></i>
+                                </summary>
+                                <div class="border-t border-gray-100 px-4 pb-5 pt-4">
+                                    <p class="max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.install_commands_hint') }}</p>
+                                    <ol class="mt-4 space-y-4">
+                                        @foreach($updaterInstallCommands as $commandKey => $command)
+                                            <li class="rounded-lg bg-slate-50 p-4">
+                                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                    <p class="text-sm font-semibold text-gray-900">
+                                                        <span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-xs text-white">{{ $loop->iteration }}</span>
+                                                        {{ __('admin.system_updates.updater.command_step.'.$commandKey) }}
+                                                    </p>
+                                                    <button type="button" data-system-updater-copy="#updater-command-{{ $commandKey }}" data-copied-label="{{ __('admin.system_updates.updater.copied') }}" data-copy-failed-label="{{ __('admin.system_updates.updater.copy_failed') }}" class="inline-flex min-h-10 items-center justify-center self-start rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-gray-100 sm:self-auto">
+                                                        <i data-lucide="copy" class="mr-2 h-4 w-4"></i>
+                                                        <span data-system-updater-copy-label aria-live="polite">{{ __('admin.system_updates.updater.copy') }}</span>
+                                                    </button>
+                                                </div>
+                                                <pre class="mt-3 overflow-x-auto rounded-md bg-gray-950 p-3 text-xs leading-6 text-gray-100"><code id="updater-command-{{ $commandKey }}">{{ $command }}</code></pre>
+                                            </li>
+                                        @endforeach
+                                    </ol>
+                                </div>
+                            </details>
+                        @endif
+                    @endif
                 </div>
-            </div>
+            @endif
         </section>
 
         <section class="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div class="border-b border-gray-100 px-6 py-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.recent_runs') }}</h2>
-                        <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.recent_runs_desc') }}</p>
-                    </div>
-                    <span class="inline-flex items-center rounded-full bg-slate-50 px-3 py-1 text-sm font-medium text-slate-600">
-                        {{ $recentRuns->count() }}
-                    </span>
+            <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.history.title') }}</h2>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.system_updates.history.description', ['days' => $historyDays]) }}</p>
+                </div>
+                <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 text-sm">
+                    <a href="{{ route('admin.system-updates.index') }}" class="rounded-md px-3 py-2 font-semibold {{ $historyScope === 'recent' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500' }}">{{ __('admin.system_updates.history.recent') }}</a>
+                    <a href="{{ route('admin.system-updates.index', ['history' => 'archived']) }}" class="rounded-md px-3 py-2 font-semibold {{ $historyScope === 'archived' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500' }}">{{ __('admin.system_updates.history.archived') }} ({{ $archivedCount }})</a>
                 </div>
             </div>
-            <div id="system-update-runs" data-status-url="{{ \App\Support\AdminWeb::routePath('admin.system-updates.runs.status') }}" data-has-active-run="{{ $hasActiveUpdateRun ? '1' : '0' }}">
-                @include('admin.system-updates.partials.recent-runs', ['recentRuns' => $recentRuns])
+            @include('admin.system-updates.partials.recent-runs', ['recentRuns' => $recentRuns])
+            @if(method_exists($recentRuns, 'hasPages') && $recentRuns->hasPages())
+                <div class="border-t border-gray-100 px-6 py-4">{{ $recentRuns->links() }}</div>
+            @endif
+            <div class="border-t border-gray-100 px-6 py-5">
+                <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.history.backups') }}</h3>
+                <div class="mt-3 grid gap-3 lg:grid-cols-2">
+                    @forelse($recentBackups as $backup)
+                        <a href="{{ route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]) }}" class="rounded-lg border border-gray-200 p-4 hover:bg-gray-50">
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="break-all font-mono text-sm font-semibold text-gray-900">{{ $backup->backup_uuid }}</span>
+                                <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">{{ __('admin.system_updates.backup.status_'.$backup->status) }}</span>
+                            </div>
+                            <p class="mt-2 text-xs text-gray-500">{{ $backup->from_version ?: __('admin.common.none') }} → {{ $backup->to_version ?: __('admin.common.none') }} · {{ optional($backup->created_at)->format('Y-m-d H:i:s') }}</p>
+                        </a>
+                    @empty
+                        <p class="text-sm text-gray-500">{{ __('admin.system_updates.empty.no_backups') }}</p>
+                    @endforelse
+                </div>
+                @if(method_exists($recentBackups, 'hasPages') && $recentBackups->hasPages())
+                    <div class="mt-4">{{ $recentBackups->links() }}</div>
+                @endif
             </div>
         </section>
+    </div>
 
-        <div class="mt-6 grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
-            <section class="rounded-xl border border-gray-200 bg-white shadow-sm">
-                <div class="border-b border-gray-100 px-6 py-5">
-                    <div class="flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                            <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.plan') }}</h2>
-                            <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.plan_desc') }}</p>
-                        </div>
-                        <form method="POST" action="{{ route('admin.system-updates.plan') }}">
-                            @csrf
-                            <button type="submit" @disabled(! $canGeneratePlan) class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300">
-                                <i data-lucide="list-checks" class="mr-2 h-4 w-4"></i>
-                                {{ __('admin.system_updates.button.generate_plan') }}
-                            </button>
-                        </form>
+    @if($updaterError !== [])
+        <dialog
+            open
+            data-system-updater-error-dialog
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="system-updater-error-title"
+            aria-describedby="system-updater-error-summary"
+            class="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white p-0 text-left shadow-2xl backdrop:bg-slate-950/50 backdrop:backdrop-blur-[2px]"
+        >
+            <div class="flex max-h-[calc(100dvh-2rem)] flex-col">
+                <div class="flex items-start gap-4 border-b border-gray-100 px-5 py-5 sm:px-6">
+                    <span class="inline-flex h-11 w-11 flex-none items-center justify-center rounded-full bg-red-50 text-red-600">
+                        <i data-lucide="package-x" class="h-5 w-5"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{{ __('admin.system_updates.updater.error_dialog.eyebrow') }}</p>
+                        <h2 id="system-updater-error-title" class="mt-1 text-xl font-semibold text-gray-950 sm:text-2xl">
+                            {{ __('admin.system_updates.updater.error_dialog.title.'.$updaterErrorReason) }}
+                        </h2>
+                        <p id="system-updater-error-summary" class="mt-2 text-sm leading-6 text-gray-600">
+                            {{ __('admin.system_updates.updater.error_dialog.summary.'.$updaterErrorReason) }}
+                        </p>
                     </div>
-                    @if($status === 'available' && $planStatusMessage !== '')
-                        <p class="mt-3 text-sm {{ $canGeneratePlan ? 'text-emerald-700' : 'text-amber-700' }}">{{ $planStatusMessage }}</p>
+                    <form method="dialog" class="flex-none">
+                        <button type="submit" data-system-updater-error-close class="inline-flex h-10 w-10 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="{{ __('admin.system_updates.updater.error_dialog.close') }}">
+                            <i data-lucide="x" class="h-5 w-5"></i>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="overflow-y-auto px-5 py-5 sm:px-6">
+                    <section class="rounded-xl border border-red-100 bg-red-50/70 p-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="text-sm font-semibold text-red-950">{{ __('admin.system_updates.updater.error_dialog.reason_label') }}</h3>
+                            @if($updaterErrorReason === 'release_not_found')
+                                <span class="rounded-full border border-red-200 bg-white px-2.5 py-1 font-mono text-xs font-semibold text-red-700">HTTP 404</span>
+                            @endif
+                        </div>
+                        <p class="mt-2 text-sm leading-6 text-red-900">{{ __('admin.system_updates.updater.error_dialog.reason.'.$updaterErrorReason) }}</p>
+                    </section>
+
+                    <section class="mt-5">
+                        <h3 class="text-sm font-semibold text-gray-950">{{ __('admin.system_updates.updater.error_dialog.solution_title') }}</h3>
+                        <ol class="mt-3 space-y-3">
+                            @foreach(__('admin.system_updates.updater.error_dialog.steps.'.$updaterErrorReason) as $step)
+                                <li class="flex gap-3 text-sm leading-6 text-gray-700">
+                                    <span class="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">{{ $loop->iteration }}</span>
+                                    <span>{{ $step }}</span>
+                                </li>
+                            @endforeach
+                        </ol>
+                    </section>
+
+                    <div class="mt-5 flex gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-blue-950">
+                        <i data-lucide="shield-check" class="mt-0.5 h-5 w-5 flex-none text-blue-600"></i>
+                        <p>{{ __('admin.system_updates.updater.error_dialog.safety_note') }}</p>
+                    </div>
+
+                    <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                        @if($updaterErrorReason === 'release_not_found')
+                            <a href="{{ $updaterReleaseCandidateWorkflowUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                <i data-lucide="package-plus" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.system_updates.updater.error_dialog.open_candidate_workflow') }}
+                            </a>
+                            <a href="{{ $updaterReleaseWorkflowUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                <i data-lucide="workflow" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.system_updates.updater.error_dialog.open_release_workflow') }}
+                            </a>
+                        @else
+                            <a href="{{ $updaterReleasesUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                <i data-lucide="external-link" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.system_updates.updater.error_dialog.view_releases') }}
+                            </a>
+                            <a href="{{ $updaterProjectUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                <i data-lucide="github" class="mr-2 h-4 w-4"></i>
+                                {{ __('admin.system_updates.updater.project_link') }}
+                            </a>
+                        @endif
+                    </div>
+                    @if($updaterErrorReason === 'release_not_found')
+                        <p class="mt-3 text-center text-xs text-gray-500">
+                            {{ __('admin.system_updates.updater.error_dialog.release_status_hint') }}
+                            <a href="{{ $updaterReleasesUrl }}" target="_blank" rel="noopener noreferrer" class="font-semibold text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-800">
+                                {{ __('admin.system_updates.updater.error_dialog.view_releases') }}
+                            </a>
+                        </p>
                     @endif
                 </div>
 
-                @if($latestPlan)
-                    <div class="border-b border-gray-100 px-6 py-5">
-                        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-                            <div>
-                                <div class="text-sm text-gray-500">{{ __('admin.system_updates.label.target_version') }}</div>
-                                <div class="mt-1 text-lg font-semibold text-gray-900">v{{ $latestPlan->target_version }}</div>
-                            </div>
-                            <div>
-                                <div class="text-sm text-gray-500">{{ __('admin.system_updates.label.risk_level') }}</div>
-                                <span class="mt-1 inline-flex rounded-full border px-3 py-1 text-sm font-semibold {{ $riskClass }}">{{ __('admin.system_updates.risk.'.$risk) }}</span>
-                            </div>
-                            <div>
-                                <div class="text-sm text-gray-500">{{ __('admin.system_updates.plan.added') }}</div>
-                                <div class="mt-1 text-lg font-semibold text-gray-900">{{ (int) ($planCounts['added'] ?? 0) }}</div>
-                            </div>
-                            <div>
-                                <div class="text-sm text-gray-500">{{ __('admin.system_updates.plan.modified') }}</div>
-                                <div class="mt-1 text-lg font-semibold text-gray-900">{{ (int) ($planCounts['modified'] ?? 0) }}</div>
-                            </div>
-                            <div>
-                                <div class="text-sm text-gray-500">{{ __('admin.system_updates.plan.deleted') }}</div>
-                                <div class="mt-1 text-lg font-semibold text-gray-900">{{ (int) ($planCounts['deleted'] ?? 0) }}</div>
-                            </div>
-                            <div>
-                                <div class="text-sm text-gray-500">{{ __('admin.system_updates.plan.total') }}</div>
-                                <div class="mt-1 text-lg font-semibold text-gray-900">{{ (int) ($planCounts['total'] ?? count($changes)) }}</div>
-                            </div>
-                        </div>
-                        <div class="mt-4 grid gap-3 text-xs text-gray-500 sm:grid-cols-2">
-                            <div class="truncate">
-                                {{ __('admin.system_updates.label.target_commit') }}：
-                                <span class="font-mono text-gray-700">{{ (string) ($latestPlan->target_commit ?? '') ?: __('admin.common.none') }}</span>
-                            </div>
-                            <div>
-                                {{ __('admin.system_updates.label.plan_generated_at') }}：
-                                <span class="text-gray-700">{{ (string) ($planJson['generated_at'] ?? optional($latestPlan->finished_at)->format('Y-m-d H:i:s')) }}</span>
-                            </div>
-                        </div>
-                        <div class="mt-4 flex flex-wrap gap-2">
-                            @foreach($flagLabels as $flag => $label)
-                                @if(!empty($planFlags[$flag]))
-                                    <span class="inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">{{ $label }}</span>
-                                @endif
-                            @endforeach
-                        </div>
-
-                        <div class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.section.commands') }}</h3>
-                                    <p class="mt-1 text-xs leading-5 text-gray-600">{{ __('admin.system_updates.section.commands_desc') }}</p>
-                                </div>
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-600">
-                                        {{ __('admin.system_updates.commands.count', ['count' => count($manualCommands)]) }}
-                                    </span>
-                                    @if($updateScript !== '')
-                                        <button type="button" data-system-update-copy data-copy-text="{{ $updateScript }}" data-default-label="{{ __('admin.system_updates.button.copy_script') }}" data-copied-label="{{ __('admin.system_updates.commands.copied') }}" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50">
-                                            <i data-lucide="copy" class="mr-1.5 h-3.5 w-3.5"></i>
-                                            <span>{{ __('admin.system_updates.button.copy_script') }}</span>
-                                        </button>
-                                    @endif
-                                </div>
-                            </div>
-                            <div class="mt-4 space-y-2">
-                                @forelse($manualCommands as $index => $command)
-                                    @php($commandKey = (string) ($command['key'] ?? 'custom'))
-                                    @php($commandLevel = (string) ($command['level'] ?? 'recommended'))
-                                    @php($commandStatus = is_array($commandStatuses[(string) $index] ?? null) ? $commandStatuses[(string) $index] : null)
-                                    @php($levelClass = $commandLevelClasses[$commandLevel] ?? $commandLevelClasses['recommended'])
-                                    <div class="rounded-md border border-white bg-white p-3 text-xs">
-                                        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                            <div class="min-w-0 flex-1">
-                                                <div class="mb-2 flex flex-wrap items-center gap-2">
-                                                    <span class="font-semibold text-gray-700">{{ __('admin.system_updates.commands.'.$commandKey) }}</span>
-                                                    <span class="inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold {{ $levelClass }}">
-                                                        {{ __('admin.system_updates.commands.level_'.$commandLevel) }}
-                                                    </span>
-                                                    @if($commandStatus)
-                                                        <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                                            {{ __('admin.system_updates.commands.executed_at', ['time' => (string) ($commandStatus['executed_at'] ?? '')]) }}
-                                                        </span>
-                                                    @else
-                                                        <span class="inline-flex rounded-full bg-gray-50 px-2 py-0.5 text-[11px] font-semibold text-gray-500">
-                                                            {{ __('admin.system_updates.commands.pending_execution') }}
-                                                        </span>
-                                                    @endif
-                                                </div>
-                                                <code class="block break-all rounded-md bg-slate-50 px-3 py-2 font-mono text-gray-900">{{ (string) ($command['command'] ?? '') }}</code>
-                                            </div>
-                                            <div class="flex shrink-0 flex-wrap gap-2">
-                                                <button type="button" data-system-update-copy data-copy-text="{{ (string) ($command['command'] ?? '') }}" data-default-label="{{ __('admin.system_updates.button.copy_command') }}" data-copied-label="{{ __('admin.system_updates.commands.copied') }}" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50">
-                                                    <i data-lucide="copy" class="mr-1.5 h-3.5 w-3.5"></i>
-                                                    <span>{{ __('admin.system_updates.button.copy_command') }}</span>
-                                                </button>
-                                                <form method="POST" action="{{ route('admin.system-updates.commands.executed', ['runUuid' => $latestPlan->run_uuid, 'commandIndex' => $index]) }}">
-                                                    @csrf
-                                                    <button type="submit" class="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
-                                                        <i data-lucide="check" class="mr-1.5 h-3.5 w-3.5"></i>
-                                                        {{ __('admin.system_updates.button.mark_command_executed') }}
-                                                    </button>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                @empty
-                                    <div class="rounded-md bg-white p-3 text-sm text-gray-500">{{ __('admin.system_updates.empty.no_commands') }}</div>
-                                @endforelse
-                            </div>
-                            @if($updateScript !== '')
-                                <pre class="mt-4 overflow-auto rounded-md bg-gray-950 p-4 text-xs leading-6 text-gray-100">{{ $updateScript }}</pre>
-                            @endif
-                        </div>
-
-                        <div class="mt-5 rounded-lg border {{ $executionReady ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50' }} p-4">
-                            <div class="flex flex-wrap items-start justify-between gap-4">
-                                <div>
-                                    <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.section.execution') }}</h3>
-                                    <p class="mt-1 text-xs leading-5 text-gray-600">
-                                        {{ $executionReady ? __('admin.system_updates.execution.enabled_desc') : __('admin.system_updates.execution.disabled_desc') }}
-                                    </p>
-                                </div>
-                                @if($executionReady)
-                                    <form method="POST" action="{{ route('admin.system-updates.apply') }}" class="flex flex-wrap items-end gap-2" data-system-update-operation-form data-confirm-message="{{ __('admin.system_updates.confirm.apply_update') }}">
-                                        @csrf
-                                        <input type="hidden" name="run_uuid" value="{{ $latestPlan->run_uuid }}">
-                                        @if($passwordRequired)
-                                            <label class="block">
-                                                <span class="sr-only">{{ __('admin.system_updates.label.current_admin_password') }}</span>
-                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($hasActiveUpdateRun) class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
-                                            </label>
-                                        @endif
-                                        <button type="submit" @disabled($hasActiveUpdateRun) class="inline-flex items-center rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-gray-300">
-                                            <i data-lucide="rocket" class="mr-2 h-4 w-4"></i>
-                                            {{ __('admin.system_updates.button.apply_update') }}
-                                        </button>
-                                    </form>
-                                @else
-                                    <button type="button" disabled class="inline-flex cursor-not-allowed items-center rounded-md bg-gray-300 px-4 py-2 text-sm font-medium text-white">
-                                        <i data-lucide="lock" class="mr-2 h-4 w-4"></i>
-                                        {{ __('admin.system_updates.button.apply_update') }}
-                                    </button>
-                                @endif
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="max-h-[460px] overflow-auto">
-                        <table class="min-w-full divide-y divide-gray-200 text-sm">
-                            <thead class="sticky top-0 bg-gray-50">
-                                <tr>
-                                    <th class="px-6 py-3 text-left font-semibold text-gray-500">{{ __('admin.system_updates.plan.file') }}</th>
-                                    <th class="px-6 py-3 text-left font-semibold text-gray-500">{{ __('admin.system_updates.plan.action') }}</th>
-                                    <th class="px-6 py-3 text-right font-semibold text-gray-500">{{ __('admin.system_updates.plan.bytes') }}</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100 bg-white">
-                                @foreach(array_slice($changes, 0, 80) as $change)
-                                    <tr>
-                                        <td class="px-6 py-3 font-mono text-xs text-gray-800">{{ (string) ($change['path'] ?? '') }}</td>
-                                        <td class="px-6 py-3 text-gray-600">{{ __('admin.system_updates.plan.'.(string) ($change['action'] ?? 'modified')) }}</td>
-                                        <td class="px-6 py-3 text-right text-gray-500">{{ number_format((int) ($change['bytes'] ?? 0)) }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                @else
-                    <div class="px-6 py-10 text-center text-sm text-gray-500">
-                        {{ __('admin.system_updates.empty.no_plan') }}
-                    </div>
-                @endif
-            </section>
-
-            <section class="rounded-xl border border-gray-200 bg-white shadow-sm">
-                <div class="border-b border-gray-100 px-6 py-5">
-                    <div class="flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                            <h2 class="text-xl font-semibold text-gray-900">{{ __('admin.system_updates.section.backups') }}</h2>
-                            <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.section.backups_desc') }}</p>
-                        </div>
-                        @if($latestPlan)
-                            <form method="POST" action="{{ route('admin.system-updates.backup') }}">
-                                @csrf
-                                <input type="hidden" name="run_uuid" value="{{ $latestPlan->run_uuid }}">
-                                <button type="submit" @disabled($hasActiveUpdateRun) class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">
-                                    <i data-lucide="archive" class="mr-2 h-4 w-4"></i>
-                                    {{ __('admin.system_updates.button.create_backup') }}
-                                </button>
-                            </form>
-                        @endif
-                    </div>
+                <div class="flex flex-col-reverse gap-3 border-t border-gray-100 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
+                    <form method="dialog">
+                        <button type="submit" data-system-updater-error-close class="inline-flex min-h-10 w-full items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:w-auto">
+                            {{ __('admin.system_updates.updater.error_dialog.close') }}
+                        </button>
+                    </form>
+                    <form method="POST" action="{{ route('admin.system-updates.updater.prepare') }}">
+                        @csrf
+                        <button type="submit" class="inline-flex min-h-10 w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:w-auto">
+                            <i data-lucide="rotate-cw" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.system_updates.updater.error_dialog.retry') }}
+                        </button>
+                    </form>
                 </div>
-                <div class="divide-y divide-gray-100">
-                    @forelse($recentBackups as $backup)
-                        <div class="px-6 py-4">
-                            <div class="flex items-start justify-between gap-4">
-                                <div>
-                                    <div class="font-mono text-sm font-semibold text-gray-900">{{ $backup->backup_uuid }}</div>
-                                    <div class="mt-1 text-sm text-gray-500">v{{ $backup->from_version }} → v{{ $backup->to_version }}</div>
-                                </div>
-                                <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">{{ __('admin.system_updates.backup.status_'.$backup->status) }}</span>
-                            </div>
-                            <div class="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-500">
-                                <div>{{ __('admin.system_updates.backup.file_count', ['count' => $backup->file_count]) }}</div>
-                                <div>{{ __('admin.system_updates.backup.created_at', ['time' => optional($backup->created_at)->format('Y-m-d H:i')]) }}</div>
-                                <div class="col-span-2">
-                                    {{ __('admin.system_updates.label.created_by') }}：
-                                    <span class="text-gray-700">{{ optional($backup->createdBy)->display_name ?: optional($backup->createdBy)->username ?: __('admin.common.none') }}</span>
-                                </div>
-                            </div>
-                            <div class="mt-4 flex flex-wrap items-end gap-2">
-                                <a href="{{ route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]) }}" class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">
-                                    <i data-lucide="file-search" class="mr-2 h-4 w-4"></i>
-                                    {{ __('admin.system_updates.button.view_backup_detail') }}
-                                </a>
-                                @if($rollbackReady)
-                                    <form method="POST" action="{{ route('admin.system-updates.rollback', ['backupUuid' => $backup->backup_uuid]) }}" class="flex flex-wrap items-end gap-2" data-system-update-operation-form data-confirm-message="{{ __('admin.system_updates.confirm.rollback_backup') }}">
-                                        @csrf
-                                        @if($passwordRequired)
-                                            <label class="block">
-                                                <span class="sr-only">{{ __('admin.system_updates.label.current_admin_password') }}</span>
-                                                <input type="password" name="current_admin_password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($hasActiveUpdateRun) class="block w-52 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
-                                            </label>
-                                        @endif
-                                        <button type="submit" @disabled($hasActiveUpdateRun) class="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400">
-                                            <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
-                                            {{ __('admin.system_updates.button.rollback_backup') }}
-                                        </button>
-                                    </form>
-                                @else
-                                    <button type="button" disabled class="inline-flex cursor-not-allowed items-center rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-400">
-                                        <i data-lucide="lock" class="mr-2 h-4 w-4"></i>
-                                        {{ __('admin.system_updates.button.rollback_backup') }}
-                                    </button>
-                                    <p class="mt-2 text-xs leading-5 text-gray-500">{{ __('admin.system_updates.execution.rollback_disabled_desc') }}</p>
-                                @endif
-                            </div>
-                        </div>
-                    @empty
-                        <div class="px-6 py-10 text-center text-sm text-gray-500">
-                            {{ __('admin.system_updates.empty.no_backups') }}
-                        </div>
-                    @endforelse
-                </div>
-            </section>
-        </div>
-    </div>
+            </div>
+        </dialog>
+    @endif
 @endsection
-
-@push('scripts')
-    <script>
-        document.querySelectorAll('[data-system-update-copy]').forEach((button) => {
-            button.addEventListener('click', async () => {
-                const text = button.dataset.copyText || '';
-                const label = button.querySelector('span');
-                const defaultLabel = button.dataset.defaultLabel || (label ? label.textContent : '');
-                const copiedLabel = button.dataset.copiedLabel || defaultLabel;
-
-                try {
-                    await navigator.clipboard.writeText(text);
-                    if (label) {
-                        label.textContent = copiedLabel;
-                    }
-                    setTimeout(() => {
-                        if (label) {
-                            label.textContent = defaultLabel;
-                        }
-                    }, 1400);
-                } catch (error) {
-                    const textarea = document.createElement('textarea');
-                    textarea.value = text;
-                    textarea.setAttribute('readonly', 'readonly');
-                    textarea.style.position = 'fixed';
-                    textarea.style.opacity = '0';
-                    document.body.appendChild(textarea);
-                    textarea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textarea);
-                    if (label) {
-                        label.textContent = copiedLabel;
-                    }
-                    setTimeout(() => {
-                        if (label) {
-                            label.textContent = defaultLabel;
-                        }
-                    }, 1400);
-                }
-            });
-        });
-
-        document.querySelectorAll('[data-system-update-operation-form]').forEach((form) => {
-            form.addEventListener('submit', (event) => {
-                const message = form.dataset.confirmMessage || '';
-                if (message !== '' && !window.confirm(message)) {
-                    event.preventDefault();
-                    return;
-                }
-
-                window.setTimeout(() => {
-                    form.querySelectorAll('button').forEach((control) => {
-                        control.disabled = true;
-                    });
-                }, 0);
-            });
-        });
-
-        const runsContainer = document.getElementById('system-update-runs');
-        if (runsContainer) {
-            const statusUrl = runsContainer.dataset.statusUrl || '';
-            let pollTimer = null;
-            let idleRefreshes = 0;
-
-            const refreshRuns = async () => {
-                if (statusUrl === '') {
-                    return;
-                }
-
-                try {
-                    const response = await fetch(statusUrl, {
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                    });
-
-                    if (!response.ok) {
-                        return;
-                    }
-
-                    const payload = await response.json();
-                    if (typeof payload.html === 'string') {
-                        runsContainer.innerHTML = payload.html;
-                    }
-
-                    if (payload.has_active_run) {
-                        idleRefreshes = 0;
-                        return;
-                    }
-
-                    idleRefreshes += 1;
-                    if (pollTimer && idleRefreshes >= 2) {
-                        window.clearInterval(pollTimer);
-                        pollTimer = null;
-                    }
-                } catch (error) {
-                    if (pollTimer) {
-                        window.clearInterval(pollTimer);
-                        pollTimer = null;
-                    }
-                }
-            };
-
-            if (runsContainer.dataset.hasActiveRun === '1') {
-                pollTimer = window.setInterval(refreshRuns, 3000);
-                window.setTimeout(refreshRuns, 600);
-            }
-        }
-    </script>
-@endpush

@@ -122,8 +122,8 @@ final class SafeOutboundHttpClient
                 $response = $this->transport->send($currentRequest, $method, $target, $currentData, $maxBytes, $crossOrigin);
             } catch (OutboundRequestBlockedException|OutboundRequestFailedException $exception) {
                 throw $exception;
-            } catch (\Throwable) {
-                throw new OutboundRequestFailedException;
+            } catch (\Throwable $exception) {
+                throw new OutboundRequestFailedException($exception);
             }
             $this->assertResponseSize($response, $maxBytes);
 
@@ -165,8 +165,8 @@ final class SafeOutboundHttpClient
         }
         try {
             $addresses = $ipLiteral ? [$host] : $this->resolver->resolve($host);
-        } catch (\Throwable) {
-            throw new OutboundRequestFailedException;
+        } catch (\Throwable $exception) {
+            throw new OutboundRequestFailedException($exception);
         }
         $addresses = array_values(array_unique(array_map(static fn (mixed $ip): string => strtolower(trim((string) $ip)), $addresses)));
         if ($addresses === [] || in_array('', $addresses, true)) {

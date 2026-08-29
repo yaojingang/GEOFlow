@@ -2,149 +2,288 @@
 
 namespace App\Services\AiWorkspace;
 
-use App\Ai\Agents\GeoHubAgent;
-use App\Ai\Agents\GeoHubPlanDrafterAgent;
-use App\Ai\Agents\IntentResolverAgent;
-use App\Ai\Workspace\AiCapabilityRegistry;
-use App\Ai\Workspace\AiPayloadDigest;
+use App\Ai\Agents\AdminHelpAssistant;
+use App\Contracts\AiWorkspace\AdminHelpResponder;
 use App\Models\AiModel;
-use App\Models\AiWorkspaceRun;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Generator;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
+use Laravel\Ai\Streaming\Events\Error;
+use Laravel\Ai\Streaming\Events\ReasoningStart;
+use Laravel\Ai\Streaming\Events\StreamEnd;
+use Laravel\Ai\Streaming\Events\StreamStart;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use RuntimeException;
 use Throwable;
 
-final readonly class AiWorkspaceModelRuntime
+final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
 {
     public function __construct(
         private ApiKeyCrypto $apiKeyCrypto,
         private AiUsageQuotaService $usageQuota,
-        private AiCapabilityRegistry $registry,
+        private AiWorkspaceModelReadiness $readiness,
     ) {}
 
-    /** @return array<string,mixed> */
-    public function resolveIntent(string $prompt, ?int $adminId = null): array
-    {
-        $catalog = $this->registry->all()
-            ->map(static fn ($capability): array => [
-                'key' => $capability->key,
-                'description' => $capability->description,
-                'input_schema' => $capability->inputSchema,
-            ])->values()->toJson(JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    /**
+     * @param  iterable<int, mixed>  $messages
+     * @return Generator<int, array<string, mixed>, mixed, array{answer:string,meta:array<string,mixed>,usage:array<string,int>}>
+     */
+    public function stream(
+        string $prompt,
+        string $knowledgeContext,
+        iterable $messages = [],
+        ?int $adminId = null,
+    ): Generator {
+        $cache = $this->acquireConcurrencySlot();
+        $lastException = null;
+        $attempts = 0;
+        $fallbackCount = 0;
+        $degradedCount = 0;
+        $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
+        $startedAtNanoseconds = hrtime(true);
+        $modelStartedAt = now()->toISOString();
+        $firstProviderEventMilliseconds = null;
+        $firstTextMilliseconds = null;
 
-        return $this->prompt(new IntentResolverAgent($catalog), $prompt, 'ai_workspace_intent', $adminId)->toArray();
-    }
+        try {
+            foreach ($this->models() as $model) {
+                $attempts++;
+                $reservation = null;
+                $emitted = false;
+                $answer = '';
+                $streamEnded = false;
+                $usage = [];
+                $finishReason = null;
+                $driver = '';
+                $providerName = '';
+                $plainTextFallback = false;
 
-    /** @param array<string,mixed> $resolution @return list<array<string,mixed>> */
-    public function draftPlan(string $prompt, array $resolution, ?int $adminId = null): array
-    {
-        $workflowSteps = collect((array) ($resolution['workflow_steps'] ?? []));
-        $allowedCapabilities = collect((array) ($resolution['candidate_capabilities'] ?? []))
-            ->pluck('key')
-            ->merge($workflowSteps->pluck('capability'))
-            ->filter(static fn (mixed $key): bool => is_string($key) && $key !== '')
-            ->unique()
-            ->values();
-        $requiredOperations = $workflowSteps
-            ->filter(static fn (mixed $step): bool => is_array($step)
-                && is_string($step['operation_id'] ?? null)
-                && trim((string) $step['operation_id']) !== ''
-                && is_string($step['capability'] ?? null)
-                && trim((string) $step['capability']) !== '')
-            ->map(static fn (array $step): array => [
-                'operation_id' => trim((string) $step['operation_id']),
-                'capability' => trim((string) $step['capability']),
-                'parameters' => (array) ($step['parameters'] ?? []),
-            ])
-            ->values();
-        if ($allowedCapabilities->isEmpty()) {
-            throw new RuntimeException('意图结果没有可用于计划草案的能力。');
-        }
-        if ($requiredOperations->isEmpty()
-            || $requiredOperations->count() !== $workflowSteps->count()
-            || $requiredOperations->pluck('operation_id')->unique()->count() !== $requiredOperations->count()) {
-            throw new RuntimeException('意图结果缺少唯一的操作标识。');
-        }
-        $catalog = $this->registry->all()
-            ->filter(static fn ($capability): bool => $capability->isExecutable()
-                && $capability->maturity !== 'restricted'
-                && $allowedCapabilities->contains($capability->key))
-            ->map(static fn ($capability): array => [
-                'key' => $capability->key,
-                'description' => $capability->description,
-                'input_schema' => $capability->inputSchema,
-            ])->values()->toJson(JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $context = json_encode($resolution, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
-        $response = $this->prompt(new GeoHubPlanDrafterAgent($catalog, $context), $prompt, 'ai_workspace_plan', $adminId);
+                try {
+                    $timeout = $this->remainingAttemptTimeout($deadline);
+                    [$provider, $reservation, $driver] = $this->modelContext($model, $adminId);
+                    $agent = new AdminHelpAssistant(
+                        $messages,
+                        $knowledgeContext,
+                        (string) $model->model_id,
+                        $this->answerMaxTokens($model),
+                    );
 
-        $steps = collect((array) ($response->toArray()['steps'] ?? []))
-            ->filter(static fn (mixed $step): bool => is_array($step)
-                && is_string($step['operation_id'] ?? null)
-                && trim((string) $step['operation_id']) !== ''
-                && isset($step['capability'])
-                && is_array($step['parameters'] ?? null))
-            ->map(static function (array $step): array {
-                $bindings = collect((array) ($step['input_bindings'] ?? []))
-                    ->filter(static fn (mixed $binding): bool => is_array($binding) && isset($binding['parameter'], $binding['step'], $binding['path']))
-                    ->mapWithKeys(static fn (array $binding): array => [
-                        (string) $binding['parameter'] => [
-                            'step' => (int) $binding['step'],
-                            'path' => (string) $binding['path'],
+                    $plainTextFallback = $this->readiness->prefersPlainTextFallback($model);
+                    if ($plainTextFallback) {
+                        $fallbackCount++;
+                        $degradedCount++;
+                        $response = $agent->prompt($prompt, [], $provider, (string) $model->model_id, $timeout);
+                        $firstProviderEventMilliseconds ??= $this->elapsedMilliseconds($startedAtNanoseconds);
+                        $providerName = $driver;
+                        $answer = trim((string) $response->text);
+                        if ($answer === '') {
+                            throw new RuntimeException('AI 模型未返回文本内容。');
+                        }
+                        $firstTextMilliseconds ??= $this->elapsedMilliseconds($startedAtNanoseconds);
+                        $emitted = true;
+                        $usage = $response->usage->toArray();
+                        $finishReason = $response->steps->last()?->finishReason->value ?? 'stop';
+                        yield [
+                            'type' => 'status',
+                            'stage' => 'connected',
+                            'provider' => $providerName,
+                            'model' => (string) $model->model_id,
+                        ];
+                        yield ['type' => 'delta', 'content' => $answer];
+                    } else {
+                        $stream = $agent->stream($prompt, [], $provider, (string) $model->model_id, $timeout);
+                        foreach ($stream as $event) {
+                            $firstProviderEventMilliseconds ??= $this->elapsedMilliseconds($startedAtNanoseconds);
+
+                            if ($event instanceof StreamStart) {
+                                $providerName = $driver;
+                                yield [
+                                    'type' => 'status',
+                                    'stage' => 'connected',
+                                    'provider' => $driver,
+                                    'model' => $event->model,
+                                ];
+
+                                continue;
+                            }
+                            if ($event instanceof ReasoningStart) {
+                                yield ['type' => 'status', 'stage' => 'reasoning'];
+
+                                continue;
+                            }
+                            if ($event instanceof TextDelta && $event->delta !== '') {
+                                $emitted = true;
+                                $firstTextMilliseconds ??= $this->elapsedMilliseconds($startedAtNanoseconds);
+                                $answer .= $event->delta;
+                                yield ['type' => 'delta', 'content' => $event->delta];
+
+                                continue;
+                            }
+                            if ($event instanceof StreamEnd) {
+                                $streamEnded = true;
+                                $finishReason = $event->reason;
+                                $usage = $event->usage->toArray();
+
+                                continue;
+                            }
+                            if ($event instanceof Error) {
+                                throw new RuntimeException($event->message);
+                            }
+                        }
+                        $answer = trim((string) $stream->text) ?: trim($answer);
+                        if (! $this->streamCompletedSuccessfully($streamEnded, $finishReason)) {
+                            throw new RuntimeException('AI 模型流式响应未正常完成。');
+                        }
+                    }
+                    if ($answer === '') {
+                        throw new RuntimeException('AI 模型未返回文本内容。');
+                    }
+                    $this->usageQuota->recordModelSuccess($reservation);
+                    $this->recordProviderSuccess($model);
+                    $totalMilliseconds = $this->elapsedMilliseconds($startedAtNanoseconds);
+                    $performance = [
+                        'provider_first_event_ms' => $firstProviderEventMilliseconds,
+                        'ttft_ms' => $firstTextMilliseconds,
+                        'total_ms' => $totalMilliseconds,
+                    ];
+                    $this->recordReadinessSuccess($model, ! $plainTextFallback, $performance);
+
+                    return [
+                        'answer' => $answer,
+                        'meta' => [
+                            'model_started_at' => $modelStartedAt,
+                            ...$performance,
+                            'attempts' => $attempts,
+                            'fallback_count' => $fallbackCount,
+                            'degraded_count' => $degradedCount,
+                            'provider' => $providerName !== '' ? $providerName : $driver,
+                            'model' => (string) $model->model_id,
+                            'finish_reason' => $finishReason,
                         ],
-                    ])->all();
+                        'usage' => $usage,
+                    ];
+                } catch (Throwable $exception) {
+                    if ($this->streamCompletedSuccessfully($streamEnded, $finishReason) && trim($answer) !== '') {
+                        report($exception);
+                        $this->usageQuota->recordModelSuccess($reservation);
+                        $this->recordProviderSuccess($model);
+                        $totalMilliseconds = $this->elapsedMilliseconds($startedAtNanoseconds);
+                        $performance = [
+                            'provider_first_event_ms' => $firstProviderEventMilliseconds,
+                            'ttft_ms' => $firstTextMilliseconds,
+                            'total_ms' => $totalMilliseconds,
+                        ];
+                        $this->recordReadinessSuccess($model, true, $performance);
 
-                $normalized = [
-                    'operation_id' => trim((string) $step['operation_id']),
-                    'capability' => (string) $step['capability'],
-                    'parameters' => (array) $step['parameters'],
-                    'input_bindings' => $bindings,
-                ];
-                if (array_key_exists('depends_on', $step)) {
-                    $normalized['depends_on'] = array_values(array_map('intval', (array) $step['depends_on']));
+                        return [
+                            'answer' => trim($answer),
+                            'meta' => [
+                                'model_started_at' => $modelStartedAt,
+                                ...$performance,
+                                'attempts' => $attempts,
+                                'fallback_count' => $fallbackCount,
+                                'degraded_count' => $degradedCount,
+                                'provider' => $providerName !== '' ? $providerName : $driver,
+                                'model' => (string) $model->model_id,
+                                'finish_reason' => $finishReason,
+                                'late_stream_close' => true,
+                            ],
+                            'usage' => $usage,
+                        ];
+                    }
+                    $lastException = $this->runtimeException($exception, $model);
+                    $recoverable = $this->isRecoverableProviderFailure($exception);
+                    if ($emitted) {
+                        $this->recordProviderFailure($model);
+                        throw $lastException;
+                    }
+                    if (! $recoverable) {
+                        throw $lastException;
+                    }
+                    $fallbackCount++;
+                    if (! $exception instanceof AiWorkspaceModelUnavailableException) {
+                        $this->recordProviderFailure($model);
+                        $this->boundedBackoff($attempts, $deadline);
+                    }
+                } finally {
+                    if ($reservation !== null) {
+                        $this->usageQuota->recordModelAttempt($reservation);
+                    }
                 }
-
-                return $normalized;
-            })->values();
-        if ($steps->contains(static fn (array $step): bool => ! $allowedCapabilities->contains($step['capability']))) {
-            throw new RuntimeException('计划草案包含意图范围外的能力。');
-        }
-        if ($steps->pluck('operation_id')->unique()->count() !== $steps->count()
-            || $steps->count() !== $requiredOperations->count()
-            || $steps->pluck('operation_id')->all() !== $requiredOperations->pluck('operation_id')->all()) {
-            throw new RuntimeException('计划草案没有逐项保留意图操作。');
-        }
-        $draftOperations = $steps->keyBy('operation_id');
-        foreach ($requiredOperations as $requiredOperation) {
-            $draftOperation = $draftOperations->get($requiredOperation['operation_id']);
-            if (! is_array($draftOperation)
-                || ! hash_equals($requiredOperation['capability'], (string) $draftOperation['capability'])
-                || AiPayloadDigest::make($requiredOperation['parameters']) !== AiPayloadDigest::make((array) $draftOperation['parameters'])) {
-                throw new RuntimeException('计划草案改变或遗漏了意图操作。');
             }
-        }
 
-        return $steps->all();
+            throw $lastException ?? new RuntimeException('没有可用的对话模型');
+        } finally {
+            $this->releaseConcurrencySlot($cache);
+        }
     }
 
-    /** @return array{provider:string,endpoint:string,http_status:int,latency_ms:int,structured_output:array<string,mixed>,raw_preview:string} */
-    public function probeStructuredOutput(AiModel $model, string $prompt): array
+    /** @param iterable<int, mixed> $messages */
+    public function answer(
+        string $prompt,
+        string $knowledgeContext,
+        iterable $messages = [],
+        ?int $adminId = null,
+    ): string {
+        return $this->withConcurrencySlot(function () use ($prompt, $knowledgeContext, $messages, $adminId): string {
+            $lastException = null;
+            $attempt = 0;
+            $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
+
+            foreach ($this->models() as $model) {
+                $attempt++;
+                $reservation = null;
+                try {
+                    $timeout = $this->remainingAttemptTimeout($deadline);
+                    [$provider, $reservation] = $this->modelContext($model, $adminId);
+                    $agent = new AdminHelpAssistant(
+                        $messages,
+                        $knowledgeContext,
+                        (string) $model->model_id,
+                        $this->answerMaxTokens($model),
+                    );
+                    $response = $agent->prompt($prompt, [], $provider, (string) $model->model_id, $timeout);
+                    $answer = trim((string) $response->text);
+                    if ($answer === '') {
+                        throw new RuntimeException('AI 模型未返回文本内容。');
+                    }
+                    $this->usageQuota->recordModelSuccess($reservation);
+                    $this->recordProviderSuccess($model);
+                    $this->recordReadinessSuccess($model, false);
+
+                    return $answer;
+                } catch (Throwable $exception) {
+                    if ($reservation !== null) {
+                        $this->usageQuota->recordModelAttempt($reservation);
+                    }
+                    $lastException = $this->runtimeException($exception, $model);
+                    if (! $this->isRecoverableProviderFailure($exception)) {
+                        throw $lastException;
+                    }
+                    if (! $exception instanceof AiWorkspaceModelUnavailableException) {
+                        $this->recordProviderFailure($model);
+                        $this->boundedBackoff($attempt, $deadline);
+                    }
+                }
+            }
+
+            throw $lastException ?? new RuntimeException('没有可用的对话模型');
+        });
+    }
+
+    /** @return array{provider:string,endpoint:string,http_status:int,latency_ms:int,raw_preview:string} */
+    public function probePlainText(AiModel $model, string $prompt, ?int $timeout = null): array
     {
-        $catalog = $this->registry->all()
-            ->map(static fn ($capability): array => [
-                'key' => $capability->key,
-                'description' => $capability->description,
-                'input_schema' => $capability->inputSchema,
-            ])->values()->toJson(JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
         $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
         $modelId = trim((string) $model->model_id);
         if ($providerUrl === '' || $apiKey === '' || $modelId === '') {
-            throw new RuntimeException('对话模型配置不完整');
+            throw new AiWorkspaceModelUnavailableException('对话模型配置不完整');
         }
 
         $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
@@ -155,15 +294,14 @@ final readonly class AiWorkspaceModelRuntime
             $apiKey,
         );
         $startedAt = hrtime(true);
+        $timeout = $this->probeTimeout($timeout);
         $response = $this->withConcurrencySlot(
-            fn (): object => (new IntentResolverAgent($catalog))->prompt($prompt, [], $provider, $modelId),
+            fn (): object => (new AdminHelpAssistant([], '模型连接检测。', $modelId))->prompt($prompt, [], $provider, $modelId, $timeout),
         );
         $latencyMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
-        $structured = $response->toArray();
-        foreach (['mode', 'intent', 'candidate_capabilities', 'requested_steps', 'known_parameters', 'missing_parameters'] as $key) {
-            if (! array_key_exists($key, $structured)) {
-                throw new RuntimeException('AI 工作台结构化输出缺少字段：'.$key);
-            }
+        $text = trim((string) $response->text);
+        if ($text === '') {
+            throw new RuntimeException('AI 工作台普通文本检测没有返回内容。');
         }
 
         return [
@@ -171,152 +309,285 @@ final readonly class AiWorkspaceModelRuntime
             'endpoint' => $providerUrl,
             'http_status' => 200,
             'latency_ms' => $latencyMs,
-            'structured_output' => $structured,
-            'raw_preview' => Str::limit(json_encode($structured, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '', 500, ''),
+            'raw_preview' => Str::limit($text, 500, ''),
         ];
     }
 
-    /** @param iterable<int,mixed> $messages */
-    public function answer(string $prompt, iterable $messages = [], ?int $adminId = null): string
+    /** @return array{provider:string,endpoint:string,http_status:int,latency_ms:int,raw_preview:string,delta_count:int} */
+    public function probeStreaming(AiModel $model, string $prompt, ?int $timeout = null): array
     {
-        $response = $this->prompt(new GeoHubAgent($messages), $prompt, 'ai_workspace_answer', $adminId);
-
-        return trim((string) $response->text);
-    }
-
-    /** @param callable(string):void $onDelta */
-    public function streamAnswer(string $prompt, callable $onDelta, iterable $messages = [], ?int $adminId = null): string
-    {
-        return $this->withConcurrencySlot(function () use ($prompt, $onDelta, $messages, $adminId): string {
-            $agent = new GeoHubAgent($messages);
-            $lastException = null;
-            foreach ($this->models() as $model) {
-                $reservation = null;
-                $emitted = false;
-                try {
-                    [$provider, $reservation] = $this->modelContext($model, 'ai_workspace_answer', $adminId);
-                    $stream = $agent->stream($prompt, [], $provider, (string) $model->model_id);
-                    foreach ($stream as $event) {
-                        if ($event instanceof TextDelta && $event->delta !== '') {
-                            $emitted = true;
-                            $onDelta($event->delta);
-                        }
-                    }
-                    $this->usageQuota->recordModelSuccess($reservation);
-
-                    return trim((string) $stream->text);
-                } catch (Throwable $exception) {
-                    if ($reservation !== null) {
-                        $this->usageQuota->recordModelAttempt($reservation);
-                    }
-                    $lastException = new RuntimeException(OpenAiRuntimeProvider::normalizeApiException($exception, (string) $model->api_url), 0, $exception);
-                    if ($emitted) {
-                        throw $lastException;
-                    }
-                }
-            }
-
-            throw $lastException ?? new RuntimeException('没有可用的对话模型');
-        });
-    }
-
-    private function prompt(object $agent, string $prompt, string $slot, ?int $adminId = null): object
-    {
-        return $this->withConcurrencySlot(function () use ($agent, $prompt, $slot, $adminId): object {
-            $lastException = null;
-            foreach ($this->models() as $model) {
-                $reservation = null;
-                try {
-                    [$provider, $reservation] = $this->modelContext($model, $slot, $adminId);
-                    $response = $agent->prompt($prompt, [], $provider, (string) $model->model_id);
-                    $this->usageQuota->recordModelSuccess($reservation);
-
-                    return $response;
-                } catch (Throwable $exception) {
-                    if ($reservation !== null) {
-                        $this->usageQuota->recordModelAttempt($reservation);
-                    }
-                    $lastException = new RuntimeException(OpenAiRuntimeProvider::normalizeApiException($exception, (string) $model->api_url), 0, $exception);
-                }
-            }
-
-            throw $lastException ?? new RuntimeException('没有可用的对话模型');
-        });
-    }
-
-    private function models(): iterable
-    {
-        return AiModel::query()
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')->orWhereNotIn('model_type', ['embedding', 'image']);
-            })
-            ->when((bool) config('ai-workspace.require_verified_model', true), function ($query): void {
-                $query->where('ai_workspace_structured_output_status', 'ready')
-                    ->whereNotNull('ai_workspace_structured_output_verified_at');
-            })
-            ->orderBy('failover_priority')
-            ->orderBy('id')
-            ->get();
-    }
-
-    /** @return array{string,mixed} */
-    private function modelContext(AiModel $model, string $slot, ?int $adminId = null): array
-    {
-        if ($adminId !== null) {
-            $key = 'ai-workspace:model-budget:'.$adminId.':'.now()->toDateString();
-            $limit = (int) config('ai-workspace.admin_daily_model_calls', 200);
-            if (RateLimiter::tooManyAttempts($key, $limit)) {
-                throw new RuntimeException('当前管理员今日的 AI 工作台模型额度已用完。');
-            }
-            RateLimiter::hit($key, max(60, now()->diffInSeconds(now()->endOfDay())));
-        }
         $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
         $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
         $modelId = trim((string) $model->model_id);
         if ($providerUrl === '' || $apiKey === '' || $modelId === '') {
-            throw new RuntimeException('对话模型配置不完整');
+            throw new AiWorkspaceModelUnavailableException('对话模型配置不完整');
         }
 
-        $reservation = $this->usageQuota->reserveModel($model);
-        if ($reservation === null) {
-            throw new RuntimeException('对话模型不可用或已达到今日限额');
-        }
-
+        $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
         $provider = OpenAiRuntimeProvider::registerProvider(
-            $slot.'_'.(int) $model->id,
-            OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId),
+            'ai_workspace_stream_probe_'.(int) $model->id,
+            $driver,
             $providerUrl,
             $apiKey,
         );
+        $startedAt = hrtime(true);
+        $timeout = $this->probeTimeout($timeout);
+        $result = $this->withConcurrencySlot(function () use ($modelId, $prompt, $provider, $timeout): array {
+            $stream = (new AdminHelpAssistant([], '模型流式连接检测。', $modelId))->stream($prompt, [], $provider, $modelId, $timeout);
+            $text = '';
+            $deltaCount = 0;
+            $streamEnded = false;
+            $finishReason = null;
 
-        return [$provider, $reservation];
+            foreach ($stream as $event) {
+                if ($event instanceof TextDelta && $event->delta !== '') {
+                    $text .= $event->delta;
+                    $deltaCount++;
+
+                    continue;
+                }
+                if ($event instanceof StreamEnd) {
+                    $streamEnded = true;
+                    $finishReason = $event->reason;
+
+                    continue;
+                }
+                if ($event instanceof Error) {
+                    throw new RuntimeException('AI 工作台流式检测收到错误事件。');
+                }
+            }
+
+            $text = trim((string) $stream->text) ?: trim($text);
+            if ($text === '' || $deltaCount === 0 || ! $this->streamCompletedSuccessfully($streamEnded, $finishReason)) {
+                throw new RuntimeException('AI 工作台流式检测没有返回正文分片。');
+            }
+
+            return ['text' => $text, 'delta_count' => $deltaCount];
+        });
+        $latencyMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
+
+        return [
+            'provider' => $driver,
+            'endpoint' => $providerUrl,
+            'http_status' => 200,
+            'latency_ms' => $latencyMs,
+            'raw_preview' => Str::limit((string) $result['text'], 500, ''),
+            'delta_count' => (int) $result['delta_count'],
+        ];
     }
 
-    private function withConcurrencySlot(callable $operation): mixed
+    /** @return iterable<int, AiModel> */
+    private function models(): iterable
+    {
+        $models = AiModel::query()
+            ->where('status', 'active')
+            ->where(function ($query): void {
+                $query->whereNull('model_type')->orWhereNotIn('model_type', ['embedding', 'image']);
+            })
+            ->orderBy('failover_priority')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (AiModel $model): bool => $this->readiness->canAttempt($model));
+        $available = $models
+            ->reject(fn (AiModel $model): bool => Cache::has($this->providerCircuitKey($model)))
+            ->values();
+
+        return $available->isNotEmpty() ? $available : $models->take(1)->values();
+    }
+
+    /** @return array{string, mixed, string} */
+    private function modelContext(AiModel $model, ?int $adminId = null): array
+    {
+        $adminBudgetKey = null;
+        $adminBudgetTtl = null;
+        $adminBudgetReserved = false;
+        if ($adminId !== null) {
+            $adminBudgetKey = 'ai-workspace:model-budget:'.$adminId.':'.now()->toDateString();
+            $adminBudgetTtl = max(60, now()->diffInSeconds(now()->endOfDay()));
+        }
+
+        $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
+        $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
+        $modelId = trim((string) $model->model_id);
+        if ($providerUrl === '' || $apiKey === '' || $modelId === '') {
+            throw new AiWorkspaceModelUnavailableException('对话模型配置不完整');
+        }
+
+        if ($adminBudgetKey !== null && $adminBudgetTtl !== null) {
+            $attempts = RateLimiter::increment($adminBudgetKey, $adminBudgetTtl);
+            if ($attempts > (int) config('ai-workspace.admin_daily_model_calls', 200)) {
+                RateLimiter::decrement($adminBudgetKey, $adminBudgetTtl);
+                throw new AiWorkspaceRuntimeGuardException('当前管理员今日的 AI 工作台模型额度已用完。');
+            }
+            $adminBudgetReserved = true;
+        }
+
+        try {
+            $reservation = $this->usageQuota->reserveModel($model);
+            if ($reservation === null) {
+                throw new AiWorkspaceModelUnavailableException('对话模型不可用或已达到今日限额');
+            }
+
+            $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
+            $provider = OpenAiRuntimeProvider::registerProvider(
+                'admin_help_'.(int) $model->id,
+                $driver,
+                $providerUrl,
+                $apiKey,
+            );
+        } catch (Throwable $exception) {
+            if ($adminBudgetReserved) {
+                RateLimiter::decrement((string) $adminBudgetKey, (int) $adminBudgetTtl);
+            }
+
+            throw $exception;
+        }
+
+        return [$provider, $reservation, $driver];
+    }
+
+    private function acquireConcurrencySlot(): CacheRepository
     {
         $cache = Cache::store(app()->environment('testing')
             ? (string) config('cache.default')
             : (string) config('ai-workspace.concurrency_cache_store', 'redis'));
         $lock = $cache->lock('ai-workspace:claim', 10);
         if (! $lock->get()) {
-            throw new RuntimeException('AI 工作台调度锁繁忙。');
+            throw new AiWorkspaceRuntimeGuardException('AI 工作台当前请求较多，请稍后再试。');
         }
+
         try {
             $modelCalls = max(0, (int) $cache->get('ai-workspace:model-calls', 0));
-            $workflowRuns = AiWorkspaceRun::query()->where('state', 'running')->count();
-            if (($modelCalls + $workflowRuns) >= (int) config('ai-workspace.global_concurrency', 10)) {
-                throw new RuntimeException('AI 工作台已达到全局并发上限。');
+            if ($modelCalls >= (int) config('ai-workspace.global_concurrency', 10)) {
+                throw new AiWorkspaceRuntimeGuardException('AI 工作台已达到全局并发上限。');
             }
-            $cache->put('ai-workspace:model-calls', $modelCalls + 1, now()->addMinutes(20));
+            $cache->put('ai-workspace:model-calls', $modelCalls + 1, now()->addMinutes(5));
         } finally {
             $lock->release();
         }
 
+        return $cache;
+    }
+
+    private function releaseConcurrencySlot(CacheRepository $cache): void
+    {
+        $cache->decrement('ai-workspace:model-calls');
+    }
+
+    private function withConcurrencySlot(callable $operation): mixed
+    {
+        $cache = $this->acquireConcurrencySlot();
+
         try {
             return $operation();
         } finally {
-            $cache->decrement('ai-workspace:model-calls');
+            $this->releaseConcurrencySlot($cache);
         }
+    }
+
+    private function remainingAttemptTimeout(float $deadline): int
+    {
+        $remaining = (int) floor($deadline - microtime(true));
+        if ($remaining < 5) {
+            throw new AiWorkspaceRuntimeGuardException('AI 模型调用已达到本轮共享时间预算。');
+        }
+
+        return min(
+            (int) config('ai-workspace.model_attempt_timeout_seconds', 30),
+            max(1, $remaining - 5),
+        );
+    }
+
+    private function probeTimeout(?int $timeout): int
+    {
+        return max(1, $timeout ?? (int) config('ai-workspace.model_attempt_timeout_seconds', 30));
+    }
+
+    private function answerMaxTokens(AiModel $model): int
+    {
+        $configured = (int) ($model->max_tokens ?? 0);
+
+        return min(2400, $configured > 0 ? $configured : 2400);
+    }
+
+    private function streamCompletedSuccessfully(bool $streamEnded, ?string $finishReason): bool
+    {
+        return $streamEnded && ! in_array($finishReason, [null, '', 'error', 'unknown'], true);
+    }
+
+    private function runtimeException(Throwable $exception, AiModel $model): RuntimeException
+    {
+        return new RuntimeException(
+            OpenAiRuntimeProvider::normalizeApiException($exception, (string) $model->api_url),
+            0,
+            $exception,
+        );
+    }
+
+    private function isRecoverableProviderFailure(Throwable $exception): bool
+    {
+        return ! $exception instanceof AiWorkspaceRuntimeGuardException;
+    }
+
+    private function boundedBackoff(int $attempt, float $deadline): void
+    {
+        $remainingMicroseconds = (int) floor(max(0, $deadline - microtime(true)) * 1_000_000);
+        if ($remainingMicroseconds <= 0) {
+            return;
+        }
+        $delay = min($remainingMicroseconds, min(400_000, max(50_000, $attempt * 75_000)));
+        usleep($delay);
+    }
+
+    private function recordProviderSuccess(AiModel $model): void
+    {
+        Cache::forget($this->providerCircuitKey($model));
+        Cache::forget($this->providerFailureKey($model));
+    }
+
+    /** @param array<string, int|null> $performance */
+    private function recordReadinessSuccess(AiModel $model, bool $streamingObserved, array $performance = []): void
+    {
+        try {
+            $this->readiness->recordRuntimeSuccess($model, $streamingObserved, $performance);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function elapsedMilliseconds(int $startedAtNanoseconds): int
+    {
+        return (int) round((hrtime(true) - $startedAtNanoseconds) / 1_000_000);
+    }
+
+    private function recordProviderFailure(AiModel $model): void
+    {
+        $failureKey = $this->providerFailureKey($model);
+        $expiresAt = now()->addMinutes(10);
+        $added = Cache::add($failureKey, 0, $expiresAt);
+        $failures = max(1, (int) Cache::increment($failureKey));
+        if (! $added && $failures === 1) {
+            Cache::put($failureKey, 1, $expiresAt);
+        }
+        Cache::put($this->providerCircuitKey($model), true, now()->addSeconds(min(60, 2 ** min($failures, 5))));
+    }
+
+    private function providerCircuitKey(AiModel $model): string
+    {
+        return 'ai-workspace:provider-circuit:'.$this->providerFingerprint($model);
+    }
+
+    private function providerFailureKey(AiModel $model): string
+    {
+        return 'ai-workspace:provider-failures:'.$this->providerFingerprint($model);
+    }
+
+    private function providerFingerprint(AiModel $model): string
+    {
+        return hash('sha256', implode('|', [
+            (string) $model->id,
+            (string) $model->model_id,
+            OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url),
+        ]));
     }
 }

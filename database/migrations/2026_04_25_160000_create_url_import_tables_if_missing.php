@@ -18,9 +18,9 @@ return new class extends Migration
                 $table->string('status', 20)->default('queued');
                 $table->string('current_step', 50)->default('queued');
                 $table->integer('progress_percent')->default(0);
-                $table->text('options_json')->default('');
-                $table->text('result_json')->default('');
-                $table->text('error_message')->default('');
+                $table->text('options_json')->nullable();
+                $table->text('result_json')->nullable();
+                $table->text('error_message')->nullable();
                 $table->string('created_by', 100)->default('');
                 $table->timestamp('started_at')->nullable();
                 $table->timestamp('finished_at')->nullable();

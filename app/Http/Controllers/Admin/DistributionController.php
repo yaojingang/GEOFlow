@@ -13,6 +13,8 @@ use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
 use App\Models\LeadForm;
+use App\Models\Task;
+use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
 use App\Services\GeoFlow\DistributionChannelDeletionConfirmation;
 use App\Services\GeoFlow\DistributionChannelDeletionService;
 use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
@@ -51,6 +53,7 @@ class DistributionController extends Controller
         private readonly DistributionChannelDeletionService $channelDeletionService,
         private readonly DistributionChannelOperationLeaseService $channelOperationLeaseService,
         private readonly HostedSiteArticleFingerprintService $hostedFingerprints,
+        private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
     ) {}
 
     public function index(Request $request): View
@@ -713,7 +716,7 @@ class DistributionController extends Controller
     public function retry(int $distributionId): RedirectResponse
     {
         $candidate = ArticleDistribution::query()
-            ->select(['id', 'distribution_channel_id'])
+            ->select(['id', 'article_id', 'distribution_channel_id'])
             ->whereKey($distributionId)
             ->first();
         if (! $candidate) {
@@ -725,13 +728,6 @@ class DistributionController extends Controller
                 ->whereKey((int) $candidate->distribution_channel_id)
                 ->lockForUpdate()
                 ->first();
-            $distribution = ArticleDistribution::query()
-                ->whereKey((int) $candidate->id)
-                ->lockForUpdate()
-                ->first();
-            if (! $distribution) {
-                return 'missing';
-            }
             if (! $channel) {
                 return 'unavailable';
             }
@@ -740,6 +736,28 @@ class DistributionController extends Controller
             }
             if ((string) $channel->status !== DistributionChannel::STATUS_ACTIVE) {
                 return 'unavailable';
+            }
+            $article = Article::query()
+                ->whereKey((int) $candidate->article_id)
+                ->lockForUpdate()
+                ->first(['id', 'task_id']);
+            if (! $article) {
+                return 'article_unavailable';
+            }
+            $task = $article->task_id
+                ? Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first(['id'])
+                : null;
+            if ($article->task_id && ! $task) {
+                return 'article_unavailable';
+            }
+            $distribution = ArticleDistribution::query()
+                ->whereKey((int) $candidate->id)
+                ->where('article_id', (int) $article->id)
+                ->where('distribution_channel_id', (int) $channel->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $distribution) {
+                return 'missing';
             }
             if ((string) $distribution->status === 'sending') {
                 return 'sending';
@@ -768,7 +786,7 @@ class DistributionController extends Controller
             return 'queued';
         });
 
-        if ($result === 'missing') {
+        if (in_array($result, ['missing', 'article_unavailable'], true)) {
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
         }
         if ($result === 'deleting') {
@@ -847,6 +865,12 @@ class DistributionController extends Controller
                     ->whereKey((int) $distribution->article_id)
                     ->lockForUpdate()
                     ->firstOrFail();
+                $payload = $article->is_ai_generated
+                    ? $this->articleCitationMarkerCleaner->cleanArticleFields($payload)
+                    : $payload;
+                if (trim((string) $payload['content']) === '') {
+                    throw ValidationException::withMessages(['content' => __('validation.required')]);
+                }
                 $article->forceFill([
                     'title' => (string) $payload['title'],
                     'excerpt' => filled($payload['excerpt'] ?? null) ? (string) $payload['excerpt'] : null,

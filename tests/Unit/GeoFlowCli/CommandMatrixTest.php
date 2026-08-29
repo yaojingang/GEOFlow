@@ -105,11 +105,11 @@ class CommandMatrixTest extends TestCase
     }
 
     #[Test]
-    public function public_contract_keeps_29_operations_on_28_routes(): void
+    public function public_contract_keeps_32_operations_on_31_routes(): void
     {
-        $this->assertCount(29, self::contracts());
-        $this->assertCount(29, OperationRegistry::all());
-        $this->assertCount(28, OperationRegistry::routeSignatures());
+        $this->assertCount(32, self::contracts());
+        $this->assertCount(32, OperationRegistry::all());
+        $this->assertCount(31, OperationRegistry::routeSignatures());
     }
 
     /** @return iterable<string,array{array<string,mixed>}> */
@@ -279,6 +279,25 @@ class CommandMatrixTest extends TestCase
                 'articles/10/publish',
                 idempotencyKey: 'article-publish-10',
                 body: [],
+            ),
+            'article.ai-quality-status' => self::contract(
+                ['article', 'ai-quality-status', '10'],
+                'GET',
+                'articles/10/ai-quality/status',
+            ),
+            'article.ai-quality-recheck' => self::contract(
+                ['article', 'ai-quality-recheck', '10'],
+                'POST',
+                'articles/10/ai-quality/recheck',
+                idempotencyKey: 'article-ai-quality-recheck-10',
+                body: [],
+            ),
+            'article.ai-quality-override' => self::contract(
+                ['article', 'ai-quality-override', '10', '--reason', 'verified evidence'],
+                'POST',
+                'articles/10/ai-quality/override',
+                idempotencyKey: 'article-ai-quality-override-10',
+                body: ['reason' => 'verified evidence'],
             ),
             'article.trash' => self::contract(
                 ['article', 'trash', '10'],

@@ -6,17 +6,25 @@ use App\Console\Commands\GeoFlowInstallCommand;
 use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Category;
+use App\Models\KnowledgeMediaAsset;
 use App\Models\SiteSetting;
 use App\Models\SystemState;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class GeoFlowInstallCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Storage::fake('local');
+    }
 
     public function test_install_command_seeds_empty_database_once_and_writes_marker(): void
     {
@@ -34,6 +42,7 @@ class GeoFlowInstallCommandTest extends TestCase
         $this->assertTrue(Hash::check('password', (string) $admin->password));
         $this->assertSame(0, Category::query()->count());
         $this->assertSame(0, Article::query()->count());
+        $this->assertSame(24, KnowledgeMediaAsset::query()->where('is_active', true)->count());
 
         $state = SystemState::query()->where('key', GeoFlowInstallCommand::INSTALLATION_STATE_KEY)->first();
         $this->assertNotNull($state);

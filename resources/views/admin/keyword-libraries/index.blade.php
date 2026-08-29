@@ -1,24 +1,22 @@
 @extends('admin.layouts.app')
 
 @section('content')
-    <div class="px-4 sm:px-0">
-        <div class="mb-8 flex items-center justify-between">
-            <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.materials.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                </a>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.keyword_libraries.heading') }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.keyword_libraries.subtitle') }}</p>
+    <div class="mx-auto max-w-7xl px-4 sm:px-0" data-materials-standalone>
+        <header class="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0 flex-1">
+                <div class="sr-only">
+                    <h1>{{ __('admin.keyword_libraries.heading') }}</h1>
+                    <p>{{ __('admin.keyword_libraries.subtitle') }}</p>
                 </div>
+                <x-admin.v3.materials-subnav active="keywords" />
             </div>
-            <button type="button" onclick="showCreateModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
-                <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
+            <a href="{{ route('admin.keyword-libraries.create') }}" class="inline-flex min-h-10 w-fit items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                <i data-lucide="plus" class="mr-2 h-4 w-4"></i>
                 {{ __('admin.keyword_libraries.create') }}
-            </button>
-        </div>
+            </a>
+        </header>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="mb-8 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:gap-6 [&>*:last-child]:col-span-2 md:[&>*:last-child]:col-span-1">
             <div class="bg-white shadow rounded-lg p-5">
                 <div class="flex items-center">
                     <i data-lucide="folder" class="h-6 w-6 text-blue-600"></i>
@@ -57,7 +55,7 @@
                     <i data-lucide="folder-plus" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
                     <h3 class="text-lg font-medium text-gray-900 mb-2">{{ __('admin.keyword_libraries.empty') }}</h3>
                     <p class="text-gray-500 mb-4">{{ __('admin.keyword_libraries.empty_desc') }}</p>
-                    <a href="{{ route('admin.keyword-libraries.create') }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                    <a href="{{ route('admin.keyword-libraries.create') }}" class="inline-flex min-h-10 items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                         <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
                         {{ __('admin.keyword_libraries.create') }}
                     </a>
@@ -66,8 +64,8 @@
                 <div class="divide-y divide-gray-200">
                     @foreach ($libraries as $library)
                         <div class="px-6 py-6">
-                            <div class="flex items-center justify-between">
-                                <div class="flex-1">
+                            <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                <div class="min-w-0 flex-1">
                                     <div class="flex items-center space-x-3">
                                         <h4 class="text-lg font-medium text-gray-900">
                                             <a href="{{ route('admin.keyword-libraries.detail', ['libraryId' => (int) $library['id']]) }}" class="hover:text-blue-600">
@@ -90,18 +88,22 @@
                                         </span>
                                     </div>
                                 </div>
-                                <div class="flex items-center space-x-2">
-                                    <button type="button" onclick="showImportModal({{ (int) $library['id'] }}, @js($library['name']))" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <a href="{{ route('admin.keyword-libraries.import.create', ['libraryId' => (int) $library['id']]) }}" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                                         <i data-lucide="upload" class="w-4 h-4 mr-1"></i>
                                         {{ __('admin.button.import') }}
-                                    </button>
-                                    <a href="{{ route('admin.keyword-libraries.detail', ['libraryId' => (int) $library['id']]) }}" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
+                                    </a>
+                                    <a href="{{ route('admin.keyword-libraries.edit', ['libraryId' => (int) $library['id']]) }}" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                        <i data-lucide="pencil" class="mr-1 h-4 w-4"></i>
+                                        {{ __('admin.button.edit') }}
+                                    </a>
+                                    <a href="{{ route('admin.keyword-libraries.detail', ['libraryId' => (int) $library['id']]) }}" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                                         <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
                                         {{ __('admin.button.view') }}
                                     </a>
-                                    <form method="POST" action="{{ route('admin.keyword-libraries.delete', ['libraryId' => (int) $library['id']]) }}" onsubmit="return confirm(@js(__('admin.keyword_libraries.confirm_delete', ['name' => $library['name']])));" class="inline-block">
+                                    <form method="POST" action="{{ route('admin.keyword-libraries.delete', ['libraryId' => (int) $library['id']]) }}" class="inline-block" data-material-delete-form data-confirm-message="{{ __('admin.keyword_libraries.confirm_delete', ['name' => $library['name']]) }}">
                                         @csrf
-                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
+                                        <button type="submit" disabled aria-disabled="true" data-material-delete-submit class="inline-flex min-h-10 items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition-[background-color,opacity,transform] duration-150 [@media(hover:hover)]:hover:bg-red-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100">
                                             <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
                                             {{ __('admin.button.delete') }}
                                         </button>
@@ -114,105 +116,4 @@
             @endif
         </div>
     </div>
-
-    <div id="create-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">{{ __('admin.keyword_libraries.modal_create') }}</h3>
-                <form method="POST" action="{{ route('admin.keyword-libraries.store') }}">
-                    @csrf
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">{{ __('admin.keyword_libraries.field_name') }}</label>
-                            <input type="text" name="name" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.keyword_libraries.placeholder_name') }}">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">{{ __('admin.keyword_libraries.field_description') }}</label>
-                            <textarea name="description" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.keyword_libraries.placeholder_description') }}"></textarea>
-                        </div>
-                    </div>
-                    <div class="mt-6 flex justify-end space-x-3">
-                        <button type="button" onclick="hideCreateModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            {{ __('admin.button.cancel') }}
-                        </button>
-                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                            {{ __('admin.button.create') }}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div id="import-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-        <div class="relative top-10 mx-auto p-5 border w-2/3 max-w-2xl shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">
-                    {{ __('admin.keyword_libraries.modal_import') }}
-                    <span id="import-library-name" class="text-blue-600"></span>
-                </h3>
-                <form method="POST" id="import-form">
-                    @csrf
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">{{ __('admin.keyword_libraries.field_keywords') }}</label>
-                            <textarea name="keywords_text" rows="10" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __('admin.keyword_libraries.placeholder_keywords') }}"></textarea>
-                        </div>
-                        <div class="text-sm text-gray-500">
-                            <p class="mb-2">{{ __('admin.keyword_libraries.format_title') }}</p>
-                            <ul class="list-disc list-inside space-y-1">
-                                <li>{{ __('admin.keyword_libraries.format_line') }}</li>
-                                <li>{{ __('admin.keyword_libraries.format_comma') }}</li>
-                                <li>{{ __('admin.keyword_libraries.format_dedupe') }}</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div class="mt-6 flex justify-end space-x-3">
-                        <button type="button" onclick="hideImportModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            {{ __('admin.button.cancel') }}
-                        </button>
-                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                            {{ __('admin.keyword_libraries.import_button') }}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
 @endsection
-
-@push('scripts')
-    <script>
-        function showCreateModal() {
-            document.getElementById('create-modal').classList.remove('hidden');
-        }
-
-        function hideCreateModal() {
-            document.getElementById('create-modal').classList.add('hidden');
-        }
-
-        function showImportModal(libraryId, libraryName) {
-            const importForm = document.getElementById('import-form');
-            importForm.action = `{{ route('admin.keyword-libraries.index') }}/${libraryId}/import`;
-            document.getElementById('import-library-name').textContent = libraryName;
-            document.getElementById('import-modal').classList.remove('hidden');
-        }
-
-        function hideImportModal() {
-            document.getElementById('import-modal').classList.add('hidden');
-        }
-
-        window.addEventListener('click', function (event) {
-            const createModal = document.getElementById('create-modal');
-            const importModal = document.getElementById('import-modal');
-
-            if (event.target === createModal) {
-                hideCreateModal();
-            }
-
-            if (event.target === importModal) {
-                hideImportModal();
-            }
-        });
-    </script>
-@endpush

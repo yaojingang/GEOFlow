@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class ManualPublication extends Model
 {
@@ -28,6 +30,8 @@ class ManualPublication extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
+    public const STATUS_OUTCOME_UNKNOWN = 'outcome_unknown';
+
     public const STATUSES = [
         self::STATUS_DRAFT,
         self::STATUS_READY,
@@ -36,6 +40,7 @@ class ManualPublication extends Model
         self::STATUS_FAILED,
         self::STATUS_SKIPPED,
         self::STATUS_CANCELLED,
+        self::STATUS_OUTCOME_UNKNOWN,
     ];
 
     public const REOPENABLE_STATUSES = [
@@ -44,7 +49,12 @@ class ManualPublication extends Model
         self::STATUS_CANCELLED,
     ];
 
-    public const MAX_CONTENT_CHARACTERS = 2000;
+    public const MAX_COMMENT_CONTENT_CHARACTERS = 2000;
+
+    public const MAX_POST_CONTENT_CHARACTERS = 100000;
+
+    /** @deprecated Use maxContentCharactersForType(). */
+    public const MAX_CONTENT_CHARACTERS = self::MAX_POST_CONTENT_CHARACTERS;
 
     protected $attributes = [
         'type' => self::TYPE_POST,
@@ -69,6 +79,8 @@ class ManualPublication extends Model
         'content',
         'content_fingerprint',
         'source_snapshot',
+        'identity_snapshot',
+        'publication_payload',
         'disclosure_snapshot',
         'risk_status',
         'risk_result',
@@ -78,6 +90,10 @@ class ManualPublication extends Model
         'status_changed_at',
         'completion_url',
         'result_note',
+        'execution_receipt',
+        'browser_claimed_by_token_id',
+        'browser_claimed_at',
+        'browser_last_seen_at',
         'completed_at',
         'revision',
     ];
@@ -91,11 +107,17 @@ class ManualPublication extends Model
             'assigned_admin_id' => 'integer',
             'created_by_admin_id' => 'integer',
             'source_snapshot' => 'array',
+            'identity_snapshot' => 'array',
+            'publication_payload' => 'array',
             'risk_result' => 'array',
             'duplicate_warning_count' => 'integer',
             'scheduled_at' => 'datetime',
             'status_changed_at' => 'datetime',
             'completed_at' => 'datetime',
+            'execution_receipt' => 'array',
+            'browser_claimed_by_token_id' => 'integer',
+            'browser_claimed_at' => 'datetime',
+            'browser_last_seen_at' => 'datetime',
             'revision' => 'integer',
         ];
     }
@@ -125,6 +147,30 @@ class ManualPublication extends Model
         return $this->belongsTo(Admin::class, 'created_by_admin_id');
     }
 
+    public function transitions(): HasMany
+    {
+        return $this->hasMany(ManualPublicationTransition::class);
+    }
+
+    public function personaDisplayName(): ?string
+    {
+        $snapshotName = trim((string) data_get($this->identity_snapshot, 'persona.name'));
+
+        return $snapshotName !== '' ? $snapshotName : $this->persona?->name;
+    }
+
+    public function accountDisplayName(): ?string
+    {
+        $snapshotName = trim((string) data_get($this->identity_snapshot, 'account.account_name'));
+
+        return $snapshotName !== '' ? $snapshotName : $this->account?->account_name;
+    }
+
+    public function browserClaimToken(): BelongsTo
+    {
+        return $this->belongsTo(PersonalAccessToken::class, 'browser_claimed_by_token_id');
+    }
+
     /**
      * @param  Builder<self>  $query
      * @return Builder<self>
@@ -144,8 +190,9 @@ class ManualPublication extends Model
         return match ($status) {
             self::STATUS_DRAFT => [self::STATUS_READY, self::STATUS_CANCELLED],
             self::STATUS_READY => [self::STATUS_IN_PROGRESS, self::STATUS_CANCELLED],
-            self::STATUS_IN_PROGRESS => [self::STATUS_COMPLETED, self::STATUS_FAILED, self::STATUS_SKIPPED, self::STATUS_CANCELLED],
+            self::STATUS_IN_PROGRESS => [self::STATUS_READY, self::STATUS_COMPLETED, self::STATUS_FAILED, self::STATUS_SKIPPED, self::STATUS_CANCELLED, self::STATUS_OUTCOME_UNKNOWN],
             self::STATUS_FAILED, self::STATUS_SKIPPED, self::STATUS_CANCELLED => [self::STATUS_READY],
+            self::STATUS_OUTCOME_UNKNOWN => [self::STATUS_READY, self::STATUS_COMPLETED, self::STATUS_FAILED],
             default => [],
         };
     }
@@ -166,5 +213,12 @@ class ManualPublication extends Model
         return $this->platform === ManualPublicationAccount::PLATFORM_CUSTOM
             ? (string) ($this->custom_platform ?: __('admin.manual_publications.platform.custom'))
             : (string) __('admin.manual_publications.platform.'.$this->platform);
+    }
+
+    public static function maxContentCharactersForType(string $type): int
+    {
+        return $type === self::TYPE_COMMENT
+            ? self::MAX_COMMENT_CONTENT_CHARACTERS
+            : self::MAX_POST_CONTENT_CHARACTERS;
     }
 }

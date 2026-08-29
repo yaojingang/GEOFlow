@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\AdminHelpAssistant;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\SiteSetting;
@@ -10,6 +11,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\InterruptedStreamingFakeTextGateway;
 use Tests\TestCase;
 
 class AdminAiModelsPageTest extends TestCase
@@ -44,6 +46,140 @@ class AdminAiModelsPageTest extends TestCase
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
             && $request['model'] === 'test-chat-model'
             && $request->hasHeader('Authorization', 'Bearer test-api-key'));
+    }
+
+    public function test_super_admin_chat_test_verifies_streaming_and_enables_the_help_assistant(): void
+    {
+        AdminHelpAssistant::fake(['流式能力调用可用。'])->preventStrayPrompts();
+        $model = $this->createAiModel('chat');
+        $superAdmin = $this->createAdmin();
+        $superAdmin->forceFill(['role' => 'super_admin'])->save();
+
+        $this->actingAs($superAdmin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.workspace_ready', true)
+            ->assertJsonPath('meta.readiness_status', 'ready')
+            ->assertJsonPath('meta.readiness_profile.configuration.status', 'ready')
+            ->assertJsonPath('meta.readiness_profile.streaming.status', 'ready')
+            ->assertJsonPath('meta.readiness_profile.streaming.observed', true)
+            ->assertJsonPath('meta.readiness_profile.cancellation.status', 'guarded');
+
+        $model->refresh();
+        self::assertNull($model->ai_workspace_structured_output_status);
+        self::assertSame('ready', $model->ai_workspace_readiness_status);
+        self::assertSame('ready', data_get($model->ai_workspace_readiness_profile, 'plain_text.status'));
+        self::assertSame('not_required', data_get($model->ai_workspace_readiness_profile, 'structured_output.status'));
+        self::assertTrue($model->ai_workspace_readiness_expires_at->isFuture());
+        self::assertNull($model->ai_workspace_structured_output_verified_at);
+        Http::assertNothingSent();
+    }
+
+    public function test_super_admin_chat_test_records_observed_streaming_failure_before_plain_text_fallback(): void
+    {
+        AdminHelpAssistant::fake([
+            '',
+            '普通文本调用可用。',
+        ])->preventStrayPrompts();
+        $model = $this->createAiModel('chat');
+        $superAdmin = $this->createAdmin();
+        $superAdmin->forceFill(['role' => 'super_admin'])->save();
+
+        $this->actingAs($superAdmin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertOk()
+            ->assertJsonPath('meta.workspace_ready', true)
+            ->assertJsonPath('meta.readiness_profile.streaming.status', 'degraded')
+            ->assertJsonPath('meta.readiness_profile.streaming.observed', true)
+            ->assertJsonPath('meta.readiness_profile.streaming.fallback', 'non_streaming');
+
+        self::assertSame('degraded', data_get($model->fresh()->ai_workspace_readiness_profile, 'streaming.status'));
+        self::assertTrue(data_get($model->fresh()->ai_workspace_readiness_profile, 'streaming.observed'));
+        Http::assertNothingSent();
+    }
+
+    public function test_super_admin_chat_test_rejects_a_stream_error_after_partial_text(): void
+    {
+        config()->set('ai-workspace.model_attempt_timeout_seconds', 7);
+        $gateway = InterruptedStreamingFakeTextGateway::install(
+            AdminHelpAssistant::class,
+            'error_event',
+            ['普通文本调用可用。'],
+        );
+        $model = $this->createAiModel('chat');
+        $superAdmin = $this->createAdmin();
+        $superAdmin->forceFill(['role' => 'super_admin'])->save();
+
+        $this->actingAs($superAdmin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertOk()
+            ->assertJsonPath('meta.workspace_ready', true)
+            ->assertJsonPath('meta.readiness_profile.streaming.status', 'degraded')
+            ->assertJsonPath('meta.readiness_profile.streaming.observed', true)
+            ->assertJsonPath('meta.readiness_profile.streaming.fallback', 'non_streaming');
+
+        self::assertSame(7, $gateway->streamTimeout);
+        self::assertSame(7, $gateway->promptTimeout);
+        Http::assertNothingSent();
+    }
+
+    public function test_admin_models_page_shows_the_workspace_readiness_matrix(): void
+    {
+        $model = $this->createAiModel('chat', [
+            'ai_workspace_readiness_status' => 'ready',
+            'ai_workspace_readiness_profile' => [
+                'configuration' => ['status' => 'ready'],
+                'streaming' => ['status' => 'degraded'],
+            ],
+            'ai_workspace_readiness_checked_at' => now(),
+            'ai_workspace_readiness_expires_at' => now()->addDays(7),
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-models.index'))
+            ->assertOk()
+            ->assertSee(__('admin.ai_models.readiness_title'))
+            ->assertSee(__('admin.ai_models.readiness_checks.configuration'))
+            ->assertSee(__('admin.ai_models.readiness_status.degraded'));
+
+        self::assertNotNull($model->fresh()->ai_workspace_readiness_profile);
+    }
+
+    public function test_expired_workspace_readiness_is_presented_as_stale(): void
+    {
+        $this->createAiModel('chat', [
+            'ai_workspace_readiness_status' => 'ready',
+            'ai_workspace_readiness_profile' => ['configuration' => ['status' => 'ready']],
+            'ai_workspace_readiness_checked_at' => now()->subDays(8),
+            'ai_workspace_readiness_expires_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-models.index'))
+            ->assertOk()
+            ->assertSee(__('admin.ai_models.readiness_status.stale'));
+    }
+
+    public function test_failed_super_admin_workspace_reprobe_clears_previous_readiness(): void
+    {
+        AdminHelpAssistant::fake(static fn (): never => throw new \RuntimeException('probe unavailable'))->preventStrayPrompts();
+        $model = $this->createAiModel('chat', [
+            'ai_workspace_structured_output_status' => 'ready',
+            'ai_workspace_structured_output_verified_at' => now(),
+        ]);
+        $superAdmin = $this->createAdmin();
+        $superAdmin->forceFill(['role' => 'super_admin'])->save();
+
+        $this->actingAs($superAdmin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+
+        self::assertNull($model->fresh()->ai_workspace_structured_output_status);
+        self::assertNull($model->fresh()->ai_workspace_structured_output_verified_at);
+        self::assertSame('failed', $model->fresh()->ai_workspace_readiness_status);
+        Http::assertNothingSent();
     }
 
     public function test_official_openai_connection_test_uses_the_same_responses_api_as_runtime(): void
@@ -393,10 +529,250 @@ class AdminAiModelsPageTest extends TestCase
             && ! array_key_exists('topK', (array) ($request['generationConfig'] ?? [])));
     }
 
-    public function test_admin_models_page_shows_embedding_quick_fill_presets_and_notice(): void
+    public function test_model_creation_uses_a_dedicated_page(): void
+    {
+        $admin = $this->createAdmin();
+
+        $indexResponse = $this->actingAs($admin, 'admin')
+            ->get(route('admin.ai-models.index'))
+            ->assertOk()
+            ->assertSee(route('admin.ai-models.create'), false)
+            ->assertDontSee('showCreateModelModal', false);
+        $this->assertSame(
+            2,
+            substr_count($indexResponse->getContent(), 'href="'.route('admin.ai-models.create').'"')
+        );
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.ai-models.create'))
+            ->assertOk()
+            ->assertViewIs('admin.ai-models.create')
+            ->assertSee('data-ai-model-create-form', false)
+            ->assertSee('action="'.route('admin.ai-models.store').'"', false)
+            ->assertSee('href="'.route('admin.ai-models.index').'"', false)
+            ->assertSee('placeholder="'.__('admin.ai_models.max_tokens_placeholder', ['tokens' => 16384]).'"', false)
+            ->assertSee(__('admin.ai_models.create_page_title'));
+    }
+
+    public function test_model_delete_uses_an_accessible_centered_confirmation_dialog(): void
+    {
+        $model = $this->createAiModel('chat', ['name' => 'Dialog Preview Model']);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-models.index'))
+            ->assertOk()
+            ->assertSee('action="'.route('admin.ai-models.delete', ['modelId' => $model->id]).'"', false)
+            ->assertSee('data-ai-model-delete-form', false)
+            ->assertSee('data-model-name="Dialog Preview Model"', false)
+            ->assertSee('data-model-edit-url="'.route('admin.ai-models.edit', ['modelId' => $model->id]).'"', false)
+            ->assertSee('data-ai-model-delete-trigger', false)
+            ->assertSee('data-ai-model-delete-submit', false)
+            ->assertSee('name="_token"', false)
+            ->assertSee('data-ai-model-delete-dialog', false)
+            ->assertSee('data-deleting-label="'.__('admin.ai_models.delete_dialog.deleting').'"', false)
+            ->assertSee('role="alertdialog"', false)
+            ->assertSee('aria-modal="true"', false)
+            ->assertSee('fixed inset-0 m-auto', false)
+            ->assertSee(__('admin.ai_models.delete_dialog.title'))
+            ->assertSee(__('admin.ai_models.delete_dialog.impact'))
+            ->assertSee(__('admin.ai_models.delete_dialog.guidance_link'))
+            ->assertDontSee('confirm(', false)
+            ->assertDontSee('deleteModel(', false);
+    }
+
+    public function test_model_editing_uses_an_authenticated_dedicated_page(): void
+    {
+        $model = $this->createAiModel('chat', [
+            'name' => 'Dedicated Edit Model',
+            'version' => '2026-08',
+            'model_id' => 'dedicated-edit-model',
+            'api_url' => 'https://edit-model.test',
+            'failover_priority' => 18,
+            'daily_limit' => 27,
+            'status' => 'inactive',
+        ]);
+
+        $this->get(route('admin.ai-models.edit', ['modelId' => $model->id]))
+            ->assertRedirect(route('admin.login'));
+
+        $admin = $this->createAdmin();
+        $indexResponse = $this->actingAs($admin, 'admin')
+            ->get(route('admin.ai-models.index'))
+            ->assertOk()
+            ->assertSee('href="'.route('admin.ai-models.edit', ['modelId' => $model->id]).'"', false)
+            ->assertDontSee('id="modelModal"', false)
+            ->assertDontSee('editModel(', false);
+
+        $this->assertSame(
+            1,
+            substr_count($indexResponse->getContent(), 'href="'.route('admin.ai-models.edit', ['modelId' => $model->id]).'"')
+        );
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.ai-models.edit', ['modelId' => $model->id]))
+            ->assertOk()
+            ->assertViewIs('admin.ai-models.edit')
+            ->assertSee('data-ai-model-edit-form', false)
+            ->assertSee('action="'.route('admin.ai-models.update', ['modelId' => $model->id]).'"', false)
+            ->assertSee('name="_method" value="PUT"', false)
+            ->assertSee('value="Dedicated Edit Model"', false)
+            ->assertSee('value="dedicated-edit-model"', false)
+            ->assertSee('value="https://edit-model.test"', false)
+            ->assertSee('value="18"', false)
+            ->assertSee('value="27"', false)
+            ->assertSee('<option value="inactive" selected>', false)
+            ->assertDontSee('value="test-api-key"', false);
+    }
+
+    public function test_model_update_form_keeps_the_existing_secret_contract(): void
+    {
+        $model = $this->createAiModel('chat');
+        $encryptedApiKey = $model->getRawOriginal('api_key');
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->from(route('admin.ai-models.edit', ['modelId' => $model->id]))
+            ->put(route('admin.ai-models.update', ['modelId' => $model->id]), [
+                'name' => 'Updated Chat Model',
+                'version' => 'updated',
+                'api_key' => '',
+                'model_id' => 'updated-chat-model',
+                'model_type' => 'chat',
+                'api_url' => 'https://updated-model.test',
+                'failover_priority' => 14,
+                'daily_limit' => 32,
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.ai-models.index'))
+            ->assertSessionHas('message');
+
+        $model->refresh();
+        $this->assertSame('Updated Chat Model', $model->name);
+        $this->assertSame('updated-chat-model', $model->model_id);
+        $this->assertSame(14, $model->failover_priority);
+        $this->assertSame(32, $model->daily_limit);
+        $this->assertSame($encryptedApiKey, $model->getRawOriginal('api_key'));
+    }
+
+    public function test_model_create_crypto_failure_only_flashes_safe_input(): void
+    {
+        config()->set('geoflow.api_key_crypto_roots', []);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->from(route('admin.ai-models.create'))
+            ->post(route('admin.ai-models.store'), [
+                'name' => 'Safe create retry',
+                'version' => 'retry-version',
+                'api_key' => 'create-secret-must-not-be-flashed',
+                'model_id' => 'safe-create-retry',
+                'model_type' => 'chat',
+                'api_url' => 'https://safe-create.test',
+                'failover_priority' => 21,
+                'daily_limit' => 34,
+            ]);
+
+        $response
+            ->assertRedirect(route('admin.ai-models.create'))
+            ->assertSessionHasErrors()
+            ->assertSessionHasInput('name', 'Safe create retry');
+
+        $oldInput = session()->getOldInput();
+        $this->assertArrayHasKey('name', $oldInput);
+        $this->assertArrayNotHasKey('api_key', $oldInput);
+    }
+
+    public function test_model_update_crypto_failure_only_flashes_safe_input(): void
+    {
+        $model = $this->createAiModel('chat');
+        config()->set('geoflow.api_key_crypto_roots', []);
+
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->from(route('admin.ai-models.edit', ['modelId' => $model->id]))
+            ->put(route('admin.ai-models.update', ['modelId' => $model->id]), [
+                'name' => 'Safe update retry',
+                'version' => 'retry-version',
+                'api_key' => 'update-secret-must-not-be-flashed',
+                'model_id' => 'safe-update-retry',
+                'model_type' => 'chat',
+                'api_url' => 'https://safe-update.test',
+                'failover_priority' => 22,
+                'daily_limit' => 35,
+                'status' => 'active',
+            ]);
+
+        $response
+            ->assertRedirect(route('admin.ai-models.edit', ['modelId' => $model->id]))
+            ->assertSessionHasErrors()
+            ->assertSessionHasInput('name', 'Safe update retry');
+
+        $oldInput = session()->getOldInput();
+        $this->assertArrayHasKey('name', $oldInput);
+        $this->assertArrayNotHasKey('api_key', $oldInput);
+    }
+
+    public function test_model_form_renders_after_array_shaped_old_input(): void
+    {
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->from(route('admin.ai-models.create'))
+            ->post(route('admin.ai-models.store'), [
+                'name' => ['unexpected'],
+                'version' => ['unexpected'],
+                'api_key' => 'valid-secret-value',
+                'model_id' => ['unexpected'],
+                'model_type' => ['chat'],
+                'api_url' => ['https://array-input.test'],
+                'failover_priority' => ['20'],
+                'daily_limit' => ['30'],
+                'max_tokens' => ['4096'],
+            ])
+            ->assertRedirect(route('admin.ai-models.create'))
+            ->assertSessionHasErrors([
+                'name',
+                'version',
+                'model_id',
+                'model_type',
+                'api_url',
+                'failover_priority',
+                'daily_limit',
+                'max_tokens',
+            ]);
+
+        $this->get(route('admin.ai-models.create'))
+            ->assertOk()
+            ->assertSee('data-ai-model-create-form', false);
+    }
+
+    public function test_model_id_routes_reject_non_numeric_parameters(): void
+    {
+        $this->actingAs($this->createAdmin(), 'admin');
+
+        $this->get(route('admin.ai-models.edit', ['modelId' => 'not-a-number']))->assertNotFound();
+        $this->put(route('admin.ai-models.update', ['modelId' => 'not-a-number']))->assertNotFound();
+        $this->post(route('admin.ai-models.test', ['modelId' => 'not-a-number']))->assertNotFound();
+        $this->post(route('admin.ai-models.delete', ['modelId' => 'not-a-number']))->assertNotFound();
+    }
+
+    public function test_invalid_model_creation_returns_to_the_dedicated_page(): void
     {
         $response = $this->actingAs($this->createAdmin(), 'admin')
-            ->get(route('admin.ai-models.index'));
+            ->from(route('admin.ai-models.create'))
+            ->post(route('admin.ai-models.store'), [
+                'name' => '',
+                'version' => 'draft-version',
+                'api_key' => '',
+                'model_id' => '',
+                'model_type' => 'chat',
+            ]);
+
+        $response
+            ->assertRedirect(route('admin.ai-models.create'))
+            ->assertSessionHasErrors(['name', 'api_key', 'model_id'])
+            ->assertSessionHasInput('version', 'draft-version');
+    }
+
+    public function test_admin_model_create_page_shows_embedding_quick_fill_presets_and_notice(): void
+    {
+        $response = $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-models.create'));
 
         $response->assertOk()
             ->assertSee('MiniMax-M3', false)

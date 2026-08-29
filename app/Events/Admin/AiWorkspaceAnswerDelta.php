@@ -14,6 +14,7 @@ final class AiWorkspaceAnswerDelta implements ShouldBroadcastNow
 
     public function __construct(
         public readonly int $adminId,
+        public readonly int $adminAuthVersion,
         public readonly string $runId,
         public readonly string $conversationId,
         public readonly int $runVersion,
@@ -24,7 +25,7 @@ final class AiWorkspaceAnswerDelta implements ShouldBroadcastNow
 
     public function broadcastOn(): PrivateChannel
     {
-        return new PrivateChannel('admin.ai-workspace.'.$this->adminId);
+        return new PrivateChannel('admin.ai-workspace.'.$this->adminId.'.'.$this->adminAuthVersion);
     }
 
     public function broadcastAs(): string

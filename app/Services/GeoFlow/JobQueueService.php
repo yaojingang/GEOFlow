@@ -95,8 +95,10 @@ class JobQueueService
             $taskRow = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
-                ->first(['id', 'max_retry_count']);
-            if (! $taskRow) {
+                ->first(['id', 'status', 'schedule_enabled', 'max_retry_count']);
+            if (! $taskRow
+                || ($taskRow->status ?? 'paused') !== 'active'
+                || (int) ($taskRow->schedule_enabled ?? 1) !== 1) {
                 return null;
             }
 
@@ -232,22 +234,44 @@ class JobQueueService
      */
     public function completeJob(int $jobId, int $taskId, ?int $articleId, int $durationMs, array $meta = []): void
     {
-        TaskRun::query()->whereKey($jobId)->update([
-            'status' => 'completed',
-            'finished_at' => now(),
-            'article_id' => $articleId,
-            'duration_ms' => $durationMs,
-            'meta' => $meta,
-            'error_message' => '',
-        ]);
+        $completed = DB::transaction(function () use ($jobId, $taskId, $articleId, $durationMs, $meta): bool {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->first(['id']);
+            if (! $task) {
+                return false;
+            }
 
-        Task::query()->whereKey($taskId)->update([
-            'last_run_at' => now(),
-            'last_success_at' => now(),
-            'last_error_at' => null,
-            'last_error_message' => '',
-            'updated_at' => now(),
-        ]);
+            $affected = TaskRun::query()
+                ->whereKey($jobId)
+                ->where('task_id', $taskId)
+                ->where('status', 'running')
+                ->update([
+                    'status' => 'completed',
+                    'finished_at' => now(),
+                    'article_id' => $articleId,
+                    'duration_ms' => $durationMs,
+                    'meta' => $meta,
+                    'error_message' => '',
+                ]);
+            if ($affected !== 1) {
+                return false;
+            }
+
+            Task::query()->whereKey($taskId)->update([
+                'last_run_at' => now(),
+                'last_success_at' => now(),
+                'last_error_at' => null,
+                'last_error_message' => '',
+                'updated_at' => now(),
+            ]);
+
+            return true;
+        });
+        if (! $completed) {
+            return;
+        }
 
         $this->broadcastOverviewUpdate();
         $this->enqueueFollowUpGenerationIfNeeded($taskId, $meta);
@@ -262,44 +286,140 @@ class JobQueueService
      */
     public function failJob(int $jobId, int $taskId, string $errorMessage, int $durationMs, int $retryDelaySeconds = 60): void
     {
-        $run = TaskRun::query()->whereKey($jobId)->first();
-        if (! $run) {
+        $result = DB::transaction(function () use ($jobId, $taskId, $errorMessage, $durationMs, $retryDelaySeconds): array {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->first(['id', 'status', 'schedule_enabled']);
+            $run = TaskRun::query()
+                ->whereKey($jobId)
+                ->where('task_id', $taskId)
+                ->where('status', 'running')
+                ->lockForUpdate()
+                ->first();
+            if (! $run) {
+                return ['changed' => false, 'retry' => false, 'available_at' => null];
+            }
+
+            if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
+                $run->update([
+                    'status' => 'cancelled',
+                    'finished_at' => now(),
+                    'error_message' => '任务已删除或停用',
+                    'duration_ms' => $durationMs,
+                ]);
+
+                return ['changed' => true, 'retry' => false, 'available_at' => null];
+            }
+
+            $runMeta = $this->normalizeMeta($run->meta);
+            $attemptCount = (int) ($runMeta['attempt_count'] ?? 0) + 1;
+            $maxAttempts = max(1, (int) ($runMeta['max_attempts'] ?? 3));
+            $shouldRetry = $attemptCount < $maxAttempts;
+            $nextAvailableAt = now()->addSeconds(max(1, $retryDelaySeconds));
+
+            $newMeta = array_merge($runMeta, [
+                'attempt_count' => $attemptCount,
+                'max_attempts' => $maxAttempts,
+                'last_error' => $errorMessage,
+                'available_at' => $shouldRetry ? $nextAvailableAt->toDateTimeString() : ($runMeta['available_at'] ?? ''),
+            ]);
+
+            $run->update([
+                'status' => $shouldRetry ? 'pending' : 'failed',
+                'error_message' => $errorMessage,
+                'duration_ms' => $durationMs,
+                'finished_at' => $shouldRetry ? null : now(),
+                'meta' => $newMeta,
+            ]);
+
+            Task::query()->whereKey($taskId)->update([
+                'last_run_at' => now(),
+                'last_error_at' => now(),
+                'last_error_message' => $errorMessage,
+                'updated_at' => now(),
+            ]);
+
+            return ['changed' => true, 'retry' => $shouldRetry, 'available_at' => $nextAvailableAt];
+        });
+
+        if (! $result['changed']) {
             return;
         }
 
-        $runMeta = $this->normalizeMeta($run->meta);
-        $attemptCount = (int) ($runMeta['attempt_count'] ?? 0) + 1;
-        $maxAttempts = max(1, (int) ($runMeta['max_attempts'] ?? 3));
-        $shouldRetry = $attemptCount < $maxAttempts;
-        $nextAvailableAt = now()->addSeconds(max(1, $retryDelaySeconds));
-
-        $newMeta = array_merge($runMeta, [
-            'attempt_count' => $attemptCount,
-            'max_attempts' => $maxAttempts,
-            'last_error' => $errorMessage,
-            'available_at' => $shouldRetry ? $nextAvailableAt->toDateTimeString() : ($runMeta['available_at'] ?? ''),
-        ]);
-
-        TaskRun::query()->whereKey($jobId)->update([
-            'status' => $shouldRetry ? 'pending' : 'failed',
-            'error_message' => $errorMessage,
-            'duration_ms' => $durationMs,
-            'finished_at' => $shouldRetry ? null : now(),
-            'meta' => $newMeta,
-        ]);
-
-        Task::query()->whereKey($taskId)->update([
-            'last_run_at' => now(),
-            'last_error_at' => now(),
-            'last_error_message' => $errorMessage,
-            'updated_at' => now(),
-        ]);
-
-        if ($shouldRetry) {
-            $this->dispatchLaravelQueueJob($jobId, $nextAvailableAt);
+        if ($result['retry'] && $result['available_at'] instanceof Carbon) {
+            $this->dispatchLaravelQueueJob($jobId, $result['available_at']);
         }
 
         $this->broadcastOverviewUpdate();
+    }
+
+    /**
+     * 将不可重试的标题库配置错误标记为终态，并暂停任务阻止后续无效调度。
+     *
+     * @param  array<string,mixed>  $details
+     */
+    public function failForTaskConfiguration(
+        int $jobId,
+        int $taskId,
+        string $errorMessage,
+        int $durationMs,
+        array $details = [],
+    ): void {
+        $changed = DB::transaction(function () use ($jobId, $taskId, $errorMessage, $durationMs, $details): bool {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->first(['id']);
+            $run = TaskRun::query()
+                ->whereKey($jobId)
+                ->where('task_id', $taskId)
+                ->lockForUpdate()
+                ->first();
+            if (! $task || ! $run || $run->status !== 'running') {
+                return false;
+            }
+
+            $meta = $this->normalizeMeta($run->meta);
+            $meta['attempt_count'] = (int) ($meta['attempt_count'] ?? 0) + 1;
+            $meta['retryable'] = false;
+            $meta['failure_class'] = 'configuration';
+            $meta['error_code'] = 'task_title_library_not_ready';
+            $meta['last_error'] = $errorMessage;
+            $meta['title_readiness'] = $details;
+
+            TaskRun::query()->whereKey($jobId)->update([
+                'status' => 'failed',
+                'error_message' => $errorMessage,
+                'duration_ms' => $durationMs,
+                'finished_at' => now(),
+                'meta' => $meta,
+            ]);
+            TaskRun::query()
+                ->where('task_id', $taskId)
+                ->whereKeyNot($jobId)
+                ->where('status', 'pending')
+                ->update([
+                    'status' => 'cancelled',
+                    'finished_at' => now(),
+                    'error_message' => '任务因标题库配置问题自动暂停',
+                ]);
+            Task::query()->whereKey($taskId)->update([
+                'status' => 'paused',
+                'schedule_enabled' => 0,
+                'next_run_at' => null,
+                'last_run_at' => now(),
+                'last_error_at' => now(),
+                'last_error_message' => $errorMessage,
+                'updated_at' => now(),
+            ]);
+
+            return true;
+        });
+
+        if ($changed) {
+            $this->broadcastOverviewUpdate();
+        }
     }
 
     /**
@@ -307,12 +427,19 @@ class JobQueueService
      */
     public function cancelJob(int $jobId, int $taskId, string $reason = '管理员手动停止'): void
     {
-        TaskRun::query()->whereKey($jobId)->update([
-            'status' => 'cancelled',
-            'finished_at' => now(),
-            'error_message' => $reason,
-            'duration_ms' => 0,
-        ]);
+        $cancelled = TaskRun::query()
+            ->whereKey($jobId)
+            ->where('task_id', $taskId)
+            ->where('status', 'running')
+            ->update([
+                'status' => 'cancelled',
+                'finished_at' => now(),
+                'error_message' => $reason,
+                'duration_ms' => 0,
+            ]);
+        if ($cancelled !== 1) {
+            return;
+        }
 
         Task::query()->whereKey($taskId)->update([
             'last_run_at' => now(),

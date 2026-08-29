@@ -1,24 +1,28 @@
 @extends('admin.layouts.app')
 
 @section('content')
-    <div class="px-4 sm:px-0">
-        <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div class="flex items-center gap-4">
-                <a href="{{ route('admin.ai.configurator') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                </a>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.ai_source_providers.page_title') }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_source_providers.page_subtitle') }}</p>
-                </div>
+    <div
+        class="px-4 sm:px-0"
+        data-ai-source-providers-index
+        data-model-test-url="{{ route('admin.ai-source-providers.model-bindings.test') }}"
+        data-testing-label="{{ __('admin.ai_source_providers.testing') }}"
+        data-test-success-prefix="{{ __('admin.ai_source_providers.test_success_prefix') }}"
+        data-test-failed-prefix="{{ __('admin.ai_source_providers.test_failed_prefix') }}"
+        data-test-network-error="{{ __('admin.ai_source_providers.test_network_error') }}"
+        data-test-initialization-error="{{ __('admin.ai_source_providers.test_network_error') }}"
+    >
+        <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.ai_source_providers.page_title') }}</h1>
+                <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_source_providers.page_subtitle') }}</p>
             </div>
-            <button type="button" onclick="showCreateProviderModal()" class="inline-flex items-center justify-center gap-2 rounded-md border border-transparent bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
+            <a href="{{ route('admin.ai-source-providers.create') }}" class="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-emerald-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2">
                 <i data-lucide="plus" class="w-4 h-4"></i>
                 {{ __('admin.ai_source_providers.create') }}
-            </button>
+            </a>
         </div>
 
-        <div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-4">
+        <div class="mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 lg:gap-6">
             <div class="rounded-lg bg-white p-6 shadow">
                 <div class="text-sm font-medium text-gray-500">{{ __('admin.ai_source_providers.stats.total') }}</div>
                 <div class="mt-2 text-2xl font-bold text-gray-900">{{ (int) ($stats['provider_count'] ?? 0) }}</div>
@@ -91,14 +95,14 @@
                     </div>
 
                     <div class="flex flex-wrap justify-end gap-3">
-                        <button type="button" onclick="testConfiguredModelBinding('deepseek', 'deepseek_config_model_id', 'deepseek-config-test-result', this)" class="rounded-md border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
+                        <button type="button" data-model-test data-model-input="deepseek_config_model_id" data-result-target="deepseek-config-test-result" data-binding-type="deepseek" data-empty-message="{{ __('admin.ai_source_providers.save_api_before_test') }}" data-connection-test-button disabled aria-disabled="true" class="min-h-10 rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition-[color,background-color,opacity,transform] duration-150 hover:bg-emerald-50 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white disabled:active:scale-100">
                             {{ __('admin.ai_source_providers.structured_test') }}
                         </button>
                         <button type="submit" class="rounded-md border border-transparent bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700">
                             {{ __('admin.ai_source_providers.save_api_config') }}
                         </button>
                     </div>
-                    <div id="deepseek-config-test-result" class="text-xs"></div>
+                    <div id="deepseek-config-test-result" class="text-xs" data-connection-test-result role="status" aria-live="polite" aria-atomic="true"></div>
                 </form>
 
                 <form method="POST" action="{{ route('admin.ai-source-providers.model-bindings.upsert-api') }}" class="space-y-5 p-6">
@@ -149,14 +153,14 @@
                     </div>
 
                     <div class="flex flex-wrap justify-end gap-3">
-                        <button type="button" onclick="testConfiguredModelBinding('ark', 'ark_config_model_id', 'ark-config-test-result', this)" class="rounded-md border border-teal-200 bg-white px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50">
+                        <button type="button" data-model-test data-model-input="ark_config_model_id" data-result-target="ark-config-test-result" data-binding-type="ark" data-empty-message="{{ __('admin.ai_source_providers.save_api_before_test') }}" data-connection-test-button disabled aria-disabled="true" class="min-h-10 rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-medium text-teal-700 transition-[color,background-color,opacity,transform] duration-150 hover:bg-teal-50 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white disabled:active:scale-100">
                             {{ __('admin.ai_source_providers.structured_test') }}
                         </button>
                         <button type="submit" class="rounded-md border border-transparent bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-teal-700">
                             {{ __('admin.ai_source_providers.save_api_config') }}
                         </button>
                     </div>
-                    <div id="ark-config-test-result" class="text-xs"></div>
+                    <div id="ark-config-test-result" class="text-xs" data-connection-test-result role="status" aria-live="polite" aria-atomic="true"></div>
                 </form>
             </div>
         </div>
@@ -185,9 +189,9 @@
                                 <td colspan="5" class="px-6 py-8 text-center text-gray-500">
                                     <i data-lucide="search-x" class="mx-auto mb-2 h-8 w-8 text-gray-400"></i>
                                     <p>{{ __('admin.ai_source_providers.empty') }}</p>
-                                    <button type="button" onclick="showCreateProviderModal()" class="mt-2 text-teal-600 hover:text-teal-800">
+                                    <a href="{{ route('admin.ai-source-providers.create') }}" class="mt-2 inline-flex min-h-10 items-center text-teal-600 transition-[color,transform] duration-150 hover:text-teal-800 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2">
                                         {{ __('admin.ai_source_providers.add_first') }}
-                                    </button>
+                                    </a>
                                 </td>
                             </tr>
                         @else
@@ -226,11 +230,14 @@
                                     </td>
                                     <td class="px-6 py-4 align-top text-sm font-medium">
                                         <div class="flex flex-wrap items-center gap-3">
-                                            <button type="button" onclick="testSourceProvider({{ (int) $provider['id'] }}, this)" class="text-emerald-600 hover:text-emerald-900">{{ __('admin.ai_source_providers.test') }}</button>
-                                            <button type="button" onclick='editProvider(@json($provider, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP))' class="text-blue-600 hover:text-blue-900">{{ __('admin.ai_source_providers.edit') }}</button>
-                                            <button type="button" onclick="deleteProvider({{ (int) $provider['id'] }}, @js($provider['name']))" class="text-red-600 hover:text-red-900">{{ __('admin.ai_source_providers.delete') }}</button>
+                                            <button type="button" data-provider-test data-test-url="{{ route('admin.ai-source-providers.test', ['providerId' => $provider['id']]) }}" data-result-target="provider-test-result-{{ (int) $provider['id'] }}" data-connection-test-button disabled aria-disabled="true" class="inline-flex min-h-10 items-center text-emerald-600 transition-[color,opacity,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-emerald-600 disabled:active:scale-100">{{ __('admin.ai_source_providers.test') }}</button>
+                                            <a href="{{ route('admin.ai-source-providers.edit', ['providerId' => $provider['id']]) }}" class="inline-flex min-h-10 items-center text-blue-600 transition-[color,transform] duration-150 hover:text-blue-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{{ __('admin.ai_source_providers.edit') }}</a>
+                                            <form method="POST" action="{{ route('admin.ai-source-providers.delete', ['providerId' => $provider['id']]) }}" data-provider-delete-form data-confirm-message="{{ __('admin.ai_source_providers.confirm_delete', ['name' => $provider['name']]) }}">
+                                                @csrf
+                                                <button type="submit" data-provider-delete-submit disabled aria-disabled="true" class="inline-flex min-h-10 items-center text-red-600 transition-[color,opacity,transform] duration-150 hover:text-red-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-red-600 disabled:active:scale-100">{{ __('admin.ai_source_providers.delete') }}</button>
+                                            </form>
                                         </div>
-                                        <div id="provider-test-result-{{ (int) $provider['id'] }}" class="mt-2 max-w-xs whitespace-normal text-xs"></div>
+                                        <div id="provider-test-result-{{ (int) $provider['id'] }}" class="mt-2 max-w-xs whitespace-normal text-xs" data-connection-test-result role="status" aria-live="polite" aria-atomic="true"></div>
                                     </td>
                                 </tr>
                             @endforeach
@@ -259,9 +266,9 @@
                         </select>
                         <div class="mt-2 flex items-center justify-between gap-3">
                             <p class="text-xs text-gray-500">{{ __('admin.ai_source_providers.ark_model_help') }}</p>
-                            <button type="button" onclick="testModelBinding('ark', 'ark_model_id', 'ark-model-test-result', this)" class="shrink-0 text-xs font-medium text-emerald-600 hover:text-emerald-900">{{ __('admin.ai_source_providers.test') }}</button>
+                            <button type="button" data-model-test data-model-input="ark_model_id" data-result-target="ark-model-test-result" data-binding-type="ark" data-empty-message="{{ __('admin.ai_source_providers.select_model_first') }}" data-connection-test-button disabled aria-disabled="true" class="inline-flex min-h-10 shrink-0 items-center text-xs font-medium text-emerald-600 transition-[color,opacity,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-emerald-600 disabled:active:scale-100">{{ __('admin.ai_source_providers.test') }}</button>
                         </div>
-                        <div id="ark-model-test-result" class="mt-2 text-xs"></div>
+                        <div id="ark-model-test-result" class="mt-2 text-xs" data-connection-test-result role="status" aria-live="polite" aria-atomic="true"></div>
                     </div>
 
                     <div>
@@ -276,9 +283,9 @@
                         </select>
                         <div class="mt-2 flex items-center justify-between gap-3">
                             <p class="text-xs text-gray-500">{{ __('admin.ai_source_providers.deepseek_model_help') }}</p>
-                            <button type="button" onclick="testModelBinding('deepseek', 'deepseek_model_id', 'deepseek-model-test-result', this)" class="shrink-0 text-xs font-medium text-emerald-600 hover:text-emerald-900">{{ __('admin.ai_source_providers.test') }}</button>
+                            <button type="button" data-model-test data-model-input="deepseek_model_id" data-result-target="deepseek-model-test-result" data-binding-type="deepseek" data-empty-message="{{ __('admin.ai_source_providers.select_model_first') }}" data-connection-test-button disabled aria-disabled="true" class="inline-flex min-h-10 shrink-0 items-center text-xs font-medium text-emerald-600 transition-[color,opacity,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-emerald-600 disabled:active:scale-100">{{ __('admin.ai_source_providers.test') }}</button>
                         </div>
-                        <div id="deepseek-model-test-result" class="mt-2 text-xs"></div>
+                        <div id="deepseek-model-test-result" class="mt-2 text-xs" data-connection-test-result role="status" aria-live="polite" aria-atomic="true"></div>
                     </div>
 
                     <div class="flex justify-end">
@@ -291,286 +298,4 @@
         </div>
     </div>
 
-    <div id="providerModal" class="fixed inset-0 z-50 hidden h-full w-full overflow-y-auto bg-gray-600/50">
-        <div class="relative top-10 mx-auto w-11/12 rounded-md border bg-white p-5 shadow-lg md:w-3/4 lg:w-1/2">
-            <div class="mt-3">
-                <div class="mb-4 flex items-center justify-between">
-                    <h3 class="text-lg font-medium text-gray-900" id="providerModalTitle">{{ __('admin.ai_source_providers.modal_create') }}</h3>
-                    <button type="button" onclick="closeProviderModal()" aria-label="{{ __('admin.common.close') }}" class="text-gray-400 hover:text-gray-600">
-                        <i data-lucide="x" class="h-6 w-6"></i>
-                    </button>
-                </div>
-
-                <form id="providerForm" method="POST" action="{{ route('admin.ai-source-providers.store') }}" class="space-y-6">
-                    @csrf
-                    <input type="hidden" name="_method" id="providerFormMethod" value="POST">
-
-                    <div class="rounded-md border border-teal-200 bg-teal-50 px-4 py-3">
-                        <div class="flex items-center gap-2 text-sm font-medium text-teal-900">
-                            <i data-lucide="search-check" class="h-4 w-4"></i>
-                            {{ __('admin.ai_source_providers.provider.doubao_search_custom') }}
-                        </div>
-                        <p class="mt-1 text-xs text-teal-800">{{ __('admin.ai_source_providers.doubao_custom_hint') }}</p>
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-                        <div>
-                            <label for="provider_name" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_name') }}</label>
-                            <input type="text" name="name" id="provider_name" required class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500" placeholder="{{ __('admin.ai_source_providers.placeholder_name') }}">
-                        </div>
-                        <div>
-                            <label for="provider_daily_limit" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_daily_limit') }}</label>
-                            <input type="number" name="daily_limit" id="provider_daily_limit" min="0" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500" value="0">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label for="provider_endpoint_url" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_endpoint_url') }}</label>
-                        <input type="url" name="endpoint_url" id="provider_endpoint_url" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500" value="{{ $defaultDoubaoEndpoint }}" placeholder="{{ $defaultDoubaoEndpoint }}">
-                    </div>
-
-                    <div>
-                        <label for="provider_api_key" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_api_key') }}</label>
-                        <input type="password" name="api_key" id="provider_api_key" required class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500" placeholder="{{ __('admin.ai_source_providers.placeholder_api_key') }}">
-                        <p id="providerApiKeyHelp" class="mt-1 text-xs text-gray-500">{{ __('admin.ai_source_providers.api_key_help_create') }}</p>
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
-                        <div>
-                            <label for="provider_count" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_count') }}</label>
-                            <input type="number" name="count" id="provider_count" min="1" max="20" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500" value="10">
-                        </div>
-                        <div>
-                            <label for="provider_content_formats" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_content_formats') }}</label>
-                            <select name="content_formats" id="provider_content_formats" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500">
-                                <option value="Markdown">Markdown</option>
-                                <option value="Text">Text</option>
-                            </select>
-                        </div>
-                        <div id="providerStatusField" class="hidden">
-                            <label for="provider_status" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_status') }}</label>
-                            <select name="status" id="provider_status" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500">
-                                <option value="active">{{ __('admin.ai_source_providers.status_active') }}</option>
-                                <option value="inactive">{{ __('admin.ai_source_providers.status_inactive') }}</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <input type="hidden" name="search_type" value="web">
-                    <input type="hidden" name="need_summary" value="0">
-                    <input type="hidden" name="need_content" value="0">
-                    <input type="hidden" name="need_url" value="0">
-                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <label class="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700">
-                            <input type="checkbox" name="need_summary" id="provider_need_summary" value="1" checked class="rounded border-gray-300 text-teal-600 focus:ring-teal-500">
-                            {{ __('admin.ai_source_providers.field_need_summary') }}
-                        </label>
-                        <label class="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700">
-                            <input type="checkbox" name="need_content" id="provider_need_content" value="1" checked class="rounded border-gray-300 text-teal-600 focus:ring-teal-500">
-                            {{ __('admin.ai_source_providers.field_need_content') }}
-                        </label>
-                        <label class="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700">
-                            <input type="checkbox" name="need_url" id="provider_need_url" value="1" checked class="rounded border-gray-300 text-teal-600 focus:ring-teal-500">
-                            {{ __('admin.ai_source_providers.field_need_url') }}
-                        </label>
-                    </div>
-
-                    <div>
-                        <label for="provider_auth_info_level" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_auth_info_level') }}</label>
-                        <input type="text" name="auth_info_level" id="provider_auth_info_level" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500" placeholder="{{ __('admin.ai_source_providers.placeholder_auth_info_level') }}">
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-                        <div>
-                            <label for="provider_sites" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_sites') }}</label>
-                            <textarea name="sites" id="provider_sites" rows="3" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500" placeholder="{{ __('admin.ai_source_providers.placeholder_sites') }}"></textarea>
-                        </div>
-                        <div>
-                            <label for="provider_block_hosts" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_block_hosts') }}</label>
-                            <textarea name="block_hosts" id="provider_block_hosts" rows="3" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500" placeholder="{{ __('admin.ai_source_providers.placeholder_block_hosts') }}"></textarea>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-end gap-3 pt-4">
-                        <button type="button" onclick="closeProviderModal()" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            {{ __('admin.button.cancel') }}
-                        </button>
-                        <button type="submit" class="rounded-md border border-transparent bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-teal-700">
-                            {{ __('admin.button.save') }}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
 @endsection
-
-@push('scripts')
-    <script>
-        const SOURCE_PROVIDER_I18N = {
-            modalCreate: @json(__('admin.ai_source_providers.modal_create')),
-            modalEdit: @json(__('admin.ai_source_providers.modal_edit')),
-            apiKeyPlaceholder: @json(__('admin.ai_source_providers.placeholder_api_key')),
-            apiKeyPlaceholderKeep: @json(__('admin.ai_source_providers.placeholder_api_key_keep')),
-            apiKeyHelpCreate: @json(__('admin.ai_source_providers.api_key_help_create')),
-            apiKeyHelpEdit: @json(__('admin.ai_source_providers.api_key_help_edit')),
-            confirmDelete: @json(__('admin.ai_source_providers.confirm_delete', ['name' => '__NAME__'])),
-            test: @json(__('admin.ai_source_providers.test')),
-            testing: @json(__('admin.ai_source_providers.testing')),
-            testSuccessPrefix: @json(__('admin.ai_source_providers.test_success_prefix')),
-            testFailedPrefix: @json(__('admin.ai_source_providers.test_failed_prefix')),
-            testNetworkError: @json(__('admin.ai_source_providers.test_network_error')),
-            selectModelFirst: @json(__('admin.ai_source_providers.select_model_first')),
-            saveApiBeforeTest: @json(__('admin.ai_source_providers.save_api_before_test')),
-        };
-        const SOURCE_PROVIDER_ROUTES = {
-            store: @json(route('admin.ai-source-providers.store')),
-            update: @json(\App\Support\AdminWeb::routePath('admin.ai-source-providers.update', ['providerId' => '__PROVIDER_ID__'])),
-            delete: @json(\App\Support\AdminWeb::routePath('admin.ai-source-providers.delete', ['providerId' => '__PROVIDER_ID__'])),
-            test: @json(\App\Support\AdminWeb::routePath('admin.ai-source-providers.test', ['providerId' => '__PROVIDER_ID__'])),
-            modelTest: @json(route('admin.ai-source-providers.model-bindings.test')),
-        };
-        const DEFAULT_DOUBAO_ENDPOINT = @json($defaultDoubaoEndpoint);
-
-        function showCreateProviderModal() {
-            document.getElementById('providerModalTitle').textContent = SOURCE_PROVIDER_I18N.modalCreate;
-            document.getElementById('providerForm').action = SOURCE_PROVIDER_ROUTES.store;
-            document.getElementById('providerFormMethod').value = 'POST';
-            document.getElementById('providerForm').reset();
-            document.getElementById('provider_endpoint_url').value = DEFAULT_DOUBAO_ENDPOINT;
-            document.getElementById('provider_api_key').required = true;
-            document.getElementById('provider_api_key').placeholder = SOURCE_PROVIDER_I18N.apiKeyPlaceholder;
-            document.getElementById('providerApiKeyHelp').textContent = SOURCE_PROVIDER_I18N.apiKeyHelpCreate;
-            document.getElementById('provider_count').value = 10;
-            document.getElementById('provider_daily_limit').value = 0;
-            document.getElementById('provider_need_summary').checked = true;
-            document.getElementById('provider_need_content').checked = true;
-            document.getElementById('provider_need_url').checked = true;
-            document.getElementById('provider_content_formats').value = 'Markdown';
-            document.getElementById('providerStatusField').classList.add('hidden');
-            document.getElementById('providerModal').classList.remove('hidden');
-        }
-
-        function editProvider(provider) {
-            const metadata = provider.metadata || {};
-            document.getElementById('providerModalTitle').textContent = SOURCE_PROVIDER_I18N.modalEdit;
-            document.getElementById('providerForm').action = SOURCE_PROVIDER_ROUTES.update.replace('__PROVIDER_ID__', String(provider.id));
-            document.getElementById('providerFormMethod').value = 'PUT';
-            document.getElementById('provider_name').value = provider.name || '';
-            document.getElementById('provider_endpoint_url').value = provider.endpoint_url || DEFAULT_DOUBAO_ENDPOINT;
-            document.getElementById('provider_api_key').value = '';
-            document.getElementById('provider_api_key').required = false;
-            document.getElementById('provider_api_key').placeholder = SOURCE_PROVIDER_I18N.apiKeyPlaceholderKeep;
-            document.getElementById('providerApiKeyHelp').textContent = SOURCE_PROVIDER_I18N.apiKeyHelpEdit;
-            document.getElementById('provider_daily_limit').value = provider.daily_limit || 0;
-            document.getElementById('provider_count').value = metadata.count || 10;
-            document.getElementById('provider_content_formats').value = metadata.content_formats || 'Markdown';
-            document.getElementById('provider_need_summary').checked = Boolean(metadata.need_summary);
-            document.getElementById('provider_need_content').checked = Boolean(metadata.need_content);
-            document.getElementById('provider_need_url').checked = metadata.need_url !== false;
-            document.getElementById('provider_auth_info_level').value = metadata.auth_info_level || '';
-            document.getElementById('provider_sites').value = provider.sites_text || '';
-            document.getElementById('provider_block_hosts').value = provider.block_hosts_text || '';
-            document.getElementById('provider_status').value = provider.status || 'active';
-            document.getElementById('providerStatusField').classList.remove('hidden');
-            document.getElementById('providerModal').classList.remove('hidden');
-        }
-
-        function closeProviderModal() {
-            document.getElementById('providerModal').classList.add('hidden');
-        }
-
-        function deleteProvider(id, name) {
-            if (!confirm(SOURCE_PROVIDER_I18N.confirmDelete.replace('__NAME__', name))) {
-                return;
-            }
-
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = SOURCE_PROVIDER_ROUTES.delete.replace('__PROVIDER_ID__', String(id));
-            form.innerHTML = `<input type="hidden" name="_token" value="{{ csrf_token() }}">`;
-            document.body.appendChild(form);
-            form.submit();
-        }
-
-        async function testSourceProvider(id, button) {
-            const resultEl = document.getElementById(`provider-test-result-${id}`);
-            await postTestRequest(
-                SOURCE_PROVIDER_ROUTES.test.replace('__PROVIDER_ID__', String(id)),
-                {},
-                resultEl,
-                button,
-            );
-        }
-
-        async function testConfiguredModelBinding(bindingType, inputId, resultId, button) {
-            const modelId = Number(document.getElementById(inputId).value || 0);
-            const resultEl = document.getElementById(resultId);
-            if (modelId <= 0) {
-                resultEl.textContent = SOURCE_PROVIDER_I18N.saveApiBeforeTest;
-                resultEl.className = 'text-xs text-amber-700';
-                return;
-            }
-
-            await postTestRequest(
-                SOURCE_PROVIDER_ROUTES.modelTest,
-                {binding_type: bindingType, model_id: modelId},
-                resultEl,
-                button,
-            );
-        }
-
-        async function testModelBinding(bindingType, selectId, resultId, button) {
-            const modelId = Number(document.getElementById(selectId).value || 0);
-            const resultEl = document.getElementById(resultId);
-            if (modelId <= 0) {
-                resultEl.textContent = SOURCE_PROVIDER_I18N.selectModelFirst;
-                resultEl.className = 'mt-2 text-xs text-amber-700';
-                return;
-            }
-
-            await postTestRequest(
-                SOURCE_PROVIDER_ROUTES.modelTest,
-                {binding_type: bindingType, model_id: modelId},
-                resultEl,
-                button,
-            );
-        }
-
-        async function postTestRequest(url, payload, resultEl, button) {
-            const originalText = button.textContent;
-            button.disabled = true;
-            button.textContent = SOURCE_PROVIDER_I18N.testing;
-            resultEl.textContent = '';
-            resultEl.className = 'mt-2 text-xs text-gray-500';
-
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    },
-                    body: JSON.stringify(payload),
-                });
-                const data = await response.json();
-                if (response.ok && data.success) {
-                    const sourceCount = data.meta && typeof data.meta.source_count === 'number' ? ` (${data.meta.source_count})` : '';
-                    const structured = data.meta && data.meta.structured_output ? ` ${JSON.stringify(data.meta.structured_output).slice(0, 180)}` : sourceCount;
-                    resultEl.textContent = SOURCE_PROVIDER_I18N.testSuccessPrefix + data.message + structured;
-                    resultEl.className = 'mt-2 break-all text-xs text-emerald-700';
-                } else {
-                    resultEl.textContent = SOURCE_PROVIDER_I18N.testFailedPrefix + (data.message || response.statusText);
-                    resultEl.className = 'mt-2 break-all text-xs text-red-700';
-                }
-            } catch (error) {
-                resultEl.textContent = SOURCE_PROVIDER_I18N.testNetworkError;
-                resultEl.className = 'mt-2 break-all text-xs text-red-700';
-            } finally {
-                button.disabled = false;
-                button.textContent = originalText;
-            }
-        }
-    </script>
-@endpush

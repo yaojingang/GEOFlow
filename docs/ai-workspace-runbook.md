@@ -1,23 +1,87 @@
-# GEOFlow AI 工作台运行手册
+# GEOFlow 后台帮助助手运行手册
 
-## 目标与边界
+## 定位
 
-AI 工作台把自然语言请求编译为可审计的 GEOFlow 工作流。职责边界如下：
+AI 工作台提供后台功能问答、操作指引和可信功能入口。请求在 Web 进程内完成本地知识检索，并执行一次对话模型调用。旧版 Run、Plan、Approval、Capability 与 Trace 工作流已停止接收请求，相关数据库表和历史数据继续保留。
 
-- `IntentResolverAgent` 识别意图、候选能力、已知参数、缺失参数和置信信号。
-- `GeoHubPlanDrafterAgent` 生成多步计划草案，`tools()` 始终为空。
-- `AiPlanCompiler` 校验能力、管理员权限、参数 Schema、风险、对象快照、依赖和能力版本。
-- `AiWorkflowEngine` 管理审批、步骤租约、目标复核、幂等、执行、取消和终态。
-- `AiCapabilityExecutor` 调度已登记的查询处理器；任务、文章和知识草稿由独立 capability handler 调用共享领域服务。
-- 普通问答由 `GeoHubAgent` 完成，并明确展示“本次未执行系统操作”。
+## 请求链路
 
-模型没有领域工具调用权限。系统读写只能经过编译后的 `AiWorkflowPlan`。
+1. 将用户问题保存到现有会话消息表，首次问题同步使用本地规则生成最多 15 个字符的会话标题，不额外调用模型。
+2. `AdminHelpKnowledgeCatalog` 识别当前管理员可访问的功能，`AdminHelpQueryContextResolver` 为短追问补充上一条用户问题和上一轮命中章节。
+3. `AdminHelpKnowledgeRetriever` 只检索 `ai_workspace_manual` 系统知识库。优先使用当前正文对应的 ready 切片，索引缺失或失败时读取数据库正文或随包 Markdown 的章节索引。
+4. 检索最多保留 8 段证据和 10,000 字符，历史最多 10,000 字符，一轮总预算为 24,000 字符。
+5. 服务端按命名路由、稳定 GET 入口和管理员权限生成最多 3 个相关功能入口；中文界面还可从同一章节选择 0 至 3 张私有截图。
+6. `AdminHelpAssistant` 使用证据、有限历史和固定安全提示词生成详细操作指南，单轮回答上限受模型 `max_tokens` 与工作台 2,400 token 上限共同约束。
+7. 接口通过 SSE 返回真实连接状态、正文分片和完成数据。服务端收到模型正文后立即发送，浏览器按动画帧合并 Markdown 重排。
+8. 仅在回答完整结束后保存助手消息，消息 `meta` 保存知识来源、知识健康、检索诊断、固定媒体版本、相关功能、推荐问题与生成性能，`usage` 保存模型用量。
 
-## 运行条件
+模型输出中的链接不会进入可点击区域。页面只渲染服务端返回、同源且位于后台路径下的功能入口。
 
-生产环境需要 PostgreSQL、Redis、队列 Worker 和至少一个通过结构化输出检测的启用模型。Reverb 可选；前端在连接不可用、事件丢失或序号不连续时读取 Run 权威快照。
+## SSE 协议
 
-关键环境变量：
+`POST /admin/ai-workspace/conversations/{conversation}/messages` 返回 `200 text/event-stream`。
+
+- `title`：`{title}`，首轮问题使用本地标题时立即返回，兼容现有客户端。
+- `status`：`{stage, label, provider?, model?}`。`preparing` 来自本地准备过程；`connected`、`reasoning` 和 `generating` 来自模型流中的真实事件。
+- `delta`：`{content}`，收到首个正文分片后隐藏等待状态。
+- `done`：`{message_id, related_features, suggestions, knowledge_sources, knowledge_health, related_media, generation}`。
+- `error`：`{code, message, related_features, suggestions}`。
+
+所有模型共用一轮总时间预算。流式调用在首个正文分片前遇到可恢复故障时继续尝试下一个可用模型；正文已经开始后若中断，保留已显示内容并明确提示生成中断，避免把两个模型的回答拼接在一起。只有经过真实流式检测且明确失败的模型，才使用普通文本回退；未检测流式能力的旧档案会在下一次请求中先尝试真实流式调用。AI 服务整体不可用时，错误事件仍带有本地检索得到的功能入口和推荐问题。
+
+模型的私有推理内容不会发送到浏览器。页面在等待 3 秒和 8 秒后更新真实等待提示；收到首个正文分片后停止等待计时。用户主动停止时，浏览器保留已接收的部分回答并提供复制按钮，未完成的助手消息不会写入数据库。
+
+## 系统知识库
+
+官方知识文件位于 `resources/knowledge/ai-workspace/geoflow-admin-guide.zh_CN.md`，内容清单位于同目录的 `manifest.php`。正文覆盖后台功能逻辑、流程、设计原理、亮点、权限、常见故障和稳定站内入口。发布门禁要求至少 10,000 个中文字符、15 个必需章节、合法 route 指令和准确内容哈希。
+
+同步命令：
+
+```bash
+php artisan geoflow:sync-system-knowledge --key=ai_workspace_manual --media
+```
+
+同步具有幂等性。首次同步创建唯一系统知识库、官方修订和索引任务；未修改的官方正文可以随版本安全升级；管理员已经二次编辑的正文会被保留，并显示官方更新可采用状态。系统知识库受到应用删除断言和数据库限制外键双重保护，Web、API、CLI 和模型直接删除均会失败。
+
+超级管理员可在知识库详情页编辑正文、恢复历史修订、采用当前官方版本和管理图片。普通管理员拥有只读访问。保存正文时会检查最小长度、必需章节、route 白名单、动态路由、外部 Markdown 链接、Markdown 图片和疑似敏感信息。每次编辑、恢复和采用官方版本都会生成新修订并触发可回退索引。
+
+健康状态说明：
+
+- `healthy`：正文哈希与 ready 索引一致。
+- `indexing`：新索引正在生成，检索继续使用上一版 ready 切片或正文回退。
+- `customized`：本地正文已编辑，当前内容继续参与问答。
+- `fallback`：切片缺失或失败，系统使用数据库正文或随包官方 Markdown 回答。
+
+## 知识图片
+
+官方图片清单位于 `resources/knowledge/ai-workspace/media/manifest.json`，当前包含 24 张经过脱敏检查的 1440×900 WebP 截图。每张图具有稳定素材键、章节、命名路由、标题、alt、说明、关键词、应用版本和 SHA-256。同步后文件进入 `local` 私有磁盘，通过需要后台登录和功能权限的读取接口提供。
+
+图片替换会创建不可变新版本，历史消息固定保存媒体 ID、版本和哈希。停用只影响新回答，已有历史仍能读取当时版本。清理命令只删除超过会话留存期加 7 天、已经停用且没有未过期消息引用的旧媒体；官方清单当前版本始终保留。
+
+执行清理前可以预览命中数量：`php artisan geoflow:prune-ai-workspace --days=90 --dry-run`。确认范围后再去掉 `--dry-run`；定时清理沿用配置中的留存天数。
+
+模型正文中的图片语法不会创建图片节点。浏览器只渲染 `related_media` 结构化字段，限制为同源后台地址，采用懒加载、明确 alt、预览对话框和加载失败降级。首版截图语言为 `zh_CN`，其他后台语言完整使用文字回答。
+
+## 帮助目录维护
+
+目录位于 `app/Services/AiWorkspace/AdminHelpKnowledgeCatalog.php`。每个条目需要维护：
+
+- 稳定 ID、名称、说明和检索关键词；
+- 3 个或以上可执行操作步骤；
+- 已注册的后台命名路由；
+- Lucide 图标名和权限级别；
+- 2 个或以上预设追问；
+- 是否作为无命中问题的常用功能。
+
+帮助事实以中文内容为权威。模型按用户语言组织答案。新增或修改条目后需要运行目录协议测试，确认路由有效、权限过滤正确、上下文不含 URL。
+
+## 模型就绪与故障转移
+
+工作台复用 AI 配置器中的已启用对话模型、日额度、优先级和 Provider 故障转移。
+
+工作台按照模型故障转移优先级选择已启用且通过文本检测的对话模型。新建、配置已变更、检测已过期或最近检测失败的模型不会参与真实问答；超级管理员重新执行模型连接检测并通过后才会恢复。连接检测优先执行真实流式请求，成功时记录 `streaming.ready`；流式失败后再验证普通文本，成功时记录 `streaming.degraded` 和已观测的降级原因。流式成功要求至少一个正文分片和非错误的终止事件，缺失终止事件、错误事件或未知终止原因都会按中断处理。流式与普通文本探测共用总超时预算。成功回答会刷新 7 天就绪记录。结构化输出和工具调用不参与工作台就绪判断。
+
+相关环境变量：
 
 ```dotenv
 GEOFLOW_AI_WORKSPACE_RUNTIME_ENABLED=false
@@ -25,128 +89,69 @@ GEOFLOW_AI_WORKSPACE_RETENTION_DAYS=90
 GEOFLOW_AI_WORKSPACE_GLOBAL_CONCURRENCY=10
 GEOFLOW_AI_WORKSPACE_CONCURRENCY_CACHE_STORE=redis
 GEOFLOW_AI_WORKSPACE_ADMIN_DAILY_MODEL_CALLS=200
-GEOFLOW_AI_WORKSPACE_HISTORY_CHAR_BUDGET=24000
-GEOFLOW_AI_WORKSPACE_MAX_ACTIVE_RUNS_PER_ADMIN=3
-GEOFLOW_AI_WORKSPACE_MAX_PLAN_STEPS=100
-GEOFLOW_AI_WORKSPACE_STEP_LEASE_MINUTES=20
-GEOFLOW_AI_WORKSPACE_RESOLUTION_LEASE_MINUTES=3
-GEOFLOW_AI_WORKSPACE_APPROVAL_TTL_MINUTES=30
-GEOFLOW_AI_WORKSPACE_QUEUE=ai-workspace
-GEOFLOW_AI_WORKSPACE_INTERACTIVE_QUEUE=ai-workspace-interactive
+GEOFLOW_AI_WORKSPACE_MODEL_TOTAL_TIMEOUT=90
+GEOFLOW_AI_WORKSPACE_MODEL_ATTEMPT_TIMEOUT=30
+GEOFLOW_AI_WORKSPACE_HISTORY_CHAR_BUDGET=10000
+GEOFLOW_AI_WORKSPACE_GENERATION_LEASE_SECONDS=180
+GEOFLOW_AI_WORKSPACE_REQUIRE_VERIFIED_MODEL=true
 ```
 
-运行时开关默认关闭。关闭时历史会话、Run 快照和取消接口继续可用；新会话、消息、审批、计划修改和重试返回 503。
+工作台不需要专用队列 Worker 或 Horizon Supervisor。
 
-## 状态与恢复
+## 常见排查
 
-运行状态主链：
+### 页面显示 AI 服务不可用
 
-```text
-received
-  -> clarifying / answering / planning
-  -> validating_plan
-  -> awaiting_approval / queued
-  -> running / awaiting_step_approval
-  -> completed / partially_completed / failed
-  -> cancelled / outcome_unknown / rejected
-```
+1. 确认 `GEOFLOW_AI_WORKSPACE_RUNTIME_ENABLED=true`。
+2. 在 AI 配置器中确认至少一个对话模型为启用状态。
+3. 新建模型、模型配置变更、检测失败或检测过期时，由超级管理员重新执行模型连接检测；检测通过后模型才会进入工作台候选列表。
+4. 检查模型日额度和管理员日调用额度。
 
-两条独立队列承担不同负载：
+### 一直等待且没有正文
 
-- `ai-workspace-interactive`：意图解析、追问、普通回答和计划草案。
-- `ai-workspace`：已批准的领域工作流。
+1. 检查反向代理是否关闭 SSE 缓冲，响应应包含 `X-Accel-Buffering: no`。
+2. 检查浏览器网络面板中的 `status` 与 `delta` 事件。
+3. 检查 Provider 超时、连接错误和全局并发限制。
+4. 查看助手消息 `meta.generation` 中的 `provider_first_event_ms`、`ttft_ms`、`total_ms`、`attempts` 和故障转移计数。
+5. 流式能力被明确标记为 `degraded` 时，确认普通文本回退可以成功完成。
 
-`geoflow:recover-ai-workspace` 每五分钟恢复以下中断：
+### 相关功能入口缺失
 
-- 超时的 `received`、`planning`、`answering` 解析租约；
-- 两分钟未消费的 `queued` Run；
-- 没有活动步骤的陈旧 `running` Run；
-- 租约过期的内部步骤；
-- 租约过期的外部写步骤进入 `outcome_unknown`，等待人工对账。
+1. 检查目录条目的命名路由是否存在。
+2. 检查当前管理员是否拥有受保护功能权限。
+3. 确认入口是无需动态对象 ID 的稳定页面。
 
-解析租约和步骤租约均使用唯一 fencing token。状态迁移、异常落库、Artifact 写入和 Job 失败回调都会复核 token，陈旧 Worker 无法覆盖恢复后的运行。恢复命令在运行时关闭期间继续执行：未发出的步骤安全终止，已确认外部结果继续记账，已发出且无法确认的结果进入 `outcome_unknown`。任意仍处于 `running` 的步骤会保留租约，Run 进入 `cancel_requested` 等待 Worker 收口或租约过期；这条规则同时覆盖 `external_read` 和内部步骤。
+### 回答没有引用系统知识
 
-计划步骤以 `depends_on` 持久化为 DAG。`input_bindings` 可以把前序 Artifact 的已声明 `payload_schema` 字段绑定到后序参数；绑定完成后重新计算参数、目标和计划摘要，需要审批的步骤会在当前参数确定后暂停确认。某个分支失败时，其依赖分支标记为 `skipped`，其余独立分支继续执行，最终聚合为部分完成。
+1. 执行 `php artisan geoflow:sync-system-knowledge --key=ai_workspace_manual --media`。
+2. 在知识库列表检查系统徽标、官方版本和健康状态。
+3. 查看助手消息 `meta.retrieval` 的 `mode`、`fallback_reason`、`latency_ms` 和 `evidence_count`。
+4. 索引失败时确认系统仍可通过 `fallback` 返回正文；随后检查 knowledge 队列与 Embedding 模型。
 
-## 审批与目标完整性
+### 相关截图没有显示
 
-审批有效期默认 30 分钟，并绑定以下摘要：
+1. 确认当前后台语言为简体中文。
+2. 确认媒体记录为启用状态且没有“待复核”标记。
+3. 检查媒体绑定的章节、route 和当前管理员权限。
+4. 验证私有文件哈希、MIME 和尺寸；图片接口返回 404 时正文问答仍应正常完成。
 
-- 计划版本和计划摘要；
-- 全部能力版本；
-- 规范化参数摘要；
-- 目标对象及其修订快照摘要。
-
-`once` 和 `target_matrix` 按能力合并审批；`per_step` 在每个状态变更步骤前单独审批。任一策略在长任务中到期后都会暂停并生成续批项，已经完成的步骤保持不变。参数、对象内容、渠道配置、任务配置或能力版本发生变化后，执行前复核会拒绝旧计划。
-
-计划修改会保留旧审批摘要，并写入 `plan_revision` Artifact。历史审批进入 `expired`，用于审计和防重放。
-
-## 能力治理
-
-能力目录位于 `config/ai-workspace.php`。每项能力必须声明：
-
-- 输入 Schema、结果契约和 handler；
-- 成熟度、风险、执行范围和数据分类；
-- 权限、成本、审批策略和版本；
-- 对应后台命名路由。
-
-新增或调整能力契约时必须提升能力版本。新增后台命名路由需要登记到具体能力，或加入明确的基础设施排除清单。架构测试冻结路由名、HTTP 方法和最终能力归属的精确摘要，通配能力只承担运行时兜底。`managed.operations` 和 `admin.governance` 将尚未开放的写操作归为受限能力。
-
-首批工作流覆盖运营日报、运营周报、AI 可见性诊断、内容机会分析、任务草稿、文章草稿、知识草稿、URL 导入预览与提交、分发预览与入队、任务启停、站点设置同步和托管站点预检。
-
-多站分发的工作台步骤完成含义为“分发记录已进入现有分发中心”。远程发送、重试和最终状态继续由分发中心记录与对账。
-
-每条 AI 分发记录持久化审批时的渠道修订摘要和不可变文章载荷。渠道修订摘要覆盖域名、端点、类型、配置、站点设置和当前凭据版本。分发 Worker 在目标操作租约内、调用 Publisher 前复核运行时、管理员授权、能力版本、审批期限和全部摘要。管理员在活动渠道租约期间修改设置、状态或凭据时，页面会要求等待当前操作完成。
-
-AI 发起的 WordPress 新建发布会附带稳定幂等键。连接中断或超时后，分发中心先通过已审批的文章 slug 查询远程记录；对账成功时记录 `synced`，无法确认时记录 `outcome_unknown` 并停止自动重试。分发中心会显示“需要人工对账”，当前状态不允许直接重新入队。
-
-站点设置同步在远程请求前写入 `ai_workspace_external_operations` 账本，并把稳定 execution key 传给目标站幂等头。账本记录请求摘要、目标摘要、发出时间和确认结果。超时恢复优先读取已确认账本；仅有已发出记录时进入 `outcome_unknown`，等待人工对账。
-
-## 模型开放流程
-
-1. 配置一个启用的聊天模型及 API Key。
-2. 由超级管理员执行模型绑定检测。检测使用真实意图解析 Schema。
-3. 确认模型的 `ai_workspace_structured_output_status` 为 `ready`。
-4. 运行意图评测和聚焦回归测试。
-5. 先对超级管理员开启运行时，再逐步开放普通管理员和能力族。
-
-普通管理员的模型连通性检测不会修改全局就绪状态。模型 ID、类型、地址、密钥或启用状态变化会自动清除就绪状态，并要求重新检测。
-
-## 日常运维
+## 验证
 
 ```bash
-php artisan route:list --path=admin/ai-workspace -v
-php artisan geoflow:recover-ai-workspace
-php artisan geoflow:prune-ai-workspace --days=90
-php artisan horizon:status
-```
-
-关注指标包括请求量、完成率、部分完成率、失败分类、`outcome_unknown` 数量、平均首次状态时间、平均执行时间、模型额度和两个队列的等待时间。
-
-完整载荷保留 90 天。清理任务只处理曾创建 AI Workspace Run 的会话；同表中的其他 Laravel AI 会话保持原样。Run 的计划摘要、能力版本、审批摘要和管理员快照继续保留。
-
-## 发布与回滚
-
-发布顺序：
-
-1. 发布数据库、后端、队列和前端代码，保持运行时关闭。
-2. 启动两个 Horizon supervisor，并确认恢复与清理计划任务正常。
-3. 完成模型检测、意图基线和自动化回归。
-4. 开启运行时并按管理员与能力族灰度。
-
-Laravel AI 会话表名读取 `ai.conversations.tables` 配置。AI 会话和工作台业务表需要使用同一数据库连接；就绪检测会拦截跨连接配置。
-
-回滚时将 `GEOFLOW_AI_WORKSPACE_RUNTIME_ENABLED` 设为 `false` 并刷新配置缓存。历史记录与取消入口继续可用，Worker 会协作式停止后续步骤。已经创建的草稿、已经进入分发中心的记录和已经发生的远程结果全部保留。
-
-## 验证命令
-
-```bash
-vendor/bin/pint --dirty --format agent
-php artisan test --compact tests/Unit/AiWorkspace
 php artisan test --compact tests/Feature/AdminAiWorkspaceTest.php
+php artisan test --compact tests/Feature/AiWorkspaceRuntimeProtocolV2Test.php
 php artisan test --compact tests/Feature/AiWorkspaceWorkflowTest.php
+php artisan test --compact tests/Feature/SystemKnowledgeBaseTest.php tests/Feature/AiWorkspaceKnowledgeMediaTest.php
+php artisan test --compact tests/Unit/AiWorkspace
 node --test tests/JavaScript/ai-workspace.test.js
+vendor/bin/pint --dirty --format agent
 npm run build
+php artisan route:list --path=admin/ai-workspace --except-vendor
+php artisan geoflow:sync-system-knowledge --key=ai_workspace_manual --media
 ```
 
-涉及阶段五能力或发布前，运行完整 PHP、JavaScript 和浏览器回归。
+发布前在 320px、390px、768px、1280px 和 1440px 宽度下检查初始、等待、流式、停止、完成、错误和历史回放状态，并确认浏览器控制台没有错误。使用至少 10,000 字符的 Markdown 覆盖表格、引用、嵌套列表、代码块和外部链接净化。
+
+## 回滚
+
+代码回滚需要恢复旧控制器、前端资源、流式服务和模型运行时。接口路由、数据库结构与环境变量没有变化，现有工作流表、迁移与历史数据无需恢复。

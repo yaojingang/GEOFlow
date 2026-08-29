@@ -47,10 +47,10 @@ check_http() {
     if curl -fsS --max-time 10 "$url" >/dev/null; then
       log "HTTP health endpoint passed: ${url}"
     else
-      warn "HTTP health endpoint failed: ${url}. If an external reverse proxy is used, check Nginx/proxy config."
+      fail "HTTP health endpoint failed: ${url}. Check Nginx and external proxy configuration."
     fi
   else
-    warn "curl is not installed; skipping HTTP health endpoint check."
+    fail "curl is required for the HTTP health endpoint check."
   fi
 }
 
@@ -70,7 +70,11 @@ main() {
   log "Checking container status."
   "${COMPOSE[@]}" ps
 
-  local required=(postgres redis app web queue knowledge-queue system-update-queue scheduler reverb)
+  if "${DOCKER_CMD[@]}" container inspect geoflow-system-update-queue-prod >/dev/null 2>&1; then
+    fail "Retired system update worker is still present: geoflow-system-update-queue-prod"
+  fi
+
+  local required=(postgres redis app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb)
   local service missing_services=()
   for service in "${required[@]}"; do
     if "${COMPOSE[@]}" ps --status running --services | grep -qx "$service"; then
@@ -84,7 +88,23 @@ main() {
     fail "Required services are not running: ${missing_services[*]}"
   fi
 
-  check_http "$web_port"
+  local expected_quality_replicas quality_running_count
+  expected_quality_replicas="$(read_env_value AI_QUALITY_QUEUE_REPLICAS)"
+  expected_quality_replicas="${expected_quality_replicas:-2}"
+  if ! [[ "$expected_quality_replicas" =~ ^[1-9][0-9]*$ ]]; then
+    fail "AI_QUALITY_QUEUE_REPLICAS must be a positive integer."
+  fi
+  quality_running_count="$("${COMPOSE[@]}" ps --status running -q ai-quality-queue | awk 'NF { count++ } END { print count + 0 }')"
+  if [ "$quality_running_count" -lt "$expected_quality_replicas" ]; then
+    fail "AI quality worker capacity is below target: ${quality_running_count}/${expected_quality_replicas} replicas are running."
+  fi
+  log "AI quality worker capacity passed: ${quality_running_count}/${expected_quality_replicas} replicas."
+
+  if [ "${GEOFLOW_SKIP_HTTP_CHECK:-0}" = "1" ]; then
+    log "HTTP health check deferred until maintenance mode is lifted."
+  else
+    check_http "$web_port"
+  fi
 
   log "Checking Laravel database connection."
   if "${COMPOSE[@]}" exec -T app php artisan migrate:status --pending=1 --no-interaction >/dev/null; then
@@ -93,8 +113,14 @@ main() {
     fail "Laravel cannot read migration status or still has pending migrations. Run the gated migration step before releasing services."
   fi
 
+  log "Converging expired AI quality checks."
+  "${COMPOSE[@]}" exec -T app php artisan geoflow:converge-ai-quality --json
+
+  log "Checking AI quality worker heartbeats and front-queue probe."
+  "${COMPOSE[@]}" exec -T app php artisan geoflow:ai-quality-health --json --probe --wait=10
+
   log "Recent application logs:"
-  "${COMPOSE[@]}" logs --tail=80 app queue knowledge-queue system-update-queue scheduler web || true
+  "${COMPOSE[@]}" logs --tail=80 app queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler web || true
 }
 
 main "$@"

@@ -1,8 +1,17 @@
 import { enhanceFormAccessibility } from './form-accessibility.js';
+import {
+    SIDEBAR_DEFAULT_WIDTH,
+    SIDEBAR_MAX_WIDTH,
+    SIDEBAR_MIN_WIDTH,
+    normalizeSidebarWidth,
+} from './sidebar-width.js';
+import { setupSidebarRecent } from './sidebar-recent.js';
 import { refreshIconPlaceholders, stabilizeLucideRuntime } from './ui-v3-icons.js';
 
 const SHELL_SELECTOR = '[data-gf-shell]';
 const SIDEBAR_STORAGE_KEY = 'geoflow.admin.ui-v3.sidebar-collapsed';
+const SIDEBAR_WIDTH_STORAGE_KEY = 'geoflow.admin.ui-v3.sidebar-width';
+const SIDEBAR_KEYBOARD_STEP = 16;
 
 function runtimeConfig() {
     const element = document.querySelector('#geoflow-runtime-config');
@@ -38,10 +47,29 @@ function setupSidebar() {
     const root = document.documentElement;
     const body = document.body;
     const collapseButton = document.querySelector('[data-sidebar-collapse]');
+    const resizeHandle = document.querySelector('[data-sidebar-resize]');
+    let sidebarWidth = SIDEBAR_DEFAULT_WIDTH;
+    let activePointerId = null;
+
+    const applySidebarWidth = (value, persist = true) => {
+        sidebarWidth = normalizeSidebarWidth(value);
+        root.style.setProperty('--gf-sidebar-width-value', `${sidebarWidth}px`);
+        resizeHandle?.setAttribute('aria-valuenow', String(sidebarWidth));
+        if (!persist) return sidebarWidth;
+        try {
+            window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
+        } catch {
+            // The layout remains functional when browser storage is unavailable.
+        }
+        return sidebarWidth;
+    };
+
     const applyCollapsedState = (collapsed, persist = true) => {
         root.setAttribute('data-gf-sidebar-state', collapsed ? 'collapsed' : 'expanded');
         body.classList.toggle('gf-sidebar-collapsed', collapsed);
         collapseButton?.setAttribute('aria-expanded', String(!collapsed));
+        resizeHandle?.setAttribute('aria-disabled', String(collapsed));
+        if (resizeHandle) resizeHandle.tabIndex = collapsed ? -1 : 0;
         if (!persist) return;
         try {
             window.localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0');
@@ -50,14 +78,73 @@ function setupSidebar() {
         }
     };
 
+    try {
+        sidebarWidth = normalizeSidebarWidth(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+    } catch {
+        sidebarWidth = SIDEBAR_DEFAULT_WIDTH;
+    }
+    applySidebarWidth(sidebarWidth, false);
+
     const initialCollapsed = root.getAttribute('data-gf-sidebar-state') === 'collapsed';
     applyCollapsedState(initialCollapsed, false);
     collapseButton?.addEventListener('click', () => {
         applyCollapsedState(root.getAttribute('data-gf-sidebar-state') !== 'collapsed');
     });
+
+    const finishResize = (event) => {
+        if (activePointerId === null) return;
+        if (event?.pointerId !== undefined && event.pointerId !== activePointerId) return;
+        const pointerId = activePointerId;
+        activePointerId = null;
+        if (resizeHandle?.hasPointerCapture?.(pointerId)) resizeHandle.releasePointerCapture(pointerId);
+        root.removeAttribute('data-gf-sidebar-resizing');
+        applySidebarWidth(sidebarWidth);
+    };
+
+    resizeHandle?.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || root.getAttribute('data-gf-sidebar-state') === 'collapsed') return;
+        if (window.matchMedia?.('(max-width: 767px)').matches) return;
+
+        event.preventDefault();
+        activePointerId = event.pointerId;
+        root.setAttribute('data-gf-sidebar-resizing', '');
+        resizeHandle.setPointerCapture?.(event.pointerId);
+        applySidebarWidth(event.clientX, false);
+    });
+    resizeHandle?.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== activePointerId) return;
+        applySidebarWidth(event.clientX, false);
+    });
+    resizeHandle?.addEventListener('pointerup', finishResize);
+    resizeHandle?.addEventListener('pointercancel', finishResize);
+    resizeHandle?.addEventListener('lostpointercapture', finishResize);
+    window.addEventListener('blur', () => finishResize());
+    resizeHandle?.addEventListener('keydown', (event) => {
+        let nextWidth = sidebarWidth;
+        if (event.key === 'ArrowLeft') nextWidth -= SIDEBAR_KEYBOARD_STEP;
+        else if (event.key === 'ArrowRight') nextWidth += SIDEBAR_KEYBOARD_STEP;
+        else if (event.key === 'Home') nextWidth = SIDEBAR_MIN_WIDTH;
+        else if (event.key === 'End') nextWidth = SIDEBAR_MAX_WIDTH;
+        else return;
+
+        event.preventDefault();
+        root.setAttribute('data-gf-sidebar-resizing', '');
+        applySidebarWidth(nextWidth);
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => root.removeAttribute('data-gf-sidebar-resizing')));
+    });
+
     document.querySelectorAll('[data-sidebar-open]').forEach((button) => button.addEventListener('click', () => body.classList.add('gf-sidebar-open')));
     document.querySelectorAll('[data-sidebar-close]').forEach((button) => button.addEventListener('click', () => body.classList.remove('gf-sidebar-open')));
     document.querySelectorAll('.gf-sidebar a').forEach((link) => link.addEventListener('click', () => body.classList.remove('gf-sidebar-open')));
+
+    const recent = setupSidebarRecent({ refreshIcons });
+    if (recent) {
+        window.GeoFlowAdminUi = {
+            ...(window.GeoFlowAdminUi ?? {}),
+            refreshRecentConversations: recent.refresh,
+            setRecentConversationActive: recent.setActiveConversation,
+        };
+    }
 }
 
 function closePopovers(except = null) {
@@ -88,6 +175,13 @@ function setupPopovers() {
     });
 
     document.addEventListener('click', () => closePopovers());
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const expandedButton = document.querySelector('[data-popover-button][aria-expanded="true"]');
+        if (!expandedButton) return;
+        closePopovers();
+        expandedButton.focus();
+    });
 }
 
 let activeModal = null;
@@ -123,32 +217,6 @@ function closeModal() {
     modalOpener = null;
 }
 
-let qrCodeModulePromise = null;
-
-function loadQrCode() {
-    qrCodeModulePromise ??= import('qrcode').then((module) => module.default ?? module);
-    return qrCodeModulePromise;
-}
-
-async function renderQrCode(modal) {
-    const canvas = modal.querySelector('[data-qr-canvas]');
-    const value = modal.dataset.qrValue;
-    if (!canvas || !value || canvas.dataset.rendered === 'true') return;
-
-    try {
-        const QRCode = await loadQrCode();
-        await QRCode.toCanvas(canvas, value, {
-            width: 132,
-            margin: 1,
-            color: { dark: '#111827', light: '#ffffff' },
-            errorCorrectionLevel: 'M',
-        });
-        canvas.dataset.rendered = 'true';
-    } catch {
-        canvas.setAttribute('aria-label', value);
-    }
-}
-
 function openModal(name, opener) {
     const modal = document.querySelector(`[data-gf-modal="${CSS.escape(name)}"]`);
     if (!modal) return;
@@ -176,7 +244,6 @@ function openModal(name, opener) {
         focusableElements(modal)[0]?.focus();
     });
     modalOpenFrames.set(modal, openFrame);
-    if (name === 'qr') renderQrCode(modal);
 }
 
 function setupDialogs() {
@@ -253,12 +320,47 @@ function setupClipboard() {
     });
 }
 
-function setupLocaleSwitch() {
-    document.querySelectorAll('[data-locale-select]').forEach((select) => {
-        select.addEventListener('change', () => {
-            if (select.value) window.location.assign(select.value);
-        });
+export function markSubmitControlsPending(controls) {
+    Array.from(controls ?? []).forEach((control) => {
+        if (typeof control?.setAttribute !== 'function') return;
+
+        control.setAttribute('aria-disabled', 'true');
+        control.setAttribute('data-gf-submit-pending', '');
     });
+}
+
+function markFormSubmitting(form, submitter = null) {
+    if (form.dataset.gfSubmitting === 'true') return false;
+
+    form.dataset.gfSubmitting = 'true';
+    form.setAttribute('aria-busy', 'true');
+    markSubmitControlsPending(submitter ? [submitter] : []);
+
+    return true;
+}
+
+export function handleTrackedFormSubmit(event, forms, dirtyForms) {
+    if (!(event.target instanceof HTMLFormElement) || !forms.includes(event.target) || event.defaultPrevented) return;
+
+    if (!markFormSubmitting(event.target, event.submitter)) {
+        event.preventDefault();
+        return;
+    }
+
+    dirtyForms.delete(event.target);
+}
+
+function resetFormSubmitting(form) {
+    delete form.dataset.gfSubmitting;
+    form.removeAttribute('aria-busy');
+    form.querySelectorAll('[data-gf-submit-pending]').forEach((submitter) => {
+        submitter.removeAttribute('aria-disabled');
+        submitter.removeAttribute('data-gf-submit-pending');
+    });
+}
+
+export function resetTrackedFormSubmissions(forms) {
+    forms.forEach(resetFormSubmitting);
 }
 
 function setupUnsavedChanges() {
@@ -278,15 +380,9 @@ function setupUnsavedChanges() {
         form.addEventListener('gf:saved', () => { dirtyForms.delete(form); });
     });
 
-    window.addEventListener('submit', (event) => {
-        if (event.target instanceof HTMLFormElement && forms.includes(event.target) && !event.defaultPrevented) {
-            dirtyForms.delete(event.target);
-            event.target.setAttribute('aria-busy', 'true');
-            if (event.submitter instanceof HTMLButtonElement || event.submitter instanceof HTMLInputElement) {
-                event.submitter.disabled = true;
-            }
-        }
-    });
+    window.addEventListener('submit', (event) => handleTrackedFormSubmit(event, forms, dirtyForms));
+
+    window.addEventListener('pageshow', () => resetTrackedFormSubmissions(forms));
 
     window.addEventListener('beforeunload', (event) => {
         if (dirtyForms.size === 0) return;
@@ -323,6 +419,7 @@ function setupFormAccessibility() {
 function setupIcons() {
     window.GeoFlowAdminUi = {
         ...(window.GeoFlowAdminUi ?? {}),
+        markSubmitControlsPending,
         refreshIcons,
         showToast,
     };
@@ -352,7 +449,6 @@ function initialize() {
     setupPopovers();
     setupDialogs();
     setupClipboard();
-    setupLocaleSwitch();
     setupUnsavedChanges();
     setupFormAccessibility();
     focusFirstError();

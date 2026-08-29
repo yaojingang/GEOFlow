@@ -11,6 +11,14 @@ class AiConversation extends Conversation
 
     protected $keyType = 'string';
 
+    protected $fillable = [
+        'id',
+        'participant_type',
+        'participant_id',
+        'title',
+        'archived_at',
+    ];
+
     protected function casts(): array
     {
         return [

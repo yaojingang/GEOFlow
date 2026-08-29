@@ -435,7 +435,7 @@
     @endphp
 
     <div class="px-4 sm:px-0">
-        <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900">{{ __('admin.dashboard.navigation.heading') }}</h1>
                 <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.dashboard.navigation.subtitle') }}</p>
@@ -452,7 +452,9 @@
             </div>
         </div>
 
-        <section class="mb-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
+        @include('admin.analytics._navigation', ['analyticsPage' => 'operations'])
+
+        <section class="mb-8 mt-6 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
             <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">{{ __('admin.dashboard.quick_start.eyebrow') }}</p>

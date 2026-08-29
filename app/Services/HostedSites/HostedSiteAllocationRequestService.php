@@ -7,12 +7,15 @@ use App\Models\DistributionChannel;
 use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
+use App\Services\GeoFlow\ArticlePublicationQualityGate;
 use App\Support\GeoFlow\ArticleWorkflow;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
 final class HostedSiteAllocationRequestService
 {
+    public function __construct(private readonly ArticlePublicationQualityGate $publicationQualityGate) {}
+
     public function request(Article $article): HostedSiteAllocationRequest
     {
         if (! config('geoflow.hosted_sites.enabled', false)) {
@@ -40,6 +43,8 @@ final class HostedSiteAllocationRequestService
             || ! ArticleWorkflow::isPublishableReviewStatus($article->review_status)) {
             throw new DomainException('Article is not eligible for hosted site distribution.');
         }
+
+        $this->publicationQualityGate->check($article, 'hosted_site_allocation_request');
 
         return DB::transaction(function () use ($article, $task, $hostedChannels, $profile): HostedSiteAllocationRequest {
             $channelId = (int) $hostedChannels->first()->id;

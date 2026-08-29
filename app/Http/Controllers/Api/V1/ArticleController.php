@@ -43,6 +43,10 @@ class ArticleController extends BaseApiController
         if (is_string($reviewStatus) && trim($reviewStatus) !== '') {
             $filters['review_status'] = trim($reviewStatus);
         }
+        $aiQualityStatus = $request->query('ai_quality_status');
+        if (is_string($aiQualityStatus) && trim($aiQualityStatus) !== '') {
+            $filters['ai_quality_status'] = trim($aiQualityStatus);
+        }
         $search = $request->query('search');
         if (is_string($search) && trim($search) !== '') {
             $filters['search'] = trim($search);
@@ -88,6 +92,14 @@ class ArticleController extends BaseApiController
     public function show(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
     {
         return $this->success($request, $articles->getArticle($article));
+    }
+
+    /**
+     * 返回轻量 AI 质检进度，不包含文章正文、证据正文或供应商错误。
+     */
+    public function aiQualityStatus(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
+    {
+        return $this->success($request, $articles->getAiQualityStatus($article));
     }
 
     /**
@@ -148,6 +160,40 @@ class ArticleController extends BaseApiController
     }
 
     /**
+     * 按最新文章、知识库、提示词、模型和规则重新执行 AI 质检。
+     */
+    public function recheckAiQuality(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
+    {
+        $auth = $this->auth($request);
+
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /articles/{id}/ai-quality/recheck',
+            fn (): JsonResponse => $this->success($request, $articles->recheckAiQuality(
+                $article,
+                $auth->auditAdminId,
+                (int) ($auth->token['id'] ?? 0),
+            )),
+        );
+    }
+
+    /**
+     * 对达到人工审核最低分的 needs_review 结果记录依据并放行。
+     */
+    public function overrideAiQuality(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
+    {
+        return IdempotencyService::executeJson(
+            $request,
+            'POST /articles/{id}/ai-quality/override',
+            fn (): JsonResponse => $this->success($request, $articles->overrideAiQuality(
+                $article,
+                trim((string) $request->input('reason', '')),
+                $this->auth($request)->auditAdminId,
+            )),
+        );
+    }
+
+    /**
      * 软删除文章（写入 deleted_at）。幂等键：POST /articles/{id}/trash。
      */
     public function trash(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
@@ -161,7 +207,8 @@ class ArticleController extends BaseApiController
 
     private function riskBlockedResponse(Request $request, ApiException $exception): JsonResponse
     {
-        if ($exception->getErrorCode() !== 'article_risk_blocked') {
+        if ($exception->getErrorCode() !== 'article_risk_blocked'
+            && ! str_starts_with($exception->getErrorCode(), 'article_ai_quality_')) {
             throw $exception;
         }
 

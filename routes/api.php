@@ -11,6 +11,9 @@
 
 use App\Http\Controllers\Api\V1\ArticleController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BrowserDeviceAuthorizationController;
+use App\Http\Controllers\Api\V1\BrowserManualPublicationController;
+use App\Http\Controllers\Api\V1\BrowserSessionController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\JobController;
 use App\Http\Controllers\Api\V1\MaterialController;
@@ -25,8 +28,39 @@ Route::prefix('v1')
         Route::post('auth/login', [AuthController::class, 'login'])
             ->middleware('throttle:admin-login');
 
+        Route::middleware(['browser.protocol'])
+            ->prefix('browser-operations')
+            ->group(function (): void {
+                Route::post('device-authorizations', [BrowserDeviceAuthorizationController::class, 'store'])
+                    ->middleware('throttle:5,1');
+                Route::post('device-token', [BrowserDeviceAuthorizationController::class, 'token'])
+                    ->middleware('throttle:30,1');
+            });
+
         // 需有效 Token + 对应 scope
         Route::middleware(['api.auth'])->group(function (): void {
+            Route::middleware(['browser.protocol', 'api.scope:browser-operations:read'])
+                ->prefix('browser-operations')
+                ->group(function (): void {
+                    Route::get('session', [BrowserSessionController::class, 'show'])->middleware('throttle:120,1');
+                    Route::delete('session', [BrowserSessionController::class, 'destroy'])
+                        ->middleware(['api.scope:browser-operations:execute', 'throttle:30,1']);
+                });
+
+            Route::middleware(['browser.protocol', 'api.scope:browser-operations:read'])
+                ->prefix('manual-publications')
+                ->group(function (): void {
+                    Route::get('/', [BrowserManualPublicationController::class, 'index'])->middleware('throttle:120,1');
+                    Route::get('{manualPublicationId}', [BrowserManualPublicationController::class, 'show'])->whereNumber('manualPublicationId')->middleware('throttle:120,1');
+                    Route::middleware('api.scope:browser-operations:execute')->group(function (): void {
+                        Route::middleware('throttle:30,1')->group(function (): void {
+                            Route::post('{manualPublicationId}/claim', [BrowserManualPublicationController::class, 'claim'])->whereNumber('manualPublicationId');
+                            Route::post('{manualPublicationId}/heartbeat', [BrowserManualPublicationController::class, 'heartbeat'])->whereNumber('manualPublicationId');
+                            Route::post('{manualPublicationId}/release', [BrowserManualPublicationController::class, 'release'])->whereNumber('manualPublicationId');
+                            Route::post('{manualPublicationId}/receipt', [BrowserManualPublicationController::class, 'receipt'])->whereNumber('manualPublicationId');
+                        });
+                    });
+                });
             // catalog:read — 下拉元数据（模型、提示词、库、作者、分类等）
             Route::get('catalog', [CatalogController::class, 'show'])->middleware('api.scope:catalog:read');
 
@@ -90,6 +124,9 @@ Route::prefix('v1')
             Route::get('articles/{article}', [ArticleController::class, 'show'])
                 ->whereNumber('article')
                 ->middleware('api.scope:articles:read');
+            Route::get('articles/{article}/ai-quality/status', [ArticleController::class, 'aiQualityStatus'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:read', 'throttle:120,1']);
             Route::patch('articles/{article}', [ArticleController::class, 'update'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:write', 'throttle:60,1']);
@@ -99,6 +136,12 @@ Route::prefix('v1')
             Route::post('articles/{article}/publish', [ArticleController::class, 'publish'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
+            Route::post('articles/{article}/ai-quality/recheck', [ArticleController::class, 'recheckAiQuality'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:publish', 'throttle:api-ai-quality-manual']);
+            Route::post('articles/{article}/ai-quality/override', [ArticleController::class, 'overrideAiQuality'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:publish', 'throttle:30,1']);
             Route::post('articles/{article}/trash', [ArticleController::class, 'trash'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:write', 'throttle:60,1']);

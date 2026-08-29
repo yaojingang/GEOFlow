@@ -11,7 +11,7 @@ abstract class AiWorkspaceRequest extends FormRequest
     protected function failedValidation(Validator $validator): void
     {
         throw new HttpResponseException(response()->json([
-            'message' => '提交的参数未通过校验。',
+            'message' => __('admin.ai_workspace.invalid_submission'),
             'code' => 'validation_failed',
             'errors' => $validator->errors(),
         ], 422));

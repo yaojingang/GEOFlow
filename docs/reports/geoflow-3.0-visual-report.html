@@ -1,0 +1,1488 @@
+<!doctype html>
+<html lang="zh-CN"
+      data-heading-flow="stacked-full-width"
+      data-container-style="open-flat"
+      data-chart-alignment="left"
+      data-language-mode="bilingual"
+      data-default-language="zh-CN"
+      data-report-typography="analytical-sans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GEOFlow 3.0 定位、产品更新、系统架构、AI 工作台、AI 质检、多站点分发与后续演进方向可视化报告">
+  <meta name="author" content="GEOFlow">
+  <meta name="keywords" content="GEOFlow,GEO,企业官网,AI质检,内容工程,多站点分发">
+  <title>GEOFlow 3.0：面向企业官网的 GEO 智能运营系统</title>
+  <style>
+    :root {
+      --report-max-width: 1120px;
+      --report-heading-width: 960px;
+      --report-reading-width: 800px;
+      --ink: #14201d;
+      --muted: #5f6d68;
+      --soft: #8b9692;
+      --line: #dfe6e3;
+      --line-strong: #aebbb6;
+      --accent: #087c68;
+      --accent-soft: #dff3ed;
+      --accent-2: #1f9d85;
+      --warm: #9a5b09;
+      --warm-soft: #fff4df;
+      --risk: #b42318;
+      --risk-soft: #fde9e7;
+      --neutral-fill: #f5f7f6;
+      --report-serif: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", STSong, Georgia, serif;
+      --report-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+      --report-mono: "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, "PingFang SC", "Noto Sans CJK SC", monospace;
+      --container-radius: 0;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; background: #ffffff; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #ffffff;
+      font-family: var(--report-sans);
+      font-size: 16px;
+      line-height: 1.68;
+      letter-spacing: 0.008em;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: inherit; }
+    button, code, pre, table, svg text { font-family: var(--report-sans); }
+    code, pre { font-family: var(--report-mono); }
+    svg text { fill: var(--ink); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+    [data-container-style="open-flat"] :where(
+      article, aside, figure, figcaption, nav, pre, code, table, button,
+      [class*="card"], [class*="pill"], [class*="chip"], [class*="badge"]
+    ) { border-radius: 0; }
+
+    .skip-link {
+      position: fixed;
+      left: 16px;
+      top: 16px;
+      z-index: 100;
+      padding: 10px 14px;
+      border: 1px solid var(--ink);
+      background: #ffffff;
+      transform: translateY(-160%);
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .report-shell {
+      width: min(calc(100% - 48px), var(--report-max-width));
+      margin-inline: auto;
+    }
+    .report-heading-rail {
+      width: 100%;
+      max-width: var(--report-heading-width);
+    }
+    [data-section-heading] {
+      width: 100%;
+      max-width: var(--report-max-width);
+    }
+    .reading-rail {
+      width: 100%;
+      max-width: var(--report-reading-width);
+    }
+
+    [data-report-heading],
+    [data-section-heading],
+    [data-module-heading] {
+      display: block;
+      width: 100%;
+    }
+    [data-report-title],
+    [data-section-title],
+    [data-module-title],
+    [data-report-description],
+    [data-section-description],
+    [data-module-description] {
+      display: block;
+      width: 100%;
+      max-width: none;
+    }
+    [data-report-title],
+    [data-section-title],
+    [data-module-title] { text-wrap: wrap; }
+    [data-report-description],
+    [data-section-description] { text-wrap: pretty; }
+    [data-module-description] { text-wrap: wrap; }
+
+    nav[data-sticky-nav] {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: #ffffff;
+      border-bottom: 1px solid var(--line);
+    }
+    .nav-inner {
+      width: min(calc(100% - 48px), var(--report-max-width));
+      min-height: 60px;
+      margin-inline: auto;
+      display: flex;
+      align-items: stretch;
+      gap: 24px;
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      flex: 0 0 auto;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+    .brand-mark {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      margin-right: 8px;
+      border-left: 5px solid var(--accent);
+      border-bottom: 5px solid var(--accent);
+    }
+    .nav-links {
+      min-width: 0;
+      display: flex;
+      align-items: stretch;
+      gap: 4px;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      white-space: nowrap;
+    }
+    .nav-links a {
+      display: flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 10px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      border-bottom: 2px solid transparent;
+    }
+    .nav-links a[aria-current="true"] {
+      color: var(--ink);
+      border-bottom-color: var(--accent);
+    }
+    [data-language-switch][data-button-tone="light"] {
+      flex: 0 0 auto;
+      min-width: 88px;
+      min-height: 40px;
+      align-self: center;
+      margin-left: auto;
+      padding: 8px 12px;
+      color: var(--ink);
+      background: #ffffff;
+      border: 1px solid var(--line-strong);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    body[data-active-language="zh-CN"] [data-language-option="zh-CN"],
+    body[data-active-language="en"] [data-language-option="en"] {
+      color: var(--accent);
+      font-weight: 650;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .hero {
+      padding: 96px 0 72px;
+      background: #ffffff;
+    }
+    [data-report-eyebrow],
+    [data-section-number] {
+      display: block;
+      width: 100%;
+      margin: 0 0 12px;
+      color: var(--accent);
+      font-family: var(--report-mono);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    [data-report-title] {
+      margin: 0;
+      font-size: clamp(44px, 7vw, 80px);
+      line-height: 1.08;
+      letter-spacing: -0.045em;
+      font-weight: 600;
+    }
+    [data-report-description] {
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: 22px;
+      line-height: 1.55;
+    }
+    .hero-thesis {
+      max-width: var(--report-reading-width);
+      margin: 48px 0 0;
+      padding-left: 20px;
+      border-left: 3px solid var(--accent);
+      font-family: var(--report-serif);
+      font-size: 24px;
+      line-height: 1.55;
+    }
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px 28px;
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-family: var(--report-mono);
+      font-size: 12px;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    .metric-band {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 24px;
+      margin-top: 64px;
+      padding: 28px 0;
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .metric strong {
+      display: block;
+      font-size: 40px;
+      line-height: 1;
+      letter-spacing: -0.035em;
+      font-weight: 600;
+      color: var(--accent);
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    .metric span {
+      display: block;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    main { background: #ffffff; }
+    section {
+      padding: 96px 0;
+      background: #ffffff;
+      border-top: 1px solid var(--line);
+      scroll-margin-top: 76px;
+    }
+    [data-section-title] {
+      margin: 0;
+      font-size: clamp(30px, 4vw, 44px);
+      line-height: 1.14;
+      letter-spacing: -0.035em;
+      font-weight: 600;
+    }
+    [data-section-description] {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.65;
+    }
+    .section-body { margin-top: 56px; }
+    .reading-rail p { color: var(--muted); }
+    .report-note {
+      margin: 28px 0 0;
+      padding: 16px 0 16px 18px;
+      border-left: 2px solid var(--warm);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    figure {
+      margin: 0;
+      padding: 32px 0 40px;
+      border-top: 0;
+      background: #ffffff;
+    }
+    figure + figure { margin-top: 32px; }
+    [data-module-title] {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.25;
+      letter-spacing: -0.018em;
+      font-weight: 600;
+    }
+    [data-module-description] {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    [data-module-meta] {
+      display: inline-block;
+      margin-top: 12px;
+      color: var(--soft);
+      font-family: var(--report-mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+    }
+    .chart-area { margin-top: 32px; }
+    .chart-conclusion {
+      margin: 24px 0 0;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--ink);
+      font-weight: 550;
+      line-height: 1.55;
+    }
+    .source-meta { display: none; }
+    [data-chart-left-anchor] {
+      justify-self: start;
+      margin-inline: 0;
+    }
+
+    .position-matrix {
+      position: relative;
+      width: 100%;
+      min-height: 500px;
+      border-left: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+      background-color: #ffffff;
+    }
+    .position-matrix::before,
+    .position-matrix::after {
+      position: absolute;
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--report-mono);
+    }
+    .position-matrix::before {
+      content: attr(data-x-label);
+      right: 0;
+      bottom: -32px;
+    }
+    .position-matrix::after {
+      content: attr(data-y-label);
+      left: -8px;
+      top: -32px;
+    }
+    .matrix-node {
+      position: absolute;
+      width: 178px;
+      padding: 12px 14px;
+      border-left: 3px solid var(--line-strong);
+      background: #ffffff;
+      box-shadow: 0 6px 18px rgba(20, 32, 29, 0.06);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .matrix-node strong { display: block; font-size: 15px; }
+    .matrix-node span { color: var(--muted); }
+    .matrix-node.primary {
+      width: 228px;
+      border-left-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 10px 24px rgba(8, 124, 104, 0.12);
+    }
+    .matrix-node.primary span { color: var(--ink); }
+    .pos-a { left: 8%; bottom: 8%; }
+    .pos-b { left: 52%; bottom: 14%; }
+    .pos-c { left: 20%; top: 24%; }
+    .pos-d { right: 3%; top: 6%; }
+
+    .pillar-map {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .pillar {
+      min-height: 300px;
+      padding: 24px;
+      border-right: 1px solid var(--line);
+    }
+    .pillar:last-child { border-right: 0; }
+    .pillar-index {
+      color: var(--accent);
+      font-family: var(--report-mono);
+      font-size: 12px;
+    }
+    .pillar h4 { margin: 40px 0 16px; font-size: 21px; line-height: 1.25; }
+    .pillar ul { margin: 0; padding: 0; list-style: none; }
+    .pillar li { padding: 8px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+
+    .update-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border-top: 1px solid var(--line-strong);
+      border-left: 1px solid var(--line);
+    }
+    .update-item {
+      min-height: 180px;
+      padding: 22px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: #ffffff;
+    }
+    .update-item .num { color: var(--accent); font-family: var(--report-mono); font-size: 12px; }
+    .update-item h4 { margin: 20px 0 10px; font-size: 17px; line-height: 1.3; }
+    .update-item p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+    .flow-chain {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      gap: 0;
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .flow-step {
+      position: relative;
+      min-height: 166px;
+      padding: 20px 14px;
+      border-right: 1px solid var(--line);
+    }
+    .flow-step:last-child { border-right: 0; }
+    .flow-step::after {
+      content: "→";
+      position: absolute;
+      right: -9px;
+      top: 64px;
+      z-index: 2;
+      width: 18px;
+      text-align: center;
+      color: var(--accent);
+      background: #ffffff;
+    }
+    .flow-step:last-child::after { content: "↺"; right: 8px; }
+    .flow-step b { display: block; color: var(--accent); font-family: var(--report-mono); font-size: 12px; }
+    .flow-step strong { display: block; margin-top: 24px; font-size: 15px; line-height: 1.35; }
+    .flow-step span { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    .architecture-stack { border-top: 1px solid var(--line-strong); }
+    .architecture-layer {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 24px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .architecture-label { color: var(--accent); font-family: var(--report-mono); font-size: 12px; font-weight: 600; }
+    .architecture-nodes { display: flex; flex-wrap: wrap; gap: 8px; }
+    .architecture-node {
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      color: var(--ink);
+      background: #ffffff;
+      font-size: 13px;
+    }
+
+    .three-column-flow {
+      display: grid;
+      grid-template-columns: 1fr 48px 1.3fr 48px 1fr;
+      align-items: stretch;
+    }
+    .flow-column { border-top: 3px solid var(--accent); border-bottom: 1px solid var(--line); padding: 20px; }
+    .flow-column h4 { margin: 0 0 18px; font-size: 17px; }
+    .flow-column ul { margin: 0; padding: 0; list-style: none; }
+    .flow-column li { padding: 8px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+    .flow-arrow { display: grid; place-items: center; color: var(--accent); font-size: 24px; }
+
+    .quality-pipeline {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .quality-node { min-height: 190px; padding: 18px 14px; border-right: 1px solid var(--line); }
+    .quality-node:last-child { border-right: 0; }
+    .quality-node b { color: var(--accent); font-family: var(--report-mono); font-size: 11px; }
+    .quality-node strong { display: block; margin-top: 22px; font-size: 14px; line-height: 1.35; }
+    .quality-node span { display: block; margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+    .decision-table {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 1px solid var(--line-strong);
+      border-left: 1px solid var(--line);
+    }
+    .decision-cell {
+      min-height: 210px;
+      padding: 22px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .decision-cell.pass { border-top: 5px solid var(--accent); }
+    .decision-cell.review { border-top: 5px solid var(--warm); }
+    .decision-cell.block { border-top: 5px solid var(--risk); }
+    .decision-cell.error { border-top: 5px solid var(--line-strong); }
+    .decision-cell .score { display: block; font-size: 34px; line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .decision-cell h4 { margin: 22px 0 10px; }
+    .decision-cell p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    .defense-layers { border-top: 1px solid var(--line-strong); }
+    .defense-layer {
+      display: grid;
+      grid-template-columns: 48px 190px 1fr;
+      gap: 18px;
+      align-items: start;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .defense-layer .index { color: var(--accent); font-family: var(--report-mono); }
+    .defense-layer strong { font-size: 14px; }
+    .defense-layer span { color: var(--muted); font-size: 13px; }
+
+    .topology {
+      display: grid;
+      grid-template-columns: minmax(180px, 0.8fr) 80px minmax(0, 1.8fr);
+      align-items: center;
+      min-height: 420px;
+    }
+    .topology-core { padding: 28px; border: 2px solid var(--accent); }
+    .topology-core strong { display: block; color: var(--accent); font-size: 22px; }
+    .topology-core span { display: block; margin-top: 10px; color: var(--muted); font-size: 13px; }
+    .topology-connector { position: relative; height: 100%; }
+    .topology-connector::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      border-top: 2px solid var(--accent);
+    }
+    .topology-targets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+    .topology-target { min-height: 150px; padding: 20px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .topology-target strong { display: block; font-size: 15px; }
+    .topology-target span { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; }
+
+    .trust-flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .trust-step { position: relative; min-height: 210px; padding: 20px; border-right: 1px solid var(--line); }
+    .trust-step:last-child { border-right: 0; }
+    .trust-step::after { content: "→"; position: absolute; right: -9px; top: 86px; z-index: 2; width: 18px; text-align: center; color: var(--accent); background: #ffffff; }
+    .trust-step:last-child::after { display: none; }
+    .trust-step b { color: var(--accent); font-family: var(--report-mono); font-size: 11px; }
+    .trust-step strong { display: block; margin-top: 24px; font-size: 15px; }
+    .trust-step span { display: block; margin-top: 10px; color: var(--muted); font-size: 12px; }
+
+    .long-task-tracks { border-top: 1px solid var(--line-strong); }
+    .task-track {
+      display: grid;
+      grid-template-columns: 180px 1fr 140px;
+      gap: 24px;
+      align-items: center;
+      min-height: 130px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .task-track strong { font-size: 16px; }
+    .task-track p { margin: 0; color: var(--muted); font-size: 13px; }
+    .task-value { color: var(--accent); text-align: right; font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    .bar-chart { border-top: 1px solid var(--line-strong); }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 190px 1fr 72px;
+      gap: 18px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .bar-label { color: var(--muted); font-size: 13px; }
+    .bar-track { height: 14px; background: var(--neutral-fill); }
+    .bar-fill { height: 14px; background: var(--accent); }
+    .bar-value { text-align: right; font-family: var(--report-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+    .route-stack { display: flex; width: 100%; height: 54px; border: 1px solid var(--line); }
+    .route-segment { display: grid; place-items: center; overflow: hidden; color: #ffffff; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .route-admin { width: 78.07%; background: var(--accent); }
+    .route-api { width: 10.70%; background: var(--warm); }
+    .route-public { width: 11.23%; background: var(--ink); }
+    .route-legend { display: flex; flex-wrap: wrap; gap: 16px 28px; margin-top: 16px; color: var(--muted); font-size: 13px; }
+    .route-legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; }
+
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 180px 1fr 1fr;
+      border-top: 1px solid var(--line-strong);
+      border-left: 1px solid var(--line);
+    }
+    .comparison-grid > div { padding: 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .comparison-head { font-weight: 650; background: var(--neutral-fill); }
+    .comparison-dimension { color: var(--accent); font-size: 13px; font-weight: 600; }
+    .comparison-cell { color: var(--muted); font-size: 13px; }
+
+    .roadmap {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 1px solid var(--line-strong);
+      border-left: 1px solid var(--line);
+    }
+    .roadmap-lane { min-height: 360px; padding: 22px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .roadmap-lane .phase { color: var(--accent); font-family: var(--report-mono); font-size: 11px; }
+    .roadmap-lane h4 { margin: 24px 0 20px; font-size: 18px; }
+    .roadmap-lane ol { margin: 0; padding-left: 18px; }
+    .roadmap-lane li { margin: 12px 0; color: var(--muted); font-size: 13px; }
+
+    .evidence-map {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      border-top: 1px solid var(--line-strong);
+      border-left: 1px solid var(--line);
+    }
+    .evidence-cell { min-height: 190px; padding: 20px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .evidence-cell strong { display: block; font-family: var(--report-mono); font-size: 12px; color: var(--accent); }
+    .evidence-cell span { display: block; margin-top: 18px; color: var(--muted); font-size: 13px; }
+
+    .release-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-top: 32px;
+      border-top: 1px solid var(--line-strong);
+      border-left: 1px solid var(--line);
+    }
+    .release-component { padding: 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .release-component b { display: block; font-size: 13px; }
+    .release-component span { display: block; margin-top: 8px; color: var(--accent); font-family: var(--report-mono); font-size: 17px; }
+
+    footer { padding: 56px 0 72px; border-top: 1px solid var(--line); background: #ffffff; }
+    .footer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+    .footer-grid p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    @media (max-width: 900px) {
+      .metric-band { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .pillar-map { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .pillar:nth-child(2) { border-right: 0; }
+      .pillar:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .update-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow-chain { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .flow-step:nth-child(4) { border-right: 0; }
+      .flow-step:nth-child(-n+4) { border-bottom: 1px solid var(--line); }
+      .quality-pipeline { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .quality-node:nth-child(4) { border-right: 0; }
+      .quality-node:nth-child(-n+4) { border-bottom: 1px solid var(--line); }
+      .decision-table { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .trust-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .trust-step:nth-child(3) { border-right: 0; }
+      .trust-step:nth-child(-n+3) { border-bottom: 1px solid var(--line); }
+      .roadmap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .evidence-map { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      body { font-size: 15px; }
+      .report-shell { width: min(calc(100% - 32px), var(--report-max-width)); }
+      .nav-inner { width: calc(100% - 24px); min-height: 56px; gap: 10px; }
+      .nav-brand { font-size: 13px; }
+      .nav-links { order: 3; position: absolute; left: 0; right: 0; top: 56px; height: 44px; padding: 0 12px; background: #ffffff; border-bottom: 1px solid var(--line); }
+      [data-language-switch][data-button-tone="light"] { min-width: 82px; }
+      .hero { padding: 108px 0 56px; }
+      [data-report-title] { font-size: 44px; }
+      [data-report-description] { font-size: 18px; }
+      .hero-thesis { margin-top: 36px; font-size: 20px; }
+      .metric-band { gap: 16px; margin-top: 48px; }
+      .metric strong { font-size: 32px; }
+      section { padding: 72px 0; scroll-margin-top: 112px; }
+      [data-section-title] { font-size: 30px; }
+      [data-section-description] { font-size: 16px; }
+      .section-body { margin-top: 40px; }
+      figure { padding: 28px 0 32px; }
+      [data-module-title] { font-size: 20px; }
+      [data-chart-left-anchor] { width: 100%; }
+      .position-matrix { min-height: 620px; background-size: 50% 25%; }
+      .matrix-node { width: 150px; padding: 10px; }
+      .matrix-node.primary { width: 190px; }
+      .pos-a { left: 4%; bottom: 8%; }
+      .pos-b { left: 45%; bottom: 29%; }
+      .pos-c { left: 6%; top: 21%; }
+      .pos-d { right: 1%; top: 3%; }
+      .pillar-map, .update-grid, .decision-table, .roadmap, .evidence-map { grid-template-columns: 1fr; }
+      .pillar { min-height: 220px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .pillar:last-child { border-bottom: 0; }
+      .update-item, .decision-cell, .roadmap-lane, .evidence-cell { min-height: auto; }
+      .flow-chain, .quality-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow-step:nth-child(even), .quality-node:nth-child(even) { border-right: 0; }
+      .flow-step, .quality-node { border-bottom: 1px solid var(--line); }
+      .flow-step:nth-last-child(-n+2), .quality-node:nth-last-child(-n+2) { border-bottom: 0; }
+      .flow-step:nth-child(even)::after { content: "↓"; right: 8px; top: auto; bottom: -13px; }
+      .architecture-layer { grid-template-columns: 1fr; gap: 10px; }
+      .three-column-flow { grid-template-columns: 1fr; }
+      .flow-arrow { min-height: 44px; transform: rotate(90deg); }
+      .defense-layer { grid-template-columns: 36px 1fr; }
+      .defense-layer span { grid-column: 2; }
+      .topology { grid-template-columns: 1fr; gap: 0; }
+      .topology-connector { min-height: 70px; }
+      .topology-connector::before { left: 50%; right: auto; top: 0; bottom: 0; border-top: 0; border-left: 2px solid var(--accent); }
+      .topology-targets { grid-template-columns: 1fr; }
+      .trust-flow { grid-template-columns: 1fr; }
+      .trust-step { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .trust-step::after { content: "↓"; top: auto; right: 16px; bottom: -14px; }
+      .task-track { grid-template-columns: 1fr; gap: 10px; }
+      .task-value { text-align: left; }
+      .bar-row { grid-template-columns: 115px 1fr 48px; gap: 10px; }
+      .comparison-grid { grid-template-columns: 105px minmax(160px, 1fr) minmax(160px, 1fr); min-width: 520px; }
+      .table-scroll { overflow-x: auto; }
+      .release-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .footer-grid { grid-template-columns: 1fr; gap: 20px; }
+    }
+
+    @media (max-width: 420px) {
+      [data-report-title] { font-size: 40px; }
+      .metric-band { grid-template-columns: 1fr 1fr; }
+      .metric strong { font-size: 28px; }
+      .position-matrix { min-height: 680px; }
+      .matrix-node { width: 142px; font-size: 12px; }
+      .matrix-node.primary { width: 176px; }
+      .pos-b { left: 38%; bottom: 27%; }
+      .release-strip { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+
+    @media print {
+      nav[data-sticky-nav], .skip-link { display: none; }
+      .hero, section { padding: 40px 0; }
+      section, figure { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body data-active-language="zh-CN">
+  <a class="skip-link" href="#main-content" data-zh="跳到正文" data-en="Skip to content">跳到正文</a>
+
+  <nav data-sticky-nav aria-label="报告目录" data-aria-zh="报告目录" data-aria-en="Report navigation">
+    <div class="nav-inner">
+      <div class="nav-brand" aria-label="GEOFlow 3.0"><span class="brand-mark" aria-hidden="true"></span>GEOFlow 3.0</div>
+      <div class="nav-links">
+        <a href="#positioning" data-zh="定位" data-en="Positioning">定位</a>
+        <a href="#updates" data-zh="更新" data-en="Updates">更新</a>
+        <a href="#architecture" data-zh="架构" data-en="Architecture">架构</a>
+        <a href="#ai-workspace" data-zh="AI 工作台" data-en="AI workspace">AI 工作台</a>
+        <a href="#quality" data-zh="AI 质检" data-en="AI quality">AI 质检</a>
+        <a href="#operations" data-zh="运营工程" data-en="Operations">运营工程</a>
+        <a href="#scale" data-zh="系统规模" data-en="Scale">系统规模</a>
+        <a href="#roadmap" data-zh="后续方向" data-en="Roadmap">后续方向</a>
+      </div>
+      <button type="button"
+              data-language-switch
+              data-button-tone="light"
+              aria-label="切换为英文"
+              aria-pressed="false">
+        <span data-language-option="zh-CN">简中</span>
+        <span aria-hidden="true"> / </span>
+        <span data-language-option="en">EN</span>
+      </button>
+    </div>
+  </nav>
+
+  <header class="hero" data-report-heading>
+    <div class="report-shell report-heading-rail">
+      <p data-report-eyebrow data-zh="GEOFLOW 3.0 / PRODUCT POSITIONING REPORT" data-en="GEOFLOW 3.0 / PRODUCT POSITIONING REPORT">GEOFLOW 3.0 / PRODUCT POSITIONING REPORT</p>
+      <h1 data-report-title data-zh="面向企业官网的 GEO 智能运营系统" data-en="A GEO operations system built for enterprise websites">面向企业官网的 GEO 智能运营系统</h1>
+      <p data-report-description data-zh="从企业知识、AI 内容生产和质量门禁，一直延伸到官网、多站点、人工运营、数据分析与安全升级" data-en="From enterprise knowledge, AI content production, and quality gates to websites, multi-site delivery, human operations, analytics, and secure updates">从企业知识、AI 内容生产和质量门禁，一直延伸到官网、多站点、人工运营、数据分析与安全升级</p>
+      <p class="hero-thesis" data-zh="GEOFlow 3.0 的品牌定位可以明确表达为：全球首个面向企业官网的开源 GEO 智能运营系统" data-en="GEOFlow 3.0 can be positioned as the world's first open-source GEO operations system built for enterprise websites">GEOFlow 3.0 的品牌定位可以明确表达为：全球首个面向企业官网的开源 GEO 智能运营系统</p>
+      <div class="hero-meta">
+        <span data-zh="版本 3.0.0" data-en="Version 3.0.0">版本 3.0.0</span>
+        <span data-zh="发布日期 2026-08-28" data-en="Release date 2026-08-28">发布日期 2026-08-28</span>
+        <span data-zh="报告快照 2026-08-29" data-en="Report snapshot 2026-08-29">报告快照 2026-08-29</span>
+        <span data-zh="开源协议 Apache-2.0" data-en="License Apache-2.0">开源协议 Apache-2.0</span>
+      </div>
+    </div>
+    <div class="report-shell metric-band" aria-label="GEOFlow 3.0 关键规模" data-aria-zh="GEOFlow 3.0 关键规模" data-aria-en="GEOFlow 3.0 key scale">
+      <div class="metric"><strong>383</strong><span data-zh="当前注册路由" data-en="registered routes">当前注册路由</span></div>
+      <div class="metric"><strong>219</strong><span data-zh="领域与支撑服务" data-en="domain and support services">领域与支撑服务</span></div>
+      <div class="metric"><strong>27</strong><span data-zh="主题与企业模板" data-en="themes and enterprise templates">主题与企业模板</span></div>
+      <div class="metric"><strong>6</strong><span data-zh="后台语言" data-en="admin languages">后台语言</span></div>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section id="positioning">
+      <div class="report-shell">
+        <div data-section-heading>
+          <div data-section-number data-zh="01 / POSITIONING" data-en="01 / POSITIONING">01 / POSITIONING</div>
+          <h2 data-section-title data-zh="官网是核心入口，系统边界延伸到整个 GEO 运营过程" data-en="The enterprise website is the core surface, with operations extending across the GEO lifecycle">官网是核心入口，系统边界延伸到整个 GEO 运营过程</h2>
+          <p data-section-description data-zh="GEOFlow 连接企业知识、AI 生产、质量控制、官网输出、多站点分发、人工协作和数据反馈，可以作为官网 GEO 系统、GEO 子频道、独立信源站或内部内容运营后台" data-en="GEOFlow connects enterprise knowledge, AI production, quality control, website output, multi-site distribution, human collaboration, and analytics. It can run as a website GEO system, GEO subchannel, independent source site, or internal content operations platform">GEOFlow 连接企业知识、AI 生产、质量控制、官网输出、多站点分发、人工协作和数据反馈，可以作为官网 GEO 系统、GEO 子频道、独立信源站或内部内容运营后台</p>
+        </div>
+        <div class="section-body">
+          <figure data-chart="positioning-matrix"
+                  data-question="GEOFlow 3.0 在同类工具形态中占据什么位置"
+                  data-question-zh="GEOFlow 3.0 在同类工具形态中占据什么位置"
+                  data-question-en="Where does GEOFlow 3.0 sit among adjacent tool categories"
+                  data-conclusion="项目定位位于官网原生度与企业运营深度同时较高的区域"
+                  data-conclusion-zh="项目定位位于官网原生度与企业运营深度同时较高的区域"
+                  data-conclusion-en="The product is positioned where website nativeness and enterprise operating depth are both high"
+                  data-source-status="inferred"
+                  role="img"
+                  aria-label="官网原生度与企业运营深度二维定位图"
+                  data-aria-zh="官网原生度与企业运营深度二维定位图"
+                  data-aria-en="Positioning matrix of website nativeness and enterprise operating depth">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="官网原生度与企业运营深度构成 3.0 的定位坐标" data-en="Website nativeness and enterprise operating depth define the 3.0 position">官网原生度与企业运营深度构成 3.0 的定位坐标</h3>
+              <p data-module-description data-zh="横轴表示对官网内容、主题、SEO、Schema 和站点输出的适配深度，纵轴表示知识、质检、审核、分发、权限与运维能力" data-en="The horizontal axis represents depth in website content, themes, SEO, schema, and output. The vertical axis represents knowledge, quality, review, distribution, permissions, and operations">横轴表示对官网内容、主题、SEO、Schema 和站点输出的适配深度，纵轴表示知识、质检、审核、分发、权限与运维能力</p>
+              <span data-module-meta data-zh="定性定位" data-en="QUALITATIVE POSITIONING">定性定位</span>
+            </figcaption>
+            <div class="chart-area position-matrix"
+                 data-chart-left-anchor
+                 data-x-label="官网原生度 →"
+                 data-x-label-zh="官网原生度 →"
+                 data-x-label-en="Website nativeness →"
+                 data-y-label="企业运营深度 ↑"
+                 data-y-label-zh="企业运营深度 ↑"
+                 data-y-label-en="Enterprise operating depth ↑">
+              <div class="matrix-node pos-a"><strong data-zh="AI 写作工具" data-en="AI writing tool">AI 写作工具</strong><span data-zh="生成效率高，站点与运营链路较轻" data-en="High generation efficiency with a light website and operations layer">生成效率高，站点与运营链路较轻</span></div>
+              <div class="matrix-node pos-b"><strong data-zh="官网 CMS" data-en="Website CMS">官网 CMS</strong><span data-zh="官网适配清楚，AI 与质量运营能力有限" data-en="Strong website fit with limited AI and quality operations">官网适配清楚，AI 与质量运营能力有限</span></div>
+              <div class="matrix-node pos-c"><strong data-zh="内容运营平台" data-en="Content operations platform">内容运营平台</strong><span data-zh="流程管理较深，官网输出依赖外部系统" data-en="Deep workflow management with website output delegated elsewhere">流程管理较深，官网输出依赖外部系统</span></div>
+              <div class="matrix-node primary pos-d"><strong>GEOFlow 3.0</strong><span data-zh="企业知识、AI 质检、官网模板、多站点、人工运营与工程运维处于同一系统" data-en="Enterprise knowledge, AI quality, website templates, multi-site delivery, human operations, and engineering controls in one system">企业知识、AI 质检、官网模板、多站点、人工运营与工程运维处于同一系统</span></div>
+            </div>
+            <p class="chart-conclusion" data-zh="GEOFlow 的差异来自系统组合：企业官网承担可信输出，知识与质量门禁约束内容，工程与运营能力维持长期运行" data-en="GEOFlow's differentiation comes from the system composition: enterprise websites provide trusted output, knowledge and quality gates constrain content, and engineering plus operations sustain the system">GEOFlow 的差异来自系统组合：企业官网承担可信输出，知识与质量门禁约束内容，工程与运营能力维持长期运行</p>
+            <span class="source-meta">inferred</span>
+          </figure>
+
+          <figure data-chart="four-pillars"
+                  data-question="官网 GEO 系统需要哪些核心能力"
+                  data-question-zh="官网 GEO 系统需要哪些核心能力"
+                  data-question-en="What core capabilities does a website GEO system require"
+                  data-conclusion="四类能力共同覆盖内容质量、生产效率、展示适配和长期运行"
+                  data-conclusion-zh="四类能力共同覆盖内容质量、生产效率、展示适配和长期运行"
+                  data-conclusion-en="Four capability groups cover content quality, production efficiency, presentation fit, and sustained operation"
+                  data-source-status="qualitative"
+                  role="img"
+                  aria-label="GEOFlow AI 工程模板和质检四支柱"
+                  data-aria-zh="GEOFlow AI 工程模板和质检四支柱"
+                  data-aria-en="Four pillars of GEOFlow: AI, engineering, templates, and quality">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="AI、工程、企业模板与质量门禁共同支撑官网 GEO" data-en="AI, engineering, enterprise templates, and quality gates support website GEO together">AI、工程、企业模板与质量门禁共同支撑官网 GEO</h3>
+              <p data-module-description data-zh="四支柱来自当前产品能力分类，表达系统如何把内容生产与官网运营放在同一套工程体系中" data-en="The four pillars are derived from current product capabilities and show how content production and website operations share one engineering system">四支柱来自当前产品能力分类，表达系统如何把内容生产与官网运营放在同一套工程体系中</p>
+              <span data-module-meta data-zh="定性能力图" data-en="QUALITATIVE CAPABILITY MAP">定性能力图</span>
+            </figcaption>
+            <div class="chart-area pillar-map">
+              <div class="pillar"><span class="pillar-index">01 / AI</span><h4 data-zh="AI 生产与帮助" data-en="AI production and assistance">AI 生产与帮助</h4><ul><li data-zh="多模型内容生成" data-en="Multi-model content generation">多模型内容生成</li><li data-zh="知识库与 RAG" data-en="Knowledge bases and RAG">知识库与 RAG</li><li data-zh="图文帮助工作台" data-en="Illustrated help workspace">图文帮助工作台</li><li data-zh="标题批量生成" data-en="Batch title generation">标题批量生成</li></ul></div>
+              <div class="pillar"><span class="pillar-index">02 / ENGINEERING</span><h4 data-zh="企业级工程" data-en="Enterprise engineering">企业级工程</h4><ul><li data-zh="队列、调度与恢复" data-en="Queues, scheduling, and recovery">队列、调度与恢复</li><li data-zh="权限、幂等与审计" data-en="Permissions, idempotency, and audit">权限、幂等与审计</li><li data-zh="API、CLI 与 PWA" data-en="API, CLI, and PWA">API、CLI 与 PWA</li><li data-zh="独立更新与回滚" data-en="Independent updates and rollback">独立更新与回滚</li></ul></div>
+              <div class="pillar"><span class="pillar-index">03 / TEMPLATE</span><h4 data-zh="官网与企业模板" data-en="Website and enterprise templates">官网与企业模板</h4><ul><li data-zh="27 套主题与模板" data-en="27 themes and templates">27 套主题与模板</li><li data-zh="首页模块构建器" data-en="Homepage module builder">首页模块构建器</li><li data-zh="SEO、Schema 与站点地图" data-en="SEO, schema, and sitemaps">SEO、Schema 与站点地图</li><li data-zh="目标站点包与渠道同步" data-en="Target packages and channel sync">目标站点包与渠道同步</li></ul></div>
+              <div class="pillar"><span class="pillar-index">04 / QUALITY</span><h4 data-zh="AI 质检与发布门禁" data-en="AI quality and release gates">AI 质检与发布门禁</h4><ul><li data-zh="知识与事实一致性" data-en="Knowledge and factual consistency">知识与事实一致性</li><li data-zh="广告规则与风险" data-en="Advertising rules and risk">广告规则与风险</li><li data-zh="原文定位与修改建议" data-en="Source positions and revisions">原文定位与修改建议</li><li data-zh="人工授权与审计记录" data-en="Human authorization and audit records">人工授权与审计记录</li></ul></div>
+            </div>
+            <p class="chart-conclusion" data-zh="官网 GEO 的持续性来自四个支点，任何一个环节缺失都会把压力转移到人工补救或外部工具" data-en="Sustained website GEO depends on all four pillars. Missing capabilities shift work into manual recovery or external tools">官网 GEO 的持续性来自四个支点，任何一个环节缺失都会把压力转移到人工补救或外部工具</p>
+            <span class="source-meta">qualitative</span>
+          </figure>
+          <p class="report-note reading-rail" data-zh="“全球首个”在本报告中作为项目品牌定位表达，当前证据覆盖仓库能力与版本材料，未执行全球市场穷尽性核验" data-en="The phrase “world's first” is treated as a brand positioning statement. The evidence covers repository capabilities and release materials, without an exhaustive global market verification">“全球首个”在本报告中作为项目品牌定位表达，当前证据覆盖仓库能力与版本材料，未执行全球市场穷尽性核验</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="updates">
+      <div class="report-shell">
+        <div data-section-heading>
+          <div data-section-number data-zh="02 / RELEASE SCOPE" data-en="02 / RELEASE SCOPE">02 / RELEASE SCOPE</div>
+          <h2 data-section-title data-zh="3.0 把后台、AI、质检、分发、长任务与安全升级收进同一个主版本" data-en="3.0 brings the admin, AI, quality, distribution, long-running jobs, and secure updates into one major release">3.0 把后台、AI、质检、分发、长任务与安全升级收进同一个主版本</h2>
+          <p data-section-description data-zh="本次更新包含十二条主线，用户感知集中在统一后台、图文帮助、文章质量、多站点和运营协作，工程侧同步补充队列、接口、更新、部署与恢复边界" data-en="The release spans twelve tracks. User-facing changes center on the unified admin, illustrated help, article quality, multi-site delivery, and operations collaboration, while engineering work strengthens queues, interfaces, updates, deployment, and recovery">本次更新包含十二条主线，用户感知集中在统一后台、图文帮助、文章质量、多站点和运营协作，工程侧同步补充队列、接口、更新、部署与恢复边界</p>
+        </div>
+        <div class="section-body">
+          <figure data-chart="release-update-map"
+                  data-question="GEOFlow 3.0 包含哪些主要更新"
+                  data-question-zh="GEOFlow 3.0 包含哪些主要更新"
+                  data-question-en="What are the main updates in GEOFlow 3.0"
+                  data-conclusion="十二条更新主线覆盖产品体验、内容质量、渠道运营和基础设施"
+                  data-conclusion-zh="十二条更新主线覆盖产品体验、内容质量、渠道运营和基础设施"
+                  data-conclusion-en="Twelve update tracks span product experience, content quality, channel operations, and infrastructure"
+                  data-source-status="source-stated"
+                  role="img"
+                  aria-label="GEOFlow 3.0 十二条更新主线"
+                  data-aria-zh="GEOFlow 3.0 十二条更新主线"
+                  data-aria-en="Twelve update tracks in GEOFlow 3.0">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="十二条升级主线构成 3.0 的完整发布范围" data-en="Twelve upgrade tracks define the complete 3.0 release scope">十二条升级主线构成 3.0 的完整发布范围</h3>
+              <p data-module-description data-zh="按 v3.0.0 更新日志与当前 README 归并，保留用户功能和工程边界两类信息" data-en="Consolidated from the v3.0.0 changelog and current README, retaining both user-facing capabilities and engineering boundaries">按 v3.0.0 更新日志与当前 README 归并，保留用户功能和工程边界两类信息</p>
+              <span data-module-meta data-zh="版本材料陈述" data-en="SOURCE-STATED RELEASE SCOPE">版本材料陈述</span>
+            </figcaption>
+            <div class="chart-area update-grid">
+              <div class="update-item"><span class="num">01</span><h4 data-zh="Admin UI V3" data-en="Admin UI V3">Admin UI V3</h4><p data-zh="统一侧栏、顶栏、表单、对话框、响应式布局、最近访问和无障碍状态" data-en="Unified sidebar, topbar, forms, dialogs, responsive layout, recent pages, and accessibility states">统一侧栏、顶栏、表单、对话框、响应式布局、最近访问和无障碍状态</p></div>
+              <div class="update-item"><span class="num">02</span><h4 data-zh="图文 AI 工作台" data-en="Illustrated AI workspace">图文 AI 工作台</h4><p data-zh="15 个知识主题、24 张脱敏截图、72 条固定评测与权限过滤入口" data-en="15 knowledge topics, 24 sanitized screenshots, 72 fixed evaluations, and permission-filtered links">15 个知识主题、24 张脱敏截图、72 条固定评测与权限过滤入口</p></div>
+              <div class="update-item"><span class="num">03</span><h4 data-zh="文章 AI 质检" data-en="Article AI quality">文章 AI 质检</h4><p data-zh="四维检查、证据、原文定位、法规依据、修改建议与发布门禁" data-en="Four-dimensional inspection, evidence, source positions, legal basis, revision advice, and release gates">四维检查、证据、原文定位、法规依据、修改建议与发布门禁</p></div>
+              <div class="update-item"><span class="num">04</span><h4 data-zh="托管渠道站点" data-en="Hosted channel sites">托管渠道站点</h4><p data-zh="子域名、生命周期、文章分配、配额、冷却、预检、缓存和对账" data-en="Subdomains, lifecycle, article assignment, quotas, cooldowns, preflight, cache, and reconciliation">子域名、生命周期、文章分配、配额、冷却、预检、缓存和对账</p></div>
+              <div class="update-item"><span class="num">05</span><h4 data-zh="Chrome 运营助手" data-en="Chrome operations assistant">Chrome 运营助手</h4><p data-zh="设备配对、最小权限、工单领取、账号校验、草稿填充和凭证回传" data-en="Device pairing, least privilege, work-item claiming, account checks, draft filling, and evidence return">设备配对、最小权限、工单领取、账号校验、草稿填充和凭证回传</p></div>
+              <div class="update-item"><span class="num">06</span><h4 data-zh="PWA 工作台" data-en="PWA workspace">PWA 工作台</h4><p data-zh="站内图标、清单、Service Worker、更新提示与独立窗口体验" data-en="Local icons, manifest, service worker, update prompts, and standalone window experience">站内图标、清单、Service Worker、更新提示与独立窗口体验</p></div>
+              <div class="update-item"><span class="num">07</span><h4 data-zh="内容长任务" data-en="Long-running content jobs">内容长任务</h4><p data-zh="十万级标题生成、进度恢复、取消、重试、去重、任务回收站和批量导出" data-en="100k-scale title generation, resume, cancel, retry, deduplication, task trash, and batch export">十万级标题生成、进度恢复、取消、重试、去重、任务回收站和批量导出</p></div>
+              <div class="update-item"><span class="num">08</span><h4 data-zh="任务与模型就绪" data-en="Task and model readiness">任务与模型就绪</h4><p data-zh="容量预检、冲突检查、真实流式检测、文本降级、故障转移和就绪档案" data-en="Capacity preflight, conflict checks, real streaming probes, text fallback, failover, and readiness profiles">容量预检、冲突检查、真实流式检测、文本降级、故障转移和就绪档案</p></div>
+              <div class="update-item"><span class="num">09</span><h4 data-zh="API v1 与 CLI" data-en="API v1 and CLI">API v1 与 CLI</h4><p data-zh="目录、任务、执行记录、素材、文章和浏览器运营协议使用结构化输入输出" data-en="Structured operations for catalogs, tasks, runs, materials, articles, and browser operations protocols">目录、任务、执行记录、素材、文章和浏览器运营协议使用结构化输入输出</p></div>
+              <div class="update-item"><span class="num">10</span><h4 data-zh="独立更新工具" data-en="Independent updater">独立更新工具</h4><p data-zh="签名包、Unix socket、完整备份、环境验收、恢复点和授权码防重放" data-en="Signed packages, Unix socket, full backups, environment checks, restore points, and replay-resistant authorization codes">签名包、Unix socket、完整备份、环境验收、恢复点和授权码防重放</p></div>
+              <div class="update-item"><span class="num">11</span><h4 data-zh="安装与部署边界" data-en="Installation and deployment boundaries">安装与部署边界</h4><p data-zh="干净新装、升级备份、迁移、前端构建、进程重启与托管站点网络前置条件" data-en="Clean installs, upgrade backups, migrations, frontend builds, process restarts, and hosted-site network prerequisites">干净新装、升级备份、迁移、前端构建、进程重启与托管站点网络前置条件</p></div>
+              <div class="update-item"><span class="num">12</span><h4 data-zh="六语种与发布兼容" data-en="Six languages and release compatibility">六语种与发布兼容</h4><p data-zh="六种后台语言、组件版本约束、amd64 与 arm64 发布演练门禁" data-en="Six admin languages, component version constraints, and amd64 plus arm64 release rehearsal gates">六种后台语言、组件版本约束、amd64 与 arm64 发布演练门禁</p></div>
+            </div>
+            <p class="chart-conclusion" data-zh="3.0 的变化覆盖了日常使用界面，也覆盖内容能否安全发布、系统能否恢复和多站点能否持续运营" data-en="The 3.0 changes affect everyday interfaces, content release safety, system recovery, and sustained multi-site operations">3.0 的变化覆盖了日常使用界面，也覆盖内容能否安全发布、系统能否恢复和多站点能否持续运营</p>
+            <span class="source-meta">source-stated</span>
+          </figure>
+
+          <figure data-chart="version-shift"
+                  data-question="3.0 相比 2.3 的产品重心发生了什么变化"
+                  data-question-zh="3.0 相比 2.3 的产品重心发生了什么变化"
+                  data-question-en="How did the product focus shift from 2.3 to 3.0"
+                  data-conclusion="3.0 保留内容与主题基础，并把质量、协作和运维提升到主产品层"
+                  data-conclusion-zh="3.0 保留内容与主题基础，并把质量、协作和运维提升到主产品层"
+                  data-conclusion-en="3.0 retains the content and theme foundation while elevating quality, collaboration, and operations into the core product"
+                  data-source-status="source-stated"
+                  role="img"
+                  aria-label="GEOFlow 2.3 与 3.0 产品重心对比"
+                  data-aria-zh="GEOFlow 2.3 与 3.0 产品重心对比"
+                  data-aria-en="Product focus comparison between GEOFlow 2.3 and 3.0">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="从内容与主题基础，推进到企业级 GEO 运营系统" data-en="From a content and theme foundation to an enterprise GEO operations system">从内容与主题基础，推进到企业级 GEO 运营系统</h3>
+              <p data-module-description data-zh="对比使用版本材料中的可观察变化，不对功能成熟度做主观打分" data-en="The comparison uses observable release changes and avoids subjective maturity scores">对比使用版本材料中的可观察变化，不对功能成熟度做主观打分</p>
+              <span data-module-meta data-zh="版本材料对比" data-en="SOURCE-STATED COMPARISON">版本材料对比</span>
+            </figcaption>
+            <div class="chart-area table-scroll">
+              <div class="comparison-grid">
+                <div class="comparison-head" data-zh="维度" data-en="Dimension">维度</div><div class="comparison-head">v2.3</div><div class="comparison-head">v3.0</div>
+                <div class="comparison-dimension" data-zh="前台" data-en="Frontend">前台</div><div class="comparison-cell" data-zh="企业主题与参考内容" data-en="Enterprise theme and reference content">企业主题与参考内容</div><div class="comparison-cell" data-zh="主题基础继续保留，并连接托管站点、渠道同步和 GEO 运营流程" data-en="Theme foundations remain and connect to hosted sites, channel sync, and GEO operations">主题基础继续保留，并连接托管站点、渠道同步和 GEO 运营流程</div>
+                <div class="comparison-dimension" data-zh="后台" data-en="Admin">后台</div><div class="comparison-cell" data-zh="独立 UI V2 原型与现有后台" data-en="Standalone UI V2 prototype and existing admin">独立 UI V2 原型与现有后台</div><div class="comparison-cell" data-zh="Admin UI V3 进入主要后台页面与统一导航" data-en="Admin UI V3 becomes the unified shell for major admin pages">Admin UI V3 进入主要后台页面与统一导航</div>
+                <div class="comparison-dimension" data-zh="AI" data-en="AI">AI</div><div class="comparison-cell" data-zh="模型生成、RAG 和连接测试" data-en="Model generation, RAG, and connection tests">模型生成、RAG 和连接测试</div><div class="comparison-cell" data-zh="图文帮助、质量检查、模型就绪、故障转移和长任务" data-en="Illustrated help, quality inspection, model readiness, failover, and long-running jobs">图文帮助、质量检查、模型就绪、故障转移和长任务</div>
+                <div class="comparison-dimension" data-zh="发布" data-en="Publishing">发布</div><div class="comparison-cell" data-zh="人工发布工单与多渠道分发" data-en="Manual publication work items and multi-channel distribution">人工发布工单与多渠道分发</div><div class="comparison-cell" data-zh="AI 质检门禁、Chrome 协作、托管站点和状态对账" data-en="AI quality gates, Chrome collaboration, hosted sites, and reconciliation">AI 质检门禁、Chrome 协作、托管站点和状态对账</div>
+                <div class="comparison-dimension" data-zh="运维" data-en="Operations">运维</div><div class="comparison-cell" data-zh="应用内更新计划与备份" data-en="In-app update planning and backups">应用内更新计划与备份</div><div class="comparison-cell" data-zh="独立 Updater、签名信任、完整恢复点和多架构发布门禁" data-en="Independent updater, signed trust, full restore points, and multi-architecture release gates">独立 Updater、签名信任、完整恢复点和多架构发布门禁</div>
+              </div>
+            </div>
+            <div class="release-strip" aria-label="组件版本" data-aria-zh="组件版本" data-aria-en="Component versions">
+              <div class="release-component"><b>GEOFlow</b><span>3.0.0</span></div>
+              <div class="release-component"><b>GEOFlow CLI</b><span>0.2.0</span></div>
+              <div class="release-component"><b data-zh="Chrome 运营助手" data-en="Chrome operations assistant">Chrome 运营助手</b><span>0.1.0</span></div>
+              <div class="release-component"><b>GEOFlow Updater</b><span data-zh="签名绑定" data-en="signed binding">签名绑定</span></div>
+            </div>
+            <p class="chart-conclusion" data-zh="3.0 的主版本价值集中在连接关系，内容、质量、发布、协作与恢复开始共享一致的状态和边界" data-en="The major-release value lies in the connections: content, quality, publishing, collaboration, and recovery now share consistent states and boundaries">3.0 的主版本价值集中在连接关系，内容、质量、发布、协作与恢复开始共享一致的状态和边界</p>
+            <span class="source-meta">source-stated</span>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="report-shell">
+        <div data-section-heading>
+          <div data-section-number data-zh="03 / OPERATING MODEL" data-en="03 / OPERATING MODEL">03 / OPERATING MODEL</div>
+          <h2 data-section-title data-zh="内容从企业知识出发，经过质量与审核，再进入官网、渠道和数据反馈" data-en="Content starts from enterprise knowledge, passes quality and review, then reaches websites, channels, and analytics">内容从企业知识出发，经过质量与审核，再进入官网、渠道和数据反馈</h2>
+          <p data-section-description data-zh="系统把 GEO 运营拆成可以观察、重试、审计和恢复的阶段，每个阶段都有明确输入、状态与输出" data-en="The system divides GEO operations into observable, retryable, auditable, and recoverable stages, each with explicit inputs, states, and outputs">系统把 GEO 运营拆成可以观察、重试、审计和恢复的阶段，每个阶段都有明确输入、状态与输出</p>
+        </div>
+        <div class="section-body">
+          <figure data-chart="geo-operating-loop"
+                  data-question="企业官网 GEO 如何形成持续运营循环"
+                  data-question-zh="企业官网 GEO 如何形成持续运营循环"
+                  data-question-en="How does enterprise website GEO become a continuous operating loop"
+                  data-conclusion="知识、内容、质量、发布与数据反馈构成可重复循环"
+                  data-conclusion-zh="知识、内容、质量、发布与数据反馈构成可重复循环"
+                  data-conclusion-en="Knowledge, content, quality, publishing, and analytics form a repeatable loop"
+                  data-source-status="qualitative"
+                  role="img"
+                  aria-label="企业官网 GEO 八阶段运营循环"
+                  data-aria-zh="企业官网 GEO 八阶段运营循环"
+                  data-aria-en="Eight-stage enterprise website GEO operating loop">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="八个阶段把官网内容变成持续运营的资产" data-en="Eight stages turn website content into a continuously operated asset">八个阶段把官网内容变成持续运营的资产</h3>
+              <p data-module-description data-zh="循环从资料治理开始，经过选题、生成、质检、审核、官网输出、渠道分发和分析，再把新发现写回知识与策略" data-en="The loop starts with source governance, then moves through planning, generation, quality, review, website output, channel distribution, and analytics before feeding insights back into knowledge and policy">循环从资料治理开始，经过选题、生成、质检、审核、官网输出、渠道分发和分析，再把新发现写回知识与策略</p>
+              <span data-module-meta data-zh="定性流程" data-en="QUALITATIVE FLOW">定性流程</span>
+            </figcaption>
+            <div class="chart-area flow-chain">
+              <div class="flow-step"><b>01</b><strong data-zh="企业知识" data-en="Enterprise knowledge">企业知识</strong><span data-zh="资料、规则、案例、FAQ" data-en="Sources, rules, cases, FAQs">资料、规则、案例、FAQ</span></div>
+              <div class="flow-step"><b>02</b><strong data-zh="选题与任务" data-en="Planning and tasks">选题与任务</strong><span data-zh="标题、关键词、模型、节奏" data-en="Titles, keywords, models, cadence">标题、关键词、模型、节奏</span></div>
+              <div class="flow-step"><b>03</b><strong data-zh="AI 生成" data-en="AI generation">AI 生成</strong><span data-zh="正文、摘要、SEO 元信息" data-en="Body, summaries, SEO metadata">正文、摘要、SEO 元信息</span></div>
+              <div class="flow-step"><b>04</b><strong data-zh="AI 质检" data-en="AI quality">AI 质检</strong><span data-zh="知识、引文、合规、完整性" data-en="Knowledge, citations, compliance, completeness">知识、引文、合规、完整性</span></div>
+              <div class="flow-step"><b>05</b><strong data-zh="人工审核" data-en="Human review">人工审核</strong><span data-zh="复核、修改、授权、审计" data-en="Review, revision, authorization, audit">复核、修改、授权、审计</span></div>
+              <div class="flow-step"><b>06</b><strong data-zh="官网输出" data-en="Website output">官网输出</strong><span data-zh="主题、Schema、站点地图" data-en="Themes, schema, sitemaps">主题、Schema、站点地图</span></div>
+              <div class="flow-step"><b>07</b><strong data-zh="渠道运营" data-en="Channel operations">渠道运营</strong><span data-zh="多站点、API、人工平台" data-en="Multi-site, API, human platforms">多站点、API、人工平台</span></div>
+              <div class="flow-step"><b>08</b><strong data-zh="数据反馈" data-en="Analytics feedback">数据反馈</strong><span data-zh="访问、分发、可见度、线索" data-en="Traffic, distribution, visibility, leads">访问、分发、可见度、线索</span></div>
+            </div>
+            <p class="chart-conclusion" data-zh="GEOFlow 把一次内容生成放进可持续循环，知识更新和数据反馈可以继续影响下一批内容" data-en="GEOFlow places each generation event inside a sustainable loop where updated knowledge and analytics can shape the next batch of content">GEOFlow 把一次内容生成放进可持续循环，知识更新和数据反馈可以继续影响下一批内容</p>
+            <span class="source-meta">qualitative</span>
+          </figure>
+
+          <figure data-chart="system-architecture"
+                  data-question="GEOFlow 3.0 的系统架构如何分层"
+                  data-question-zh="GEOFlow 3.0 的系统架构如何分层"
+                  data-question-en="How is the GEOFlow 3.0 system architecture layered"
+                  data-conclusion="体验、运营、领域、运行与出口五层分离，状态通过服务与队列衔接"
+                  data-conclusion-zh="体验、运营、领域、运行与出口五层分离，状态通过服务与队列衔接"
+                  data-conclusion-en="Experience, operations, domain, runtime, and output layers are separated and connected through services and queues"
+                  data-source-status="verified"
+                  role="img"
+                  aria-label="GEOFlow 五层系统架构图"
+                  data-aria-zh="GEOFlow 五层系统架构图"
+                  data-aria-en="Five-layer GEOFlow system architecture">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="五层架构把官网体验、运营规则和基础设施分开治理" data-en="A five-layer architecture governs website experience, operating rules, and infrastructure separately">五层架构把官网体验、运营规则和基础设施分开治理</h3>
+              <p data-module-description data-zh="架构依据当前 Laravel、API、服务、队列、数据库、主题和目标站点包的真实代码表面整理" data-en="The architecture is based on the current Laravel, API, services, queues, database, themes, and target-site package surfaces">架构依据当前 Laravel、API、服务、队列、数据库、主题和目标站点包的真实代码表面整理</p>
+              <span data-module-meta data-zh="当前代码核验" data-en="VERIFIED CURRENT CODE">当前代码核验</span>
+            </figcaption>
+            <div class="chart-area architecture-stack">
+              <div class="architecture-layer"><div class="architecture-label" data-zh="体验层" data-en="EXPERIENCE">体验层</div><div class="architecture-nodes"><span class="architecture-node">Admin UI V3</span><span class="architecture-node" data-zh="官网主题" data-en="Website themes">官网主题</span><span class="architecture-node">PWA</span><span class="architecture-node" data-zh="Chrome 运营助手" data-en="Chrome operations assistant">Chrome 运营助手</span></div></div>
+              <div class="architecture-layer"><div class="architecture-label" data-zh="运营层" data-en="OPERATIONS">运营层</div><div class="architecture-nodes"><span class="architecture-node" data-zh="AI 工作台" data-en="AI workspace">AI 工作台</span><span class="architecture-node" data-zh="任务与素材" data-en="Tasks and materials">任务与素材</span><span class="architecture-node" data-zh="文章与审核" data-en="Articles and review">文章与审核</span><span class="architecture-node" data-zh="分发与数据分析" data-en="Distribution and analytics">分发与数据分析</span></div></div>
+              <div class="architecture-layer"><div class="architecture-label" data-zh="领域层" data-en="DOMAIN">领域层</div><div class="architecture-nodes"><span class="architecture-node" data-zh="知识检索" data-en="Knowledge retrieval">知识检索</span><span class="architecture-node" data-zh="内容生成" data-en="Content generation">内容生成</span><span class="architecture-node" data-zh="AI 质检" data-en="AI quality">AI 质检</span><span class="architecture-node" data-zh="发布门禁" data-en="Release gate">发布门禁</span><span class="architecture-node" data-zh="渠道编排" data-en="Channel orchestration">渠道编排</span></div></div>
+              <div class="architecture-layer"><div class="architecture-label" data-zh="运行层" data-en="RUNTIME">运行层</div><div class="architecture-nodes"><span class="architecture-node">Laravel</span><span class="architecture-node">API v1</span><span class="architecture-node">Scheduler</span><span class="architecture-node">Redis / Horizon</span><span class="architecture-node">Reverb</span><span class="architecture-node">PostgreSQL / pgvector</span></div></div>
+              <div class="architecture-layer"><div class="architecture-label" data-zh="出口层" data-en="OUTPUTS">出口层</div><div class="architecture-nodes"><span class="architecture-node" data-zh="企业官网" data-en="Enterprise website">企业官网</span><span class="architecture-node" data-zh="托管子站" data-en="Hosted sub-sites">托管子站</span><span class="architecture-node">GEOFlow Agent</span><span class="architecture-node">WordPress</span><span class="architecture-node">HTTP API</span><span class="architecture-node" data-zh="人工平台" data-en="Human-operated platforms">人工平台</span></div></div>
+            </div>
+            <p class="chart-conclusion" data-zh="分层架构让官网模板、内容规则和基础设施可以分别升级，队列与服务保存跨层状态" data-en="The layered architecture allows website templates, content rules, and infrastructure to evolve independently while services and queues preserve cross-layer state">分层架构让官网模板、内容规则和基础设施可以分别升级，队列与服务保存跨层状态</p>
+            <span class="source-meta">verified</span>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="ai-workspace">
+      <div class="report-shell">
+        <div data-section-heading>
+          <div data-section-number data-zh="04 / AI WORKSPACE" data-en="04 / AI WORKSPACE">04 / AI WORKSPACE</div>
+          <h2 data-section-title data-zh="AI 工作台在 3.0 中承担图文帮助、知识检索和可信站内导航" data-en="In 3.0, the AI workspace provides illustrated help, knowledge retrieval, and trusted in-product navigation">AI 工作台在 3.0 中承担图文帮助、知识检索和可信站内导航</h2>
+          <p data-section-description data-zh="每轮问题先绑定当前管理员、会话与权限，再检索受保护系统知识，模型负责组织答案，入口和图片由服务端决定" data-en="Each question is bound to the current administrator, conversation, and permissions before protected system knowledge is retrieved. The model composes the answer, while the server controls links and media">每轮问题先绑定当前管理员、会话与权限，再检索受保护系统知识，模型负责组织答案，入口和图片由服务端决定</p>
+        </div>
+        <div class="section-body">
+          <figure data-chart="ai-workspace-flow"
+                  data-question="AI 工作台如何生成可信的图文帮助答案"
+                  data-question-zh="AI 工作台如何生成可信的图文帮助答案"
+                  data-question-en="How does the AI workspace generate trusted illustrated help"
+                  data-conclusion="模型负责表达，系统知识、权限、入口和图片选择由服务端约束"
+                  data-conclusion-zh="模型负责表达，系统知识、权限、入口和图片选择由服务端约束"
+                  data-conclusion-en="The model handles expression while system knowledge, permissions, links, and image selection remain server-controlled"
+                  data-source-status="verified"
+                  role="img"
+                  aria-label="AI 工作台问题检索回答流程"
+                  data-aria-zh="AI 工作台问题检索回答流程"
+                  data-aria-en="AI workspace question retrieval and answer flow">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="权限上下文、系统知识和媒体清单共同约束回答" data-en="Permission context, system knowledge, and the media manifest jointly constrain answers">权限上下文、系统知识和媒体清单共同约束回答</h3>
+              <p data-module-description data-zh="工作台使用 SSE 流式返回，历史会话属于当前管理员，可信入口按命名路由和权限生成" data-en="The workspace streams responses over SSE. Conversation history belongs to the current administrator, and trusted links are generated from named routes and permissions">工作台使用 SSE 流式返回，历史会话属于当前管理员，可信入口按命名路由和权限生成</p>
+              <span data-module-meta data-zh="当前实现核验" data-en="VERIFIED IMPLEMENTATION">当前实现核验</span>
+            </figcaption>
+            <div class="chart-area three-column-flow">
+              <div class="flow-column"><h4 data-zh="输入与上下文" data-en="Input and context">输入与上下文</h4><ul><li data-zh="管理员问题与短追问" data-en="Administrator question and short follow-ups">管理员问题与短追问</li><li data-zh="会话归属与历史分页" data-en="Conversation ownership and paginated history">会话归属与历史分页</li><li data-zh="当前权限与可见功能" data-en="Current permissions and visible features">当前权限与可见功能</li></ul></div>
+              <div class="flow-arrow" aria-hidden="true">→</div>
+              <div class="flow-column"><h4 data-zh="检索与生成" data-en="Retrieval and generation">检索与生成</h4><ul><li data-zh="15 个后台主题的系统知识" data-en="System knowledge across 15 admin topics">15 个后台主题的系统知识</li><li data-zh="多章节证据与 24,000 字符预算" data-en="Multi-section evidence with a 24,000-character budget">多章节证据与 24,000 字符预算</li><li data-zh="一次对话模型调用与流式回答" data-en="One conversational model call with streaming output">一次对话模型调用与流式回答</li></ul></div>
+              <div class="flow-arrow" aria-hidden="true">→</div>
+              <div class="flow-column"><h4 data-zh="安全输出" data-en="Safe output">安全输出</h4><ul><li data-zh="0 至 3 张强相关脱敏图片" data-en="Zero to three strongly relevant sanitized images">0 至 3 张强相关脱敏图片</li><li data-zh="权限过滤后的站内入口" data-en="Permission-filtered in-product links">权限过滤后的站内入口</li><li data-zh="帮助答案与下一步检查" data-en="Help answer and next checks">帮助答案与下一步检查</li></ul></div>
+            </div>
+            <p class="chart-conclusion" data-zh="3.0 将 AI 工作台收敛为可控的帮助入口，系统知识与权限共同决定答案可以引用什么、可以引导到哪里" data-en="3.0 narrows the AI workspace into a controlled help surface where system knowledge and permissions determine what can be cited and where users can be directed">3.0 将 AI 工作台收敛为可控的帮助入口，系统知识与权限共同决定答案可以引用什么、可以引导到哪里</p>
+            <span class="source-meta">verified</span>
+          </figure>
+
+          <figure data-chart="ai-workspace-assets"
+                  data-question="AI 工作台的知识和媒体资产如何保持可维护"
+                  data-question-zh="AI 工作台的知识和媒体资产如何保持可维护"
+                  data-question-en="How are AI workspace knowledge and media assets kept maintainable"
+                  data-conclusion="稳定版本、哈希、修订、回退和评测把帮助内容变成可治理资产"
+                  data-conclusion-zh="稳定版本、哈希、修订、回退和评测把帮助内容变成可治理资产"
+                  data-conclusion-en="Stable versions, hashes, revisions, fallbacks, and evaluations make help content governable"
+                  data-source-status="source-stated"
+                  role="img"
+                  aria-label="AI 工作台知识媒体评测资产关系图"
+                  data-aria-zh="AI 工作台知识媒体评测资产关系图"
+                  data-aria-en="Relationship map of AI workspace knowledge, media, and evaluation assets">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="知识、图片和评测形成三类长期资产" data-en="Knowledge, media, and evaluations form three durable asset types">知识、图片和评测形成三类长期资产</h3>
+              <p data-module-description data-zh="三类资产均有版本或清单约束，升级时保留本地自定义，索引异常时使用正文或历史回退" data-en="All three asset types use version or manifest controls. Upgrades preserve local customization, while indexing failures fall back to source text or preserved history">三类资产均有版本或清单约束，升级时保留本地自定义，索引异常时使用正文或历史回退</p>
+              <span data-module-meta data-zh="版本材料陈述" data-en="SOURCE-STATED ASSET MODEL">版本材料陈述</span>
+            </figcaption>
+            <div class="chart-area pillar-map">
+              <div class="pillar"><span class="pillar-index">KNOWLEDGE</span><h4 data-zh="15 个主题" data-en="15 topics">15 个主题</h4><ul><li data-zh="稳定系统键与官方版本" data-en="Stable system key and official version">稳定系统键与官方版本</li><li data-zh="受控编辑与修订恢复" data-en="Controlled editing and revision recovery">受控编辑与修订恢复</li><li data-zh="应用与数据库删除保护" data-en="Deletion protection in app and database">应用与数据库删除保护</li></ul></div>
+              <div class="pillar"><span class="pillar-index">MEDIA</span><h4 data-zh="24 张截图" data-en="24 screenshots">24 张截图</h4><ul><li data-zh="脱敏 WebP 与私有存储" data-en="Sanitized WebP in private storage">脱敏 WebP 与私有存储</li><li data-zh="哈希校验与不可变版本" data-en="Hash validation and immutable versions">哈希校验与不可变版本</li><li data-zh="相关性选择与历史回放" data-en="Relevance selection and historical replay">相关性选择与历史回放</li></ul></div>
+              <div class="pillar"><span class="pillar-index">EVALUATION</span><h4 data-zh="72 条评测" data-en="72 evaluations">72 条评测</h4><ul><li data-zh="固定问题与预期行为" data-en="Fixed questions and expected behavior">固定问题与预期行为</li><li data-zh="全后台路由分类" data-en="Complete admin route classification">全后台路由分类</li><li data-zh="知识与图片清单门禁" data-en="Knowledge and media manifest gates">知识与图片清单门禁</li></ul></div>
+              <div class="pillar"><span class="pillar-index">BOUNDARY</span><h4 data-zh="帮助优先" data-en="Help-first boundary">帮助优先</h4><ul><li data-zh="旧执行工作流停止新请求" data-en="Legacy execution workflows reject new requests">旧执行工作流停止新请求</li><li data-zh="历史审计数据继续保留" data-en="Historical audit data remains preserved">历史审计数据继续保留</li><li data-zh="写操作由独立工作流控制" data-en="Writes remain under separate controlled workflows">写操作由独立工作流控制</li></ul></div>
+            </div>
+            <p class="chart-conclusion" data-zh="工作台的可靠性依赖可维护资产和清楚边界，知识内容、媒体引用和功能入口都有可追踪来源" data-en="Workspace reliability depends on maintainable assets and clear boundaries, with traceable origins for knowledge, media references, and product links">工作台的可靠性依赖可维护资产和清楚边界，知识内容、媒体引用和功能入口都有可追踪来源</p>
+            <span class="source-meta">source-stated</span>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="quality">
+      <div class="report-shell">
+        <div data-section-heading>
+          <div data-section-number data-zh="05 / AI QUALITY GATE" data-en="05 / AI QUALITY GATE">05 / AI QUALITY GATE</div>
+          <h2 data-section-title data-zh="AI 质检把知识证据、模型判断和后端规则组合成发布门禁" data-en="AI quality combines knowledge evidence, model judgment, and backend rules into a release gate">AI 质检把知识证据、模型判断和后端规则组合成发布门禁</h2>
+          <p data-section-description data-zh="质检记录保存文章、任务、模型、提示词、策略、指纹和分段结果，正文、证据或关键配置变化会让旧结论过期" data-en="Quality records preserve the article, task, model, prompt, policy, fingerprint, and segment results. Changes to content, evidence, or critical configuration expire earlier conclusions">质检记录保存文章、任务、模型、提示词、策略、指纹和分段结果，正文、证据或关键配置变化会让旧结论过期</p>
+        </div>
+        <div class="section-body">
+          <figure data-chart="quality-pipeline"
+                  data-question="AI 质检如何从文章生成可审计结论"
+                  data-question-zh="AI 质检如何从文章生成可审计结论"
+                  data-question-en="How does AI quality turn an article into an auditable decision"
+                  data-conclusion="模型输出需要经过证据、位置、数值和结构校验，后端评分再决定发布状态"
+                  data-conclusion-zh="模型输出需要经过证据、位置、数值和结构校验，后端评分再决定发布状态"
+                  data-conclusion-en="Model output must pass evidence, position, numeric, and structural validation before backend scoring determines the release state"
+                  data-source-status="verified"
+                  role="img"
+                  aria-label="文章 AI 质检七阶段流水线"
+                  data-aria-zh="文章 AI 质检七阶段流水线"
+                  data-aria-en="Seven-stage article AI quality pipeline">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="七阶段流水线把模型判断转成可审计的发布状态" data-en="A seven-stage pipeline turns model judgment into an auditable release state">七阶段流水线把模型判断转成可审计的发布状态</h3>
+              <p data-module-description data-zh="当前链路最多抽取 12 条物质性主张，注入最多 12 条、6000 字符证据，后端固定规则负责最终评分" data-en="The current path extracts up to 12 material claims and injects up to 12 evidence items within 6,000 characters, while fixed backend rules produce the final score">当前链路最多抽取 12 条物质性主张，注入最多 12 条、6000 字符证据，后端固定规则负责最终评分</p>
+              <span data-module-meta data-zh="当前实现核验" data-en="VERIFIED IMPLEMENTATION">当前实现核验</span>
+            </figcaption>
+            <div class="chart-area quality-pipeline">
+              <div class="quality-node"><b>01</b><strong data-zh="策略快照" data-en="Policy snapshot">策略快照</strong><span data-zh="任务、模型、提示词、知识库、阈值与规则版本" data-en="Task, model, prompt, knowledge bases, thresholds, and rule versions">任务、模型、提示词、知识库、阈值与规则版本</span></div>
+              <div class="quality-node"><b>02</b><strong data-zh="主张抽取" data-en="Claim extraction">主张抽取</strong><span data-zh="跨字段归一化、去重、物质性排序和位置保留" data-en="Cross-field normalization, deduplication, materiality ordering, and source positions">跨字段归一化、去重、物质性排序和位置保留</span></div>
+              <div class="quality-node"><b>03</b><strong data-zh="证据构建" data-en="Evidence building">证据构建</strong><span data-zh="复用生成证据，本地召回，稳定证据键和预算截断" data-en="Reuse generation evidence, local retrieval, stable evidence keys, and budget limits">复用生成证据，本地召回，稳定证据键和预算截断</span></div>
+              <div class="quality-node"><b>04</b><strong data-zh="模型检查" data-en="Model inspection">模型检查</strong><span data-zh="知识一致性、数据引文、广告风险、内容完整性" data-en="Knowledge consistency, data and citations, advertising risk, and completeness">知识一致性、数据引文、广告风险、内容完整性</span></div>
+              <div class="quality-node"><b>05</b><strong data-zh="后端校验" data-en="Backend validation">后端校验</strong><span data-zh="Schema、原文位置、证据键、数值和冲突条件" data-en="Schema, source positions, evidence keys, numbers, and conflict conditions">Schema、原文位置、证据键、数值和冲突条件</span></div>
+              <div class="quality-node"><b>06</b><strong data-zh="固定评分" data-en="Deterministic scoring">固定评分</strong><span data-zh="同根合并、分类扣分上限、置信度与覆盖率分离" data-en="Root-cause merging, category deduction caps, and separate confidence plus coverage">同根合并、分类扣分上限、置信度与覆盖率分离</span></div>
+              <div class="quality-node"><b>07</b><strong data-zh="发布门禁" data-en="Release gate">发布门禁</strong><span data-zh="通过、复核、阻断、异常、过期与人工授权" data-en="Pass, review, block, error, expiry, and human authorization">通过、复核、阻断、异常、过期与人工授权</span></div>
+            </div>
+            <p class="chart-conclusion" data-zh="模型只提供结构化判断，证据引用是否合法、问题位置是否真实和最终扣分多少都由后端再次确认" data-en="The model provides structured judgments. The backend independently confirms evidence validity, source positions, and final deductions">模型只提供结构化判断，证据引用是否合法、问题位置是否真实和最终扣分多少都由后端再次确认</p>
+            <span class="source-meta">verified</span>
+          </figure>
+
+          <figure data-chart="quality-decision-matrix"
+                  data-question="AI 质检结果如何影响文章发布"
+                  data-question-zh="AI 质检结果如何影响文章发布"
+                  data-question-en="How do AI quality outcomes affect article publishing"
+                  data-conclusion="分数、阻断项、证据覆盖和运行状态共同决定文章能否继续"
+                  data-conclusion-zh="分数、阻断项、证据覆盖和运行状态共同决定文章能否继续"
+                  data-conclusion-en="Score, hard blockers, evidence coverage, and runtime state jointly determine whether publishing can continue"
+                  data-source-status="verified"
+                  role="img"
+                  aria-label="AI 质检分数和状态决策矩阵"
+                  data-aria-zh="AI 质检分数和状态决策矩阵"
+                  data-aria-en="AI quality score and state decision matrix">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="85 分自动通过，70 分构成人工放行下限" data-en="A score of 85 enables automatic pass, while 70 is the minimum for human override">85 分自动通过，70 分构成人工放行下限</h3>
+              <p data-module-description data-zh="默认阈值来自当前运行手册，阻断项、重要不确定项、证据覆盖不足或技术失败会覆盖单纯分数判断" data-en="Default thresholds come from the current runbook. Hard blockers, material uncertainty, insufficient evidence, or technical failures override score-only decisions">默认阈值来自当前运行手册，阻断项、重要不确定项、证据覆盖不足或技术失败会覆盖单纯分数判断</p>
+              <span data-module-meta data-zh="当前门禁规则" data-en="VERIFIED GATE RULES">当前门禁规则</span>
+            </figcaption>
+            <div class="chart-area decision-table">
+              <div class="decision-cell pass"><span class="score">85-100</span><h4 data-zh="通过" data-en="Passed">通过</h4><p data-zh="达到通过线，没有阻断项、重要不确定项或无效证据引用，继续原审核与发布流程" data-en="Meets the pass line with no hard blocker, material uncertainty, or invalid evidence reference, then continues the normal review and publication flow">达到通过线，没有阻断项、重要不确定项或无效证据引用，继续原审核与发布流程</p></div>
+              <div class="decision-cell review"><span class="score">70-84</span><h4 data-zh="需要复核" data-en="Needs review">需要复核</h4><p data-zh="分数未达到自动通过线，或证据覆盖不足、存在重要不确定项和输出截断，需要人工判断" data-en="Below the automatic pass line, or affected by insufficient evidence, material uncertainty, or output truncation, requiring human judgment">分数未达到自动通过线，或证据覆盖不足、存在重要不确定项和输出截断，需要人工判断</p></div>
+              <div class="decision-cell block"><span class="score">0-69</span><h4 data-zh="阻断" data-en="Blocked">阻断</h4><p data-zh="低于人工放行下限，或存在已确认重大事实冲突、伪造来源和法律红线，文章保持草稿" data-en="Below the minimum override line, or containing a confirmed major factual conflict, fabricated source, or legal red line, so the article remains a draft">低于人工放行下限，或存在已确认重大事实冲突、伪造来源和法律红线，文章保持草稿</p></div>
+              <div class="decision-cell error"><span class="score">STATE</span><h4 data-zh="异常或过期" data-en="Error or expired">异常或过期</h4><p data-zh="模型、队列、证据检索、截止时间或内容变化使结果不可用，系统停止发布并提示重检或排障" data-en="Model, queue, evidence retrieval, deadline, or content changes invalidate the result, stopping publication and prompting recheck or recovery">模型、队列、证据检索、截止时间或内容变化使结果不可用，系统停止发布并提示重检或排障</p></div>
+            </div>
+            <p class="chart-conclusion" data-zh="质量分提供一个统一尺度，发布门禁仍会读取证据状态、阻断项和技术终态，避免高分掩盖重大问题" data-en="The score provides a common scale, while the release gate still reads evidence state, blockers, and technical outcomes so a high score cannot hide a major issue">质量分提供一个统一尺度，发布门禁仍会读取证据状态、阻断项和技术终态，避免高分掩盖重大问题</p>
+            <span class="source-meta">verified</span>
+          </figure>
+
+          <figure data-chart="quality-defense-in-depth"
+                  data-question="AI 质检如何处理慢模型、异常输出和批量回填压力"
+                  data-question-zh="AI 质检如何处理慢模型、异常输出和批量回填压力"
+                  data-question-en="How does AI quality handle slow models, invalid output, and backfill pressure"
+                  data-conclusion="隔离队列、固定预算、抽样降级、熔断、对账和灰度共同控制失败范围"
+                  data-conclusion-zh="隔离队列、固定预算、抽样降级、熔断、对账和灰度共同控制失败范围"
+                  data-conclusion-en="Isolated queues, fixed budgets, sampling fallback, circuit breaking, reconciliation, and staged rollout limit failure impact"
+                  data-source-status="verified"
+                  role="img"
+                  aria-label="AI 质检七层工程防线"
+                  data-aria-zh="AI 质检七层工程防线"
+                  data-aria-en="Seven engineering defense layers for AI quality">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="七层工程防线控制延迟、供应商故障和版本变化" data-en="Seven engineering defenses control latency, provider failures, and version changes">七层工程防线控制延迟、供应商故障和版本变化</h3>
+              <p data-module-description data-zh="当前完整质检默认 180 秒业务截止，允许的抽样降级额外保留 45 秒，两个在线消费者与一个回填消费者分离运行" data-en="The current full inspection uses a 180-second business deadline. Authorized sampling fallback reserves another 45 seconds, with two online consumers separated from one backfill consumer">当前完整质检默认 180 秒业务截止，允许的抽样降级额外保留 45 秒，两个在线消费者与一个回填消费者分离运行</p>
+              <span data-module-meta data-zh="当前工程实现" data-en="VERIFIED ENGINEERING DESIGN">当前工程实现</span>
+            </figcaption>
+            <div class="chart-area defense-layers">
+              <div class="defense-layer"><span class="index">01</span><strong data-zh="专属队列" data-en="Dedicated queues">专属队列</strong><span data-zh="在线请求使用 2 个消费者，回填使用 1 个消费者，批量任务不会占满人工操作通道" data-en="Online requests use two consumers and backfill uses one, preventing batch work from occupying the interactive path">在线请求使用 2 个消费者，回填使用 1 个消费者，批量任务不会占满人工操作通道</span></div>
+              <div class="defense-layer"><span class="index">02</span><strong data-zh="固定预算" data-en="Fixed budgets">固定预算</strong><span data-zh="排队、分段、模型、持久化共用明确截止时间，页面在终态后停止增长计时" data-en="Queueing, segmentation, model calls, and persistence share explicit deadlines, and the UI stops timing after terminal state">排队、分段、模型、持久化共用明确截止时间，页面在终态后停止增长计时</span></div>
+              <div class="defense-layer"><span class="index">03</span><strong data-zh="确定性抽样" data-en="Deterministic sampling">确定性抽样</strong><span data-zh="任务显式授权后，性能类失败可以按固定范围降级，重大主张和高风险区域必须覆盖" data-en="When explicitly authorized by task policy, performance failures can fall back to fixed sampling that must cover material claims and high-risk regions">任务显式授权后，性能类失败可以按固定范围降级，重大主张和高风险区域必须覆盖</span></div>
+              <div class="defense-layer"><span class="index">04</span><strong data-zh="同端点候选" data-en="Same-endpoint candidates">同端点候选</strong><span data-zh="故障转移限制在相同协议、主机和端口，避免文章与证据隐式发送到未授权供应商" data-en="Failover is limited to the same protocol, host, and port, preventing content and evidence from moving to an unauthorized provider">故障转移限制在相同协议、主机和端口，避免文章与证据隐式发送到未授权供应商</span></div>
+              <div class="defense-layer"><span class="index">05</span><strong data-zh="熔断与就绪档案" data-en="Circuit breaker and readiness">熔断与就绪档案</strong><span data-zh="连续失败和窗口失败率会打开熔断，结构化能力、延迟分位数和配置指纹独立记录" data-en="Consecutive or windowed failure rates open the circuit, while structured capability, latency percentiles, and configuration fingerprints are recorded separately">连续失败和窗口失败率会打开熔断，结构化能力、延迟分位数和配置指纹独立记录</span></div>
+              <div class="defense-layer"><span class="index">06</span><strong data-zh="对账与补偿" data-en="Reconciliation and compensation">对账与补偿</strong><span data-zh="卡住记录进入恢复流程，发布状态和分发入队失败最多补偿 3 次并保留人工处理状态" data-en="Stuck records enter recovery, while release-state and dispatch failures are compensated up to three times and remain human-actionable">卡住记录进入恢复流程，发布状态和分发入队失败最多补偿 3 次并保留人工处理状态</span></div>
+              <div class="defense-layer"><span class="index">07</span><strong data-zh="影子评测与灰度" data-en="Shadow evaluation and rollout">影子评测与灰度</strong><span data-zh="原则、执行、影子评分和正式评分分轨推进，任一阶段可以回滚且保留历史审计" data-en="Principles, execution, shadow scoring, and production scoring advance on separate tracks, each reversible while preserving audit history">原则、执行、影子评分和正式评分分轨推进，任一阶段可以回滚且保留历史审计</span></div>
+            </div>
+            <p class="chart-conclusion" data-zh="AI 质检的工程重点是让失败进入明确终态，并把在线发布压力与历史回填压力分开处理" data-en="The engineering priority is to move failures into explicit terminal states and separate online publishing pressure from historical backfill pressure">AI 质检的工程重点是让失败进入明确终态，并把在线发布压力与历史回填压力分开处理</p>
+            <span class="source-meta">verified</span>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="operations">
+      <div class="report-shell">
+        <div data-section-heading>
+          <div data-section-number data-zh="06 / DISTRIBUTION & OPERATIONS" data-en="06 / DISTRIBUTION & OPERATIONS">06 / DISTRIBUTION & OPERATIONS</div>
+          <h2 data-section-title data-zh="官网内容可以进入托管子站、远端系统和人工平台，每条出口都有独立控制" data-en="Website content can reach hosted sub-sites, remote systems, and human-operated platforms, each with its own controls">官网内容可以进入托管子站、远端系统和人工平台，每条出口都有独立控制</h2>
+          <p data-section-description data-zh="3.0 将自动分发、托管站点和人工运营放进统一后台，审批、权限、目标版本、执行凭证和结果状态分别留痕" data-en="3.0 brings automated distribution, hosted sites, and human operations into one admin surface, with separate records for approval, permissions, target versions, execution evidence, and outcomes">3.0 将自动分发、托管站点和人工运营放进统一后台，审批、权限、目标版本、执行凭证和结果状态分别留痕</p>
+        </div>
+        <div class="section-body">
+          <figure data-chart="distribution-topology"
+                  data-question="GEOFlow 如何管理不同内容出口"
+                  data-question-zh="GEOFlow 如何管理不同内容出口"
+                  data-question-en="How does GEOFlow manage different content outputs"
+                  data-conclusion="同一内容中枢可以服务官网、多站点、外部 API 和人工运营，同时保留各出口的边界"
+                  data-conclusion-zh="同一内容中枢可以服务官网、多站点、外部 API 和人工运营，同时保留各出口的边界"
+                  data-conclusion-en="One content hub can serve websites, multi-site networks, external APIs, and human operations while preserving outlet-specific boundaries"
+                  data-source-status="verified"
+                  role="img"
+                  aria-label="GEOFlow 多站点与多渠道分发拓扑"
+                  data-aria-zh="GEOFlow 多站点与多渠道分发拓扑"
+                  data-aria-en="GEOFlow multi-site and multi-channel distribution topology">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="六类出口共享内容中枢，各自保留协议和发布责任" data-en="Six output types share one content hub while retaining their own protocols and publishing responsibility">六类出口共享内容中枢，各自保留协议和发布责任</h3>
+              <p data-module-description data-zh="自动渠道由队列和发布器执行，Chrome 运营助手只填充草稿并回传凭证，外部平台最终发布由用户确认" data-en="Automated channels run through queues and publishers. The Chrome operations assistant fills drafts and returns evidence, while the user confirms final publication on external platforms">自动渠道由队列和发布器执行，Chrome 运营助手只填充草稿并回传凭证，外部平台最终发布由用户确认</p>
+              <span data-module-meta data-zh="当前能力核验" data-en="VERIFIED CAPABILITY MAP">当前能力核验</span>
+            </figcaption>
+            <div class="chart-area topology">
+              <div class="topology-core" data-chart-left-anchor><strong>GEOFlow</strong><span data-zh="知识、任务、文章、质检、审核、分发与分析" data-en="Knowledge, tasks, articles, quality, review, distribution, and analytics">知识、任务、文章、质检、审核、分发与分析</span></div>
+              <div class="topology-connector" aria-hidden="true"></div>
+              <div class="topology-targets">
+                <div class="topology-target"><strong data-zh="企业官网" data-en="Enterprise website">企业官网</strong><span data-zh="主题、栏目、文章、SEO、Schema 与线索表单" data-en="Themes, categories, articles, SEO, schema, and lead forms">主题、栏目、文章、SEO、Schema 与线索表单</span></div>
+                <div class="topology-target"><strong data-zh="托管渠道站点" data-en="Hosted channel sites">托管渠道站点</strong><span data-zh="子域名、生命周期、配额、冷却、预检与对账" data-en="Subdomains, lifecycle, quotas, cooldowns, preflight, and reconciliation">子域名、生命周期、配额、冷却、预检与对账</span></div>
+                <div class="topology-target"><strong>GEOFlow Agent</strong><span data-zh="目标站点包、静态模式、站点设置和远端文章" data-en="Target packages, static mode, site settings, and remote articles">目标站点包、静态模式、站点设置和远端文章</span></div>
+                <div class="topology-target"><strong>WordPress REST</strong><span data-zh="远端发布、更新、删除与结果确认" data-en="Remote publish, update, delete, and outcome confirmation">远端发布、更新、删除与结果确认</span></div>
+                <div class="topology-target"><strong>HTTP API</strong><span data-zh="通用协议、鉴权、映射、签名和结构化响应" data-en="Generic protocol, authentication, mapping, signing, and structured responses">通用协议、鉴权、映射、签名和结构化响应</span></div>
+                <div class="topology-target"><strong data-zh="人工运营平台" data-en="Human-operated platforms">人工运营平台</strong><span data-zh="工单、身份、执行人、草稿、最终确认和凭证" data-en="Work items, identity, assignee, draft, final confirmation, and evidence">工单、身份、执行人、草稿、最终确认和凭证</span></div>
+              </div>
+            </div>
+            <p class="chart-conclusion" data-zh="官网承担稳定主阵地，托管与远端渠道扩大内容覆盖，人工平台保留最终确认责任" data-en="The enterprise website remains the stable primary surface, hosted and remote channels expand coverage, and human-operated platforms preserve final confirmation responsibility">官网承担稳定主阵地，托管与远端渠道扩大内容覆盖，人工平台保留最终确认责任</p>
+            <span class="source-meta">verified</span>
+          </figure>
+
+          <figure data-chart="updater-trust-boundary"
+                  data-question="3.0 如何安全执行更新、备份和回滚"
+                  data-question-zh="3.0 如何安全执行更新、备份和回滚"
+                  data-question-en="How does 3.0 safely execute updates, backups, and rollbacks"
+                  data-conclusion="高风险变更由独立 Updater 执行，应用只通过固定类型的本地协议发起请求"
+                  data-conclusion-zh="高风险变更由独立 Updater 执行，应用只通过固定类型的本地协议发起请求"
+                  data-conclusion-en="High-risk changes run in the independent updater, while the application can only request fixed operation types over a local protocol"
+                  data-source-status="source-stated"
+                  role="img"
+                  aria-label="GEOFlow 独立更新工具信任边界"
+                  data-aria-zh="GEOFlow 独立更新工具信任边界"
+                  data-aria-en="GEOFlow independent updater trust boundary">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="应用发起固定请求，独立 Updater 掌握宿主机变更权" data-en="The application requests fixed operations while the independent updater controls host changes">应用发起固定请求，独立 Updater 掌握宿主机变更权</h3>
+              <p data-module-description data-zh="更新、完整备份、环境验收与恢复点回滚使用签名安装包、本地 Unix socket、独占锁和授权码防重放" data-en="Updates, full backups, environment validation, and restore-point rollback use signed packages, a local Unix socket, exclusive locks, and replay-resistant authorization codes">更新、完整备份、环境验收与恢复点回滚使用签名安装包、本地 Unix socket、独占锁和授权码防重放</p>
+              <span data-module-meta data-zh="版本材料陈述" data-en="SOURCE-STATED TRUST MODEL">版本材料陈述</span>
+            </figcaption>
+            <div class="chart-area trust-flow">
+              <div class="trust-step"><b>01</b><strong data-zh="管理员授权" data-en="Administrator authorization">管理员授权</strong><span data-zh="当前密码与 6 位验证器授权码" data-en="Current password and six-digit authenticator code">当前密码与 6 位验证器授权码</span></div>
+              <div class="trust-step"><b>02</b><strong data-zh="应用校验" data-en="Application validation">应用校验</strong><span data-zh="权限、操作类型、并发状态与审计载荷" data-en="Permissions, operation type, concurrency state, and audit payload">权限、操作类型、并发状态与审计载荷</span></div>
+              <div class="trust-step"><b>03</b><strong>Unix socket</strong><span data-zh="固定类型 API、实例令牌和响应长度校验" data-en="Fixed-type API, instance token, and response length validation">固定类型 API、实例令牌和响应长度校验</span></div>
+              <div class="trust-step"><b>04</b><strong>GEOFlow Updater</strong><span data-zh="签名、摘要、平台、锁、备份、迁移与切换" data-en="Signatures, digests, platform, locks, backups, migrations, and switching">签名、摘要、平台、锁、备份、迁移与切换</span></div>
+              <div class="trust-step"><b>05</b><strong data-zh="验收与恢复" data-en="Validation and recovery">验收与恢复</strong><span data-zh="阶段结果、健康检查、恢复点、自动恢复与只读审计" data-en="Stage results, health checks, restore points, automatic recovery, and read-only audit">阶段结果、健康检查、恢复点、自动恢复与只读审计</span></div>
+            </div>
+            <p class="chart-conclusion" data-zh="网站应用不持有任意宿主机命令入口，独立工具通过签名、锁和恢复点承担高风险变更" data-en="The web application has no arbitrary host-command surface. The independent tool assumes high-risk changes through signatures, locks, and restore points">网站应用不持有任意宿主机命令入口，独立工具通过签名、锁和恢复点承担高风险变更</p>
+            <span class="source-meta">source-stated</span>
+          </figure>
+
+          <figure data-chart="long-task-operations"
+                  data-question="3.0 如何处理大批量和可恢复的内容运营任务"
+                  data-question-zh="3.0 如何处理大批量和可恢复的内容运营任务"
+                  data-question-en="How does 3.0 handle large and recoverable content operations"
+                  data-conclusion="标题生成、任务删除和文章导出都拥有明确批次、状态与恢复边界"
+                  data-conclusion-zh="标题生成、任务删除和文章导出都拥有明确批次、状态与恢复边界"
+                  data-conclusion-en="Title generation, task deletion, and article export all have explicit batch, state, and recovery boundaries"
+                  data-source-status="source-stated"
+                  role="img"
+                  aria-label="GEOFlow 长任务内容运营能力"
+                  data-aria-zh="GEOFlow 长任务内容运营能力"
+                  data-aria-en="GEOFlow long-running content operations capabilities">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="十万级生成、90 天回收站和批量导出覆盖长任务场景" data-en="100k-scale generation, a 90-day task trash, and batch export cover long-running operations">十万级生成、90 天回收站和批量导出覆盖长任务场景</h3>
+              <p data-module-description data-zh="三个能力分别处理大规模生产、可恢复删除和离线交付，均保留稳定状态或审计信息" data-en="The three capabilities address large-scale production, recoverable deletion, and offline delivery, each preserving stable state or audit information">三个能力分别处理大规模生产、可恢复删除和离线交付，均保留稳定状态或审计信息</p>
+              <span data-module-meta data-zh="版本材料陈述" data-en="SOURCE-STATED OPERATIONS">版本材料陈述</span>
+            </figcaption>
+            <div class="chart-area long-task-tracks">
+              <div class="task-track"><strong data-zh="标题批量生成" data-en="Batch title generation">标题批量生成</strong><p data-zh="分批执行、进度恢复、取消、失败重试和稳定去重，任务启动前检查标题库容量与冲突" data-en="Batched execution, progress resume, cancellation, failed-item retry, and stable deduplication, with capacity and conflict checks before task start">分批执行、进度恢复、取消、失败重试和稳定去重，任务启动前检查标题库容量与冲突</p><span class="task-value" data-zh="最高 10 万" data-en="Up to 100k">最高 10 万</span></div>
+              <div class="task-track"><strong data-zh="任务回收站" data-en="Task trash">任务回收站</strong><p data-zh="删除任务进入可审计回收站，保留关联信息和恢复授权，避免日常误操作直接清除历史" data-en="Deleted tasks enter an auditable trash with related information and restore authorization, preventing routine mistakes from erasing history immediately">删除任务进入可审计回收站，保留关联信息和恢复授权，避免日常误操作直接清除历史</p><span class="task-value" data-zh="保留 90 天" data-en="90 days">保留 90 天</span></div>
+              <div class="task-track"><strong data-zh="文章批量导出" data-en="Batch article export">文章批量导出</strong><p data-zh="文章列表按选择范围导出 Markdown ZIP，适合归档、迁移、交付和离线复核" data-en="Selected articles export as a Markdown ZIP for archiving, migration, delivery, and offline review">文章列表按选择范围导出 Markdown ZIP，适合归档、迁移、交付和离线复核</p><span class="task-value">Markdown ZIP</span></div>
+            </div>
+            <p class="chart-conclusion" data-zh="长任务能力让内容运营可以暂停、恢复、审计和离线交付，后台操作更接近企业生产系统" data-en="Long-running job support makes content operations pausable, recoverable, auditable, and exportable, bringing the admin closer to an enterprise production system">长任务能力让内容运营可以暂停、恢复、审计和离线交付，后台操作更接近企业生产系统</p>
+            <span class="source-meta">source-stated</span>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="scale">
+      <div class="report-shell">
+        <div data-section-heading>
+          <div data-section-number data-zh="07 / ENGINEERING SCALE" data-en="07 / ENGINEERING SCALE">07 / ENGINEERING SCALE</div>
+          <h2 data-section-title data-zh="当前代码规模显示 3.0 已覆盖后台、API、官网、队列、分发和运维多个系统面" data-en="The current code scale shows that 3.0 spans the admin, API, website, queues, distribution, and operations surfaces">当前代码规模显示 3.0 已覆盖后台、API、官网、队列、分发和运维多个系统面</h2>
+          <p data-section-description data-zh="规模数据来自当前工作区能力发现与路由运行时快照，用于说明系统表面，不代表代码质量或功能成熟度评分" data-en="Scale data comes from the current workspace capability discovery and runtime route snapshot. It describes system surface area and is not a score of code quality or feature maturity">规模数据来自当前工作区能力发现与路由运行时快照，用于说明系统表面，不代表代码质量或功能成熟度评分</p>
+        </div>
+        <div class="section-body">
+          <figure data-chart="code-surface-scale"
+                  data-question="当前 GEOFlow 工作区包含多少工程组件"
+                  data-question-zh="当前 GEOFlow 工作区包含多少工程组件"
+                  data-question-en="How many engineering components are present in the current GEOFlow workspace"
+                  data-conclusion="服务层规模最大，系统围绕领域服务、模型、控制器和迁移形成较完整工程表面"
+                  data-conclusion-zh="服务层规模最大，系统围绕领域服务、模型、控制器和迁移形成较完整工程表面"
+                  data-conclusion-en="The service layer is the largest surface, supported by substantial models, controllers, migrations, tests, themes, and commands"
+                  data-source-status="verified"
+                  role="img"
+                  aria-label="GEOFlow 当前代码组件规模横向条形图"
+                  data-aria-zh="GEOFlow 当前代码组件规模横向条形图"
+                  data-aria-en="Horizontal bar chart of current GEOFlow code component counts">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="219 个服务构成当前最大的工程层" data-en="The 219-service layer is the largest engineering surface">219 个服务构成当前最大的工程层</h3>
+              <p data-module-description data-zh="条形按当前最大值 219 归一化，数值为文件级能力发现结果" data-en="Bars are normalized to the current maximum of 219, using file-level capability discovery counts">条形按当前最大值 219 归一化，数值为文件级能力发现结果</p>
+              <span data-module-meta data-zh="工作区核验" data-en="VERIFIED WORKSPACE SNAPSHOT">工作区核验</span>
+            </figcaption>
+            <div class="chart-area bar-chart" data-chart-left-anchor>
+              <div class="bar-row"><span class="bar-label" data-zh="服务" data-en="Services">服务</span><div class="bar-track"><div class="bar-fill" style="width:100%"></div></div><span class="bar-value">219</span></div>
+              <div class="bar-row"><span class="bar-label" data-zh="测试文件" data-en="Test files">测试文件</span><div class="bar-track"><div class="bar-fill" style="width:96.35%"></div></div><span class="bar-value">211</span></div>
+              <div class="bar-row"><span class="bar-label" data-zh="数据库迁移" data-en="Migrations">数据库迁移</span><div class="bar-track"><div class="bar-fill" style="width:47.49%"></div></div><span class="bar-value">104</span></div>
+              <div class="bar-row"><span class="bar-label" data-zh="数据模型" data-en="Models">数据模型</span><div class="bar-track"><div class="bar-fill" style="width:32.42%"></div></div><span class="bar-value">71</span></div>
+              <div class="bar-row"><span class="bar-label" data-zh="控制器" data-en="Controllers">控制器</span><div class="bar-track"><div class="bar-fill" style="width:31.51%"></div></div><span class="bar-value">69</span></div>
+              <div class="bar-row"><span class="bar-label" data-zh="后台视图分组" data-en="Admin view groups">后台视图分组</span><div class="bar-track"><div class="bar-fill" style="width:15.53%"></div></div><span class="bar-value">34</span></div>
+              <div class="bar-row"><span class="bar-label" data-zh="主题" data-en="Themes">主题</span><div class="bar-track"><div class="bar-fill" style="width:12.33%"></div></div><span class="bar-value">27</span></div>
+              <div class="bar-row"><span class="bar-label" data-zh="命令" data-en="Commands">命令</span><div class="bar-track"><div class="bar-fill" style="width:10.96%"></div></div><span class="bar-value">24</span></div>
+            </div>
+            <p class="chart-conclusion" data-zh="GEOFlow 当前已经形成明显的领域服务层，主题、命令、控制器、模型、迁移和测试围绕多个产品面展开" data-en="GEOFlow now has a substantial domain-service layer, with themes, commands, controllers, models, migrations, and tests spanning multiple product surfaces">GEOFlow 当前已经形成明显的领域服务层，主题、命令、控制器、模型、迁移和测试围绕多个产品面展开</p>
+            <span class="source-meta">verified</span>
+          </figure>
+
+          <figure data-chart="route-composition"
+                  data-question="当前 383 条路由如何分布"
+                  data-question-zh="当前 383 条路由如何分布"
+                  data-question-en="How are the current 383 routes distributed"
+                  data-conclusion="后台路由占主要部分，API 与公开页面形成两个对外表面"
+                  data-conclusion-zh="后台路由占主要部分，API 与公开页面形成两个对外表面"
+                  data-conclusion-en="Admin routes form the majority, with API and public pages providing two external surfaces"
+                  data-source-status="derived"
+                  role="img"
+                  aria-label="383 条路由的后台 API 和公开页面构成"
+                  data-aria-zh="383 条路由的后台 API 和公开页面构成"
+                  data-aria-en="Composition of 383 routes across admin, API, and public pages">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="299 条后台路由承载主要运营界面" data-en="299 admin routes carry the primary operations surface">299 条后台路由承载主要运营界面</h3>
+              <p data-module-description data-zh="路由按当前 URI 前缀推导分类，后台 299 条、API 41 条、公开页面 43 条，总计 383 条" data-en="Routes are derived from current URI prefixes: 299 admin, 41 API, and 43 public routes, totaling 383">路由按当前 URI 前缀推导分类，后台 299 条、API 41 条、公开页面 43 条，总计 383 条</p>
+              <span data-module-meta data-zh="运行时推导" data-en="DERIVED FROM RUNTIME">运行时推导</span>
+            </figcaption>
+            <div class="chart-area" data-chart-left-anchor>
+              <div class="route-stack" aria-hidden="true"><div class="route-segment route-admin">299</div><div class="route-segment route-api">41</div><div class="route-segment route-public">43</div></div>
+              <div class="route-legend">
+                <span><i style="background:#087c68"></i><span data-zh="后台 299 / 78.1%" data-en="Admin 299 / 78.1%">后台 299 / 78.1%</span></span>
+                <span><i style="background:#9a5b09"></i><span data-zh="API 41 / 10.7%" data-en="API 41 / 10.7%">API 41 / 10.7%</span></span>
+                <span><i style="background:#14201d"></i><span data-zh="公开页面 43 / 11.2%" data-en="Public 43 / 11.2%">公开页面 43 / 11.2%</span></span>
+              </div>
+            </div>
+            <p class="chart-conclusion" data-zh="后台运营是当前最大的产品表面，API 和公开站点提供自动化与用户访问入口" data-en="Admin operations are the largest current product surface, while APIs and public sites provide automation and audience access">后台运营是当前最大的产品表面，API 和公开站点提供自动化与用户访问入口</p>
+            <span class="source-meta">derived</span>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <div class="report-shell">
+        <div data-section-heading>
+          <div data-section-number data-zh="08 / NEXT DIRECTION" data-en="08 / NEXT DIRECTION">08 / NEXT DIRECTION</div>
+          <h2 data-section-title data-zh="后续演进可以围绕质量评测、官网诊断、受控运营和生态扩展逐步推进" data-en="Future evolution can advance through quality evaluation, website diagnosis, controlled operations, and ecosystem expansion">后续演进可以围绕质量评测、官网诊断、受控运营和生态扩展逐步推进</h2>
+          <p data-section-description data-zh="路线图结合当前已存在的门禁、边界与缺口整理，属于建议方向，不承诺具体版本号、发布日期或交付范围" data-en="This roadmap is derived from existing gates, boundaries, and gaps. It is a proposed direction without commitments to version numbers, dates, or delivery scope">路线图结合当前已存在的门禁、边界与缺口整理，属于建议方向，不承诺具体版本号、发布日期或交付范围</p>
+        </div>
+        <div class="section-body">
+          <figure data-chart="future-roadmap"
+                  data-question="GEOFlow 3.0 之后最值得继续推进哪些方向"
+                  data-question-zh="GEOFlow 3.0 之后最值得继续推进哪些方向"
+                  data-question-en="Which directions are most valuable after GEOFlow 3.0"
+                  data-conclusion="先完成质量生产门禁和只读诊断，再逐步扩大受控运营与生态能力"
+                  data-conclusion-zh="先完成质量生产门禁和只读诊断，再逐步扩大受控运营与生态能力"
+                  data-conclusion-en="Complete production quality gates and read-only diagnosis first, then expand controlled operations and ecosystem capabilities"
+                  data-source-status="inferred"
+                  role="img"
+                  aria-label="GEOFlow 后续四条建议演进路线"
+                  data-aria-zh="GEOFlow 后续四条建议演进路线"
+                  data-aria-en="Four proposed evolution tracks for GEOFlow">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="四条路线沿着现有工程边界继续生长" data-en="Four tracks extend the existing engineering boundaries">四条路线沿着现有工程边界继续生长</h3>
+              <p data-module-description data-zh="质量路线已有明确生产门禁，其余路线按现有系统能力推导，优先级可以根据真实用户数据调整" data-en="The quality track already has explicit production gates. Other tracks are inferred from existing capabilities and should be reprioritized using real user data">质量路线已有明确生产门禁，其余路线按现有系统能力推导，优先级可以根据真实用户数据调整</p>
+              <span data-module-meta data-zh="建议路线图" data-en="INFERRED ROADMAP">建议路线图</span>
+            </figcaption>
+            <div class="chart-area roadmap">
+              <div class="roadmap-lane"><span class="phase">TRACK 01</span><h4 data-zh="质量评测进入生产门禁" data-en="Quality evaluation reaches production gates">质量评测进入生产门禁</h4><ol><li data-zh="完成 240 篇双人标注与第三人裁决" data-en="Complete 240 dual-annotated articles with third-person adjudication">完成 240 篇双人标注与第三人裁决</li><li data-zh="验证误拦截、重大风险召回、F1、Kappa 与真实延迟" data-en="Validate false blocks, major-risk recall, F1, Kappa, and real latency">验证误拦截、重大风险召回、F1、Kappa 与真实延迟</li><li data-zh="按 10%、25%、50%、100% 推进灰度" data-en="Promote rollout through 10%, 25%, 50%, and 100%">按 10%、25%、50%、100% 推进灰度</li></ol></div>
+              <div class="roadmap-lane"><span class="phase">TRACK 02</span><h4 data-zh="官网 GEO 诊断与机会发现" data-en="Website GEO diagnosis and opportunity discovery">官网 GEO 诊断与机会发现</h4><ol><li data-zh="结合内容、分发、可见度、线索与抓取数据" data-en="Combine content, distribution, visibility, leads, and crawler data">结合内容、分发、可见度、线索与抓取数据</li><li data-zh="生成可追溯的内容缺口与更新建议" data-en="Generate traceable content gaps and update suggestions">生成可追溯的内容缺口与更新建议</li><li data-zh="让诊断结果进入选题和任务反馈" data-en="Feed diagnostic results back into planning and tasks">让诊断结果进入选题和任务反馈</li></ol></div>
+              <div class="roadmap-lane"><span class="phase">TRACK 03</span><h4 data-zh="AI 工作台逐步增加受控能力" data-en="The AI workspace gains controlled capabilities gradually">AI 工作台逐步增加受控能力</h4><ol><li data-zh="保持图文帮助与可信导航" data-en="Maintain illustrated help and trusted navigation">保持图文帮助与可信导航</li><li data-zh="先增加权限过滤的只读诊断" data-en="Add permission-filtered read-only diagnosis first">先增加权限过滤的只读诊断</li><li data-zh="写操作沿用参数校验、审批、幂等与审计" data-en="Keep writes behind parameter validation, approval, idempotency, and audit">写操作沿用参数校验、审批、幂等与审计</li></ol></div>
+              <div class="roadmap-lane"><span class="phase">TRACK 04</span><h4 data-zh="模板、渠道与生态扩展" data-en="Template, channel, and ecosystem expansion">模板、渠道与生态扩展</h4><ol><li data-zh="强化企业行业模板与首页模块" data-en="Strengthen industry templates and homepage modules">强化企业行业模板与首页模块</li><li data-zh="完善渠道能力协商、包体验收和兼容矩阵" data-en="Improve channel capability negotiation, package validation, and compatibility matrices">完善渠道能力协商、包体验收和兼容矩阵</li><li data-zh="扩大第三方系统与运营工具连接" data-en="Expand connections to third-party systems and operations tools">扩大第三方系统与运营工具连接</li></ol></div>
+            </div>
+            <p class="chart-conclusion" data-zh="后续更新应继续沿用 3.0 的工程纪律：先建立证据与门禁，再扩大自动化和生态范围" data-en="Future updates should continue the 3.0 engineering discipline: establish evidence and gates before expanding automation and ecosystem reach">后续更新应继续沿用 3.0 的工程纪律：先建立证据与门禁，再扩大自动化和生态范围</p>
+            <span class="source-meta">inferred</span>
+          </figure>
+
+          <figure data-chart="evidence-status-map"
+                  data-question="报告中的结论由哪些证据状态支撑"
+                  data-question-zh="报告中的结论由哪些证据状态支撑"
+                  data-question-en="What evidence states support the report's conclusions"
+                  data-conclusion="版本功能与当前代码可以核验，市场首创主张和未来路线仍需独立验证"
+                  data-conclusion-zh="版本功能与当前代码可以核验，市场首创主张和未来路线仍需独立验证"
+                  data-conclusion-en="Release features and current code are verifiable, while the market-first claim and future roadmap still require independent validation"
+                  data-source-status="derived"
+                  role="img"
+                  aria-label="报告证据状态分类图"
+                  data-aria-zh="报告证据状态分类图"
+                  data-aria-en="Evidence state classification for the report">
+            <figcaption data-module-heading>
+              <h3 data-module-title data-zh="事实、版本陈述、推导、定性关系和待验证主张分开记录" data-en="Facts, release statements, derivations, qualitative relationships, and open claims are recorded separately">事实、版本陈述、推导、定性关系和待验证主张分开记录</h3>
+              <p data-module-description data-zh="客户阅读面隐藏具体文件来源，HTML 内部继续保留每个图表的证据状态和语义属性" data-en="The reader-facing report hides specific file sources, while the HTML preserves evidence states and semantic attributes for every chart">客户阅读面隐藏具体文件来源，HTML 内部继续保留每个图表的证据状态和语义属性</p>
+              <span data-module-meta data-zh="证据台账" data-en="DERIVED EVIDENCE LEDGER">证据台账</span>
+            </figcaption>
+            <div class="chart-area evidence-map">
+              <div class="evidence-cell"><strong>VERIFIED</strong><span data-zh="代码组件、路由、架构表面、AI 工作台与质检当前实现" data-en="Code components, routes, architecture surfaces, and current AI workspace plus quality implementation">代码组件、路由、架构表面、AI 工作台与质检当前实现</span></div>
+              <div class="evidence-cell"><strong>SOURCE-STATED</strong><span data-zh="v3.0.0 更新范围、版本号、组件兼容和部署边界" data-en="v3.0.0 release scope, versions, component compatibility, and deployment boundaries">v3.0.0 更新范围、版本号、组件兼容和部署边界</span></div>
+              <div class="evidence-cell"><strong>DERIVED</strong><span data-zh="路由分类比例、版本变化归并和报告证据结构" data-en="Route composition, consolidated version shifts, and report evidence structure">路由分类比例、版本变化归并和报告证据结构</span></div>
+              <div class="evidence-cell"><strong>QUALITATIVE</strong><span data-zh="定位矩阵、四支柱、运营循环和架构关系表达" data-en="Positioning matrix, four pillars, operating loop, and architecture relationships">定位矩阵、四支柱、运营循环和架构关系表达</span></div>
+              <div class="evidence-cell"><strong>OPEN</strong><span data-zh="全球首创的独立市场核验、真实生产评测和未来路线优先级" data-en="Independent market verification of the world-first claim, real production evaluation, and future roadmap priority">全球首创的独立市场核验、真实生产评测和未来路线优先级</span></div>
+            </div>
+            <p class="chart-conclusion" data-zh="报告可以直接支撑 3.0 产品介绍，公开发布时建议把全球首创表达保留为项目定位或创始人判断" data-en="The report directly supports the 3.0 product introduction. For public release, the world-first phrase should remain framed as project positioning or a founder's judgment">报告可以直接支撑 3.0 产品介绍，公开发布时建议把全球首创表达保留为项目定位或创始人判断</p>
+            <span class="source-meta">derived</span>
+          </figure>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="report-shell footer-grid">
+      <p data-zh="GEOFlow 3.0 可视化介绍报告，默认中文简体，可切换英文，所有图表均可离线浏览" data-en="GEOFlow 3.0 visual introduction report, available offline in Simplified Chinese and English">GEOFlow 3.0 可视化介绍报告，默认中文简体，可切换英文，所有图表均可离线浏览</p>
+      <p data-zh="报告范围：定位、完整更新、运营原理、系统架构、AI 工作台、AI 质检、多站点、工程规模与后续方向" data-en="Scope: positioning, full release updates, operating model, architecture, AI workspace, AI quality, multi-site delivery, engineering scale, and future direction">报告范围：定位、完整更新、运营原理、系统架构、AI 工作台、AI 质检、多站点、工程规模与后续方向</p>
+    </div>
+  </footer>
+
+  <script data-report-i18n>
+    (() => {
+      const html = document.documentElement;
+      const body = document.body;
+      const button = document.querySelector('[data-language-switch]');
+      const titles = {
+        'zh-CN': 'GEOFlow 3.0：面向企业官网的 GEO 智能运营系统',
+        en: 'GEOFlow 3.0: A GEO operations system built for enterprise websites'
+      };
+
+      const applyLanguage = (language) => {
+        const key = language === 'zh-CN' ? 'zh' : 'en';
+        const scrollY = window.scrollY;
+        document.querySelectorAll('[data-zh][data-en]').forEach((node) => {
+          node.textContent = node.dataset[key];
+        });
+        document.querySelectorAll('[data-aria-zh][data-aria-en]').forEach((node) => {
+          node.setAttribute('aria-label', node.dataset[key === 'zh' ? 'ariaZh' : 'ariaEn']);
+        });
+        document.querySelectorAll('[data-question-zh][data-question-en]').forEach((node) => {
+          node.dataset.question = node.dataset[key === 'zh' ? 'questionZh' : 'questionEn'];
+        });
+        document.querySelectorAll('[data-conclusion-zh][data-conclusion-en]').forEach((node) => {
+          node.dataset.conclusion = node.dataset[key === 'zh' ? 'conclusionZh' : 'conclusionEn'];
+        });
+        document.querySelectorAll('[data-x-label-zh][data-x-label-en]').forEach((node) => {
+          node.dataset.xLabel = node.dataset[key === 'zh' ? 'xLabelZh' : 'xLabelEn'];
+        });
+        document.querySelectorAll('[data-y-label-zh][data-y-label-en]').forEach((node) => {
+          node.dataset.yLabel = node.dataset[key === 'zh' ? 'yLabelZh' : 'yLabelEn'];
+        });
+        html.lang = language;
+        body.dataset.activeLanguage = language;
+        document.title = titles[language];
+        button.setAttribute('aria-label', language === 'zh-CN' ? '切换为英文' : 'Switch to Simplified Chinese');
+        button.setAttribute('aria-pressed', language === 'en' ? 'true' : 'false');
+        window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' });
+      };
+
+      button.addEventListener('click', () => {
+        applyLanguage(body.dataset.activeLanguage === 'zh-CN' ? 'en' : 'zh-CN');
+      });
+
+      const links = [...document.querySelectorAll('.nav-links a[href^="#"]')];
+      const sections = links.map((link) => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+      const observer = new IntersectionObserver((entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible) return;
+        links.forEach((link) => link.setAttribute('aria-current', link.getAttribute('href') === `#${visible.target.id}` ? 'true' : 'false'));
+      }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, 0.1, 0.4] });
+      sections.forEach((section) => observer.observe(section));
+      if (links[0]) links[0].setAttribute('aria-current', 'true');
+    })();
+  </script>
+</body>
+</html>

@@ -13,6 +13,8 @@ NONINTERACTIVE="${GEOFLOW_NONINTERACTIVE:-0}"
 YES="${GEOFLOW_YES:-0}"
 INSTALL_DOCKER="${GEOFLOW_INSTALL_DOCKER:-auto}"
 SELF_DELETE="${GEOFLOW_SELF_DELETE:-0}"
+MAINTENANCE_MODE_ENTERED=0
+TRAFFIC_RESUMED=0
 
 log() {
   printf '\033[1;34m[geoflow]\033[0m %s\n' "$*"
@@ -27,8 +29,29 @@ fail() {
   exit 1
 }
 
+enter_maintenance_mode() {
+  "${COMPOSE[@]}" run --rm --no-deps \
+    -e AUTO_WAIT_FOR_DB=false \
+    -e AUTO_MIGRATE=false \
+    -e AUTO_INSTALL_ONCE=false \
+    -e AUTO_OPTIMIZE=false \
+    app php artisan down --retry=60 --refresh=15
+}
+
 on_error() {
   local line="$1"
+  if [ "$MAINTENANCE_MODE_ENTERED" = "1" ]; then
+    if [ "$TRAFFIC_RESUMED" = "1" ] && declare -p COMPOSE >/dev/null 2>&1; then
+      if enter_maintenance_mode; then
+        warn "Health verification failed after traffic resumed; maintenance mode was restored."
+      else
+        warn "Health verification failed and maintenance mode could not be restored automatically."
+      fi
+    else
+      warn "GEOFlow remains in maintenance mode to protect data."
+    fi
+    warn "Fix the reported error and rerun this script."
+  fi
   fail "Deployment failed near line ${line}. Check the logs above, then rerun this script."
 }
 trap 'on_error $LINENO' ERR
@@ -325,27 +348,46 @@ deploy_stack() {
   log "Building production images."
   "${COMPOSE[@]}" build
 
+  if "${DOCKER_CMD[@]}" container inspect geoflow-system-update-queue-prod >/dev/null 2>&1; then
+    log "Stopping the retired system update worker before the Phase C cutover."
+    "${DOCKER_CMD[@]}" stop --time 900 geoflow-system-update-queue-prod
+  fi
+
   log "Starting PostgreSQL and Redis."
   "${COMPOSE[@]}" up -d postgres redis
+
+  log "Entering maintenance mode and draining existing application services."
+  enter_maintenance_mode
+  MAINTENANCE_MODE_ENTERED=1
+  "${COMPOSE[@]}" stop web app queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
 
   log "Running initialization and database migrations."
   "${COMPOSE[@]}" up init
 
-  log "Starting GEOFlow services."
-  "${COMPOSE[@]}" up -d app web queue knowledge-queue system-update-queue scheduler reverb
-
   log "Clearing and rebuilding Laravel caches."
   "${COMPOSE[@]}" run --rm app php artisan optimize:clear
   "${COMPOSE[@]}" run --rm app php artisan optimize
+
+  log "Starting GEOFlow services."
+  "${COMPOSE[@]}" up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
+
 }
 
 run_healthcheck() {
   cd "$APP_DIR"
+  local skip_http="${1:-0}"
   if [ -x deploy-scripts/geoflow-healthcheck.sh ]; then
-    GEOFLOW_APP_DIR="$APP_DIR" bash deploy-scripts/geoflow-healthcheck.sh
+    GEOFLOW_APP_DIR="$APP_DIR" GEOFLOW_SKIP_HTTP_CHECK="$skip_http" bash deploy-scripts/geoflow-healthcheck.sh
   else
-    warn "Healthcheck script is missing; skipping."
+    fail "Healthcheck script is missing."
   fi
+}
+
+resume_traffic() {
+  cd "$APP_DIR"
+  log "Leaving maintenance mode for the final HTTP health check."
+  "${COMPOSE[@]}" exec -T app php artisan up
+  TRAFFIC_RESUMED=1
 }
 
 print_summary() {
@@ -382,7 +424,11 @@ main() {
   clone_or_update_repo
   prepare_env
   deploy_stack
-  run_healthcheck
+  run_healthcheck 1
+  resume_traffic
+  run_healthcheck 0
+  MAINTENANCE_MODE_ENTERED=0
+  TRAFFIC_RESUMED=0
   print_summary
   self_delete_if_requested
 }

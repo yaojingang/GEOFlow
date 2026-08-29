@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -53,7 +54,7 @@ class AdminCategoriesPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.articles.index'))
             ->assertOk()
-            ->assertSee(route('admin.categories.index'));
+            ->assertSee(AdminWeb::routePath('admin.categories.index'), false);
     }
 
     public function test_category_with_only_trashed_articles_is_still_not_deletable(): void

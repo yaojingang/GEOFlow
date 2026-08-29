@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ReconcileArticleAiQualityJob;
 use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
@@ -11,6 +12,7 @@ use App\Services\GeoFlow\ArticleRiskGate;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -29,6 +31,7 @@ class AdminArticleRiskWorkflowTest extends TestCase
         parent::setUp();
 
         Cache::flush();
+        Queue::fake([ReconcileArticleAiQualityJob::class]);
         $this->admin = Admin::query()->create([
             'username' => 'article-risk-admin',
             'password' => 'secret-123',

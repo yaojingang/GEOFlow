@@ -7,28 +7,20 @@ use Illuminate\Support\Collection;
 
 final class AiWorkspaceCapabilityPresenter
 {
-    private const FEATURED_CAPABILITY_KEYS = [
-        'visibility.diagnose',
-        'task.draft',
-        'knowledge.draft',
-        'distribution.preview',
-        'content.opportunities',
-        'analytics.daily_report',
-        'article.draft',
-    ];
-
     /** @param Collection<string,AiCapabilityDefinition> $capabilities */
-    public function present(Collection $capabilities): array
+    public function present(Collection $capabilities, array $featuredCapabilityKeys): array
     {
+        $groups = $this->capabilityGroups($capabilities);
+
         return [
             'count' => $capabilities->count(),
-            'featured' => $this->featuredCapabilities($capabilities),
-            'groups' => $this->capabilityGroups($capabilities),
+            'featured' => $this->featuredCapabilities($capabilities, $featuredCapabilityKeys),
+            'slides' => $this->capabilitySlides($groups),
         ];
     }
 
     /** @param Collection<string,AiCapabilityDefinition> $capabilities */
-    private function featuredCapabilities(Collection $capabilities): array
+    private function featuredCapabilities(Collection $capabilities, array $featuredCapabilityKeys): array
     {
         $icons = [
             'visibility.diagnose' => 'scan-search',
@@ -40,10 +32,10 @@ final class AiWorkspaceCapabilityPresenter
             'article.draft' => 'file-pen-line',
         ];
 
-        return collect(self::FEATURED_CAPABILITY_KEYS)
+        return collect($featuredCapabilityKeys)
             ->map(fn (string $key): ?AiCapabilityDefinition => $capabilities->get($key))
             ->filter()
-            ->take(4)
+            ->take(6)
             ->map(fn (AiCapabilityDefinition $capability): array => [
                 'key' => $capability->key,
                 'name' => $capability->name,
@@ -119,5 +111,45 @@ final class AiWorkspaceCapabilityPresenter
                 ? 'admin.ai_workspace.learn_boundary'
                 : 'admin.ai_workspace.add_to_conversation'),
         ];
+    }
+
+    /** @param array<int,array<string,mixed>> $groups */
+    private function capabilitySlides(array $groups): array
+    {
+        $capabilities = collect($groups)->flatMap(static function (array $group): array {
+            return collect($group['capabilities'])->map(static fn (array $capability): array => $capability + [
+                'group_key' => $group['key'],
+                'group_title' => $group['title'],
+                'group_description' => $group['description'],
+                'group_icon' => $group['icon'],
+            ])->all();
+        })->values();
+
+        if ($capabilities->isEmpty()) {
+            return [];
+        }
+
+        $pageCount = max(1, (int) ceil($capabilities->count() / 8));
+        $pageSize = intdiv($capabilities->count(), $pageCount);
+        $remainder = $capabilities->count() % $pageCount;
+        $offset = 0;
+        $slides = [];
+
+        for ($index = 0; $index < $pageCount; $index++) {
+            $size = $pageSize + ($index >= $pageCount - $remainder ? 1 : 0);
+            $items = $capabilities->slice($offset, $size)->values();
+            $offset += $size;
+            $groupTitles = $items->pluck('group_title')->unique()->values();
+            $groupDescriptions = $items->pluck('group_description')->unique()->values();
+
+            $slides[] = [
+                'icon' => $items->first()['group_icon'],
+                'title' => $groupTitles->implode(' · '),
+                'description' => $groupDescriptions->implode(' · '),
+                'capabilities' => $items->all(),
+            ];
+        }
+
+        return $slides;
     }
 }

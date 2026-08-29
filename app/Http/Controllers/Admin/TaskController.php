@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\DistributionTaskRevisionMismatch;
+use App\Exceptions\TaskTitleReadinessException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\TaskTitleReadinessRequest;
 use App\Models\AiModel;
 use App\Models\Author;
 use App\Models\Category;
@@ -17,6 +19,7 @@ use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
+use App\Services\GeoFlow\TaskTitleReadinessService;
 use App\Support\AdminWeb;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -42,16 +45,40 @@ class TaskController extends Controller
         private readonly TaskLifecycleService $taskLifecycleService,
         private readonly TaskMonitoringQueryService $taskMonitoringQueryService,
         private readonly DistributionOrchestrator $distributionOrchestrator,
+        private readonly TaskTitleReadinessService $taskTitleReadinessService,
     ) {}
+
+    public function titleReadiness(TaskTitleReadinessRequest $request): JsonResponse
+    {
+        $payload = $request->validated();
+        $taskId = isset($payload['task_id']) ? (int) $payload['task_id'] : null;
+        if ($taskId !== null) {
+            $this->assertCanManageHostedTask($taskId);
+        }
+
+        $report = $this->taskTitleReadinessService->inspect(
+            (int) $payload['title_library_id'],
+            (int) $payload['article_limit'],
+            (bool) $payload['is_loop'],
+            (string) $payload['status'],
+            $taskId,
+        );
+
+        return response()->json($this->presentTitleReadiness($report));
+    }
 
     /**
      * 任务管理首页：渲染列表与运行面板。
      */
     public function index(Request $request): View
     {
+        $page = $this->positiveIntegerQuery($request, 'page');
+        $trashPage = $this->positiveIntegerQuery($request, 'trash_page');
+        $trashSnapshotId = $this->taskTrashSnapshotQuery($request);
+
         try {
             $overview = $this->taskMonitoringQueryService->buildAdminOverview(
-                max(1, $request->integer('page', 1)),
+                $page,
                 50,
             );
             $tasks = $this->decorateTaskManageability($overview['tasks']);
@@ -60,6 +87,13 @@ class TaskController extends Controller
             $recentJobs = $overview['recent_runs'];
             $pagination = $overview['pagination'];
             $taskSummary = $overview['task_summary'];
+            $trashHistory = $this->taskMonitoringQueryService->trashedTaskHistory(
+                $trashPage,
+                50,
+                $trashSnapshotId,
+            );
+            $trashedTasks = $this->decorateTaskTrashManageability($trashHistory['items']);
+            $trashPagination = $trashHistory['pagination'];
             $error = null;
         } catch (Throwable $e) {
             $tasks = [];
@@ -68,6 +102,14 @@ class TaskController extends Controller
             $recentJobs = [];
             $pagination = ['page' => 1, 'per_page' => 50, 'total' => 0, 'total_pages' => 1];
             $taskSummary = ['total_tasks' => 0, 'enabled_tasks' => 0, 'total_articles' => 0, 'published_articles' => 0];
+            $trashedTasks = [];
+            $trashPagination = [
+                'page' => 1,
+                'per_page' => 50,
+                'total' => 0,
+                'total_pages' => 1,
+                'snapshot_id' => 0,
+            ];
             $error = __('admin.tasks.message.query_failed', ['message' => $e->getMessage()]);
         }
 
@@ -81,9 +123,103 @@ class TaskController extends Controller
             'recentJobs' => $recentJobs,
             'pagination' => $pagination,
             'taskSummary' => $taskSummary,
+            'trashedTasks' => $trashedTasks,
+            'trashPagination' => $trashPagination,
+            'taskTrashOpen' => $request->has('trash_page'),
+            'taskTrashRetentionDays' => Task::TRASH_RETENTION_DAYS,
             'legacyError' => $error,
             'taskI18n' => $this->taskI18n(),
         ]);
+    }
+
+    public function workers(Request $request): View
+    {
+        return view('admin.tasks.workers', [
+            'pageTitle' => __('admin.tasks.worker.page_title'),
+            'activeMenu' => 'tasks',
+            'adminSiteName' => AdminWeb::siteName(),
+            'workers' => $this->taskMonitoringQueryService->paginateWorkers(
+                $this->positiveIntegerQuery($request, 'page'),
+                10,
+            ),
+        ]);
+    }
+
+    public function jobs(Request $request): View
+    {
+        $focusedRunId = $this->optionalPositiveIntegerQuery($request, 'run_id');
+
+        return view('admin.tasks.jobs', [
+            'pageTitle' => __('admin.tasks.jobs.page_title'),
+            'activeMenu' => 'tasks',
+            'adminSiteName' => AdminWeb::siteName(),
+            'jobs' => $this->taskMonitoringQueryService->paginateRecentRuns(
+                $this->positiveIntegerQuery($request, 'page'),
+                10,
+                $focusedRunId,
+            ),
+            'focusedRunId' => $focusedRunId,
+        ]);
+    }
+
+    private function positiveIntegerQuery(Request $request, string $key): int
+    {
+        $value = $request->query($key, 1);
+        if (! is_int($value) && ! is_string($value)) {
+            return 1;
+        }
+
+        $validated = filter_var($value, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        return $validated === false ? 1 : $validated;
+    }
+
+    private function optionalPositiveIntegerQuery(Request $request, string $key): ?int
+    {
+        if (! $request->has($key)) {
+            return null;
+        }
+
+        $value = $request->query($key);
+        if (! is_int($value) && ! is_string($value)) {
+            return null;
+        }
+
+        $validated = filter_var($value, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        return $validated === false ? null : $validated;
+    }
+
+    private function taskTrashSnapshotQuery(Request $request): ?int
+    {
+        $snapshotId = $request->query('trash_snapshot_id');
+        if (! is_int($snapshotId) && ! is_string($snapshotId)) {
+            return null;
+        }
+
+        $validatedId = filter_var($snapshotId, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        return $validatedId === false ? null : $validatedId;
+    }
+
+    private function taskTrashReturnUrl(Request $request): string
+    {
+        $parameters = [
+            'page' => $this->positiveIntegerQuery($request, 'page'),
+            'trash_page' => $this->positiveIntegerQuery($request, 'trash_page'),
+        ];
+        $snapshotId = $this->taskTrashSnapshotQuery($request);
+        if ($snapshotId !== null) {
+            $parameters['trash_snapshot_id'] = $snapshotId;
+        }
+
+        return route('admin.tasks.index', $parameters).'#task-trash';
     }
 
     /**
@@ -99,14 +235,20 @@ class TaskController extends Controller
         try {
             $currentStatus = (string) $request->input('status', 'paused');
             if ($currentStatus === 'active') {
-                $this->taskLifecycleService->stopTask($taskId);
+                $this->taskLifecycleService->stopTask($taskId, $this->canManageHostedTask());
 
                 return back()->with('message', __('admin.tasks.message.paused_stopped'));
             }
 
-            $this->taskLifecycleService->startTask($taskId, false);
+            $this->taskLifecycleService->startTask($taskId, false, $this->canManageHostedTask());
 
             return back()->with('message', __('admin.tasks.message.activated'));
+        } catch (TaskTitleReadinessException $e) {
+            $report = $e->getDetails()['title_readiness'] ?? [];
+
+            return back()
+                ->with('title_readiness_report', $this->presentTitleReadiness($report))
+                ->withErrors($e->getMessage());
         } catch (Throwable $e) {
             return back()->withErrors(__('admin.tasks.message.status_update_failed'));
         }
@@ -123,11 +265,40 @@ class TaskController extends Controller
         $this->assertCanManageHostedTask($taskId);
 
         try {
-            $this->taskLifecycleService->deleteTask($taskId);
+            $this->taskLifecycleService->deleteTask(
+                $taskId,
+                $this->canManageHostedTask(),
+            );
 
             return back()->with('message', __('admin.tasks.message.delete_success'));
         } catch (Throwable $e) {
             return back()->withErrors(__('admin.tasks.message.delete_failed', ['message' => $e->getMessage()]));
+        }
+    }
+
+    /**
+     * 从垃圾箱恢复任务，并返回当前垃圾箱位置。
+     */
+    public function restoreTask(Request $request, int $taskId): RedirectResponse
+    {
+        $returnUrl = $this->taskTrashReturnUrl($request);
+        $trashSequence = $this->optionalPositiveIntegerQuery($request, 'trash_sequence');
+        if ($taskId <= 0 || $trashSequence === null) {
+            return redirect()->to($returnUrl)->withErrors(__('admin.tasks.message.restore_failed'));
+        }
+
+        try {
+            $restoredTask = $this->taskLifecycleService->restoreTask(
+                $taskId,
+                $trashSequence,
+                $this->canManageHostedTask(),
+            );
+
+            return redirect()->to($returnUrl)->with('message', __('admin.tasks.message.restore_success', [
+                'name' => $restoredTask['name'],
+            ]));
+        } catch (Throwable) {
+            return redirect()->to($returnUrl)->withErrors(__('admin.tasks.message.restore_failed'));
         }
     }
 
@@ -181,6 +352,13 @@ class TaskController extends Controller
                     );
                 }
             });
+        } catch (TaskTitleReadinessException $e) {
+            $report = $e->getDetails()['title_readiness'] ?? [];
+
+            return back()
+                ->withInput()
+                ->with('title_readiness_report', $this->presentTitleReadiness($report))
+                ->withErrors($e->getMessage());
         } catch (Throwable $e) {
             // 保留输入并回显服务层错误，便于在页面直接修正。
             return back()->withInput()->withErrors($e->getMessage());
@@ -230,11 +408,18 @@ class TaskController extends Controller
                 'fixed_category_id' => (string) (($task['fixed_category_id'] ?? '') ?: ''),
                 'status' => (string) $taskModel->status,
                 'article_limit' => (string) ($task['article_limit'] ?? 10),
+                'created_count' => (int) ($task['created_count'] ?? 0),
                 'draft_limit' => (string) ($task['draft_limit'] ?? 10),
                 'publish_interval' => (string) max(1, (int) (($task['publish_interval'] ?? 3600) / 60)),
                 'category_mode' => (string) ($task['category_mode'] ?? 'smart'),
                 'model_selection_mode' => (string) ($task['model_selection_mode'] ?? 'fixed'),
                 'need_review' => (int) ($task['need_review'] ?? 0),
+                'ai_quality_enabled' => (bool) ($task['ai_quality_enabled'] ?? false),
+                'ai_quality_timeout_sampling_enabled' => (bool) ($task['ai_quality_timeout_sampling_enabled'] ?? false),
+                'ai_quality_prompt_id' => (string) (($task['ai_quality_prompt_id'] ?? '') ?: ''),
+                'ai_quality_model_id' => (string) (($task['ai_quality_model_id'] ?? '') ?: ''),
+                'ai_quality_pass_score' => (string) ($task['ai_quality_pass_score'] ?? 85),
+                'ai_quality_manual_override_min_score' => (string) ($task['ai_quality_manual_override_min_score'] ?? 70),
                 'is_loop' => (int) ($task['is_loop'] ?? 1),
                 'auto_keywords' => (int) ($task['auto_keywords'] ?? 1),
                 'auto_description' => (int) ($task['auto_description'] ?? 1),
@@ -269,13 +454,20 @@ class TaskController extends Controller
             DB::transaction(function () use ($taskId, $taskData, $channelIds, $taskRevision): void {
                 $this->distributionOrchestrator->lockTaskChannelSelection($taskId, $channelIds);
                 $this->distributionOrchestrator->assertTaskRevision($taskId, $taskRevision);
-                $this->taskLifecycleService->updateTask($taskId, $taskData);
+                $this->taskLifecycleService->updateTask($taskId, $taskData, $this->canManageHostedTask());
                 $task = Task::query()->whereKey($taskId)->firstOrFail();
                 $this->distributionOrchestrator->syncTaskChannels($task, $channelIds);
             });
         } catch (DistributionTaskRevisionMismatch $e) {
             return redirect()
                 ->route('admin.tasks.edit', ['taskId' => $taskId])
+                ->withErrors($e->getMessage());
+        } catch (TaskTitleReadinessException $e) {
+            $report = $e->getDetails()['title_readiness'] ?? [];
+
+            return back()
+                ->withInput()
+                ->with('title_readiness_report', $this->presentTitleReadiness($report))
                 ->withErrors($e->getMessage());
         } catch (Throwable $e) {
             return back()->withInput()->withErrors($e->getMessage());
@@ -303,6 +495,12 @@ class TaskController extends Controller
                 'queue_overview' => $overview['queue_overview'],
                 'worker_overview' => $overview['worker_overview'],
                 'recent_runs' => $overview['recent_runs'],
+                'worker_overview_html' => view('admin.tasks.partials.worker-overview', [
+                    'workers' => $overview['worker_overview'],
+                ])->render(),
+                'recent_runs_html' => view('admin.tasks.partials.recent-runs', [
+                    'recentJobs' => $overview['recent_runs'],
+                ])->render(),
                 'pagination' => $overview['pagination'],
                 'task_summary' => $overview['task_summary'],
             ]);
@@ -329,14 +527,26 @@ class TaskController extends Controller
         try {
             $taskId = (int) $payload['task_id'];
             $result = $payload['action'] === 'start'
-                ? $this->taskLifecycleService->startTask($taskId, true)
-                : $this->taskLifecycleService->stopTask($taskId);
+                ? $this->taskLifecycleService->startTask($taskId, true, $this->canManageHostedTask())
+                : $this->taskLifecycleService->stopTask($taskId, $this->canManageHostedTask());
 
             return response()->json([
                 'success' => true,
                 'message' => 'ok',
                 'data' => $result,
             ]);
+        } catch (TaskTitleReadinessException $e) {
+            $details = $e->getDetails();
+            if (is_array($details['title_readiness'] ?? null)) {
+                $details['title_readiness'] = $this->presentTitleReadiness($details['title_readiness']);
+            }
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getErrorCode(),
+                'message' => $e->getMessage(),
+                'details' => $details,
+            ], 409);
         } catch (Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -446,10 +656,11 @@ class TaskController extends Controller
      */
     private function loadTaskFormOptions(): array
     {
-        // 直接附带标题数，避免 Blade 层再次查询。
+        // 直接附带标题总数与可用数，避免 Blade 层再次查询。
         $titleLibraries = TitleLibrary::query()
             ->select(['id', 'name'])
             ->selectRaw('(SELECT COUNT(*) FROM titles WHERE titles.library_id = title_libraries.id) AS title_count')
+            ->selectRaw('(SELECT COUNT(*) FROM titles WHERE titles.library_id = title_libraries.id AND (titles.used_count IS NULL OR titles.used_count <= 0)) AS available_title_count')
             ->orderByDesc('id')
             ->get()
             ->map(static function (TitleLibrary $row): array {
@@ -457,6 +668,9 @@ class TaskController extends Controller
                     'id' => (int) $row->id,
                     'name' => (string) $row->name,
                     'count' => (int) ($row->title_count ?? 0),
+                    'used' => max(0, (int) ($row->title_count ?? 0) - (int) ($row->available_title_count ?? 0)),
+                    'available' => (int) ($row->available_title_count ?? 0),
+                    'manage_url' => route('admin.title-libraries.detail', ['libraryId' => (int) $row->id]),
                 ];
             })
             ->all();
@@ -467,6 +681,20 @@ class TaskController extends Controller
             ->orderByDesc('id')
             ->get()
             ->map(static fn (Prompt $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
+            ->all();
+
+        $qualityPrompts = Prompt::query()
+            ->select(['id', 'name', 'system_key', 'system_version'])
+            ->where('type', 'quality_check')
+            ->orderByRaw('system_key IS NULL')
+            ->orderByDesc('id')
+            ->get()
+            ->map(static fn (Prompt $row): array => [
+                'id' => (int) $row->id,
+                'name' => (string) $row->name,
+                'system_managed' => filled($row->system_key),
+                'version' => (string) ($row->system_version ?? ''),
+            ])
             ->all();
 
         $aiModels = AiModel::query()
@@ -539,6 +767,7 @@ class TaskController extends Controller
         return [
             'titleLibraries' => $titleLibraries,
             'prompts' => $prompts,
+            'qualityPrompts' => $qualityPrompts,
             'aiModels' => $aiModels,
             'imageLibraries' => $imageLibraries,
             'knowledgeBases' => $knowledgeBases,
@@ -546,6 +775,95 @@ class TaskController extends Controller
             'categories' => $categories,
             'distributionChannels' => $distributionChannels,
         ];
+    }
+
+    /** @param array<string,mixed> $report @return array<string,mixed> */
+    private function presentTitleReadiness(array $report): array
+    {
+        $report = $this->redactProtectedTitleReadinessConflicts($report);
+        $library = is_array($report['library'] ?? null) ? $report['library'] : [];
+        $task = is_array($report['task'] ?? null) ? $report['task'] : [];
+        $replace = [
+            'name' => (string) ($library['name'] ?? ''),
+            'total' => (int) ($library['total'] ?? 0),
+            'used' => (int) ($library['used'] ?? 0),
+            'available' => (int) ($library['available'] ?? 0),
+            'remaining' => (int) ($task['remaining'] ?? 0),
+            'shortage' => (int) ($report['shortage'] ?? 0),
+            'max' => (int) ($report['suggested_article_limit'] ?? 0),
+        ];
+
+        $report['issues'] = collect($report['issues'] ?? [])->map(
+            static function (array $issue) use ($replace): array {
+                $code = (string) ($issue['code'] ?? 'request_failed');
+                $key = 'admin.task_create.readiness.issue.'.$code;
+                $suggestionIndexes = [1, 2, 3];
+                if ($replace['max'] < 1 && $code === 'title_library_exhausted') {
+                    $suggestionIndexes = [1, 2];
+                } elseif ($replace['max'] < 1 && $code === 'title_library_shortage') {
+                    $suggestionIndexes = [1, 3];
+                }
+
+                return $issue + [
+                    'title' => __($key.'.title', $replace),
+                    'message' => __($key.'.message', $replace),
+                    'impact' => __($key.'.impact', $replace),
+                    'suggestions' => collect($suggestionIndexes)
+                        ->map(static fn (int $index): string => __($key.'.suggestion_'.$index, $replace))
+                        ->filter(static fn (string $value): bool => $value !== '' && ! str_contains($value, 'admin.task_create.readiness.'))
+                        ->values()
+                        ->all(),
+                ];
+            }
+        )->values()->all();
+        $libraryId = (int) ($library['id'] ?? 0);
+        $taskId = (int) ($task['id'] ?? 0);
+        $report['manage_url'] = $libraryId > 0
+            ? route('admin.title-libraries.detail', ['libraryId' => $libraryId])
+            : null;
+        $report['edit_url'] = $taskId > 0
+            ? route('admin.tasks.edit', ['taskId' => $taskId])
+            : null;
+        $report['summary'] = __('admin.task_create.readiness.summary', $replace);
+        $report['recommendation'] = (int) ($report['suggested_article_limit'] ?? 0) >= 1
+            ? __('admin.task_create.readiness.recommendation', $replace)
+            : __('admin.task_create.readiness.recommendation_without_limit', $replace);
+        $report['paused_hint'] = ($task['status'] ?? '') === 'paused'
+            ? __('admin.task_create.readiness.paused_hint')
+            : null;
+
+        return $report;
+    }
+
+    /** @param array<string,mixed> $report @return array<string,mixed> */
+    private function redactProtectedTitleReadinessConflicts(array $report): array
+    {
+        $conflicts = is_array($report['conflicts'] ?? null) ? $report['conflicts'] : [];
+        if ($conflicts === [] || auth('admin')->user()?->isSuperAdmin() === true) {
+            return $report;
+        }
+
+        $taskIds = collect($conflicts)
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->filter()
+            ->values();
+        $protectedTaskIds = Task::query()
+            ->whereIn('id', $taskIds)
+            ->whereHas('distributionChannels', fn ($query) => $query->where(
+                'channel_type',
+                DistributionChannel::TYPE_HOSTED_SITE
+            ))
+            ->pluck('id')
+            ->mapWithKeys(static fn ($id): array => [(int) $id => true]);
+
+        $report['conflicts'] = collect($conflicts)
+            ->reject(static fn (array $conflict): bool => $protectedTaskIds->has((int) ($conflict['id'] ?? 0)))
+            ->values()
+            ->all();
+        $report['redacted_conflict_count'] = $protectedTaskIds->count();
+
+        return $report;
     }
 
     /**
@@ -584,7 +902,7 @@ class TaskController extends Controller
             'knowledge_base_ids.*' => ['integer', 'min:1', 'distinct', 'exists:knowledge_bases,id'],
             'fixed_category_id' => ['nullable', 'integer', 'min:1'],
             'status' => ['required', 'string', 'in:active,paused'],
-            'article_limit' => ['nullable', 'integer', 'min:1', 'max:99999'],
+            'article_limit' => ['required', 'integer', 'min:1', 'max:99999'],
             'draft_limit' => ['nullable', 'integer', 'min:1', 'max:9999'],
             'publish_interval' => ['nullable', 'integer', 'min:1'],
             'category_mode' => ['nullable', 'string', 'in:smart,fixed,random'],
@@ -593,6 +911,12 @@ class TaskController extends Controller
             'distribution_strategy' => ['nullable', 'string', 'in:'.implode(',', TaskDistributionChannelSelector::strategies())],
             'distribution_channel_ids' => ['nullable', 'array'],
             'distribution_channel_ids.*' => ['integer', 'min:1'],
+            'ai_quality_enabled' => ['nullable', 'boolean'],
+            'ai_quality_timeout_sampling_enabled' => ['nullable', 'boolean'],
+            'ai_quality_prompt_id' => ['nullable', 'integer', 'min:1', 'exists:prompts,id'],
+            'ai_quality_model_id' => ['nullable', 'integer', 'min:1', 'exists:ai_models,id'],
+            'ai_quality_pass_score' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'ai_quality_manual_override_min_score' => ['nullable', 'integer', 'min:0', 'max:99', 'lt:ai_quality_pass_score'],
             'task_revision' => [$request->routeIs('admin.tasks.update') ? 'required' : 'nullable', 'string', 'size:64'],
         ]);
     }
@@ -633,6 +957,13 @@ class TaskController extends Controller
             'model_selection_mode' => (string) ($payload['model_selection_mode'] ?? 'fixed'),
             'auto_keywords' => $request->boolean('auto_keywords') ? 1 : 0,
             'auto_description' => $request->boolean('auto_description') ? 1 : 0,
+            'ai_quality_enabled' => $request->boolean('ai_quality_enabled'),
+            'ai_quality_timeout_sampling_enabled' => $request->boolean('ai_quality_enabled')
+                && $request->boolean('ai_quality_timeout_sampling_enabled'),
+            'ai_quality_prompt_id' => isset($payload['ai_quality_prompt_id']) ? (int) $payload['ai_quality_prompt_id'] : null,
+            'ai_quality_model_id' => isset($payload['ai_quality_model_id']) ? (int) $payload['ai_quality_model_id'] : null,
+            'ai_quality_pass_score' => (int) ($payload['ai_quality_pass_score'] ?? 85),
+            'ai_quality_manual_override_min_score' => (int) ($payload['ai_quality_manual_override_min_score'] ?? 70),
         ];
     }
 
@@ -719,6 +1050,11 @@ class TaskController extends Controller
         abort_if($hasHostedChannel, 403);
     }
 
+    private function canManageHostedTask(): bool
+    {
+        return auth('admin')->user()?->isSuperAdmin() === true;
+    }
+
     /**
      * @param  list<array<string,mixed>>  $tasks
      * @return list<array<string,mixed>>
@@ -749,6 +1085,22 @@ class TaskController extends Controller
 
         return array_map(static function (array $task) use ($hostedTaskIds): array {
             $task['can_manage'] = ! $hostedTaskIds->has((int) ($task['id'] ?? 0));
+
+            return $task;
+        }, $tasks);
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $tasks
+     * @return list<array<string,mixed>>
+     */
+    private function decorateTaskTrashManageability(array $tasks): array
+    {
+        $canManageProtectedTask = $this->canManageHostedTask();
+
+        return array_map(static function (array $task) use ($canManageProtectedTask): array {
+            $task['can_restore'] = $canManageProtectedTask
+                || ! (bool) ($task['requires_super_admin_restore'] ?? false);
 
             return $task;
         }, $tasks);

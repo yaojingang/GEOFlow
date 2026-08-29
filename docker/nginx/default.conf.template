@@ -26,6 +26,27 @@ server {
 
     include /etc/nginx/snippets/geoflow-app.conf;
 
+    location = /manifest.webmanifest {
+        access_log off;
+        default_type application/manifest+json;
+        add_header Cache-Control "no-cache, max-age=0, must-revalidate" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        try_files $uri =404;
+    }
+
+    location = /service-worker.js {
+        access_log off;
+        default_type application/javascript;
+        add_header Cache-Control "no-cache, max-age=0, must-revalidate" always;
+        add_header Service-Worker-Allowed "/" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        try_files $uri =404;
+    }
+
     location ^~ /build/assets/ {
         expires 1y;
         access_log off;

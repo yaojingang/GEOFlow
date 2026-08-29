@@ -19,12 +19,14 @@ return array_replace_recursive($base, [
     'button' => [
         'create' => '作業を作成', 'edit' => '編集', 'save' => '変更を保存', 'view' => '表示', 'back' => '戻る',
         'settings' => 'ペルソナとアカウント', 'export' => 'CSV 出力', 'copy' => '内容をコピー', 'copied' => 'コピー済み',
+        'open_in_chrome' => 'Chrome で実行',
     ],
     'stats' => ['total' => 'すべて', 'ready' => '実行待ち', 'in_progress' => '実行中', 'completed' => '完了'],
     'type' => ['post' => '投稿', 'comment' => 'コメント'],
-    'status' => ['draft' => '下書き', 'ready' => '実行待ち', 'in_progress' => '実行中', 'completed' => '完了', 'failed' => '失敗', 'skipped' => 'スキップ', 'cancelled' => 'キャンセル'],
-    'action' => ['ready' => '実行待ちにする', 'in_progress' => '作業開始', 'completed' => '完了にする', 'failed' => '失敗にする', 'skipped' => 'スキップ', 'cancelled' => 'キャンセル'],
+    'status' => ['draft' => '下書き', 'ready' => '実行待ち', 'in_progress' => '実行中', 'completed' => '完了', 'failed' => '失敗', 'skipped' => 'スキップ', 'cancelled' => 'キャンセル', 'outcome_unknown' => '要確認'],
+    'action' => ['ready' => '実行待ちにする', 'in_progress' => '作業開始', 'completed' => '完了にする', 'failed' => '失敗にする', 'skipped' => 'スキップ', 'cancelled' => 'キャンセル', 'outcome_unknown' => '確認待ちにする'],
     'risk' => ['clean' => '問題なし', 'warning' => '注意', 'blocked' => '高リスク'],
+    'browser' => ['connection' => 'Chrome 接続', 'active' => '接続中でハートビートを送信中', 'lost' => '接続が切れました。復旧前にプラットフォームを確認してください', 'last_seen' => '最終ハートビート: :time'],
     'filter' => [
         'all' => 'すべて', 'status' => '状態', 'type' => '種類', 'platform' => 'プラットフォーム', 'assignee' => '担当者',
         'scheduled_from' => '予定開始', 'scheduled_to' => '予定終了', 'search' => '検索', 'search_placeholder' => '内容、URL、記事、アカウント', 'apply' => '適用',
@@ -48,7 +50,10 @@ return array_replace_recursive($base, [
     'error' => [
         'account_mismatch' => '選択したアカウントは有効で、ペルソナとプラットフォームが一致する必要があります。',
         'article_not_approved' => '投稿には承認済みまたは自動承認済みの記事が必要です。', 'assignee_inactive' => '選択した担当者は利用できません。',
-        'completed_immutable' => '完了した作業は編集できません。', 'completion_url_required' => '完了には有効な HTTP または HTTPS の公開 URL が必要です。',
+        'completed_immutable' => '完了した作業は編集できません。',
+        'claimed_immutable' => '取得済みまたは終了済みの作業は編集できません。編集前に解放してください。',
+        'browser_claim_active' => 'ブラウザー接続はまだ有効です。10 分後に復旧を再試行してください。',
+        'completion_url_required' => '完了には有効な HTTP または HTTPS の公開 URL が必要です。',
         'invalid_transition' => 'この状態変更は許可されていません。', 'persona_inactive' => '選択したペルソナは利用できません。',
         'ready_requires_assignee' => '実行待ちの作業には担当者が必要です。', 'revision_conflict' => '別のセッションで更新されました。再読み込みして再試行してください。',
     ],

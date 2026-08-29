@@ -6,10 +6,97 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 
 class Task extends Model
 {
+    use SoftDeletes {
+        restore as private restoreSoftDeletedModel;
+    }
+
+    public const TRASH_RETENTION_DAYS = 90;
+
+    protected $dateFormat = 'Y-m-d H:i:s.u';
+
     protected $table = 'tasks';
+
+    public function delete()
+    {
+        return DB::transaction(function (): bool {
+            $locked = static::withTrashed()
+                ->whereKey($this->getKey())
+                ->lockForUpdate()
+                ->first();
+            if (! $locked || ($locked->trashed() && ! $this->isForceDeleting())) {
+                return false;
+            }
+
+            $this->setRawAttributes($locked->getAttributes(), true);
+
+            return (bool) parent::delete();
+        });
+    }
+
+    public function restore()
+    {
+        return DB::transaction(fn () => $this->restoreWithLock());
+    }
+
+    private function restoreWithLock(): bool
+    {
+        $locked = static::withTrashed()
+            ->whereKey($this->getKey())
+            ->lockForUpdate()
+            ->first();
+        if (! $locked || ! $locked->trashed()) {
+            return false;
+        }
+
+        $this->setRawAttributes($locked->getAttributes(), true);
+
+        return (bool) $this->restoreSoftDeletedModel();
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Task $task): void {
+            if ($task->isForceDeleting()) {
+                return;
+            }
+
+            if (! Schema::hasTable('task_trash_entries') || ! Schema::hasTable('task_trash_state')) {
+                throw new RuntimeException('Task trash schema is not ready. Run database migrations before deleting tasks.');
+            }
+
+            $state = DB::table('task_trash_state')
+                ->where('id', 1)
+                ->lockForUpdate()
+                ->first(['last_sequence']);
+            if (! $state) {
+                throw new RuntimeException('Task trash sequence state is missing.');
+            }
+
+            $sequence = (int) $state->last_sequence + 1;
+            DB::table('task_trash_state')->where('id', 1)->update([
+                'last_sequence' => $sequence,
+            ]);
+
+            DB::table('task_trash_entries')->insert([
+                'task_id' => (int) $task->id,
+                'sequence' => $sequence,
+                'deleted_at' => now()->format('Y-m-d H:i:s.u'),
+            ]);
+        });
+
+        static::restoring(function (Task $task): void {
+            if (Schema::hasTable('task_trash_entries')) {
+                DB::table('task_trash_entries')->where('task_id', $task->id)->delete();
+            }
+        });
+    }
 
     protected $fillable = [
         'name',
@@ -47,6 +134,19 @@ class Task extends Model
         'last_error_message',
         'schedule_enabled',
         'max_retry_count',
+        'ai_quality_enabled',
+        'ai_quality_timeout_sampling_enabled',
+        'ai_quality_prompt_id',
+        'ai_quality_model_id',
+        'ai_quality_pass_score',
+        'ai_quality_manual_override_min_score',
+    ];
+
+    protected $attributes = [
+        'ai_quality_enabled' => false,
+        'ai_quality_timeout_sampling_enabled' => false,
+        'ai_quality_pass_score' => 85,
+        'ai_quality_manual_override_min_score' => 70,
     ];
 
     protected function casts(): array
@@ -79,6 +179,12 @@ class Task extends Model
             'last_error_at' => 'datetime',
             'schedule_enabled' => 'integer',
             'max_retry_count' => 'integer',
+            'ai_quality_enabled' => 'boolean',
+            'ai_quality_timeout_sampling_enabled' => 'boolean',
+            'ai_quality_prompt_id' => 'integer',
+            'ai_quality_model_id' => 'integer',
+            'ai_quality_pass_score' => 'integer',
+            'ai_quality_manual_override_min_score' => 'integer',
         ];
     }
 
@@ -100,6 +206,16 @@ class Task extends Model
     public function aiModel(): BelongsTo
     {
         return $this->belongsTo(AiModel::class, 'ai_model_id');
+    }
+
+    public function qualityPrompt(): BelongsTo
+    {
+        return $this->belongsTo(Prompt::class, 'ai_quality_prompt_id');
+    }
+
+    public function qualityModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'ai_quality_model_id');
     }
 
     public function author(): BelongsTo
@@ -144,6 +260,11 @@ class Task extends Model
     public function taskRuns(): HasMany
     {
         return $this->hasMany(TaskRun::class, 'task_id');
+    }
+
+    public function aiQualityChecks(): HasMany
+    {
+        return $this->hasMany(ArticleAiQualityCheck::class);
     }
 
     public function distributionChannels(): BelongsToMany

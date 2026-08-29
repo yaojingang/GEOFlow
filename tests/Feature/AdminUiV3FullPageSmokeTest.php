@@ -4,7 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\AiConversation;
-use App\Models\AiWorkspaceRun;
+use App\Models\AiModel;
+use App\Models\AiSourceProvider;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\Author;
@@ -17,10 +18,12 @@ use App\Models\KnowledgeBase;
 use App\Models\LeadForm;
 use App\Models\LeadSubmission;
 use App\Models\ManualPublication;
+use App\Models\Prompt;
 use App\Models\SiteThemeReplication;
 use App\Models\SystemUpdateBackup;
 use App\Models\SystemUpdateRun;
 use App\Models\Task;
+use App\Models\TitleGenerationRun;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Support\AdminUiRegistry;
@@ -78,7 +81,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(83, $shellRoutes);
+        $this->assertCount(100, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
@@ -89,6 +92,20 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
             $this->assertSame(200, $response->status(), $routeName);
             $response->assertSee('data-gf-shell', false, $routeName);
+
+            $document = new \DOMDocument;
+            @$document->loadHTML((string) $response->getContent());
+            $xpath = new \DOMXPath($document);
+            $headings = $xpath->query('//main[@id="main-content"]//h1');
+            $topbarIdentities = $xpath->query('//*[@data-gf-topbar-identity]');
+            $content = $xpath->query('//main[@id="main-content"]//*[@data-gf-page-heading]')?->item(0);
+            $identity = $registry->pageIdentity($routeName);
+
+            $this->assertSame(1, $headings?->length, $routeName.' must render exactly one page title');
+            $this->assertSame(1, $topbarIdentities?->length, $routeName.' must render one topbar identity');
+            $this->assertSame($identity['icon'], $topbarIdentities?->item(0)?->attributes?->getNamedItem('data-page-icon')?->nodeValue, $routeName);
+            $this->assertSame($identity['body_heading'], $content?->attributes?->getNamedItem('data-gf-page-heading')?->nodeValue, $routeName);
+            $this->assertStringContainsString($identity['title'], $topbarIdentities?->item(0)?->textContent ?? '', $routeName);
         }
     }
 
@@ -112,7 +129,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
         $this->assertCount(2, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
-        $this->assertCount(3, $routesByClassification->get('download', collect()));
+        $this->assertCount(5, $routesByClassification->get('download', collect()));
         $this->assertCount(12, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
@@ -144,6 +161,13 @@ class AdminUiV3FullPageSmokeTest extends TestCase
                 ->get(route($routeName, $parameters[$routeName] ?? []));
 
             $this->assertSame(200, $response->status(), $routeName);
+            $identity = $registry->pageIdentity($routeName);
+            if ($identity !== null) {
+                $response
+                    ->assertSee('data-gf-shell', false)
+                    ->assertSee('data-page-icon="'.$identity['icon'].'"', false)
+                    ->assertSee($identity['title']);
+            }
         }
 
         foreach ($routesByClassification->get('download', collect()) as $route) {
@@ -152,6 +176,12 @@ class AdminUiV3FullPageSmokeTest extends TestCase
                 ->withSession([Admin::AUTH_VERSION_SESSION_KEY => (int) $admin->auth_version])
                 ->actingAs($admin, 'admin')
                 ->get(route($routeName, $parameters[$routeName] ?? []));
+
+            if ($routeName === 'admin.articles.batch.export-markdown.download') {
+                $response->assertForbidden();
+
+                continue;
+            }
 
             $this->assertContains($response->getStatusCode(), [200, 302], $routeName);
         }
@@ -233,10 +263,13 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->assertSee('aria-label="'.e(__('admin.common.back')).'"', false)
             ->assertSee('aria-label="'.e(__('admin.common.delete')).'：', false);
 
+        $model = AiModel::query()->where('name', UiV3ReviewSeeder::AI_MODEL_NAME)->firstOrFail();
         $authenticated
-            ->get(route('admin.ai-models.index'))
+            ->get(route('admin.ai-models.edit', ['modelId' => $model->id]))
             ->assertOk()
-            ->assertSee('aria-label="'.e(__('admin.common.close')).'"', false);
+            ->assertSee('aria-label="'.e(__('admin.common.back')).'"', false)
+            ->assertSee('action="'.route('admin.ai-models.update', ['modelId' => $model->id]).'"', false)
+            ->assertDontSee('id="modelModal"', false);
     }
 
     /** @return array<string, array<string, int|string>> */
@@ -249,20 +282,6 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'participant_type' => $admin->getMorphClass(),
             'participant_id' => $admin->id,
             'title' => 'UI V3 AI Workspace Review',
-        ]);
-        $aiRun = AiWorkspaceRun::query()->firstOrCreate([
-            'id' => '01987f84-7f01-7000-8000-000000000002',
-        ], [
-            'conversation_id' => $aiConversation->id,
-            'admin_id' => $admin->id,
-            'admin_username_snapshot' => $admin->username,
-            'mode' => 'answer',
-            'state' => 'completed',
-            'prompt' => 'UI V3 smoke test',
-            'intent' => 'general_question',
-            'risk_level' => 'low',
-            'answer' => 'Smoke test complete. 本次未执行系统操作。',
-            'status_message' => 'Completed',
         ]);
         $article = Article::query()->where('slug', 'ui-v3-review-article')->firstOrFail();
         $author = Author::query()->where('email', 'ui-v3-review-author@example.test')->firstOrFail();
@@ -277,10 +296,25 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $leadForm = LeadForm::query()->where('slug', UiV3ReviewSeeder::LEAD_FORM_SLUG)->firstOrFail();
         $lead = LeadSubmission::query()->where('source_url', UiV3ReviewSeeder::LEAD_SOURCE_URL)->firstOrFail();
         $publication = ManualPublication::query()->where('target_url', UiV3ReviewSeeder::PUBLICATION_TARGET_URL)->firstOrFail();
+        $model = AiModel::query()->where('name', UiV3ReviewSeeder::AI_MODEL_NAME)->firstOrFail();
+        $sourceProvider = AiSourceProvider::query()->firstOrFail();
+        $prompt = Prompt::query()->where('type', 'content')->firstOrFail();
         $run = SystemUpdateRun::query()->where('run_uuid', UiV3ReviewSeeder::UPDATE_RUN_UUID)->firstOrFail();
         $backup = SystemUpdateBackup::query()->where('backup_uuid', UiV3ReviewSeeder::BACKUP_UUID)->firstOrFail();
         $task = Task::query()->where('name', UiV3ReviewSeeder::TASK_NAME)->firstOrFail();
         $titleLibrary = TitleLibrary::query()->where('name', UiV3ReviewSeeder::TITLE_LIBRARY_NAME)->firstOrFail();
+        $titleGenerationRun = TitleGenerationRun::query()->firstOrCreate([
+            'title_library_id' => $titleLibrary->id,
+            'status' => TitleGenerationRun::STATUS_COMPLETED,
+        ], [
+            'requested_count' => 1,
+            'batch_size' => 1,
+            'model_request_budget' => 3,
+            'title_style' => 'professional',
+            'locale' => 'zh_CN',
+            'keyword_snapshot' => ['GEO 内容工程'],
+            'completed_at' => now(),
+        ]);
         $import = UrlImportJob::query()->where('normalized_url', UiV3ReviewSeeder::IMPORT_URL)->firstOrFail();
         $replicationId = (int) SiteThemeReplication::query()
             ->where('theme_id', UiV3ReviewSeeder::THEME_ID)
@@ -288,8 +322,17 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
         return [
             'admin.ai-workspace.conversations.show' => ['conversation' => $aiConversation->id],
-            'admin.ai-workspace.runs.show' => ['run' => $aiRun->id],
             'admin.articles.edit' => ['articleId' => $article->id],
+            'admin.articles.ai-quality.status' => ['articleId' => $article->id],
+            'admin.ai-models.edit' => ['modelId' => $model->id],
+            'admin.ai-source-providers.edit' => ['providerId' => $sourceProvider->id],
+            'admin.ai-prompts.edit' => ['promptId' => $prompt->id],
+            'admin.admin-users.edit' => ['adminId' => $admin->id],
+            'admin.articles.batch.export-markdown.download' => [
+                'exportToken' => str_repeat('A', 40),
+                'owner' => $admin->id,
+                'filename' => 'geoflow-articles-20260827-120000.zip',
+            ],
             'admin.authors.detail' => ['authorId' => $author->id],
             'admin.authors.edit' => ['authorId' => $author->id],
             'admin.categories.edit' => ['categoryId' => $category->id],
@@ -304,8 +347,11 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.enterprise-knowledge.status' => ['projectId' => $project->id],
             'admin.image-libraries.detail' => ['libraryId' => $imageLibrary->id],
             'admin.image-libraries.edit' => ['libraryId' => $imageLibrary->id],
+            'admin.image-libraries.images.create' => ['libraryId' => $imageLibrary->id],
             'admin.keyword-libraries.detail' => ['libraryId' => $keywordLibrary->id],
             'admin.keyword-libraries.edit' => ['libraryId' => $keywordLibrary->id],
+            'admin.keyword-libraries.import.create' => ['libraryId' => $keywordLibrary->id],
+            'admin.keyword-libraries.keywords.create' => ['libraryId' => $keywordLibrary->id],
             'admin.knowledge-bases.detail' => ['knowledgeBaseId' => $knowledgeBase->id],
             'admin.knowledge-bases.edit' => ['knowledgeBaseId' => $knowledgeBase->id],
             'admin.lead-forms.edit' => ['formId' => $leadForm->id],
@@ -320,8 +366,11 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.system-updates.runs.show' => ['runUuid' => $run->run_uuid],
             'admin.tasks.edit' => ['taskId' => $task->id],
             'admin.title-libraries.ai-generate' => ['libraryId' => $titleLibrary->id],
+            'admin.title-libraries.ai-generate.status' => ['libraryId' => $titleLibrary->id, 'runId' => $titleGenerationRun->id],
             'admin.title-libraries.detail' => ['libraryId' => $titleLibrary->id],
             'admin.title-libraries.edit' => ['libraryId' => $titleLibrary->id],
+            'admin.title-libraries.import.create' => ['libraryId' => $titleLibrary->id],
+            'admin.title-libraries.titles.create' => ['libraryId' => $titleLibrary->id],
             'admin.url-import.show' => ['jobId' => $import->id],
             'admin.url-import.status' => ['jobId' => $import->id],
             'admin.locale.switch' => ['locale' => 'zh_CN'],

@@ -1,5 +1,7 @@
 *.log
 .DS_Store
+__pycache__/
+*.py[cod]
 /bak
 /docker-data
 /logs

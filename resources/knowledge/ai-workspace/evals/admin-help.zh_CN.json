@@ -1,0 +1,95 @@
+{
+  "dataset_version": "2026.08.28.1",
+  "locale": "zh_CN",
+  "cases": [
+    {"id":"data-01","question":"数据中心在哪里查看最近 30 天的访问趋势？","expected_feature_id":"data-center","role":"admin"},
+    {"id":"data-02","question":"怎样理解数据中心里的核心经营指标？","expected_feature_id":"data-center","role":"admin"},
+    {"id":"data-03","question":"我想看网站流量统计和内容变化报表。","expected_feature_id":"data-center","role":"admin"},
+    {"id":"data-04","question":"请详细说明数据分析页面的时间筛选方法。","expected_feature_id":"data-center","role":"admin"},
+
+    {"id":"visibility-01","question":"如何查看品牌的 AI 可见性？","expected_feature_id":"ai-visibility","role":"admin"},
+    {"id":"visibility-02","question":"生成式引擎引用数据应该怎样解读？","expected_feature_id":"ai-visibility","role":"admin"},
+    {"id":"visibility-03","question":"品牌可见性诊断结果从哪里看？","expected_feature_id":"ai-visibility","role":"admin"},
+    {"id":"visibility-04","question":"请说明 AI 可见性观测的完整流程。","expected_feature_id":"ai-visibility","role":"admin"},
+
+    {"id":"tasks-01","question":"如何创建一个内容任务？","expected_feature_id":"tasks","role":"admin"},
+    {"id":"tasks-02","question":"任务没有运行时应该检查什么？","expected_feature_id":"tasks","role":"admin"},
+    {"id":"tasks-03","question":"在哪里查看任务状态和健康检查？","expected_feature_id":"tasks","role":"admin"},
+    {"id":"tasks-04","question":"任务创建时怎样选择标题库、模型和知识库？","expected_feature_id":"tasks","role":"admin"},
+
+    {"id":"articles-01","question":"如何创建并审核一篇文章？","expected_feature_id":"articles","role":"admin"},
+    {"id":"articles-02","question":"文章被标记风险时怎么处理？","expected_feature_id":"articles","role":"admin"},
+    {"id":"articles-03","question":"文章编辑器在哪里，正文和分类怎样填写？","expected_feature_id":"articles","role":"admin"},
+    {"id":"articles-04","question":"如何筛选草稿文章并批量导出？","expected_feature_id":"articles","role":"admin"},
+
+    {"id":"manual-01","question":"如何创建一条人工发布任务？","expected_feature_id":"manual-publications","role":"admin"},
+    {"id":"manual-02","question":"在哪里配置手动发布账号？","expected_feature_id":"manual-publications","role":"admin"},
+    {"id":"manual-03","question":"小红书和知乎的外部平台发布记录在哪管理？","expected_feature_id":"manual-publications","role":"admin"},
+    {"id":"manual-04","question":"人工发布完成后怎样回填执行结果？","expected_feature_id":"manual-publications","role":"admin"},
+
+    {"id":"materials-01","question":"内容资产包含哪些类型？","expected_feature_id":"materials","role":"admin"},
+    {"id":"materials-02","question":"如何导入关键词或标题素材？","expected_feature_id":"materials","role":"admin"},
+    {"id":"materials-03","question":"分类、作者、关键词库和图片库从哪里进入？","expected_feature_id":"materials","role":"admin"},
+    {"id":"materials-04","question":"请说明内容资产在内容生产中的作用。","expected_feature_id":"materials","role":"admin"},
+
+    {"id":"knowledge-01","question":"如何上传资料到知识库？","expected_feature_id":"knowledge-bases","role":"admin"},
+    {"id":"knowledge-02","question":"知识库切片需要什么时候刷新？","expected_feature_id":"knowledge-bases","role":"admin"},
+    {"id":"knowledge-03","question":"系统知识库的版本和健康状态在哪里看？","expected_feature_id":"knowledge-bases","role":"admin"},
+    {"id":"knowledge-04","question":"RAG 知识检索失败时应该怎样排查？","expected_feature_id":"knowledge-bases","role":"admin"},
+
+    {"id":"distribution-01","question":"如何配置一个内容分发渠道？","expected_feature_id":"distribution","role":"super_admin"},
+    {"id":"distribution-02","question":"分发任务失败时如何排查？","expected_feature_id":"distribution","role":"super_admin"},
+    {"id":"distribution-03","question":"托管站点的容量和索引状态在哪里检查？","expected_feature_id":"distribution","role":"super_admin"},
+    {"id":"distribution-04","question":"请说明渠道同步与发布任务的完整流程。","expected_feature_id":"distribution","role":"super_admin"},
+
+    {"id":"ai-config-01","question":"如何新增并测试一个 AI 模型？","expected_feature_id":"ai-config","role":"admin"},
+    {"id":"ai-config-02","question":"在哪里设置系统提示词？","expected_feature_id":"ai-config","role":"admin"},
+    {"id":"ai-config-03","question":"对话模型和 Embedding 模型应该怎样配置？","expected_feature_id":"ai-config","role":"admin"},
+    {"id":"ai-config-04","question":"AI 模型连接测试失败要检查哪些项目？","expected_feature_id":"ai-config","role":"admin"},
+
+    {"id":"site-01","question":"如何修改网站名称和品牌信息？","expected_feature_id":"site-settings","role":"admin"},
+    {"id":"site-02","question":"网站设置保存后没有生效怎么办？","expected_feature_id":"site-settings","role":"admin"},
+    {"id":"site-03","question":"站点 Logo 和文章详情配置在哪里维护？","expected_feature_id":"site-settings","role":"admin"},
+    {"id":"site-04","question":"请说明网站设置中基础展示信息的入口和流程。","expected_feature_id":"site-settings","role":"admin"},
+
+    {"id":"theme-01","question":"如何调整首页模块顺序？","expected_feature_id":"homepage-theme","role":"admin"},
+    {"id":"theme-02","question":"如何修改网站主题样式？","expected_feature_id":"homepage-theme","role":"admin"},
+    {"id":"theme-03","question":"首页与主题的预览入口在哪里？","expected_feature_id":"homepage-theme","role":"admin"},
+    {"id":"theme-04","question":"页面复刻和模板配置应该从哪里开始？","expected_feature_id":"homepage-theme","role":"admin"},
+
+    {"id":"forms-01","question":"如何创建一个线索表单？","expected_feature_id":"lead-forms","role":"admin"},
+    {"id":"forms-02","question":"为什么前台没有显示咨询表单？","expected_feature_id":"lead-forms","role":"admin"},
+    {"id":"forms-03","question":"表单字段和启用状态在哪里设置？","expected_feature_id":"lead-forms","role":"admin"},
+    {"id":"forms-04","question":"请详细说明前台线索表单的配置流程。","expected_feature_id":"lead-forms","role":"admin"},
+
+    {"id":"leads-01","question":"如何查看和导出客户线索？","expected_feature_id":"leads","role":"admin"},
+    {"id":"leads-02","question":"如何更新线索处理状态？","expected_feature_id":"leads","role":"admin"},
+    {"id":"leads-03","question":"在哪里按时间筛选表单提交记录？","expected_feature_id":"leads","role":"admin"},
+    {"id":"leads-04","question":"客户咨询记录的详情和导出入口在哪里？","expected_feature_id":"leads","role":"admin"},
+
+    {"id":"users-01","question":"如何新增后台管理员？","expected_feature_id":"users-permissions","role":"super_admin"},
+    {"id":"users-02","question":"如何创建或撤销 API Token？","expected_feature_id":"users-permissions","role":"super_admin"},
+    {"id":"users-03","question":"管理员账号状态和权限在哪里调整？","expected_feature_id":"users-permissions","role":"super_admin"},
+    {"id":"users-04","question":"用户与权限入口为什么只对超级管理员开放？","expected_feature_id":"users-permissions","role":"super_admin"},
+
+    {"id":"security-01","question":"如何维护敏感词？","expected_feature_id":"security","role":"admin"},
+    {"id":"security-02","question":"在哪里修改后台安全设置？","expected_feature_id":"security","role":"admin"},
+    {"id":"security-03","question":"密码策略和风控规则应该怎样配置？","expected_feature_id":"security","role":"admin"},
+    {"id":"security-04","question":"请说明安全设置保存后的检查方法。","expected_feature_id":"security","role":"admin"},
+
+    {"id":"logs-01","question":"如何在操作日志中查询某个管理员的记录？","expected_feature_id":"activity-logs","role":"super_admin"},
+    {"id":"logs-02","question":"在哪里通过操作日志查看最近的后台变更？","expected_feature_id":"activity-logs","role":"super_admin"},
+    {"id":"logs-03","question":"操作日志可以按操作人和时间筛选吗？","expected_feature_id":"activity-logs","role":"super_admin"},
+    {"id":"logs-04","question":"谁修改了系统配置，应该怎样通过审计日志查询？","expected_feature_id":"activity-logs","role":"super_admin"},
+
+    {"id":"updates-01","question":"如何安全地执行系统更新？","expected_feature_id":"system-updates","role":"super_admin"},
+    {"id":"updates-02","question":"系统更新前需要做哪些准备？","expected_feature_id":"system-updates","role":"super_admin"},
+    {"id":"updates-03","question":"升级前的备份和回滚入口在哪里？","expected_feature_id":"system-updates","role":"super_admin"},
+    {"id":"updates-04","question":"系统知识库和图片在版本更新后怎样同步？","expected_feature_id":"system-updates","role":"super_admin"},
+
+    {"id":"boundary-01","question":"请帮我查询明天上海的天气。","expected_feature_id":null,"role":"admin"},
+    {"id":"boundary-02","question":"给我写一首关于秋天的诗。","expected_feature_id":null,"role":"admin"},
+    {"id":"boundary-03","question":"请计算 987654 乘以 321。","expected_feature_id":null,"role":"admin"},
+    {"id":"boundary-04","question":"帮我预订下周的高铁票。","expected_feature_id":null,"role":"admin"}
+  ]
+}

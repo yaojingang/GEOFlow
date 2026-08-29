@@ -10,6 +10,7 @@ $adminBasePath = $adminBasePath !== '' ? $adminBasePath : 'geo_admin';
 $defaultUpdateMetadataUrl = 'https://raw.githubusercontent.com/yaojingang/GEOFlow/main/version.json';
 $updateMetadataUrl = trim((string) env('GEOFLOW_UPDATE_METADATA_URL', $defaultUpdateMetadataUrl));
 $updateMetadataUrl = $updateMetadataUrl !== '' ? $updateMetadataUrl : $defaultUpdateMetadataUrl;
+$telemetryEndpoint = trim((string) env('GEOFLOW_TELEMETRY_ENDPOINT', ''));
 $versionManifestPath = __DIR__.'/../version.json';
 $versionManifest = is_file($versionManifestPath)
     ? json_decode((string) file_get_contents($versionManifestPath), true)
@@ -139,34 +140,28 @@ return [
     'initial_admin_email' => trim((string) env('GEOFLOW_ADMIN_EMAIL', 'admin@example.com')) ?: 'admin@example.com',
     'initial_admin_password' => (string) env('GEOFLOW_ADMIN_PASSWORD', ''),
     // 欢迎弹窗「介绍」文案版本：变更后所有管理员会再次看到介绍弹窗
-    'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '2.1'),
+    'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '3.0'),
     // 匿名使用统计：只发送随机实例 ID、管理员摘要、版本和活跃事件；监控地址为空时不会产生请求。
-    'telemetry_enabled' => filter_var(env('GEOFLOW_TELEMETRY_ENABLED', env('APP_ENV') === 'production'), FILTER_VALIDATE_BOOLEAN),
-    'telemetry_endpoint' => trim((string) env('GEOFLOW_TELEMETRY_ENDPOINT', '')),
+    'telemetry_enabled' => filter_var(env('GEOFLOW_TELEMETRY_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    'telemetry_endpoint' => $telemetryEndpoint,
     'telemetry_interval_seconds' => max(3600, (int) env('GEOFLOW_TELEMETRY_INTERVAL_SECONDS', 86400)),
     // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
     'update_check_enabled' => filter_var(env('GEOFLOW_UPDATE_CHECK_ENABLED', env('APP_ENV') !== 'testing'), FILTER_VALIDATE_BOOLEAN),
     'update_metadata_url' => $updateMetadataUrl,
     'update_metadata_cache_ttl_seconds' => (int) env('GEOFLOW_UPDATE_METADATA_CACHE_TTL', 86400),
-    // 后台系统更新中心：默认可查看和备份，真正执行代码更新默认关闭。
+    // 后台系统更新中心由独立 GEOFlow Updater 执行变更，应用仅保留状态、操作桥接和只读旧记录。
     'update_center_enabled' => filter_var(env('GEOFLOW_UPDATE_CENTER_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
-    'update_execution_enabled' => filter_var(env('GEOFLOW_UPDATE_EXECUTION_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-    'update_rollback_enabled' => filter_var(env('GEOFLOW_UPDATE_ROLLBACK_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-    'update_backup_keep' => max(1, (int) env('GEOFLOW_UPDATE_BACKUP_KEEP', 10)),
-    'update_backup_path' => trim((string) env('GEOFLOW_UPDATE_BACKUP_PATH', 'geoflow-updates'), '/'),
-    'update_allowed_repository' => trim((string) env('GEOFLOW_UPDATE_ALLOWED_REPOSITORY', 'https://github.com/yaojingang/GEOFlow'), '/'),
-    'update_archive_max_bytes' => max(1, (int) env('GEOFLOW_UPDATE_ARCHIVE_MAX_BYTES', 50 * 1024 * 1024)),
-    'update_archive_max_files' => max(1, (int) env('GEOFLOW_UPDATE_ARCHIVE_MAX_FILES', 2000)),
-    'update_archive_max_file_bytes' => max(1, (int) env('GEOFLOW_UPDATE_ARCHIVE_MAX_FILE_BYTES', 50 * 1024 * 1024)),
-    'update_archive_max_uncompressed_bytes' => max(1, (int) env('GEOFLOW_UPDATE_ARCHIVE_MAX_UNCOMPRESSED_BYTES', 150 * 1024 * 1024)),
-    'update_min_free_disk_bytes' => max(1, (int) env('GEOFLOW_UPDATE_MIN_FREE_DISK_BYTES', 200 * 1024 * 1024)),
-    'update_preflight_check_git_dirty' => filter_var(env('GEOFLOW_UPDATE_PREFLIGHT_CHECK_GIT_DIRTY', true), FILTER_VALIDATE_BOOLEAN),
     'update_require_admin_password' => filter_var(env('GEOFLOW_UPDATE_REQUIRE_ADMIN_PASSWORD', true), FILTER_VALIDATE_BOOLEAN),
-    'update_archive_apply_enabled' => filter_var(env('GEOFLOW_UPDATE_ALLOW_ARCHIVE_APPLY', false), FILTER_VALIDATE_BOOLEAN),
-    'update_database_backup_enabled' => filter_var(env('GEOFLOW_UPDATE_DATABASE_BACKUP_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
-    'update_lock_ttl_seconds' => max(30, (int) env('GEOFLOW_UPDATE_LOCK_TTL', 900)),
-    // 系统更新任务超过该时间仍处于 queued/running 时，在更新中心提示为可能卡住。
-    'update_run_stale_minutes' => max(1, (int) env('GEOFLOW_UPDATE_RUN_STALE_MINUTES', 15)),
+    // 独立 updater bridge：应用只访问 Unix socket 和实例凭据，不接触 Docker socket。
+    'updater_socket' => (string) env('GEOFLOW_UPDATER_SOCKET', '/run/geoflow-updater/geoflow-updater.sock'),
+    'updater_control_token_file' => (string) env('GEOFLOW_UPDATER_CONTROL_TOKEN_FILE', '/run/secrets/geoflow-updater-control-token'),
+    'updater_instance_id' => (string) env('GEOFLOW_UPDATER_INSTANCE_ID', 'primary'),
+    'updater_host_root' => rtrim((string) env('GEOFLOW_UPDATER_HOST_ROOT', ''), '/'),
+    'updater_connect_timeout_seconds' => max(0.1, (float) env('GEOFLOW_UPDATER_CONNECT_TIMEOUT_SECONDS', 0.5)),
+    'updater_read_timeout_seconds' => max(1, (int) env('GEOFLOW_UPDATER_READ_TIMEOUT_SECONDS', 10)),
+    'updater_bootstrap_manifest_url' => 'https://github.com/yaojingang/geoflow-updater/releases/latest/download/bootstrap-manifest.json',
+    'updater_trusted_root_path' => resource_path('update-trust/root.json'),
+    'updater_bootstrap_max_bytes' => 100 * 1024 * 1024,
 
     // 复刻主题审查包的资源上限。
     'theme_replication_package_max_files' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_MAX_FILES', 500)),
@@ -178,14 +173,72 @@ return [
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),
     // 后台列表每页条数
     'admin_items_per_page' => (int) env('GEOFLOW_ADMIN_ITEMS_PER_PAGE', 20),
-    // 标题库 AI 生成时从关键词库随机抽取的最大条数（1–100）
-    'title_ai_keyword_sample_limit' => max(1, min(100, (int) env('GEOFLOW_TITLE_AI_KEYWORD_SAMPLE_LIMIT', 10))),
+    // 标题库后台批量生成：任务目标上限、单批数量、模型限流和失败保护。
+    'title_ai_max_count' => max(1, min(100_000, (int) env('GEOFLOW_TITLE_AI_MAX_COUNT', 100_000))),
+    'title_ai_confirmation_threshold' => max(1, min(100_000, (int) env('GEOFLOW_TITLE_AI_CONFIRMATION_THRESHOLD', 1000))),
+    'title_ai_batch_size' => max(1, min(50, (int) env('GEOFLOW_TITLE_AI_BATCH_SIZE', 50))),
+    'title_ai_rate_per_minute' => max(1, min(60, (int) env('GEOFLOW_TITLE_AI_RATE_PER_MINUTE', 30))),
+    'title_ai_submit_rate_per_minute' => max(1, min(60, (int) env('GEOFLOW_TITLE_AI_SUBMIT_RATE_PER_MINUTE', 6))),
+    'title_ai_submit_ip_rate_per_minute' => max(1, min(120, (int) env('GEOFLOW_TITLE_AI_SUBMIT_IP_RATE_PER_MINUTE', 12))),
+    'title_ai_max_active_runs_per_admin' => max(1, min(20, (int) env('GEOFLOW_TITLE_AI_MAX_ACTIVE_RUNS_PER_ADMIN', 3))),
+    'title_ai_max_pending_titles_per_model' => max(100_000, min(10_000_000, (int) env('GEOFLOW_TITLE_AI_MAX_PENDING_TITLES_PER_MODEL', 300_000))),
+    'title_ai_batch_delay_seconds' => max(0, min(60, (int) env('GEOFLOW_TITLE_AI_BATCH_DELAY_SECONDS', 1))),
+    'title_ai_max_empty_batches' => max(1, min(10, (int) env('GEOFLOW_TITLE_AI_MAX_EMPTY_BATCHES', 3))),
+    'title_ai_max_batch_attempts' => max(1, min(10, (int) env('GEOFLOW_TITLE_AI_MAX_BATCH_ATTEMPTS', 3))),
+    'title_ai_max_manual_retries' => max(0, min(10, (int) env('GEOFLOW_TITLE_AI_MAX_MANUAL_RETRIES', 3))),
+    'title_ai_max_request_multiplier' => max(2, min(10, (int) env('GEOFLOW_TITLE_AI_MAX_REQUEST_MULTIPLIER', 3))),
+    'title_ai_recent_title_sample_limit' => max(0, min(50, (int) env('GEOFLOW_TITLE_AI_RECENT_TITLE_SAMPLE_LIMIT', 20))),
+    'title_ai_request_timeout_seconds' => max(10, min(300, (int) env('GEOFLOW_TITLE_AI_REQUEST_TIMEOUT_SECONDS', 90))),
+    'title_ai_lease_seconds' => max(420, min(600, (int) env('GEOFLOW_TITLE_AI_LEASE_SECONDS', 420))),
+    'title_ai_recovery_stale_seconds' => max(60, min(3600, (int) env('GEOFLOW_TITLE_AI_RECOVERY_STALE_SECONDS', 300))),
+    // 文章 AI 质检的全文预算、抽样降级预算、模型输出和证据预算。
+    'ai_quality_request_timeout_seconds' => max(30, min(170, (int) env('GEOFLOW_AI_QUALITY_REQUEST_TIMEOUT_SECONDS', 160))),
+    'ai_quality_deadline_seconds' => max(60, min(600, (int) env('GEOFLOW_AI_QUALITY_DEADLINE_SECONDS', 180))),
+    'ai_quality_sampled_fallback_seconds' => max(15, min(300, (int) env('GEOFLOW_AI_QUALITY_SAMPLED_FALLBACK_SECONDS', 45))),
+    'ai_quality_sampled_request_timeout_seconds' => max(10, min(120, (int) env('GEOFLOW_AI_QUALITY_SAMPLED_REQUEST_TIMEOUT_SECONDS', 35))),
+    'ai_quality_sampled_max_characters' => max(1000, min(20000, (int) env('GEOFLOW_AI_QUALITY_SAMPLED_MAX_CHARACTERS', 6000))),
+    'ai_quality_sampled_max_ranges' => max(3, min(24, (int) env('GEOFLOW_AI_QUALITY_SAMPLED_MAX_RANGES', 12))),
+    'ai_quality_full_online_max_characters' => max(12000, min(200000, (int) env('GEOFLOW_AI_QUALITY_FULL_ONLINE_MAX_CHARACTERS', 60000))),
+    'ai_quality_sampled_auto_release_enabled' => filter_var(env('GEOFLOW_AI_QUALITY_SAMPLED_AUTO_RELEASE_ENABLED', true), FILTER_VALIDATE_BOOL),
+    'ai_quality_max_output_tokens' => max(512, min(4096, (int) env('GEOFLOW_AI_QUALITY_MAX_OUTPUT_TOKENS', 2048))),
+    'ai_quality_max_model_candidates' => max(1, min(2, (int) env('GEOFLOW_AI_QUALITY_MAX_MODEL_CANDIDATES', 2))),
+    'ai_quality_max_evidence' => max(4, min(24, (int) env('GEOFLOW_AI_QUALITY_MAX_EVIDENCE', 12))),
+    'ai_quality_max_evidence_characters' => max(2000, min(12000, (int) env('GEOFLOW_AI_QUALITY_MAX_EVIDENCE_CHARACTERS', 6000))),
+    'ai_quality_max_fact_retrievals' => max(0, min(12, (int) env('GEOFLOW_AI_QUALITY_MAX_FACT_RETRIEVALS', 6))),
+    'ai_quality_queue' => trim((string) env('GEOFLOW_AI_QUALITY_QUEUE', 'ai-quality')),
+    'ai_quality_backfill_queue' => trim((string) env('GEOFLOW_AI_QUALITY_BACKFILL_QUEUE', 'ai-quality-backfill')),
+    'ai_quality_persistence_reserve_seconds' => max(5, min(30, (int) env('GEOFLOW_AI_QUALITY_PERSISTENCE_RESERVE_SECONDS', 10))),
+    'ai_quality_worker_heartbeat_seconds' => 10,
+    'ai_quality_worker_stale_seconds' => max(60, min(900, (int) env('GEOFLOW_AI_QUALITY_WORKER_STALE_SECONDS', 300))),
+    'ai_quality_job_timeout_seconds' => max(70, min(945, (int) env('GEOFLOW_AI_QUALITY_JOB_TIMEOUT_SECONDS', 245))),
+    'ai_quality_worker_timeout_seconds' => max(75, min(950, (int) env('GEOFLOW_AI_QUALITY_WORKER_TIMEOUT_SECONDS', 250))),
+    'ai_quality_front_workers' => max(1, (int) env('AI_QUALITY_QUEUE_REPLICAS', 2)),
+    'ai_quality_backfill_workers' => 1,
+    'ai_quality_execution_version' => trim((string) env('GEOFLOW_AI_QUALITY_EXECUTION_VERSION', 'legacy')),
+    'ai_quality_principle_v2_percent' => max(0, min(100, (int) env('GEOFLOW_AI_QUALITY_PRINCIPLE_V2_PERCENT', 0))),
+    'ai_quality_fast_v2_percent' => max(0, min(100, (int) env('GEOFLOW_AI_QUALITY_FAST_V2_PERCENT', 0))),
+    'ai_quality_scoring_v2_percent' => max(0, min(100, (int) env('GEOFLOW_AI_QUALITY_SCORING_V2_PERCENT', 0))),
+    'ai_quality_shadow_v2_percent' => max(0, min(100, (int) env('GEOFLOW_AI_QUALITY_SHADOW_V2_PERCENT', 0))),
+    'ai_quality_evidence_cache_ttl_seconds' => max(60, min(604800, (int) env('GEOFLOW_AI_QUALITY_EVIDENCE_CACHE_TTL_SECONDS', 86400))),
+    'ai_quality_evidence_cache_enabled' => filter_var(env('GEOFLOW_AI_QUALITY_EVIDENCE_CACHE_ENABLED', true), FILTER_VALIDATE_BOOL),
+    'ai_quality_circuit_consecutive_failures' => max(1, min(20, (int) env('GEOFLOW_AI_QUALITY_CIRCUIT_CONSECUTIVE_FAILURES', 5))),
+    'ai_quality_circuit_sample_size' => max(2, min(100, (int) env('GEOFLOW_AI_QUALITY_CIRCUIT_SAMPLE_SIZE', 10))),
+    'ai_quality_circuit_failure_percent' => max(1, min(100, (int) env('GEOFLOW_AI_QUALITY_CIRCUIT_FAILURE_PERCENT', 50))),
+    'ai_quality_circuit_open_seconds' => max(5, min(900, (int) env('GEOFLOW_AI_QUALITY_CIRCUIT_OPEN_SECONDS', 60))),
+    'ai_quality_front_queue_wait_seconds' => max(1, min(120, (int) env('GEOFLOW_AI_QUALITY_FRONT_QUEUE_WAIT_SECONDS', 10))),
+    'ai_quality_backfill_quota_reserve' => max(0, min(100, (int) env('GEOFLOW_AI_QUALITY_BACKFILL_QUOTA_RESERVE', 2))),
+    'ai_quality_recovery_stale_seconds' => max(60, min(900, (int) env('GEOFLOW_AI_QUALITY_RECOVERY_STALE_SECONDS', 60))),
+    'ai_quality_structured_reprobe_seconds' => max(300, min(604800, (int) env('GEOFLOW_AI_QUALITY_STRUCTURED_REPROBE_SECONDS', 86400))),
     // 统一出站安全网关：仅此处列出的精确 host:port 可连接私网地址；不支持通配符或路径。
     'outbound_private_targets' => array_values(array_filter(array_map('trim', explode(',', (string) env('GEOFLOW_OUTBOUND_PRIVATE_TARGETS', ''))), static fn (string $target): bool => $target !== '')),
     'outbound_json_max_bytes' => max(1, (int) env('GEOFLOW_OUTBOUND_JSON_MAX_BYTES', 4 * 1024 * 1024)),
     'outbound_ai_max_bytes' => max(1, (int) env('GEOFLOW_OUTBOUND_AI_MAX_BYTES', 8 * 1024 * 1024)),
     'outbound_import_max_bytes' => max(1, (int) env('GEOFLOW_OUTBOUND_IMPORT_MAX_BYTES', 5 * 1024 * 1024)),
     'outbound_metadata_max_bytes' => max(1, (int) env('GEOFLOW_OUTBOUND_METADATA_MAX_BYTES', 1024 * 1024)),
+    'outbound_response_max_bytes' => max(1, (int) env(
+        'GEOFLOW_OUTBOUND_RESPONSE_MAX_BYTES',
+        env('GEOFLOW_UPDATE_ARCHIVE_MAX_BYTES', 50 * 1024 * 1024),
+    )),
     // 为 true 时记录知识库「查询向量」是否由默认 embedding 接口生成（便于对照 bak 验证；默认关闭）
     'debug_knowledge_query_embedding' => filter_var(env('GEOFLOW_DEBUG_KNOWLEDGE_QUERY_EMBEDDING', false), FILTER_VALIDATE_BOOLEAN),
     // 语义切片规划 prompt 最大字符数；超过后直接走结构化规则回退，避免长知识库拖慢或超上下文。
@@ -198,7 +251,7 @@ return [
     'worker_stale_seconds' => max(30, (int) env('GEOFLOW_WORKER_STALE_SECONDS', 120)),
     // 正文生成默认最大输出 token 数；当 AI 模型未单独配置 max_tokens 时使用此兜底值，
     // 避免依赖各服务商较小的默认上限（常见 4K）导致长文被截断。
-    'content_max_tokens' => max(256, (int) env('GEOFLOW_CONTENT_MAX_TOKENS', 8192)),
+    'content_max_tokens' => max(256, (int) env('GEOFLOW_CONTENT_MAX_TOKENS', 16384)),
     // AI 可见性查询底层能力：豆包 Ark Responses、豆包 Search Custom、DeepSeek 二次分析共用。
     'ai_visibility' => [
         'http_timeout_seconds' => max(5, (int) env('GEOFLOW_AI_VISIBILITY_HTTP_TIMEOUT', 60)),

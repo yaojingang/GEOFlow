@@ -38,6 +38,9 @@ class OperationRegistry
             'article.update' => self::operation('article.update', 'PATCH', 'articles/{article}', idempotent: true),
             'article.review' => self::operation('article.review', 'POST', 'articles/{article}/review', idempotent: true),
             'article.publish' => self::operation('article.publish', 'POST', 'articles/{article}/publish', idempotent: true),
+            'article.ai-quality-status' => self::operation('article.ai-quality-status', 'GET', 'articles/{article}/ai-quality/status'),
+            'article.ai-quality-recheck' => self::operation('article.ai-quality-recheck', 'POST', 'articles/{article}/ai-quality/recheck', idempotent: true),
+            'article.ai-quality-override' => self::operation('article.ai-quality-override', 'POST', 'articles/{article}/ai-quality/override', idempotent: true),
             'article.trash' => self::operation('article.trash', 'POST', 'articles/{article}/trash', idempotent: true),
         ];
     }

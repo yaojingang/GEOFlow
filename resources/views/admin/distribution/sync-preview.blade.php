@@ -25,20 +25,19 @@
 
 @section('content')
     <div class="space-y-6 px-4 sm:px-0">
-        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-                <a href="{{ route('admin.distribution.index') }}" class="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700">
-                    <i data-lucide="arrow-left" class="mr-2 h-4 w-4"></i>
-                    返回渠道列表
-                </a>
-                <h1 class="mt-3 text-2xl font-bold text-gray-900">前台体验同步预览</h1>
-                <p class="mt-1 text-sm leading-6 text-gray-600">确认远端能力缓存、同步差异和 settings JSON 后再执行同步。</p>
+        <header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div class="min-w-0 flex-1">
+                <div class="sr-only">
+                    <h1>前台体验同步预览</h1>
+                    <p>确认远端能力缓存、同步差异和 settings JSON 后再执行同步。</p>
+                </div>
+                <x-admin.v3.distribution-subnav :active="$scope === 'all' ? 'sync-all' : ''" />
             </div>
             <div class="rounded-lg border {{ $requiresConfirmation ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900' }} px-4 py-3 text-sm">
                 <div class="font-semibold">{{ $requiresConfirmation ? '需要确认后同步' : '未发现阻断风险' }}</div>
                 <div class="mt-1">渠道 {{ (int) ($totals['channels'] ?? count($previews)) }} 个 · 风险提示 {{ (int) ($totals['warnings'] ?? 0) }} 条</div>
             </div>
-        </div>
+        </header>
 
         @if ($previews === [])
             <div class="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-12 text-center text-sm text-gray-500 shadow">

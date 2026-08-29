@@ -1,5 +1,9 @@
 @extends('admin.layouts.app')
 
+@section('topbar-title', __('admin_pages.not_found'))
+@section('topbar-icon', 'circle-alert')
+@section('body-heading', 'content')
+
 @section('content')
     <section class="px-4 sm:px-0">
         <div class="max-w-3xl mx-auto">

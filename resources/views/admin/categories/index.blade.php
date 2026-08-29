@@ -1,23 +1,35 @@
 @extends('admin.layouts.app')
 
+@php
+    $adminUiV3Enabled = (bool) config('geoflow.admin_ui_v3_enabled', false);
+@endphp
+
 @section('content')
     <div class="px-4 sm:px-0">
-        <div class="mb-8">
-            <div class="flex items-center justify-between">
-                <div>
+        <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0 flex-1">
+                @if($adminUiV3Enabled)
+                    <div class="sr-only">
+                        <h1>{{ __('admin.categories.heading') }}</h1>
+                        <p>{{ __('admin.categories.subtitle') }}</p>
+                    </div>
+                @else
                     <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.categories.heading') }}</h1>
                     <p class="mt-1 text-sm text-gray-600">{{ __('admin.categories.subtitle') }}</p>
+                @endif
+                <div @class(['mt-3' => !$adminUiV3Enabled])>
+                    <x-admin.v3.articles-subnav active="categories" />
                 </div>
-                <div class="flex space-x-3">
-                    <a href="{{ route('admin.categories.create') }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                        <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
-                        {{ __('admin.categories.add') }}
-                    </a>
-                    <a href="{{ route('admin.articles.index') }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                        <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
-                        {{ __('admin.categories.back_to_articles') }}
-                    </a>
-                </div>
+            </div>
+            <div class="flex shrink-0 space-x-3">
+                <a href="{{ route('admin.categories.create') }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                    <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
+                    {{ __('admin.categories.add') }}
+                </a>
+                <a href="{{ route('admin.articles.index') }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                    <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
+                    {{ __('admin.categories.back_to_articles') }}
+                </a>
             </div>
         </div>
         <div class="bg-white shadow rounded-lg">

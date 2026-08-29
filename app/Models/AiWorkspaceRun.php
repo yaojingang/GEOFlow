@@ -11,6 +11,8 @@ class AiWorkspaceRun extends Model
 {
     use HasUuids;
 
+    protected $dateFormat = 'Y-m-d H:i:s.u';
+
     public const TERMINAL_STATES = [
         'completed', 'partially_completed', 'failed', 'cancelled', 'outcome_unknown', 'rejected',
     ];
@@ -22,7 +24,9 @@ class AiWorkspaceRun extends Model
         'parameter_digest', 'target_digest', 'risk_level', 'answer', 'status_message',
         'system_operations_executed', 'event_sequence', 'state_version', 'failure_code',
         'failure_message', 'resolution_lease_owner', 'resolution_lease_expires_at', 'resolution_attempts',
-        'cancel_requested_at', 'started_at', 'finished_at', 'payload_pruned_at',
+        'resolution_source', 'resolution_started_at', 'resolution_finished_at', 'queued_at', 'first_token_at',
+        'answer_chunk_sequence', 'answer_is_partial', 'cancel_requested_at', 'started_at', 'finished_at', 'payload_pruned_at',
+        'model_snapshot', 'usage', 'context_snapshot_digest', 'last_event_at',
     ];
 
     protected function casts(): array
@@ -40,12 +44,21 @@ class AiWorkspaceRun extends Model
             'event_sequence' => 'integer',
             'state_version' => 'integer',
             'resolution_attempts' => 'integer',
+            'answer_chunk_sequence' => 'integer',
+            'answer_is_partial' => 'boolean',
+            'model_snapshot' => 'array',
+            'usage' => 'array',
             'system_operations_executed' => 'boolean',
             'resolution_lease_expires_at' => 'datetime',
+            'resolution_started_at' => 'datetime',
+            'resolution_finished_at' => 'datetime',
+            'queued_at' => 'datetime',
+            'first_token_at' => 'datetime',
             'cancel_requested_at' => 'datetime',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
             'payload_pruned_at' => 'datetime',
+            'last_event_at' => 'immutable_datetime',
         ];
     }
 
@@ -62,6 +75,11 @@ class AiWorkspaceRun extends Model
     public function parentRun(): BelongsTo
     {
         return $this->belongsTo(self::class, 'parent_run_id');
+    }
+
+    public function childRuns(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_run_id')->orderBy('created_at');
     }
 
     public function steps(): HasMany
@@ -82,6 +100,11 @@ class AiWorkspaceRun extends Model
     public function externalOperations(): HasMany
     {
         return $this->hasMany(AiWorkspaceExternalOperation::class, 'run_id');
+    }
+
+    public function traceEvents(): HasMany
+    {
+        return $this->hasMany(AiWorkspaceTraceEvent::class, 'run_id')->orderBy('sequence');
     }
 
     public function isTerminal(): bool

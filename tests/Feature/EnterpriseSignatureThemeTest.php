@@ -237,15 +237,17 @@ class EnterpriseSignatureThemeTest extends TestCase
             ->assertDontSee('次阅读');
 
         $this->get(route('site.archive'))
-            ->assertStatus(301)
-            ->assertRedirect(route('site.about'));
+            ->assertOk()
+            ->assertSee(__('site.archive_title'))
+            ->assertSee('Archive ledger');
 
         $this->get(route('site.archive.month', [
             'year' => $article->published_at->format('Y'),
             'month' => $article->published_at->format('m'),
         ]))
-            ->assertStatus(301)
-            ->assertRedirect(route('site.about'));
+            ->assertOk()
+            ->assertSee($article->title)
+            ->assertSee('Monthly archive');
     }
 
     public function test_about_page_falls_back_to_the_default_site_view(): void

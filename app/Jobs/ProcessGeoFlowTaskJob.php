@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\TaskTitleReadinessException;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
@@ -88,6 +89,21 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                 durationMs: $durationMs,
                 meta: is_array(Arr::get($result, 'meta')) ? Arr::get($result, 'meta') : []
             );
+        } catch (TaskTitleReadinessException $exception) {
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+            try {
+                $queueService->failForTaskConfiguration(
+                    $this->taskRunId,
+                    $taskId,
+                    $exception->getMessage(),
+                    $durationMs,
+                    $exception->getDetails()['title_readiness'] ?? [],
+                );
+            } catch (Throwable $persistenceException) {
+                report($persistenceException);
+
+                throw $exception;
+            }
         } catch (Throwable $exception) {
             $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
             $message = $exception->getMessage();
@@ -123,7 +139,20 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                 $message = '队列任务异常退出';
             }
 
-            app(JobQueueService::class)->failJob(
+            $queueService = app(JobQueueService::class);
+            if ($exception instanceof TaskTitleReadinessException) {
+                $queueService->failForTaskConfiguration(
+                    (int) $run->id,
+                    (int) $run->task_id,
+                    $exception->getMessage(),
+                    0,
+                    $exception->getDetails()['title_readiness'] ?? [],
+                );
+
+                return;
+            }
+
+            $queueService->failJob(
                 (int) $run->id,
                 (int) $run->task_id,
                 '队列中断: '.$message,

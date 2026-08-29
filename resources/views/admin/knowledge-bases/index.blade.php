@@ -2,17 +2,15 @@
 
 @section('content')
     <div class="px-4 sm:px-0">
-        <div class="mb-8 flex items-center justify-between">
-            <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.materials.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                </a>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.knowledge_bases.heading') }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.knowledge_bases.subtitle') }}</p>
+        <header class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0 flex-1">
+                <div class="sr-only">
+                    <h1>{{ __('admin.knowledge_bases.heading') }}</h1>
+                    <p>{{ __('admin.knowledge_bases.subtitle') }}</p>
                 </div>
+                <x-admin.v3.materials-subnav active="knowledge-bases" />
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
                 <a href="{{ route('admin.knowledge-bases.create') }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                     <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
                     {{ __('admin.knowledge_bases.create_first') }}
@@ -22,7 +20,7 @@
                     {{ __('admin.knowledge_bases.import_unified') }}
                 </a>
             </div>
-        </div>
+        </header>
 
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow rounded-lg">
@@ -110,11 +108,15 @@
             @else
                 <div class="flex items-center justify-between gap-6 px-6 py-3 border-b border-gray-200 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
                     <div>{{ __('admin.knowledge_bases.column_knowledge_base') }}</div>
-                    <div class="text-right" style="width: 440px;">{{ __('admin.common.actions') }}</div>
+                    <div class="hidden w-[440px] text-right lg:block">{{ __('admin.common.actions') }}</div>
                 </div>
                 <div class="divide-y divide-gray-200">
                     @foreach ($knowledgeBases as $item)
-                        <div class="px-6 py-6">
+                        @php
+                            $isSystemKnowledge = (bool) ($item['is_system'] ?? false);
+                            $systemHealth = is_array($item['system_health'] ?? null) ? $item['system_health'] : null;
+                        @endphp
+                        <div class="px-6 py-6" data-system-knowledge="{{ $isSystemKnowledge ? 'true' : 'false' }}">
                             <div class="flex flex-col gap-5 lg:flex-row lg:items-center">
                                 <div class="min-w-0 lg:flex-1">
                                     <div class="flex flex-wrap items-center gap-2">
@@ -135,6 +137,15 @@
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ $typeBadgeClass }}">
                                             {{ $typeText }}
                                         </span>
+                                        @if ($isSystemKnowledge)
+                                            <span class="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700 ring-1 ring-inset ring-orange-200">
+                                                <i data-lucide="sparkles" class="h-3.5 w-3.5"></i>
+                                                {{ __('admin.knowledge_bases.system_badge') }}
+                                            </span>
+                                            <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                                                {{ __('admin.knowledge_bases.system_health.'.($systemHealth['status'] ?? 'fallback')) }}
+                                            </span>
+                                        @endif
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
                                             {{ __('admin.knowledge_bases.text_unit', ['count' => number_format((int) $item['word_count'])]) }}
                                         </span>
@@ -162,6 +173,15 @@
                                     @if ($item['description'] !== '')
                                         <p class="mt-1 text-sm text-gray-600">{{ $item['description'] }}</p>
                                     @endif
+                                    @if ($isSystemKnowledge)
+                                        <p class="mt-2 flex items-start gap-2 text-sm leading-6 text-orange-800">
+                                            <i data-lucide="shield-check" class="mt-0.5 h-4 w-4 shrink-0"></i>
+                                            <span>
+                                                {{ __('admin.knowledge_bases.system_protected_hint') }}
+                                                {{ __('admin.knowledge_bases.system_version', ['version' => (string) ($item['official_version'] ?? '-')]) }}
+                                            </span>
+                                        </p>
+                                    @endif
                                     @if ($syncStatus === 'failed' && ($item['chunk_sync_error'] ?? '') !== '')
                                         <p class="mt-1 text-sm text-red-600">{{ $item['chunk_sync_error'] }}</p>
                                     @endif
@@ -178,8 +198,8 @@
                                     </div>
                                 </div>
 
-                                <div class="flex flex-wrap items-start justify-start gap-2 lg:shrink-0 lg:justify-end lg:pl-8" style="width: 440px;">
-                                    @if ($hasDefaultEmbeddingModel)
+                                <div class="flex w-full flex-wrap items-start justify-start gap-2 lg:w-[440px] lg:shrink-0 lg:justify-end lg:pl-8">
+                                    @if ($isSystemKnowledge || $hasDefaultEmbeddingModel)
                                         <div style="width: 148px;" data-refresh-chunks-action>
                                             <form
                                                 method="POST"
@@ -196,7 +216,7 @@
                                                 @csrf
                                                 <button type="submit" class="inline-flex w-full items-center justify-center px-3 py-1.5 border border-emerald-200 text-xs font-medium rounded text-emerald-700 bg-emerald-50 hover:bg-emerald-100" data-refresh-submit-button>
                                                     <i data-lucide="refresh-cw" class="w-4 h-4 mr-1" data-refresh-submit-icon></i>
-                                                    <span data-refresh-submit-label>{{ __('admin.knowledge_bases.refresh_chunks') }}</span>
+                                                    <span data-refresh-submit-label>{{ $isSystemKnowledge ? __('admin.knowledge_bases.system_refresh_index') : __('admin.knowledge_bases.refresh_chunks') }}</span>
                                                 </button>
                                             </form>
                                             <div class="mt-2 hidden" data-refresh-progress>
@@ -223,13 +243,15 @@
                                         <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
                                         {{ __('admin.button.view') }}
                                     </a>
-                                    <form method="POST" action="{{ route('admin.knowledge-bases.delete', ['knowledgeBaseId' => (int) $item['id']]) }}" onsubmit="return confirm(@js(__('admin.knowledge_bases.confirm_delete', ['name' => $item['name']])));" class="inline-block">
-                                        @csrf
-                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
-                                            <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
-                                            {{ __('admin.button.delete') }}
-                                        </button>
-                                    </form>
+                                    @unless ($isSystemKnowledge)
+                                        <form method="POST" action="{{ route('admin.knowledge-bases.delete', ['knowledgeBaseId' => (int) $item['id']]) }}" onsubmit="return confirm(@js(__('admin.knowledge_bases.confirm_delete', ['name' => $item['name']])));" class="inline-block">
+                                            @csrf
+                                            <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700">
+                                                <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
+                                                {{ __('admin.button.delete') }}
+                                            </button>
+                                        </form>
+                                    @endunless
                                 </div>
                             </div>
                         </div>

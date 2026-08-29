@@ -2,19 +2,19 @@
 
 @section('content')
     <div class="px-4 sm:px-0">
-        <div class="mb-8 flex items-center space-x-4">
-            <a href="{{ route('admin.authors.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
-                <i data-lucide="arrow-left" class="w-5 h-5"></i>
+        <header class="mb-6 flex items-start gap-3 sm:mb-8 sm:gap-4">
+            <a href="{{ route('admin.authors.index') }}" aria-label="{{ __('admin.common.back') }}" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-gray-400 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                <i data-lucide="arrow-left" class="h-5 w-5"></i>
             </a>
-            <div>
+            <div class="min-w-0">
                 <h1 class="text-2xl font-bold text-gray-900">{{ $author->name }}</h1>
-                <p class="mt-1 text-sm text-gray-600">{{ __('admin.authors.page_title') }}</p>
+                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.authors.page_subtitle') }}</p>
             </div>
-        </div>
+        </header>
 
         <div class="bg-white shadow rounded-lg mb-6">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">{{ __('admin.authors.page_title') }}</h3>
+                <h2 class="text-lg font-medium text-gray-900">{{ __('admin.common.basic_info') }}</h2>
             </div>
             <div class="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
@@ -34,7 +34,7 @@
 
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">{{ __('admin.common.related_tasks') }}</h3>
+                <h2 class="text-lg font-medium text-gray-900">{{ __('admin.common.related_tasks') }}</h2>
             </div>
             @if (empty($articles))
                 <div class="px-6 py-5 text-sm text-gray-500">{{ __('admin.authors.empty_desc') }}</div>

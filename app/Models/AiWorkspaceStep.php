@@ -16,6 +16,7 @@ class AiWorkspaceStep extends Model
         'risk_level', 'execution_scope', 'approval_policy', 'result_contract', 'parameters', 'depends_on', 'input_bindings', 'bindings_resolved_at', 'target_summary', 'result_summary',
         'idempotency_key', 'requires_approval', 'external_operation', 'attempts', 'max_attempts',
         'lease_owner', 'lease_expires_at', 'error_message', 'started_at', 'finished_at',
+        'queued_at', 'first_output_at', 'result_schema_version',
     ];
 
     protected function casts(): array
@@ -36,6 +37,9 @@ class AiWorkspaceStep extends Model
             'lease_expires_at' => 'datetime',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'queued_at' => 'immutable_datetime',
+            'first_output_at' => 'immutable_datetime',
+            'result_schema_version' => 'integer',
         ];
     }
 

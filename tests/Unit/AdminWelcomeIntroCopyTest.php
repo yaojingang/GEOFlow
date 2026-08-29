@@ -53,7 +53,7 @@ class AdminWelcomeIntroCopyTest extends TestCase
 
     public function test_deployment_env_examples_use_current_intro_version(): void
     {
-        $expected = 'GEOFLOW_WELCOME_INTRO_VERSION=2.1';
+        $expected = 'GEOFLOW_WELCOME_INTRO_VERSION=3.0';
         $devEnv = file_get_contents(base_path('.env.example'));
         $prodEnv = file_get_contents(base_path('.env.prod.example'));
 

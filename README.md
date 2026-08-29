@@ -2,9 +2,10 @@
 
 > Languages: [简体中文](README.md) | [English](docs/readme/README_en.md) | [日本語](docs/readme/README_ja.md) | [Español](docs/readme/README_es.md) | [Русский](docs/readme/README_ru.md) | [Português (BR)](docs/readme/README_pt_BR.md)
 
-> GEOFlow 是一套专门面向 GEO（生成式引擎优化）的开源智能内容工程与多站点分发系统。它把知识库、素材库、提示词、AI 生成任务、审核发布、数据分析、GEOFlow Agent 目标站点包、WordPress REST 渠道、通用 HTTP API 渠道和远端静态页面分发串联为一条可持续运营的工作链路，目标是帮助团队把可信资料沉淀为可管理、可发布、可追踪、可同步到多端的 GEO 内容资产。
+> GEOFlow 是一套面向 GEO（生成式引擎优化）的开源智能内容工程与多站点分发系统。它把系统知识、素材与提示词、AI 生成、文章质检、审核发布、浏览器运营协作、托管渠道站点和数据分析串联成一条可持续运营的工作链路，帮助团队把可信资料沉淀为可管理、可发布、可追踪、可同步到多端的 GEO 内容资产。
 
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
+[![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
@@ -16,9 +17,9 @@ GEOFlow 以 [Apache License 2.0](LICENSE) 开源发布。你可以自由使用�
 
 ### 匿名使用统计
 
-GEOFlow 支持可关闭的匿名使用统计，用于了解项目部署量、后台日活和版本分布。启用后，已登录后台页面每天最多发送一次活跃事件，内容限定为随机实例 ID、管理员不可逆摘要、GEOFlow 版本和事件类型。
+GEOFlow 提供默认关闭的匿名使用统计，用于了解项目部署量、后台日活和版本分布。部署方同时启用开关并配置 HTTPS 采集地址后，已登录后台页面每天最多发送一次活跃事件，内容限定为随机实例 ID、管理员不可逆摘要、GEOFlow 版本和事件类型。
 
-域名、页面路径、管理员账号、邮箱、文章内容、Cookie、APP_KEY 和业务密钥不会进入上报载荷。监控地址为空时不会产生请求；如需关闭，设置：
+域名、页面路径、管理员账号、邮箱、文章内容、Cookie、APP_KEY 和业务密钥不会进入上报载荷。监控地址为空时不会产生请求；默认配置为：
 
 ```dotenv
 GEOFLOW_TELEMETRY_ENABLED=false
@@ -32,17 +33,21 @@ GEOFLOW_TELEMETRY_ENABLED=false
 |------|------|
 | 🤖 多模型内容生成 | 兼容 OpenAI 风格接口和 Gemini 原生接口，支持 chat / embedding 模型、Provider URL 自动适配、智能模型切换、失败重试和调用统计 |
 | 🧠 知识库与 RAG | 知识库上传后支持结构化规则切片、可选 LLM 语义规划和稳定回退；配置 embedding 模型后写入向量，在文章生成时召回相关资料 |
+| 🧭 后台图文帮助 | 内置系统知识库、权限过滤后的功能入口、流式问答和 24 张脱敏后台截图，帮助管理员定位功能与排查问题 |
+| 🛡️ 文章 AI 质检 | 按知识证据、广告规则和发布语境检查文章，输出分项评分、问题定位、法规依据、修改建议和可审计人工放行 |
 | 🗂 素材与提示词体系 | 标题库、关键词库、图片库、作者库、知识库、正文提示词、特殊提示词集中管理 |
 | 📦 任务自动化 | 支持任务创建、生成数量、草稿池、审核开关、发布节奏、队列执行、失败重试、发布范围控制和任务文章筛选 |
 | 📋 审核与文章管理 | 草稿、审核、发布、回收站、作者、分类、SEO 字段和任务来源统一管理 |
 | ✍️ 人工发布工作台 | 将已审核文章或评论文案编排为人工发布工单，支持身份、账号、执行人、计划时间、风险提示、重复提醒、发布回执和 CSV 导出 |
+| 🌐 Chrome 运营助手与 PWA | 通过设备配对领取人工发布工单、填充待审核草稿并回传凭证；后台可安装为独立 PWA 工作台 |
 | 📡 多站点分发管理 | 支持 GEOFlow Agent、WordPress REST 与通用 HTTP API 渠道、密钥管理、目标站点包、静态模式、伪静态规则、远端文章编辑/删除和队列日志 |
 | 🧾 目标站点包 | 为每个渠道生成预配置 PHP Agent 包，内置首页、详情页、静态资源、sitemap、`llms.txt` / TXT 地图和 Schema |
 | 📊 数据分析 | 集中展示系统总览、单站内容运营、多站分发、访问日志、Top 内容、AI 爬虫识别和趋势图 |
 | 🔍 SEO 与 LLM 抓取友好输出 | 文章 SEO 元信息、Open Graph、Schema、GFM Markdown、独立 CSS、图片同步、sitemap 和 TXT 地图 |
 | 🎨 前台与主题 | 默认主题、主题包、预览路径、后台主题切换；GEOFlow Agent 渠道可同步站点标题、版权、主题和分类设置 |
-| 🌍 后台多语言 | 后台支持中文、英文、日语、西班牙语、俄语、葡萄牙语（巴西）切换，并覆盖 2.0 新模块 |
+| 🌍 后台多语言 | 后台支持中文、英文、日语、西班牙语、俄语、葡萄牙语（巴西）切换，并覆盖 Admin UI V3 模块 |
 | 🔔 版本提醒 | 后台可按 `version.json` 检查 GitHub 新版本，并在有新版本时提醒管理员 |
+| ♻️ 独立更新与恢复 | GEOFlow Updater 通过签名安装包和本地 Unix socket 承担网站更新、完整备份、环境验收与恢复点回滚 |
 | 🐳 可直接部署 | **Docker Compose** 一键拉起 PostgreSQL（pgvector）、Redis、应用、队列、调度、Reverb 和生产 Nginx/php-fpm |
 | 🧭 GEOFlow Agent Skill | 仓库内置统一的 `$geoflow` Skill，覆盖产品开发、后台运营、网站前台、主题模板、渠道站点和旧版迁移 |
 
@@ -84,37 +89,38 @@ bash .agents/skills/geoflow/scripts/install_codex_skill.sh
 
 <table>
   <tr>
-    <td width="34%" rowspan="3"><img src="docs/images/screenshots/analytics.png" alt="GEOFlow 中文数据分析" /><br /><sub>数据分析</sub></td>
-    <td width="33%" rowspan="2"><img src="docs/images/screenshots/site-settings.png" alt="GEOFlow 中文网站设置" /><br /><sub>网站设置</sub></td>
-    <td width="33%"><img src="docs/images/screenshots/home.png" alt="GEOFlow 中文后台首页" /><br /><sub>后台首页</sub></td>
+    <td width="50%"><img src="resources/knowledge/ai-workspace/media/01-ai-workspace-start.webp" alt="GEOFlow Admin UI V3 图文帮助工作台" /><br /><sub>图文帮助工作台</sub></td>
+    <td width="50%"><img src="resources/knowledge/ai-workspace/media/03-analytics-overview.webp" alt="GEOFlow Admin UI V3 数据中心" /><br /><sub>数据中心</sub></td>
   </tr>
   <tr>
-    <td width="33%"><img src="docs/images/screenshots/task-management.png" alt="GEOFlow 中文任务管理" /><br /><sub>任务管理</sub></td>
+    <td width="50%"><img src="resources/knowledge/ai-workspace/media/05-task-list.webp" alt="GEOFlow Admin UI V3 任务管理" /><br /><sub>任务管理</sub></td>
+    <td width="50%"><img src="resources/knowledge/ai-workspace/media/10-article-quality.webp" alt="GEOFlow Admin UI V3 文章 AI 质检" /><br /><sub>文章 AI 质检</sub></td>
   </tr>
   <tr>
-    <td width="33%"><img src="docs/images/screenshots/ai-config.png" alt="GEOFlow 中文 AI 模型配置" /><br /><sub>AI 模型配置</sub></td>
-    <td width="33%"><img src="docs/images/screenshots/materials.png" alt="GEOFlow 中文素材管理" /><br /><sub>素材管理</sub></td>
+    <td width="50%"><img src="resources/knowledge/ai-workspace/media/19-hosted-sites.webp" alt="GEOFlow Admin UI V3 托管渠道站点" /><br /><sub>托管渠道站点</sub></td>
+    <td width="50%"><img src="resources/knowledge/ai-workspace/media/20-manual-publication.webp" alt="GEOFlow Admin UI V3 人工发布工作台" /><br /><sub>人工发布工作台</sub></td>
   </tr>
 </table>
 
-上述页面覆盖后台首页、数据分析、任务调度、素材库、模型配置与网站设置等主链路；更多后台说明见 `docs/`。
+上述页面来自 v3.0 内置的脱敏帮助素材，覆盖图文问答、数据分析、任务调度、文章质检、托管站点与人工发布等主链路；更多后台说明见 `docs/`。
 
 ---
 
 ## 🆕 新版本重点
 
-GEOFlow 2.0 重点变化包括：
+GEOFlow 3.0 是一次覆盖后台、AI、分发和运营协作的主版本升级：
 
-- **后台首页改为运营导航**：保留三步上手引导，并按单站点运营、多站点分发和配套 skill 资源组织入口。
-- **Gemini 与 OpenAI-compatible 接入更完整**：AI 模型配置同时覆盖 OpenAI 风格 Provider 与 Gemini 原生 chat / embedding 路径。
-- **知识库支持语义切片规划**：提供结构化规则切片、自动策略和可选 LLM 语义规划，LLM 只规划边界，最终切片仍从原文稳定重建。
-- **数据分析独立成页**：系统总览、内容运营、任务健康、素材健康、分发状态、访问日志和 AI 爬虫趋势集中到 `/admin/analytics`。
-- **分发管理进入可运行闭环**：支持 GEOFlow Agent、WordPress REST 和通用 HTTP API 渠道新建、密钥管理、测试连接、目标站点包下载、静态/伪静态模式、远端设置同步、队列、日志、远端文章编辑与删除。
-- **任务发布范围更清晰**：任务可选择“本地和渠道站点同时发布”“仅发布到渠道站点”“仅发布到本站”，仅本站模式会禁用渠道选择并避免进入远程分发队列。
-- **目标渠道站点支持静态页面**：文章分发后生成远端首页、详情页、sitemap、TXT 地图和 `llms.txt`，并同步图片与独立 CSS。
-- **素材与 RAG 更完整**：知识库切片、向量化状态、标题库、关键词库、图片库、作者和提示词体系形成任务生产输入。
-- **部署与安全增强**：生产 Docker 使用 Nginx + PHP-FPM，默认管理员 seed 不覆盖已有账号，Docker 镜像和 Composer 镜像可配置。
-- **多语言覆盖补齐**：后台语言包覆盖 2.0 新增模块，减少界面中出现裸翻译 key 或英文兜底。
+- **Admin UI V3 全面统一**：后台页面共享新的侧栏、顶栏、导航和交互规范，补充最近访问、侧栏宽度调节、移动端布局、无障碍状态和本地静态资源。
+- **AI 工作台升级为图文帮助助手**：内置系统知识库覆盖 15 个后台主题，配套 24 张脱敏截图和 72 条固定评测；助手通过 SSE 流式回答使用问题，并只展示当前管理员有权访问的功能入口。旧版 Run、Plan、Approval、Capability 与 Trace 工作流停止接收新请求，历史数据继续保留。
+- **文章 AI 质检进入发布门禁**：系统结合任务知识、版本化广告规则和发布语境输出分项评分、证据、原文定位、法规依据与修改建议；待复核、阻断、异常和过期结果会留在草稿阶段。
+- **托管渠道站点进入完整闭环**：支持子域名分配、生命周期管理、文章分配、发布配额、失败冷却、技术预检、缓存失效和状态对账，并加入主站、托管根域与可信代理边界。
+- **人工发布连接 Chrome 运营助手**：浏览器扩展使用设备配对和最小权限 Token 领取工作单、维持心跳、校验账号、填充知乎纯文字回答草稿并回传执行凭证，最终发布仍由用户确认。
+- **后台支持 PWA 安装**：管理员可以把工作台安装为独立应用，离线壳层、图标和更新策略由站内资源统一提供。
+- **内容运营工具补齐长任务场景**：标题库支持最高 10 万条的分批 AI 生成、进度恢复和取消；任务回收站保留 90 天审计记录，文章列表支持批量 Markdown 导出。
+- **任务和模型配置更稳**：任务启动前检查标题库容量与冲突，AI 模型配置补充真实流式检测、普通文本降级、故障转移和更完整的就绪状态。
+- **API 与 CLI 覆盖日常运营**：API v1 和 `bin/geoflow` 覆盖目录、任务、执行记录、素材、文章与浏览器运营协议，支持结构化输入输出和安全确认。
+- **独立更新工具接管高风险操作**：网站通过固定类型的本地 Unix socket 请求更新、完整备份、环境验收与恢复点回滚，敏感操作要求管理员密码和 6 位验证器授权码，旧更新记录继续提供只读审计。
+- **安装与部署边界重新整理**：全新安装默认使用干净数据，不自动导入演示文章；升级需要执行迁移、重建前端并重启运行进程，随后安装并验证 [GEOFlow Updater](https://github.com/yaojingang/geoflow-updater)。托管站点需完成泛 DNS、通配符 TLS、可信代理与 Nginx 配置后再开启。
 
 ---
 
@@ -171,7 +177,9 @@ AI 配置 / 素材库 / 提示词 / 任务配置
 4. 执行人复制内容，在外部平台发布并回填实际发布地址和结果备注。
 5. 管理员通过筛选、状态统计、重复提醒和 CSV 导出持续跟踪执行情况。
 
-工作台不保存平台密码、Cookie、Token 或 OAuth 凭证，也不会自动访问外部网站。发布内容、来源文章和身份披露文案按工单保存快照；普通管理员只能查看和处理分配给自己的工单。
+可选的 Chrome 运营助手支持领取工作单、打开目标页、校验指定账号、复制内容，以及在知乎问题页填充纯文字回答草稿。用户检查草稿并亲自点击平台的最终发布按钮，扩展随后回传结果 URL 和执行凭证。安装、配对与故障恢复说明见 [`docs/browser-operations-runbook.md`](docs/browser-operations-runbook.md)。
+
+工作台和 Chrome 扩展均不保存平台密码、Cookie、Token 或 OAuth 凭证。发布内容、来源文章和身份披露文案按工单保存快照；普通管理员只能查看和处理分配给自己的工单。
 
 ---
 
@@ -253,8 +261,10 @@ vi .env
 
 # 4. 构建并启动（含 postgres、redis、init、app、三类 queue、scheduler、reverb）
 docker compose build
-docker compose up -d
+docker compose up -d --remove-orphans
 ```
+
+`--remove-orphans` 会清理同一 Compose 项目中已从当前配置移除的旧服务容器，默认保留数据卷。请始终在仓库根目录使用同一组 Compose 文件和项目名执行该命令。
 
 - 前台默认访问：`http://localhost:18080`（端口由环境变量 **`APP_PORT`** 控制，默认 `18080`）
 - 后台登录：`http://localhost:18080/geo_admin/login`（前缀由 **`ADMIN_BASE_PATH`** 控制，默认 `geo_admin`）
@@ -281,7 +291,7 @@ vi .env.prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml build
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres redis
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d init
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue knowledge-queue system-update-queue scheduler reverb
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
 ```
 
 - 前台 / 后台统一经 `web`（Nginx）访问
@@ -318,9 +328,10 @@ php artisan serve --host=127.0.0.1 --port=8080
 另开终端启动常驻进程（每条 `queue:work` 需要独立终端或进程托管）：
 
 ```bash
-php -d memory_limit=256M artisan queue:work redis --queue=geoflow,distribution,theme-replication,default --sleep=1 --tries=1 --timeout=660 --memory=128 --max-jobs=100 --max-time=3600
+php -d memory_limit=256M artisan queue:work redis --queue=system-updates,geoflow,distribution,theme-replication,default --sleep=1 --tries=1 --timeout=930 --memory=128 --max-jobs=100 --max-time=3600
 php -d memory_limit=160M artisan queue:work redis --queue=knowledge --sleep=1 --tries=1 --timeout=210 --memory=128 --max-jobs=20 --max-time=1800
-php -d memory_limit=256M artisan queue:work redis --queue=system-updates --sleep=1 --tries=1 --timeout=930 --memory=256 --max-jobs=10 --max-time=3600
+php -d memory_limit=256M artisan queue:work redis --queue=${GEOFLOW_AI_QUALITY_QUEUE:-ai-quality} --sleep=1 --tries=1 --timeout=75 --memory=192 --max-jobs=100 --max-time=3600
+php -d memory_limit=192M artisan queue:work redis --queue=${GEOFLOW_AI_QUALITY_BACKFILL_QUEUE:-ai-quality-backfill} --sleep=2 --tries=1 --timeout=75 --memory=128 --max-jobs=25 --max-time=1800
 php artisan schedule:work
 php artisan reverb:start
 ```
@@ -391,9 +402,8 @@ php artisan geoflow:admin-unlock admin
 | `init` | 一次性初始化（`restart: "no"`） |
 | `app` | 内网运行 `php artisan serve`，不直接暴露宿主机端口 |
 | `web` | Nginx 统一入口，映射 **`127.0.0.1:${APP_PORT:-18080}:80`** |
-| `queue` | AI 工作台、文章生成、分发、主题复刻与默认队列 |
+| `queue` | 文章生成、分发、主题复刻与默认队列 |
 | `knowledge-queue` | 知识库解析与向量化队列，独立内存上限 |
-| `system-update-queue` | 系统更新与回滚队列，独立长超时 |
 | `scheduler` | `schedule:work` |
 | `reverb` | 内网 WebSocket 服务，由 Nginx 通过同源路径 **`/reverb`** 转发 |
 
@@ -407,6 +417,8 @@ php artisan geoflow:admin-unlock admin
 | `AUTO_MIGRATE` | `true` | 启动时执行 `php artisan migrate --force`；已有部署遇到安全迁移时仍须先完成停机排空协议 |
 | `AUTO_INIT_ONCE` | 仅 `init` 为 `true` | 执行 `migrate` + `geoflow:install`，由安装命令判断是否空库 |
 | `AUTO_INSTALL_ONCE` | `false` | 已完成迁移后单独执行一次 `geoflow:install`，常驻服务不建议开启 |
+
+开发 Compose 的队列、调度和 Reverb 服务会显式关闭 `COMPOSER_ON_START` 与 `AUTO_MIGRATE`；它们在 `init` 成功完成后启动，重启时不再重复安装依赖或执行迁移。
 
 入口脚本会在 `.env` 中没有有效 `APP_KEY` 时自动执行 `key:generate --force`，无需额外开关。
 

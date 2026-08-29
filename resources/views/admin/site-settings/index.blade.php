@@ -507,8 +507,7 @@
                                 <i data-lucide="layout-dashboard" class="mr-1.5 h-3.5 w-3.5"></i>
                                 {{ __('admin.site_settings.homepage.badge') }}
                             </div>
-                            <h4 class="mt-3 text-base font-semibold text-gray-900">{{ __('admin.site_settings.homepage.section_title') }}</h4>
-                            <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.homepage.section_desc') }}</p>
+                            <p class="mt-3 max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.site_settings.homepage.section_desc') }}</p>
                         </div>
                         <div class="flex shrink-0 flex-wrap gap-2">
                             <button type="button" id="add-homepage-module" class="inline-flex min-h-10 items-center rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">

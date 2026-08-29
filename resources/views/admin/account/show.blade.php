@@ -11,13 +11,12 @@
 
 <div class="gf-account-page">
     <section class="gf-settings-panel">
-        <header class="gf-settings-panel__header"><div><h2>{{ __('admin.account.profile_title') }}</h2><p>{{ __('admin.account.profile_description') }}</p></div></header>
         <form method="POST" action="{{ \App\Support\AdminWeb::routePath('admin.account.profile.update') }}" data-admin-unsaved>
             @csrf
             @method('PUT')
             <input type="hidden" name="profile_version" value="{{ \App\Support\AdminAccountProfileVersion::for($admin) }}">
             <div class="gf-form-section">
-                <div class="gf-form-section__intro"><h3>{{ __('admin.account.profile_title') }}</h3><p>{{ __('admin.account.profile_description') }}</p></div>
+                <div class="gf-form-section__intro"><h2>{{ __('admin.account.profile_title') }}</h2><p>{{ __('admin.account.profile_description') }}</p></div>
                 <div class="gf-form-section__fields">
                     <label class="gf-field"><span>{{ __('admin.account.username') }}</span><input type="text" value="{{ $admin->username }}" disabled><small>{{ __('admin.account.role') }} · {{ $admin->isSuperAdmin() ? __('admin.header.super_admin') : __('admin.header.admin') }}</small></label>
                     <label class="gf-field"><span>{{ __('admin.account.display_name') }}</span><input type="text" name="display_name" value="{{ old('display_name', $admin->display_name) }}" maxlength="100" autocomplete="name"></label>
@@ -36,6 +35,10 @@
                 <li><span><i data-lucide="circle-check"></i></span>{{ __('admin.account.permission_settings') }}</li>
                 @if ($admin->isSuperAdmin())<li><span><i data-lucide="circle-check"></i></span>{{ __('admin.account.permission_protected') }}</li>@endif
             </ul>
+            <footer class="gf-settings-actions">
+                <span>{{ __('admin.browser_operations.clients.account_hint') }}</span>
+                <a class="gf-button" href="{{ route('admin.account.browser-clients.index') }}"><i data-lucide="monitor-smartphone"></i>{{ __('admin.browser_operations.clients.manage') }}</a>
+            </footer>
         </section>
 
         <section class="gf-settings-panel">

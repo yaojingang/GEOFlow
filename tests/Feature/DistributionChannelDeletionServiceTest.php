@@ -17,6 +17,7 @@ use App\Services\GeoFlow\DistributionChannelDeletionConfirmation;
 use App\Services\GeoFlow\DistributionChannelDeletionService;
 use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use App\Services\GeoFlow\TaskLifecycleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -395,6 +396,38 @@ class DistributionChannelDeletionServiceTest extends TestCase
 
         $this->assertSame(0, $queuedCount);
         $this->assertSame('sending', $distribution->fresh()->status);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_channel_refresh_cannot_requeue_after_task_deletion(): void
+    {
+        Queue::fake();
+        $channel = $this->channel();
+        $task = $this->task('local_and_distribution');
+        $task->distributionChannels()->attach($channel->id);
+        $article = $this->article($task);
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => (int) $article->id,
+            'distribution_channel_id' => (int) $channel->id,
+            'action' => 'publish',
+            'status' => 'failed',
+            'idempotency_key' => 'refresh-after-task-delete',
+        ]);
+        $deleted = false;
+        DB::listen(function ($query) use (&$deleted, $task): void {
+            $sql = strtolower((string) $query->sql);
+            preg_match('/\bfrom\s+"([^"]+)"/', $sql, $firstTable);
+            if (! $deleted && ($firstTable[1] ?? null) === 'articles') {
+                $deleted = true;
+                app(TaskLifecycleService::class)->deleteTask((int) $task->id);
+            }
+        });
+
+        $queuedCount = app(DistributionOrchestrator::class)->enqueueChannelContentRefresh($channel);
+
+        $this->assertTrue($deleted);
+        $this->assertSame(0, $queuedCount);
+        $this->assertSame('failed', $distribution->fresh()->status);
         Queue::assertNothingPushed();
     }
 

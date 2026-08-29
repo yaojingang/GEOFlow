@@ -5,6 +5,8 @@
         ? route('admin.knowledge-bases.update', ['knowledgeBaseId' => (int) $knowledgeBaseId])
         : route('admin.knowledge-bases.store');
     $focusUpload = ! $isEdit && request()->query('mode') === 'upload';
+    $systemReadOnly = $isEdit && (bool) ($isSystemKnowledge ?? false) && ! (bool) ($canEditSystemKnowledge ?? false);
+    $systemMetadataReadOnly = $isEdit && (bool) ($isSystemKnowledge ?? false);
     $fieldClass = 'h-11 w-full rounded-lg border border-gray-300 px-3 text-sm leading-6 shadow-sm transition focus:border-orange-500 focus:ring-orange-500';
     $selectClass = 'admin-knowledge-select h-11 w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-3 pr-11 text-sm leading-6 shadow-sm transition focus:border-orange-500 focus:ring-orange-500';
     $textareaClass = 'w-full rounded-lg border border-gray-300 px-3 py-3 text-sm leading-6 shadow-sm transition focus:border-orange-500 focus:ring-orange-500';
@@ -15,6 +17,9 @@
         'faq' => __('admin.knowledge_bases.source_type_faq'),
         'other' => __('admin.knowledge_bases.source_type_other'),
     ];
+    if ($isEdit && ($isSystemKnowledge ?? false)) {
+        $sourceTypeOptions = ['system' => __('admin.knowledge_bases.system_badge')] + $sourceTypeOptions;
+    }
     $riskLevelOptions = [
         'low' => __('admin.knowledge_bases.risk_level_low'),
         'medium' => __('admin.knowledge_bases.risk_level_medium'),
@@ -53,12 +58,12 @@
 
 @section('content')
     <div class="px-4 sm:px-0">
-        <div class="mb-8 flex items-center space-x-4">
-            <a href="{{ route('admin.knowledge-bases.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
-                <i data-lucide="arrow-left" class="w-5 h-5"></i>
+        <div class="mb-8 flex items-start gap-3 sm:gap-4">
+            <a href="{{ route('admin.knowledge-bases.index') }}" aria-label="{{ __('admin.common.back') }}" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-gray-400 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600">
+                <i data-lucide="arrow-left" class="h-5 w-5"></i>
             </a>
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ $isEdit ? __('admin.knowledge_detail.heading') : __('admin.knowledge_bases.modal_create') }}</h1>
+            <div class="min-w-0">
+                <h1 class="break-words text-2xl font-bold text-gray-900">{{ $isEdit ? __('admin.button.edit').' · '.((string) ($knowledgeForm['name'] ?? __('admin.knowledge_detail.heading'))) : __('admin.knowledge_bases.modal_create') }}</h1>
                 <p class="mt-1 text-sm text-gray-600">{{ $isEdit ? __('admin.knowledge_detail.subtitle') : __('admin.knowledge_bases.import_subtitle') }}</p>
             </div>
         </div>
@@ -75,6 +80,26 @@
             </div>
         @endif
 
+        @if ($isEdit && ($isSystemKnowledge ?? false))
+            <div class="mb-6 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4">
+                <div class="flex items-start gap-3">
+                    <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-600 text-white">
+                        <i data-lucide="sparkles" class="h-4 w-4"></i>
+                    </span>
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h2 class="text-sm font-semibold text-orange-950">{{ __('admin.knowledge_detail.system_title') }}</h2>
+                            <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-200">
+                                {{ __('admin.knowledge_bases.system_health.'.($systemKnowledgeHealth['status'] ?? 'fallback')) }}
+                            </span>
+                        </div>
+                        <p class="mt-1 text-sm leading-6 text-orange-900">{{ __('admin.knowledge_detail.system_effect') }}</p>
+                        <p class="mt-1 text-xs text-orange-800">{{ $systemReadOnly ? __('admin.knowledge_detail.system_read_only') : __('admin.knowledge_detail.system_edit_permission') }}</p>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         <form
             method="POST"
             action="{{ $formAction }}"
@@ -87,26 +112,30 @@
             @endif
 
             @if ($isEdit)
+                <fieldset @disabled($systemReadOnly) class="space-y-6 disabled:opacity-90">
                 <div class="bg-white shadow rounded-lg">
                     <div class="px-6 py-6 space-y-6">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_name') }}</label>
-                            <input type="text" name="name" required value="{{ old('name', (string) ($knowledgeForm['name'] ?? '')) }}" class="{{ $fieldClass }}" placeholder="{{ __('admin.knowledge_bases.field_name') }}">
+                            <input type="text" name="name" required value="{{ old('name', (string) ($knowledgeForm['name'] ?? '')) }}" class="{{ $fieldClass }} read-only:bg-gray-50 read-only:text-gray-500" placeholder="{{ __('admin.knowledge_bases.field_name') }}" @readonly($systemMetadataReadOnly)>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_description') }}</label>
-                            <textarea name="description" rows="3" class="{{ $textareaClass }}" placeholder="{{ __('admin.knowledge_bases.placeholder_description') }}">{{ old('description', (string) ($knowledgeForm['description'] ?? '')) }}</textarea>
+                            <textarea name="description" rows="3" class="{{ $textareaClass }} read-only:bg-gray-50 read-only:text-gray-500" placeholder="{{ __('admin.knowledge_bases.placeholder_description') }}" @readonly($systemMetadataReadOnly)>{{ old('description', (string) ($knowledgeForm['description'] ?? '')) }}</textarea>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_doc_type') }}</label>
-                            <select name="file_type" class="{{ $selectClass }}">
+                            @if ($systemMetadataReadOnly)
+                                <input type="hidden" name="file_type" value="markdown">
+                            @endif
+                            <select name="file_type" class="{{ $selectClass }}" @disabled($systemMetadataReadOnly)>
                                 <option value="markdown" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'markdown')>{{ __('admin.status.markdown') }}</option>
                                 <option value="word" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'word')>{{ __('admin.status.word_document') }}</option>
                                 <option value="text" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'text')>{{ __('admin.status.text') }}</option>
                             </select>
                         </div>
-                        <div class="border-t border-gray-100 pt-5">
-                            <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.knowledge_bases.evidence_metadata_title') }}</h3>
+                        <fieldset class="border-t border-gray-100 pt-5 disabled:opacity-70" @disabled($systemMetadataReadOnly)>
+                            <h2 class="text-sm font-semibold text-gray-900">{{ __('admin.knowledge_bases.evidence_metadata_title') }}</h2>
                             <p class="mt-1 text-sm text-gray-500">{{ __('admin.knowledge_bases.evidence_metadata_desc') }}</p>
                             <div class="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-2">
                                 <div>
@@ -152,7 +181,7 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </fieldset>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.knowledge_bases.field_content') }}</label>
                             <textarea name="content" rows="18" required class="{{ $textareaClass }}" placeholder="{{ __('admin.knowledge_bases.placeholder_content') }}">{{ old('content', (string) ($knowledgeForm['content'] ?? '')) }}</textarea>
@@ -163,6 +192,7 @@
                         </div>
                     </div>
                 </div>
+                </fieldset>
             @else
                 <input type="hidden" name="file_type" value="markdown">
                 <div class="hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" data-import-client-error>
@@ -342,10 +372,12 @@
                     {{ __('admin.button.cancel') }}
                 </a>
                 @if ($isEdit)
-                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 disabled:cursor-wait disabled:opacity-75" data-import-submit>
-                        <i data-lucide="save" class="mr-2 h-4 w-4" data-import-submit-icon></i>
-                        <span data-import-submit-label>{{ __('admin.knowledge_detail.save_changes') }}</span>
-                    </button>
+                    @unless ($systemReadOnly)
+                        <button type="submit" class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 disabled:cursor-wait disabled:opacity-75" data-import-submit>
+                            <i data-lucide="save" class="mr-2 h-4 w-4" data-import-submit-icon></i>
+                            <span data-import-submit-label>{{ __('admin.knowledge_detail.save_changes') }}</span>
+                        </button>
+                    @endunless
                 @else
                     <button type="submit" name="import_action" value="save" class="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:cursor-wait disabled:opacity-75" data-import-submit data-import-action="save">
                         <i data-lucide="send" class="mr-2 h-4 w-4" data-import-submit-icon></i>
@@ -507,9 +539,7 @@
                         labels.push(@json(__('admin.knowledge_bases.import_progress_saving')));
                     }
 
-                    submitButtons.forEach(function (button) {
-                        button.disabled = true;
-                    });
+                    window.GeoFlowAdminUi?.markSubmitControlsPending?.(submitButtons);
                     const submitLabel = submitter ? submitter.querySelector('[data-import-submit-label]') : null;
                     const submitIcon = submitter ? submitter.querySelector('[data-import-submit-icon]') : null;
                     if (submitLabel) {

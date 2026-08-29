@@ -2,6 +2,10 @@
 
 namespace Tests\Unit;
 
+use App\Models\Article;
+use App\Models\ArticleDistribution;
+use App\Models\Author;
+use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Services\GeoFlow\WordPressMediaSyncService;
@@ -105,7 +109,7 @@ class WordPressMediaSyncServiceTest extends TestCase
         ]);
 
         $channel = $this->makeChannel();
-        $distribution = \App\Models\ArticleDistribution::query()->create([
+        $distribution = ArticleDistribution::query()->create([
             'article_id' => $this->makeArticleId(),
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
@@ -180,9 +184,9 @@ class WordPressMediaSyncServiceTest extends TestCase
 
     private function makeArticleId(): int
     {
-        $category = \App\Models\Category::query()->create(['name' => 'Tech', 'slug' => 'tech']);
-        $author = \App\Models\Author::query()->create(['name' => 'GEOFlow']);
-        $article = \App\Models\Article::query()->create([
+        $category = Category::query()->create(['name' => 'Tech', 'slug' => 'tech']);
+        $author = Author::query()->create(['name' => 'GEOFlow']);
+        $article = Article::query()->create([
             'title' => 'Hello',
             'slug' => 'hello',
             'content' => 'Hello',

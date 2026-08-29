@@ -7,6 +7,7 @@ use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Title;
+use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
 use App\Services\GeoFlow\ArticleContentGenerationService;
 use App\Services\GeoFlow\ArticleContentPromptRenderer;
 use App\Services\GeoFlow\KnowledgeRetrievalService;
@@ -27,6 +28,7 @@ final class ArticleEditorAssistantController extends Controller
         private readonly ArticleContentPromptRenderer $promptRenderer,
         private readonly ArticleContentGenerationService $generationService,
         private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
+        private readonly ArticleCitationMarkerCleaner $citationMarkerCleaner,
     ) {}
 
     public function titles(Request $request): JsonResponse
@@ -164,7 +166,21 @@ final class ArticleEditorAssistantController extends Controller
             }
         });
 
-        $response = $stream->toResponse($request);
+        $response = response()->stream(function () use ($stream): iterable {
+            foreach ($stream as $event) {
+                yield 'data: '.($event)."\n\n";
+            }
+
+            $payload = json_encode([
+                'type' => 'article_content_replacement',
+                'content' => $this->citationMarkerCleaner->cleanContent((string) $stream->text),
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (is_string($payload)) {
+                yield 'data: '.$payload."\n\n";
+            }
+
+            yield "data: [DONE]\n\n";
+        }, headers: ['Content-Type' => 'text/event-stream']);
         $response->headers->set('Cache-Control', 'no-cache, no-transform');
         $response->headers->set('X-Accel-Buffering', 'no');
 

@@ -58,7 +58,7 @@ final class LaravelPinnedOutboundTransport implements OutboundTransport
                 throw $exception;
             }
 
-            throw new OutboundRequestFailedException;
+            throw new OutboundRequestFailedException($exception);
         }
     }
 }

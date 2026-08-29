@@ -12,6 +12,12 @@ class AdminAnonymousUsageTelemetryTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_telemetry_is_opt_in_and_has_no_default_endpoint(): void
+    {
+        $this->assertFalse((bool) config('geoflow.telemetry_enabled'));
+        $this->assertSame('', config('geoflow.telemetry_endpoint'));
+    }
+
     public function test_payload_contains_only_anonymous_installation_activity_fields(): void
     {
         $this->enableTelemetry();

@@ -117,7 +117,7 @@ class OutboundEntryPointArchitectureTest extends TestCase
             app_path('Http/Controllers/Admin/AiModelController.php'),
             app_path('Services/GeoFlow/KnowledgeChunkSyncService.php'),
             app_path('Services/Admin/AdminUpdateMetadataService.php'),
-            app_path('Services/Admin/SystemUpdatePlanService.php'),
+            app_path('Services/GeoFlow/AnonymousUsageTelemetry.php'),
         ];
 
         foreach ($files as $file) {
@@ -154,6 +154,12 @@ class OutboundEntryPointArchitectureTest extends TestCase
             $this->assertStringContainsString($setting, $developmentSource);
             $this->assertStringContainsString("env('".$name."'", $configSource);
         }
+        $this->assertStringContainsString('GEOFLOW_OUTBOUND_RESPONSE_MAX_BYTES=52428800', $productionSource);
+        $this->assertStringContainsString('GEOFLOW_OUTBOUND_RESPONSE_MAX_BYTES=52428800', $developmentSource);
+        $this->assertMatchesRegularExpression(
+            "/env\(\s*'GEOFLOW_OUTBOUND_RESPONSE_MAX_BYTES',\s*env\('GEOFLOW_UPDATE_ARCHIVE_MAX_BYTES'/",
+            $configSource,
+        );
 
         foreach ([
             'URL_IMPORT_ALLOW_MIXED_DNS',

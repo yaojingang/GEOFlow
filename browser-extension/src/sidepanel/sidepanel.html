@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GEOFlow Chrome</title>
+    <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="brand-mark" aria-hidden="true">G</div>
+        <div><strong>GEOFlow</strong><span data-i18n="operatorAssistant">运营助手</span></div>
+        <span class="connection-dot" id="connection-dot" aria-hidden="true"></span>
+    </header>
+
+    <main>
+        <section id="connect-view" class="stack">
+            <div class="intro"><span class="eyebrow" data-i18n="connectEyebrow">安全连接</span><h1 data-i18n="connectHeading">连接 GEOFlow</h1><p data-i18n="connectDescription">输入你的 GEOFlow 地址，随后在后台确认本次浏览器连接。</p></div>
+            <form id="connect-form" class="panel stack">
+                <label><span data-i18n="instanceUrl">实例地址</span><input id="base-url" type="url" required placeholder="https://geo.example.com" autocomplete="url"></label>
+                <button class="button primary" type="submit" data-i18n="connectButton">申请连接</button>
+            </form>
+            <div id="pending-card" class="panel stack hidden">
+                <span class="eyebrow" data-i18n="pairingCode">配对码</span>
+                <strong class="pairing-code" id="user-code"></strong>
+                <p class="muted" data-i18n="pairingHint">在 GEOFlow 后台核对配对码并确认授权。</p>
+                <button class="button primary" id="open-approval" type="button" data-i18n="openApproval">打开授权页面</button>
+                <button class="button quiet" id="cancel-pairing" type="button" data-i18n="cancel">取消</button>
+            </div>
+        </section>
+
+        <section id="workspace-view" class="stack hidden">
+            <div class="session-row">
+                <div><span class="eyebrow" data-i18n="connectedAs">当前连接</span><strong id="admin-name"></strong></div>
+                <div class="row"><button class="icon-button" id="refresh-tasks" type="button" data-i18n-aria="refresh">↻</button><button class="text-button" id="disconnect" type="button" data-i18n="disconnect">断开</button></div>
+            </div>
+            <div id="queue-view" class="stack">
+                <div class="section-heading"><div><h1 data-i18n="queueHeading">待执行工作单</h1><p id="queue-meta" class="muted"></p></div></div>
+                <div id="task-list" class="task-list"></div>
+                <div id="empty-state" class="empty hidden"><strong data-i18n="queueEmpty">当前没有可执行工作单</strong><span data-i18n="queueEmptyHint">已领取的工作单也会保留在这里。</span></div>
+            </div>
+            <div id="task-view" class="stack hidden">
+                <button class="text-button back" id="back-to-queue" type="button" data-i18n="backToQueue">返回工作单</button>
+                <article class="task-detail panel stack">
+                    <div class="task-topline"><span class="platform" id="task-platform"></span><span class="status" id="task-status"></span></div>
+                    <h1 id="task-title"></h1>
+                    <p id="task-account" class="muted"></p>
+                    <div class="content-preview" id="task-content"></div>
+                    <div class="action-grid">
+                        <button class="button primary" id="claim-task" type="button" data-i18n="claimTask">领取工作单</button>
+                        <button class="button" id="open-target" type="button" data-i18n="openTarget">打开目标页</button>
+                        <button class="button" id="copy-content" type="button" data-i18n="copyContent">复制正文</button>
+                        <button class="button primary hidden" id="fill-zhihu" type="button" data-i18n="fillZhihu">填充知乎草稿</button>
+                        <button class="button quiet hidden" id="release-task" type="button" data-i18n="releaseTask">释放工作单</button>
+                    </div>
+                    <div id="result-panel" class="result-panel stack hidden">
+                        <label><span data-i18n="resultUrl">发布结果 URL</span><input id="completion-url" type="url" placeholder="https://www.zhihu.com/question/.../answer/..."></label>
+                        <label><span data-i18n="resultNote">执行备注</span><textarea id="result-note" rows="3" maxlength="5000"></textarea></label>
+                        <button class="button" id="observe-result" type="button" data-i18n="observeResult">检测发布结果</button>
+                        <div class="result-actions"><button class="button success" id="complete-task" type="button" data-i18n="markCompleted">确认已发布</button><button class="button" id="unknown-task" type="button" data-i18n="markUnknown">结果待核验</button><button class="button" id="cancel-task" type="button" data-i18n="markCancelled">记录取消</button><button class="button danger" id="fail-task" type="button" data-i18n="markFailed">记录失败</button></div>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <div id="notice" class="notice hidden" role="status" aria-live="polite"></div>
+    <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

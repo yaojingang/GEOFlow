@@ -24,6 +24,7 @@ return new class extends Migration
             $table->text('content');
             $table->char('content_fingerprint', 64)->index();
             $table->json('source_snapshot')->nullable();
+            $table->json('identity_snapshot');
             $table->text('disclosure_snapshot')->nullable();
             $table->string('risk_status', 20)->default('clean')->index();
             $table->json('risk_result')->nullable();

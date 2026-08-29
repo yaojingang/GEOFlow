@@ -144,6 +144,7 @@ final class FinalOutboundSecurityPolicy
             $connectTimeout,
             $onHeaders,
             $curl,
+            $streamingRequested,
         );
 
         try {
@@ -228,6 +229,7 @@ final class FinalOutboundSecurityPolicy
         int|float $connectTimeout,
         callable $onHeaders,
         array $curl,
+        bool $streamingRequested,
     ): array {
         $secure = [
             'allow_redirects' => false,
@@ -239,7 +241,7 @@ final class FinalOutboundSecurityPolicy
             'http_errors' => false,
             'on_headers' => $onHeaders,
             'proxy' => '',
-            'stream' => false,
+            'stream' => $streamingRequested,
             'timeout' => $timeout,
             'verify' => true,
         ];
@@ -321,7 +323,7 @@ final class FinalOutboundSecurityPolicy
 
     private function responseLimit(RequestInterface $request, array $options): int
     {
-        $globalMaximum = max(1, (int) config('geoflow.update_archive_max_bytes', 50 * 1024 * 1024));
+        $globalMaximum = max(1, (int) config('geoflow.outbound_response_max_bytes', 50 * 1024 * 1024));
         $explicit = $options['geoflow_response_max_bytes'] ?? null;
         if (is_numeric($explicit) && (int) $explicit > 0) {
             $globalMaximum = min($globalMaximum, (int) $explicit);
@@ -411,6 +413,6 @@ final class FinalOutboundSecurityPolicy
             throw $exception;
         }
 
-        throw new OutboundRequestFailedException;
+        throw new OutboundRequestFailedException($exception instanceof \Throwable ? $exception : null);
     }
 }

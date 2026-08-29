@@ -50,6 +50,7 @@ services:
       - ./.env
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "${AUTO_FIX_STORAGE_PERMISSIONS:-true}"
+      AUTO_INIT_ONCE: "true"
       GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED: "true"
     # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / geoflow:install）
     command: ["php", "artisan", "about"]
@@ -111,9 +112,60 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=ai-workspace-interactive,ai-workspace,geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=930", "--memory=128", "--max-jobs=100", "--max-time=3600"]
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
+    command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates,geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=930", "--memory=128", "--max-jobs=100", "--max-time=3600"]
     mem_limit: ${QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
     stop_grace_period: 960s
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  ai-quality-queue:
+    image: geoflow-app:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
+    working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
+    command: ["php", "-d", "memory_limit=256M", "artisan", "geoflow:work-ai-quality", "front"]
+    mem_limit: ${AI_QUALITY_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
+    stop_grace_period: ${GEOFLOW_AI_QUALITY_STOP_GRACE_PERIOD:-260s}
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    deploy:
+      replicas: ${AI_QUALITY_QUEUE_REPLICAS:-2}
+
+  ai-quality-backfill-queue:
+    image: geoflow-app:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
+    container_name: geoflow-ai-quality-backfill-queue
+    working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
+    command: ["php", "-d", "memory_limit=192M", "artisan", "geoflow:work-ai-quality", "backfill"]
+    mem_limit: ${AI_QUALITY_BACKFILL_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
+    stop_grace_period: ${GEOFLOW_AI_QUALITY_STOP_GRACE_PERIOD:-260s}
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -133,31 +185,11 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=160M", "artisan", "queue:work", "redis", "--queue=knowledge", "--sleep=1", "--tries=1", "--timeout=210", "--memory=128", "--max-jobs=20", "--max-time=1800"]
     mem_limit: ${KNOWLEDGE_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
     stop_grace_period: 240s
-    volumes:
-      - ./:/var/www/html
-    depends_on:
-      init:
-        condition: service_completed_successfully
-    restart: unless-stopped
-
-  system-update-queue:
-    image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
-    container_name: geoflow-system-update-queue
-    working_dir: /var/www/html
-    environment:
-      AUTO_FIX_STORAGE_PERMISSIONS: "false"
-    command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates", "--sleep=1", "--tries=1", "--timeout=930", "--memory=256", "--max-jobs=10", "--max-time=3600"]
-    mem_limit: ${SYSTEM_UPDATE_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
-    stop_grace_period: 960s
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -177,6 +209,8 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
     command: ["php", "artisan", "schedule:work"]
     volumes:
       - ./:/var/www/html
@@ -197,6 +231,8 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
     expose:
       - "8080"

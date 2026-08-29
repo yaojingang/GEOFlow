@@ -12,10 +12,16 @@ use Tests\TestCase;
 class OperationRegistryTest extends TestCase
 {
     #[Test]
-    public function every_api_v1_route_has_a_cli_operation(): void
+    public function every_cli_api_route_has_an_operation_and_browser_routes_remain_separate(): void
     {
-        $apiRoutes = collect(RouteFacade::getRoutes()->getRoutes())
+        $v1Routes = collect(RouteFacade::getRoutes()->getRoutes())
             ->filter(fn (Route $route): bool => str_starts_with($route->uri(), 'api/v1/'))
+            ->values();
+        $browserRoutes = $v1Routes->filter(fn (Route $route): bool => str_starts_with($route->uri(), 'api/v1/browser-operations')
+            || str_starts_with($route->uri(), 'api/v1/manual-publications'));
+        $apiRoutes = $v1Routes
+            ->reject(fn (Route $route): bool => str_starts_with($route->uri(), 'api/v1/browser-operations')
+                || str_starts_with($route->uri(), 'api/v1/manual-publications'))
             ->map(function (Route $route): string {
                 $method = collect($route->methods())->first(fn (string $method): bool => $method !== 'HEAD');
 
@@ -25,7 +31,8 @@ class OperationRegistryTest extends TestCase
             ->values()
             ->all();
 
-        $this->assertCount(28, $apiRoutes);
+        $this->assertCount(10, $browserRoutes);
+        $this->assertCount(31, $apiRoutes);
         $this->assertSame($apiRoutes, OperationRegistry::routeSignatures());
     }
 

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class KnowledgeBase extends Model
 {
@@ -57,6 +58,30 @@ class KnowledgeBase extends Model
     public function chunks(): HasMany
     {
         return $this->hasMany(KnowledgeChunk::class, 'knowledge_base_id');
+    }
+
+    public function systemBinding(): HasOne
+    {
+        return $this->hasOne(SystemKnowledgeBase::class);
+    }
+
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(KnowledgeBaseRevision::class)->orderByDesc('revision_number');
+    }
+
+    public function mediaAssets(): HasMany
+    {
+        return $this->hasMany(KnowledgeMediaAsset::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function isSystemManaged(): bool
+    {
+        if ($this->relationLoaded('systemBinding')) {
+            return $this->systemBinding instanceof SystemKnowledgeBase;
+        }
+
+        return $this->systemBinding()->exists();
     }
 
     public function tasks(): HasMany

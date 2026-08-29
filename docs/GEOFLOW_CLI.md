@@ -272,7 +272,7 @@ bin/geoflow --config /path/to/profile.json material item-delete titles 34 --json
 ### 文章
 
 ```text
-geoflow article list [--page N] [--per-page N] [--task-id ID] [--status STATUS]
+geoflow article list [--page N] [--per-page N] [--task-id ID] [--status STATUS] [--ai-quality-status STATUS]
   [--review-status STATUS] [--author-id ID] [--search TEXT]
 geoflow article create (--json FILE | direct fields) [--idempotency-key KEY]
 geoflow article get ARTICLE_ID
@@ -280,8 +280,13 @@ geoflow article update ARTICLE_ID (--json FILE | direct fields) [--idempotency-k
 geoflow article review ARTICLE_ID --status STATUS [--note TEXT]
   [--risk-override-reason TEXT] [--idempotency-key KEY]
 geoflow article publish ARTICLE_ID [--idempotency-key KEY]
+geoflow article ai-quality-status ARTICLE_ID
+geoflow article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]
+geoflow article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]
 geoflow article trash ARTICLE_ID [--idempotency-key KEY]
 ```
+
+`ai-quality-status` 返回当前阶段、已用时间、业务截止时间和安全错误码。AI 质检复查会让旧结果失效并按当前文章与任务策略重新排队。人工放行仅适用于达到最低人工分数且没有严重问题的结果，`--reason` 必须填写可审计的核查依据。
 
 文章创建和更新都支持以下直接字段：
 

@@ -11,6 +11,7 @@ use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
+use App\Services\GeoFlow\ArticlePublicationQualityGate;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -18,7 +19,10 @@ use Illuminate\Support\Facades\DB;
 
 final class HostedSiteAllocator
 {
-    public function __construct(private readonly HostedSiteContentFingerprint $fingerprints) {}
+    public function __construct(
+        private readonly HostedSiteContentFingerprint $fingerprints,
+        private readonly ArticlePublicationQualityGate $publicationQualityGate,
+    ) {}
 
     public function allocate(HostedSiteAllocationRequest $candidate): ?HostedSiteArticleAssignment
     {
@@ -27,6 +31,9 @@ final class HostedSiteAllocator
             ?->first(static fn (DistributionChannel $channel): bool => $channel->isHostedSite());
         if (! $channel instanceof DistributionChannel) {
             return $this->recordFailure($candidate, 'no_hosted_channel', 'No hosted channel is attached to the task.');
+        }
+        if ($candidate->article instanceof Article) {
+            $this->publicationQualityGate->check($candidate->article, 'hosted_site_allocate');
         }
 
         try {

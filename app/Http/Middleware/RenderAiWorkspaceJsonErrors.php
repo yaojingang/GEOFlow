@@ -18,7 +18,7 @@ final class RenderAiWorkspaceJsonErrors
     {
         if ($exception instanceof ModelNotFoundException
             || ($exception instanceof NotFoundHttpException && $exception->getPrevious() instanceof ModelNotFoundException)) {
-            return new JsonResponse(['message' => '资源不存在。', 'code' => 'not_found'], 404);
+            return new JsonResponse(['message' => __('admin.ai_workspace.resource_not_found'), 'code' => 'not_found'], 404);
         }
 
         if ($exception instanceof ValidationException) {
@@ -30,7 +30,7 @@ final class RenderAiWorkspaceJsonErrors
         }
 
         if ($exception instanceof AuthorizationException) {
-            return new JsonResponse(['message' => '当前管理员没有权限执行该操作。', 'code' => 'forbidden'], 403);
+            return new JsonResponse(['message' => __('admin.ai_workspace.forbidden'), 'code' => 'forbidden'], 403);
         }
 
         if ($exception instanceof HttpExceptionInterface) {
@@ -41,9 +41,9 @@ final class RenderAiWorkspaceJsonErrors
         }
 
         if ($exception::class === RuntimeException::class) {
-            return new JsonResponse(['message' => $exception->getMessage(), 'code' => 'workflow_conflict'], 409);
+            return new JsonResponse(['message' => $exception->getMessage(), 'code' => 'workspace_error'], 409);
         }
 
-        return new JsonResponse(['message' => 'AI 工作台暂时不可用。', 'code' => 'internal_error'], 500);
+        return new JsonResponse(['message' => __('admin.ai_workspace.workspace_internal_error'), 'code' => 'internal_error'], 500);
     }
 }

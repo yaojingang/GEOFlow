@@ -14,7 +14,6 @@ final class SendMessageRequest extends AiWorkspaceRequest
     {
         return [
             'prompt' => ['required', 'string', 'max:4000'],
-            'request_key' => ['nullable', 'string', 'max:120', 'regex:/\A[a-zA-Z0-9._:-]+\z/'],
         ];
     }
 }

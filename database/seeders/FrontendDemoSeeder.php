@@ -162,6 +162,7 @@ class FrontendDemoSeeder extends Seeder
                 }
 
                 $categories[$row['slug']] = $category;
+
                 continue;
             }
 

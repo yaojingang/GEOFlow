@@ -8,8 +8,8 @@
 
 | 脚本 | 用途 |
 | --- | --- |
-| `geoflow-docker-deploy.sh` | 生产 Docker 首次空库一键部署脚本。会自检服务器、准备 `.env.prod`、部署 PostgreSQL、Redis、Web、App、队列、调度和 Reverb，并在最后执行健康检查。 |
-| `geoflow-healthcheck.sh` | 部署后健康检查脚本。可单独检查容器状态、Laravel 健康端点和数据库连接。 |
+| `geoflow-docker-deploy.sh` | 生产 Docker 首次空库一键部署脚本。会自检服务器、准备 `.env.prod`、部署 PostgreSQL、Redis、Web、App、常规队列、AI 质检队列、调度和 Reverb，并在最后执行健康检查。 |
+| `geoflow-healthcheck.sh` | 部署后健康检查脚本。可单独检查全部必需容器、Laravel 健康端点和数据库连接。 |
 | `start-docker-pull-tunnel.sh` | **本机 Mac**：SSH 反向隧道，把 Clash HTTP 代理暴露给 ECS。 |
 | `pull-images-once-via-tunnel.sh` | **ECS 一次性拉镜像**：经隧道 + `skopeo`，**不重启 docker**，不影响运行中容器。 |
 | `build-once-via-tunnel.sh` | **ECS 一次性 build**：临时代理仅作用于本次 `docker compose build`，**不重启 docker**。 |

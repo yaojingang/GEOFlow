@@ -30,7 +30,7 @@ O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usa
 | 📊 Analytics | Visão global, operação de site único, distribuição multi-site, logs de acesso, top conteúdos, crawlers de IA e tendências |
 | 🔍 Saída SEO e LLM-friendly | SEO, Open Graph, Schema, Markdown GFM, CSS independente, sincronização de imagens, sitemap e mapas TXT |
 | 🎨 Frontend e temas | Temas, preview, troca pelo admin e sincronização remota de título, copyright, tema e categorias |
-| 🌍 I18n do admin | Chinês, inglês, japonês, espanhol, russo e português, incluindo módulos GEOFlow 2.0 |
+| 🌍 I18n do admin | Chinês, inglês, japonês, espanhol, russo e português, incluindo os módulos do Admin UI V3 |
 | 🔔 Atualizações de versão | O admin pode verificar o `version.json` do GitHub e notificar quando uma versão mais recente está disponível |
 | 🐳 Pronto para deploy | **Docker Compose**: PostgreSQL (pgvector), Redis, app, fila, scheduler, Reverb e produção com Nginx/php-fpm |
 
@@ -67,18 +67,19 @@ Essas telas cobrem o painel admin, analytics, tarefas, materiais, configuração
 
 ## 🆕 Destaques da Nova Versão
 
-Destaques do GEOFlow 2.0:
+O GEOFlow 3.0 é uma atualização principal do admin, da IA, da distribuição e dos fluxos operacionais:
 
-- **Dashboard como hub operacional**: mantém o guia de três passos e organiza entradas por operação de site único, distribuição multi-site e skills complementares.
-- **Gemini e provedores OpenAI-compatible**: a configuração de modelos cobre rotas OpenAI-style e Gemini nativo para chat / embedding.
-- **Chunking semântico para conhecimento**: permite regras estruturadas, modo automático ou planejamento semântico opcional com LLM; o LLM planeja limites e os chunks finais são reconstruídos do texto original.
-- **Analytics independente**: visão global, operação de conteúdo, saúde de tarefas/materiais, status de distribuição, logs de acesso e tendências de crawlers de IA ficam em `/admin/analytics`.
-- **Distribuição ponta a ponta**: canais GEOFlow Agent, WordPress REST e HTTP API genéricos, segredos, testes de conexão, pacotes de site-alvo, modos estático/rewrite, sincronização de configurações remotas, filas, logs, edição e exclusão remota.
-- **Escopo de publicação explícito**: tarefas podem publicar localmente e em canais, somente em canais ou somente no GEOFlow local; o modo local desativa a seleção de canais.
-- **Sites-alvo podem ser estáticos**: a distribuição regenera home remota, páginas de artigo, sitemap, mapas TXT, `llms.txt`, imagens e CSS independente.
-- **Materiais e RAG mais completos**: chunks, status de vetorização, títulos, palavras-chave, imagens, autores e prompts formam a camada de entrada das tarefas.
-- **Deploy e segurança melhores**: Docker de produção usa Nginx + PHP-FPM, o seeder não sobrescreve admins existentes e mirrors Docker/Composer são configuráveis.
-- **Cobertura i18n para os módulos atuais**: módulos GEOFlow 2.0 não dependem mais de chaves cruas ou fallback em inglês.
+- **O Admin UI V3 unifica toda a interface**: as páginas compartilham nova barra lateral, barra superior, navegação e padrões de interação, com atividade recente, largura ajustável, layouts responsivos, estados acessíveis e recursos locais.
+- **O AI Workspace agora é um assistente ilustrado do admin**: o conhecimento do sistema cobre 15 temas, com 24 capturas sanitizadas e 72 perguntas fixas de avaliação. O conteúdo é transmitido por SSE e os recursos respeitam as permissões do administrador atual. O fluxo anterior de Run, Plan, Approval, Capability e Trace deixa de receber novas solicitações, preservando os dados históricos.
+- **A inspeção de qualidade por IA funciona como porta de publicação**: avalia evidências, regras de publicidade e contexto, retornando pontuações, localização no texto, referências legais, recomendações e liberações auditáveis. Artigos longos continuam por segmentos na fila.
+- **Sites de canal hospedados têm um ciclo de vida completo**: alocação de subdomínios, gestão de estados, associação de artigos, cotas, períodos de espera, preflight técnico, invalidação de cache e reconciliação seguem limites de host principal e proxy confiável.
+- **A Publicação Manual se conecta ao assistente de operações para Chrome**: a extensão usa pareamento de dispositivo e tokens de privilégio mínimo para assumir trabalhos, enviar heartbeats, validar contas, preencher rascunhos de respostas em texto no Zhihu e devolver evidências. A publicação final continua sob confirmação do usuário.
+- **O admin pode ser instalado como PWA**: ícones locais, manifesto, Service Worker e fluxo de atualização oferecem uma área de trabalho independente.
+- **A configuração de tarefas e modelos ficou mais segura**: capacidade e conflitos da biblioteca de títulos são verificados antes da ativação; testes de modelo registram streaming real, fallback de texto, failover e estados completos de prontidão.
+- **Operações longas de conteúdo podem ser retomadas**: bibliotecas geram até 100 mil títulos em lotes, a lixeira de tarefas mantém 90 dias de auditoria e artigos selecionados são exportados em um ZIP de Markdown.
+- **API e CLI cobrem operações rotineiras**: API v1 e `bin/geoflow` gerenciam catálogos, tarefas, execuções, materiais, artigos e operações do navegador com entrada e saída estruturadas e verificações de segurança.
+- **O atualizador independente executa operações de alto risco**: uma API local por Unix socket solicita atualizações, backups completos, validação do ambiente e restauração. A versão compatível assinada é vinculada ao commit final e aos digests das imagens do GEOFlow 3.0.
+- **Os limites de instalação e deploy estão mais claros**: novas instalações começam apenas com os dados necessários e não importam artigos de demonstração. Atualizações executam migrações, recompilam o frontend e reiniciam processos; sites hospedados são ativados depois da configuração de DNS curinga, TLS curinga, proxies confiáveis e Nginx.
 
 ---
 

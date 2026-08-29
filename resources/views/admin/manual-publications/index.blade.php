@@ -116,7 +116,7 @@
                             $statusClass = match((string) $publication->status) {
                                 'completed' => 'bg-emerald-50 text-emerald-700',
                                 'in_progress' => 'bg-purple-50 text-purple-700',
-                                'ready' => 'bg-amber-50 text-amber-700',
+                                'ready', 'outcome_unknown' => 'bg-amber-50 text-amber-700',
                                 'failed', 'cancelled' => 'bg-red-50 text-red-700',
                                 'skipped' => 'bg-gray-100 text-gray-700',
                                 default => 'bg-blue-50 text-blue-700',

@@ -30,11 +30,14 @@ use App\Services\GeoFlow\DistributionTargetSitePackageBuilder;
 use App\Services\GeoFlow\FrontendExperienceInspector;
 use App\Services\GeoFlow\ManagedImageFileService;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
+use App\Services\GeoFlow\TaskLifecycleService;
+use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
@@ -84,6 +87,77 @@ class AdminDistributionPageTest extends TestCase
             $externalChannelsPosition,
             $defaultSitePosition,
         );
+    }
+
+    public function test_distribution_pages_share_the_icon_navigation_and_keep_page_actions(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+        config()->set('geoflow.hosted_sites.enabled', true);
+        config()->set('geoflow.hosted_sites.root_domains', ['sites.test']);
+
+        $admin = $this->admin();
+
+        foreach ([
+            route('admin.distribution.index') => null,
+            route('admin.distribution.hosted-sites.index') => 'hosted-sites',
+            route('admin.distribution.jobs') => 'distribution-jobs',
+            route('admin.distribution.sync-settings-all.preview') => 'sync-all',
+        ] as $url => $activeKey) {
+            $response = $this->actingAs($admin, 'admin')->get($url);
+
+            $response
+                ->assertOk()
+                ->assertSee('data-distribution-navigation', false)
+                ->assertSee(AdminWeb::routePath('admin.distribution.hosted-sites.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.distribution.jobs'), false)
+                ->assertSee(AdminWeb::routePath('admin.distribution.sync-settings-all.preview'), false);
+
+            $document = new \DOMDocument;
+            $document->loadHTML((string) $response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+            $xpath = new \DOMXPath($document);
+            $navigation = $xpath->query('//*[@data-distribution-navigation]')?->item(0);
+            $items = $xpath->query('.//*[@data-distribution-navigation-item]', $navigation);
+            $activeItems = $xpath->query('.//*[@aria-current="page"]', $navigation);
+
+            self::assertNotNull($navigation, $url);
+            self::assertSame(3, $items?->length, $url);
+            self::assertSame(
+                ['hosted-sites', 'distribution-jobs', 'sync-all'],
+                array_map(
+                    static fn (\DOMNode $item): string => (string) $item->attributes?->getNamedItem('data-distribution-navigation-item')?->nodeValue,
+                    iterator_to_array($items),
+                ),
+                $url,
+            );
+            self::assertSame(3, $xpath->query('.//*[@data-distribution-navigation-icon]', $navigation)?->length, $url);
+            self::assertSame($activeKey === null ? 0 : 1, $activeItems?->length, $url);
+
+            if ($activeKey !== null) {
+                self::assertSame(
+                    $activeKey,
+                    $activeItems?->item(0)?->attributes?->getNamedItem('data-distribution-navigation-item')?->nodeValue,
+                    $url,
+                );
+            }
+
+            if ($activeKey === null) {
+                $response
+                    ->assertSee('data-selected-sync-open', false)
+                    ->assertSee('href="'.route('admin.distribution.create').'"', false);
+            }
+
+            if ($activeKey === 'hosted-sites') {
+                $response->assertSee('href="'.route('admin.distribution.hosted-sites.create').'"', false);
+            }
+        }
+
+        foreach (['zh_CN', 'en', 'ja', 'es', 'ru', 'pt_BR'] as $locale) {
+            App::setLocale($locale);
+
+            foreach (['admin_pages.hosted_sites', 'admin.distribution.button.jobs', 'admin.distribution.button.sync_settings_all'] as $key) {
+                self::assertNotSame($key, __($key), $locale.': '.$key);
+            }
+        }
     }
 
     public function test_distribution_index_renders_default_site_before_lead_forms_are_migrated(): void
@@ -193,6 +267,12 @@ class AdminDistributionPageTest extends TestCase
             ->assertSee(__('admin.distribution.stats.active'))
             ->assertSee('待处理分发')
             ->assertSee('失败分发')
+            ->assertSee('data-distribution-stats', false)
+            ->assertSeeInOrder([
+                'class="flex flex-col items-center justify-center rounded-lg bg-white p-5 text-center shadow" data-distribution-stat',
+                __('admin.distribution.stats.total'),
+                'class="mt-2 text-2xl font-semibold tabular-nums text-gray-900"',
+            ], false)
             ->assertDontSee('admin.distribution.stats.')
             ->assertDontSee('admin.button.reset');
 
@@ -1668,6 +1748,7 @@ class AdminDistributionPageTest extends TestCase
 
     public function test_sync_settings_preview_pages_cover_all_and_selected_channels(): void
     {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
         $admin = $this->admin();
 
         $first = DistributionChannel::query()->create([
@@ -1695,6 +1776,9 @@ class AdminDistributionPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.distribution.sync-settings-all.preview'))
             ->assertOk()
+            ->assertSee('data-page-icon="git-compare-arrows"', false)
+            ->assertSee(__('admin_pages.distribution_sync_preview'))
+            ->assertSee('data-gf-page-heading="hidden"', false)
             ->assertSee('预览一号站')
             ->assertSee('预览二号站')
             ->assertDontSee('预览暂停站')
@@ -1705,6 +1789,9 @@ class AdminDistributionPageTest extends TestCase
                 'channel_ids' => [(int) $second->id],
             ])
             ->assertOk()
+            ->assertSee('data-page-icon="git-compare-arrows"', false)
+            ->assertSee(__('admin_pages.distribution_sync_preview'))
+            ->assertSee('data-gf-page-heading="hidden"', false)
             ->assertDontSee('预览一号站')
             ->assertSee('预览二号站')
             ->assertSee('name="channel_ids[]"', false);
@@ -3448,8 +3535,16 @@ class AdminDistributionPageTest extends TestCase
             'id' => (int) $distribution->id,
             'action' => 'update',
             'status' => 'queued',
-            'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-update-v1',
         ]);
+        $distribution->refresh();
+        $this->assertStringStartsWith(
+            'article-'.$article->id.'-channel-'.$channel->id.'-update-v1-',
+            (string) $distribution->idempotency_key,
+        );
+        $this->assertStringEndsWith(
+            substr((string) $distribution->payload_hash, 0, 16),
+            (string) $distribution->idempotency_key,
+        );
         $this->assertDatabaseHas('article_distributions', [
             'id' => (int) $deletedDistribution->id,
             'action' => 'delete',
@@ -4135,7 +4230,7 @@ MD,
             'remote_url' => 'https://example.com/article/remote-123',
         ]);
         Http::assertSent(fn ($request): bool => $request->hasHeader('X-GEOFlow-Key-Id', 'gfk_test')
-            && $request->hasHeader('X-GEOFlow-Idempotency-Key', 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1')
+            && $request->hasHeader('X-GEOFlow-Idempotency-Key', (string) $distribution->fresh()->idempotency_key)
             && $request->url() === 'https://example.com/geoflow-agent/v1/articles'
             && str_contains((string) $request['article']['content_html'], '<h2>核心摘要</h2>')
             && str_contains((string) $request['article']['content_html'], '<strong>提及率</strong>')
@@ -4703,6 +4798,49 @@ MD,
             'last_error_message' => null,
         ]);
         Queue::assertPushed(ProcessArticleDistributionJob::class);
+    }
+
+    public function test_admin_cannot_retry_distribution_after_its_task_is_deleted(): void
+    {
+        Queue::fake();
+        $fixtures = $this->taskFixtures();
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Deleted task retry channel',
+            'domain' => 'deleted-task-retry.example.com',
+            'endpoint_url' => 'https://deleted-task-retry.example.com',
+            'status' => 'active',
+        ]);
+        $task = Task::query()->create([
+            'name' => 'Deleted distribution task',
+            'status' => 'paused',
+            'publish_scope' => 'local_and_distribution',
+        ]);
+        $task->distributionChannels()->attach($channel->id);
+        $article = Article::query()->create([
+            'title' => 'Deleted task distribution',
+            'slug' => 'deleted-task-distribution',
+            'content' => 'Body',
+            'category_id' => $fixtures['category']->id,
+            'author_id' => $fixtures['author']->id,
+            'task_id' => $task->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]);
+        $distribution = ArticleDistribution::query()->create([
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'failed',
+            'idempotency_key' => 'deleted-task-distribution-retry',
+        ]);
+        app(TaskLifecycleService::class)->deleteTask((int) $task->id);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.distribution.retry', ['distributionId' => (int) $distribution->id]))
+            ->assertSessionHasErrors();
+
+        $this->assertSame('failed', $distribution->fresh()->status);
+        Queue::assertNothingPushed();
     }
 
     public function test_distribution_jobs_page_can_filter_by_status_and_channel(): void

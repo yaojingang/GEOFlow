@@ -12,7 +12,9 @@ use Illuminate\Support\Facades\DB;
 class TaskDistributionChannelSelector
 {
     public const STRATEGY_BROADCAST = 'broadcast';
+
     public const STRATEGY_ROUND_ROBIN = 'round_robin';
+
     public const STRATEGY_RANDOM_BALANCED = 'random_balanced';
 
     /**

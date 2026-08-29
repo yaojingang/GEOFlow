@@ -308,6 +308,11 @@ class UiV3ReviewSeeder extends Seeder
                     'content' => $publicationContent,
                     'content_fingerprint' => hash('sha256', $publicationContent),
                     'source_snapshot' => ['review_fixture' => true],
+                    'identity_snapshot' => [
+                        'persona' => ['id' => (int) $persona->id, 'name' => (string) $persona->name],
+                        'account' => ['id' => (int) $account->id, 'account_name' => (string) $account->account_name],
+                        'snapshotted_at' => now()->toAtomString(),
+                    ],
                     'disclosure_snapshot' => '此内容为 UI V3 审查演示。',
                     'risk_status' => 'clean',
                     'risk_result' => ['passed' => true],

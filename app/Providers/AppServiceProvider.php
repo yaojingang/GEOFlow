@@ -2,15 +2,23 @@
 
 namespace App\Providers;
 
+use App\Contracts\AiWorkspace\AdminHelpResponder;
+use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\Outbound\HostResolver;
 use App\Contracts\Outbound\OutboundTransport;
+use App\Contracts\SystemUpdater\AgentClient;
+use App\Http\ApiAuthContext;
+use App\Jobs\ProcessTitleGenerationBatchJob;
 use App\Models\Admin;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
+use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
 use App\Services\GeoFlow\AnonymousUsageTelemetry;
+use App\Services\GeoFlow\ArticleAiQualityWorkerLiveness;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Services\GeoFlow\HorizonMetricsAdapter;
 use App\Services\GeoFlow\JobQueueService;
+use App\Services\GeoFlow\LaravelArticleAiQualityReviewer;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Services\Outbound\FinalOutboundSecurityPolicy;
@@ -19,6 +27,7 @@ use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\Outbound\SecureHttpFactory;
 use App\Services\Outbound\SystemHostResolver;
 use App\Services\Site\HostedSiteResolver;
+use App\Services\SystemUpdater\UnixSocketAgentClient;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\CurrentSite;
 use App\View\Composers\SiteLayoutComposer;
@@ -27,11 +36,14 @@ use GuzzleHttp\Utils;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\Looping;
+use Illuminate\Queue\Events\WorkerStarting;
+use Illuminate\Queue\Events\WorkerStopping;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
-use LogicException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -44,6 +56,8 @@ class AppServiceProvider extends ServiceProvider
         $trustedTerminal = Closure::fromCallable(Utils::chooseHandler());
 
         $this->app->bind(HostResolver::class, SystemHostResolver::class);
+        $this->app->bind(ArticleAiQualityReviewer::class, LaravelArticleAiQualityReviewer::class);
+        $this->app->bind(AgentClient::class, UnixSocketAgentClient::class);
         $this->app->singleton(FinalOutboundSecurityPolicy::class);
         $this->app->bind(OutboundTransport::class, function () use ($fixedContextCapability): LaravelPinnedOutboundTransport {
             return new LaravelPinnedOutboundTransport($fixedContextCapability);
@@ -68,6 +82,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(ArticleGeoFlowService::class);
         $this->app->scoped(CurrentSite::class);
         $this->app->singleton(HostedSiteResolver::class);
+        $this->app->singleton(AiWorkspaceModelRuntime::class);
+        $this->app->alias(AiWorkspaceModelRuntime::class, AdminHelpResponder::class);
     }
 
     /**
@@ -76,7 +92,15 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->assertHostedSiteConfiguration();
-
+        Event::listen(WorkerStarting::class, function (WorkerStarting $event): void {
+            app(ArticleAiQualityWorkerLiveness::class)->record((string) $event->connectionName, (string) $event->queue);
+        });
+        Event::listen(Looping::class, function (Looping $event): void {
+            app(ArticleAiQualityWorkerLiveness::class)->record((string) $event->connectionName, (string) $event->queue);
+        });
+        Event::listen(WorkerStopping::class, function (): void {
+            app(ArticleAiQualityWorkerLiveness::class)->removeCurrentProcess();
+        });
         RateLimiter::for('admin-login', function (Request $request): Limit {
             return Limit::perMinute(30)->by('admin-login-ip:'.$request->ip());
         });
@@ -86,6 +110,37 @@ class AppServiceProvider extends ServiceProvider
             return [
                 Limit::perMinute(5)->by('admin-sensitive:admin:'.$adminId),
                 Limit::perMinute(5)->by('admin-sensitive:admin-ip:'.$adminId.'|'.$request->ip()),
+            ];
+        });
+        RateLimiter::for('api-ai-quality-manual', function (Request $request): array {
+            $auth = $request->attributes->get('api_auth');
+            $tokenId = $auth instanceof ApiAuthContext ? (int) ($auth->token['id'] ?? 0) : 0;
+            $articleId = (int) $request->route('article');
+
+            return [
+                Limit::perMinute(5)->by('api-ai-quality:token:'.$tokenId),
+                Limit::perHour(20)->by('api-ai-quality:token-hour:'.$tokenId),
+                Limit::perHour(6)->by('api-ai-quality:article:'.$tokenId.'|'.$articleId),
+                Limit::perHour(12)->by('api-ai-quality:article-global:'.$articleId),
+                Limit::perMinute(10)->by('api-ai-quality:ip:'.$request->ip()),
+            ];
+        });
+        RateLimiter::for('article-markdown-export-prepare', function (Request $request): array {
+            $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
+
+            return [
+                Limit::perHour(12)->by('article-export-prepare:admin:'.$adminId),
+                Limit::perHour(120)->by('article-export-prepare:ip:'.$request->ip()),
+            ];
+        });
+        RateLimiter::for('article-markdown-export-download', function (Request $request): array {
+            $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
+            $tokenHash = hash('sha256', (string) $request->route('exportToken'));
+
+            return [
+                Limit::perMinutes(10, 4)->by('article-export-download:token:'.$adminId.'|'.$tokenHash),
+                Limit::perMinutes(10, 12)->by('article-export-download:admin:'.$adminId),
+                Limit::perMinutes(10, 30)->by('article-export-download:ip:'.$request->ip()),
             ];
         });
         RateLimiter::for('ai-workspace', function (Request $request): array {
@@ -104,6 +159,14 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(240)->by('ai-workspace-read:ip:'.$request->ip()),
             ];
         });
+        RateLimiter::for('admin-recent-read', function (Request $request): array {
+            $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
+
+            return [
+                Limit::perMinute(60)->by('admin-recent-read:admin:'.$adminId),
+                Limit::perMinute(120)->by('admin-recent-read:ip:'.$request->ip()),
+            ];
+        });
         RateLimiter::for('ai-workspace-messages', function (Request $request): array {
             $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
 
@@ -116,6 +179,20 @@ class AppServiceProvider extends ServiceProvider
             $siteId = app(CurrentSite::class)->profileId() ?? 0;
 
             return Limit::perMinute(10)->by('site-lead:'.$siteId.'|'.$request->ip());
+        });
+        RateLimiter::for('title-generation', function (ProcessTitleGenerationBatchJob $job): Limit {
+            return Limit::perMinute((int) config('geoflow.title_ai_rate_per_minute', 30))
+                ->by('title-generation:model:'.$job->aiModelId);
+        });
+        RateLimiter::for('title-generation-submissions', function (Request $request): array {
+            $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
+
+            return [
+                Limit::perMinute((int) config('geoflow.title_ai_submit_rate_per_minute', 6))
+                    ->by('title-generation-submit:admin:'.$adminId),
+                Limit::perMinute((int) config('geoflow.title_ai_submit_ip_rate_per_minute', 12))
+                    ->by('title-generation-submit:ip:'.$request->ip()),
+            ];
         });
 
         $adminGuard = Auth::guard('admin');
@@ -143,17 +220,20 @@ class AppServiceProvider extends ServiceProvider
             if ((bool) config('geoflow.admin_ui_v3_enabled', false) && $admin instanceof Admin) {
                 $registry = app(AdminUiRegistry::class);
                 $viewData = $view->getData();
+                $routeName = request()->route()?->getName();
                 $view->with('adminUiV3', [
                     'navigation' => $registry->navigation($admin),
                     'current' => $registry->currentPage(
                         $admin,
-                        request()->route()?->getName(),
+                        $routeName,
                         (string) ($viewData['activeMenu'] ?? '')
                     ),
-                    'recent' => $registry->recent($admin),
-                    'settings_navigation' => $registry->settingsNavigation($admin, request()->route()?->getName()),
-                    'show_settings_navigation' => $registry->activeKey(request()->route()?->getName()) === 'site_settings'
+                    'page_identity' => $registry->pageIdentity($routeName),
+                    'settings_navigation' => $registry->settingsNavigation($admin, $routeName),
+                    'show_settings_navigation' => $registry->activeKey($routeName) === 'site_settings'
                         && ! request()->routeIs('admin.account.*'),
+                    'ai_configurator_navigation' => $registry->aiConfiguratorNavigation($routeName),
+                    'show_ai_configurator_navigation' => $registry->activeKey($routeName) === 'ai_config',
                     'site_url' => (string) config('geoflow.site_url', config('app.url')),
                 ]);
             }

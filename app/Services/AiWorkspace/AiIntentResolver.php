@@ -9,21 +9,42 @@ use Throwable;
 
 final readonly class AiIntentResolver
 {
+    private const TASK_COUNT_PATTERNS = [
+        '系统有几个任务', '目前有几个任务', '有多少个任务', '多少个任务', '几个任务',
+        '任务数量', '任务总数', '当前任务数', 'how many tasks', 'task count',
+    ];
+
     public function __construct(
         private AiCapabilityRegistry $registry,
         private AiWorkspaceModelRuntime $runtime,
     ) {}
 
-    public function resolve(string $prompt, ?int $adminId = null): AiIntentResolution
-    {
+    public function resolve(
+        string $prompt,
+        ?int $adminId = null,
+        ?callable $onModelComplete = null,
+        ?callable $onModelFailure = null,
+    ): AiIntentResolution {
+        if ($this->isTaskCountQuestion($prompt)) {
+            return $this->fromRules($prompt);
+        }
+
         if ((bool) config('ai-workspace.runtime_enabled', false)) {
             try {
-                return $this->fromModel($this->runtime->resolveIntent($prompt, $adminId), $prompt);
+                return $this->fromModel($this->runtime->resolveIntent($prompt, $adminId, $onModelComplete), $prompt);
             } catch (Throwable $exception) {
+                if ($onModelFailure !== null) {
+                    $onModelFailure($exception);
+                }
                 report($exception);
             }
         }
 
+        return $this->fromRules($prompt);
+    }
+
+    public function resolveRulesOnly(string $prompt): AiIntentResolution
+    {
         return $this->fromRules($prompt);
     }
 
@@ -156,7 +177,10 @@ final readonly class AiIntentResolver
             'article.draft' => ['文章草稿', '写一篇', '创建文章', '起草文章', '起草一篇', 'article draft'],
             'task.draft' => ['任务草稿', '创建任务', '新建任务', 'create task'],
             'analytics.weekly_report' => ['周报', '本周运营', 'weekly report'],
-            'analytics.daily_report' => ['日报', '今日运营', '今天数据', 'daily report'],
+            'analytics.daily_report' => [
+                '日报', '今日运营', '今天数据', 'daily report',
+                ...self::TASK_COUNT_PATTERNS,
+            ],
             'visibility.diagnose' => ['可见性', 'geo 诊断', '品牌诊断', '信源诊断', 'visibility'],
             'content.opportunities' => ['内容机会', '选题机会', '选题建议', '关键词机会', 'content opportunit'],
             'system.capabilities.explain' => ['能做什么', '有哪些能力', '系统功能', '后台入口', 'capabilities'],
@@ -258,6 +282,14 @@ final readonly class AiIntentResolver
             completenessConfidence: $missing === [] ? 1 : max(0.2, 1 - (count($missing) * 0.3)),
             workflowSteps: $workflowSteps,
         );
+    }
+
+    private function isTaskCountQuestion(string $prompt): bool
+    {
+        $normalized = mb_strtolower(trim($prompt), 'UTF-8');
+
+        return collect(self::TASK_COUNT_PATTERNS)
+            ->contains(static fn (string $pattern): bool => str_contains($normalized, $pattern));
     }
 
     /** @return array<string,mixed> */

@@ -50,6 +50,17 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
             && ! array_key_exists('max_completion_tokens', (array) $request->data()));
     }
 
+    public function test_generate_content_removes_citation_markers_and_preserves_legitimate_k_terms(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response($this->completion('结论 [K1]。Vitamin K2 与 K1 签证保留。')),
+        ]);
+
+        $content = $this->generateContent($this->createChatModel(), '写一篇文章。');
+
+        $this->assertSame('结论。Vitamin K2 与 K1 签证保留。', $content);
+    }
+
     public function test_generate_content_releases_usage_for_an_empty_response(): void
     {
         Http::fake([
@@ -104,6 +115,20 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
             && ($request['max_tokens'] ?? null) === 5000);
+    }
+
+    public function test_generate_content_uses_the_system_default_max_tokens(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response($this->completion('# 标题'."\n\n".'完整正文。')),
+        ]);
+
+        $model = $this->createChatModel(['max_tokens' => null]);
+
+        $this->generateContent($model, '写一篇文章。');
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
+            && ($request['max_tokens'] ?? null) === 16384);
     }
 
     public function test_generate_content_logs_warning_when_output_looks_truncated(): void

@@ -2,22 +2,29 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\TitleGenerationException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\GenerateTitlesWithAiRequest;
 use App\Models\AiModel;
-use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\Task;
 use App\Models\Title;
+use App\Models\TitleGenerationRun;
 use App\Models\TitleLibrary;
-use App\Services\GeoFlow\TitleAiGenerationService;
+use App\Services\GeoFlow\TitleGenerationCoordinator;
 use App\Support\AdminWeb;
+use App\Support\LibraryImportPolicy;
+use App\Support\TitleGenerationStatus;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Throwable;
 
 /**
  * 标题库管理控制器。
@@ -27,7 +34,7 @@ class TitleLibraryController extends Controller
     private const DETAIL_PER_PAGE = 20;
 
     public function __construct(
-        private TitleAiGenerationService $titleAiGenerationService
+        private TitleGenerationCoordinator $titleGenerationCoordinator
     ) {}
 
     /**
@@ -53,6 +60,16 @@ class TitleLibraryController extends Controller
 
         $titles = $this->loadDetailTitles($libraryId, '');
         $usageTotal = (int) (Title::query()->where('library_id', $libraryId)->sum('used_count') ?? 0);
+        $generationRun = TitleGenerationRun::query()
+            ->where('title_library_id', $libraryId)
+            ->whereIn('status', [TitleGenerationRun::STATUS_QUEUED, TitleGenerationRun::STATUS_RUNNING])
+            ->latest('id')
+            ->first();
+        $generationRun ??= TitleGenerationRun::query()
+            ->where('title_library_id', $libraryId)
+            ->latest('id')
+            ->first();
+        $generationStatus = $generationRun ? TitleGenerationStatus::payload($generationRun) : null;
 
         return view('admin.title-libraries.detail', [
             'pageTitle' => (string) $library->name.__('admin.title_detail.page_title_suffix'),
@@ -61,6 +78,39 @@ class TitleLibraryController extends Controller
             'library' => $library,
             'titles' => $titles,
             'usageTotal' => $usageTotal,
+            'generationRun' => $generationRun,
+            'generationStatus' => $generationStatus,
+        ]);
+    }
+
+    /**
+     * 新增标题页。
+     */
+    public function createTitle(int $libraryId): View
+    {
+        $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
+
+        return view('admin.title-libraries.add-title', [
+            'pageTitle' => __('admin.title_detail.modal_add'),
+            'activeMenu' => 'materials',
+            'adminSiteName' => AdminWeb::siteName(),
+            'library' => $library,
+        ]);
+    }
+
+    /**
+     * 批量导入标题页。
+     */
+    public function createImport(int $libraryId): View
+    {
+        $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
+
+        return view('admin.title-libraries.import', [
+            'pageTitle' => __('admin.title_detail.modal_import'),
+            'activeMenu' => 'materials',
+            'adminSiteName' => AdminWeb::siteName(),
+            'library' => $library,
+            'importLimits' => LibraryImportPolicy::viewLimits(),
         ]);
     }
 
@@ -90,109 +140,102 @@ class TitleLibraryController extends Controller
             'library' => $library,
             'keywordLibraries' => $keywordLibraries,
             'aiModels' => $aiModels,
+            'maxTitleCount' => (int) config('geoflow.title_ai_max_count', 100_000),
         ]);
     }
 
     /**
-     * 执行 AI 标题生成（当前使用可控模板生成，保证流程稳定）。
+     * 创建后台 AI 标题生成任务。
      */
-    public function generateWithAi(Request $request, int $libraryId): RedirectResponse
+    public function generateWithAi(GenerateTitlesWithAiRequest $request, int $libraryId): RedirectResponse
     {
         $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $validated = $request->validated();
+        $payload = [
+            'keyword_library_id' => (int) $validated['keyword_library_id'],
+            'ai_model_id' => (int) $validated['ai_model_id'],
+            'title_count' => (int) $validated['title_count'],
+            'title_style' => (string) $validated['title_style'],
+            'custom_prompt' => trim((string) ($validated['custom_prompt'] ?? '')),
+            'confirmed_keyword_reuse' => (bool) ((int) ($validated['confirmed_keyword_reuse'] ?? 0)),
+        ];
 
-        $payload = $request->validate([
-            'keyword_library_id' => ['required', 'integer'],
-            'ai_model_id' => [
-                'required',
-                'integer',
-                Rule::exists('ai_models', 'id')->where(static function ($query): void {
-                    $query->where('status', 'active')
-                        ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'");
-                }),
-            ],
-            'title_count' => ['required', 'integer', 'min:1', 'max:50'],
-            'title_style' => ['required', 'in:professional,attractive,seo,creative,question'],
-            'custom_prompt' => ['nullable', 'string'],
-        ], [
-            'keyword_library_id.required' => __('admin.title_ai_generate.error.keyword_library_required'),
-            'ai_model_id.required' => __('admin.title_ai_generate.error.ai_model_required'),
-            'ai_model_id.exists' => __('admin.title_ai_generate.error.ai_model_required'),
-            'title_count.min' => __('admin.title_ai_generate.error.invalid_count'),
-            'title_count.max' => __('admin.title_ai_generate.error.invalid_count'),
-        ]);
+        try {
+            $this->titleGenerationCoordinator->start(
+                $library,
+                $payload,
+                (int) $request->user('admin')?->getAuthIdentifier(),
+                app()->getLocale(),
+            );
+        } catch (TitleGenerationException $exception) {
+            return back()
+                ->withInput($request->only([
+                    'keyword_library_id', 'ai_model_id', 'title_count', 'title_style',
+                    'custom_prompt', 'confirmed_keyword_reuse',
+                ]))
+                ->withErrors($this->generationErrorMessage($exception->reason));
+        } catch (Throwable $exception) {
+            report($exception);
 
-        $keywordLibrary = KeywordLibrary::query()->whereKey((int) $payload['keyword_library_id'])->firstOrFail();
+            return back()->withInput($request->only([
+                'keyword_library_id', 'ai_model_id', 'title_count', 'title_style',
+                'custom_prompt', 'confirmed_keyword_reuse',
+            ]))->withErrors(__('admin.title_ai_generate.error.queue_failed'));
+        }
 
-        $aiModel = AiModel::query()
-            ->whereKey((int) $payload['ai_model_id'])
-            ->where('status', 'active')
-            ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
+        return redirect()
+            ->route('admin.title-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', __('admin.title_ai_generate.message.queued'));
+    }
+
+    public function generationStatus(int $libraryId, int $runId): JsonResponse
+    {
+        $run = TitleGenerationRun::query()
+            ->where('title_library_id', $libraryId)
+            ->whereKey($runId)
             ->firstOrFail();
 
-        /** @var Collection<int, string> $keywords */
-        $keywords = Keyword::query()
-            ->where('library_id', (int) $payload['keyword_library_id'])
-            ->inRandomOrder()
-            ->limit((int) config('geoflow.title_ai_keyword_sample_limit', 10))
-            ->pluck('keyword')
-            ->map(static fn (mixed $value): string => trim((string) $value))
-            ->filter(static fn (string $keyword): bool => $keyword !== '')
-            ->values();
-        if ($keywords->isEmpty()) {
-            return back()->withErrors(__('admin.title_ai_generate.error.no_keywords'));
+        return response()->json(TitleGenerationStatus::payload($run));
+    }
+
+    public function retryGeneration(int $libraryId, int $runId): RedirectResponse
+    {
+        $run = TitleGenerationRun::query()
+            ->where('title_library_id', $libraryId)
+            ->whereKey($runId)
+            ->firstOrFail();
+
+        try {
+            $this->titleGenerationCoordinator->retry($run);
+        } catch (TitleGenerationException $exception) {
+            return back()->withErrors($this->generationErrorMessage($exception->reason));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(__('admin.title_ai_generate.error.queue_failed'));
         }
 
-        $generationResult = $this->titleAiGenerationService->generateTitles(
-            $aiModel,
-            $keywords->all(),
-            (int) $payload['title_count'],
-            (string) $payload['title_style'],
-            trim((string) ($payload['custom_prompt'] ?? ''))
-        );
-        $generatedTitles = $generationResult['titles'];
+        return back()->with('message', __('admin.title_ai_generate.message.retry_queued'));
+    }
 
-        $savedCount = 0;
-        $duplicateCount = 0;
-        DB::transaction(function () use ($generatedTitles, $keywords, $libraryId, &$savedCount, &$duplicateCount): void {
-            foreach ($generatedTitles as $titleText) {
-                $title = $this->normalizeGeneratedTitle($titleText);
-                if ($title === '' || mb_strlen($title, 'UTF-8') > 500) {
-                    continue;
-                }
+    public function cancelGeneration(int $libraryId, int $runId): RedirectResponse
+    {
+        $run = TitleGenerationRun::query()
+            ->where('title_library_id', $libraryId)
+            ->whereKey($runId)
+            ->firstOrFail();
 
-                $exists = Title::query()
-                    ->where('library_id', $libraryId)
-                    ->where('title', $title)
-                    ->exists();
-                if ($exists) {
-                    $duplicateCount++;
+        try {
+            $this->titleGenerationCoordinator->cancel($run);
+        } catch (TitleGenerationException $exception) {
+            return back()->withErrors($this->generationErrorMessage($exception->reason));
+        } catch (Throwable $exception) {
+            report($exception);
 
-                    continue;
-                }
-
-                Title::query()->create([
-                    'library_id' => $libraryId,
-                    'title' => $title,
-                    'keyword' => $keywords->random(),
-                    'is_ai_generated' => true,
-                    'used_count' => 0,
-                    'usage_count' => 0,
-                ]);
-                $savedCount++;
-            }
-
-            $this->refreshTitleLibraryCount($libraryId);
-        });
-
-        $message = __('admin.title_ai_generate.message.completed', ['count' => $savedCount]);
-        if ($duplicateCount > 0) {
-            $message .= __('admin.title_ai_generate.message.duplicates', ['count' => $duplicateCount]);
-        }
-        if (($generationResult['fallback_used'] ?? false) === true) {
-            $message .= '（AI服务不可用，已使用模板兜底）';
+            return back()->withErrors(__('admin.title_ai_generate.error.queue_failed'));
         }
 
-        return redirect()->route('admin.title-libraries.detail', ['libraryId' => $libraryId])->with('message', $message);
+        return back()->with('message', __('admin.title_ai_generate.message.cancelled'));
     }
 
     /**
@@ -203,34 +246,67 @@ class TitleLibraryController extends Controller
         $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
 
         $payload = $request->validate([
-            'title' => ['required', 'string', 'max:500'],
-            'keyword' => ['nullable', 'string', 'max:200'],
+            'title' => [
+                'required', 'string', 'max:'.LibraryImportPolicy::TITLE_MAX_CHARACTERS,
+                LibraryImportPolicy::rejectNullByteRule(__('admin.library_validation.title_nul')),
+                LibraryImportPolicy::rejectInvalidUtf8Rule(__('admin.library_validation.title_utf8')),
+            ],
+            'keyword' => [
+                'nullable',
+                'string',
+                'max:'.LibraryImportPolicy::TITLE_KEYWORD_MAX_CHARACTERS,
+                LibraryImportPolicy::rejectNullByteRule(__('admin.title_detail.error.keyword_invalid')),
+                LibraryImportPolicy::rejectInvalidUtf8Rule(__('admin.library_validation.related_keyword_utf8')),
+            ],
         ], [
             'title.required' => __('admin.title_detail.error.title_required'),
+            'title.string' => __('admin.library_validation.title_string'),
+            'title.max' => __('admin.library_validation.title_too_long', [
+                'max' => LibraryImportPolicy::TITLE_MAX_CHARACTERS,
+            ]),
+            'keyword.string' => __('admin.library_validation.related_keyword_string'),
+            'keyword.max' => __('admin.library_validation.related_keyword_too_long', [
+                'max' => LibraryImportPolicy::TITLE_KEYWORD_MAX_CHARACTERS,
+            ]),
         ]);
 
-        $title = trim((string) $payload['title']);
+        $title = LibraryImportPolicy::normalizeTitle((string) $payload['title']);
         if ($title === '') {
-            return back()->withErrors(__('admin.title_detail.error.title_required'));
+            return back()->withInput($request->only(['title', 'keyword']))->withErrors([
+                'title' => __('admin.title_detail.error.title_required'),
+            ]);
+        }
+        if (! LibraryImportPolicy::titleFitsStorage($title)) {
+            return back()->withInput($request->only(['title', 'keyword']))->withErrors([
+                'title' => __('admin.title_detail.error.import_title_too_long', [
+                    'max' => LibraryImportPolicy::TITLE_MAX_CHARACTERS,
+                ]),
+            ]);
         }
 
-        $exists = Title::query()
-            ->where('library_id', $libraryId)
-            ->where('title', $title)
-            ->exists();
-        if ($exists) {
-            return back()->withErrors(__('admin.title_detail.error.title_exists'));
-        }
+        $inserted = DB::transaction(function () use ($libraryId, $payload, $title): int {
+            TitleLibrary::query()->whereKey($libraryId)->lockForUpdate()->firstOrFail();
+            $inserted = DB::table((new Title)->getTable())->insertOrIgnore([
+                'library_id' => $libraryId,
+                'title' => $title,
+                'title_fingerprint' => Title::fingerprintFor($title),
+                'keyword' => trim((string) ($payload['keyword'] ?? '')),
+                'is_ai_generated' => false,
+                'used_count' => 0,
+                'usage_count' => 0,
+                'created_at' => now(),
+            ]);
+            if ($inserted > 0) {
+                TitleLibrary::query()->whereKey($libraryId)->increment('title_count', $inserted);
+            }
 
-        Title::query()->create([
-            'library_id' => $libraryId,
-            'title' => $title,
-            'keyword' => trim((string) ($payload['keyword'] ?? '')),
-            'is_ai_generated' => false,
-            'used_count' => 0,
-            'usage_count' => 0,
-        ]);
-        $this->refreshTitleLibraryCount($libraryId);
+            return $inserted;
+        }, 3);
+        if ($inserted === 0) {
+            return back()->withInput($request->only(['title', 'keyword']))->withErrors([
+                'title' => __('admin.title_detail.error.title_exists'),
+            ]);
+        }
 
         return redirect()->route('admin.title-libraries.detail', ['libraryId' => $libraryId])->with('message', __('admin.title_detail.message.add_success'));
     }
@@ -252,11 +328,18 @@ class TitleLibraryController extends Controller
             return back()->withErrors(__('admin.title_detail.error.content_required'));
         }
 
-        $deletedCount = Title::query()
-            ->where('library_id', $libraryId)
-            ->whereIn('id', $titleIds->all())
-            ->delete();
-        $this->refreshTitleLibraryCount($libraryId);
+        $deletedCount = DB::transaction(function () use ($libraryId, $titleIds): int {
+            TitleLibrary::query()->whereKey($libraryId)->lockForUpdate()->firstOrFail();
+            $deleted = Title::query()
+                ->where('library_id', $libraryId)
+                ->whereIn('id', $titleIds->all())
+                ->delete();
+            if ($deleted > 0) {
+                TitleLibrary::query()->whereKey($libraryId)->decrement('title_count', $deleted);
+            }
+
+            return $deleted;
+        }, 3);
 
         return redirect()->route('admin.title-libraries.detail', ['libraryId' => $libraryId])->with(
             'message',
@@ -272,44 +355,82 @@ class TitleLibraryController extends Controller
         $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
 
         $payload = $request->validate([
-            'titles_text' => ['required', 'string'],
+            'titles_text' => [
+                ...LibraryImportPolicy::rawTextRules(
+                    __('admin.title_detail.error.import_too_large', LibraryImportPolicy::viewLimits()),
+                ),
+                LibraryImportPolicy::rejectNullByteRule(__('admin.title_detail.error.import_keyword_invalid')),
+                LibraryImportPolicy::rejectInvalidUtf8Rule(__('admin.library_validation.title_import_utf8')),
+            ],
         ], [
             'titles_text.required' => __('admin.title_detail.error.content_required'),
+            'titles_text.string' => __('admin.library_validation.import_string'),
         ]);
 
         /** @var Collection<int, array{title:string,keyword:string}> $entries */
-        $entries = $this->parseTitleImportText((string) $payload['titles_text']);
+        $parsedImport = $this->parseTitleImportText((string) $payload['titles_text']);
+        $entries = $parsedImport['entries'];
+        if ($parsedImport['overflow'] || $entries->count() > LibraryImportPolicy::MAX_ENTRIES) {
+            return back()->withInput([])->withErrors([
+                'titles_text' => __('admin.title_detail.error.import_too_many', [
+                    'max' => number_format(LibraryImportPolicy::MAX_ENTRIES),
+                ]),
+            ]);
+        }
         if ($entries->isEmpty()) {
-            return back()->withErrors(__('admin.title_detail.error.content_required'));
+            return back()->withInput([])->withErrors([
+                'titles_text' => __('admin.title_detail.error.content_required'),
+            ]);
+        }
+        if ($entries->contains(static fn (array $entry): bool => ! LibraryImportPolicy::titleFitsStorage($entry['title']))) {
+            return back()->withInput([])->withErrors([
+                'titles_text' => __('admin.title_detail.error.import_title_too_long', [
+                    'max' => LibraryImportPolicy::TITLE_MAX_CHARACTERS,
+                ]),
+            ]);
+        }
+        if ($entries->contains(static fn (array $entry): bool => mb_strlen($entry['keyword'], 'UTF-8') > LibraryImportPolicy::TITLE_KEYWORD_MAX_CHARACTERS)) {
+            return back()->withInput([])->withErrors([
+                'titles_text' => __('admin.title_detail.error.import_keyword_too_long', [
+                    'max' => LibraryImportPolicy::TITLE_KEYWORD_MAX_CHARACTERS,
+                ]),
+            ]);
+        }
+        if ($entries->contains(static fn (array $entry): bool => LibraryImportPolicy::containsNullByte($entry['keyword']))) {
+            return back()->withInput([])->withErrors([
+                'titles_text' => __('admin.title_detail.error.import_keyword_invalid'),
+            ]);
         }
 
-        $importedCount = 0;
-        $duplicateCount = 0;
-        DB::transaction(function () use ($entries, $libraryId, &$importedCount, &$duplicateCount): void {
-            foreach ($entries as $entry) {
-                $exists = Title::query()
-                    ->where('library_id', $libraryId)
-                    ->where('title', $entry['title'])
-                    ->exists();
-                if ($exists) {
-                    $duplicateCount++;
+        $submittedEntryCount = $entries->count();
+        $entries = $entries->uniqueStrict(static fn (array $entry): string => $entry['title'])->values();
 
-                    continue;
-                }
+        $importedCount = DB::transaction(function () use ($entries, $libraryId): int {
+            TitleLibrary::query()->whereKey($libraryId)->lockForUpdate()->firstOrFail();
+            $rows = $entries->map(static fn (array $entry): array => [
+                'library_id' => $libraryId,
+                'title' => $entry['title'],
+                'title_fingerprint' => Title::fingerprintFor($entry['title']),
+                'keyword' => $entry['keyword'],
+                'is_ai_generated' => false,
+                'used_count' => 0,
+                'usage_count' => 0,
+                'created_at' => now(),
+            ])->all();
 
-                Title::query()->create([
-                    'library_id' => $libraryId,
-                    'title' => $entry['title'],
-                    'keyword' => $entry['keyword'],
-                    'is_ai_generated' => false,
-                    'used_count' => 0,
-                    'usage_count' => 0,
-                ]);
-                $importedCount++;
+            $attemptImportedCount = 0;
+            foreach (array_chunk($rows, LibraryImportPolicy::INSERT_CHUNK_SIZE) as $chunk) {
+                $attemptImportedCount += DB::table((new Title)->getTable())->insertOrIgnore($chunk);
             }
 
-            $this->refreshTitleLibraryCount($libraryId);
-        });
+            if ($attemptImportedCount > 0) {
+                TitleLibrary::query()->whereKey($libraryId)->increment('title_count', $attemptImportedCount);
+            }
+
+            return $attemptImportedCount;
+        }, 3);
+
+        $duplicateCount = $submittedEntryCount - $importedCount;
 
         $message = __('admin.title_detail.message.import_success', ['count' => $importedCount]);
         if ($duplicateCount > 0) {
@@ -339,12 +460,14 @@ class TitleLibraryController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        $payload = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
-            'description' => ['nullable', 'string'],
-        ], [
-            'name.required' => __('admin.title_libraries.error.name_required'),
-        ]);
+        $validation = $this->validateLibraryRequest(
+            $request,
+            __('admin.title_libraries.error.name_required'),
+        );
+        if ($validation instanceof RedirectResponse) {
+            return $validation;
+        }
+        $payload = $validation;
 
         TitleLibrary::query()->create([
             'name' => trim((string) $payload['name']),
@@ -361,7 +484,7 @@ class TitleLibraryController extends Controller
     /**
      * 编辑表单页。
      */
-    public function edit(int $libraryId): View|RedirectResponse
+    public function edit(Request $request, int $libraryId): View|RedirectResponse
     {
         $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
 
@@ -371,6 +494,7 @@ class TitleLibraryController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'isEdit' => true,
             'libraryId' => (int) $library->id,
+            'context' => $this->formContext($request),
             'libraryForm' => [
                 'name' => (string) $library->name,
                 'description' => (string) ($library->description ?? ''),
@@ -385,19 +509,26 @@ class TitleLibraryController extends Controller
     {
         $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
 
-        $payload = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
-            'description' => ['nullable', 'string'],
-        ], [
-            'name.required' => __('admin.title_libraries.error.name_required'),
-        ]);
+        $validation = $this->validateLibraryRequest(
+            $request,
+            __('admin.title_libraries.error.name_required'),
+            true,
+        );
+        if ($validation instanceof RedirectResponse) {
+            return $validation;
+        }
+        $payload = $validation;
 
         $library->update([
             'name' => trim((string) $payload['name']),
             'description' => trim((string) ($payload['description'] ?? '')),
         ]);
 
-        return redirect()->route('admin.title-libraries.index')->with('message', __('admin.title_libraries.message.update_success'));
+        $redirectRoute = ($payload['context'] ?? 'index') === 'detail'
+            ? route('admin.title-libraries.detail', ['libraryId' => $libraryId])
+            : route('admin.title-libraries.index');
+
+        return redirect($redirectRoute)->with('message', __('admin.title_libraries.message.update_success'));
     }
 
     /**
@@ -405,15 +536,21 @@ class TitleLibraryController extends Controller
      */
     public function destroy(int $libraryId): RedirectResponse
     {
-        $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $taskBlockHint = DB::transaction(function () use ($libraryId): ?string {
+            $library = TitleLibrary::query()->whereKey($libraryId)->lockForUpdate()->firstOrFail();
+            $taskCount = Task::withTrashed()->where('title_library_id', $libraryId)->count();
+            if ($taskCount > 0) {
+                return $this->buildTaskDeleteBlockHint($libraryId, $taskCount);
+            }
 
-        $taskCount = Task::query()->where('title_library_id', $libraryId)->count();
-        if ($taskCount > 0) {
-            return back()->withErrors(__('admin.title_libraries.error.delete_blocked', ['tasks' => $this->buildTaskDeleteBlockHint($libraryId, $taskCount)]));
+            Title::query()->where('library_id', $libraryId)->delete();
+            $library->delete();
+
+            return null;
+        }, 3);
+        if ($taskBlockHint !== null) {
+            return back()->withErrors(__('admin.title_libraries.error.delete_blocked', ['tasks' => $taskBlockHint]));
         }
-
-        Title::query()->where('library_id', $libraryId)->delete();
-        $library->delete();
 
         return redirect()->route('admin.title-libraries.index')->with('message', __('admin.title_libraries.message.delete_success'));
     }
@@ -473,13 +610,86 @@ class TitleLibraryController extends Controller
     }
 
     /**
+     * @return array<string,mixed>|RedirectResponse
+     */
+    private function validateLibraryRequest(Request $request, string $nameRequiredMessage, bool $includeContext = false): array|RedirectResponse
+    {
+        $rules = [
+            'name' => [
+                'bail', 'required', 'string',
+                LibraryImportPolicy::rejectNullByteRule(__('admin.library_validation.library_name_nul')),
+                LibraryImportPolicy::rejectInvalidUtf8Rule(__('admin.library_validation.library_name_utf8')),
+                'max:100',
+            ],
+            'description' => [
+                'bail', 'nullable', 'string',
+                LibraryImportPolicy::rejectNullByteRule(__('admin.library_validation.library_description_nul')),
+                LibraryImportPolicy::rejectInvalidUtf8Rule(__('admin.library_validation.library_description_utf8')),
+                'max:'.LibraryImportPolicy::DESCRIPTION_MAX_CHARACTERS,
+            ],
+        ];
+        if ($includeContext) {
+            $rules['context'] = ['nullable', 'string', Rule::in(['index', 'detail'])];
+        }
+        $validator = Validator::make($request->only(array_keys($rules)), $rules, [
+            'name.required' => $nameRequiredMessage,
+            'name.string' => __('admin.library_validation.library_name_string'),
+            'name.max' => __('admin.library_validation.library_name_too_long', ['max' => 100]),
+            'description.string' => __('admin.library_validation.library_description_string'),
+            'description.max' => __('admin.library_validation.library_description_too_long', [
+                'max' => LibraryImportPolicy::DESCRIPTION_MAX_CHARACTERS,
+            ]),
+        ]);
+        if ($validator->fails()) {
+            return back()
+                ->withErrors($validator)
+                ->withInput($this->safeLibraryOldInput($request, $includeContext));
+        }
+
+        return $validator->validated();
+    }
+
+    /** @return array<string,string> */
+    private function safeLibraryOldInput(Request $request, bool $includeContext): array
+    {
+        $oldInput = [];
+        $name = LibraryImportPolicy::flashableText($request->input('name'), 100);
+        $description = LibraryImportPolicy::flashableText(
+            $request->input('description'),
+            LibraryImportPolicy::DESCRIPTION_MAX_CHARACTERS,
+        );
+        if ($name !== null) {
+            $oldInput['name'] = $name;
+        }
+        if ($description !== null) {
+            $oldInput['description'] = $description;
+        }
+        $context = $request->input('context');
+        if ($includeContext && is_string($context) && in_array($context, ['index', 'detail'], true)) {
+            $oldInput['context'] = $context;
+        }
+
+        return $oldInput;
+    }
+
+    private function formContext(Request $request): string
+    {
+        $context = $request->query('context', 'index');
+
+        return is_string($context) && in_array($context, ['index', 'detail'], true)
+            ? $context
+            : 'index';
+    }
+
+    /**
      * @return LengthAwarePaginator<int, Title>
      */
     private function loadDetailTitles(int $libraryId, string $search): LengthAwarePaginator
     {
         $query = Title::query()
             ->where('library_id', $libraryId)
-            ->orderByDesc('created_at');
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
         if ($search !== '') {
             $query->where('title', 'like', '%'.$search.'%');
         }
@@ -488,31 +698,42 @@ class TitleLibraryController extends Controller
     }
 
     /**
-     * @return Collection<int, array{title:string,keyword:string}>
+     * @return array{entries:Collection<int, array{title:string,keyword:string}>,overflow:bool}
      */
-    private function parseTitleImportText(string $titlesText): Collection
+    private function parseTitleImportText(string $titlesText): array
     {
-        return collect(preg_split('/\R/u', $titlesText) ?: [])
-            ->map(static function (string $line): array {
-                $line = trim($line);
-                if ($line === '') {
-                    return ['title' => '', 'keyword' => ''];
-                }
+        $split = LibraryImportPolicy::splitBounded($titlesText, '/\R/u');
+        if ($split['overflow']) {
+            return ['entries' => collect(), 'overflow' => true];
+        }
 
-                if (str_contains($line, '|')) {
-                    [$title, $keyword] = array_pad(explode('|', $line, 2), 2, '');
+        $entries = collect();
+        foreach ($split['segments'] as $segment) {
+            $line = trim($segment);
+            if ($line === '') {
+                continue;
+            }
 
-                    return [
-                        'title' => trim((string) $title),
-                        'keyword' => trim((string) $keyword),
-                    ];
-                }
+            if (str_contains($line, '|')) {
+                [$title, $keyword] = array_pad(explode('|', $line, 2), 2, '');
+                $entry = [
+                    'title' => LibraryImportPolicy::normalizeTitle((string) $title),
+                    'keyword' => trim((string) $keyword),
+                ];
+            } else {
+                $entry = ['title' => LibraryImportPolicy::normalizeTitle($line), 'keyword' => ''];
+            }
+            if ($entry['title'] === '') {
+                continue;
+            }
 
-                return ['title' => $line, 'keyword' => ''];
-            })
-            ->filter(static fn (array $entry): bool => $entry['title'] !== '')
-            ->unique(static fn (array $entry): string => $entry['title'])
-            ->values();
+            $entries->push($entry);
+            if ($entries->count() > LibraryImportPolicy::MAX_ENTRIES) {
+                return ['entries' => $entries, 'overflow' => true];
+            }
+        }
+
+        return ['entries' => $entries->values(), 'overflow' => false];
     }
 
     /**
@@ -560,25 +781,19 @@ class TitleLibraryController extends Controller
         return $titles;
     }
 
-    /**
-     * 清理 AI 输出中的序号与空白，避免脏数据入库。
-     */
-    private function normalizeGeneratedTitle(string $title): string
+    private function generationErrorMessage(string $code): string
     {
-        $cleaned = preg_replace('/^\d+[\.\)\-、\s]*/u', '', trim($title));
-
-        return trim((string) $cleaned);
-    }
-
-    /**
-     * 维护标题库缓存计数，确保列表统计准确。
-     */
-    private function refreshTitleLibraryCount(int $libraryId): void
-    {
-        $count = Title::query()->where('library_id', $libraryId)->count();
-        TitleLibrary::query()->whereKey($libraryId)->update([
-            'title_count' => $count,
-        ]);
+        return match ($code) {
+            'title_generation_no_keywords' => __('admin.title_ai_generate.error.no_keywords'),
+            'title_generation_active' => __('admin.title_ai_generate.error.active_run'),
+            'title_generation_not_retryable' => __('admin.title_ai_generate.error.not_retryable'),
+            'title_generation_not_cancellable' => __('admin.title_ai_generate.error.not_cancellable'),
+            'title_generation_async_queue_required' => __('admin.title_ai_generate.error.async_queue_required'),
+            'title_generation_ai_model_unavailable' => __('admin.title_ai_generate.error.ai_model_missing'),
+            'title_generation_keyword_reuse_confirmation_required' => __('admin.title_ai_generate.error.keyword_reuse_confirmation_required'),
+            'title_generation_capacity_exceeded' => __('admin.title_ai_generate.error.capacity_exceeded'),
+            default => __('admin.title_ai_generate.error.queue_failed'),
+        };
     }
 
     /**
@@ -586,7 +801,7 @@ class TitleLibraryController extends Controller
      */
     private function buildTaskDeleteBlockHint(int $libraryId, int $taskCount): string
     {
-        $tasks = Task::query()
+        $tasks = Task::withTrashed()
             ->where('title_library_id', $libraryId)
             ->select(['id', 'name'])
             ->orderByDesc('updated_at')

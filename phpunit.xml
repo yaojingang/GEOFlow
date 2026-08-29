@@ -21,6 +21,7 @@
         <ini name="memory_limit" value="512M"/>
         <env name="ADMIN_BASE_PATH" value="geo_admin" force="true"/>
         <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_KEY" value="base64:F8W2mzf4t4dfHiV8x1GOf0HA+aOg8Z8BQPjiRT0Dh1o=" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
@@ -32,6 +33,7 @@
         <env name="GEOFLOW_ADMIN_UI_V3_ENABLED" value="false" force="true"/>
         <env name="GEOFLOW_ADMIN_EMAIL" value="admin@example.com" force="true"/>
         <env name="GEOFLOW_ADMIN_PASSWORD" value="password" force="true"/>
+        <env name="GEOFLOW_UPDATE_CHECK_ENABLED" value="false" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

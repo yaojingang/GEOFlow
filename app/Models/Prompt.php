@@ -14,6 +14,8 @@ class Prompt extends Model
         'type',
         'content',
         'variables',
+        'system_key',
+        'system_version',
     ];
 
     public function titleLibraries(): HasMany
@@ -24,5 +26,10 @@ class Prompt extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'prompt_id');
+    }
+
+    public function qualityTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'ai_quality_prompt_id');
     }
 }

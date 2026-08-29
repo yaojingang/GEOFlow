@@ -17,9 +17,10 @@ class DistributionQueueConfigurationTest extends TestCase
         foreach ($composeFiles as $composeFile) {
             $contents = file_get_contents($composeFile);
             $this->assertIsString($contents);
-            $this->assertStringContainsString('--queue=ai-workspace-interactive,ai-workspace,geoflow,distribution,theme-replication,default', $contents, basename($composeFile));
+            $this->assertStringContainsString('--queue=system-updates,geoflow,distribution,theme-replication,default', $contents, basename($composeFile));
+            $this->assertStringNotContainsString('--queue=ai-workspace-interactive', $contents, basename($composeFile));
+            $this->assertStringNotContainsString('--queue=ai-workspace', $contents, basename($composeFile));
             $this->assertStringContainsString('--queue=knowledge', $contents, basename($composeFile));
-            $this->assertStringContainsString('--queue=system-updates', $contents, basename($composeFile));
         }
     }
 
@@ -28,7 +29,7 @@ class DistributionQueueConfigurationTest extends TestCase
         $horizon = require dirname(__DIR__, 2).'/config/horizon.php';
 
         $this->assertSame(
-            ['geoflow', 'distribution', 'theme-replication', 'default'],
+            ['system-updates', 'geoflow', 'distribution', 'theme-replication', 'default'],
             $horizon['defaults']['supervisor-1']['queue'] ?? null
         );
     }
@@ -129,20 +130,21 @@ class DistributionQueueConfigurationTest extends TestCase
         );
     }
 
-    public function test_production_lifecycle_includes_dedicated_long_running_workers(): void
+    public function test_production_lifecycle_excludes_the_retired_application_update_worker(): void
     {
         $root = dirname(__DIR__, 2);
-        foreach ([
-            'README.md',
-            'docs/deployment/DEPLOYMENT.md',
-            'deploy-scripts/geoflow-docker-deploy.sh',
-            'deploy-scripts/geoflow-healthcheck.sh',
-        ] as $file) {
+        foreach (['docker-compose.yml', 'docker-compose.prod.yml', 'docker-compose.prebuilt.yml', 'config/horizon.php'] as $file) {
             $contents = file_get_contents($root.'/'.$file);
             $this->assertIsString($contents);
-            $this->assertStringContainsString('knowledge-queue', $contents, $file);
-            $this->assertStringContainsString('system-update-queue', $contents, $file);
+            $this->assertStringNotContainsString('geoflow-system-update-queue-prod', $contents, $file);
         }
+
+        $deploy = (string) file_get_contents($root.'/deploy-scripts/geoflow-docker-deploy.sh');
+        $healthcheck = (string) file_get_contents($root.'/deploy-scripts/geoflow-healthcheck.sh');
+        $this->assertStringContainsString('geoflow-system-update-queue-prod', $deploy);
+        $this->assertStringContainsString('--remove-orphans', $deploy);
+        $this->assertStringContainsString('geoflow-system-update-queue-prod', $healthcheck);
+        $this->assertStringContainsString('Retired system update worker is still present', $healthcheck);
     }
 
     public function test_queue_timeouts_preserve_retry_ordering(): void
@@ -152,7 +154,7 @@ class DistributionQueueConfigurationTest extends TestCase
         $queue = require $root.'/config/queue.php';
 
         $this->assertSame(210, $horizon['defaults']['supervisor-knowledge']['timeout']);
-        $this->assertSame(930, $horizon['defaults']['supervisor-system-updates']['timeout']);
+        $this->assertArrayNotHasKey('supervisor-system-updates', $horizon['defaults']);
         $this->assertGreaterThan(930, $queue['connections']['redis']['retry_after']);
         $this->assertGreaterThan(930, $queue['connections']['database']['retry_after']);
     }
@@ -167,6 +169,52 @@ class DistributionQueueConfigurationTest extends TestCase
         $this->assertStringContainsString('SESSION_SECURE_COOKIE "$session_secure_cookie"', $script);
         $this->assertStringContainsString('GEOFLOW_TRUSTED_PROXIES:-REMOTE_ADDR}', $script);
         $this->assertStringNotContainsString('GEOFLOW_TRUSTED_PROXIES:-*}', $script);
+    }
+
+    public function test_deploy_script_drains_old_services_around_database_migrations(): void
+    {
+        $script = file_get_contents(dirname(__DIR__, 2).'/deploy-scripts/geoflow-docker-deploy.sh');
+
+        $this->assertIsString($script);
+        $maintenanceLogAt = strpos($script, 'Entering maintenance mode and draining existing application services.');
+        $maintenanceAt = strpos($script, "\n  enter_maintenance_mode\n", $maintenanceLogAt === false ? 0 : $maintenanceLogAt);
+        $stopAt = strpos($script, 'stop web app queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb');
+        $migrationAt = strpos($script, '"${COMPOSE[@]}" up init');
+        $resumeAt = strpos($script, 'php artisan up');
+        $internalHealthAt = strpos($script, "\n  run_healthcheck 1\n");
+        $resumeCallAt = strpos($script, "\n  resume_traffic\n");
+        $externalHealthAt = strpos($script, "\n  run_healthcheck 0\n");
+        $this->assertNotFalse($maintenanceLogAt);
+        $this->assertNotFalse($maintenanceAt);
+        $this->assertNotFalse($stopAt);
+        $this->assertNotFalse($migrationAt);
+        $this->assertNotFalse($resumeAt);
+        $this->assertNotFalse($internalHealthAt);
+        $this->assertNotFalse($resumeCallAt);
+        $this->assertNotFalse($externalHealthAt);
+        $this->assertLessThan($stopAt, $maintenanceAt);
+        $this->assertLessThan($migrationAt, $stopAt);
+        $this->assertLessThan($resumeAt, $migrationAt);
+        $this->assertLessThan($resumeCallAt, $internalHealthAt);
+        $this->assertLessThan($externalHealthAt, $resumeCallAt);
+        $this->assertStringNotContainsString('ps --all --services | grep -qx app', $script);
+        $this->assertStringNotContainsString('ps --status running --services | grep -qx app', $script);
+        $maintenanceFunctionAt = strpos($script, 'enter_maintenance_mode()');
+        $maintenanceFunctionEnd = strpos($script, "\n}\n", $maintenanceFunctionAt === false ? 0 : $maintenanceFunctionAt);
+        $this->assertNotFalse($maintenanceFunctionAt);
+        $this->assertNotFalse($maintenanceFunctionEnd);
+        $maintenanceBlock = substr($script, (int) $maintenanceFunctionAt, (int) $maintenanceFunctionEnd - (int) $maintenanceFunctionAt);
+        $this->assertStringContainsString('"${COMPOSE[@]}" run --rm --no-deps', $maintenanceBlock);
+        $this->assertStringContainsString('-e AUTO_WAIT_FOR_DB=false', $maintenanceBlock);
+        $this->assertStringContainsString('-e AUTO_MIGRATE=false', $maintenanceBlock);
+        $this->assertStringContainsString('-e AUTO_INSTALL_ONCE=false', $maintenanceBlock);
+        $this->assertStringContainsString('-e AUTO_OPTIMIZE=false', $maintenanceBlock);
+        $this->assertStringContainsString('if enter_maintenance_mode; then', $script);
+
+        $healthcheck = file_get_contents(dirname(__DIR__, 2).'/deploy-scripts/geoflow-healthcheck.sh');
+        $this->assertIsString($healthcheck);
+        $this->assertStringContainsString('GEOFLOW_SKIP_HTTP_CHECK', $healthcheck);
+        $this->assertStringContainsString('fail "HTTP health endpoint failed:', $healthcheck);
     }
 
     public function test_nginx_forwards_client_ip_chain_to_laravel_rate_limiters(): void

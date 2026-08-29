@@ -58,7 +58,7 @@ class AuthenticateAdminWeb
         $routeName = (string) ($request->route()?->getName() ?? '');
 
         return ($request->expectsJson() || Str::startsWith($routeName, 'admin.ai-workspace.'))
-            ? response()->json(['message' => '登录状态已失效。', 'code' => 'unauthenticated'], 401)
+            ? response()->json(['message' => __('admin.ai_workspace.unauthenticated_message'), 'code' => 'unauthenticated'], 401)
             : redirect()->route('admin.login');
     }
 }

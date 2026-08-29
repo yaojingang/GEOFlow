@@ -44,11 +44,11 @@ return new class extends Migration
                 $table->string('agent');
                 $table->string('role', 25);
                 $table->text('content');
-                $table->text('attachments')->default('[]');
-                $table->text('tool_calls')->default('[]');
-                $table->text('tool_results')->default('[]');
-                $table->text('usage')->default('[]');
-                $table->text('meta')->default('[]');
+                $table->text('attachments');
+                $table->text('tool_calls');
+                $table->text('tool_results');
+                $table->text('usage');
+                $table->text('meta');
                 $table->text('approval_state')->nullable();
                 $table->timestamps();
 
@@ -129,8 +129,8 @@ return new class extends Migration
             $table->string('approval_policy', 30)->default('none');
             $table->json('result_contract')->nullable();
             $table->json('parameters');
-            $table->json('depends_on')->default('[]');
-            $table->json('input_bindings')->default('{}');
+            $table->json('depends_on')->nullable();
+            $table->json('input_bindings')->nullable();
             $table->timestamp('bindings_resolved_at')->nullable();
             $table->json('target_summary')->nullable();
             $table->json('result_summary')->nullable();
@@ -230,15 +230,8 @@ return new class extends Migration
         Schema::dropIfExists('ai_workspace_runs');
         // Conversation tables may be shared with Laravel AI. Keep them during
         // a workspace rollback to avoid deleting unrelated conversation data.
-        if (Schema::hasTable('ai_models')) {
-            Schema::table('ai_models', function (Blueprint $table): void {
-                if (Schema::hasColumn('ai_models', 'ai_workspace_structured_output_verified_at')) {
-                    $table->dropColumn('ai_workspace_structured_output_verified_at');
-                }
-                if (Schema::hasColumn('ai_models', 'ai_workspace_structured_output_status')) {
-                    $table->dropColumn('ai_workspace_structured_output_status');
-                }
-            });
-        }
+        // ai_models can predate this workspace migration. Keep readiness
+        // columns during rollback so this migration never deletes fields it
+        // may not have created.
     }
 };

@@ -77,6 +77,13 @@ class AnalyticsLogFilterTest extends TestCase
         $this->assertSame('7d', $filter->preset);
         $this->assertSame('human', $filter->trafficType);
         $this->assertSame('all', $filter->source);
-        $this->assertSame(['local', 'server', 'channel'], AnalyticsLogFilter::supportedSources());
+        $this->assertSame(['local', 'hosted_site', 'server', 'channel'], AnalyticsLogFilter::supportedSources());
+    }
+
+    public function test_it_accepts_hosted_site_logs_as_a_supported_source(): void
+    {
+        $filter = AnalyticsLogFilter::fromRequest(['log_source' => 'hosted_site']);
+
+        $this->assertSame('hosted_site', $filter->source);
     }
 }

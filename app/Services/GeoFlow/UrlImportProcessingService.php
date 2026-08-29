@@ -16,6 +16,7 @@ use App\Services\Outbound\OutboundRequestBlockedException;
 use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use App\Support\LibraryImportPolicy;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Http\Client\Factory;
@@ -209,12 +210,33 @@ final class UrlImportProcessingService
         /** @var array<string, mixed> $analysis */
         $analysis = is_array($result['analysis'] ?? null) ? $result['analysis'] : [];
         $baseName = $this->safeName((string) ($analysis['library_name'] ?? $page['title'] ?? $job->source_domain ?: 'URL素材'));
-        $knowledgeContent = trim((string) ($analysis['knowledge_markdown'] ?? $page['text'] ?? ''));
+        $knowledgeContent = trim(LibraryImportPolicy::sanitizeDatabaseText(
+            (string) ($analysis['knowledge_markdown'] ?? $page['text'] ?? ''),
+        ));
         if ($knowledgeContent === '') {
             throw new \RuntimeException(__('admin.url_import.error.commit_before_parse'));
         }
-        $keywords = $this->stringList($analysis['keywords'] ?? []);
-        $titles = $this->stringList($analysis['titles'] ?? []);
+        $knowledgeDescription = LibraryImportPolicy::sanitizeDatabaseText((string) ($analysis['summary'] ?? ''));
+        $rawKeywords = $analysis['keywords'] ?? [];
+        $safeRawKeywords = is_array($rawKeywords)
+            ? Collection::make($rawKeywords)
+                ->reject(static fn (mixed $keyword): bool => LibraryImportPolicy::containsNullByteInInput($keyword))
+                ->values()
+                ->all()
+            : [];
+        $keywords = Collection::make($this->stringList($safeRawKeywords))
+            ->filter(static fn (string $keyword): bool => mb_strlen($keyword, 'UTF-8') <= LibraryImportPolicy::KEYWORD_MAX_CHARACTERS)
+            ->values()
+            ->all();
+        $titles = [];
+        foreach ($this->stringList($analysis['titles'] ?? []) as $title) {
+            $normalizedTitle = LibraryImportPolicy::normalizeStorableTitle($title);
+            if ($normalizedTitle === null || in_array($normalizedTitle, $titles, true)) {
+                continue;
+            }
+
+            $titles[] = $normalizedTitle;
+        }
         if ($keywords === []) {
             throw new \RuntimeException(__('admin.url_import.error.ai_keywords_missing'));
         }
@@ -222,10 +244,10 @@ final class UrlImportProcessingService
             throw new \RuntimeException(__('admin.url_import.error.ai_titles_missing'));
         }
 
-        $summary = DB::transaction(function () use ($baseName, $knowledgeContent, $analysis, $keywords, $titles): array {
+        $summary = DB::transaction(function () use ($baseName, $knowledgeContent, $knowledgeDescription, $keywords, $titles): array {
             $knowledgeBase = KnowledgeBase::query()->create([
                 'name' => $baseName.' 知识库',
-                'description' => (string) ($analysis['summary'] ?? ''),
+                'description' => $knowledgeDescription,
                 'content' => $knowledgeContent,
                 'character_count' => mb_strlen($knowledgeContent, 'UTF-8'),
                 'used_task_count' => 0,
@@ -1000,7 +1022,7 @@ PROMPT;
         return Collection::make($items)
             ->map(fn (string $item): string => $this->normalizeText($item))
             ->filter(static fn (string $item): bool => $item !== '')
-            ->unique()
+            ->uniqueStrict()
             ->take(80)
             ->values()
             ->all();
@@ -1074,7 +1096,7 @@ PROMPT;
 
                 return true;
             })
-            ->unique()
+            ->uniqueStrict()
             ->take(10)
             ->values()
             ->all();
@@ -1182,7 +1204,7 @@ PROMPT;
         return Collection::make($value)
             ->map(fn (mixed $item): string => $this->aiResponseTextToString($item))
             ->filter(static fn (string $item): bool => $item !== '')
-            ->unique()
+            ->uniqueStrict()
             ->values()
             ->all();
     }

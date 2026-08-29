@@ -147,7 +147,7 @@ class AdminArticleAssistantTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->post(route('admin.articles.store'), [
                 'title' => $title->title,
-                'content' => "## 正文\n\nAI 生成的文章内容。",
+                'content' => "## 正文\n\nAI 生成的文章内容。[K1] Vitamin K2 保留。",
                 'excerpt' => '',
                 'keywords' => 'AI CRM',
                 'meta_description' => '',
@@ -162,6 +162,7 @@ class AdminArticleAssistantTest extends TestCase
 
         $article = Article::query()->where('title', $title->title)->firstOrFail();
         $this->assertTrue((bool) $article->is_ai_generated);
+        $this->assertSame("## 正文\n\nAI 生成的文章内容。Vitamin K2 保留。", $article->content);
         $this->assertSame((int) $title->id, (int) $article->source_title_id);
         $this->assertTrue($article->sourceTitle->is($title));
         $this->assertSame(1, (int) $title->fresh()->used_count);
@@ -201,9 +202,43 @@ class AdminArticleAssistantTest extends TestCase
         $this->assertSame(0, (int) $title->fresh()->usage_count);
     }
 
+    public function test_ai_article_update_cleans_markers_even_when_the_hidden_flag_is_tampered(): void
+    {
+        $admin = $this->createAdmin('assistant_update_clean');
+        $category = Category::query()->create(['name' => '更新清理', 'slug' => 'assistant-update-clean']);
+        $author = Author::query()->create(['name' => '更新清理作者']);
+        $article = Article::query()->create([
+            'title' => 'AI 文章更新清理',
+            'slug' => 'ai-article-update-clean',
+            'content' => '旧正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+            'is_ai_generated' => true,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.articles.update', ['articleId' => $article->id]), [
+                'title' => $article->title,
+                'content' => '更新正文 [K1]，Vitamin K2 保留。',
+                'excerpt' => '',
+                'keywords' => '',
+                'meta_description' => '',
+                'category_id' => $category->id,
+                'author_id' => $author->id,
+                'status' => 'draft',
+                'review_status' => 'pending',
+                'is_ai_generated' => '0',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('更新正文，Vitamin K2 保留。', $article->fresh()->content);
+    }
+
     public function test_ai_generation_streams_content_and_counts_model_usage(): void
     {
-        MarkdownContentWriterAgent::fake(['## 生成正文 内容完整。'])->preventStrayPrompts();
+        MarkdownContentWriterAgent::fake(['## 生成正文 [K1] Vitamin K2 内容完整。'])->preventStrayPrompts();
 
         $admin = $this->createAdmin('assistant_stream');
         $prompt = $this->createPrompt([
@@ -225,6 +260,8 @@ class AdminArticleAssistantTest extends TestCase
         $streamedContent = $response->streamedContent();
         $this->assertStringContainsString('"type":"text_delta"', $streamedContent);
         $this->assertStringContainsString('##', $streamedContent);
+        $this->assertStringContainsString('"type":"article_content_replacement"', $streamedContent);
+        $this->assertStringContainsString('## 生成正文 Vitamin K2 内容完整。', $streamedContent);
         $this->assertStringContainsString('data: [DONE]', $streamedContent);
         $this->assertSame(1, (int) $model->fresh()->used_today);
         $this->assertSame(1, (int) $model->fresh()->total_used);
@@ -234,7 +271,7 @@ class AdminArticleAssistantTest extends TestCase
             fn ($prompt): bool => str_contains($prompt->prompt, 'GEO 内容工程')
                 && str_contains($prompt->prompt, 'GEO 内容工程需要结合检索证据')
                 && str_contains($prompt->prompt, '【知识库证据】')
-                && str_contains($prompt->prompt, '禁止输出任何引用占位符')
+                && str_contains($prompt->prompt, '最终文章中不得出现任何内部证据编号')
                 && ! str_contains($prompt->prompt, '并在相关句子后标注证据编号'),
         );
     }

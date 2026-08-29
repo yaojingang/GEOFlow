@@ -25,6 +25,7 @@ use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Request as LaravelRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -428,7 +429,7 @@ class SafeOutboundHttpClientTest extends TestCase
         $this->assertSame('identity', $final['request']->getHeaderLine('Accept-Encoding'));
         $this->assertFalse($final['options']['allow_redirects']);
         $this->assertFalse($final['options']['decode_content']);
-        $this->assertFalse($final['options']['stream']);
+        $this->assertTrue($final['options']['stream']);
         $this->assertTrue($final['options']['verify']);
         $this->assertSame('', $final['options']['proxy']);
         $this->assertSame('v4', $final['options']['force_ip_resolve']);
@@ -584,7 +585,7 @@ class SafeOutboundHttpClientTest extends TestCase
         $this->assertSame('identity', $captured['request']->getHeaderLine('Accept-Encoding'));
         $this->assertFalse($captured['options']['allow_redirects']);
         $this->assertFalse($captured['options']['decode_content']);
-        $this->assertFalse($captured['options']['stream']);
+        $this->assertTrue($captured['options']['stream']);
         $this->assertTrue($captured['options']['verify']);
         $this->assertSame('', $captured['options']['proxy']);
         $this->assertSame(9, $captured['options']['timeout']);
@@ -1319,7 +1320,7 @@ class SafeOutboundHttpClientTest extends TestCase
     }
 
     #[Test]
-    public function direct_http_facade_limits_unknown_size_streaming_responses_while_forcing_the_terminal_to_non_streaming_mode(): void
+    public function direct_http_facade_limits_unknown_size_streaming_responses_without_buffering_the_terminal_response(): void
     {
         config(['geoflow.outbound_ai_max_bytes' => 1024]);
         $terminalStreamOption = null;
@@ -1345,7 +1346,7 @@ class SafeOutboundHttpClientTest extends TestCase
         $response = Http::withOptions(['stream' => true])->get('https://public.test/v1/models');
         $body = $response->toPsrResponse()->getBody();
 
-        $this->assertFalse($terminalStreamOption);
+        $this->assertTrue($terminalStreamOption);
         $this->assertInstanceOf(ResponseSizeLimitedStream::class, $body);
         $this->assertSame(str_repeat('x', 1024), $body->read(1024));
 
@@ -1786,7 +1787,48 @@ class SafeOutboundHttpClientTest extends TestCase
             $this->assertStringNotContainsString('super-secret', $exception->getMessage());
             $this->assertStringNotContainsString('10.0.0.9', $exception->getMessage());
             $this->assertStringNotContainsString('secret.test', $exception->getMessage());
+            $this->assertInstanceOf(\RuntimeException::class, $exception->getPrevious());
+            $this->assertSame(\RuntimeException::class, $exception->causeType);
+            $this->assertStringNotContainsString('TLS failed', (string) $exception->getPrevious()?->getMessage());
+            $this->assertStringNotContainsString('super-secret', (string) $exception->getPrevious()?->getMessage());
         }
+    }
+
+    #[Test]
+    public function transport_timeout_failures_retain_a_safe_machine_readable_category(): void
+    {
+        $exception = new OutboundRequestFailedException(
+            new \RuntimeException('cURL error 28: Operation timed out after 160000 milliseconds api_key=super-secret'),
+        );
+
+        $this->assertSame('timeout', $exception->transportCategory);
+        $this->assertStringNotContainsString('super-secret', $exception->getMessage());
+        $this->assertStringNotContainsString('super-secret', (string) $exception->getPrevious()?->getMessage());
+    }
+
+    #[Test]
+    public function provider_http_failures_retain_safe_status_code_and_quota_category(): void
+    {
+        $response = new Response(new PsrResponse(
+            402,
+            ['Content-Type' => 'application/json'],
+            json_encode([
+                'error' => [
+                    'type' => 'unknown_error',
+                    'code' => 'invalid_request_error',
+                    'message' => 'Insufficient Balance api_key=super-secret',
+                ],
+            ], JSON_THROW_ON_ERROR),
+        ));
+        $exception = new OutboundRequestFailedException(
+            new RequestException($response),
+        );
+
+        $this->assertSame(402, $exception->httpStatus);
+        $this->assertSame('invalid_request_error', $exception->providerCode);
+        $this->assertSame('quota_exhausted', $exception->providerCategory);
+        $this->assertStringNotContainsString('super-secret', $exception->getMessage());
+        $this->assertStringNotContainsString('Insufficient Balance', (string) $exception->getPrevious()?->getMessage());
     }
 
     /** @return array<int, mixed> */

@@ -32,7 +32,7 @@ class MarkdownContentWriterAgent implements Agent, Conversational, HasProviderOp
      * @param  iterable<int, mixed>  $tools
      */
     public function __construct(
-        public string $instructions = '你是专业中文写作助手，请输出高质量、可发布的 Markdown 文章。',
+        public string $instructions = '你是专业文章写作助手，请输出高质量、可发布的 Markdown 文章。最终文章禁止出现 [K1]、[K2][K3] 等内部证据编号、引用占位符或编号引用标记；需要说明依据时使用自然语言。',
         public iterable $messages = [],
         public iterable $tools = [],
         public ?int $maxTokens = null,

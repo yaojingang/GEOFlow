@@ -3,31 +3,22 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\AiWorkspace\RejectApprovalRequest;
+use App\Http\Requests\Admin\AiWorkspace\RenameConversationRequest;
 use App\Http\Requests\Admin\AiWorkspace\SendMessageRequest;
 use App\Http\Requests\Admin\AiWorkspace\StoreConversationRequest;
-use App\Http\Requests\Admin\AiWorkspace\UpdatePlanRequest;
 use App\Models\Admin;
-use App\Models\AiWorkspaceApproval;
-use App\Models\AiWorkspaceRun;
-use App\Models\AiWorkspaceStep;
+use App\Models\AiConversationMessage;
+use App\Services\AiWorkspace\AdminHelpAnswerStream;
 use App\Services\AiWorkspace\AiConversationRepository;
-use App\Services\AiWorkspace\AiWorkflowEngine;
-use App\Services\AiWorkspace\AiWorkspaceCoordinator;
-use App\Services\AiWorkspace\AiWorkspaceGovernanceMetrics;
-use App\Services\AiWorkspace\AiWorkspaceSnapshot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Laravel\Ai\Models\ConversationMessage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class AiWorkspaceApiController extends Controller
 {
     public function __construct(
         private readonly AiConversationRepository $conversations,
-        private readonly AiWorkspaceCoordinator $coordinator,
-        private readonly AiWorkflowEngine $engine,
-        private readonly AiWorkspaceSnapshot $snapshot,
-        private readonly AiWorkspaceGovernanceMetrics $metrics,
+        private readonly AdminHelpAnswerStream $answers,
     ) {}
 
     public function conversations(Request $request): JsonResponse
@@ -56,35 +47,46 @@ final class AiWorkspaceApiController extends Controller
     public function showConversation(Request $request, string $conversation): JsonResponse
     {
         $model = $this->conversations->findForAdmin($this->admin($request), $conversation);
-        $messages = ConversationMessage::query()
-            ->where('conversation_id', $model->id)
+        $pageSize = 100;
+        $messageQuery = AiConversationMessage::query()->where('conversation_id', $model->id);
+        $before = trim((string) $request->query('before', ''));
+        if ($before !== '') {
+            abort_if(mb_strlen($before) > 36, 422, 'Invalid conversation history cursor.');
+            $cursor = AiConversationMessage::query()
+                ->where('conversation_id', $model->id)
+                ->whereKey($before)
+                ->firstOrFail();
+            $messageQuery->where(function ($query) use ($cursor): void {
+                $query->where('created_at', '<', $cursor->created_at)
+                    ->orWhere(function ($query) use ($cursor): void {
+                        $query->where('created_at', $cursor->created_at)->where('id', '<', $cursor->id);
+                    });
+            });
+        }
+
+        $messagePage = $messageQuery
+            ->select(['id', 'conversation_id', 'role', 'content', 'meta', 'created_at'])
             ->latest('created_at')
             ->latest('id')
-            ->limit(200)
-            ->get()
-            ->reverse()
-            ->values()
-            ->map(static fn (ConversationMessage $message): array => [
+            ->limit($pageSize + 1)
+            ->get();
+        $hasMoreMessages = $messagePage->count() > $pageSize;
+        $messagePage = $messagePage->take($pageSize);
+
+        return response()->json(['data' => [
+            'id' => (string) $model->id,
+            'title' => (string) $model->title,
+            'messages' => $messagePage->reverse()->values()->map(static fn (AiConversationMessage $message): array => [
                 'id' => (string) $message->id,
                 'role' => (string) $message->role,
                 'content' => (string) $message->content,
                 'meta' => $message->meta ?? [],
                 'created_at' => $message->created_at?->toISOString(),
-            ])->all();
-        $runs = AiWorkspaceRun::query()
-            ->where('conversation_id', $model->id)
-            ->where('admin_id', $this->admin($request)->id)
-            ->latest()
-            ->limit(30)
-            ->get()
-            ->map(fn (AiWorkspaceRun $run): array => $this->snapshot->make($run))
-            ->all();
-
-        return response()->json(['data' => [
-            'id' => (string) $model->id,
-            'title' => (string) $model->title,
-            'messages' => $messages,
-            'runs' => $runs,
+            ])->all(),
+            'message_page' => [
+                'has_more' => $hasMoreMessages,
+                'next_cursor' => $hasMoreMessages ? (string) $messagePage->last()?->id : null,
+            ],
         ]]);
     }
 
@@ -96,84 +98,29 @@ final class AiWorkspaceApiController extends Controller
         return response()->json(['data' => ['id' => (string) $model->id, 'archived' => true]]);
     }
 
-    public function sendMessage(SendMessageRequest $request, string $conversation): JsonResponse
+    public function renameConversation(RenameConversationRequest $request, string $conversation): JsonResponse
+    {
+        $model = $this->conversations->rename(
+            $this->admin($request),
+            $conversation,
+            (string) $request->validated('title'),
+        );
+        $this->audit($request, 'conversation.rename', ['conversation_id' => $model->id]);
+
+        return response()->json(['data' => [
+            'id' => (string) $model->id,
+            'title' => (string) $model->title,
+            'updated_at' => $model->updated_at?->toISOString(),
+        ]]);
+    }
+
+    public function sendMessage(SendMessageRequest $request, string $conversation): StreamedResponse
     {
         $admin = $this->admin($request);
         $model = $this->conversations->findForAdmin($admin, $conversation);
-        $run = $this->coordinator->createRun(
-            $admin,
-            $model,
-            (string) $request->validated('prompt'),
-            $request->validated('request_key'),
-        );
-        $this->audit($request, 'message.submit', ['conversation_id' => $model->id, 'run_id' => $run->id]);
+        $this->audit($request, 'message.ask', ['conversation_id' => $model->id]);
 
-        return response()->json(['data' => $this->snapshot->make($run->fresh())], 202);
-    }
-
-    public function showRun(Request $request, string $run): JsonResponse
-    {
-        $model = AiWorkspaceRun::query()->whereKey($run)->where('admin_id', $this->admin($request)->id)->firstOrFail();
-
-        return response()->json(['data' => $this->snapshot->make($model)]);
-    }
-
-    public function metrics(Request $request): JsonResponse
-    {
-        abort_unless($this->admin($request)->isSuperAdmin(), 403);
-        $days = min(90, max(1, (int) $request->integer('days', 7)));
-
-        return response()->json(['data' => $this->metrics->snapshot($days)]);
-    }
-
-    public function approve(Request $request, string $approval): JsonResponse
-    {
-        $model = AiWorkspaceApproval::query()->findOrFail($approval);
-        $run = $this->engine->approve($this->admin($request), $model);
-        $this->audit($request, 'approval.approve', ['approval_id' => $approval, 'run_id' => $run->id]);
-
-        return response()->json(['data' => $this->snapshot->make($run)]);
-    }
-
-    public function reject(RejectApprovalRequest $request, string $approval): JsonResponse
-    {
-        $model = AiWorkspaceApproval::query()->findOrFail($approval);
-        $run = $this->engine->reject($this->admin($request), $model, $request->validated('reason'));
-        $this->audit($request, 'approval.reject', ['approval_id' => $approval, 'run_id' => $run->id]);
-
-        return response()->json(['data' => $this->snapshot->make($run)]);
-    }
-
-    public function updatePlan(UpdatePlanRequest $request, string $run): JsonResponse
-    {
-        $model = AiWorkspaceRun::query()->with('steps')->whereKey($run)->where('admin_id', $this->admin($request)->id)->firstOrFail();
-        $updated = $this->engine->editPlan(
-            $this->admin($request),
-            $model,
-            $request->validated('step_parameters'),
-            (int) $request->validated('plan_version'),
-        );
-        $this->audit($request, 'plan.update', ['run_id' => $updated->id, 'plan_version' => $updated->plan_version]);
-
-        return response()->json(['data' => $this->snapshot->make($updated)]);
-    }
-
-    public function cancel(Request $request, string $run): JsonResponse
-    {
-        $model = AiWorkspaceRun::query()->whereKey($run)->where('admin_id', $this->admin($request)->id)->firstOrFail();
-        $cancelled = $this->engine->cancel($this->admin($request), $model);
-        $this->audit($request, 'run.cancel', ['run_id' => $cancelled->id]);
-
-        return response()->json(['data' => $this->snapshot->make($cancelled)]);
-    }
-
-    public function retryStep(Request $request, string $step): JsonResponse
-    {
-        $model = AiWorkspaceStep::query()->findOrFail($step);
-        $run = $this->engine->retryStep($this->admin($request), $model);
-        $this->audit($request, 'step.retry', ['run_id' => $run->id, 'step_id' => $step]);
-
-        return response()->json(['data' => $this->snapshot->make($run)]);
+        return $this->answers->respond($admin, $model, (string) $request->validated('prompt'));
     }
 
     private function admin(Request $request): Admin
@@ -184,7 +131,7 @@ final class AiWorkspaceApiController extends Controller
         return $admin;
     }
 
-    /** @param array<string,mixed> $details */
+    /** @param array<string, mixed> $details */
     private function audit(Request $request, string $action, array $details): void
     {
         $request->attributes->set('admin_activity_action', $action);

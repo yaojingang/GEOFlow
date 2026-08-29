@@ -78,6 +78,47 @@ class AdminManualPublicationsTest extends TestCase
             ->assertSee('最终发布文案');
     }
 
+    public function test_article_picker_searches_paginated_results_and_keeps_current_article_selected(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        [$persona, $account] = $this->identity($superAdmin);
+        $currentArticle = $this->article('approved');
+        $currentArticle->update(['title' => '当前工单历史文章']);
+        $searchableArticle = $this->article('approved');
+        $searchableArticle->update(['title' => '归档检索针文章']);
+        $publication = app(ManualPublicationService::class)->create(
+            $this->payload($persona, $account, $superAdmin, ['article_id' => $currentArticle->getKey()]),
+            $superAdmin,
+        );
+
+        foreach (range(1, 55) as $sequence) {
+            Article::query()->create([
+                'title' => '近期已审核文章 '.$sequence,
+                'slug' => 'recent-approved-article-'.$sequence,
+                'excerpt' => '摘要',
+                'content' => '文章正文',
+                'category_id' => $currentArticle->category_id,
+                'author_id' => $currentArticle->author_id,
+                'status' => 'draft',
+                'review_status' => 'approved',
+            ]);
+        }
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.manual-publications.create', ['article_search' => '归档检索针']))
+            ->assertOk()
+            ->assertSee($searchableArticle->title)
+            ->assertViewHas('articles', fn ($articles): bool => $articles->total() === 1);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.manual-publications.edit', ['manualPublicationId' => $publication->getKey()]))
+            ->assertOk()
+            ->assertSee($currentArticle->title)
+            ->assertSee('value="'.$currentArticle->getKey().'" selected', false)
+            ->assertViewHas('articles', fn ($articles): bool => $articles->perPage() === 50
+                && $articles->getCollection()->contains('id', $currentArticle->getKey()));
+    }
+
     public function test_standard_admin_only_sees_assigned_work_and_can_complete_it(): void
     {
         $superAdmin = $this->admin('super_admin');
@@ -131,6 +172,52 @@ class AdminManualPublicationsTest extends TestCase
         $assigned->refresh();
         $this->assertSame(ManualPublication::STATUS_COMPLETED, $assigned->status);
         $this->assertSame('https://example.com/posts/worker-result', $assigned->completion_url);
+        $this->assertCount(4, $assigned->transitions()->get());
+        $this->assertSame($worker->getKey(), $assigned->transitions()->latest('id')->firstOrFail()->changed_by_admin_id);
+    }
+
+    public function test_assignee_can_see_and_recover_a_stale_browser_claim(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        $worker = $this->admin('admin');
+        [$persona, $account] = $this->identity($superAdmin);
+        $article = $this->article('approved');
+        $publication = app(ManualPublicationService::class)->create(
+            $this->payload($persona, $account, $worker, [
+                'article_id' => $article->getKey(),
+                'target_url' => 'https://www.zhihu.com/question/123456',
+                'status' => ManualPublication::STATUS_READY,
+            ]),
+            $superAdmin,
+        );
+        $token = $worker->createToken('Lost Chrome', [
+            'browser-operations:read', 'browser-operations:execute',
+        ])->accessToken;
+        $publication->forceFill([
+            'status' => ManualPublication::STATUS_IN_PROGRESS,
+            'status_changed_at' => now()->subMinutes(11),
+            'browser_claimed_by_token_id' => $token->id,
+            'browser_claimed_at' => now()->subMinutes(11),
+            'browser_last_seen_at' => now()->subMinutes(11),
+            'revision' => 2,
+        ])->save();
+
+        $this->actingAs($worker, 'admin')
+            ->get(route('admin.manual-publications.show', ['manualPublicationId' => $publication->getKey()]))
+            ->assertOk()
+            ->assertSee(__('admin.manual_publications.browser.lost'))
+            ->assertSee('name="target_status" value="ready"', false)
+            ->assertSee(__('admin.manual_publications.action.outcome_unknown'));
+
+        $this->actingAs($worker, 'admin')
+            ->post(route('admin.manual-publications.transition', ['manualPublicationId' => $publication->getKey()]), [
+                'target_status' => ManualPublication::STATUS_READY,
+                'revision' => 2,
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(ManualPublication::STATUS_READY, $publication->refresh()->status);
+        $this->assertNull($publication->browser_claimed_by_token_id);
     }
 
     public function test_comment_validation_requires_target_and_rejects_account_persona_mismatch(): void
@@ -138,6 +225,11 @@ class AdminManualPublicationsTest extends TestCase
         $superAdmin = $this->admin('super_admin');
         [$persona, $account] = $this->identity($superAdmin);
         $otherPersona = ManualPublicationPersona::query()->create(['name' => '另一个身份']);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.manual-publications.create'))
+            ->assertOk()
+            ->assertSee('maxlength="2000"', false);
 
         $this->actingAs($superAdmin, 'admin')
             ->from(route('admin.manual-publications.create'))
@@ -269,9 +361,9 @@ class AdminManualPublicationsTest extends TestCase
         ])->assertSessionHasErrors();
         $this->assertSame(ManualPublication::STATUS_DRAFT, $publication->refresh()->status);
 
-        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1);
-        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 2);
-        $publication = $service->transition($publication, ManualPublication::STATUS_FAILED, 3, resultNote: '平台暂时不可用');
+        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1, $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 2, $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_FAILED, 3, $superAdmin, resultNote: '平台暂时不可用');
 
         $this->actingAs($worker, 'admin')->post(route('admin.manual-publications.transition', ['manualPublicationId' => $publication->getKey()]), [
             'target_status' => ManualPublication::STATUS_READY,
@@ -283,6 +375,37 @@ class AdminManualPublicationsTest extends TestCase
             'revision' => 4,
         ])->assertRedirect();
         $this->assertSame(ManualPublication::STATUS_READY, $publication->refresh()->status);
+    }
+
+    public function test_assignee_can_reconcile_an_unknown_browser_outcome_to_completed(): void
+    {
+        $superAdmin = $this->admin('super_admin');
+        $worker = $this->admin('admin');
+        [$persona, $account] = $this->identity($superAdmin);
+        $article = $this->article('approved');
+        $service = app(ManualPublicationService::class);
+        $publication = $service->create($this->payload($persona, $account, $worker, [
+            'article_id' => $article->getKey(),
+        ]), $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_READY, 1, $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_IN_PROGRESS, 2, $superAdmin);
+        $publication = $service->transition($publication, ManualPublication::STATUS_OUTCOME_UNKNOWN, 3, $superAdmin);
+
+        $this->actingAs($worker, 'admin')
+            ->get(route('admin.manual-publications.show', ['manualPublicationId' => $publication->getKey()]))
+            ->assertOk()
+            ->assertSee('name="completion_url"', false)
+            ->assertSee(__('admin.manual_publications.action.completed'));
+
+        $this->actingAs($worker, 'admin')
+            ->post(route('admin.manual-publications.transition', ['manualPublicationId' => $publication->getKey()]), [
+                'target_status' => ManualPublication::STATUS_COMPLETED,
+                'revision' => 4,
+                'completion_url' => 'https://example.com/reconciled-result',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(ManualPublication::STATUS_COMPLETED, $publication->refresh()->status);
     }
 
     private function admin(string $role): Admin

@@ -6,43 +6,43 @@ use Tests\TestCase;
 
 class SecurityReleaseMetadataTest extends TestCase
 {
-    public function test_v211_manifest_uses_immutable_release_urls_and_security_upgrade_guidance(): void
+    public function test_v300_manifest_uses_immutable_release_urls_and_major_upgrade_guidance(): void
     {
         $manifest = json_decode((string) file_get_contents(base_path('version.json')), true, flags: JSON_THROW_ON_ERROR);
         $payload = $manifest['payload'];
 
-        $this->assertSame('2.1.1', $manifest['version']);
-        $this->assertSame('2026-07-17', $manifest['release_date']);
-        $this->assertSame('patch', $manifest['release_type']);
+        $this->assertSame('3.0.0', $manifest['version']);
+        $this->assertSame('2026-08-28', $manifest['release_date']);
+        $this->assertSame('major', $manifest['release_type']);
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v2.1.1.zip',
+            'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v3.0.0.zip',
             $manifest['archive_url'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/releases/tag/v2.1.1',
+            'https://github.com/yaojingang/GEOFlow/releases/tag/v3.0.0',
             $payload['release_url'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/blob/v2.1.1/docs/CHANGELOG.md',
+            'https://github.com/yaojingang/GEOFlow/blob/v3.0.0/docs/CHANGELOG.md',
             $payload['changelog_url_zh'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/blob/v2.1.1/docs/CHANGELOG_en.md',
+            'https://github.com/yaojingang/GEOFlow/blob/v3.0.0/docs/CHANGELOG_en.md',
             $payload['changelog_url_en'],
         );
 
         $encoded = json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString('/main.zip', $encoded);
         $this->assertStringNotContainsString('/blob/main/', $encoded);
-        foreach (['migrate', 'security-audit', 'queue'] as $requiredText) {
+        foreach (['migrate', 'security-audit', 'queue', 'wildcard dns'] as $requiredText) {
             $this->assertStringContainsString($requiredText, strtolower($payload['upgrade_tip_en']));
         }
-        foreach (['删除', '排空', 'readiness'] as $requiredText) {
+        foreach (['备份', '排空', '泛 DNS', 'readiness'] as $requiredText) {
             $this->assertStringContainsString($requiredText, $payload['upgrade_tip_zh']);
         }
     }
 
-    public function test_security_changelogs_are_synchronized_and_revoke_the_v210_live_editor_claim(): void
+    public function test_major_release_changelogs_are_synchronized_and_keep_security_history(): void
     {
         $zh = (string) file_get_contents(base_path('docs/CHANGELOG.md'));
         $en = (string) file_get_contents(base_path('docs/CHANGELOG_en.md'));
@@ -51,11 +51,19 @@ class SecurityReleaseMetadataTest extends TestCase
             $this->assertStringContainsString($term, $zh);
             $this->assertStringContainsString($term, $en);
         }
+        foreach (['v2.1.2', 'v2.2.0', 'v2.3.0', 'v3.0.0', 'Admin UI V3', 'PWA', 'CLI'] as $term) {
+            $this->assertStringContainsString($term, $zh);
+            $this->assertStringContainsString($term, $en);
+        }
+        $this->assertStringContainsString('后台帮助助手', $zh);
+        $this->assertStringContainsString('admin help assistant', strtolower($en));
+        $this->assertStringContainsString('托管渠道站点', $zh);
+        $this->assertStringContainsString('hosted channel site', strtolower($en));
         $this->assertStringContainsString('v2.1.0', $zh);
         $this->assertStringContainsString('在线主题编辑能力已在 v2.1.1 中关闭', $zh);
         $this->assertStringContainsString('live theme editing is disabled in v2.1.1', strtolower($en));
-        $this->assertStringNotContainsString('v2.1.1 已发布', $zh);
-        $this->assertStringNotContainsString('v2.1.1 has been released', strtolower($en));
+        $this->assertStringNotContainsString('v3.0.0 已发布', $zh);
+        $this->assertStringNotContainsString('v3.0.0 has been released', strtolower($en));
     }
 
     public function test_environment_examples_do_not_lock_the_application_version(): void

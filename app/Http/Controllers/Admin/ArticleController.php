@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ExportArticlesMarkdownRequest;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -16,20 +18,32 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\ArticleAiQualityGate;
+use App\Services\GeoFlow\ArticleAiQualityInspectionService;
+use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
+use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
+use App\Services\GeoFlow\ArticleMarkdownExportService;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\HostedSites\HostedSiteArticleFingerprintService;
+use App\Support\Admin\ArticleAiQualityProgressPresenter;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
 
 /**
@@ -43,8 +57,14 @@ class ArticleController extends Controller
     public function __construct(
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly ArticleRiskScanner $articleRiskScanner,
+        private readonly ArticleMarkdownExportService $articleMarkdownExportService,
         private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
         private readonly HostedSiteArticleFingerprintService $hostedFingerprints,
+        private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
+        private readonly ArticleAiQualityInvalidationService $articleAiQualityInvalidationService,
+        private readonly ArticleAiQualityGate $articleAiQualityGate,
+        private readonly ArticleAiQualityProgressPresenter $articleAiQualityProgressPresenter,
+        private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
     ) {}
 
     /**
@@ -72,6 +92,7 @@ class ArticleController extends Controller
             'isTrashView' => $isTrashView,
             'trashI18n' => $this->trashI18n(),
             'articleBatchRoutes' => $this->articleBatchRoutes($isTrashView),
+            'articleExportMaxArticles' => ArticleMarkdownExportService::MAX_ARTICLES,
             'canCreateManualPublication' => $this->canCreateManualPublication($request),
         ]);
     }
@@ -129,6 +150,124 @@ class ArticleController extends Controller
         }
     }
 
+    public function prepareMarkdownExport(ExportArticlesMarkdownRequest $request): JsonResponse
+    {
+        $adminId = $this->authenticatedAdminId($request);
+        $articleIds = $request->articleIds();
+        $adminLock = Cache::lock(
+            'geoflow:article-markdown-export:admin:'.$adminId,
+            ArticleMarkdownExportService::BUILD_LOCK_SECONDS,
+        );
+        $capacityLock = null;
+        $adminLockAcquired = false;
+        $capacityLockAcquired = false;
+
+        try {
+            if (! $adminLock->get()) {
+                return response()->json([
+                    'message' => __('admin.articles.export.errors.in_progress'),
+                    'code' => 'article_export_in_progress',
+                ], 409);
+            }
+            $adminLockAcquired = true;
+
+            $capacityLock = Cache::lock(
+                'geoflow:article-markdown-export:capacity',
+                ArticleMarkdownExportService::BUILD_LOCK_SECONDS,
+            );
+            if (! $capacityLock->get()) {
+                return response()->json([
+                    'message' => __('admin.articles.export.errors.in_progress'),
+                    'code' => 'article_export_capacity_busy',
+                ], 409);
+            }
+            $capacityLockAcquired = true;
+
+            $export = $this->articleMarkdownExportService->prepare($adminId, $articleIds);
+            $expiresAt = now()->addMinutes(ArticleMarkdownExportService::DOWNLOAD_TTL_MINUTES);
+            $downloadUrl = AdminWeb::appPath(
+                URL::temporarySignedRoute(
+                    'admin.articles.batch.export-markdown.download',
+                    $expiresAt,
+                    [
+                        'exportToken' => $export['token'],
+                        'owner' => $adminId,
+                        'filename' => $export['filename'],
+                    ],
+                    absolute: false,
+                ),
+            );
+
+            return response()->json([
+                'data' => [
+                    'count' => $export['count'],
+                    'filename' => $export['filename'],
+                    'download_url' => $downloadUrl,
+                    'expires_at' => $expiresAt->toIso8601String(),
+                ],
+            ])->header('Cache-Control', 'no-store');
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            Log::error('Article Markdown export failed.', [
+                'exception_type' => $exception::class,
+                'error_code' => 'article_export_failed',
+                'admin_id' => $adminId,
+                'article_count' => count($articleIds),
+            ]);
+
+            return response()->json([
+                'message' => __('admin.articles.export.errors.build_failed'),
+                'code' => 'article_export_failed',
+            ], 500);
+        } finally {
+            if ($capacityLockAcquired && $capacityLock !== null) {
+                try {
+                    $capacityLock->release();
+                } catch (Throwable $exception) {
+                    Log::warning('Article Markdown export capacity lock release failed.', [
+                        'exception_type' => $exception::class,
+                        'admin_id' => $adminId,
+                    ]);
+                }
+            }
+
+            if ($adminLockAcquired) {
+                try {
+                    $adminLock->release();
+                } catch (Throwable $exception) {
+                    Log::warning('Article Markdown export admin lock release failed.', [
+                        'exception_type' => $exception::class,
+                        'admin_id' => $adminId,
+                    ]);
+                }
+            }
+        }
+    }
+
+    public function downloadMarkdownExport(Request $request, string $exportToken): BinaryFileResponse
+    {
+        $adminId = $this->authenticatedAdminId($request);
+        $owner = filter_var($request->query('owner'), FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => PHP_INT_MAX],
+        ]);
+        $filename = (string) $request->query('filename', '');
+
+        abort_unless(is_int($owner) && $owner === $adminId, 404);
+        abort_unless(preg_match('/\Ageoflow-articles-\d{8}-\d{6}\.zip\z/D', $filename) === 1, 404);
+
+        $path = $this->articleMarkdownExportService->resolveDownload($adminId, $exportToken);
+        abort_if($path === null, 404);
+
+        $response = response()->download($path, $filename, [
+            'Content-Type' => 'application/zip',
+            'Cache-Control' => 'private, no-store, max-age=0',
+        ]);
+        $response->setPrivate();
+
+        return $response;
+    }
+
     /**
      * 批量恢复已软删除的文章。
      */
@@ -140,7 +279,15 @@ class ArticleController extends Controller
         }
 
         try {
-            $count = Article::onlyTrashed()->whereIn('id', $articleIds)->restore();
+            $articles = Article::onlyTrashed()->whereIn('id', $articleIds)->get();
+            foreach ($articles as $article) {
+                $article->restore();
+                $this->articleAiQualityInvalidationService->invalidateArticle(
+                    $article,
+                    'article_restored',
+                );
+            }
+            $count = $articles->count();
 
             return back()->with('message', __('admin.articles.trash.message.restore_success', ['count' => $count]));
         } catch (Throwable $e) {
@@ -198,6 +345,10 @@ class ArticleController extends Controller
     {
         $article = Article::onlyTrashed()->whereKey($articleId)->firstOrFail();
         $article->restore();
+        $this->articleAiQualityInvalidationService->invalidateArticle(
+            $article,
+            'article_restored',
+        );
 
         return back()->with('message', __('admin.articles.trash.message.restore_success', ['count' => 1]));
     }
@@ -226,6 +377,8 @@ class ArticleController extends Controller
             'articleId' => null,
             'articleForm' => null,
             'riskScan' => null,
+            'aiQualityCheck' => null,
+            'aiQualityHistory' => collect(),
             'formOptions' => $this->loadFormOptions(true),
             'canCreateManualPublication' => $this->canCreateManualPublication($request),
         ]);
@@ -245,7 +398,7 @@ class ArticleController extends Controller
 
         try {
             $adminId = $this->authenticatedAdminId($request);
-            $gateRejection = DB::transaction(function () use (&$article, $payload, $workflowState, $adminId): ?ArticleRiskGateException {
+            $gateRejection = DB::transaction(function () use (&$article, $payload, $workflowState, $adminId): ArticleRiskGateException|ArticleAiQualityGateException|null {
                 $sourceTitle = null;
                 if ((int) ($payload['source_title_id'] ?? 0) > 0) {
                     $candidate = Title::query()
@@ -286,7 +439,7 @@ class ArticleController extends Controller
                 if ($this->requiresRiskGate($payload)) {
                     try {
                         $article = $this->transitionGatedArticle($article, $workflowState, $payload, 'admin_save', $adminId);
-                    } catch (ArticleRiskGateException $exception) {
+                    } catch (ArticleRiskGateException|ArticleAiQualityGateException $exception) {
                         return $exception;
                     }
                 } else {
@@ -300,13 +453,13 @@ class ArticleController extends Controller
                 return null;
             });
 
-            if ($gateRejection instanceof ArticleRiskGateException) {
+            if ($gateRejection instanceof ArticleRiskGateException || $gateRejection instanceof ArticleAiQualityGateException) {
                 throw $gateRejection;
             }
             if ($article->status === 'published') {
                 $this->distributionOrchestrator->enqueueForArticle($article);
             }
-        } catch (ArticleRiskGateException $e) {
+        } catch (ArticleRiskGateException|ArticleAiQualityGateException $e) {
             return redirect()
                 ->route('admin.articles.edit', ['articleId' => (int) $article?->id])
                 ->withInput()
@@ -326,9 +479,17 @@ class ArticleController extends Controller
     public function edit(Request $request, int $articleId): View|RedirectResponse
     {
         $article = Article::query()
-            ->with(['task:id,name', 'author:id,name', 'category:id,name'])
+            ->with([
+                'task:id,name,ai_quality_enabled',
+                'author:id,name',
+                'category:id,name',
+                'latestAiQualityCheck.prompt:id,name',
+                'latestAiQualityCheck.aiModel:id,name',
+            ])
             ->whereKey($articleId)
             ->firstOrFail();
+
+        $aiQualityCheck = $article->latestAiQualityCheck;
 
         return view('admin.articles.form', [
             'pageTitle' => __('admin.article_edit.page_title'),
@@ -349,10 +510,20 @@ class ArticleController extends Controller
                 'slug' => (string) $article->slug,
                 'published_at' => $article->published_at?->format('Y-m-d H:i:s'),
                 'task_name' => (string) ($article->task->name ?? ''),
+                'ai_quality_enabled' => (bool) $article->ai_quality_required_at_creation
+                    || (bool) ($article->task->ai_quality_enabled ?? false),
                 'is_hot' => (bool) ($article->is_hot ?? false),
                 'is_featured' => (bool) ($article->is_featured ?? false),
+                'is_ai_generated' => (bool) ($article->is_ai_generated ?? false),
             ],
             'riskScan' => $this->riskScanViewData($article),
+            'aiQualityCheck' => $aiQualityCheck,
+            'aiQualityProgress' => $this->articleAiQualityProgressPresenter->snapshot($aiQualityCheck),
+            'aiQualityHistory' => $article->aiQualityChecks()
+                ->with(['prompt:id,name', 'aiModel:id,name'])
+                ->latest('id')
+                ->limit(10)
+                ->get(),
             'formOptions' => $this->loadFormOptions(false),
             'canCreateManualPublication' => $this->canCreateManualPublication($request),
         ]);
@@ -406,12 +577,104 @@ class ArticleController extends Controller
     }
 
     /**
+     * 为单篇文章启用或重新执行 AI 质检，同时保留历史结果。
+     */
+    public function recheckAiQuality(Request $request, int $articleId): RedirectResponse
+    {
+        $article = Article::query()->with('task')->whereKey($articleId)->firstOrFail();
+
+        try {
+            $this->articleAiQualityInspectionService->requestManualInspection(
+                $article,
+                trigger: 'admin_manual',
+                auditAdminId: $this->authenticatedAdminId($request),
+            );
+
+            return redirect()
+                ->route('admin.articles.edit', ['articleId' => $articleId])
+                ->with('message', __('admin.articles.ai_quality.recheck_queued'));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(__('admin.articles.ai_quality.recheck_failed', [
+                'message' => $this->aiQualityRequestFailureMessage($exception),
+            ]));
+        }
+    }
+
+    /**
+     * 返回当前文章最新 AI 质检的真实执行进度。
+     */
+    public function aiQualityStatus(int $articleId): JsonResponse
+    {
+        $article = Article::query()
+            ->with('latestAiQualityCheck')
+            ->whereKey($articleId)
+            ->firstOrFail();
+
+        return response()
+            ->json($this->articleAiQualityProgressPresenter->snapshot($article->latestAiQualityCheck))
+            ->header('Cache-Control', 'no-cache, private, no-store, max-age=0, must-revalidate');
+    }
+
+    public function retryAiQualityWorkflow(int $articleId): RedirectResponse
+    {
+        $article = Article::query()->with('latestAiQualityCheck')->whereKey($articleId)->firstOrFail();
+        $check = $article->latestAiQualityCheck;
+        if (! $check || ! $this->articleAiQualityInspectionService->retryCompletedWorkflow($check)) {
+            return back()->withErrors(__('admin.articles.ai_quality.workflow_retry_unavailable'));
+        }
+
+        return redirect()
+            ->route('admin.articles.edit', ['articleId' => $articleId])
+            ->with('message', __('admin.articles.ai_quality.workflow_retry_started'));
+    }
+
+    private function aiQualityRequestFailureMessage(Throwable $exception): string
+    {
+        return match ($exception->getMessage()) {
+            'ai_quality_knowledge_unavailable' => __('admin.articles.ai_quality.manual_unavailable_knowledge'),
+            'ai_quality_prompt_unavailable' => __('admin.articles.ai_quality.manual_unavailable_prompt'),
+            'ai_quality_model_unavailable' => __('admin.articles.ai_quality.manual_unavailable_model'),
+            default => __('admin.articles.ai_quality.failed'),
+        };
+    }
+
+    /**
+     * 管理员对允许人工复核的质检结果填写依据并放行。
+     */
+    public function overrideAiQuality(Request $request, int $articleId): RedirectResponse
+    {
+        $validated = $request->validate([
+            'ai_quality_override_reason' => ['required', 'string', 'min:4', 'max:1000'],
+        ]);
+        $article = Article::query()->whereKey($articleId)->firstOrFail();
+
+        try {
+            $this->articleAiQualityGate->check(
+                $article,
+                'admin_ai_quality_override',
+                $this->authenticatedAdminId($request),
+                (string) $validated['ai_quality_override_reason'],
+                true,
+            );
+
+            return redirect()
+                ->route('admin.articles.edit', ['articleId' => $articleId])
+                ->with('message', __('admin.articles.ai_quality.override_success'));
+        } catch (ArticleAiQualityGateException $exception) {
+            return back()->withInput()->withErrors($exception->getMessage());
+        }
+    }
+
+    /**
      * 更新文章：保持创建/编辑一致的字段校验与状态归一化。
      */
     public function update(Request $request, int $articleId): RedirectResponse
     {
-        $payload = $this->validateArticleForm($request, true);
+        $runAiQualityAfterSave = $request->boolean('run_ai_quality_after_save');
         $article = Article::query()->whereKey($articleId)->firstOrFail();
+        $payload = $this->validateArticleForm($request, true, (bool) $article->is_ai_generated);
 
         $workflowState = ArticleWorkflow::normalizeState(
             $payload['status'],
@@ -421,7 +684,7 @@ class ArticleController extends Controller
 
         try {
             $adminId = $this->authenticatedAdminId($request);
-            $gateRejection = DB::transaction(function () use (&$article, $payload, $workflowState, $adminId): ?ArticleRiskGateException {
+            $gateRejection = DB::transaction(function () use (&$article, $payload, $workflowState, $adminId, $runAiQualityAfterSave): ArticleRiskGateException|ArticleAiQualityGateException|null {
                 $lockedArticle = Article::query()->whereKey($article->id)->lockForUpdate()->firstOrFail();
                 $slug = $payload['title'] === $lockedArticle->title
                     ? $lockedArticle->slug
@@ -441,6 +704,21 @@ class ArticleController extends Controller
                     'keywords' => $payload['keywords'],
                     'meta_description' => $payload['meta_description'],
                 ]);
+                $contentChanged = ! hash_equals($currentRiskHash, $nextRiskHash);
+                $preservePublishedWorkflow = $runAiQualityAfterSave
+                    && ! $contentChanged
+                    && in_array((string) $lockedArticle->status, ['private', 'published'], true);
+                if (! $runAiQualityAfterSave
+                    && (string) $lockedArticle->status === 'published'
+                    && $contentChanged) {
+                    try {
+                        $this->articleAiQualityGate->check($lockedArticle, 'published_content_update');
+                    } catch (ArticleAiQualityGateException $exception) {
+                        $article = $lockedArticle;
+
+                        return $exception;
+                    }
+                }
                 $lockedArticle->fill([
                     'title' => $payload['title'],
                     'slug' => $slug,
@@ -450,16 +728,23 @@ class ArticleController extends Controller
                     'meta_description' => $payload['meta_description'],
                     'category_id' => (int) $payload['category_id'],
                     'author_id' => (int) $payload['author_id'],
-                    'status' => 'draft',
-                    'review_status' => 'pending',
-                    'published_at' => null,
+                    'status' => $preservePublishedWorkflow ? $lockedArticle->status : 'draft',
+                    'review_status' => $preservePublishedWorkflow ? $lockedArticle->review_status : 'pending',
+                    'published_at' => $preservePublishedWorkflow ? $lockedArticle->published_at : null,
                     'is_hot' => (bool) ($payload['is_hot'] ?? false),
                     'is_featured' => (bool) ($payload['is_featured'] ?? false),
                 ])->save();
 
+                if ($contentChanged) {
+                    $this->articleAiQualityInvalidationService->invalidateArticle(
+                        $lockedArticle,
+                        'article_content_changed',
+                    );
+                }
+
                 $latestScan = $lockedArticle->latestRiskScan()->first();
                 if (
-                    ! hash_equals($currentRiskHash, $nextRiskHash)
+                    $contentChanged
                     || $latestScan === null
                     || ! $this->articleRiskScanner->isFresh($lockedArticle, $latestScan)
                 ) {
@@ -468,8 +753,13 @@ class ArticleController extends Controller
                 if ($this->requiresRiskGate($payload)) {
                     try {
                         $lockedArticle = $this->transitionGatedArticle($lockedArticle, $workflowState, $payload, 'admin_save', $adminId);
-                    } catch (ArticleRiskGateException $exception) {
+                    } catch (ArticleRiskGateException|ArticleAiQualityGateException $exception) {
                         $article = $lockedArticle;
+                        if ($runAiQualityAfterSave && $exception instanceof ArticleAiQualityGateException) {
+                            $this->hostedFingerprints->synchronizeLockedArticle($lockedArticle);
+
+                            return null;
+                        }
 
                         return $exception;
                     }
@@ -486,13 +776,35 @@ class ArticleController extends Controller
                 return null;
             });
 
-            if ($gateRejection instanceof ArticleRiskGateException) {
+            if ($gateRejection instanceof ArticleRiskGateException || $gateRejection instanceof ArticleAiQualityGateException) {
                 throw $gateRejection;
+            }
+            if ($runAiQualityAfterSave) {
+                try {
+                    $this->articleAiQualityInspectionService->requestManualInspection(
+                        $article,
+                        trigger: 'admin_manual',
+                        auditAdminId: $adminId,
+                        requestedWorkflowState: $workflowState,
+                    );
+                } catch (Throwable $exception) {
+                    report($exception);
+
+                    return redirect()
+                        ->route('admin.articles.edit', ['articleId' => $articleId])
+                        ->withErrors(__('admin.articles.ai_quality.recheck_failed', [
+                            'message' => $this->aiQualityRequestFailureMessage($exception),
+                        ]));
+                }
+
+                return redirect()
+                    ->route('admin.articles.edit', ['articleId' => $articleId])
+                    ->with('message', __('admin.articles.ai_quality.recheck_queued'));
             }
             if ($article->status === 'published') {
                 $this->distributionOrchestrator->enqueueForArticle($article);
             }
-        } catch (ArticleRiskGateException $e) {
+        } catch (ArticleRiskGateException|ArticleAiQualityGateException $e) {
             return redirect()
                 ->route('admin.articles.edit', ['articleId' => $articleId])
                 ->withInput()
@@ -511,6 +823,7 @@ class ArticleController extends Controller
      *     task_id: int,
      *     status: string,
      *     review_status: string,
+     *     ai_quality_status: string,
      *     author_id: int,
      *     distribution_channel_ids: array<int, int>,
      *     date_from: string,
@@ -524,6 +837,7 @@ class ArticleController extends Controller
     {
         $status = (string) $request->query('status', '');
         $reviewStatus = (string) $request->query('review_status', '');
+        $aiQualityStatus = (string) $request->query('ai_quality_status', '');
 
         if (! in_array($status, ['draft', 'published', 'private'], true)) {
             $status = '';
@@ -533,10 +847,15 @@ class ArticleController extends Controller
             $reviewStatus = '';
         }
 
+        if (! in_array($aiQualityStatus, ['passed', 'needs_review', 'blocked', 'pending', 'failed', 'stale', 'disabled'], true)) {
+            $aiQualityStatus = '';
+        }
+
         return [
             'task_id' => max(0, (int) $request->query('task_id', 0)),
             'status' => $status,
             'review_status' => $reviewStatus,
+            'ai_quality_status' => $aiQualityStatus,
             'author_id' => max(0, (int) $request->query('author_id', 0)),
             'distribution_channel_ids' => $this->extractDistributionChannelIds($request),
             'date_from' => trim((string) $request->query('date_from', '')),
@@ -552,6 +871,7 @@ class ArticleController extends Controller
      *     task_id: int,
      *     status: string,
      *     review_status: string,
+     *     ai_quality_status: string,
      *     author_id: int,
      *     distribution_channel_ids: array<int, int>,
      *     date_from: string,
@@ -568,9 +888,19 @@ class ArticleController extends Controller
             : Article::query();
 
         $query->with([
-            'task:id,name,need_review',
+            'task:id,name,need_review,ai_quality_enabled',
             'author:id,name',
             'category:id,name',
+            'latestAiQualityCheck' => fn ($qualityQuery) => $qualityQuery->select([
+                'article_ai_quality_checks.id',
+                'article_ai_quality_checks.article_id',
+                'article_ai_quality_checks.status',
+                'article_ai_quality_checks.decision',
+                'article_ai_quality_checks.score',
+                'article_ai_quality_checks.is_overridden',
+                'article_ai_quality_checks.input_fingerprint',
+                'article_ai_quality_checks.finished_at',
+            ]),
             'distributions.channel:id,name,domain',
             'syncedRemoteDistributions.channel:id,name,domain',
         ])->withCount([
@@ -595,6 +925,36 @@ class ArticleController extends Controller
 
         if (($filters['trashed'] ?? false) === false && $filters['review_status'] !== '') {
             $query->where('review_status', $filters['review_status']);
+        }
+
+        if (($filters['trashed'] ?? false) === false && $filters['ai_quality_status'] !== '') {
+            $qualityStatus = $filters['ai_quality_status'];
+            if (in_array($qualityStatus, ['passed', 'needs_review', 'blocked'], true)) {
+                $query->whereHas('latestAiQualityCheck', fn ($checkQuery) => $checkQuery
+                    ->where('status', 'completed')
+                    ->where('decision', $qualityStatus));
+            } elseif ($qualityStatus === 'pending') {
+                $query->where(function ($enabledQuery): void {
+                    $enabledQuery->where('ai_quality_required_at_creation', true)
+                        ->orWhereHas('task', fn ($taskQuery) => $taskQuery->where('ai_quality_enabled', true));
+                })
+                    ->where(function ($pendingQuery): void {
+                        $pendingQuery
+                            ->whereDoesntHave('latestAiQualityCheck')
+                            ->orWhereHas('latestAiQualityCheck', fn ($checkQuery) => $checkQuery
+                                ->whereIn('status', ['queued', 'running']));
+                    });
+            } elseif ($qualityStatus === 'failed') {
+                $query->whereHas('latestAiQualityCheck', fn ($checkQuery) => $checkQuery
+                    ->where('status', 'failed')
+                    ->orWhere('decision', 'error'));
+            } elseif ($qualityStatus === 'stale') {
+                $query->whereHas('latestAiQualityCheck', fn ($checkQuery) => $checkQuery
+                    ->where('status', 'stale'));
+            } else {
+                $query->where('ai_quality_required_at_creation', false)
+                    ->whereDoesntHave('task', fn ($taskQuery) => $taskQuery->where('ai_quality_enabled', true));
+            }
         }
 
         if ($filters['author_id'] > 0) {
@@ -895,11 +1255,11 @@ class ArticleController extends Controller
      *     is_ai_generated: bool
      * }
      */
-    private function validateArticleForm(Request $request, bool $isEdit): array
+    private function validateArticleForm(Request $request, bool $isEdit, bool $cleanAiGenerated = false): array
     {
         $keyPrefix = $isEdit ? 'admin.article_edit.error' : 'admin.article_create.error';
 
-        return $request->validate([
+        $validated = $request->validate([
             'title' => ['required', 'string', 'max:500'],
             'excerpt' => ['nullable', 'string', 'max:'.ArticleRiskScanner::MAX_EXCERPT_CHARACTERS],
             'content' => ['required', 'string', 'max:'.ArticleRiskScanner::MAX_CONTENT_CHARACTERS],
@@ -922,6 +1282,17 @@ class ArticleController extends Controller
             'author_id.required' => __($keyPrefix.'.author_required'),
             'author_id.min' => __($keyPrefix.'.author_required'),
         ]);
+
+        if ($cleanAiGenerated || (bool) ($validated['is_ai_generated'] ?? false)) {
+            $validated = $this->articleCitationMarkerCleaner->cleanArticleFields($validated);
+            if (trim((string) $validated['content']) === '') {
+                throw ValidationException::withMessages([
+                    'content' => __($keyPrefix.'.content_required'),
+                ]);
+            }
+        }
+
+        return $validated;
     }
 
     /**
@@ -1054,7 +1425,7 @@ class ArticleController extends Controller
                         'published_at' => $workflowState['published_at'],
                     ]);
                 }
-            } catch (ArticleRiskGateException) {
+            } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
                 $rejectedCount++;
 
                 continue;
@@ -1125,7 +1496,7 @@ class ArticleController extends Controller
                         'published_at' => $workflowState['published_at'],
                     ]);
                 }
-            } catch (ArticleRiskGateException) {
+            } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
                 $rejectedCount++;
 
                 continue;
@@ -1152,6 +1523,7 @@ class ArticleController extends Controller
         $articles = Article::query()->whereIn('id', $articleIds)->get();
         foreach ($articles as $article) {
             Article::query()->whereKey((int) $article->id)->delete();
+            $this->articleAiQualityInvalidationService->cancelArticle($article);
         }
 
         return back()->with('message', __('admin.articles.message.batch_delete_success', ['count' => count($articleIds)]));

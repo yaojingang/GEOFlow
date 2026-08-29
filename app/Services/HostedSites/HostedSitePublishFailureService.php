@@ -12,9 +12,13 @@ use Illuminate\Support\Facades\DB;
 
 final class HostedSitePublishFailureService
 {
-    public function record(ArticleDistribution $candidate, string $safeMessage, bool $willRetry): bool
-    {
-        return DB::transaction(function () use ($candidate, $safeMessage, $willRetry): bool {
+    public function record(
+        ArticleDistribution $candidate,
+        string $safeMessage,
+        bool $willRetry,
+        ?string $expectedStatus = null,
+    ): bool {
+        return DB::transaction(function () use ($candidate, $safeMessage, $willRetry, $expectedStatus): bool {
             $channel = DistributionChannel::query()
                 ->whereKey((int) $candidate->distribution_channel_id)
                 ->lockForUpdate()
@@ -40,6 +44,9 @@ final class HostedSitePublishFailureService
                 ->lockForUpdate()
                 ->first();
             if (! $profile || ! $assignment || ! $distribution) {
+                return false;
+            }
+            if ($expectedStatus !== null && (string) $distribution->status !== $expectedStatus) {
                 return false;
             }
 

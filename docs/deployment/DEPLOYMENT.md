@@ -17,7 +17,6 @@
 - `app`: `php-fpm`
 - `queue`: 文章生成、分发、主题复刻与默认任务
 - `knowledge-queue`: 知识库解析与向量化任务
-- `system-update-queue`: 系统更新与回滚任务
 - `scheduler`: `php artisan schedule:work`
 - `reverb`: `php artisan reverb:start`
 - `postgres`: PostgreSQL 16 + pgvector
@@ -109,7 +108,7 @@ export COMPOSE_PROD='docker compose --env-file .env.prod -f docker-compose.prod.
 $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up -d init
-$COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler reverb
+$COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
 ```
 
 `init` 服务会把 `GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true` 仅注入该一次性容器。迁移只在单一 fresh migration batch 且业务表为空时接受此标志；已有部署仍需下一节的 drain confirmation。
@@ -123,7 +122,8 @@ $COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler 
 ```bash
 # 1. 先进入维护模式，再停止入口和所有旧版常驻进程。
 $COMPOSE_PROD exec app php artisan down
-$COMPOSE_PROD stop web queue knowledge-queue system-update-queue scheduler reverb
+$COMPOSE_PROD stop web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
+docker stop --time 900 geoflow-system-update-queue-prod 2>/dev/null || true
 
 # 2. 等待负载均衡连接、PHP 请求、队列任务和调度任务全部结束；确认零在途后停止 app。
 # 请使用平台连接数、进程列表和队列监控完成确认。
@@ -140,7 +140,7 @@ $COMPOSE_PROD up init
 
 # 5. 迁移成功后立即将一次性确认恢复为 false，再启动全部新版本进程：
 # GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED=false
-$COMPOSE_PROD up -d app web queue knowledge-queue system-update-queue scheduler reverb
+$COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
 
 # 6. 回填并检查受管图片身份；remaining、terminal、registry_failed 必须都为 0。
 $COMPOSE_PROD run --rm app php artisan geoflow:managed-images:readiness
@@ -167,7 +167,7 @@ $COMPOSE_PROD run --rm app php artisan geoflow:security-audit --json
 完成审计处理，再次确认运行中的容器全部来自新镜像，然后将 `GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=true` 写入生产环境配置，并重新创建会执行图片清理的新版本进程：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app queue knowledge-queue system-update-queue scheduler
+$COMPOSE_PROD up -d --force-recreate app queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler
 ```
 
 门禁关闭或回填未完成时，数据库记录仍可删除，物理图片文件会安全保留并记录清理失败日志。
@@ -175,7 +175,7 @@ $COMPOSE_PROD up -d --force-recreate app queue knowledge-queue system-update-que
 以下单条命令仅适用于全新空库安装。已有数据的升级执行它会触发安全迁移门禁；不要通过预设一次性确认绕过停机排空流程：
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans --build
 ```
 
 但第一次部署仍建议先观察 `init` 是否完成迁移。
@@ -197,6 +197,17 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php 
 ```
 
 账号由 `Database\Seeders\AdminUserSeeder` 在首次空库安装时写入：只在目标用户名不存在时创建，**重复执行不会覆盖**已存在账号的用户名、邮箱或密码。正式安装流程不调用 `FrontendDemoSeeder`，也不会写入前台演示分类、文章或站点设置。
+
+### AI 工作台系统知识同步
+
+首次空库执行 `geoflow:install` 时会创建 AI 工作台系统知识正文。新版本部署完成迁移后，还需要显式同步当前官方正文和 24 张私有知识截图：
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app \
+  php artisan geoflow:sync-system-knowledge --key=ai_workspace_manual --media
+```
+
+该命令可以重复执行。已由管理员二次编辑的正文会继续保留；官方版本、健康状态和可采用更新会显示在知识库详情。命令返回失败时停止该次发布验收，检查随包 Markdown、图片清单、文件哈希、私有存储写权限和 knowledge 队列。同步成功后验证系统知识库不可删除、问答包含参考章节、相关入口遵循当前后台前缀，并分别测试带图与纯文字回答。
 
 | 项目 | 值 |
 |------|-----|
@@ -281,12 +292,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
 建议按顺序尝试：
 
 1. **直接重试** `docker compose --env-file .env.prod -f docker-compose.prod.yml build`（偶发 Hub 或链路问题）。
-2. **单独拉基础镜像**，确认是拉取问题还是仅 BuildKit 缓存问题：  
-   `docker pull php:8.4-fpm-bookworm`  
+2. **单独拉基础镜像**，确认是拉取问题还是仅 BuildKit 缓存问题：
+   `docker pull php:8.4-fpm-bookworm`
    若此处同样 `not found`，说明当前访问的 registry/加速源缺层，需换源或直连。
 3. **检查本机 `/etc/docker/daemon.json` 的 `registry-mirrors`**：部分公共加速源对 `docker.io` 层同步不完整，可**暂时注释镜像加速**后重启 Docker，再 `docker pull` / `build`；或换成你环境稳定可用的镜像源策略。
-4. **清理构建缓存后再构建**：  
-   `docker builder prune -f`  
+4. **清理构建缓存后再构建**：
+   `docker builder prune -f`
    必要时再 `docker system prune`（注意会删掉未使用镜像，执行前自行确认）。
 
 仍失败时，把 **`docker pull php:8.4-fpm-bookworm` 的完整输出**与 **`daemon.json` 中与 registry 相关的配置**（可打码）一并排查网络与镜像源。

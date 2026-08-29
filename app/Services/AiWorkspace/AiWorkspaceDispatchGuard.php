@@ -2,7 +2,6 @@
 
 namespace App\Services\AiWorkspace;
 
-use App\Ai\Workspace\AiCapabilityRegistry;
 use App\Ai\Workspace\AiWorkspaceChannelRevision;
 use App\Models\Admin;
 use App\Models\AiWorkspaceApproval;
@@ -16,8 +15,6 @@ use Throwable;
 
 final readonly class AiWorkspaceDispatchGuard
 {
-    public function __construct(private AiCapabilityRegistry $capabilities) {}
-
     public function allowsDistribution(ArticleDistribution $distribution): bool
     {
         try {
@@ -115,7 +112,8 @@ final readonly class AiWorkspaceDispatchGuard
         if ((string) $step->run_id !== (string) $run->id
             || (int) $run->admin_id !== (int) $admin->id
             || (int) ($guard['admin_auth_version'] ?? 0) !== (int) $admin->auth_version
-            || ($run->admin_auth_version !== null && (int) $run->admin_auth_version !== (int) $admin->auth_version)) {
+            || (int) $run->admin_auth_version <= 0
+            || (int) $run->admin_auth_version !== (int) $admin->auth_version) {
             throw new RuntimeException('AI 工作台管理员授权已经变化。');
         }
 
@@ -146,20 +144,7 @@ final readonly class AiWorkspaceDispatchGuard
 
     private function capabilityAllows(AiWorkspaceRun $run, AiWorkspaceStep $step, Admin $admin): bool
     {
-        if (! (bool) config('ai-workspace.runtime_enabled', false)) {
-            return false;
-        }
-        if ($admin->status !== 'active'
-            || ($run->admin_auth_version !== null && (int) $run->admin_auth_version !== (int) $admin->auth_version)) {
-            return false;
-        }
-        $capability = $this->capabilities->get((string) $step->capability_key);
-
-        return $capability->isExecutable()
-            && $capability->allows($admin)
-            && $capability->executionScope === 'external_write'
-            && hash_equals($capability->version, (string) $step->capability_version)
-            && hash_equals($capability->version, (string) (((array) $run->capability_versions)[$step->capability_key] ?? ''));
+        return false;
     }
 
     private function hasValidApproval(AiWorkspaceRun $run, AiWorkspaceStep $step, bool $lock = false): bool
