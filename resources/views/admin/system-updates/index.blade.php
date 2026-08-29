@@ -2,7 +2,14 @@
 
 @section('content')
     @php
-        $state = is_array($summary['state'] ?? null) ? $summary['state'] : [];
+        $releaseNotice = is_array($summary['release_notice'] ?? null) ? $summary['release_notice'] : [];
+        $hasReleaseUpdate = !empty($releaseNotice['available']);
+        $currentReleaseVersion = (string) ($releaseNotice['current_version'] ?? '');
+        $latestReleaseVersion = (string) ($releaseNotice['latest_version'] ?? '');
+        $releaseDate = (string) ($releaseNotice['release_date'] ?? '');
+        $releaseType = (string) ($releaseNotice['release_type'] ?? '');
+        $releaseSummary = (string) ($releaseNotice['summary'] ?? '');
+        $releaseUrl = (string) ($releaseNotice['url'] ?? 'https://github.com/yaojingang/GEOFlow/releases');
         $recentRuns = $summary['recent_runs'] ?? collect();
         $recentBackups = $summary['recent_backups'] ?? collect();
         $historyScope = (string) ($summary['history_scope'] ?? 'recent');
@@ -123,6 +130,58 @@
             <div class="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ $errors->first() }}</div>
         @endif
 
+        @if($hasReleaseUpdate)
+            <section class="mb-6 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 shadow-sm" data-system-update-release-notice aria-labelledby="system-update-release-title">
+                <div class="px-5 py-5 sm:px-6">
+                    <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                        <div class="flex min-w-0 items-start gap-4">
+                            <span class="inline-flex h-11 w-11 flex-none items-center justify-center rounded-full bg-amber-100 text-amber-700" aria-hidden="true">
+                                <i data-lucide="sparkles" class="h-5 w-5"></i>
+                            </span>
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">{{ __('admin.system_updates.release_notice.eyebrow') }}</span>
+                                    @if($releaseDate !== '')
+                                        <span class="text-xs font-medium text-amber-800">{{ __('admin.system_updates.release_notice.release_date', ['date' => $releaseDate]) }}</span>
+                                    @endif
+                                </div>
+                                <h2 id="system-update-release-title" class="mt-2 text-xl font-semibold text-gray-950">
+                                    {{ __('admin.system_updates.release_notice.title', ['version' => $latestReleaseVersion]) }}
+                                </h2>
+                                <p class="mt-2 text-sm leading-6 text-gray-700">{{ __('admin.system_updates.release_notice.description') }}</p>
+                                <p class="mt-1 text-sm font-medium text-gray-900">
+                                    {{ __('admin.system_updates.release_notice.version_line', ['current' => $currentReleaseVersion, 'latest' => $latestReleaseVersion]) }}
+                                </p>
+                            </div>
+                        </div>
+                        <a href="{{ $releaseUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-10 w-full flex-none items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-blue-700 sm:w-auto">
+                            <i data-lucide="external-link" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.system_updates.release_notice.cta') }}
+                        </a>
+                    </div>
+
+                    <div class="mt-5 rounded-lg border border-amber-200 bg-white/80 px-4 py-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.release_notice.changes_title') }}</h3>
+                            @if($releaseType !== '')
+                                <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+                                    {{ __('admin.system_updates.release_notice.release_type.'.$releaseType) }}
+                                </span>
+                            @endif
+                        </div>
+                        <p class="mt-2 text-sm leading-6 text-gray-700">
+                            {{ $releaseSummary !== '' ? $releaseSummary : __('admin.system_updates.release_notice.summary_fallback') }}
+                        </p>
+                    </div>
+
+                    <div class="mt-4 flex items-start gap-2 text-sm leading-6 text-amber-900">
+                        <i data-lucide="arrow-down" class="mt-1 h-4 w-4 flex-none" aria-hidden="true"></i>
+                        <p>{{ __('admin.system_updates.release_notice.next_step') }}</p>
+                    </div>
+                </div>
+            </section>
+        @endif
+
         @if($manualCommands !== [])
             <section class="mb-6 overflow-hidden rounded-xl border border-blue-200 bg-blue-50 shadow-sm">
                 <div class="border-b border-blue-100 px-6 py-4">
@@ -131,22 +190,44 @@
                 </div>
                 <div class="space-y-3 px-6 py-5">
                     @foreach($manualCommands as $manualCommand)
+                        @php
+                            $manualCommandStatus = ($manualCommand['status'] ?? 'pending') === 'complete' ? 'complete' : 'pending';
+                            $manualCommandId = preg_replace('/[^a-z0-9_-]+/i', '-', (string) ($manualCommand['id'] ?? $loop->index));
+                            $manualCommandCodeId = 'manual-command-'.$loop->index.'-'.$manualCommandId;
+                        @endphp
                         <div class="rounded-lg border border-blue-200 bg-white p-4">
-                            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                <div>
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <h3 class="text-sm font-semibold text-gray-900">{{ (string) ($manualCommand['label'] ?? '') }}</h3>
-                                        @if(!empty($manualCommand['required']))
-                                            <span class="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">{{ __('admin.system_updates.manual_commands.required') }}</span>
-                                        @endif
-                                        <span class="rounded-full px-2.5 py-0.5 text-xs font-semibold {{ ($manualCommand['status'] ?? 'pending') === 'complete' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800' }}">
-                                            {{ __('admin.system_updates.manual_commands.'.($manualCommand['status'] ?? 'pending')) }}
-                                        </span>
-                                    </div>
-                                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ (string) ($manualCommand['description'] ?? '') }}</p>
-                                </div>
-                                <code class="max-w-full overflow-x-auto rounded-md bg-gray-950 px-3 py-2 text-xs text-gray-100">{{ (string) ($manualCommand['command'] ?? '') }}</code>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h3 class="text-sm font-semibold text-gray-900">{{ (string) ($manualCommand['label'] ?? '') }}</h3>
+                                @if(!empty($manualCommand['required']))
+                                    <span class="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">{{ __('admin.system_updates.manual_commands.required') }}</span>
+                                @endif
+                                <span class="rounded-full px-2.5 py-0.5 text-xs font-semibold {{ $manualCommandStatus === 'complete' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800' }}">
+                                    {{ __('admin.system_updates.manual_commands.'.$manualCommandStatus) }}
+                                </span>
                             </div>
+                            <p class="mt-2 max-w-4xl text-sm leading-6 text-gray-600">{{ (string) ($manualCommand['description'] ?? '') }}</p>
+                            <div class="mt-3 flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm leading-6 {{ $manualCommandStatus === 'complete' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900' }}">
+                                <i data-lucide="{{ $manualCommandStatus === 'complete' ? 'circle-check' : 'triangle-alert' }}" class="mt-0.5 h-4 w-4 flex-none"></i>
+                                <p>{{ (string) ($manualCommand['status_description'] ?? '') }}</p>
+                            </div>
+                            <details class="mt-3 border-t border-gray-100 pt-3" @if($manualCommandStatus === 'pending') open @endif>
+                                <summary class="cursor-pointer text-sm font-medium text-gray-700 marker:text-gray-400">
+                                    {{ $manualCommandStatus === 'pending' ? __('admin.system_updates.manual_commands.command_label') : __('admin.system_updates.manual_commands.show_command') }}
+                                </summary>
+                                <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
+                                    <code id="{{ $manualCommandCodeId }}" class="min-w-0 flex-1 overflow-x-auto rounded-md bg-gray-950 px-3 py-2.5 text-xs leading-5 text-gray-100">{{ (string) ($manualCommand['command'] ?? '') }}</code>
+                                    <button
+                                        type="button"
+                                        data-system-updater-copy="#{{ $manualCommandCodeId }}"
+                                        data-copied-label="{{ __('admin.system_updates.updater.copied') }}"
+                                        data-copy-failed-label="{{ __('admin.system_updates.updater.copy_failed') }}"
+                                        class="inline-flex min-h-10 flex-none items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-gray-100"
+                                    >
+                                        <i data-lucide="copy" class="mr-2 h-4 w-4"></i>
+                                        <span data-system-updater-copy-label aria-live="polite">{{ __('admin.system_updates.updater.copy') }}</span>
+                                    </button>
+                                </div>
+                            </details>
                         </div>
                     @endforeach
                 </div>

@@ -1146,10 +1146,10 @@ details.gf-ai-trace-event[open] .gf-ai-trace-event__chevron { transform: rotate(
 .gf-ai-help__showcase-callout strong, .gf-ai-help__showcase-callout small { display: block; }
 .gf-ai-help__showcase-callout strong { color: #78350f; font-size: 12px; font-weight: 650; }
 .gf-ai-help__showcase-callout small { color: #b45309; font-size: 10px; margin-top: 2px; }
-.gf-ai-help__showcase-controls { align-items: center; display: flex; gap: 12px; justify-content: center; margin-top: 12px; }
+.gf-ai-help__showcase-controls { align-items: center; display: flex; gap: 2px; justify-content: center; margin-top: 12px; }
 .gf-ai-help__showcase-controls > button { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--gf-gray-400); display: flex; height: 32px; justify-content: center; transition: background-color 120ms ease-out, color 120ms ease-out, transform 120ms ease-out; width: 32px; }
 .gf-ai-help__showcase-controls > button svg { height: 16px; width: 16px; }
-.gf-ai-help__showcase-controls > div { align-items: center; display: flex; gap: 6px; }
+.gf-ai-help__showcase-controls > div { align-items: center; display: flex; gap: 0; }
 .gf-ai-help__showcase-controls > div button { align-items: center; background: transparent; border: 0; display: flex; height: 24px; justify-content: center; padding: 0; width: 24px; }
 .gf-ai-help__showcase-controls > div button::before { background: var(--gf-gray-300); border-radius: 999px; content: ''; height: 6px; transition: background-color 120ms ease-out, transform 120ms ease-out, width 120ms ease-out; width: 6px; }
 .gf-ai-help__showcase-controls > div button[aria-current="true"]::before { background: var(--gf-blue-500); width: 16px; }

@@ -154,7 +154,7 @@ class AdminDashboardQuickStartTest extends TestCase
         }
     }
 
-    public function test_dashboard_actions_align_with_heading_and_analytics_refresh_aligns_with_navigation(): void
+    public function test_dashboard_omits_duplicate_header_actions_and_analytics_refresh_aligns_with_navigation(): void
     {
         $admin = Admin::query()->create([
             'username' => 'dashboard_header_alignment_admin',
@@ -168,18 +168,23 @@ class AdminDashboardQuickStartTest extends TestCase
         $dashboard = $this->actingAs($admin, 'admin')->get(route('admin.dashboard'))->assertOk();
         $dashboardDocument = new \DOMDocument;
         $dashboardDocument->loadHTML($dashboard->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
-        $dashboardHeadings = (new \DOMXPath($dashboardDocument))->query('//h1');
+        $dashboardXPath = new \DOMXPath($dashboardDocument);
+        $dashboardHeadings = $dashboardXPath->query('//h1');
 
         $this->assertNotFalse($dashboardHeadings);
         $this->assertSame(1, $dashboardHeadings->length);
 
-        $dashboardHeaderRow = $dashboardHeadings->item(0)->parentNode?->parentNode;
+        $dashboardToolbars = $dashboardXPath->query('//*[@data-analytics-page-toolbar]');
 
-        $this->assertInstanceOf(\DOMElement::class, $dashboardHeaderRow);
-        $this->assertContains(
-            'lg:items-end',
-            preg_split('/\s+/', trim($dashboardHeaderRow->getAttribute('class'))),
-        );
+        $this->assertNotFalse($dashboardToolbars);
+        $this->assertSame(1, $dashboardToolbars->length);
+
+        $dashboardToolbar = $dashboardToolbars->item(0);
+
+        $this->assertInstanceOf(\DOMElement::class, $dashboardToolbar);
+        $this->assertSame(1, $dashboardXPath->query('.//*[@data-analytics-navigation]', $dashboardToolbar)?->length);
+        $this->assertSame(0, $dashboardXPath->query('.//button[@onclick="location.reload()"]', $dashboardToolbar)?->length);
+        $this->assertSame(0, $dashboardXPath->query('.//a[@href="'.route('admin.tasks.create').'"]', $dashboardToolbar)?->length);
 
         $analytics = $this->get(route('admin.analytics'))->assertOk();
         $analyticsDocument = new \DOMDocument;

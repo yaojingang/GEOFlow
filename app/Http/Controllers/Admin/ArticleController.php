@@ -30,6 +30,7 @@ use App\Services\HostedSites\HostedSiteArticleFingerprintService;
 use App\Support\Admin\ArticleAiQualityProgressPresenter;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ArticleWorkflow;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -54,6 +55,8 @@ use Throwable;
  */
 class ArticleController extends Controller
 {
+    private const MAX_BATCH_DELETE_ARTICLES = 500;
+
     public function __construct(
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly ArticleRiskScanner $articleRiskScanner,
@@ -279,15 +282,23 @@ class ArticleController extends Controller
         }
 
         try {
-            $articles = Article::onlyTrashed()->whereIn('id', $articleIds)->get();
-            foreach ($articles as $article) {
-                $article->restore();
-                $this->articleAiQualityInvalidationService->invalidateArticle(
-                    $article,
-                    'article_restored',
-                );
-            }
-            $count = $articles->count();
+            $count = DB::transaction(function () use ($articleIds): int {
+                $articles = Article::onlyTrashed()
+                    ->whereIn('id', $articleIds)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($articles as $article) {
+                    $article->restore();
+                    $this->articleAiQualityInvalidationService->invalidateArticle(
+                        $article,
+                        'article_restored',
+                    );
+                }
+
+                return $articles->count();
+            });
 
             return back()->with('message', __('admin.articles.trash.message.restore_success', ['count' => $count]));
         } catch (Throwable $e) {
@@ -300,20 +311,35 @@ class ArticleController extends Controller
      */
     public function batchForceDelete(Request $request): RedirectResponse
     {
+        $request->validate([
+            'article_ids' => ['array', 'max:'.self::MAX_BATCH_DELETE_ARTICLES],
+            'article_ids.*' => ['bail', 'integer', 'min:1', 'distinct'],
+        ]);
+
         $articleIds = $this->extractArticleIds($request);
         if (empty($articleIds)) {
             return back()->withErrors(__('admin.articles.message.select_articles'));
         }
 
         try {
-            $models = Article::onlyTrashed()->whereIn('id', $articleIds)->get();
-            $models->each(function (Article $article): void {
-                $article->forceDelete();
+            $count = DB::transaction(function () use ($articleIds): int {
+                $models = Article::onlyTrashed()
+                    ->whereIn('id', $articleIds)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+                $models->each(function (Article $article): void {
+                    $article->forceDelete();
+                });
+
+                return $models->count();
             });
 
-            return back()->with('message', __('admin.articles.trash.message.delete_success', ['count' => $models->count()]));
+            return back()->with('message', __('admin.articles.trash.message.delete_success', ['count' => $count]));
         } catch (Throwable $e) {
-            return back()->withErrors(__('admin.articles.trash.message.delete_failed', ['message' => $e->getMessage()]));
+            report($e);
+
+            return back()->withErrors(__('admin.articles.message.delete_failed_refresh'));
         }
     }
 
@@ -323,18 +349,19 @@ class ArticleController extends Controller
     public function emptyTrash(): RedirectResponse
     {
         try {
-            $models = Article::onlyTrashed()->get();
-            if ($models->isEmpty()) {
+            $total = DB::transaction(
+                static fn (): int => (int) Article::onlyTrashed()->forceDelete(),
+            );
+
+            if ($total === 0) {
                 return back()->with('message', __('admin.articles.trash.message.empty_already'));
             }
-            $total = $models->count();
-            $models->each(function (Article $article): void {
-                $article->forceDelete();
-            });
 
             return back()->with('message', __('admin.articles.trash.message.empty_success', ['count' => $total]));
         } catch (Throwable $e) {
-            return back()->withErrors(__('admin.articles.trash.message.empty_failed', ['message' => $e->getMessage()]));
+            report($e);
+
+            return back()->withErrors(__('admin.articles.message.delete_failed_refresh'));
         }
     }
 
@@ -343,12 +370,17 @@ class ArticleController extends Controller
      */
     public function restore(int $articleId): RedirectResponse
     {
-        $article = Article::onlyTrashed()->whereKey($articleId)->firstOrFail();
-        $article->restore();
-        $this->articleAiQualityInvalidationService->invalidateArticle(
-            $article,
-            'article_restored',
-        );
+        DB::transaction(function () use ($articleId): void {
+            $article = Article::onlyTrashed()
+                ->whereKey($articleId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $article->restore();
+            $this->articleAiQualityInvalidationService->invalidateArticle(
+                $article,
+                'article_restored',
+            );
+        });
 
         return back()->with('message', __('admin.articles.trash.message.restore_success', ['count' => 1]));
     }
@@ -358,8 +390,21 @@ class ArticleController extends Controller
      */
     public function forceDelete(int $articleId): RedirectResponse
     {
-        $article = Article::onlyTrashed()->whereKey($articleId)->firstOrFail();
-        $article->forceDelete();
+        try {
+            DB::transaction(function () use ($articleId): void {
+                $article = Article::onlyTrashed()
+                    ->whereKey($articleId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $article->forceDelete();
+            });
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            report($e);
+
+            return back()->withErrors(__('admin.articles.message.delete_failed_refresh'));
+        }
 
         return back()->with('message', __('admin.articles.trash.message.delete_success', ['count' => 1]));
     }

@@ -402,7 +402,7 @@ class MaterialLibraryService
                 ->select(['id', 'name', 'bio', 'email', 'avatar', 'website', 'social_links', 'created_at', 'updated_at'])
                 ->withCount([
                     'articles as article_count' => fn (Builder $q) => $q->whereNull('deleted_at'),
-                    'articles as trashed_count' => fn (Builder $q) => $q->whereNotNull('deleted_at'),
+                    'articles as trashed_count' => fn (Builder $q) => $q->onlyTrashed(),
                 ])
                 ->orderByDesc('created_at'),
             'keyword-libraries' => KeywordLibrary::query()
@@ -1030,7 +1030,7 @@ class MaterialLibraryService
         if ($visibleCount > 0) {
             throw new ApiException('material_in_use', '作者仍有关联文章，无法删除', 409, ['article_count' => $visibleCount]);
         }
-        $trashedCount = Article::query()->where('author_id', $id)->whereNotNull('deleted_at')->count();
+        $trashedCount = Article::onlyTrashed()->where('author_id', $id)->count();
         if ($trashedCount > 0) {
             throw new ApiException('material_in_use', '作者仍有关联回收站文章，无法删除', 409, ['trashed_count' => $trashedCount]);
         }

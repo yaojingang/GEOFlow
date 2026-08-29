@@ -25,12 +25,14 @@ class SystemUpdateStateService
         $notification = $this->metadataService->buildNotificationPayload();
         $state = is_array($notification['state'] ?? null) ? $notification['state'] : [];
         $links = is_array($notification['links'] ?? null) ? $notification['links'] : [];
+        $releaseNotice = is_array($notification['release_notice'] ?? null) ? $notification['release_notice'] : [];
         $historyScope = $historyScope === 'archived' ? 'archived' : 'recent';
         $cutoff = now()->subDays(self::RECENT_HISTORY_DAYS);
 
         return [
             'state' => $state,
             'links' => $links,
+            'release_notice' => $releaseNotice,
             'recent_runs' => $this->runs($historyScope, $cutoff),
             'recent_backups' => $this->backups($historyScope, $cutoff),
             'history_scope' => $historyScope,

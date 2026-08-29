@@ -82,11 +82,21 @@ final class AiWorkspaceKnowledgeMediaTest extends TestCase
         );
 
         self::assertSame(24, KnowledgeMediaAsset::query()->where('is_active', true)->count());
-        self::assertSame('pending', app(SystemUpdateManualCommandService::class)->manualCommands()[0]['status']);
+        $pendingCommand = app(SystemUpdateManualCommandService::class)->manualCommands()[0];
+        self::assertSame('pending', $pendingCommand['status']);
+        self::assertSame(
+            __('admin.system_updates.manual_commands.sync_system_knowledge_pending_desc'),
+            $pendingCommand['status_description'],
+        );
 
         $manager->setActive($missing, $admin, true);
 
-        self::assertSame('complete', app(SystemUpdateManualCommandService::class)->manualCommands()[0]['status']);
+        $completeCommand = app(SystemUpdateManualCommandService::class)->manualCommands()[0];
+        self::assertSame('complete', $completeCommand['status']);
+        self::assertSame(
+            __('admin.system_updates.manual_commands.sync_system_knowledge_complete_desc'),
+            $completeCommand['status_description'],
+        );
     }
 
     public function test_system_update_readiness_rejects_stale_knowledge_and_media_content(): void

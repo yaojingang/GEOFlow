@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class AdminUiV3ShellTest extends TestCase
@@ -83,7 +85,42 @@ class AdminUiV3ShellTest extends TestCase
             ->assertSee(AdminWeb::routePath('admin.ai-workspace'), false)
             ->assertDontSee(AdminWeb::routePath('admin.distribution.index'), false)
             ->assertDontSee(AdminWeb::routePath('admin.admin-users.index'), false)
-            ->assertDontSee(AdminWeb::routePath('admin.admin-activity-logs'), false);
+            ->assertDontSee(AdminWeb::routePath('admin.admin-activity-logs'), false)
+            ->assertDontSee('data-system-update-link', false);
+    }
+
+    public function test_super_admin_update_icon_links_to_the_update_center_with_or_without_a_new_version(): void
+    {
+        config([
+            'geoflow.admin_ui_v3_enabled' => true,
+            'geoflow.update_center_enabled' => true,
+            'geoflow.update_check_enabled' => false,
+        ]);
+        $admin = $this->admin('update_link_owner', 'super_admin');
+
+        $currentHtml = $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
+            ->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertUpdateCenterLink($currentHtml, false);
+
+        Cache::flush();
+        config([
+            'geoflow.app_version' => '2.0',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => 'https://example.test/version.json',
+        ]);
+        Http::fake([
+            'https://example.test/version.json' => Http::response(['version' => '2.1']),
+        ]);
+
+        $updateHtml = $this->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertUpdateCenterLink($updateHtml, true);
     }
 
     public function test_ai_workspace_renders_the_help_assistant_surface(): void
@@ -243,6 +280,25 @@ class AdminUiV3ShellTest extends TestCase
             ->assertDontSee('data-qr-value', false);
 
         $this->assertFileExists(public_path('assets/images/yao-jingang-wechat.jpg'));
+    }
+
+    private function assertUpdateCenterLink(string $html, bool $hasUpdate): void
+    {
+        $document = new \DOMDocument;
+        $document->loadHTML($html, LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+        $xpath = new \DOMXPath($document);
+        $links = $xpath->query('//*[@data-system-update-link]');
+
+        self::assertSame(1, $links?->length);
+        self::assertSame('a', $links?->item(0)?->nodeName);
+        self::assertSame(
+            AdminWeb::routePath('admin.system-updates.index'),
+            $links?->item(0)?->attributes?->getNamedItem('href')?->nodeValue,
+        );
+        self::assertSame(
+            $hasUpdate ? 1 : 0,
+            $xpath->query('.//*[@data-update-indicator]', $links?->item(0))?->length,
+        );
     }
 
     private function admin(string $username, string $role): Admin
