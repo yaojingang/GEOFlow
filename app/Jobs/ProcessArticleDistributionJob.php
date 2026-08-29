@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\HostedSitesDisabled;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
@@ -82,6 +83,11 @@ class ProcessArticleDistributionJob implements ShouldQueue
             }
             $expectedStatus = (string) $distribution->status;
             if (! in_array($expectedStatus, ['queued', 'sending'], true)) {
+                return;
+            }
+            if ($e instanceof ArticleAiQualityGateException) {
+                $this->handleQualityGateFailure($distribution, $e, $expectedStatus, $orchestrator);
+
                 return;
             }
             if ($e instanceof HostedSitesDisabled) {
@@ -269,6 +275,59 @@ class ProcessArticleDistributionJob implements ShouldQueue
             'context' => ['exception_class' => $exceptionClass],
             'created_at' => now(),
         ]);
+    }
+
+    private function handleQualityGateFailure(
+        ArticleDistribution $distribution,
+        ArticleAiQualityGateException $exception,
+        string $expectedStatus,
+        DistributionOrchestrator $orchestrator,
+    ): void {
+        $code = $exception->getErrorCode();
+        $waiting = in_array($code, [
+            'article_ai_quality_pending',
+            'article_ai_quality_stale',
+            'article_ai_quality_sampled_stale',
+        ], true);
+        $remoteMeta = is_array($distribution->remote_meta) ? $distribution->remote_meta : [];
+        $remoteMeta['ai_quality_dispatch'] = [
+            'status' => $waiting ? 'waiting' : 'blocked',
+            'error_code' => $code,
+            'checked_at' => now()->toIso8601String(),
+        ];
+        $retryAt = $waiting ? now()->addSeconds(15) : null;
+        $updated = ArticleDistribution::query()
+            ->whereKey((int) $distribution->id)
+            ->where('status', $expectedStatus)
+            ->update([
+                'status' => $waiting ? 'queued' : 'failed',
+                'next_retry_at' => $retryAt,
+                'last_error_message' => $waiting
+                    ? '等待当前 AI 质检完成后继续分发。'
+                    : '当前 AI 质检结果未授权分发，请处理质检问题后重试。',
+                'remote_meta' => json_encode($remoteMeta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'updated_at' => now(),
+            ]);
+        if ($updated !== 1) {
+            return;
+        }
+
+        $orchestrator->log(
+            $waiting ? 'warning' : 'error',
+            $waiting ? '文章分发正在等待 AI 质检终态' : '文章分发已被 AI 质检门禁阻止',
+            (int) $distribution->distribution_channel_id,
+            (int) $distribution->id,
+            (int) $distribution->article_id,
+            [
+                'event' => $waiting ? 'distribution.ai_quality_waiting' : 'distribution.ai_quality_blocked',
+                'error_code' => $code,
+            ],
+        );
+        if ($waiting) {
+            self::dispatch((int) $distribution->id)
+                ->onQueue('distribution')
+                ->delay($retryAt);
+        }
     }
 
     private function createsUncertainAiWordPressPost(ArticleDistribution $distribution): bool

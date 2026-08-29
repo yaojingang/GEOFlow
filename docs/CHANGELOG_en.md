@@ -41,6 +41,8 @@ This document tracks user-facing updates in the public repository. For future Gi
   - Article lists and detail pages expose status, score, conclusion, severity colors, source positioning, evidence, legal references, suggestions, history, recheck, and audited manual approval.
   - Changes to article content, task policy, prompts, models, knowledge chunks, or the legal rule version expire prior results and schedule reconciliation.
   - Long articles continue through one queued segment at a time. Structured requests and JSON fallback share one per-model time budget, while reconciliation isolates per-article configuration failures and dispatches cursor-based continuation batches.
+  - Inspections now have a 180-second end-to-end deadline, dedicated online and backfill queues, timeout sampling fallback, typed provider failures, and worker health checks. Failed runs remain unscored and provide actionable retry guidance.
+  - Added a guarded `fast_v2` compact execution path, stable evidence keys, shadow evaluation for scoring v2, offline and live golden-set commands, and staged release gates with incident freezes and verified recovery reports.
 - Unified Admin UI V3:
   - Core admin pages now share the new sidebar, top bar, navigation, forms, dialogs, and responsive layout, with recent activity, adjustable sidebar width, keyboard support, mobile layouts, and accessible states.
   - Icons, fonts, and page resources load locally. First paint and page navigation checks reduce flicker, layout shifts, and external resource dependencies.

@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
 use App\Models\Article;
+use App\Models\Task;
 use Illuminate\Support\Facades\DB;
 
 class ArticleWorkflowTransitionService
@@ -40,6 +41,17 @@ class ArticleWorkflowTransitionService
                 ->whereKey($article->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            if ($lockedArticle->task_id) {
+                $lockedTask = Task::withTrashed()
+                    ->whereKey((int) $lockedArticle->task_id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($lockedTask instanceof Task) {
+                    $lockedTask->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                    $lockedArticle->setRelation('task', $lockedTask);
+                }
+            }
 
             if ($lockedGuard !== null) {
                 $lockedGuard($lockedArticle);

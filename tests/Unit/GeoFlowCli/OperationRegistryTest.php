@@ -32,7 +32,7 @@ class OperationRegistryTest extends TestCase
             ->all();
 
         $this->assertCount(10, $browserRoutes);
-        $this->assertCount(30, $apiRoutes);
+        $this->assertCount(31, $apiRoutes);
         $this->assertSame($apiRoutes, OperationRegistry::routeSignatures());
     }
 

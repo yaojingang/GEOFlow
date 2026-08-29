@@ -81,7 +81,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(98, $shellRoutes);
+        $this->assertCount(100, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
@@ -95,9 +95,17 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
             $document = new \DOMDocument;
             @$document->loadHTML((string) $response->getContent());
-            $headings = (new \DOMXPath($document))->query('//main[@id="main-content"]//h1');
+            $xpath = new \DOMXPath($document);
+            $headings = $xpath->query('//main[@id="main-content"]//h1');
+            $topbarIdentities = $xpath->query('//*[@data-gf-topbar-identity]');
+            $content = $xpath->query('//main[@id="main-content"]//*[@data-gf-page-heading]')?->item(0);
+            $identity = $registry->pageIdentity($routeName);
 
             $this->assertSame(1, $headings?->length, $routeName.' must render exactly one page title');
+            $this->assertSame(1, $topbarIdentities?->length, $routeName.' must render one topbar identity');
+            $this->assertSame($identity['icon'], $topbarIdentities?->item(0)?->attributes?->getNamedItem('data-page-icon')?->nodeValue, $routeName);
+            $this->assertSame($identity['body_heading'], $content?->attributes?->getNamedItem('data-gf-page-heading')?->nodeValue, $routeName);
+            $this->assertStringContainsString($identity['title'], $topbarIdentities?->item(0)?->textContent ?? '', $routeName);
         }
     }
 
@@ -122,7 +130,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $this->assertCount(2, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
         $this->assertCount(5, $routesByClassification->get('download', collect()));
-        $this->assertCount(11, $routesByClassification->get('endpoint', collect()));
+        $this->assertCount(12, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
             ->assertOk()
@@ -153,6 +161,13 @@ class AdminUiV3FullPageSmokeTest extends TestCase
                 ->get(route($routeName, $parameters[$routeName] ?? []));
 
             $this->assertSame(200, $response->status(), $routeName);
+            $identity = $registry->pageIdentity($routeName);
+            if ($identity !== null) {
+                $response
+                    ->assertSee('data-gf-shell', false)
+                    ->assertSee('data-page-icon="'.$identity['icon'].'"', false)
+                    ->assertSee($identity['title']);
+            }
         }
 
         foreach ($routesByClassification->get('download', collect()) as $route) {
@@ -308,6 +323,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         return [
             'admin.ai-workspace.conversations.show' => ['conversation' => $aiConversation->id],
             'admin.articles.edit' => ['articleId' => $article->id],
+            'admin.articles.ai-quality.status' => ['articleId' => $article->id],
             'admin.ai-models.edit' => ['modelId' => $model->id],
             'admin.ai-source-providers.edit' => ['providerId' => $sourceProvider->id],
             'admin.ai-prompts.edit' => ['promptId' => $prompt->id],

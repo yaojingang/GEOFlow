@@ -3,6 +3,8 @@
     $adminUiV3Enabled = (bool) config('geoflow.admin_ui_v3_enabled', false);
     $currentAdmin = auth('admin')->user();
     $uiV3 = is_array($adminUiV3 ?? null) ? $adminUiV3 : [];
+    $pageIdentity = is_array($uiV3['page_identity'] ?? null) ? $uiV3['page_identity'] : [];
+    $bodyHeadingMode = trim($__env->yieldContent('body-heading')) ?: ($pageIdentity['body_heading'] ?? 'content');
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -67,12 +69,17 @@
                 <x-admin.v3.topbar
                     :admin="$currentAdmin"
                     :update-notification="$adminUpdateNotificationPayload ?? []"
+                    :page-title="trim($__env->yieldContent('topbar-title')) ?: ($pageIdentity['title'] ?? null)"
+                    :page-icon="trim($__env->yieldContent('topbar-icon')) ?: ($pageIdentity['icon'] ?? null)"
                 />
                 <main class="gf-main" id="main-content">
                     @if (!empty($uiV3['show_settings_navigation']))
                         <x-admin.v3.settings-subnav :items="$uiV3['settings_navigation'] ?? []" />
                     @endif
-                    <div class="gf-content">
+                    @if (!empty($uiV3['show_ai_configurator_navigation']))
+                        <x-admin.v3.ai-configurator-subnav :items="$uiV3['ai_configurator_navigation'] ?? []" />
+                    @endif
+                    <div class="gf-content" data-gf-page-heading="{{ $bodyHeadingMode }}">
                         @if (session('message'))
                             <div class="gf-flash gf-flash--success admin-flash-alert" role="status">
                                 <i data-lucide="circle-check"></i><span>{{ session('message') }}</span>

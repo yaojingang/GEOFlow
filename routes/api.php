@@ -124,6 +124,9 @@ Route::prefix('v1')
             Route::get('articles/{article}', [ArticleController::class, 'show'])
                 ->whereNumber('article')
                 ->middleware('api.scope:articles:read');
+            Route::get('articles/{article}/ai-quality/status', [ArticleController::class, 'aiQualityStatus'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:read', 'throttle:120,1']);
             Route::patch('articles/{article}', [ArticleController::class, 'update'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:write', 'throttle:60,1']);

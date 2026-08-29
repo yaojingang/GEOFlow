@@ -14,7 +14,7 @@ return new class extends Migration
             return;
         }
 
-        $path = resource_path('prompts/article-quality-cn-v1.txt');
+        $path = resource_path('prompts/article-quality-cn-v1-legacy.txt');
         $content = file_get_contents($path);
         if ($content === false || trim($content) === '') {
             throw new RuntimeException('Default AI quality prompt resource is unavailable.');

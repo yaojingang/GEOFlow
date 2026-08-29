@@ -21,11 +21,13 @@ use App\Models\TitleLibrary;
 use App\Services\GeoFlow\ArticleAiQualityGate;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
 use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
+use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
 use App\Services\GeoFlow\ArticleMarkdownExportService;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\HostedSites\HostedSiteArticleFingerprintService;
+use App\Support\Admin\ArticleAiQualityProgressPresenter;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Illuminate\Database\QueryException;
@@ -61,6 +63,8 @@ class ArticleController extends Controller
         private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
         private readonly ArticleAiQualityInvalidationService $articleAiQualityInvalidationService,
         private readonly ArticleAiQualityGate $articleAiQualityGate,
+        private readonly ArticleAiQualityProgressPresenter $articleAiQualityProgressPresenter,
+        private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
     ) {}
 
     /**
@@ -485,6 +489,8 @@ class ArticleController extends Controller
             ->whereKey($articleId)
             ->firstOrFail();
 
+        $aiQualityCheck = $article->latestAiQualityCheck;
+
         return view('admin.articles.form', [
             'pageTitle' => __('admin.article_edit.page_title'),
             'activeMenu' => 'articles',
@@ -508,9 +514,11 @@ class ArticleController extends Controller
                     || (bool) ($article->task->ai_quality_enabled ?? false),
                 'is_hot' => (bool) ($article->is_hot ?? false),
                 'is_featured' => (bool) ($article->is_featured ?? false),
+                'is_ai_generated' => (bool) ($article->is_ai_generated ?? false),
             ],
             'riskScan' => $this->riskScanViewData($article),
-            'aiQualityCheck' => $article->latestAiQualityCheck,
+            'aiQualityCheck' => $aiQualityCheck,
+            'aiQualityProgress' => $this->articleAiQualityProgressPresenter->snapshot($aiQualityCheck),
             'aiQualityHistory' => $article->aiQualityChecks()
                 ->with(['prompt:id,name', 'aiModel:id,name'])
                 ->latest('id')
@@ -594,6 +602,34 @@ class ArticleController extends Controller
         }
     }
 
+    /**
+     * 返回当前文章最新 AI 质检的真实执行进度。
+     */
+    public function aiQualityStatus(int $articleId): JsonResponse
+    {
+        $article = Article::query()
+            ->with('latestAiQualityCheck')
+            ->whereKey($articleId)
+            ->firstOrFail();
+
+        return response()
+            ->json($this->articleAiQualityProgressPresenter->snapshot($article->latestAiQualityCheck))
+            ->header('Cache-Control', 'no-cache, private, no-store, max-age=0, must-revalidate');
+    }
+
+    public function retryAiQualityWorkflow(int $articleId): RedirectResponse
+    {
+        $article = Article::query()->with('latestAiQualityCheck')->whereKey($articleId)->firstOrFail();
+        $check = $article->latestAiQualityCheck;
+        if (! $check || ! $this->articleAiQualityInspectionService->retryCompletedWorkflow($check)) {
+            return back()->withErrors(__('admin.articles.ai_quality.workflow_retry_unavailable'));
+        }
+
+        return redirect()
+            ->route('admin.articles.edit', ['articleId' => $articleId])
+            ->with('message', __('admin.articles.ai_quality.workflow_retry_started'));
+    }
+
     private function aiQualityRequestFailureMessage(Throwable $exception): string
     {
         return match ($exception->getMessage()) {
@@ -637,8 +673,8 @@ class ArticleController extends Controller
     public function update(Request $request, int $articleId): RedirectResponse
     {
         $runAiQualityAfterSave = $request->boolean('run_ai_quality_after_save');
-        $payload = $this->validateArticleForm($request, true);
         $article = Article::query()->whereKey($articleId)->firstOrFail();
+        $payload = $this->validateArticleForm($request, true, (bool) $article->is_ai_generated);
 
         $workflowState = ArticleWorkflow::normalizeState(
             $payload['status'],
@@ -1219,11 +1255,11 @@ class ArticleController extends Controller
      *     is_ai_generated: bool
      * }
      */
-    private function validateArticleForm(Request $request, bool $isEdit): array
+    private function validateArticleForm(Request $request, bool $isEdit, bool $cleanAiGenerated = false): array
     {
         $keyPrefix = $isEdit ? 'admin.article_edit.error' : 'admin.article_create.error';
 
-        return $request->validate([
+        $validated = $request->validate([
             'title' => ['required', 'string', 'max:500'],
             'excerpt' => ['nullable', 'string', 'max:'.ArticleRiskScanner::MAX_EXCERPT_CHARACTERS],
             'content' => ['required', 'string', 'max:'.ArticleRiskScanner::MAX_CONTENT_CHARACTERS],
@@ -1246,6 +1282,17 @@ class ArticleController extends Controller
             'author_id.required' => __($keyPrefix.'.author_required'),
             'author_id.min' => __($keyPrefix.'.author_required'),
         ]);
+
+        if ($cleanAiGenerated || (bool) ($validated['is_ai_generated'] ?? false)) {
+            $validated = $this->articleCitationMarkerCleaner->cleanArticleFields($validated);
+            if (trim((string) $validated['content']) === '') {
+                throw ValidationException::withMessages([
+                    'content' => __($keyPrefix.'.content_required'),
+                ]);
+            }
+        }
+
+        return $validated;
     }
 
     /**

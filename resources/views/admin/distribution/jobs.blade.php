@@ -2,14 +2,12 @@
 
 @section('content')
     <div class="space-y-8 px-4 sm:px-0">
-        <header class="flex items-start gap-3 sm:gap-4">
-                <a href="{{ route('admin.distribution.index') }}" aria-label="{{ __('admin.common.back') }}" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-gray-400 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-                    <i data-lucide="arrow-left" class="h-5 w-5"></i>
-                </a>
-                <div class="min-w-0">
-                    <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.distribution.jobs_heading') }}</h1>
-                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.distribution.jobs_subtitle') }}</p>
-                </div>
+        <header>
+            <div class="sr-only">
+                <h1>{{ __('admin.distribution.jobs_heading') }}</h1>
+                <p>{{ __('admin.distribution.jobs_subtitle') }}</p>
+            </div>
+            <x-admin.v3.distribution-subnav active="distribution-jobs" />
         </header>
 
         <div class="rounded-lg bg-white shadow">

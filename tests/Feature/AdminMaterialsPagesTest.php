@@ -19,10 +19,12 @@ use App\Models\UrlImportJobLog;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\ManagedImageFileService;
 use App\Services\GeoFlow\UrlImportProcessingService;
+use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -166,6 +168,104 @@ class AdminMaterialsPagesTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.url-import.history'))
             ->assertForbidden();
+    }
+
+    public function test_material_pages_share_the_section_navigation_and_keep_index_actions(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+
+        $admin = Admin::query()->create([
+            'username' => 'materials_section_navigation_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-section-navigation@example.com',
+            'display_name' => 'Materials Navigation Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        foreach ([
+            route('admin.materials.index') => null,
+            route('admin.knowledge-bases.index') => 'knowledge-bases',
+            route('admin.keyword-libraries.index') => 'keywords',
+            route('admin.title-libraries.index') => 'titles',
+            route('admin.image-libraries.index') => 'images',
+            route('admin.authors.index') => 'authors',
+            route('admin.url-import') => 'url-import',
+        ] as $url => $activeKey) {
+            $response = $this->actingAs($admin, 'admin')->get($url);
+
+            $response
+                ->assertOk()
+                ->assertSee('data-materials-navigation', false)
+                ->assertSee(AdminWeb::routePath('admin.knowledge-bases.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.keyword-libraries.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.title-libraries.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.image-libraries.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.authors.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.url-import'), false);
+
+            $document = new \DOMDocument;
+            $document->loadHTML((string) $response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+            $xpath = new \DOMXPath($document);
+            $navigation = $xpath->query('//*[@data-materials-navigation]')?->item(0);
+            $items = $xpath->query('.//*[@data-materials-navigation-item]', $navigation);
+            $activeItems = $xpath->query('.//*[@aria-current="page"]', $navigation);
+
+            self::assertNotNull($navigation, $url);
+            self::assertSame(6, $items?->length, $url);
+            self::assertSame(
+                ['knowledge-bases', 'keywords', 'titles', 'images', 'authors', 'url-import'],
+                array_map(
+                    static fn (\DOMNode $item): string => (string) $item->attributes?->getNamedItem('data-materials-navigation-item')?->nodeValue,
+                    iterator_to_array($items),
+                ),
+                $url,
+            );
+            self::assertSame(6, $xpath->query('.//*[@data-materials-navigation-dot]', $navigation)?->length, $url);
+            self::assertSame($activeKey === null ? 0 : 1, $activeItems?->length, $url);
+
+            if ($activeKey !== null) {
+                self::assertSame(
+                    $activeKey,
+                    $activeItems?->item(0)?->attributes?->getNamedItem('data-materials-navigation-item')?->nodeValue,
+                    $url,
+                );
+            }
+
+            if ($activeKey === 'knowledge-bases') {
+                $response
+                    ->assertSee('href="'.route('admin.knowledge-bases.create').'"', false)
+                    ->assertSee('href="'.route('admin.knowledge-bases.create', ['mode' => 'upload']).'"', false);
+            }
+
+            if ($activeKey === 'keywords') {
+                $response->assertSee('href="'.route('admin.keyword-libraries.create').'"', false);
+            }
+
+            if ($activeKey === 'titles') {
+                $response->assertSee('href="'.route('admin.title-libraries.create').'"', false);
+            }
+
+            if ($activeKey === 'images') {
+                $response->assertSee('href="'.route('admin.image-libraries.create').'"', false);
+            }
+
+            if ($activeKey === 'authors') {
+                $response->assertSee('href="'.route('admin.authors.create').'"', false);
+            }
+
+            if ($activeKey === 'url-import') {
+                $response->assertSee('href="'.route('admin.url-import.history').'"', false);
+            }
+        }
+
+        foreach (['zh_CN', 'en', 'ja', 'es', 'ru', 'pt_BR'] as $locale) {
+            App::setLocale($locale);
+
+            foreach (['knowledge_bases', 'keyword_libraries', 'title_libraries', 'image_libraries', 'author_manage', 'url_import'] as $key) {
+                self::assertNotSame('admin.materials.'.$key, __('admin.materials.'.$key), $locale.': '.$key);
+            }
+        }
     }
 
     public function test_title_library_creation_uses_the_standalone_form_page(): void

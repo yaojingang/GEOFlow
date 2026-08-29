@@ -26,7 +26,18 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
         $response->assertOk()
             ->assertSee(__('admin.ai_configurator.search_title'))
-            ->assertSee(route('admin.ai-source-providers.index'), false);
+            ->assertSee(route('admin.ai-source-providers.index'), false)
+            ->assertSee('data-ai-configurator-overview', false)
+            ->assertSee('data-ai-configurator-modules', false);
+
+        $html = (string) $response->getContent();
+
+        $this->assertLessThan(
+            strpos($html, 'data-ai-configurator-modules'),
+            strpos($html, 'data-ai-configurator-overview'),
+            'The configuration overview should render before the four management modules.',
+        );
+        $this->assertStringContainsString('class="mt-6 grid', $html);
     }
 
     public function test_ai_configuration_pages_tolerate_provider_table_before_usage_date_migration(): void

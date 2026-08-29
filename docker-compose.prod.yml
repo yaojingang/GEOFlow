@@ -156,6 +156,55 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  ai-quality-queue:
+    image: geoflow-app-prod:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+      network: ${DOCKER_BUILD_NETWORK:-default}
+      args: *prod_app_build_args
+    working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+    command: ["php", "-d", "memory_limit=256M", "artisan", "geoflow:work-ai-quality", "front"]
+    mem_limit: ${AI_QUALITY_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
+    stop_grace_period: ${GEOFLOW_AI_QUALITY_STOP_GRACE_PERIOD:-260s}
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: ${AI_QUALITY_QUEUE_REPLICAS:-2}
+
+  ai-quality-backfill-queue:
+    image: geoflow-app-prod:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+      network: ${DOCKER_BUILD_NETWORK:-default}
+      args: *prod_app_build_args
+    container_name: geoflow-ai-quality-backfill-queue-prod
+    working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+    command: ["php", "-d", "memory_limit=192M", "artisan", "geoflow:work-ai-quality", "backfill"]
+    mem_limit: ${AI_QUALITY_BACKFILL_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
+    stop_grace_period: ${GEOFLOW_AI_QUALITY_STOP_GRACE_PERIOD:-260s}
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   knowledge-queue:
     image: geoflow-app-prod:latest
     build:

@@ -1,4 +1,9 @@
-@props(['admin', 'updateNotification' => []])
+@props([
+    'admin',
+    'updateNotification' => [],
+    'pageTitle' => null,
+    'pageIcon' => null,
+])
 @php
     $updateState = is_array($updateNotification['state'] ?? null) ? $updateNotification['state'] : [];
     $updateLinks = is_array($updateNotification['links'] ?? null) ? $updateNotification['links'] : [];
@@ -15,9 +20,19 @@
         'ru' => 'RU',
         'pt_BR' => 'PT',
     ];
+    $pageTitle = is_string($pageTitle) ? trim($pageTitle) : '';
+    $pageIcon = is_string($pageIcon) ? trim($pageIcon) : '';
 @endphp
 <header class="gf-topbar">
     <button class="gf-icon-button gf-mobile-only" type="button" aria-label="{{ __('admin.ui_v3.open_sidebar') }}" data-sidebar-open><i data-lucide="menu"></i></button>
+    @if ($pageTitle !== '')
+        <div class="gf-topbar__identity" data-gf-topbar-identity @if($pageIcon !== '') data-page-icon="{{ $pageIcon }}" @endif>
+            @if ($pageIcon !== '')
+                <span class="gf-topbar__identity-icon" aria-hidden="true"><i data-lucide="{{ $pageIcon }}"></i></span>
+            @endif
+            <span class="gf-topbar__title">{{ $pageTitle }}</span>
+        </div>
+    @endif
     <div class="gf-topbar__actions">
         <button class="gf-button gf-button--small gf-pwa-install" type="button" data-pwa-install hidden aria-label="{{ __('admin.ui_v3.install_workbench_label') }}"><i data-lucide="app-window"></i><span>{{ __('admin.ui_v3.install_workbench') }}</span></button>
         <div class="gf-popover-wrap">

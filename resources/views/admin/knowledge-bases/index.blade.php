@@ -2,15 +2,13 @@
 
 @section('content')
     <div class="px-4 sm:px-0">
-        <div class="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-            <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.materials.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                </a>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.knowledge_bases.heading') }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.knowledge_bases.subtitle') }}</p>
+        <header class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0 flex-1">
+                <div class="sr-only">
+                    <h1>{{ __('admin.knowledge_bases.heading') }}</h1>
+                    <p>{{ __('admin.knowledge_bases.subtitle') }}</p>
                 </div>
+                <x-admin.v3.materials-subnav active="knowledge-bases" />
             </div>
             <div class="flex flex-wrap items-center gap-3">
                 <a href="{{ route('admin.knowledge-bases.create') }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
@@ -22,7 +20,7 @@
                     {{ __('admin.knowledge_bases.import_unified') }}
                 </a>
             </div>
-        </div>
+        </header>
 
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow rounded-lg">

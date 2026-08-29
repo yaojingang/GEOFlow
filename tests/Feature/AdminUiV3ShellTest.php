@@ -123,18 +123,51 @@ class AdminUiV3ShellTest extends TestCase
         self::assertLessThanOrEqual(6, substr_count($response->getContent(), 'data-ai-suggestion='));
     }
 
+    public function test_model_not_found_keeps_its_explanation_below_the_compact_topbar_identity(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+        $admin = $this->admin('missing_model_owner', 'super_admin');
+
+        $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
+            ->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => 999_999_999]))
+            ->assertNotFound()
+            ->assertSee('data-page-icon="circle-alert"', false)
+            ->assertSee(__('admin_pages.not_found'))
+            ->assertSee('data-gf-page-heading="content"', false)
+            ->assertSee(__('admin.common.not_found_title'))
+            ->assertSee(__('admin.common.not_found_desc'));
+    }
+
     public function test_site_settings_context_navigation_respects_permissions(): void
     {
         config()->set('geoflow.admin_ui_v3_enabled', true);
         $superAdmin = $this->admin('settings_owner', 'super_admin');
 
-        $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
+        $superResponse = $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
             ->actingAs($superAdmin, 'admin')
-            ->get(route('admin.site-settings.index'))
+            ->get(route('admin.site-settings.index'));
+
+        $superResponse
             ->assertOk()
             ->assertSee('class="gf-context-nav"', false)
+            ->assertSee('data-settings-navigation', false)
             ->assertSee(AdminWeb::routePath('admin.admin-users.index'), false)
             ->assertSee(AdminWeb::routePath('admin.system-updates.index'), false);
+
+        $document = new \DOMDocument;
+        $document->loadHTML((string) $superResponse->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+        $xpath = new \DOMXPath($document);
+        $navigation = $xpath->query('//*[@data-settings-navigation]')?->item(0);
+
+        self::assertNotNull($navigation);
+        self::assertSame(6, $xpath->query('.//*[@data-settings-navigation-item]', $navigation)?->length);
+        self::assertSame(6, $xpath->query('.//*[@data-settings-navigation-dot]', $navigation)?->length);
+
+        $activeItem = $xpath->query('.//*[@aria-current="page"]', $navigation)?->item(0);
+        self::assertNotNull($activeItem);
+        self::assertContains('border-blue-600', explode(' ', (string) $activeItem->attributes?->getNamedItem('class')?->nodeValue));
+        self::assertNotContains('bg-blue-50', explode(' ', (string) $activeItem->attributes?->getNamedItem('class')?->nodeValue));
 
         $regularAdmin = $this->admin('settings_editor', 'admin');
         $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
@@ -145,6 +178,48 @@ class AdminUiV3ShellTest extends TestCase
             ->assertSee(AdminWeb::routePath('admin.security-settings.index'), false)
             ->assertDontSee(AdminWeb::routePath('admin.admin-users.index'), false)
             ->assertDontSee(AdminWeb::routePath('admin.system-updates.index'), false);
+    }
+
+    public function test_ai_configurator_navigation_is_shared_by_the_overview_and_management_pages(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+        $admin = $this->admin('ai_configurator_owner', 'super_admin');
+        $routes = [
+            'admin.ai.configurator' => null,
+            'admin.ai-models.index' => 'models',
+            'admin.ai-prompts' => 'prompts',
+            'admin.ai-special-prompts' => 'special',
+            'admin.ai-source-providers.index' => 'sources',
+        ];
+
+        foreach ($routes as $routeName => $activeKey) {
+            $response = $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
+                ->actingAs($admin, 'admin')
+                ->get(route($routeName));
+
+            $response
+                ->assertOk()
+                ->assertSee('data-ai-configurator-navigation', false)
+                ->assertSee(AdminWeb::routePath('admin.ai-models.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.ai-prompts'), false)
+                ->assertSee(AdminWeb::routePath('admin.ai-special-prompts'), false)
+                ->assertSee(AdminWeb::routePath('admin.ai-source-providers.index'), false);
+
+            $document = new \DOMDocument;
+            $document->loadHTML((string) $response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+            $xpath = new \DOMXPath($document);
+            $navigation = $xpath->query('//*[@data-ai-configurator-navigation]')?->item(0);
+
+            self::assertNotNull($navigation, $routeName);
+            self::assertSame(4, $xpath->query('.//*[@data-ai-configurator-navigation-item]', $navigation)?->length, $routeName);
+            self::assertSame(4, $xpath->query('.//*[@data-ai-configurator-navigation-dot]', $navigation)?->length, $routeName);
+
+            $activeItems = $xpath->query('.//*[@aria-current="page"]', $navigation);
+            self::assertSame($activeKey === null ? 0 : 1, $activeItems?->length, $routeName);
+            if ($activeKey !== null) {
+                self::assertSame($activeKey, $activeItems?->item(0)?->attributes?->getNamedItem('data-ai-configurator-navigation-item')?->nodeValue, $routeName);
+            }
+        }
     }
 
     public function test_community_dialog_shows_the_author_wechat_and_project_links(): void

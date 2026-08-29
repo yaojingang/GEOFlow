@@ -14,6 +14,28 @@ use Illuminate\Support\Facades\Schema;
 
 class ArticleAiQualityInvalidationService
 {
+    /** @param iterable<int> $articleIds */
+    public function invalidateArticles(iterable $articleIds, string $reason): int
+    {
+        $ids = collect($articleIds)
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+        if ($ids->isEmpty()) {
+            return 0;
+        }
+
+        [$updated, $affectedArticleIds] = $this->invalidateChecks(
+            ArticleAiQualityCheck::query()->whereIn('article_id', $ids->all()),
+            'rollout_changed',
+            $reason,
+        );
+        $this->dispatchReconcile($ids->merge($affectedArticleIds));
+
+        return $updated;
+    }
+
     public function invalidateArticle(Article|int $article, string $reason, bool $reconcile = true): int
     {
         $articleId = $article instanceof Article ? (int) $article->id : $article;
@@ -24,7 +46,10 @@ class ArticleAiQualityInvalidationService
         );
 
         if ($reconcile) {
-            ReconcileArticleAiQualityJob::dispatch($articleId, $articleId)->onQueue('geoflow')->afterCommit();
+            ReconcileArticleAiQualityJob::dispatch($articleId, $articleId)
+                ->onConnection('redis')
+                ->onQueue((string) config('geoflow.ai_quality_backfill_queue', 'ai-quality-backfill'))
+                ->afterCommit();
         }
 
         return $updated;
@@ -86,85 +111,90 @@ class ArticleAiQualityInvalidationService
 
     public function invalidateTask(int $taskId, string $reason): int
     {
-        $articleIds = Article::withTrashed()->where('task_id', $taskId)->pluck('id');
+        $articles = Article::withTrashed()->where('task_id', $taskId);
         [$updated, $affectedArticleIds] = $this->invalidateChecks(
-            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($taskId, $articleIds): void {
+            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($taskId, $articles): void {
                 $query->where('task_id', $taskId);
-                if ($articleIds->isNotEmpty()) {
-                    $query->orWhereIn('article_id', $articleIds->all());
-                }
+                $query->orWhereIn('article_id', (clone $articles)->select('id'));
             }),
             'policy_changed',
             $reason,
         );
-        $this->dispatchReconcile($articleIds->merge($affectedArticleIds));
+        $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
+
+        return $updated;
+    }
+
+    public function invalidateSampledTaskChecks(int $taskId, string $reason): int
+    {
+        $articles = Article::withTrashed()->where('task_id', $taskId);
+        [$updated, $affectedArticleIds] = $this->invalidateChecks(
+            ArticleAiQualityCheck::query()
+                ->where('inspection_scope', 'fallback_sampled')
+                ->where(function (Builder $query) use ($taskId, $articles): void {
+                    $query->where('task_id', $taskId)
+                        ->orWhereIn('article_id', (clone $articles)->select('id'));
+                }),
+            'sampling_policy_disabled',
+            $reason,
+        );
+        $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
 
         return $updated;
     }
 
     public function invalidateKnowledgeBase(int $knowledgeBaseId, string $reason): int
     {
-        $taskIds = collect();
-        if (Schema::hasTable('task_knowledge_bases')) {
-            $taskIds = DB::table('task_knowledge_bases')
-                ->where('knowledge_base_id', $knowledgeBaseId)
-                ->pluck('task_id');
-        }
-        $legacyTaskIds = Schema::hasColumn('tasks', 'knowledge_base_id')
-            ? DB::table('tasks')->where('knowledge_base_id', $knowledgeBaseId)->pluck('id')
-            : collect();
-        $taskIds = $taskIds
-            ->merge($legacyTaskIds)
-            ->map(static fn ($id): int => (int) $id)
-            ->filter(static fn (int $id): bool => $id > 0)
-            ->unique()
-            ->values();
-        $articleIds = $taskIds->isEmpty()
-            ? collect()
-            : Article::withTrashed()->whereIn('task_id', $taskIds->all())->pluck('id');
+        $hasPivot = Schema::hasTable('task_knowledge_bases');
+        $hasLegacyColumn = Schema::hasColumn('tasks', 'knowledge_base_id');
+        $tasks = Task::withTrashed()->where(function (Builder $query) use ($knowledgeBaseId, $hasPivot, $hasLegacyColumn): void {
+            if ($hasPivot) {
+                $query->whereIn('id', DB::table('task_knowledge_bases')
+                    ->select('task_id')
+                    ->where('knowledge_base_id', $knowledgeBaseId));
+            }
+            if ($hasLegacyColumn) {
+                $method = $hasPivot ? 'orWhere' : 'where';
+                $query->{$method}('knowledge_base_id', $knowledgeBaseId);
+            }
+            if (! $hasPivot && ! $hasLegacyColumn) {
+                $query->whereRaw('1 = 0');
+            }
+        });
+        $articles = Article::withTrashed()->whereIn('task_id', (clone $tasks)->select('id'));
         [$updated, $affectedArticleIds] = $this->invalidateChecks(
-            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($articleIds, $knowledgeBaseId): void {
-                if ($articleIds->isNotEmpty()) {
-                    $query->whereIn('article_id', $articleIds->all())
-                        ->orWhereJsonContains('execution_meta->knowledge_base_ids', $knowledgeBaseId);
-
-                    return;
-                }
-
-                $query->whereJsonContains('execution_meta->knowledge_base_ids', $knowledgeBaseId);
+            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($articles, $knowledgeBaseId): void {
+                $query->whereIn('article_id', (clone $articles)->select('id'))
+                    ->orWhereJsonContains('execution_meta->knowledge_base_ids', $knowledgeBaseId);
             }),
             'knowledge_changed',
             $reason,
         );
-        $this->dispatchReconcile($articleIds->merge($affectedArticleIds));
+        $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
 
         return $updated;
     }
 
     public function invalidatePrompt(int $promptId, string $reason): int
     {
-        $taskIds = Task::withTrashed()->where('ai_quality_prompt_id', $promptId)->pluck('id');
-        $articleIds = $taskIds->isEmpty()
-            ? collect()
-            : Article::withTrashed()->whereIn('task_id', $taskIds->all())->pluck('id');
+        $tasks = Task::withTrashed()->where('ai_quality_prompt_id', $promptId);
+        $articles = Article::withTrashed()->whereIn('task_id', (clone $tasks)->select('id'));
         [$updated, $affectedArticleIds] = $this->invalidateChecks(
-            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($promptId, $articleIds): void {
+            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($promptId, $articles): void {
                 $query->where('prompt_id', $promptId);
-                if ($articleIds->isNotEmpty()) {
-                    $query->orWhereIn('article_id', $articleIds->all());
-                }
+                $query->orWhereIn('article_id', (clone $articles)->select('id'));
             }),
             'prompt_changed',
             $reason,
         );
-        $this->dispatchReconcile($articleIds->merge($affectedArticleIds));
+        $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
 
         return $updated;
     }
 
     public function invalidateModel(int $modelId, string $reason): int
     {
-        $taskIds = Task::withTrashed()
+        $tasks = Task::withTrashed()
             ->where('ai_quality_enabled', true)
             ->where(function (Builder $query) use ($modelId): void {
                 $query->where('ai_quality_model_id', $modelId)
@@ -173,23 +203,18 @@ class ArticleAiQualityInvalidationService
                             ->where('ai_model_id', $modelId);
                     })
                     ->orWhere('model_selection_mode', 'smart_failover');
-            })
-            ->pluck('id');
-        $articleIds = $taskIds->isEmpty()
-            ? collect()
-            : Article::withTrashed()->whereIn('task_id', $taskIds->all())->pluck('id');
+            });
+        $articles = Article::withTrashed()->whereIn('task_id', (clone $tasks)->select('id'));
         [$updated, $affectedArticleIds] = $this->invalidateChecks(
-            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($modelId, $articleIds): void {
+            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($modelId, $articles): void {
                 $query->where('ai_model_id', $modelId)
-                    ->orWhereJsonContains('execution_meta->model_candidate_ids', $modelId);
-                if ($articleIds->isNotEmpty()) {
-                    $query->orWhereIn('article_id', $articleIds->all());
-                }
+                    ->orWhereJsonContains('execution_meta->model_candidate_ids', $modelId)
+                    ->orWhereIn('article_id', (clone $articles)->select('id'));
             }),
             'model_changed',
             $reason,
         );
-        $this->dispatchReconcile($articleIds->merge($affectedArticleIds));
+        $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
 
         return $updated;
     }
@@ -197,52 +222,80 @@ class ArticleAiQualityInvalidationService
     /** @return array{int, Collection<int, int>} */
     private function invalidateChecks(Builder $query, string $errorCode, string $reason): array
     {
-        $checkIds = (clone $query)
+        $updated = 0;
+        $minimumAffectedArticleId = null;
+        $maximumAffectedArticleId = null;
+        (clone $query)
             ->whereIn('status', ['queued', 'running', 'completed', 'failed'])
-            ->pluck('id');
-        if ($checkIds->isEmpty()) {
-            return [0, collect()];
-        }
+            ->select(['id', 'article_id'])
+            ->chunkById(500, function (Collection $checks) use (
+                $errorCode,
+                $reason,
+                &$updated,
+                &$minimumAffectedArticleId,
+                &$maximumAffectedArticleId,
+            ): void {
+                $checkIds = $checks->pluck('id')->map('intval')->all();
+                $articleIds = $checks->pluck('article_id')->map('intval')->filter()->unique()->values();
+                if ($checkIds === []) {
+                    return;
+                }
 
-        $articleIds = ArticleAiQualityCheck::query()
-            ->whereIn('id', $checkIds->all())
-            ->pluck('article_id')
-            ->map(static fn ($id): int => (int) $id)
+                $timestamp = now();
+                $updated += ArticleAiQualityCheck::query()
+                    ->whereIn('id', $checkIds)
+                    ->whereIn('status', ['queued', 'running', 'completed', 'failed'])
+                    ->update([
+                        'status' => 'stale',
+                        'active_dedupe_key' => null,
+                        'error_code' => $errorCode,
+                        'error_message' => mb_substr($reason, 0, 500, 'UTF-8'),
+                        'finished_at' => $timestamp,
+                        'updated_at' => $timestamp,
+                    ]);
+                ArticleAiQualitySegment::query()
+                    ->whereIn('article_ai_quality_check_id', $checkIds)
+                    ->whereIn('status', ['queued', 'running', 'failed'])
+                    ->update([
+                        'status' => 'stale',
+                        'error_code' => $errorCode,
+                        'error_message' => mb_substr($reason, 0, 500, 'UTF-8'),
+                        'finished_at' => $timestamp,
+                        'updated_at' => $timestamp,
+                    ]);
+                if ($articleIds->isNotEmpty()) {
+                    Article::query()
+                        ->whereIn('id', $articleIds->all())
+                        ->where('status', '!=', 'published')
+                        ->where('review_status', '!=', 'rejected')
+                        ->update([
+                            'status' => 'draft',
+                            'review_status' => 'pending',
+                            'published_at' => null,
+                            'updated_at' => $timestamp,
+                        ]);
+                    $chunkMinimum = (int) $articleIds->min();
+                    $chunkMaximum = (int) $articleIds->max();
+                    $minimumAffectedArticleId = $minimumAffectedArticleId === null
+                        ? $chunkMinimum
+                        : min($minimumAffectedArticleId, $chunkMinimum);
+                    $maximumAffectedArticleId = $maximumAffectedArticleId === null
+                        ? $chunkMaximum
+                        : max($maximumAffectedArticleId, $chunkMaximum);
+                }
+            });
+
+        return [$updated, collect([$minimumAffectedArticleId, $maximumAffectedArticleId])->filter()->unique()->values()];
+    }
+
+    /** @return Collection<int, int> */
+    private function articleIds(Builder $query): Collection
+    {
+        return (clone $query)->orderBy('id')->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
             ->unique()
             ->values();
-        $updated = ArticleAiQualityCheck::query()
-            ->whereIn('id', $checkIds->all())
-            ->whereIn('status', ['queued', 'running', 'completed', 'failed'])
-            ->update([
-                'status' => 'stale',
-                'active_dedupe_key' => null,
-                'error_code' => $errorCode,
-                'error_message' => mb_substr($reason, 0, 500, 'UTF-8'),
-                'finished_at' => now(),
-                'updated_at' => now(),
-            ]);
-        ArticleAiQualitySegment::query()
-            ->whereIn('article_ai_quality_check_id', $checkIds->all())
-            ->whereIn('status', ['queued', 'running', 'failed'])
-            ->update([
-                'status' => 'stale',
-                'error_code' => $errorCode,
-                'error_message' => mb_substr($reason, 0, 500, 'UTF-8'),
-                'finished_at' => now(),
-                'updated_at' => now(),
-            ]);
-        Article::query()
-            ->whereIn('id', $articleIds->all())
-            ->where('status', '!=', 'published')
-            ->where('review_status', '!=', 'rejected')
-            ->update([
-                'status' => 'draft',
-                'review_status' => 'pending',
-                'published_at' => null,
-                'updated_at' => now(),
-            ]);
-
-        return [$updated, $articleIds];
     }
 
     /** @param Collection<int, int> $articleIds */
@@ -257,8 +310,11 @@ class ArticleAiQualityInvalidationService
             return;
         }
 
-        ReconcileArticleAiQualityJob::dispatch((int) $articleIds->min(), (int) $articleIds->max())
-            ->onQueue('geoflow')
-            ->afterCommit();
+        $articleIds->chunk(100)->each(function (Collection $chunk): void {
+            ReconcileArticleAiQualityJob::dispatch(0, 0, 100, $chunk->values()->all())
+                ->onConnection('redis')
+                ->onQueue((string) config('geoflow.ai_quality_backfill_queue', 'ai-quality-backfill'))
+                ->afterCommit();
+        });
     }
 }

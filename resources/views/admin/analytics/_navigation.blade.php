@@ -12,7 +12,7 @@
     }
 @endphp
 
-<nav class="mt-6 overflow-x-auto border-b border-gray-200" aria-label="{{ __('admin.analytics.navigation.label') }}">
+<nav data-analytics-navigation class="{{ $analyticsNavigationClass ?? 'mt-6' }} overflow-x-auto" aria-label="{{ __('admin.analytics.navigation.label') }}">
     <div class="flex min-w-max gap-6">
         @foreach ($analyticsNavigation as $item)
             @php $isCurrent = ($analyticsPage ?? 'overview') === $item['key'] || (($analyticsPage ?? '') === 'ai-visibility' && $item['key'] === 'ai_visibility'); @endphp

@@ -359,17 +359,17 @@ deploy_stack() {
   log "Entering maintenance mode and draining existing application services."
   enter_maintenance_mode
   MAINTENANCE_MODE_ENTERED=1
-  "${COMPOSE[@]}" stop web app queue knowledge-queue system-update-queue scheduler reverb
+  "${COMPOSE[@]}" stop web app queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
 
   log "Running initialization and database migrations."
   "${COMPOSE[@]}" up init
 
-  log "Starting GEOFlow services."
-  "${COMPOSE[@]}" up -d --remove-orphans app web queue knowledge-queue scheduler reverb
-
   log "Clearing and rebuilding Laravel caches."
   "${COMPOSE[@]}" run --rm app php artisan optimize:clear
   "${COMPOSE[@]}" run --rm app php artisan optimize
+
+  log "Starting GEOFlow services."
+  "${COMPOSE[@]}" up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
 
 }
 

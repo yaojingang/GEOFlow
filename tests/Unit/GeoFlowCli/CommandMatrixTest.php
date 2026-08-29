@@ -105,11 +105,11 @@ class CommandMatrixTest extends TestCase
     }
 
     #[Test]
-    public function public_contract_keeps_31_operations_on_30_routes(): void
+    public function public_contract_keeps_32_operations_on_31_routes(): void
     {
-        $this->assertCount(31, self::contracts());
-        $this->assertCount(31, OperationRegistry::all());
-        $this->assertCount(30, OperationRegistry::routeSignatures());
+        $this->assertCount(32, self::contracts());
+        $this->assertCount(32, OperationRegistry::all());
+        $this->assertCount(31, OperationRegistry::routeSignatures());
     }
 
     /** @return iterable<string,array{array<string,mixed>}> */
@@ -279,6 +279,11 @@ class CommandMatrixTest extends TestCase
                 'articles/10/publish',
                 idempotencyKey: 'article-publish-10',
                 body: [],
+            ),
+            'article.ai-quality-status' => self::contract(
+                ['article', 'ai-quality-status', '10'],
+                'GET',
+                'articles/10/ai-quality/status',
             ),
             'article.ai-quality-recheck' => self::contract(
                 ['article', 'ai-quality-recheck', '10'],

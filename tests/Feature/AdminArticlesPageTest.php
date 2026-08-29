@@ -18,6 +18,7 @@ use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -36,6 +37,8 @@ class AdminArticlesPageTest extends TestCase
 
     public function test_authenticated_admin_can_view_articles_page(): void
     {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+
         $admin = Admin::query()->create([
             'username' => 'articles_admin',
             'password' => 'secret-123',
@@ -49,8 +52,89 @@ class AdminArticlesPageTest extends TestCase
             ->get(route('admin.articles.index', ['status' => 'draft']))
             ->assertOk()
             ->assertSee(__('admin.articles.page_title'))
+            ->assertSee('data-gf-topbar-identity', false)
+            ->assertSee('data-page-icon="file-text"', false)
+            ->assertSee(__('admin.articles.topbar_title'))
+            ->assertDontSee(__('admin.articles.page_subtitle'))
+            ->assertDontSee('<h1 class="text-3xl', false)
             ->assertViewHas('articles')
             ->assertViewHas('filters');
+    }
+
+    public function test_content_pages_share_the_article_navigation_and_keep_page_actions(): void
+    {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+
+        $admin = Admin::query()->create([
+            'username' => 'article_section_navigation_admin',
+            'password' => 'secret-123',
+            'email' => 'article-section-navigation@example.com',
+            'display_name' => 'Article Navigation Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        foreach ([
+            route('admin.articles.index') => 'article-list',
+            route('admin.categories.index') => 'categories',
+            route('admin.articles.index', ['review_status' => 'pending']) => 'review',
+            route('admin.articles.index', ['trashed' => 1]) => 'trash',
+        ] as $url => $activeKey) {
+            $response = $this->actingAs($admin, 'admin')->get($url);
+
+            $response
+                ->assertOk()
+                ->assertSee('data-articles-navigation', false)
+                ->assertSee(AdminWeb::routePath('admin.articles.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.categories.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.articles.index', ['review_status' => 'pending']).'#article-list', false)
+                ->assertSee(AdminWeb::routePath('admin.articles.index', ['trashed' => 1]), false);
+
+            $document = new \DOMDocument;
+            $document->loadHTML((string) $response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+            $xpath = new \DOMXPath($document);
+            $navigation = $xpath->query('//*[@data-articles-navigation]')?->item(0);
+            $items = $xpath->query('.//*[@data-articles-navigation-item]', $navigation);
+            $activeItems = $xpath->query('.//*[@aria-current="page"]', $navigation);
+
+            self::assertNotNull($navigation, $url);
+            self::assertSame(4, $items?->length, $url);
+            self::assertSame(
+                ['article-list', 'categories', 'review', 'trash'],
+                array_map(
+                    static fn (\DOMNode $item): string => (string) $item->attributes?->getNamedItem('data-articles-navigation-item')?->nodeValue,
+                    iterator_to_array($items),
+                ),
+                $url,
+            );
+            self::assertSame(4, $xpath->query('.//*[@data-articles-navigation-dot]', $navigation)?->length, $url);
+            self::assertSame(1, $activeItems?->length, $url);
+            self::assertSame(
+                $activeKey,
+                $activeItems?->item(0)?->attributes?->getNamedItem('data-articles-navigation-item')?->nodeValue,
+                $url,
+            );
+
+            if ($activeKey === 'article-list') {
+                $response
+                    ->assertSee('href="'.route('admin.articles.create').'"', false)
+                    ->assertSee('href="'.route('admin.manual-publications.index').'"', false);
+            }
+
+            if ($activeKey === 'categories') {
+                $response
+                    ->assertSee('href="'.route('admin.categories.create').'"', false)
+                    ->assertSee('href="'.route('admin.articles.index').'"', false);
+            }
+        }
+
+        foreach (['zh_CN', 'en', 'ja', 'es', 'ru', 'pt_BR'] as $locale) {
+            App::setLocale($locale);
+
+            foreach (['admin.articles.list_title', 'admin.button.category_manage', 'admin.button.review_center', 'admin.button.trash'] as $key) {
+                self::assertNotSame($key, __($key), $locale.': '.$key);
+            }
+        }
     }
 
     public function test_article_list_can_filter_articles_that_do_not_require_ai_quality_inspection(): void
@@ -97,8 +181,10 @@ class AdminArticlesPageTest extends TestCase
             ->assertDontSee('必须 AI 质检文章');
     }
 
-    public function test_articles_page_shows_current_priority_action_without_pipeline_cards(): void
+    public function test_articles_page_hides_current_priority_module_and_keeps_summary_stats(): void
     {
+        config()->set('geoflow.admin_ui_v3_enabled', true);
+
         $admin = Admin::query()->create([
             'username' => 'articles_workbench_admin',
             'password' => 'secret-123',
@@ -152,23 +238,16 @@ class AdminArticlesPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.articles.index'))
             ->assertOk()
-            ->assertSee(__('admin.articles.page_subtitle'))
-            ->assertSee(__('admin.articles.workbench.title'))
-            ->assertDontSee(__('admin.articles.workbench.eyebrow'))
-            ->assertSee(__('admin.articles.workbench.distribution_title'))
-            ->assertDontSee(__('admin.articles.workbench.review_desc'))
-            ->assertDontSee(__('admin.articles.workbench.optimize_desc'))
-            ->assertDontSee(__('admin.articles.workbench.distribution_desc'))
-            ->assertDontSee(__('admin.articles.workbench.observation_desc'))
-            ->assertSee(__('admin.articles.workbench.current_action_title'))
-            ->assertSee(__('admin.articles.workbench.current_action_desc', [
-                'count' => 2,
-                'stage' => __('admin.articles.workbench.distribution_title'),
-            ]))
-            ->assertSee(__('admin.articles.workbench.current_action_button'))
+            ->assertDontSee(__('admin.articles.page_subtitle'))
+            ->assertDontSee('content-workbench-heading', false)
+            ->assertDontSee(__('admin.articles.workbench.current_action_title'))
+            ->assertDontSee(__('admin.articles.workbench.current_action_button'))
+            ->assertSee(__('admin.articles.stats.total'))
+            ->assertSee(__('admin.articles.stats.published'))
+            ->assertSee(__('admin.articles.stats.draft'))
+            ->assertSee(__('admin.articles.stats.pending_review'))
             ->assertSee('id="article-list"', false)
             ->assertSee(route('admin.articles.index', ['review_status' => 'pending']).'#article-list', false)
-            ->assertSee(route('admin.articles.index', ['status' => 'published']).'#article-list', false)
             ->assertViewHas('stats', fn (array $stats): bool => $stats['pending_review'] === 1
                 && $stats['draft'] === 1
                 && $stats['published'] === 2

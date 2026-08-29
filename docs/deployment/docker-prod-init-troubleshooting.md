@@ -114,7 +114,7 @@ REDIS_HOST=redis
 如果刚改过 `.env.prod`，需要重建相关容器：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app web queue knowledge-queue scheduler
+$COMPOSE_PROD up -d --force-recreate app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler
 ```
 
 然后查看 Laravel 的真实错误日志：
@@ -173,7 +173,7 @@ $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up -d init
 $COMPOSE_PROD logs --tail=200 init
-$COMPOSE_PROD up -d app web queue knowledge-queue scheduler reverb
+$COMPOSE_PROD up -d app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
 ```
 
 仅在全新空库首次安装时，可以一次性启动：
@@ -187,5 +187,5 @@ $COMPOSE_PROD up -d --build
 首次部署后，如果修改了 `.env.prod`，建议至少重建应用相关容器：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app web queue knowledge-queue scheduler reverb
+$COMPOSE_PROD up -d --force-recreate app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
 ```

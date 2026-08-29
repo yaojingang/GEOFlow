@@ -135,6 +135,7 @@ class Task extends Model
         'schedule_enabled',
         'max_retry_count',
         'ai_quality_enabled',
+        'ai_quality_timeout_sampling_enabled',
         'ai_quality_prompt_id',
         'ai_quality_model_id',
         'ai_quality_pass_score',
@@ -143,6 +144,7 @@ class Task extends Model
 
     protected $attributes = [
         'ai_quality_enabled' => false,
+        'ai_quality_timeout_sampling_enabled' => false,
         'ai_quality_pass_score' => 85,
         'ai_quality_manual_override_min_score' => 70,
     ];
@@ -178,6 +180,7 @@ class Task extends Model
             'schedule_enabled' => 'integer',
             'max_retry_count' => 'integer',
             'ai_quality_enabled' => 'boolean',
+            'ai_quality_timeout_sampling_enabled' => 'boolean',
             'ai_quality_prompt_id' => 'integer',
             'ai_quality_model_id' => 'integer',
             'ai_quality_pass_score' => 'integer',

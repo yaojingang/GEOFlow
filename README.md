@@ -291,7 +291,7 @@ vi .env.prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml build
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres redis
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d init
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans app web queue knowledge-queue scheduler reverb
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
 ```
 
 - 前台 / 后台统一经 `web`（Nginx）访问
@@ -330,6 +330,8 @@ php artisan serve --host=127.0.0.1 --port=8080
 ```bash
 php -d memory_limit=256M artisan queue:work redis --queue=system-updates,geoflow,distribution,theme-replication,default --sleep=1 --tries=1 --timeout=930 --memory=128 --max-jobs=100 --max-time=3600
 php -d memory_limit=160M artisan queue:work redis --queue=knowledge --sleep=1 --tries=1 --timeout=210 --memory=128 --max-jobs=20 --max-time=1800
+php -d memory_limit=256M artisan queue:work redis --queue=${GEOFLOW_AI_QUALITY_QUEUE:-ai-quality} --sleep=1 --tries=1 --timeout=75 --memory=192 --max-jobs=100 --max-time=3600
+php -d memory_limit=192M artisan queue:work redis --queue=${GEOFLOW_AI_QUALITY_BACKFILL_QUEUE:-ai-quality-backfill} --sleep=2 --tries=1 --timeout=75 --memory=128 --max-jobs=25 --max-time=1800
 php artisan schedule:work
 php artisan reverb:start
 ```

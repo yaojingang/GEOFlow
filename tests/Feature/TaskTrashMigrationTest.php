@@ -80,4 +80,65 @@ class TaskTrashMigrationTest extends TestCase
         $this->assertTrue(Schema::hasColumn('task_trash_entries', 'sequence'));
         $this->assertNotNull(Task::onlyTrashed()->find($task->id));
     }
+
+    public function test_restore_authorization_migration_backfills_protected_tasks_and_keeps_a_safe_default(): void
+    {
+        $restoreAuthorizationMigration = require database_path(
+            'migrations/2026_08_29_092931_add_restore_authorization_to_task_trash_entries_table.php'
+        );
+        $restoreAuthorizationMigration->down();
+
+        $this->assertFalse(Schema::hasColumn('task_trash_entries', 'requires_super_admin_restore'));
+
+        $protectedTask = Task::query()->create([
+            'name' => 'Protected task deleted before restore authorization migration',
+            'status' => 'paused',
+            'publish_scope' => 'distribution_only',
+        ]);
+        $regularTask = Task::query()->create([
+            'name' => 'Regular task deleted before restore authorization migration',
+            'status' => 'paused',
+            'publish_scope' => 'local_only',
+        ]);
+        DB::table('task_trash_entries')->insert([
+            [
+                'task_id' => $protectedTask->id,
+                'sequence' => 101,
+                'deleted_at' => '2026-08-29 09:00:00.000001',
+            ],
+            [
+                'task_id' => $regularTask->id,
+                'sequence' => 102,
+                'deleted_at' => '2026-08-29 09:00:00.000002',
+            ],
+        ]);
+
+        $restoreAuthorizationMigration->up();
+
+        $column = collect(Schema::getColumns('task_trash_entries'))
+            ->first(static fn (array $column): bool => (string) ($column['name'] ?? '') === 'requires_super_admin_restore');
+        $this->assertIsArray($column);
+        $this->assertFalse((bool) ($column['nullable'] ?? true));
+        $this->assertTrue((bool) DB::table('task_trash_entries')
+            ->where('task_id', $protectedTask->id)
+            ->value('requires_super_admin_restore'));
+        $this->assertFalse((bool) DB::table('task_trash_entries')
+            ->where('task_id', $regularTask->id)
+            ->value('requires_super_admin_restore'));
+
+        $newTask = Task::query()->create([
+            'name' => 'Task deleted after restore authorization migration',
+            'status' => 'paused',
+            'publish_scope' => 'local_only',
+        ]);
+        DB::table('task_trash_entries')->insert([
+            'task_id' => $newTask->id,
+            'sequence' => 103,
+            'deleted_at' => '2026-08-29 09:00:00.000003',
+        ]);
+
+        $this->assertFalse((bool) DB::table('task_trash_entries')
+            ->where('task_id', $newTask->id)
+            ->value('requires_super_admin_restore'));
+    }
 }

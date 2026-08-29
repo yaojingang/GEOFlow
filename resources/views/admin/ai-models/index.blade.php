@@ -3,14 +3,9 @@
 @section('content')
     <div class="px-4 sm:px-0">
         <div class="flex items-center justify-between mb-8">
-            <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.ai.configurator') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                </a>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.ai_models.page_title') }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_models.page_subtitle') }}</p>
-                </div>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.ai_models.page_title') }}</h1>
+                <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_models.page_subtitle') }}</p>
             </div>
             <a href="{{ route('admin.ai-models.create') }}" class="inline-flex min-h-10 items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                 <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
@@ -216,7 +211,18 @@
                                     <div class="flex items-center gap-3">
                                         <button type="button" onclick="testModelConnection({{ (int) $model['id'] }}, this)" class="min-h-10 text-emerald-600 transition-[color,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2">{{ __('admin.ai_models.test') }}</button>
                                         <a href="{{ route('admin.ai-models.edit', ['modelId' => $model['id']]) }}" class="inline-flex min-h-10 items-center text-blue-600 transition-[color,transform] duration-150 hover:text-blue-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{{ __('admin.ai_models.edit') }}</a>
-                                        <button type="button" onclick="deleteModel({{ (int) $model['id'] }}, @js($model['name']))" class="min-h-10 text-red-600 transition-[color,transform] duration-150 hover:text-red-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2">{{ __('admin.ai_models.delete') }}</button>
+                                        <form
+                                            method="POST"
+                                            action="{{ route('admin.ai-models.delete', ['modelId' => $model['id']]) }}"
+                                            class="inline-flex"
+                                            data-ai-model-delete-form
+                                            data-model-name="{{ $model['name'] }}"
+                                            data-model-edit-url="{{ route('admin.ai-models.edit', ['modelId' => $model['id']]) }}"
+                                        >
+                                            @csrf
+                                            <button type="button" class="min-h-10 text-red-600 transition-[color,transform] duration-150 hover:text-red-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2" data-ai-model-delete-trigger>{{ __('admin.ai_models.delete') }}</button>
+                                            <button type="submit" class="hidden" data-ai-model-delete-submit tabindex="-1" aria-hidden="true"></button>
+                                        </form>
                                     </div>
                                     <div id="model-test-result-{{ (int) $model['id'] }}" class="mt-2 text-xs whitespace-normal max-w-xs"></div>
                                 </td>
@@ -229,12 +235,48 @@
         </div>
     </div>
 
+    <dialog
+        class="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[min(480px,calc(100vw-2rem))] max-w-none overflow-y-auto overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-gray-950/45"
+        data-ai-model-delete-dialog
+        data-deleting-label="{{ __('admin.ai_models.delete_dialog.deleting') }}"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="ai-model-delete-title"
+        aria-describedby="ai-model-delete-description ai-model-delete-impact ai-model-delete-guidance"
+    >
+        <div class="flex items-start gap-4 px-6 pb-5 pt-6 max-[420px]:px-5">
+            <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600" aria-hidden="true">
+                <i data-lucide="trash-2" class="h-5 w-5"></i>
+            </span>
+            <div class="min-w-0 flex-1">
+                <h2 id="ai-model-delete-title" class="text-lg font-semibold leading-7 text-gray-900 text-balance">{{ __('admin.ai_models.delete_dialog.title') }}</h2>
+                <p id="ai-model-delete-description" class="mt-2 text-sm leading-6 text-gray-600">
+                    {{ __('admin.ai_models.delete_dialog.description_before') }}<strong class="break-words font-semibold text-gray-900" data-ai-model-delete-name></strong>{{ __('admin.ai_models.delete_dialog.description_after') }}
+                </p>
+                <div id="ai-model-delete-impact" class="mt-4 flex items-start gap-2.5 rounded-xl bg-gray-50 px-3.5 py-3 text-sm leading-6 text-gray-600">
+                    <i data-lucide="key-round" class="mt-1 h-4 w-4 shrink-0 text-gray-500" aria-hidden="true"></i>
+                    <span>{{ __('admin.ai_models.delete_dialog.impact') }}</span>
+                </div>
+                <p id="ai-model-delete-guidance" class="mt-3 text-xs leading-5 text-gray-500">
+                    {{ __('admin.ai_models.delete_dialog.guidance_before') }}<a href="#" class="font-semibold text-blue-700 underline decoration-blue-200 underline-offset-4 transition-[color,decoration-color] duration-150 hover:text-blue-900 hover:decoration-blue-500 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" data-ai-model-delete-edit>{{ __('admin.ai_models.delete_dialog.guidance_link') }}</a>{{ __('admin.ai_models.delete_dialog.guidance_after') }}
+                </p>
+            </div>
+        </div>
+        <div class="flex justify-end gap-2.5 border-t border-gray-100 bg-gray-50 px-6 py-4 max-[420px]:flex-col max-[420px]:px-5">
+            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96]" data-ai-model-delete-cancel autofocus>
+                {{ __('admin.ai_models.delete_dialog.cancel') }}
+            </button>
+            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-red-600 px-4 text-sm font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:scale-[.96] disabled:cursor-wait disabled:bg-red-400" data-ai-model-delete-confirm>
+                <span data-ai-model-delete-confirm-label>{{ __('admin.ai_models.delete_dialog.confirm') }}</span>
+            </button>
+        </div>
+    </dialog>
+
 @endsection
 
 @push('scripts')
     <script>
         const AI_MODELS_I18N = {
-            confirmDelete: @json(__('admin.ai_models.confirm_delete', ['name' => '__NAME__'])),
             test: @json(__('admin.ai_models.test')),
             testing: @json(__('admin.ai_models.testing')),
             testSuccessPrefix: @json(__('admin.ai_models.test_success_prefix')),
@@ -243,23 +285,7 @@
             readinessTitle: @json(__('admin.ai_models.readiness_title')),
             readinessReady: @json(__('admin.ai_models.readiness_status.ready')),
         };
-        const DELETE_URL_TEMPLATE = @json(\App\Support\AdminWeb::routePath('admin.ai-models.delete', ['modelId' => '__MODEL_ID__']));
         const TEST_URL_TEMPLATE = @json(\App\Support\AdminWeb::routePath('admin.ai-models.test', ['modelId' => '__MODEL_ID__']));
-
-        function deleteModel(id, name) {
-            if (!confirm(AI_MODELS_I18N.confirmDelete.replace('__NAME__', name))) {
-                return;
-            }
-
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = DELETE_URL_TEMPLATE.replace('__MODEL_ID__', String(id));
-            form.innerHTML = `
-                <input type="hidden" name="_token" value="{{ csrf_token() }}">
-            `;
-            document.body.appendChild(form);
-            form.submit();
-        }
 
         async function testModelConnection(id, button) {
             const resultEl = document.getElementById(`model-test-result-${id}`);

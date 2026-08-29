@@ -11,6 +11,7 @@ use App\Models\ArticleReview;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\Task;
+use App\Support\Admin\ArticleAiQualityProgressPresenter;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Illuminate\Support\Facades\DB;
 
@@ -23,6 +24,8 @@ class ArticleGeoFlowService
         private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
         private readonly ArticleAiQualityInvalidationService $articleAiQualityInvalidationService,
         private readonly ArticleAiQualityGate $articleAiQualityGate,
+        private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
+        private readonly ArticleAiQualityProgressPresenter $articleAiQualityProgressPresenter,
     ) {}
 
     public function listArticles(int $page = 1, int $perPage = 20, array $filters = []): array
@@ -212,6 +215,17 @@ class ArticleGeoFlowService
             'images' => $images,
             'ai_quality' => $this->aiQualityDetail($article),
         ];
+    }
+
+    /** @return array<string, mixed> */
+    public function getAiQualityStatus(int $articleId): array
+    {
+        $article = Article::query()->with('latestAiQualityCheck')->find($articleId);
+        if (! $article) {
+            throw new ApiException('article_not_found', '文章不存在', 404);
+        }
+
+        return $this->articleAiQualityProgressPresenter->snapshot($article->latestAiQualityCheck);
     }
 
     public function recheckAiQuality(int $articleId, int $auditAdminId, int $apiTokenId): array
@@ -549,6 +563,15 @@ class ArticleGeoFlowService
         $normalized['author_id'] = $this->normalizeReference(Author::class, $data['author_id'] ?? null, 'author_id', true);
         $normalized['task_id'] = $this->normalizeNullableReference(Task::class, $data['task_id'] ?? null, 'task_id');
 
+        if ($normalized['is_ai_generated']) {
+            $normalized = $this->articleCitationMarkerCleaner->cleanArticleFields($normalized);
+            if (trim((string) $normalized['content']) === '') {
+                throw new ApiException('validation_failed', '参数校验失败', 422, [
+                    'field_errors' => ['content' => '文章内容不能为空'],
+                ]);
+            }
+        }
+
         return $normalized;
     }
 
@@ -618,6 +641,13 @@ class ArticleGeoFlowService
             }
         } elseif (isset($normalized['title']) && $normalized['title'] !== $existing['title']) {
             $normalized['slug'] = ArticleWorkflow::generateUniqueSlug($normalized['title'], (int) $existing['id']);
+        }
+
+        if ((bool) ($existing['is_ai_generated'] ?? false)) {
+            $normalized = $this->articleCitationMarkerCleaner->cleanArticleFields($normalized);
+            if (array_key_exists('content', $normalized) && trim((string) $normalized['content']) === '') {
+                $fieldErrors['content'] = '文章内容不能为空';
+            }
         }
 
         if (! empty($fieldErrors)) {
@@ -755,6 +785,7 @@ class ArticleGeoFlowService
     private function aiQualitySummary(Article $article): array
     {
         $check = $article->latestAiQualityCheck;
+        $progress = $this->articleAiQualityProgressPresenter->snapshot($check);
         $enabled = (bool) $article->ai_quality_required_at_creation
             || (bool) ($article->task?->ai_quality_enabled ?? false);
 
@@ -763,9 +794,22 @@ class ArticleGeoFlowService
             'status' => $check?->status,
             'decision' => $check?->decision,
             'score' => $check?->score,
+            'score_label' => $progress['score_label'] ?? null,
+            'result_label' => $progress['result_label'] ?? null,
+            'inspection_scope' => $progress['inspection_scope'] ?? 'full',
+            'degraded' => (bool) ($progress['degraded'] ?? false),
+            'primary_deadline_at' => $progress['primary_deadline_at'] ?? null,
+            'sampled_deadline_at' => $progress['sampled_deadline_at'] ?? null,
+            'deadline_at' => $progress['deadline_at'] ?? null,
+            'coverage' => $progress['coverage'] ?? [],
+            'fallback' => $progress['fallback'] ?? [],
             'pass_score' => $check?->pass_score,
             'manual_override_min_score' => $check?->manual_override_min_score,
             'knowledge_coverage' => $check?->knowledge_coverage,
+            'evidence_coverage' => $check?->knowledge_coverage,
+            'confidence' => $check?->confidence,
+            'gate_reasons' => $check?->gate_reasons ?? [],
+            'scoring_version' => $check?->scoring_version,
             'summary' => $check?->summary,
             'issues_count' => is_array($check?->issues) ? count($check->issues) : 0,
             'critical_issues_count' => collect($check?->issues ?? [])->where('severity', 'critical')->count(),
@@ -803,9 +847,23 @@ class ArticleGeoFlowService
     {
         match ($filter) {
             'passed' => $query->whereHas('latestAiQualityCheck', fn ($check) => $check->where('status', 'completed')->where('decision', 'passed')),
-            'failed' => $query->whereHas('latestAiQualityCheck', fn ($check) => $check->where('status', 'completed')->whereIn('decision', ['needs_review', 'blocked'])),
-            'pending' => $query->whereHas('latestAiQualityCheck', fn ($check) => $check->whereIn('status', ['queued', 'running'])),
-            'error' => $query->whereHas('latestAiQualityCheck', fn ($check) => $check->where('status', 'failed')),
+            'needs_review', 'blocked' => $query->whereHas(
+                'latestAiQualityCheck',
+                fn ($check) => $check->where('status', 'completed')->where('decision', $filter),
+            ),
+            'pending' => $query
+                ->where(function ($enabled): void {
+                    $enabled->where('ai_quality_required_at_creation', true)
+                        ->orWhereHas('task', fn ($task) => $task->where('ai_quality_enabled', true));
+                })
+                ->where(function ($pending): void {
+                    $pending->whereDoesntHave('latestAiQualityCheck')
+                        ->orWhereHas('latestAiQualityCheck', fn ($check) => $check->whereIn('status', ['queued', 'running']));
+                }),
+            'failed', 'error' => $query->whereHas(
+                'latestAiQualityCheck',
+                fn ($check) => $check->where('status', 'failed')->orWhere('decision', 'error'),
+            ),
             'stale' => $query->whereHas('latestAiQualityCheck', fn ($check) => $check->where('status', 'stale')),
             'disabled' => $query->where('ai_quality_required_at_creation', false)
                 ->whereDoesntHave('task', fn ($task) => $task->where('ai_quality_enabled', true)),

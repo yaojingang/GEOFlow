@@ -32,6 +32,7 @@ final class ArticleHandler
                 'risk_override_reason' => trim((string) ($this->runtime->context->options['risk-override-reason'] ?? '')),
             ], idempotencyKey: $this->runtime->idempotencyKey()),
             'publish' => $this->runtime->send('article.publish', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
+            'ai-quality-status' => $this->runtime->send('article.ai-quality-status', ['article' => $articleId()]),
             'ai-quality-recheck' => $this->runtime->send('article.ai-quality-recheck', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
             'ai-quality-override' => $this->runtime->send('article.ai-quality-override', ['article' => $articleId()], body: [
                 'reason' => $this->runtime->requiredOption('reason'),

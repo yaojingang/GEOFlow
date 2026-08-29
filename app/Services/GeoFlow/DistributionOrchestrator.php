@@ -7,6 +7,7 @@ use App\Ai\Workspace\AiWorkspaceChannelRevision;
 use App\Exceptions\DistributionTaskRevisionMismatch;
 use App\Jobs\ProcessArticleDistributionJob;
 use App\Models\Article;
+use App\Models\ArticleAiQualityCheck;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionLog;
@@ -168,9 +169,13 @@ class DistributionOrchestrator
     }
 
     /** @return list<int> */
-    public function enqueueForArticle(int|Article $article, string $action = 'publish', array $aiWorkspaceGuard = []): array
-    {
-        return $this->enqueueForArticleSelection($article, $action, $aiWorkspaceGuard);
+    public function enqueueForArticle(
+        int|Article $article,
+        string $action = 'publish',
+        array $aiWorkspaceGuard = [],
+        bool $throwOnFailure = false,
+    ): array {
+        return $this->enqueueForArticleSelection($article, $action, $aiWorkspaceGuard, null, $throwOnFailure);
     }
 
     /**
@@ -199,6 +204,7 @@ class DistributionOrchestrator
         string $action,
         array $aiWorkspaceGuard,
         ?array $targetChannelIds = null,
+        bool $throwOnFailure = false,
     ): array {
         try {
             $articleModel = $article instanceof Article
@@ -369,6 +375,10 @@ class DistributionOrchestrator
                         'action' => $action,
                     ]);
                     $remoteMeta = is_array($distribution->remote_meta) ? $distribution->remote_meta : [];
+                    if ($qualityCheck !== null) {
+                        $remoteMeta['ai_quality_guard'] = $this->qualityGuardAudit($qualityCheck);
+                    }
+                    $remoteMeta['distribution_payload'] = $payload;
                     if ($aiWorkspaceGuard !== []) {
                         $approvedRevision = (string) data_get(
                             $aiWorkspaceGuard,
@@ -382,28 +392,24 @@ class DistributionOrchestrator
                             'channel_revision' => $approvedRevision,
                         ]);
                         $remoteMeta['ai_workspace_payload'] = $payload;
-                        if ($qualityCheck !== null) {
-                            $remoteMeta['ai_quality_guard'] = [
-                                'check_id' => (int) $qualityCheck->id,
-                                'input_fingerprint' => (string) $qualityCheck->input_fingerprint,
-                                'article_content_hash' => (string) $qualityCheck->article_content_hash,
-                                'decision' => (string) $qualityCheck->decision,
-                                'score' => (int) $qualityCheck->score,
-                                'is_overridden' => (bool) $qualityCheck->is_overridden,
-                            ];
-                        }
                     }
                     $distribution->forceFill([
                         'status' => 'queued',
                         'next_retry_at' => now(),
                         'payload_hash' => $payloadHash,
-                        'idempotency_key' => $this->idempotencyKey((int) $articleModel->id, (int) $lockedChannel->id, $action),
+                        'idempotency_key' => $this->idempotencyKey(
+                            (int) $articleModel->id,
+                            (int) $lockedChannel->id,
+                            $action,
+                            $payloadHash,
+                        ),
                         'remote_meta' => $remoteMeta,
                     ])->save();
 
                     $this->log('info', '文章已进入分发队列', $lockedChannel->id, $distribution->id, $articleModel->id, [
                         'event' => 'distribution.queued',
                         'strategy' => (string) ($lockedTask->distribution_strategy ?? TaskDistributionChannelSelector::STRATEGY_BROADCAST),
+                        'ai_quality_guard' => $qualityCheck !== null ? $this->qualityGuardAudit($qualityCheck) : null,
                     ]);
                     ProcessArticleDistributionJob::dispatch((int) $distribution->id)
                         ->onQueue('distribution')
@@ -421,12 +427,105 @@ class DistributionOrchestrator
             $this->log('error', '文章分发入队失败：'.DistributionErrorSanitizer::from($e), null, null, $article instanceof Article ? (int) $article->id : $article, [
                 'event' => 'distribution.enqueue_failed',
             ]);
-            if ($aiWorkspaceGuard !== []) {
+            if ($aiWorkspaceGuard !== [] || $throwOnFailure) {
                 throw $e;
             }
 
             return [];
         }
+    }
+
+    /** @return array<string,mixed> */
+    private function qualityGuardAudit(ArticleAiQualityCheck $check): array
+    {
+        $coverage = is_array($check->coverage_meta) ? $check->coverage_meta : [];
+        unset($coverage['sampled_content']);
+        if (is_array($coverage['sampled_ranges'] ?? null)) {
+            $coverage['sampled_ranges'] = array_values(array_map(static function (array $range): array {
+                unset($range['content']);
+
+                return $range;
+            }, array_values(array_filter($coverage['sampled_ranges'], 'is_array'))));
+        }
+
+        return [
+            'check_id' => (int) $check->id,
+            'input_fingerprint' => (string) $check->input_fingerprint,
+            'article_content_hash' => (string) $check->article_content_hash,
+            'decision' => (string) $check->decision,
+            'score' => $check->score === null ? null : (int) $check->score,
+            'is_overridden' => (bool) $check->is_overridden,
+            'inspection_scope' => (string) ($check->inspection_scope ?: 'full'),
+            'fallback_trigger_code' => $check->fallback_trigger_code,
+            'coverage' => $coverage,
+            'algorithm_version' => (string) $check->algorithm_version,
+            'scoring_version' => (string) $check->scoring_version,
+        ];
+    }
+
+    private function qualityGuardMatches(
+        ArticleDistribution $distribution,
+        ?ArticleAiQualityCheck $currentCheck,
+    ): bool {
+        $guard = data_get($distribution->remote_meta, 'ai_quality_guard');
+        if (! is_array($guard)) {
+            return ! $currentCheck instanceof ArticleAiQualityCheck;
+        }
+
+        return ! $currentCheck instanceof ArticleAiQualityCheck || (
+            (int) ($guard['check_id'] ?? 0) === (int) $currentCheck->id
+            && hash_equals(
+                (string) ($guard['input_fingerprint'] ?? ''),
+                (string) $currentCheck->input_fingerprint,
+            )
+        );
+    }
+
+    /**
+     * Capture one immutable snapshot for distributions created before payload snapshots were introduced.
+     *
+     * @param  array<string,mixed>  $payload
+     */
+    private function persistPayloadSnapshot(
+        ArticleDistribution $distribution,
+        array $payload,
+        ?ArticleAiQualityCheck $qualityCheck,
+        bool $replace = false,
+    ): ArticleDistribution {
+        return DB::transaction(function () use ($distribution, $payload, $qualityCheck, $replace): ArticleDistribution {
+            $locked = ArticleDistribution::query()
+                ->whereKey((int) $distribution->id)
+                ->where('status', 'queued')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $remoteMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
+            $existing = data_get($remoteMeta, 'distribution_payload');
+            if ($replace || ! is_array($existing)) {
+                $remoteMeta['distribution_payload'] = $payload;
+                if ($qualityCheck instanceof ArticleAiQualityCheck) {
+                    $remoteMeta['ai_quality_guard'] = $this->qualityGuardAudit($qualityCheck);
+                }
+                $payloadHash = $this->payloadHash($payload);
+                $locked->forceFill([
+                    'payload_hash' => $payloadHash,
+                    'idempotency_key' => $this->idempotencyKey(
+                        (int) $locked->article_id,
+                        (int) $locked->distribution_channel_id,
+                        (string) $locked->action,
+                        $payloadHash,
+                    ),
+                    'remote_meta' => $remoteMeta,
+                ])->save();
+            }
+
+            return $locked->fresh();
+        });
+    }
+
+    /** @param array<string,mixed> $payload */
+    private function payloadHash(array $payload): string
+    {
+        return hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
     }
 
     /**
@@ -466,19 +565,41 @@ class DistributionOrchestrator
             return false;
         }
         $article = $currentDistribution->article;
-
-        $immutablePayload = data_get($currentDistribution->remote_meta, 'ai_workspace_payload');
-        if ((string) $currentDistribution->action !== 'delete') {
-            $this->publicationQualityGate->check($article, 'distribution_send');
+        if ((string) $currentDistribution->action !== 'delete' && ! $this->isDistributableSnapshot($article)) {
+            throw new \RuntimeException('文章当前状态不允许分发');
         }
-        $payload = is_array($immutablePayload)
-            ? $immutablePayload
-            : ((string) $currentDistribution->action === 'delete' ? [] : $this->buildVerifiedPayload($article, 'distribution_send'));
-        if (is_array($immutablePayload)) {
-            $payloadHash = hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
-            if (! hash_equals((string) $currentDistribution->payload_hash, $payloadHash)) {
-                throw new \RuntimeException('AI 工作台分发载荷摘要校验失败。');
-            }
+
+        $qualityCheck = (string) $currentDistribution->action !== 'delete'
+            ? $this->publicationQualityGate->check($article, 'distribution_send')
+            : null;
+        $immutablePayload = data_get($currentDistribution->remote_meta, 'distribution_payload');
+        if (! is_array($immutablePayload)) {
+            $immutablePayload = data_get($currentDistribution->remote_meta, 'ai_workspace_payload');
+        }
+        if (! is_array($immutablePayload)) {
+            $immutablePayload = (string) $currentDistribution->action === 'delete'
+                ? []
+                : $this->buildVerifiedPayload($article, 'distribution_send');
+            $currentDistribution = $this->persistPayloadSnapshot(
+                $currentDistribution,
+                $immutablePayload,
+                $qualityCheck,
+            );
+        }
+        if (! $this->qualityGuardMatches($currentDistribution, $qualityCheck)
+            && $qualityCheck instanceof ArticleAiQualityCheck) {
+            $immutablePayload = $this->buildVerifiedPayload($article, 'distribution_send');
+            $currentDistribution = $this->persistPayloadSnapshot(
+                $currentDistribution,
+                $immutablePayload,
+                $qualityCheck,
+                true,
+            );
+        }
+        $payload = $immutablePayload;
+        $payloadHash = $this->payloadHash($payload);
+        if (! hash_equals((string) $currentDistribution->payload_hash, $payloadHash)) {
+            throw new \RuntimeException('分发载荷摘要校验失败。');
         }
         if ((string) $currentDistribution->action === 'update') {
             $payload['event'] = 'article.update';
@@ -527,7 +648,6 @@ class DistributionOrchestrator
                     }
 
                     $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
-                    unset($existingMeta['ai_workspace_payload']);
                     $locked->forceFill([
                         'status' => 'synced',
                         'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
@@ -573,7 +693,10 @@ class DistributionOrchestrator
             || ! in_array((string) $distribution->status, ['sending', 'outcome_unknown'], true)) {
             return false;
         }
-        $payload = data_get($distribution->remote_meta, 'ai_workspace_payload');
+        $payload = data_get($distribution->remote_meta, 'distribution_payload');
+        if (! is_array($payload)) {
+            $payload = data_get($distribution->remote_meta, 'ai_workspace_payload');
+        }
         $publisher = $this->publisherManager->forChannel($distribution->channel);
         if (! is_array($payload) || ! $publisher instanceof WordPressRestPublisher) {
             return false;
@@ -589,7 +712,6 @@ class DistributionOrchestrator
                 return (string) $locked->status === 'synced';
             }
             $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
-            unset($existingMeta['ai_workspace_payload']);
             $locked->forceFill([
                 'status' => 'synced',
                 'remote_id' => (string) ($response['remote_id'] ?? ''),
@@ -726,7 +848,27 @@ class DistributionOrchestrator
                         continue;
                     }
 
-                    $queued = DB::transaction(function () use ($candidate, $channelId): bool {
+                    $snapshotArticle = Article::query()->whereKey((int) $candidate->article_id)->first();
+                    if (! $snapshotArticle instanceof Article) {
+                        continue;
+                    }
+                    try {
+                        $qualityCheck = $this->publicationQualityGate->check($snapshotArticle, 'distribution_enqueue');
+                        $payload = $this->buildVerifiedPayload($snapshotArticle, 'distribution_enqueue');
+                    } catch (Throwable) {
+                        continue;
+                    }
+                    $payloadHash = $this->payloadHash($payload);
+                    $articleUpdatedAt = $snapshotArticle->updated_at?->toISOString();
+
+                    $queued = DB::transaction(function () use (
+                        $candidate,
+                        $channelId,
+                        $payload,
+                        $payloadHash,
+                        $articleUpdatedAt,
+                        $qualityCheck,
+                    ): bool {
                         $lockedChannel = DistributionChannel::query()
                             ->whereKey($channelId)
                             ->lockForUpdate()
@@ -737,8 +879,10 @@ class DistributionOrchestrator
                         $article = Article::query()
                             ->whereKey((int) $candidate->article_id)
                             ->lockForUpdate()
-                            ->first(['id', 'task_id', 'status']);
-                        if (! $article || ! in_array((string) $article->status, ['published', 'private'], true)) {
+                            ->first(['id', 'task_id', 'status', 'updated_at']);
+                        if (! $article
+                            || ! in_array((string) $article->status, ['published', 'private'], true)
+                            || $article->updated_at?->toISOString() !== $articleUpdatedAt) {
                             return false;
                         }
                         $task = $article->task_id
@@ -759,12 +903,27 @@ class DistributionOrchestrator
                             return false;
                         }
 
+                        $remoteMeta = is_array($distribution->remote_meta) ? $distribution->remote_meta : [];
+                        $remoteMeta['distribution_payload'] = $payload;
+                        if ($qualityCheck instanceof ArticleAiQualityCheck) {
+                            $remoteMeta['ai_quality_guard'] = $this->qualityGuardAudit($qualityCheck);
+                        } else {
+                            unset($remoteMeta['ai_quality_guard']);
+                        }
+
                         $distribution->forceFill([
                             'action' => 'update',
                             'status' => 'queued',
                             'last_error_message' => null,
                             'next_retry_at' => now(),
-                            'idempotency_key' => $this->idempotencyKey((int) $distribution->article_id, $channelId, 'update'),
+                            'payload_hash' => $payloadHash,
+                            'idempotency_key' => $this->idempotencyKey(
+                                (int) $distribution->article_id,
+                                $channelId,
+                                'update',
+                                $payloadHash,
+                            ),
+                            'remote_meta' => $remoteMeta,
                         ])->save();
                         ProcessArticleDistributionJob::dispatch((int) $distribution->id)
                             ->onQueue('distribution')
@@ -815,9 +974,13 @@ class DistributionOrchestrator
         ]);
     }
 
-    private function idempotencyKey(int $articleId, int $channelId, string $action): string
+    private function idempotencyKey(int $articleId, int $channelId, string $action, ?string $payloadHash = null): string
     {
-        return 'article-'.$articleId.'-channel-'.$channelId.'-'.$action.'-v1';
+        $key = 'article-'.$articleId.'-channel-'.$channelId.'-'.$action.'-v1';
+
+        return $payloadHash === null || $payloadHash === ''
+            ? $key
+            : $key.'-'.substr($payloadHash, 0, 16);
     }
 
     private function sendImmediateAction(ArticleDistribution $distribution, string $action): void
@@ -957,7 +1120,12 @@ class DistributionOrchestrator
                 'last_attempt_at' => now(),
                 'last_error_message' => null,
                 'payload_hash' => $payloadHash,
-                'idempotency_key' => $this->idempotencyKey((int) $distribution->article_id, (int) $channel->id, $action),
+                'idempotency_key' => $this->idempotencyKey(
+                    (int) $distribution->article_id,
+                    (int) $channel->id,
+                    $action,
+                    $payloadHash,
+                ),
             ])->save();
 
             return [$distribution, $channel];

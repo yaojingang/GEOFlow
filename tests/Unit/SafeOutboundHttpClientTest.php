@@ -25,6 +25,7 @@ use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Request as LaravelRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -1786,7 +1787,48 @@ class SafeOutboundHttpClientTest extends TestCase
             $this->assertStringNotContainsString('super-secret', $exception->getMessage());
             $this->assertStringNotContainsString('10.0.0.9', $exception->getMessage());
             $this->assertStringNotContainsString('secret.test', $exception->getMessage());
+            $this->assertInstanceOf(\RuntimeException::class, $exception->getPrevious());
+            $this->assertSame(\RuntimeException::class, $exception->causeType);
+            $this->assertStringNotContainsString('TLS failed', (string) $exception->getPrevious()?->getMessage());
+            $this->assertStringNotContainsString('super-secret', (string) $exception->getPrevious()?->getMessage());
         }
+    }
+
+    #[Test]
+    public function transport_timeout_failures_retain_a_safe_machine_readable_category(): void
+    {
+        $exception = new OutboundRequestFailedException(
+            new \RuntimeException('cURL error 28: Operation timed out after 160000 milliseconds api_key=super-secret'),
+        );
+
+        $this->assertSame('timeout', $exception->transportCategory);
+        $this->assertStringNotContainsString('super-secret', $exception->getMessage());
+        $this->assertStringNotContainsString('super-secret', (string) $exception->getPrevious()?->getMessage());
+    }
+
+    #[Test]
+    public function provider_http_failures_retain_safe_status_code_and_quota_category(): void
+    {
+        $response = new Response(new PsrResponse(
+            402,
+            ['Content-Type' => 'application/json'],
+            json_encode([
+                'error' => [
+                    'type' => 'unknown_error',
+                    'code' => 'invalid_request_error',
+                    'message' => 'Insufficient Balance api_key=super-secret',
+                ],
+            ], JSON_THROW_ON_ERROR),
+        ));
+        $exception = new OutboundRequestFailedException(
+            new RequestException($response),
+        );
+
+        $this->assertSame(402, $exception->httpStatus);
+        $this->assertSame('invalid_request_error', $exception->providerCode);
+        $this->assertSame('quota_exhausted', $exception->providerCategory);
+        $this->assertStringNotContainsString('super-secret', $exception->getMessage());
+        $this->assertStringNotContainsString('Insufficient Balance', (string) $exception->getPrevious()?->getMessage());
     }
 
     /** @return array<int, mixed> */

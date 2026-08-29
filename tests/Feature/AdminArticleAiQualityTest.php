@@ -21,6 +21,369 @@ class AdminArticleAiQualityTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_admin_can_poll_the_latest_ai_quality_progress_for_an_article(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'running',
+            'segment_count' => 4,
+            'completed_segment_count' => 2,
+            'evidence_snapshot' => [['ref' => 'K001']],
+            'started_at' => now()->subSeconds(20),
+            'execution_meta' => [
+                'current_phase' => 'inspecting',
+                'timings_ms' => ['evidence_retrieval' => 123],
+            ],
+        ])->save();
+        $check->newQuery()->whereKey($check->id)->update(['created_at' => now()->subSeconds(25)]);
+        $check->refresh();
+
+        $response = $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('check_id', $check->id)
+            ->assertJsonPath('status', 'running')
+            ->assertJsonPath('phase', 'inspecting')
+            ->assertJsonPath('progress_percent', 56)
+            ->assertJsonPath('completed_segments', 2)
+            ->assertJsonPath('total_segments', 4)
+            ->assertJsonPath('active', true)
+            ->assertJsonPath('reload', false)
+            ->assertJsonPath('timings.evidence_retrieval', 123)
+            ->assertJsonPath('safe_error_code', null)
+            ->assertJsonPath('retryable', false)
+            ->assertJsonPath('next_poll_ms', 2000);
+
+        $payload = $response->json();
+        $this->assertGreaterThanOrEqual(24_000, $payload['elapsed_ms']);
+        $this->assertLessThanOrEqual(27_000, $payload['elapsed_ms']);
+        $this->assertSame($check->deadline_at->toIso8601String(), $payload['deadline_at']);
+        $this->assertSame('running', $payload['effective_status']);
+        $this->assertArrayHasKey('service_status', $payload);
+        $this->assertArrayHasKey('queue_wait_ms', $payload);
+        $this->assertArrayHasKey('next_action', $payload);
+
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('private', (string) $response->headers->get('Cache-Control'));
+    }
+
+    public function test_ai_quality_progress_uses_truthful_queue_and_terminal_states(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->newQuery()->whereKey($check->id)->update(['created_at' => now()->subSeconds(20)]);
+        $check->refresh();
+
+        $queuedResponse = $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('phase', 'queued')
+            ->assertJsonPath('progress_percent', 8)
+            ->assertJsonPath('active', true);
+        $this->assertGreaterThanOrEqual(19_000, $queuedResponse->json('elapsed_ms'));
+        $this->assertSame($check->deadline_at->toIso8601String(), $queuedResponse->json('deadline_at'));
+
+        $check->forceFill([
+            'status' => 'running',
+            'segment_count' => 4,
+            'completed_segment_count' => 0,
+            'evidence_snapshot' => null,
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('phase', 'evidence')
+            ->assertJsonPath('progress_percent', 18)
+            ->assertJsonPath('active', true);
+
+        $check->forceFill([
+            'completed_segment_count' => 4,
+            'evidence_snapshot' => [['ref' => 'K001']],
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('phase', 'summarizing')
+            ->assertJsonPath('progress_percent', 94)
+            ->assertJsonPath('active', true);
+
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 96,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('phase', 'completed')
+            ->assertJsonPath('progress_percent', 100)
+            ->assertJsonPath('active', false)
+            ->assertJsonPath('reload', true);
+    }
+
+    public function test_sampled_quality_status_exposes_scope_labels_deadlines_and_public_coverage(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $article->task()->update(['ai_quality_timeout_sampling_enabled' => true]);
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article->fresh(), dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 93,
+            'inspection_scope' => 'fallback_sampled',
+            'fallback_trigger_code' => 'inspection_primary_deadline_exceeded',
+            'coverage_meta' => [
+                'checked_chars' => 5800,
+                'total_chars' => 26000,
+                'coverage_ratio' => 0.2231,
+                'range_count' => 10,
+                'mandatory_claims_total' => 7,
+                'mandatory_claims_covered' => 7,
+                'mandatory_overflow' => false,
+                'regions_covered' => ['front', 'middle', 'back'],
+                'sampled_content' => '该字段不能出现在轻量状态接口。',
+                'sampled_ranges' => [[
+                    'field' => 'content',
+                    'start_offset' => 10,
+                    'end_offset' => 40,
+                    'characters' => 30,
+                    'content' => '原文内容不能出现在轻量状态接口。',
+                ]],
+            ],
+            'execution_meta' => array_replace($check->execution_meta, [
+                'fallback' => [
+                    'trigger_code' => 'inspection_primary_deadline_exceeded',
+                    'started_at' => now()->subSeconds(20)->toIso8601String(),
+                ],
+            ]),
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $response = $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('inspection_scope', 'fallback_sampled')
+            ->assertJsonPath('degraded', true)
+            ->assertJsonPath('result_label', '抽样质检通过')
+            ->assertJsonPath('score_label', '抽样得分')
+            ->assertJsonPath('coverage.checked_chars', 5800)
+            ->assertJsonPath('coverage.mandatory_claims_covered', 7)
+            ->assertJsonPath('coverage.sampled_ranges.0.start_offset', 10)
+            ->assertJsonPath('fallback.trigger_code', 'inspection_primary_deadline_exceeded');
+
+        $this->assertSame($check->primary_deadline_at->toIso8601String(), $response->json('primary_deadline_at'));
+        $this->assertArrayNotHasKey('sampled_content', $response->json('coverage'));
+        $this->assertArrayNotHasKey('content', $response->json('coverage.sampled_ranges.0'));
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertSee('data-ai-quality-sampled-result', false)
+            ->assertSee(__('admin.articles.ai_quality.sampled_passed_label'))
+            ->assertSee(__('admin.articles.ai_quality.sampled_score_label'))
+            ->assertSee(__('admin.articles.ai_quality.sampled_no_issues'))
+            ->assertDontSee(__('admin.articles.ai_quality.no_issues'));
+    }
+
+    public function test_active_ai_quality_check_renders_the_dynamic_progress_component(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'running',
+            'segment_count' => 4,
+            'completed_segment_count' => 1,
+            'evidence_snapshot' => [['ref' => 'K001']],
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertSee('data-ai-quality-progress', false)
+            ->assertSee(route('admin.articles.ai-quality.status', ['articleId' => $article->id], false), false)
+            ->assertSee('role="progressbar"', false)
+            ->assertSee('data-ai-quality-progress-percent', false)
+            ->assertSee(__('admin.articles.ai_quality.progress_auto_refresh'), false);
+    }
+
+    public function test_progress_reconciles_the_authoritative_state_after_the_persisted_deadline(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill(['deadline_at' => now()->subSeconds(6)])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('status', 'queued')
+            ->assertJsonPath('effective_status', 'failed')
+            ->assertJsonPath('active', false)
+            ->assertJsonPath('reconciling', true)
+            ->assertJsonPath('reload', false)
+            ->assertJsonPath('safe_error_code', 'queue_worker_unavailable')
+            ->assertJsonPath('detail', __('admin.articles.ai_quality.failure_reason_worker_unavailable', [
+                'seconds' => 0,
+                'deadline' => 180,
+            ]))
+            ->assertJsonPath('retryable', true)
+            ->assertJsonPath('next_action', 'retry');
+    }
+
+    public function test_failed_ai_quality_result_explains_the_failure_without_fabricating_scores_or_a_clean_result(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'failed',
+            'decision' => 'error',
+            'score' => null,
+            'summary' => null,
+            'dimension_scores' => null,
+            'issues' => null,
+            'knowledge_coverage' => 'sufficient',
+            'error_code' => 'provider_gateway_error',
+            'error_message' => 'AI 质检执行失败。',
+            'execution_meta' => [
+                'retryable_failure' => true,
+                'model_attempts' => [[
+                    'duration_ms' => 35_219,
+                    'outcome' => 'failed',
+                    'error_code' => 'provider_gateway_error',
+                ]],
+                'failure' => [
+                    'code' => 'provider_gateway_error',
+                    'retryable' => true,
+                    'http_status' => 502,
+                    'provider_code' => 'upstream_unavailable',
+                ],
+            ],
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $statusResponse = $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('safe_error_code', 'provider_gateway_error')
+            ->assertJsonPath('failure.code', 'provider_gateway_error')
+            ->assertJsonPath('failure.retryable', true)
+            ->assertJsonPath('failure.model_attempt_seconds', 35)
+            ->assertJsonPath('failure.provider_http_status', 502)
+            ->assertJsonPath('failure.provider_code', 'upstream_unavailable')
+            ->assertJsonPath('next_action', 'retry');
+
+        $this->assertStringContainsString('35', (string) $statusResponse->json('failure.reason'));
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertSee('data-ai-quality-failure', false)
+            ->assertSee('provider_gateway_error')
+            ->assertSee($statusResponse->json('failure.reason'))
+            ->assertSee($statusResponse->json('failure.next_step'))
+            ->assertSee('HTTP 502')
+            ->assertSee('upstream_unavailable')
+            ->assertSee(route('admin.articles.ai-quality.recheck', ['articleId' => $article->id]), false)
+            ->assertDontSee('0/35')
+            ->assertDontSee('0/25')
+            ->assertDontSee('0/30')
+            ->assertDontSee('0/10')
+            ->assertDontSee(__('admin.articles.ai_quality.no_issues'));
+    }
+
+    public function test_exhausted_post_quality_workflow_is_visible_with_an_operator_retry_action(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
+        $executionMeta['workflow_apply'] = [
+            'status' => 'exhausted',
+            'attempts' => 3,
+            'error_code' => 'workflow_apply_exhausted',
+            'updated_at' => now()->toIso8601String(),
+        ];
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 95,
+            'execution_meta' => $executionMeta,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertSee('data-ai-quality-workflow-failure', false)
+            ->assertSee(__('admin.articles.ai_quality.workflow_failure_exhausted'))
+            ->assertSee('data-ai-quality-workflow-retry', false)
+            ->assertSee(route('admin.articles.ai-quality.workflow-retry', ['articleId' => $article->id]), false);
+
+        $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('workflow_apply.status', 'exhausted')
+            ->assertJsonPath('workflow_apply.operator_retryable', true)
+            ->assertJsonPath('next_action', 'retry_workflow');
+    }
+
+    public function test_non_retryable_model_failure_routes_the_operator_to_model_settings(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'failed',
+            'decision' => 'error',
+            'score' => null,
+            'summary' => null,
+            'dimension_scores' => null,
+            'issues' => null,
+            'error_code' => 'provider_authentication_failed',
+            'error_message' => 'AI 质检执行失败。',
+            'execution_meta' => [
+                'retryable_failure' => false,
+                'failure' => [
+                    'code' => 'provider_authentication_failed',
+                    'retryable' => false,
+                    'http_status' => 401,
+                    'provider_code' => 'invalid_api_key',
+                ],
+            ],
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('failure.retryable', false)
+            ->assertJsonPath('next_action', 'configure_model');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertSee('data-ai-quality-failure-action="model-settings"', false)
+            ->assertSee(route('admin.ai-models.index'), false)
+            ->assertSee(__('admin.articles.ai_quality.failure_open_model_settings'))
+            ->assertDontSee('data-ai-quality-failure-action="retry"', false)
+            ->assertDontSee('0/35');
+    }
+
+    public function test_guest_cannot_poll_article_ai_quality_progress(): void
+    {
+        [, $article] = $this->qualityArticle();
+
+        $this->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertUnauthorized();
+    }
+
     public function test_article_list_and_edit_page_show_ai_quality_result_and_issue_location(): void
     {
         [$admin, $article] = $this->qualityArticle();
@@ -37,30 +400,56 @@ class AdminArticleAiQualityTest extends TestCase
                 'advertising_compliance' => 24,
                 'content_integrity' => 10,
             ],
-            'issues' => [[
-                'code' => 'data_mismatch',
-                'severity' => 'high',
-                'field' => 'content',
-                'quote' => '服务客户超过 1000 家',
-                'paragraph_index' => 1,
-                'reason' => '知识库记录为 800 家。',
-                'suggestion' => '改为经审核的 800 家。',
-                'knowledge_refs' => ['K001'],
-                'legal_refs' => [],
-            ]],
+            'issues' => [
+                [
+                    'code' => 'data_mismatch',
+                    'severity' => 'high',
+                    'field' => 'content',
+                    'quote' => '服务客户超过 1000 家',
+                    'paragraph_index' => 1,
+                    'reason' => '知识库记录为 800 家。',
+                    'suggestion' => '改为经审核的 800 家。',
+                    'knowledge_refs' => ['K001'],
+                    'legal_refs' => [],
+                ],
+                [
+                    'code' => 'content_integrity',
+                    'severity' => 'low',
+                    'field' => 'excerpt',
+                    'quote' => '摘要存在截断',
+                    'paragraph_index' => 1,
+                    'reason' => '摘要句子不完整。',
+                    'suggestion' => '补全摘要。',
+                    'knowledge_refs' => [],
+                    'legal_refs' => [],
+                ],
+            ],
             'active_dedupe_key' => null,
             'finished_at' => now(),
         ])->save();
         $article->task()->update(['ai_quality_enabled' => false]);
 
-        $this->actingAs($admin, 'admin')
+        $listResponse = $this->actingAs($admin, 'admin')
             ->get(route('admin.articles.index', ['ai_quality_status' => 'needs_review']))
             ->assertOk()
             ->assertSee(__('admin.articles.column.ai_quality'))
             ->assertSee(__('admin.articles.ai_quality.needs_review'))
             ->assertSee('78');
 
-        $this->actingAs($admin, 'admin')
+        $listDocument = new \DOMDocument;
+        $listDocument->loadHTML((string) $listResponse->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+        $listXPath = new \DOMXPath($listDocument);
+        $scoreBadge = $listXPath->query('//a[@data-ai-quality-score-badge="78"]')?->item(0);
+
+        $this->assertNotNull($scoreBadge);
+        $this->assertSame('78', trim((string) $scoreBadge->textContent));
+        $this->assertSame(
+            __('admin.articles.ai_quality.needs_review').' · '.__('admin.articles.ai_quality.score').' 78',
+            $scoreBadge->getAttribute('aria-label'),
+        );
+        $this->assertSame(1, $listXPath->query('./i[@data-lucide="user-round-check"]', $scoreBadge)?->length);
+
+        $editResponse = $this->actingAs($admin, 'admin')
             ->get(route('admin.articles.edit', ['articleId' => $article->id]))
             ->assertOk()
             ->assertSee(__('admin.articles.ai_quality.title'))
@@ -74,6 +463,19 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertSee('revealRange', false)
             ->assertSee('name="run_ai_quality_after_save"', false)
             ->assertSee(route('admin.articles.ai-quality.override', ['articleId' => $article->id]), false);
+
+        $document = new \DOMDocument;
+        @$document->loadHTML((string) $editResponse->getContent());
+        $xpath = new \DOMXPath($document);
+        $issueDisclosures = $xpath->query('//details[@data-ai-quality-issue]');
+
+        $this->assertSame(2, $issueDisclosures?->length);
+        foreach ($issueDisclosures ?? [] as $issueDisclosure) {
+            $this->assertFalse($issueDisclosure->hasAttribute('open'));
+            $this->assertSame(1, $xpath->query('./summary[@data-ai-quality-issue-summary]', $issueDisclosure)?->length);
+            $this->assertSame(1, $xpath->query('./div[@data-ai-quality-issue-details]', $issueDisclosure)?->length);
+            $this->assertSame(1, $xpath->query('.//*[@data-ai-quality-locate]', $issueDisclosure)?->length);
+        }
     }
 
     public function test_published_article_with_a_failed_latest_check_shows_a_published_content_risk_warning(): void
@@ -189,7 +591,7 @@ class AdminArticleAiQualityTest extends TestCase
             'finished_at' => now(),
         ])->save();
 
-        $this->actingAs($admin, 'admin')
+        $editResponse = $this->actingAs($admin, 'admin')
             ->get(route('admin.articles.edit', ['articleId' => $article->id]))
             ->assertOk()
             ->assertSee('data-ai-quality-history-check', false)
@@ -197,6 +599,18 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertSee('历史知识记录为 800 家。')
             ->assertSee('服务客户超过 1000 家')
             ->assertSee('findTextRangeByOccurrence', false);
+
+        $document = new \DOMDocument;
+        @$document->loadHTML((string) $editResponse->getContent());
+        $xpath = new \DOMXPath($document);
+        $historyIssueDisclosures = $xpath->query('//details[@data-ai-quality-history-issue]');
+
+        $this->assertSame(1, $historyIssueDisclosures?->length);
+        $historyIssueDisclosure = $historyIssueDisclosures?->item(0);
+        $this->assertNotNull($historyIssueDisclosure);
+        $this->assertFalse($historyIssueDisclosure->hasAttribute('open'));
+        $this->assertSame(1, $xpath->query('./summary[@data-ai-quality-issue-summary]', $historyIssueDisclosure)?->length);
+        $this->assertSame(1, $xpath->query('./div[@data-ai-quality-issue-details]', $historyIssueDisclosure)?->length);
     }
 
     public function test_admin_can_override_reviewable_result_with_audited_reason(): void
@@ -529,7 +943,7 @@ class AdminArticleAiQualityTest extends TestCase
         ])->save();
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->getJson('/api/v1/articles?ai_quality_status=failed')
+            ->getJson('/api/v1/articles?ai_quality_status=needs_review')
             ->assertOk()
             ->assertJsonPath('data.items.0.id', $article->id)
             ->assertJsonPath('data.items.0.ai_quality.decision', 'needs_review');
@@ -556,6 +970,36 @@ class AdminArticleAiQualityTest extends TestCase
         $this->assertSame((int) $admin->id, (int) $manualRequest['admin_id']);
         $this->assertSame((int) $issuedToken->accessToken->id, (int) $manualRequest['api_token_id']);
         Queue::assertPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_api_failed_quality_filter_returns_execution_failures(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        [, $healthyArticle] = $this->qualityArticle();
+        $token = $admin->createToken('quality-failed-filter', ['articles:read'])->plainTextToken;
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'failed',
+            'decision' => 'error',
+            'error_code' => 'provider_timeout',
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        $healthyCheck = app(ArticleAiQualityInspectionService::class)->createOrReuse($healthyArticle, dispatch: false);
+        $healthyCheck->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 96,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/articles?ai_quality_status=failed')
+            ->assertOk()
+            ->assertJsonPath('data.pagination.total', 1)
+            ->assertJsonPath('data.items.0.id', $article->id)
+            ->assertJsonPath('data.items.0.ai_quality.status', 'failed');
     }
 
     public function test_api_task_rebinding_snapshots_the_effective_quality_policy_on_the_article(): void

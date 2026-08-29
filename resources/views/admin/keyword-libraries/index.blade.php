@@ -2,15 +2,13 @@
 
 @section('content')
     <div class="mx-auto max-w-7xl px-4 sm:px-0" data-materials-standalone>
-        <header class="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
-            <div class="flex min-w-0 items-start gap-4">
-                <a href="{{ route('admin.materials.index') }}" aria-label="{{ __('admin.common.back') }}" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-gray-500 shadow ring-1 ring-gray-200 transition-[color,background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 [@media(hover:hover)]:hover:text-gray-800 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
-                    <i data-lucide="arrow-left" class="h-5 w-5"></i>
-                </a>
-                <div class="min-w-0">
-                    <h1 class="text-balance break-words text-2xl font-bold text-gray-900">{{ __('admin.keyword_libraries.heading') }}</h1>
-                    <p class="mt-1 text-pretty text-sm leading-6 text-gray-600">{{ __('admin.keyword_libraries.subtitle') }}</p>
+        <header class="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0 flex-1">
+                <div class="sr-only">
+                    <h1>{{ __('admin.keyword_libraries.heading') }}</h1>
+                    <p>{{ __('admin.keyword_libraries.subtitle') }}</p>
                 </div>
+                <x-admin.v3.materials-subnav active="keywords" />
             </div>
             <a href="{{ route('admin.keyword-libraries.create') }}" class="inline-flex min-h-10 w-fit items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                 <i data-lucide="plus" class="mr-2 h-4 w-4"></i>

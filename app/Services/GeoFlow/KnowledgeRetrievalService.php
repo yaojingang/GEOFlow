@@ -38,19 +38,125 @@ class KnowledgeRetrievalService
      */
     public function retrieveContextFromMany(array $knowledgeBaseIds, string $query, int $limit = 5, int $maxChars = 3200): string
     {
-        return $this->composeEvidenceContext(
+        return $this->retrieveContextBundleFromMany($knowledgeBaseIds, $query, $limit, $maxChars)['context'];
+    }
+
+    /**
+     * @param  list<int>  $knowledgeBaseIds
+     * @return array{context:string,evidence:list<array<string,mixed>>}
+     */
+    public function retrieveContextBundleFromMany(array $knowledgeBaseIds, string $query, int $limit = 5, int $maxChars = 3200): array
+    {
+        $evidence = $this->boundedEvidenceForContext(
             $this->retrieveEvidenceFromMany($knowledgeBaseIds, $query, max($limit * 4, 16)),
             $limit,
-            $maxChars
+            $maxChars,
         );
+
+        return [
+            'context' => $this->composeEvidenceContext($evidence, $limit, $maxChars),
+            'evidence' => $evidence,
+        ];
+    }
+
+    /**
+     * Rehydrate evidence captured during article generation only when the same
+     * governed chunk is still present and its content/source hashes still match.
+     *
+     * @param  list<array<string,mixed>>  $snapshot
+     * @param  list<int>  $allowedKnowledgeBaseIds
+     * @return list<array<string,mixed>>
+     */
+    public function validateEvidenceSnapshot(array $snapshot, array $allowedKnowledgeBaseIds): array
+    {
+        $allowedKnowledgeBaseIds = collect($allowedKnowledgeBaseIds)
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        if ($snapshot === [] || $allowedKnowledgeBaseIds === []) {
+            return [];
+        }
+
+        $snapshotByChunkId = [];
+        foreach ($snapshot as $item) {
+            $knowledgeBaseId = (int) ($item['knowledge_base_id'] ?? 0);
+            $chunkId = (int) ($item['chunk_id'] ?? 0);
+            if ($chunkId <= 0 || ! in_array($knowledgeBaseId, $allowedKnowledgeBaseIds, true)) {
+                continue;
+            }
+            $snapshotByChunkId[$chunkId] = $item;
+        }
+        if ($snapshotByChunkId === []) {
+            return [];
+        }
+
+        $knowledgeBases = KnowledgeBase::query()
+            ->whereIn('id', $allowedKnowledgeBaseIds)
+            ->get($this->knowledgeBaseSelectColumns())
+            ->keyBy('id');
+        $chunkColumns = array_values(array_unique(['knowledge_base_id', ...$this->knowledgeChunkSelectColumns()]));
+        $chunks = KnowledgeChunk::query()
+            ->whereIn('id', array_keys($snapshotByChunkId))
+            ->whereIn('knowledge_base_id', $allowedKnowledgeBaseIds)
+            ->get($chunkColumns)
+            ->keyBy('id');
+
+        $validated = [];
+        foreach ($snapshotByChunkId as $chunkId => $item) {
+            /** @var KnowledgeChunk|null $chunk */
+            $chunk = $chunks->get($chunkId);
+            /** @var KnowledgeBase|null $knowledgeBase */
+            $knowledgeBase = $chunk ? $knowledgeBases->get((int) $chunk->knowledge_base_id) : null;
+            if (! $chunk || ! $knowledgeBase) {
+                continue;
+            }
+
+            $content = trim((string) $chunk->content);
+            $contentHash = (string) ($chunk->content_hash ?: hash('sha256', $content));
+            $sourceHash = (string) ($chunk->source_hash ?? '');
+            if (! hash_equals((string) ($item['content_hash'] ?? ''), $contentHash)
+                || ! hash_equals((string) ($item['source_hash'] ?? ''), $sourceHash)) {
+                continue;
+            }
+
+            $metadata = $this->mergeMetadata(
+                $this->baseMetadata($knowledgeBase),
+                $this->decodeMetadata((string) ($chunk->metadata_json ?? '')),
+            );
+            if ($this->shouldExcludeByGovernance($metadata)) {
+                continue;
+            }
+
+            $validated[] = [
+                'knowledge_base_id' => (int) $chunk->knowledge_base_id,
+                'chunk_id' => (int) $chunk->id,
+                'chunk_index' => (int) $chunk->chunk_index,
+                'content' => $content,
+                'content_hash' => $contentHash,
+                'source_hash' => $sourceHash,
+                'chunk_title' => trim((string) ($chunk->chunk_title ?? '')),
+                'section_path' => trim((string) ($chunk->section_path ?? '')),
+                'metadata' => $metadata,
+                'score' => 1.0,
+                'generation_reused' => true,
+            ];
+        }
+
+        return $validated;
     }
 
     /**
      * @param  list<int>  $knowledgeBaseIds
      * @return list<array<string,mixed>>
      */
-    public function retrieveEvidenceFromMany(array $knowledgeBaseIds, string $query, int $candidateLimit = 16): array
-    {
+    public function retrieveEvidenceFromMany(
+        array $knowledgeBaseIds,
+        string $query,
+        int $candidateLimit = 16,
+        bool $allowRemoteEmbedding = true,
+    ): array {
         $knowledgeBaseIds = collect($knowledgeBaseIds)
             ->map(static fn ($id): int => (int) $id)
             ->filter(static fn (int $id): bool => $id > 0)
@@ -64,14 +170,14 @@ class KnowledgeRetrievalService
         }
 
         if (count($knowledgeBaseIds) === 1) {
-            return $this->retrieveEvidence($knowledgeBaseIds[0], $query, $candidateLimit);
+            return $this->retrieveEvidence($knowledgeBaseIds[0], $query, $candidateLimit, $allowRemoteEmbedding);
         }
 
         $perBaseLimit = max(6, (int) ceil(max(1, $candidateLimit) / count($knowledgeBaseIds)) + 4);
         $merged = [];
 
         foreach ($knowledgeBaseIds as $order => $knowledgeBaseId) {
-            foreach ($this->retrieveEvidence($knowledgeBaseId, $query, $perBaseLimit) as $candidate) {
+            foreach ($this->retrieveEvidence($knowledgeBaseId, $query, $perBaseLimit, $allowRemoteEmbedding) as $candidate) {
                 $candidate['knowledge_base_rank'] = $order;
                 $merged[] = $candidate;
             }
@@ -99,8 +205,12 @@ class KnowledgeRetrievalService
     /**
      * @return list<array<string,mixed>>
      */
-    public function retrieveEvidence(int $knowledgeBaseId, string $query, int $candidateLimit = 16): array
-    {
+    public function retrieveEvidence(
+        int $knowledgeBaseId,
+        string $query,
+        int $candidateLimit = 16,
+        bool $allowRemoteEmbedding = true,
+    ): array {
         /** @var KnowledgeBase|null $knowledgeBase */
         $knowledgeBase = KnowledgeBase::query()
             ->whereKey($knowledgeBaseId)
@@ -111,7 +221,7 @@ class KnowledgeRetrievalService
         }
 
         $queryTerms = $this->termFrequencies($query);
-        $pgvectorScores = trim($query) !== ''
+        $pgvectorScores = $allowRemoteEmbedding && trim($query) !== ''
             ? $this->fetchPgvectorScores($knowledgeBaseId, $query, max($candidateLimit, 16))
             : [];
 
@@ -120,7 +230,9 @@ class KnowledgeRetrievalService
             return [];
         }
 
-        $hasRealEmbeddingRows = $pgvectorScores === [] && $this->knowledgeBaseHasRealEmbeddingRows($knowledgeBaseId);
+        $hasRealEmbeddingRows = $allowRemoteEmbedding
+            && $pgvectorScores === []
+            && $this->knowledgeBaseHasRealEmbeddingRows($knowledgeBaseId);
         $queryVector = [];
         $useRealEmbeddingScore = false;
         if ($pgvectorScores === [] && $hasRealEmbeddingRows && trim($query) !== '') {
@@ -275,6 +387,33 @@ class KnowledgeRetrievalService
         }
 
         return "【知识库证据】\n".implode("\n\n", $parts);
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $evidence
+     * @return list<array<string,mixed>>
+     */
+    private function boundedEvidenceForContext(array $evidence, int $limit, int $maxChars): array
+    {
+        $selected = [];
+        $characterCount = 0;
+        foreach ($evidence as $candidate) {
+            if (count($selected) >= max(1, $limit)) {
+                break;
+            }
+            $content = trim((string) ($candidate['content'] ?? ''));
+            if ($content === '') {
+                continue;
+            }
+            $nextLength = $characterCount + mb_strlen($content, 'UTF-8');
+            if ($selected !== [] && $nextLength > $maxChars) {
+                continue;
+            }
+            $selected[] = $candidate;
+            $characterCount = $nextLength;
+        }
+
+        return $selected;
     }
 
     /**

@@ -3,14 +3,9 @@
 @section('content')
     <div class="px-4 sm:px-0">
         <div class="flex items-center justify-between mb-8">
-            <div class="flex items-center space-x-4">
-                <a href="{{ route('admin.ai.configurator') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                </a>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.ai_prompts.heading') }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_prompts.subtitle') }}</p>
-                </div>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.ai_prompts.heading') }}</h1>
+                <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_prompts.subtitle') }}</p>
             </div>
             <a href="{{ route('admin.ai-prompts.create') }}" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-green-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2">
                 <i data-lucide="plus" class="w-4 h-4 mr-2"></i>

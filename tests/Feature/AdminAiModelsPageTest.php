@@ -554,6 +554,32 @@ class AdminAiModelsPageTest extends TestCase
             ->assertSee(__('admin.ai_models.create_page_title'));
     }
 
+    public function test_model_delete_uses_an_accessible_centered_confirmation_dialog(): void
+    {
+        $model = $this->createAiModel('chat', ['name' => 'Dialog Preview Model']);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->get(route('admin.ai-models.index'))
+            ->assertOk()
+            ->assertSee('action="'.route('admin.ai-models.delete', ['modelId' => $model->id]).'"', false)
+            ->assertSee('data-ai-model-delete-form', false)
+            ->assertSee('data-model-name="Dialog Preview Model"', false)
+            ->assertSee('data-model-edit-url="'.route('admin.ai-models.edit', ['modelId' => $model->id]).'"', false)
+            ->assertSee('data-ai-model-delete-trigger', false)
+            ->assertSee('data-ai-model-delete-submit', false)
+            ->assertSee('name="_token"', false)
+            ->assertSee('data-ai-model-delete-dialog', false)
+            ->assertSee('data-deleting-label="'.__('admin.ai_models.delete_dialog.deleting').'"', false)
+            ->assertSee('role="alertdialog"', false)
+            ->assertSee('aria-modal="true"', false)
+            ->assertSee('fixed inset-0 m-auto', false)
+            ->assertSee(__('admin.ai_models.delete_dialog.title'))
+            ->assertSee(__('admin.ai_models.delete_dialog.impact'))
+            ->assertSee(__('admin.ai_models.delete_dialog.guidance_link'))
+            ->assertDontSee('confirm(', false)
+            ->assertDontSee('deleteModel(', false);
+    }
+
     public function test_model_editing_uses_an_authenticated_dedicated_page(): void
     {
         $model = $this->createAiModel('chat', [

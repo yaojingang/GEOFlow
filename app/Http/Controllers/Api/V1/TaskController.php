@@ -2,7 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\ApiException;
+use App\Http\Requests\Api\StoreTaskRequest;
+use App\Http\Requests\Api\UpdateTaskRequest;
 use App\Models\Admin;
+use App\Models\Task;
+use App\Services\Api\ApiTokenService;
 use App\Services\Api\IdempotencyService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use Illuminate\Http\JsonResponse;
@@ -42,12 +47,14 @@ class TaskController extends BaseApiController
      *
      * 幂等键：POST /tasks（请求头 X-Idempotency-Key 可选）。
      */
-    public function store(Request $request, TaskLifecycleService $tasks): JsonResponse
+    public function store(StoreTaskRequest $request, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
+        $data = $this->reviewBoundTaskData($request, $request->validated(), $tokens);
+
         return IdempotencyService::executeJson(
             $request,
             'POST /tasks',
-            fn (): JsonResponse => $this->success($request, $tasks->createTask($request->all()), 201),
+            fn (): JsonResponse => $this->success($request, $tasks->createTask($data), 201),
         );
     }
 
@@ -64,14 +71,16 @@ class TaskController extends BaseApiController
      *
      * 幂等键：PATCH /tasks/{id}
      */
-    public function update(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
+    public function update(UpdateTaskRequest $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
+        $data = $this->reviewBoundTaskData($request, $request->validated(), $tokens);
+
         return IdempotencyService::executeJson(
             $request,
             'PATCH /tasks/{id}',
             fn (): JsonResponse => $this->success($request, $tasks->updateTask(
                 $task,
-                $request->all(),
+                $data,
                 $this->canManageHostedTask($request),
             )),
         );
@@ -90,8 +99,9 @@ class TaskController extends BaseApiController
      *
      * 请求体可选 enqueue_now（布尔）。幂等键：POST /tasks/{id}/start
      */
-    public function start(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
+    public function start(Request $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
+        $this->assertTaskExecutionScope($request, $task, $tokens);
         $enqueueNow = ! empty($request->input('enqueue_now'));
 
         return IdempotencyService::executeJson(
@@ -127,8 +137,9 @@ class TaskController extends BaseApiController
      *
      * 请求体可含 job_type，其余字段进入 payload。幂等键：POST /tasks/{id}/enqueue
      */
-    public function enqueue(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
+    public function enqueue(Request $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
+        $this->assertTaskExecutionScope($request, $task, $tokens);
         $body = $request->all();
         $jobType = trim((string) ($body['job_type'] ?? 'generate_article'));
         $payload = $body;
@@ -151,6 +162,29 @@ class TaskController extends BaseApiController
         $admin = Admin::query()->find($this->auth($request)->auditAdminId);
 
         return $admin?->isSuperAdmin() === true;
+    }
+
+    /** @param array<string,mixed> $data @return array<string,mixed> */
+    private function reviewBoundTaskData(Request $request, array $data, ApiTokenService $tokens): array
+    {
+        if (! $tokens->tokenHasScope($this->auth($request)->token, 'articles:publish')) {
+            $data['need_review'] = true;
+        }
+
+        return $data;
+    }
+
+    private function assertTaskExecutionScope(Request $request, int $taskId, ApiTokenService $tokens): void
+    {
+        if ($tokens->tokenHasScope($this->auth($request)->token, 'articles:publish')) {
+            return;
+        }
+        $task = Task::query()->findOrFail($taskId);
+        if (! (bool) $task->need_review) {
+            throw new ApiException('forbidden', '该任务可以自动发布，需要 articles:publish scope', 403, [
+                'required_scope' => 'articles:publish',
+            ]);
+        }
     }
 
     /**

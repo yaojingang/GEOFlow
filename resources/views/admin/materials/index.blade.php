@@ -105,10 +105,13 @@
     @endphp
 
     <div class="px-4 sm:px-0">
-        <div class="mb-8">
-            <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.materials.heading') }}</h1>
-            <p class="mt-1 text-sm text-gray-600">{{ __('admin.materials.subtitle') }}</p>
-        </div>
+        <header class="mb-6">
+            <div class="sr-only">
+                <h1>{{ __('admin.materials.heading') }}</h1>
+                <p>{{ __('admin.materials.subtitle') }}</p>
+            </div>
+            <x-admin.v3.materials-subnav />
+        </header>
 
         <section class="mb-8 overflow-hidden rounded-lg border border-orange-100 bg-white shadow">
             <div class="border-b border-orange-100 bg-orange-50/50 px-6 py-5 lg:px-8">

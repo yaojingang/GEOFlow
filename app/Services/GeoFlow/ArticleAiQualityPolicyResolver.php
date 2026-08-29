@@ -43,12 +43,18 @@ class ArticleAiQualityPolicyResolver
         $current = $this->resolve($article);
         $task = $this->taskForArticle($article);
         if ((! $task instanceof Task || $task->trashed()) && ($current['required'] ?? false)) {
-            return $current;
+            try {
+                $this->assertExecutable($current);
+
+                return $current;
+            } catch (RuntimeException) {
+                // Rebind deleted or disabled runtime dependencies while retaining the stored policy thresholds.
+            }
         }
         if ($task instanceof Task && $task->trashed()) {
             $task = null;
         }
-        $prompt = $task?->qualityPrompt;
+        $prompt = $task?->qualityPrompt ?: ($current['prompt'] ?? null);
         if (! $prompt instanceof Prompt || (string) $prompt->type !== 'quality_check') {
             $prompt = Prompt::query()
                 ->where('system_key', self::DEFAULT_PROMPT_SYSTEM_KEY)
@@ -56,7 +62,7 @@ class ArticleAiQualityPolicyResolver
                 ->first();
         }
 
-        $model = collect([$task?->qualityModel, $task?->aiModel])
+        $model = collect([$task?->qualityModel, $task?->aiModel, $current['model'] ?? null])
             ->first(fn (mixed $candidate): bool => $candidate instanceof AiModel
                 && (string) $candidate->status === 'active'
                 && $this->isChatModel($candidate));
@@ -73,7 +79,11 @@ class ArticleAiQualityPolicyResolver
                 ->first();
         }
 
-        $knowledgeBaseIds = [];
+        $knowledgeBaseIds = collect($current['knowledge_base_ids'] ?? [])
+            ->map('intval')
+            ->filter()
+            ->values()
+            ->all();
         if ($task instanceof Task) {
             $knowledgeBaseIds = $task->knowledgeBases->pluck('id')->map('intval')->all();
             if ((int) $task->knowledge_base_id > 0) {
@@ -81,7 +91,7 @@ class ArticleAiQualityPolicyResolver
             }
         }
 
-        $modelSelectionMode = (string) ($task?->model_selection_mode ?? 'fixed');
+        $modelSelectionMode = (string) ($task?->model_selection_mode ?? ($current['model_selection_mode'] ?? 'fixed'));
         if (! in_array($modelSelectionMode, ['fixed', 'smart_failover'], true)) {
             $modelSelectionMode = 'fixed';
         }
@@ -94,15 +104,17 @@ class ArticleAiQualityPolicyResolver
             'model' => $model,
             'model_selection_mode' => $modelSelectionMode,
             'knowledge_base_ids' => array_values(array_unique($knowledgeBaseIds)),
-            'pass_score' => (int) ($task?->ai_quality_pass_score ?: 85),
-            'manual_override_min_score' => (int) ($task?->ai_quality_manual_override_min_score ?: 70),
-            'publication_context' => [
-                'publish_scope' => (string) ($task?->publish_scope ?? 'public'),
-                'distribution_strategy' => (string) ($task?->distribution_strategy ?? ''),
+            'pass_score' => (int) ($task?->ai_quality_pass_score ?: ($current['pass_score'] ?? 85)),
+            'manual_override_min_score' => (int) ($task?->ai_quality_manual_override_min_score ?: ($current['manual_override_min_score'] ?? 70)),
+            'timeout_sampling_enabled' => (bool) ($task?->ai_quality_timeout_sampling_enabled ?? ($current['timeout_sampling_enabled'] ?? false)),
+            'manual_review_required' => (bool) ($task?->need_review ?? ($current['manual_review_required'] ?? true)),
+            'publication_context' => array_replace(is_array($current['publication_context'] ?? null) ? $current['publication_context'] : [], [
+                'publish_scope' => (string) ($task?->publish_scope ?? data_get($current, 'publication_context.publish_scope', 'public')),
+                'distribution_strategy' => (string) ($task?->distribution_strategy ?? data_get($current, 'publication_context.distribution_strategy', '')),
                 'is_ai_generated' => (bool) $article->is_ai_generated,
                 'advertising_label_status' => 'unknown',
                 'ai_generated_label_status' => 'unknown',
-            ],
+            ]),
         ];
     }
 
@@ -129,6 +141,8 @@ class ArticleAiQualityPolicyResolver
             'knowledge_base_ids' => array_values(array_unique($knowledgeBaseIds)),
             'pass_score' => (int) ($task->ai_quality_pass_score ?: 85),
             'manual_override_min_score' => (int) ($task->ai_quality_manual_override_min_score ?: 70),
+            'timeout_sampling_enabled' => (bool) $task->ai_quality_timeout_sampling_enabled,
+            'manual_review_required' => (bool) $task->need_review,
             'publication_context' => [
                 'publish_scope' => (string) ($task->publish_scope ?? 'public'),
                 'distribution_strategy' => (string) ($task->distribution_strategy ?? ''),
@@ -140,7 +154,7 @@ class ArticleAiQualityPolicyResolver
     }
 
     /** @param array<string, mixed> $snapshot @return array<string, mixed> */
-    private function fromArticleSnapshot(array $snapshot, string $source): array
+    public function fromArticleSnapshot(array $snapshot, string $source = 'article_snapshot'): array
     {
         $prompt = isset($snapshot['prompt_id']) ? Prompt::query()->find((int) $snapshot['prompt_id']) : null;
         $model = isset($snapshot['model_id']) ? AiModel::query()->find((int) $snapshot['model_id']) : null;
@@ -156,6 +170,8 @@ class ArticleAiQualityPolicyResolver
             'knowledge_base_ids' => $knowledgeBaseIds,
             'pass_score' => (int) ($snapshot['pass_score'] ?? 85),
             'manual_override_min_score' => (int) ($snapshot['manual_override_min_score'] ?? 70),
+            'timeout_sampling_enabled' => (bool) ($snapshot['timeout_sampling_enabled'] ?? false),
+            'manual_review_required' => (bool) ($snapshot['manual_review_required'] ?? true),
             'publication_context' => is_array($snapshot['publication_context'] ?? null) ? $snapshot['publication_context'] : [],
         ];
     }
@@ -237,6 +253,12 @@ class ArticleAiQualityPolicyResolver
             'model_selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
             'pass_score' => (int) ($policy['pass_score'] ?? 85),
             'manual_override_min_score' => (int) ($policy['manual_override_min_score'] ?? 70),
+            'timeout_sampling_enabled' => (bool) ($policy['timeout_sampling_enabled'] ?? false),
+            'manual_review_required' => (bool) ($policy['manual_review_required'] ?? true),
+            'sampling_algorithm_version' => ArticleAiQualitySampleBuilder::ALGORITHM_VERSION,
+            'sampling_max_characters' => (int) config('geoflow.ai_quality_sampled_max_characters', 6000),
+            'sampling_max_ranges' => (int) config('geoflow.ai_quality_sampled_max_ranges', 12),
+            'risk_scan_algorithm_version' => ArticleRiskScanner::SCAN_ALGORITHM_VERSION,
             'knowledge_base_ids' => array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])),
             'publication_context' => is_array($policy['publication_context'] ?? null) ? $policy['publication_context'] : [],
             'algorithm_version' => ArticleAiQualityFingerprint::ALGORITHM_VERSION,
@@ -268,6 +290,7 @@ class ArticleAiQualityPolicyResolver
                 'pass_score' => (int) ($policy['pass_score'] ?? 85),
                 'manual_override_min_score' => (int) ($policy['manual_override_min_score'] ?? 70),
                 'model_selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
+                'manual_review_required' => (bool) ($policy['manual_review_required'] ?? true),
             ],
             'prompt' => [
                 'id' => $prompt instanceof Prompt ? (int) $prompt->id : null,
@@ -321,7 +344,7 @@ class ArticleAiQualityPolicyResolver
             return [$primary];
         }
 
-        $maximumCandidates = max(1, min(10, (int) config('geoflow.ai_quality_max_model_candidates', 3)));
+        $maximumCandidates = max(1, min(10, (int) config('geoflow.ai_quality_max_model_candidates', 2)));
         $fallbacks = AiModel::query()
             ->whereKeyNot((int) $primary->id)
             ->where('status', 'active')
@@ -332,8 +355,10 @@ class ArticleAiQualityPolicyResolver
             })
             ->orderBy('failover_priority')
             ->orderBy('id')
-            ->limit(max(0, $maximumCandidates - 1))
             ->get()
+            ->filter(fn (AiModel $candidate): bool => $this->sharesEndpointOrigin($primary, $candidate))
+            ->take(max(0, $maximumCandidates - 1))
+            ->values()
             ->all();
 
         return array_values(array_merge([$primary], $fallbacks));
@@ -356,5 +381,33 @@ class ArticleAiQualityPolicyResolver
     private function isChatModel(AiModel $model): bool
     {
         return in_array((string) ($model->model_type ?? ''), ['', 'chat'], true);
+    }
+
+    private function sharesEndpointOrigin(AiModel $primary, AiModel $candidate): bool
+    {
+        $primaryOrigin = $this->endpointOrigin((string) $primary->api_url);
+        $candidateOrigin = $this->endpointOrigin((string) $candidate->api_url);
+
+        return $primaryOrigin !== null
+            && $candidateOrigin !== null
+            && hash_equals($primaryOrigin, $candidateOrigin);
+    }
+
+    private function endpointOrigin(string $url): ?string
+    {
+        $parts = parse_url(trim($url));
+        if (! is_array($parts)) {
+            return null;
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = strtolower(rtrim((string) ($parts['host'] ?? ''), '.'));
+        if (! in_array($scheme, ['http', 'https'], true) || $host === '') {
+            return null;
+        }
+
+        $port = (int) ($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
+
+        return $scheme.'://'.$host.':'.$port;
     }
 }

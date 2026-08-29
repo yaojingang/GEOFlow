@@ -424,6 +424,17 @@
                             </div>
                         </div>
 
+                        <label class="flex gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-4">
+                            <input type="checkbox" name="ai_quality_timeout_sampling_enabled" id="ai_quality_timeout_sampling_enabled" value="1"
+                                   @checked((bool) old('ai_quality_timeout_sampling_enabled', (bool) ($taskForm['ai_quality_timeout_sampling_enabled'] ?? false)))
+                                   class="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                   data-ai-quality-timeout-sampling>
+                            <span>
+                                <span class="block text-sm font-medium text-amber-950">{{ $t('task_create.ai_quality.timeout_sampling_label') }}</span>
+                                <span class="mt-1 block text-sm leading-6 text-amber-800">{{ $t('task_create.ai_quality.timeout_sampling_help') }}</span>
+                            </span>
+                        </label>
+
                         <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-4">
                             <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">{{ $t('task_create.ai_quality.workflow_title') }}</p>
                             <div class="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-700" data-ai-quality-workflow

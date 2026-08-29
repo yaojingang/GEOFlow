@@ -154,7 +154,7 @@ class AdminDashboardQuickStartTest extends TestCase
         }
     }
 
-    public function test_dashboard_header_actions_match_analytics_bottom_alignment(): void
+    public function test_dashboard_actions_align_with_heading_and_analytics_refresh_aligns_with_navigation(): void
     {
         $admin = Admin::query()->create([
             'username' => 'dashboard_header_alignment_admin',
@@ -165,24 +165,45 @@ class AdminDashboardQuickStartTest extends TestCase
             'status' => 'active',
         ]);
 
-        foreach (['admin.dashboard', 'admin.analytics'] as $routeName) {
-            $response = $this->actingAs($admin, 'admin')->get(route($routeName))->assertOk();
-            $document = new \DOMDocument;
-            $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
-            $headings = (new \DOMXPath($document))->query('//h1');
+        $dashboard = $this->actingAs($admin, 'admin')->get(route('admin.dashboard'))->assertOk();
+        $dashboardDocument = new \DOMDocument;
+        $dashboardDocument->loadHTML($dashboard->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+        $dashboardHeadings = (new \DOMXPath($dashboardDocument))->query('//h1');
 
-            $this->assertNotFalse($headings);
-            $this->assertSame(1, $headings->length, $routeName.' should render one page title.');
+        $this->assertNotFalse($dashboardHeadings);
+        $this->assertSame(1, $dashboardHeadings->length);
 
-            $headerRow = $headings->item(0)->parentNode?->parentNode;
+        $dashboardHeaderRow = $dashboardHeadings->item(0)->parentNode?->parentNode;
 
-            $this->assertInstanceOf(\DOMElement::class, $headerRow);
-            $this->assertContains(
-                'lg:items-end',
-                preg_split('/\s+/', trim($headerRow->getAttribute('class'))),
-                $routeName.' actions should align with the bottom of the title block.',
-            );
-        }
+        $this->assertInstanceOf(\DOMElement::class, $dashboardHeaderRow);
+        $this->assertContains(
+            'lg:items-end',
+            preg_split('/\s+/', trim($dashboardHeaderRow->getAttribute('class'))),
+        );
+
+        $analytics = $this->get(route('admin.analytics'))->assertOk();
+        $analyticsDocument = new \DOMDocument;
+        $analyticsDocument->loadHTML($analytics->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+        $analyticsXPath = new \DOMXPath($analyticsDocument);
+        $toolbars = $analyticsXPath->query('//*[@data-analytics-page-toolbar]');
+
+        $this->assertNotFalse($toolbars);
+        $this->assertSame(1, $toolbars->length);
+
+        $toolbar = $toolbars->item(0);
+
+        $this->assertInstanceOf(\DOMElement::class, $toolbar);
+        $this->assertContains('items-end', preg_split('/\s+/', trim($toolbar->getAttribute('class'))));
+        $navigation = $analyticsXPath->query('.//*[@data-analytics-navigation]', $toolbar)?->item(0);
+
+        $this->assertInstanceOf(\DOMElement::class, $navigation);
+        $this->assertNotContains('border-b', preg_split('/\s+/', trim($navigation->getAttribute('class'))));
+        $this->assertSame(1, $analyticsXPath->query('.//button[@onclick="location.reload()"]', $toolbar)?->length);
+
+        $header = $toolbar->parentNode;
+
+        $this->assertInstanceOf(\DOMElement::class, $header);
+        $this->assertContains('mb-8', preg_split('/\s+/', trim($header->getAttribute('class'))));
     }
 
     /**

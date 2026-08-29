@@ -9,9 +9,9 @@ class ArticleAiQualityFingerprint
     public const ALGORITHM_VERSION = 'ai-quality-1.0.0';
 
     /** @param array<string, mixed> $input */
-    public function make(array $input): string
+    public function make(array $input, ?string $algorithmVersion = null): string
     {
-        $input['algorithm_version'] = self::ALGORITHM_VERSION;
+        $input['algorithm_version'] = $algorithmVersion ?: self::ALGORITHM_VERSION;
 
         try {
             return hash('sha256', json_encode(

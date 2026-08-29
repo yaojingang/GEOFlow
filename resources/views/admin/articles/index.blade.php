@@ -24,69 +24,32 @@
         }
     }
     $articleListAnchor = '#article-list';
-    $categoryManageUrl = route('admin.categories.index');
     $reviewCenterUrl = route('admin.articles.index', ['review_status' => 'pending']).$articleListAnchor;
     $trashUrl = route('admin.articles.index', ['trashed' => 1]);
     $articlesIndexUrl = route('admin.articles.index');
     $clearTaskFilterUrl = route('admin.articles.index', request()->except(['task_id', 'page']));
-    $contentWorkbenchItems = [
-        [
-            'icon' => 'shield-check',
-            'title' => __('admin.articles.workbench.review_title'),
-            'count' => (int) ($stats['pending_review'] ?? 0),
-            'href' => $reviewCenterUrl,
-            'iconClass' => 'bg-amber-50 text-amber-600 ring-amber-100',
-        ],
-        [
-            'icon' => 'edit',
-            'title' => __('admin.articles.workbench.optimize_title'),
-            'count' => (int) ($stats['draft'] ?? 0),
-            'href' => route('admin.articles.index', ['status' => 'draft']).$articleListAnchor,
-            'iconClass' => 'bg-blue-50 text-blue-600 ring-blue-100',
-        ],
-        [
-            'icon' => 'send',
-            'title' => __('admin.articles.workbench.distribution_title'),
-            'count' => (int) ($stats['published'] ?? 0),
-            'href' => route('admin.articles.index', ['status' => 'published']).$articleListAnchor,
-            'iconClass' => 'bg-emerald-50 text-emerald-600 ring-emerald-100',
-        ],
-        [
-            'icon' => 'chart-no-axes-combined',
-            'title' => __('admin.articles.workbench.observation_title'),
-            'count' => (int) ($stats['observed'] ?? 0),
-            'href' => route('admin.analytics'),
-            'iconClass' => 'bg-purple-50 text-purple-600 ring-purple-100',
-        ],
-    ];
-    $workbenchPriority = collect($contentWorkbenchItems)
-        ->sortByDesc(fn ($item) => (int) ($item['count'] ?? 0))
-        ->first();
-    $workbenchHasPriority = (int) ($workbenchPriority['count'] ?? 0) > 0;
+    $adminUiV3Enabled = (bool) config('geoflow.admin_ui_v3_enabled', false);
+    $articleNavigationActive = $isTrashView
+        ? 'trash'
+        : ($selectedReviewStatus === 'pending' ? 'review' : 'article-list');
 @endphp
+
+@section('topbar-title', $isTrashView ? __('admin.articles.trash.title') : __('admin.articles.topbar_title'))
+@section('topbar-icon', $isTrashView ? 'trash-2' : 'file-text')
 
 @section('content')
     <div class="px-4 sm:px-0">
-        <header class="mb-6 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div class="min-w-0 max-w-3xl">
-                <h1 class="text-3xl font-bold leading-9 tracking-tight text-gray-900">{{ $pageTitle }}</h1>
-                <p class="mt-2 text-[15px] leading-6 text-gray-600">{{ $isTrashView ? __('admin.articles.trash.subtitle') : __('admin.articles.page_subtitle') }}</p>
-                @if(!$isTrashView)
-                    <nav class="-ml-2 mt-3 flex flex-wrap items-center gap-1" aria-label="{{ __('admin.articles.page_title') }}">
-                        <a href="{{ $categoryManageUrl }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-                            <i data-lucide="folder" class="h-4 w-4"></i>
-                            {{ __('admin.button.category_manage') }}
-                        </a>
-                        <a href="{{ $reviewCenterUrl }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-                            <i data-lucide="eye" class="h-4 w-4"></i>
-                            {{ __('admin.button.review_center') }}
-                        </a>
-                        <a href="{{ $trashUrl }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-                            <i data-lucide="trash-2" class="h-4 w-4"></i>
-                            {{ __('admin.button.trash') }}
-                        </a>
-                    </nav>
+        <header class="mb-6 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div class="min-w-0 flex-1">
+                @if($adminUiV3Enabled)
+                    <h1 class="sr-only">{{ $pageTitle }}</h1>
+                @else
+                    <h1 class="text-3xl font-bold leading-9 tracking-tight text-gray-900">{{ $pageTitle }}</h1>
+                    <p class="mt-2 text-[15px] leading-6 text-gray-600">{{ $isTrashView ? __('admin.articles.trash.subtitle') : __('admin.articles.page_subtitle') }}</p>
                 @endif
+                <div @class(['mt-3' => !$adminUiV3Enabled])>
+                    <x-admin.v3.articles-subnav :active="$articleNavigationActive" />
+                </div>
             </div>
             <div class="flex shrink-0 flex-wrap justify-start gap-2 xl:justify-end">
                 @if($isTrashView)
@@ -126,36 +89,6 @@
             </div>
         </div>
         @else
-        <section class="mb-8" aria-labelledby="content-workbench-heading">
-            <h2 id="content-workbench-heading" class="sr-only">{{ __('admin.articles.workbench.title') }}</h2>
-            <div class="rounded-lg border border-blue-100 bg-white p-4 shadow-sm">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div class="flex items-start gap-3">
-                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-md ring-1 {{ $workbenchHasPriority ? $workbenchPriority['iconClass'] : 'bg-blue-50 text-blue-600 ring-blue-100' }}">
-                            <i data-lucide="{{ $workbenchHasPriority ? $workbenchPriority['icon'] : 'circle-check' }}" class="h-5 w-5"></i>
-                        </div>
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-wide text-blue-600">{{ __('admin.articles.workbench.current_action_title') }}</p>
-                            <h3 class="mt-1 text-base font-semibold text-gray-900">
-                                @if($workbenchHasPriority)
-                                    {{ __('admin.articles.workbench.current_action_desc', ['count' => (int) $workbenchPriority['count'], 'stage' => $workbenchPriority['title']]) }}
-                                @else
-                                    {{ __('admin.articles.workbench.current_action_empty_title') }}
-                                @endif
-                            </h3>
-                            <p class="mt-1 text-sm leading-6 text-gray-500">
-                                {{ $workbenchHasPriority ? __('admin.articles.workbench.current_action_help') : __('admin.articles.workbench.current_action_empty_desc') }}
-                            </p>
-                        </div>
-                    </div>
-                    <a href="{{ $workbenchHasPriority ? $workbenchPriority['href'] : route('admin.tasks.create') }}" class="inline-flex h-9 w-fit shrink-0 items-center rounded-md bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700">
-                        {{ $workbenchHasPriority ? __('admin.articles.workbench.current_action_button') : __('admin.articles.workbench.current_action_empty_button') }}
-                        <i data-lucide="arrow-right" class="ml-1.5 h-4 w-4"></i>
-                    </a>
-                </div>
-            </div>
-        </section>
-
         <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="p-5">
@@ -511,6 +444,11 @@
                                         default => ['label' => __('admin.articles.ai_quality.blocked'), 'class' => 'bg-red-50 text-red-700 ring-red-100', 'icon' => 'shield-x'],
                                     };
                                 }
+                                $aiQualityScore = $aiQualityCheck?->score === null ? null : (int) $aiQualityCheck->score;
+                                $aiQualityAccessibleLabel = $aiQualityPresentation['label'];
+                                if ($aiQualityScore !== null) {
+                                    $aiQualityAccessibleLabel .= ' · '.__('admin.articles.ai_quality.score').' '.$aiQualityScore;
+                                }
                                 $distributionSynced = (int) ($article->distribution_synced_count ?? 0);
                                 $distributionFailed = (int) ($article->distribution_failed_count ?? 0);
                                 $distributionPending = max(0, $distributionTotal - $distributionSynced - $distributionFailed);
@@ -674,11 +612,18 @@
                                     </div>
                                 </td>
                                 <td class="px-4 py-4 whitespace-nowrap">
-                                    <a href="{{ route('admin.articles.edit', ['articleId' => (int) $article->id]).'#ai-quality-result' }}" class="inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $aiQualityPresentation['class'] }}">
-                                        <i data-lucide="{{ $aiQualityPresentation['icon'] }}" class="mr-1.5 h-3.5 w-3.5 shrink-0"></i>
-                                        <span class="truncate">{{ $aiQualityPresentation['label'] }}</span>
-                                        @if($aiQualityCheck !== null && $aiQualityCheck->score !== null)
-                                            <span class="ml-1 shrink-0 font-mono">{{ (int) $aiQualityCheck->score }}</span>
+                                    <a
+                                        href="{{ route('admin.articles.edit', ['articleId' => (int) $article->id]).'#ai-quality-result' }}"
+                                        aria-label="{{ $aiQualityAccessibleLabel }}"
+                                        title="{{ $aiQualityAccessibleLabel }}"
+                                        @if($aiQualityScore !== null) data-ai-quality-score-badge="{{ $aiQualityScore }}" @endif
+                                        class="inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $aiQualityPresentation['class'] }}"
+                                    >
+                                        <i data-lucide="{{ $aiQualityPresentation['icon'] }}" aria-hidden="true" class="h-3.5 w-3.5 shrink-0"></i>
+                                        @if($aiQualityScore !== null)
+                                            <span class="shrink-0 font-mono">{{ $aiQualityScore }}</span>
+                                        @else
+                                            <span class="truncate">{{ $aiQualityPresentation['label'] }}</span>
                                         @endif
                                     </a>
                                 </td>

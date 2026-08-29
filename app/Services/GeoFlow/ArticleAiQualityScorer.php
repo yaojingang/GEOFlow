@@ -46,6 +46,7 @@ class ArticleAiQualityScorer
         $uncertainties = array_values(is_array($modelResult['uncertainties'] ?? null) ? $modelResult['uncertainties'] : []);
         $dimensionScores = self::DIMENSION_MAXIMUMS;
         $hasCriticalIssue = false;
+        $hasHighSeverityIssue = false;
 
         foreach ($issues as $issue) {
             $code = (string) ($issue['code'] ?? '');
@@ -54,6 +55,7 @@ class ArticleAiQualityScorer
             $deduction = self::SEVERITY_DEDUCTIONS[$severity] ?? self::SEVERITY_DEDUCTIONS['medium'];
             $dimensionScores[$dimension] = max(0, $dimensionScores[$dimension] - $deduction);
             $hasCriticalIssue = $hasCriticalIssue || $severity === 'critical';
+            $hasHighSeverityIssue = $hasHighSeverityIssue || $severity === 'high';
         }
 
         $score = array_sum($dimensionScores);
@@ -63,6 +65,7 @@ class ArticleAiQualityScorer
             true,
         ) || $this->hasMaterialUncertainty($uncertainties)
             || $this->hasUnresolvedEvidence($issues)
+            || $hasHighSeverityIssue
             || $this->hasUncertainPromotionContext($modelResult, $issues);
 
         $decision = match (true) {

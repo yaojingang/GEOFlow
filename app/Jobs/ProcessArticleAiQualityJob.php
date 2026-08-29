@@ -6,39 +6,36 @@ use App\Services\GeoFlow\ArticleAiQualityInspectionService;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Throwable;
 
 class ProcessArticleAiQualityJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
+    public int $tries = 1;
 
-    public int $timeout = 900;
+    public int $timeout;
 
-    public bool $failOnTimeout = false;
+    public bool $failOnTimeout = true;
 
-    public int $uniqueFor = 900;
+    public int $uniqueFor = 120;
 
-    /** @var list<int> */
-    public array $backoff = [60, 300, 900];
-
-    public function __construct(public readonly int $checkId) {}
+    public function __construct(
+        public readonly int $checkId,
+        public readonly string $expectedScope = 'full',
+    ) {
+        $this->timeout = (int) config('geoflow.ai_quality_job_timeout_seconds', 245);
+    }
 
     public function uniqueId(): string
     {
-        return (string) $this->checkId;
+        return $this->checkId.':'.$this->expectedScope;
     }
 
     /** @return list<object> */
     public function middleware(): array
     {
-        return [
-            (new WithoutOverlapping('article-ai-quality:'.$this->checkId))
-                ->releaseAfter(30)
-                ->expireAfter(930),
-        ];
+        return [];
     }
 
     /** @return list<string> */
@@ -50,9 +47,16 @@ class ProcessArticleAiQualityJob implements ShouldBeUniqueUntilProcessing, Shoul
     public function handle(ArticleAiQualityInspectionService $service): void
     {
         try {
-            $service->process($this->checkId, allowRunningRecovery: $this->attempts() > 1);
+            $service->process(
+                $this->checkId,
+                allowRunningRecovery: $this->attempts() > 1,
+                expectedScope: $this->expectedScope,
+            );
         } catch (Throwable $exception) {
-            $service->markRetryPending($this->checkId, $exception);
+            if ($service->tryStartSampledFallback($this->checkId, $exception)) {
+                return;
+            }
+            $service->markFailed($this->checkId, $exception, $this->expectedScope);
 
             throw $exception;
         }
@@ -60,9 +64,10 @@ class ProcessArticleAiQualityJob implements ShouldBeUniqueUntilProcessing, Shoul
 
     public function failed(?Throwable $exception = null): void
     {
-        app(ArticleAiQualityInspectionService::class)->markFailed(
-            $this->checkId,
-            $exception ?? new \RuntimeException('article_ai_quality_job_failed'),
-        );
+        $service = app(ArticleAiQualityInspectionService::class);
+        $failure = $exception ?? new \RuntimeException('article_ai_quality_job_failed');
+        if (! $service->tryStartSampledFallback($this->checkId, $failure)) {
+            $service->markFailed($this->checkId, $failure, $this->expectedScope);
+        }
     }
 }

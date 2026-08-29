@@ -87,9 +87,19 @@ Schedule::command('geoflow:recover-title-generations')
     ->withoutOverlapping(10);
 
 Schedule::command('geoflow:reconcile-ai-quality')
-    ->everyFiveMinutes()
+    ->everyMinute()
     ->onOneServer()
-    ->withoutOverlapping(10);
+    ->withoutOverlapping(2);
+
+Schedule::command('geoflow:converge-ai-quality')
+    ->everyFiveSeconds()
+    ->onOneServer()
+    ->withoutOverlapping(1);
+
+Schedule::command('geoflow:ai-quality-health --json')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(1);
 
 Schedule::command('geoflow:prune-expired-cache')
     ->hourly()

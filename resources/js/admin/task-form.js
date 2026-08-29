@@ -89,6 +89,7 @@ function initializeLinkedFields(form, i18n) {
     const aiQualityRequiredFields = form.querySelectorAll('[data-ai-quality-required]');
     const aiQualityWorkflow = form.querySelector('[data-ai-quality-workflow]');
     const aiQualityWorkflowTail = form.querySelector('[data-ai-quality-workflow-tail]');
+    const aiQualityTimeoutSampling = form.querySelector('[data-ai-quality-timeout-sampling]');
 
     const toggleImageCountByLibrary = () => {
         if (!imageLibrarySelect || !imageCountSelect) return;
@@ -192,6 +193,10 @@ function initializeLinkedFields(form, i18n) {
         const enabled = aiQualityToggle.checked;
         aiQualitySettings.classList.toggle('hidden', !enabled);
         aiQualityRequiredFields.forEach((field) => { field.required = enabled; });
+        if (aiQualityTimeoutSampling) {
+            aiQualityTimeoutSampling.disabled = !enabled;
+            if (!enabled) aiQualityTimeoutSampling.checked = false;
+        }
         if (aiQualityState) {
             aiQualityState.textContent = enabled
                 ? aiQualityState.dataset.enabledLabel || ''

@@ -36,6 +36,7 @@ class Article extends Model
         'published_at',
         'ai_quality_required_at_creation',
         'ai_quality_policy_snapshot',
+        'generation_evidence_snapshot',
     ];
 
     protected function casts(): array
@@ -52,6 +53,7 @@ class Article extends Model
             'published_at' => 'datetime',
             'ai_quality_required_at_creation' => 'boolean',
             'ai_quality_policy_snapshot' => 'array',
+            'generation_evidence_snapshot' => 'array',
         ];
     }
 
@@ -102,7 +104,8 @@ class Article extends Model
 
     public function latestAiQualityCheck(): HasOne
     {
-        return $this->hasOne(ArticleAiQualityCheck::class)->latestOfMany();
+        return $this->hasOne(ArticleAiQualityCheck::class)
+            ->ofMany(['id' => 'max'], static fn (Builder $query) => $query->where('gate_applied', true));
     }
 
     public function taskRuns(): HasMany

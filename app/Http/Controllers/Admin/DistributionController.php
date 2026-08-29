@@ -14,6 +14,7 @@ use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
 use App\Models\LeadForm;
 use App\Models\Task;
+use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
 use App\Services\GeoFlow\DistributionChannelDeletionConfirmation;
 use App\Services\GeoFlow\DistributionChannelDeletionService;
 use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
@@ -52,6 +53,7 @@ class DistributionController extends Controller
         private readonly DistributionChannelDeletionService $channelDeletionService,
         private readonly DistributionChannelOperationLeaseService $channelOperationLeaseService,
         private readonly HostedSiteArticleFingerprintService $hostedFingerprints,
+        private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
     ) {}
 
     public function index(Request $request): View
@@ -863,6 +865,12 @@ class DistributionController extends Controller
                     ->whereKey((int) $distribution->article_id)
                     ->lockForUpdate()
                     ->firstOrFail();
+                $payload = $article->is_ai_generated
+                    ? $this->articleCitationMarkerCleaner->cleanArticleFields($payload)
+                    : $payload;
+                if (trim((string) $payload['content']) === '') {
+                    throw ValidationException::withMessages(['content' => __('validation.required')]);
+                }
                 $article->forceFill([
                     'title' => (string) $payload['title'],
                     'excerpt' => filled($payload['excerpt'] ?? null) ? (string) $payload['excerpt'] : null,

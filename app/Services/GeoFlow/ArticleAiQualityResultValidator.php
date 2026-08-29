@@ -11,6 +11,7 @@ class ArticleAiQualityResultValidator
         'knowledge_contradiction', 'data_mismatch', 'unsupported_claim', 'citation_missing',
         'citation_scope_mismatch', 'ad_absolute_claim', 'ad_false_or_misleading',
         'ad_industry_specific', 'ad_identifiability', 'ai_generated_disclosure', 'content_integrity',
+        'source_declared_unverified',
     ];
 
     /**
@@ -30,6 +31,10 @@ class ArticleAiQualityResultValidator
         array $rules,
         ?array $segment = null,
     ): array {
+        if (array_key_exists('truncated_issue_count', $result)) {
+            return $this->validateV2($result, $article, $facts, $evidence, $segment);
+        }
+
         $this->assertExactFields(
             $result,
             ['summary', 'promotion_context', 'knowledge_coverage', 'issues', 'uncertainties'],
@@ -112,6 +117,7 @@ class ArticleAiQualityResultValidator
 
             $issues[] = [
                 'code' => $code,
+                'code_family' => $this->codeFamily($code, $field),
                 'severity' => $severity,
                 'field' => $field,
                 'quote' => $quote,
@@ -138,6 +144,209 @@ class ArticleAiQualityResultValidator
             'issues' => $issues,
             'uncertainties' => $this->uncertainties($result['uncertainties']),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @param  array<string, mixed>  $article
+     * @param  list<array<string, mixed>>  $facts
+     * @param  list<array<string, mixed>>  $evidence
+     * @param  array{start_offset?:int,end_offset?:int}|null  $segment
+     * @return array<string, mixed>
+     */
+    private function validateV2(
+        array $result,
+        array $article,
+        array $facts,
+        array $evidence,
+        ?array $segment,
+    ): array {
+        $this->assertExactFields(
+            $result,
+            ['summary', 'promotion_context', 'reviewed_claim_hashes', 'issues', 'uncertainties', 'truncated_issue_count'],
+            'ai_quality_result',
+        );
+        $promotion = (string) ($result['promotion_context'] ?? '');
+        if (! in_array($promotion, ['informational', 'promotional', 'mixed', 'uncertain'], true)
+            || ! is_array($result['issues'] ?? null)
+            || ! is_array($result['uncertainties'] ?? null)
+            || ! is_array($result['reviewed_claim_hashes'] ?? null)
+            || ! is_int($result['truncated_issue_count'] ?? null)
+            || (int) $result['truncated_issue_count'] < 0
+            || (int) $result['truncated_issue_count'] > 65535) {
+            throw new UnexpectedValueException('ai_quality_result_structure_invalid');
+        }
+
+        $factsByHash = [];
+        foreach ($facts as $fact) {
+            $claimHash = trim((string) ($fact['claim_hash'] ?? ''));
+            if ($claimHash !== '') {
+                $factsByHash[$claimHash] = $fact;
+            }
+        }
+        $evidenceByKey = [];
+        foreach ($evidence as $item) {
+            $stableKey = trim((string) ($item['stable_key'] ?? ''));
+            if ($stableKey !== '') {
+                $evidenceByKey[$stableKey] = $item;
+            }
+        }
+
+        $reviewedClaimHashes = array_values(array_unique(array_map(
+            'strval',
+            array_filter($result['reviewed_claim_hashes'], static fn (mixed $hash): bool => is_scalar($hash)),
+        )));
+        $reviewedClaimLookup = array_fill_keys($reviewedClaimHashes, true);
+
+        $issues = [];
+        $generatedUncertainties = [];
+        foreach ($result['issues'] as $rawIssue) {
+            if (! is_array($rawIssue)) {
+                throw new UnexpectedValueException('ai_quality_issue_structure_invalid');
+            }
+            $this->assertExactFields($rawIssue, [
+                'code', 'severity', 'claim_hash', 'field', 'quote', 'evidence_keys',
+                'evidence_status', 'reason', 'suggestion', 'confidence',
+            ], 'ai_quality_issue');
+
+            $code = (string) ($rawIssue['code'] ?? '');
+            $severity = (string) ($rawIssue['severity'] ?? '');
+            $claimHash = trim((string) ($rawIssue['claim_hash'] ?? ''));
+            $field = (string) ($rawIssue['field'] ?? '');
+            $quote = Str::limit(trim((string) ($rawIssue['quote'] ?? '')), 200, '');
+            $evidenceStatus = (string) ($rawIssue['evidence_status'] ?? '');
+            $confidence = (float) ($rawIssue['confidence'] ?? -1);
+            if (! in_array($code, self::CODES, true)
+                || ! in_array($severity, ['critical', 'high', 'medium', 'low'], true)
+                || ! in_array($field, ['title', 'excerpt', 'content', 'keywords', 'meta_description'], true)
+                || ! in_array($evidenceStatus, ['supported', 'contradicted', 'unverified'], true)
+                || ! is_array($rawIssue['evidence_keys'] ?? null)
+                || $quote === ''
+                || $confidence < 0
+                || $confidence > 1) {
+                throw new UnexpectedValueException('ai_quality_issue_value_invalid');
+            }
+
+            $fact = $factsByHash[$claimHash] ?? null;
+            if ($evidenceStatus === 'unverified') {
+                $generatedUncertainties[] = [
+                    'claim' => Str::limit(trim((string) ($fact['normalized_claim'] ?? $quote)), 500, ''),
+                    'materiality' => in_array((string) ($fact['materiality'] ?? ''), ['high', 'medium', 'low'], true)
+                        ? (string) $fact['materiality']
+                        : 'medium',
+                    'reason' => Str::limit(trim((string) ($rawIssue['reason'] ?? '')), 1000, ''),
+                    'needed_evidence' => Str::limit(trim((string) ($rawIssue['suggestion'] ?? '')), 1000, ''),
+                    'gate_reason' => 'unverified_material_claim',
+                ];
+
+                continue;
+            }
+
+            $evidenceKeys = array_values(array_unique(array_map(
+                'strval',
+                array_filter($rawIssue['evidence_keys'], static fn (mixed $key): bool => is_scalar($key)),
+            )));
+            $stableEvidenceKeys = array_values(array_filter(
+                $evidenceKeys,
+                static fn (string $key): bool => preg_match('/^K\d+$/i', $key) !== 1,
+            ));
+            if ($code === 'citation_scope_mismatch'
+                && $evidenceStatus === 'supported'
+                && $stableEvidenceKeys === []) {
+                continue;
+            }
+            $requiresEvidence = in_array($code, [
+                'knowledge_contradiction', 'data_mismatch', 'unsupported_claim',
+                'citation_missing', 'citation_scope_mismatch', 'source_declared_unverified',
+            ], true);
+            $referencesValid = ! $requiresEvidence || ($stableEvidenceKeys !== []
+                && collect($stableEvidenceKeys)->every(static fn (string $key): bool => isset($evidenceByKey[$key])));
+            $location = $this->locate(
+                (string) ($article[$field] ?? ''),
+                $quote,
+                $field === 'content' ? $segment : null,
+            );
+
+            if ($severity === 'critical'
+                && in_array($code, ['data_mismatch', 'knowledge_contradiction'], true)
+                && ! $this->confirmedNumericConflict($fact, $stableEvidenceKeys, $evidenceByKey)) {
+                $severity = 'high';
+            }
+
+            $issues[] = [
+                'code' => $code,
+                'code_family' => $this->codeFamily($code, $field),
+                'severity' => $severity,
+                'claim_hash' => $claimHash,
+                'field' => $field,
+                'quote' => $quote,
+                'evidence_keys' => $stableEvidenceKeys,
+                'knowledge_refs' => $stableEvidenceKeys,
+                'evidence_status' => $evidenceStatus,
+                'reason' => Str::limit(trim((string) ($rawIssue['reason'] ?? '')), 2000, ''),
+                'suggestion' => Str::limit(trim((string) ($rawIssue['suggestion'] ?? '')), 2000, ''),
+                'confidence' => $confidence,
+                'location_status' => $location['status'],
+                'start_offset' => $location['start_offset'],
+                'end_offset' => $location['end_offset'],
+                'paragraph_index' => $field === 'content'
+                    ? $this->paragraphIndex((string) ($article[$field] ?? ''), $location['start_offset'])
+                    : 0,
+                'references_valid' => $referencesValid,
+            ];
+        }
+
+        foreach ($factsByHash as $claimHash => $fact) {
+            if (($fact['materiality'] ?? null) !== 'high' || isset($reviewedClaimLookup[$claimHash])) {
+                continue;
+            }
+
+            $generatedUncertainties[] = [
+                'claim' => Str::limit(trim((string) ($fact['normalized_claim'] ?? $fact['quote'] ?? '')), 500, ''),
+                'materiality' => 'high',
+                'reason' => '模型结果未确认该关键事实已经完成核查。',
+                'needed_evidence' => '重新质检或由人工核验该关键事实与现有证据。',
+                'gate_reason' => 'claim_coverage_incomplete',
+            ];
+        }
+
+        return [
+            'summary' => Str::limit(trim((string) ($result['summary'] ?? '')), 2000, ''),
+            'promotion_context' => $promotion,
+            'knowledge_coverage' => $evidence === [] ? 'insufficient' : 'partial',
+            'issues' => $issues,
+            'uncertainties' => array_values(array_merge(
+                $this->uncertainties($result['uncertainties']),
+                $generatedUncertainties,
+            )),
+            'reviewed_claim_hashes' => $reviewedClaimHashes,
+            'truncated_issue_count' => max(0, min(65535, (int) $result['truncated_issue_count'])),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $fact
+     * @param  list<string>  $evidenceKeys
+     * @param  array<string, array<string, mixed>>  $evidenceByKey
+     */
+    private function confirmedNumericConflict(?array $fact, array $evidenceKeys, array $evidenceByKey): bool
+    {
+        $claim = (string) ($fact['normalized_claim'] ?? $fact['quote'] ?? '');
+        preg_match_all('/\d+(?:[,.]\d+)?/u', $claim, $claimMatches);
+        $claimNumbers = array_map(static fn (string $value): string => str_replace(',', '', $value), $claimMatches[0] ?? []);
+        if ($claimNumbers === []) {
+            return false;
+        }
+
+        foreach ($evidenceKeys as $key) {
+            preg_match_all('/\d+(?:[,.]\d+)?/u', (string) ($evidenceByKey[$key]['content'] ?? ''), $evidenceMatches);
+            $evidenceNumbers = array_map(static fn (string $value): string => str_replace(',', '', $value), $evidenceMatches[0] ?? []);
+            if ($evidenceNumbers !== [] && array_intersect($claimNumbers, $evidenceNumbers) === []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array{status:string,start_offset:?int,end_offset:?int} */
@@ -185,13 +394,22 @@ class ArticleAiQualityResultValidator
         return ($rank[$severity] ?? 0) >= $rank[$minimum] ? $severity : $minimum;
     }
 
+    private function codeFamily(string $code, string $field): string
+    {
+        if ($code === 'content_integrity' && in_array($field, ['excerpt', 'meta_description'], true)) {
+            return 'seo_truncation';
+        }
+
+        return $code;
+    }
+
     /** @param array<int, mixed> $items */
     private function uncertainties(array $items): array
     {
         $result = [];
         foreach ($items as $item) {
             if (! is_array($item)) {
-                continue;
+                throw new UnexpectedValueException('ai_quality_uncertainty_structure_invalid');
             }
             $this->assertExactFields(
                 $item,
@@ -199,10 +417,13 @@ class ArticleAiQualityResultValidator
                 'ai_quality_uncertainty',
             );
 
-            $materiality = (string) ($item['materiality'] ?? 'medium');
+            $materiality = (string) ($item['materiality'] ?? '');
+            if (! in_array($materiality, ['high', 'medium', 'low'], true)) {
+                throw new UnexpectedValueException('ai_quality_uncertainty_materiality_invalid');
+            }
             $result[] = [
                 'claim' => Str::limit(trim((string) ($item['claim'] ?? $item['subject'] ?? '')), 500, ''),
-                'materiality' => in_array($materiality, ['high', 'medium', 'low'], true) ? $materiality : 'medium',
+                'materiality' => $materiality,
                 'reason' => Str::limit(trim((string) ($item['reason'] ?? '')), 1000, ''),
                 'needed_evidence' => Str::limit(trim((string) ($item['needed_evidence'] ?? '')), 1000, ''),
             ];

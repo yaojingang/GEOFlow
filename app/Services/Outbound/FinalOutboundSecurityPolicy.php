@@ -413,6 +413,6 @@ final class FinalOutboundSecurityPolicy
             throw $exception;
         }
 
-        throw new OutboundRequestFailedException;
+        throw new OutboundRequestFailedException($exception instanceof \Throwable ? $exception : null);
     }
 }

@@ -240,7 +240,7 @@ class BrowserOperationsApiTest extends TestCase
             'completion_url' => 'https://www.zhihu.com/question/999999/answer/987654',
         ]);
         $this->withHeaders($this->authenticatedHeaders($firstToken) + [
-            'X-Idempotency-Key' => 'receipt-wrong-question-123',
+            'X-Idempotency-Key' => 'receipt-wrong-question-123', // gitleaks:allow
         ])->postJson('/api/v1/manual-publications/'.$publication->id.'/receipt', $wrongQuestionReceipt)
             ->assertStatus(422)
             ->assertJsonPath('error.code', 'invalid_completion_target');

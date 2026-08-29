@@ -33,5 +33,9 @@ class ArticleAiQualityFingerprintTest extends TestCase
         $changed = $input;
         $changed['policy']['pass_score'] = 90;
         $this->assertNotSame($fingerprint->make($input), $fingerprint->make($changed));
+        $this->assertNotSame(
+            $fingerprint->make($input, 'exec=v1;ret=2;prompt=2;score=1'),
+            $fingerprint->make($input, 'exec=f2;ret=2;prompt=2;score=2'),
+        );
     }
 }

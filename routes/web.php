@@ -213,9 +213,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         // 任务管理（Blade 新路径）
         Route::prefix('tasks')->name('tasks.')->group(function () {
             Route::get('/', [TaskController::class, 'index'])->name('index');
+            Route::get('workers', [TaskController::class, 'workers'])->name('workers');
+            Route::get('jobs', [TaskController::class, 'jobs'])->name('jobs');
             Route::post('title-readiness', [TaskController::class, 'titleReadiness'])->name('title-readiness');
             Route::post('{taskId}/toggle-status', [TaskController::class, 'toggleStatus'])->name('toggle-status');
             Route::post('{taskId}/delete', [TaskController::class, 'destroyTask'])->name('delete');
+            Route::post('{taskId}/restore', [TaskController::class, 'restoreTask'])->whereNumber('taskId')->name('restore');
             Route::get('create', [TaskController::class, 'create'])->name('create');
             Route::post('create', [TaskController::class, 'store'])->name('store');
             Route::get('{taskId}/edit', [TaskController::class, 'edit'])->name('edit');
@@ -299,6 +302,14 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{articleId}/ai-quality/recheck', [ArticleController::class, 'recheckAiQuality'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('ai-quality.recheck')
+                ->whereNumber('articleId');
+            Route::get('{articleId}/ai-quality/status', [ArticleController::class, 'aiQualityStatus'])
+                ->middleware('throttle:120,1')
+                ->name('ai-quality.status')
+                ->whereNumber('articleId');
+            Route::post('{articleId}/ai-quality/workflow-retry', [ArticleController::class, 'retryAiQualityWorkflow'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('ai-quality.workflow-retry')
                 ->whereNumber('articleId');
             Route::post('{articleId}/ai-quality/override', [ArticleController::class, 'overrideAiQuality'])->name('ai-quality.override')->whereNumber('articleId');
             Route::post('{articleId}/editor/images/upload', [ArticleEditorAssetController::class, 'uploadImage'])->name('editor.images.upload')->whereNumber('articleId');

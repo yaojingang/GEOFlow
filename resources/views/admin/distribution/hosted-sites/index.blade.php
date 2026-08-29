@@ -2,17 +2,19 @@
 
 @section('content')
     <div class="space-y-6 px-4 sm:px-0">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-                <a href="{{ route('admin.distribution.index') }}" class="inline-flex min-h-10 items-center text-sm font-medium text-gray-500 hover:text-gray-800 focus-visible:ring-2 focus-visible:ring-blue-500">返回分发管理</a>
-                <h1 class="text-2xl font-bold text-gray-900">托管渠道站点</h1>
-                <p class="mt-1 max-w-2xl text-sm leading-6 text-gray-600">管理共享部署下的二级站点、发布容量、质量门禁和索引状态。</p>
+        <header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0 flex-1">
+                <div class="sr-only">
+                    <h1>{{ __('admin_pages.hosted_sites') }}</h1>
+                    <p>管理共享部署下的二级站点、发布容量、质量门禁和索引状态。</p>
+                </div>
+                <x-admin.v3.distribution-subnav active="hosted-sites" />
             </div>
             <a href="{{ route('admin.distribution.hosted-sites.create') }}" class="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-transform active:scale-[.96] hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                 <i data-lucide="plus" class="mr-2 h-4 w-4"></i>
                 创建托管站点
             </a>
-        </div>
+        </header>
 
         <div class="flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-gray-200 py-4 text-sm">
             <span class="text-gray-600">站点总数 <strong class="ml-1 tabular-nums text-gray-900">{{ $profiles->total() }}</strong></span>

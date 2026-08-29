@@ -2,17 +2,25 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessArticleAiQualityJob;
+use App\Jobs\ReconcileArticleAiQualityJob;
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\Article;
+use App\Models\ArticleAiQualityCheck;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\KnowledgeBase;
+use App\Models\Prompt;
 use App\Models\SensitiveWord;
+use App\Models\Task;
 use App\Services\GeoFlow\ArticleRiskGate;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -33,6 +41,7 @@ class ApiArticleRiskWorkflowTest extends TestCase
         parent::setUp();
 
         Cache::flush();
+        Queue::fake([ReconcileArticleAiQualityJob::class]);
         if (! Schema::hasTable('article_reviews')) {
             Schema::create('article_reviews', function (Blueprint $table): void {
                 $table->id();
@@ -444,6 +453,54 @@ class ApiArticleRiskWorkflowTest extends TestCase
             ->assertJsonPath('error.code', 'article_risk_blocked');
         $second->assertStatus(409)
             ->assertExactJson($first->json());
+    }
+
+    public function test_idempotent_quality_pending_response_commits_the_check_and_replays_it(): void
+    {
+        Queue::fake();
+        $model = AiModel::query()->create([
+            'name' => 'API quality idempotency model',
+            'version' => '1',
+            'api_key' => 'test',
+            'model_id' => 'api-quality-idempotency-model',
+            'api_url' => 'https://example.test',
+            'model_type' => 'chat',
+            'status' => 'active',
+        ]);
+        $prompt = Prompt::query()
+            ->where('system_key', 'article_quality.cn_ads_knowledge.v1')
+            ->firstOrFail();
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => 'API quality idempotency knowledge',
+            'content' => 'Existing safe content.',
+        ]);
+        $task = Task::query()->create([
+            'name' => 'API quality idempotency task',
+            'ai_model_id' => $model->id,
+            'ai_quality_enabled' => true,
+            'ai_quality_prompt_id' => $prompt->id,
+            'ai_quality_pass_score' => 85,
+            'ai_quality_manual_override_min_score' => 70,
+            'need_review' => false,
+        ]);
+        $task->knowledgeBases()->sync([$knowledgeBase->id => ['sort_order' => 0]]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'review_status' => 'approved',
+        ]);
+        $headers = [
+            'Authorization' => 'Bearer '.$this->token,
+            'X-Idempotency-Key' => 'quality-pending-publish-retry',
+        ];
+
+        $first = $this->withHeaders($headers)->postJson("/api/v1/articles/{$article->id}/publish");
+        $second = $this->withHeaders($headers)->postJson("/api/v1/articles/{$article->id}/publish");
+
+        $first->assertStatus(409)
+            ->assertJsonPath('error.code', 'article_ai_quality_pending');
+        $second->assertStatus(409)->assertExactJson($first->json());
+        $this->assertSame(1, ArticleAiQualityCheck::query()->where('article_id', $article->id)->count());
+        Queue::assertPushed(ProcessArticleAiQualityJob::class, 1);
     }
 
     public function test_publish_records_a_fresh_scan_for_the_audit_admin(): void

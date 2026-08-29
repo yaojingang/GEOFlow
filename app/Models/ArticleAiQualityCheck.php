@@ -45,16 +45,29 @@ class ArticleAiQualityCheck extends Model
         'knowledge_hash',
         'input_fingerprint',
         'algorithm_version',
+        'gate_applied',
+        'evaluation_mode',
+        'inspection_scope',
+        'fallback_trigger_code',
+        'baseline_check_id',
+        'scoring_version',
+        'confidence',
+        'gate_reasons',
+        'truncated_issue_count',
         'error_code',
         'error_message',
         'usage_meta',
         'execution_meta',
+        'coverage_meta',
         'is_overridden',
         'override_reason',
         'overridden_by',
         'overridden_by_name',
         'overridden_at',
         'started_at',
+        'primary_deadline_at',
+        'sampled_deadline_at',
+        'deadline_at',
         'finished_at',
     ];
 
@@ -66,6 +79,11 @@ class ArticleAiQualityCheck extends Model
         'segment_count' => 0,
         'completed_segment_count' => 0,
         'is_overridden' => false,
+        'gate_applied' => true,
+        'evaluation_mode' => 'primary',
+        'inspection_scope' => 'full',
+        'scoring_version' => 'v1',
+        'truncated_issue_count' => 0,
     ];
 
     protected function casts(): array
@@ -77,6 +95,7 @@ class ArticleAiQualityCheck extends Model
             'prompt_id' => 'integer',
             'ai_model_id' => 'integer',
             'supersedes_check_id' => 'integer',
+            'baseline_check_id' => 'integer',
             'attempt_count' => 'integer',
             'score' => 'integer',
             'pass_score' => 'integer',
@@ -94,9 +113,17 @@ class ArticleAiQualityCheck extends Model
             'raw_model_output' => 'array',
             'usage_meta' => 'array',
             'execution_meta' => 'array',
+            'coverage_meta' => 'array',
+            'gate_applied' => 'boolean',
+            'confidence' => 'float',
+            'gate_reasons' => 'array',
+            'truncated_issue_count' => 'integer',
             'is_overridden' => 'boolean',
             'overridden_at' => 'datetime',
             'started_at' => 'datetime',
+            'primary_deadline_at' => 'datetime',
+            'sampled_deadline_at' => 'datetime',
+            'deadline_at' => 'datetime',
             'finished_at' => 'datetime',
         ];
     }
@@ -129,6 +156,11 @@ class ArticleAiQualityCheck extends Model
     public function supersededCheck(): BelongsTo
     {
         return $this->belongsTo(self::class, 'supersedes_check_id');
+    }
+
+    public function baselineCheck(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'baseline_check_id');
     }
 
     public function segments(): HasMany

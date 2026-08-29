@@ -95,6 +95,14 @@ class ArticleController extends BaseApiController
     }
 
     /**
+     * 返回轻量 AI 质检进度，不包含文章正文、证据正文或供应商错误。
+     */
+    public function aiQualityStatus(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
+    {
+        return $this->success($request, $articles->getAiQualityStatus($article));
+    }
+
+    /**
      * 部分更新文章。幂等键：PATCH /articles/{id}。
      */
     public function update(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
@@ -199,7 +207,8 @@ class ArticleController extends BaseApiController
 
     private function riskBlockedResponse(Request $request, ApiException $exception): JsonResponse
     {
-        if ($exception->getErrorCode() !== 'article_risk_blocked') {
+        if ($exception->getErrorCode() !== 'article_risk_blocked'
+            && ! str_starts_with($exception->getErrorCode(), 'article_ai_quality_')) {
             throw $exception;
         }
 

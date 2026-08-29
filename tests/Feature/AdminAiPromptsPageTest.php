@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Article;
+use App\Models\Author;
+use App\Models\Category;
 use App\Models\Prompt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -10,6 +13,45 @@ use Tests\TestCase;
 class AdminAiPromptsPageTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_citation_constraint_migration_is_idempotent_and_does_not_mutate_articles(): void
+    {
+        $category = Category::query()->create(['name' => '迁移测试', 'slug' => 'migration-citation-test']);
+        $author = Author::query()->create(['name' => '迁移测试作者']);
+        $article = Article::query()->create([
+            'title' => '保留历史正文',
+            'slug' => 'keep-historical-citation-content',
+            'content' => '历史正文 [K1]',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+
+        $migration = require database_path('migrations/2026_08_28_230000_remove_internal_article_citation_markers.php');
+        $migration->up();
+        $migration->up();
+
+        foreach (Prompt::query()->where('type', 'content')->get() as $prompt) {
+            if (str_starts_with($prompt->name, 'GEO Marketing') || str_starts_with($prompt->name, 'GEO Ranking')) {
+                $this->assertSame(1, substr_count($prompt->content, '[Citation Marker Constraint]'));
+            } elseif (in_array($prompt->name, ['GEO营销学·信任型正文生成', 'GEO榜单型正文生成'], true)) {
+                $this->assertSame(1, substr_count($prompt->content, '【正文引用标注约束】'));
+            }
+        }
+        $this->assertSame('历史正文 [K1]', $article->fresh()->content);
+
+        $migration->down();
+        foreach (Prompt::query()->where('type', 'content')->get() as $prompt) {
+            if (str_starts_with($prompt->name, 'GEO Marketing') || str_starts_with($prompt->name, 'GEO Ranking')) {
+                $this->assertSame(1, substr_count($prompt->content, '[Citation Marker Constraint]'));
+            } elseif (in_array($prompt->name, ['GEO营销学·信任型正文生成', 'GEO榜单型正文生成'], true)) {
+                $this->assertSame(1, substr_count($prompt->content, '【正文引用标注约束】'));
+            }
+        }
+
+        $migration->up();
+    }
 
     public function test_default_content_prompts_are_visible(): void
     {

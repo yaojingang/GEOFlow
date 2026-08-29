@@ -2,15 +2,13 @@
 
 @section('content')
     <div class="px-4 sm:px-0 space-y-8">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div class="flex items-start gap-4">
-                <a href="{{ route('admin.materials.index') }}" aria-label="{{ __('admin.common.back') }}" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-gray-400 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-                    <i data-lucide="arrow-left" class="h-5 w-5"></i>
-                </a>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.url_import.page_heading') }}</h1>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.url_import.page_subtitle') }}</p>
+        <header class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="min-w-0 flex-1">
+                <div class="sr-only">
+                    <h1>{{ __('admin.url_import.page_heading') }}</h1>
+                    <p>{{ __('admin.url_import.page_subtitle') }}</p>
                 </div>
+                <x-admin.v3.materials-subnav active="url-import" />
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <a href="{{ route('admin.url-import.history') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-gray-400 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
@@ -18,7 +16,7 @@
                     {{ __('admin.url_import.button.view_history') }}
                 </a>
             </div>
-        </div>
+        </header>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="bg-white shadow rounded-lg p-5">

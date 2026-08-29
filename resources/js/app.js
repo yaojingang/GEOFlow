@@ -3,6 +3,7 @@ import './pwa';
 import './admin/ui-v3-shell';
 import './admin/article-batch-export';
 import { loadAiSourceProvidersIndex } from './admin/ai-source-providers-loader';
+import { loadArticleAiQualityProgress } from './admin/article-ai-quality-progress-loader';
 import { loadLibraryDetailActions } from './admin/library-detail-actions-loader';
 import { loadTitleGenerationProgress } from './admin/title-generation-progress-loader';
 import './admin/library-entry-form';
@@ -18,6 +19,7 @@ loadPageModule('[data-copy-target]', () => import('./admin/manual-publications')
 loadPageModule('[data-analytics-log-chart], [data-analytics-trend], [data-analytics-filter-form]', () => import('./admin/analytics'));
 loadPageModule('[data-system-updater-auto-reload], [data-system-updater-copy], [data-system-updater-error-dialog]', () => import('./admin/system-updates'));
 loadPageModule('[data-ai-workspace]', () => import('./admin/ai-workspace'));
+loadPageModule('[data-ai-model-delete-dialog]', () => import('./admin/ai-model-delete-dialog'));
 loadPageModule('[data-ai-model-create-form]', () => import('./admin/ai-model-create'));
 loadPageModule('[data-ai-model-edit-form]', () => import('./admin/ai-model-edit'));
 loadPageModule('[data-ai-source-providers-index]', () => loadAiSourceProvidersIndex(
@@ -30,6 +32,10 @@ loadPageModule('[data-task-index-readiness-dialog]', () => import('./admin/task-
 loadPageModule('[data-title-generation-progress]', () => loadTitleGenerationProgress(
     document.querySelector('[data-title-generation-progress]'),
     () => import('./admin/title-generation-progress'),
+));
+loadPageModule('[data-ai-quality-progress]', () => loadArticleAiQualityProgress(
+    document.querySelector('[data-ai-quality-progress]'),
+    () => import('./admin/article-ai-quality-progress'),
 ));
 loadPageModule('[data-title-generation-form]', () => import('./admin/title-generation-form'));
 loadPageModule('[data-materials-standalone], [data-image-upload-form]', () => import('./admin/materials-standalone'));

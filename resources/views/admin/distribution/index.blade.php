@@ -6,24 +6,13 @@
     @php($canDeleteChannels = auth('admin')->user() instanceof \App\Models\Admin && auth('admin')->user()->isSuperAdmin())
 
     <div class="space-y-8 px-4 sm:px-0">
-        <header class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div class="min-w-0 max-w-3xl">
-                <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.distribution.page_heading') }}</h1>
-                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.distribution.page_subtitle') }}</p>
-                <nav class="-ml-2 mt-3 flex flex-wrap items-center gap-1" aria-label="{{ __('admin.distribution.page_heading') }}">
-                    <a href="{{ route('admin.distribution.hosted-sites.index') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-                        <i data-lucide="network" class="h-4 w-4"></i>
-                        托管渠道站点
-                    </a>
-                    <a href="{{ route('admin.distribution.jobs') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-                        <i data-lucide="list-checks" class="h-4 w-4"></i>
-                        {{ __('admin.distribution.button.jobs') }}
-                    </a>
-                    <a href="{{ route('admin.distribution.sync-settings-all.preview') }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-gray-600 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-900 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-                        <i data-lucide="scan-search" class="h-4 w-4"></i>
-                        {{ __('admin.distribution.button.sync_settings_all') }}
-                    </a>
-                </nav>
+        <header class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div class="min-w-0 flex-1">
+                <div class="sr-only">
+                    <h1>{{ __('admin.distribution.page_heading') }}</h1>
+                    <p>{{ __('admin.distribution.page_subtitle') }}</p>
+                </div>
+                <x-admin.v3.distribution-subnav />
             </div>
             <div class="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
                 <button type="button" data-selected-sync-open class="inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-gray-400 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
@@ -124,22 +113,22 @@
             </div>
         @endif
 
-        <div class="grid grid-cols-1 gap-6 md:grid-cols-4">
-            <div class="rounded-lg bg-white p-5 shadow">
+        <div class="grid grid-cols-1 gap-6 md:grid-cols-4" data-distribution-stats>
+            <div class="flex flex-col items-center justify-center rounded-lg bg-white p-5 text-center shadow" data-distribution-stat>
                 <div class="text-sm font-medium text-gray-500">{{ __('admin.distribution.stats.total') }}</div>
-                <div class="mt-2 text-2xl font-semibold text-gray-900">{{ (int) ($stats['total'] ?? 0) }}</div>
+                <div class="mt-2 text-2xl font-semibold tabular-nums text-gray-900">{{ (int) ($stats['total'] ?? 0) }}</div>
             </div>
-            <div class="rounded-lg bg-white p-5 shadow">
+            <div class="flex flex-col items-center justify-center rounded-lg bg-white p-5 text-center shadow" data-distribution-stat>
                 <div class="text-sm font-medium text-gray-500">{{ __('admin.distribution.stats.active') }}</div>
-                <div class="mt-2 text-2xl font-semibold text-green-700">{{ (int) ($stats['active'] ?? 0) }}</div>
+                <div class="mt-2 text-2xl font-semibold tabular-nums text-green-700">{{ (int) ($stats['active'] ?? 0) }}</div>
             </div>
-            <div class="rounded-lg bg-white p-5 shadow">
+            <div class="flex flex-col items-center justify-center rounded-lg bg-white p-5 text-center shadow" data-distribution-stat>
                 <div class="text-sm font-medium text-gray-500">{{ __('admin.distribution.stats.pending') }}</div>
-                <div class="mt-2 text-2xl font-semibold text-blue-700">{{ (int) ($stats['pending'] ?? 0) }}</div>
+                <div class="mt-2 text-2xl font-semibold tabular-nums text-blue-700">{{ (int) ($stats['pending'] ?? 0) }}</div>
             </div>
-            <div class="rounded-lg bg-white p-5 shadow">
+            <div class="flex flex-col items-center justify-center rounded-lg bg-white p-5 text-center shadow" data-distribution-stat>
                 <div class="text-sm font-medium text-gray-500">{{ __('admin.distribution.stats.failed') }}</div>
-                <div class="mt-2 text-2xl font-semibold text-red-700">{{ (int) ($stats['failed'] ?? 0) }}</div>
+                <div class="mt-2 text-2xl font-semibold tabular-nums text-red-700">{{ (int) ($stats['failed'] ?? 0) }}</div>
             </div>
         </div>
 

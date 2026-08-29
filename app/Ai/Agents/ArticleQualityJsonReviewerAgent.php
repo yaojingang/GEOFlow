@@ -2,16 +2,19 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\Agents\Concerns\ConfiguresArticleQualityProviderOptions;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Promptable;
 
-final class ArticleQualityJsonReviewerAgent implements Agent
+final class ArticleQualityJsonReviewerAgent implements Agent, HasProviderOptions
 {
+    use ConfiguresArticleQualityProviderOptions;
     use Promptable;
 
     public function __construct(
         private readonly string $systemInstructions,
-        private readonly int $outputTokenLimit = 8192,
+        private readonly int $outputTokenLimit = 2048,
     ) {}
 
     public function instructions(): string
