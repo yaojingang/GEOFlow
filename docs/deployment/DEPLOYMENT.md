@@ -5,7 +5,7 @@
 - `docker-compose.prod.yml`
 - `docker/Dockerfile.prod`
 - `docker/nginx/Dockerfile.prod`
-- `docker/nginx/default.conf`
+- `docker/nginx/default.conf.template`
 - `docker/entrypoint.prod.sh`
 - `.env.prod.example`
 

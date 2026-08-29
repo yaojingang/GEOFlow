@@ -404,6 +404,10 @@ class TaskLifecycleService
 
         });
 
+        if ($qualityConfigurationChanged) {
+            $this->articleAiQualityInvalidationService->invalidateTask($taskId, '任务质检配置或知识依据已更新');
+        }
+
         $task = $this->getTask($taskId);
         $this->broadcastOverviewAfterCommit();
 
