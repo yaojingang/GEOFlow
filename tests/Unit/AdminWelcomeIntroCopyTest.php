@@ -6,21 +6,36 @@ use Tests\TestCase;
 
 class AdminWelcomeIntroCopyTest extends TestCase
 {
-    public function test_intro_copy_reads_as_project_letter_with_geo_basics(): void
+    public function test_intro_copy_presents_version_three_positioning_capabilities_and_use_cases(): void
     {
         /** @var array<string, array<string, mixed>> $copy */
         $copy = require app_path('Support/AdminWelcome/intro_copy.php');
 
-        $this->assertSame('写给 GEOFlow 使用者的一封信', $copy['zh-CN']['letter']['title']);
-        $this->assertSame('A Letter to GEOFlow Users', $copy['en']['letter']['title']);
-        $this->assertStringContainsString('提高被理解、引用和推荐的概率', $copy['zh-CN']['letter']['subtitle']);
-        $this->assertStringContainsString('不承诺排名', $copy['zh-CN']['letter']['subtitle']);
-        $this->assertStringContainsString('GEO 优化的是答案引擎采纳事实、观点和页面的概率', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
-        $this->assertStringContainsString('观测归因', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
-        $this->assertStringContainsString('WordPress', $this->flattenCopy($copy['en']['letter']['blocks']));
-        $this->assertStringContainsString('GEO optimizes the probability', $this->flattenCopy($copy['en']['letter']['blocks']));
-        $this->assertStringContainsString('Project Intro', $copy['en']['meta']['badge']);
-        $this->assertStringContainsString('项目说明', $copy['zh-CN']['meta']['badge']);
+        $zhBlocks = $this->flattenCopy($copy['zh-CN']['letter']['blocks']);
+        $enBlocks = $this->flattenCopy($copy['en']['letter']['blocks']);
+
+        $this->assertSame('欢迎使用 GEOFlow 3.0', $copy['zh-CN']['letter']['title']);
+        $this->assertSame('Welcome to GEOFlow 3.0', $copy['en']['letter']['title']);
+        $this->assertStringContainsString('企业官网、行业信源平台和内部内容运营', $copy['zh-CN']['letter']['subtitle']);
+        $this->assertStringContainsString('corporate websites, vertical source platforms, and internal content operations', $copy['en']['letter']['subtitle']);
+        $this->assertStringContainsString('内部内容管理系统', $zhBlocks);
+        $this->assertStringContainsString('内部知识库系统', $zhBlocks);
+        $this->assertStringContainsString('内容生成管理系统', $zhBlocks);
+        $this->assertStringContainsString('Internal content management systems', $enBlocks);
+        $this->assertStringContainsString('Internal knowledge-base systems', $enBlocks);
+        $this->assertStringContainsString('Content generation and operations', $enBlocks);
+        $this->assertStringContainsString('Admin UI V3', $zhBlocks);
+        $this->assertStringContainsString('文章质检', $zhBlocks);
+        $this->assertStringContainsString('Chrome 运营助手', $zhBlocks);
+        $this->assertStringContainsString('PWA', $enBlocks);
+        $this->assertStringContainsString('article AI quality inspection', $enBlocks);
+        $this->assertSame('GEOFlow 3.0', $copy['zh-CN']['meta']['badge']);
+        $this->assertSame('GEOFlow 3.0', $copy['en']['meta']['badge']);
+        $this->assertSame(array_keys($copy['zh-CN']['meta']), array_keys($copy['en']['meta']));
+        $this->assertSame(
+            array_column($copy['zh-CN']['letter']['blocks'], 'type'),
+            array_column($copy['en']['letter']['blocks'], 'type')
+        );
     }
 
     public function test_welcome_modal_uses_compact_white_kami_document_layout(): void

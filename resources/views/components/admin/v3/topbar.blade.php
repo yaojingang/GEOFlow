@@ -36,15 +36,24 @@
     <div class="gf-topbar__actions">
         <button class="gf-button gf-button--small gf-pwa-install" type="button" data-pwa-install hidden aria-label="{{ __('admin.ui_v3.install_workbench_label') }}"><i data-lucide="app-window"></i><span>{{ __('admin.ui_v3.install_workbench') }}</span></button>
         <div class="gf-popover-wrap">
-            <button class="gf-icon-button gf-icon-button--round" type="button" aria-label="{{ __('admin.header.notifications.label') }}" data-popover-button="notifications"><i data-lucide="bell"></i>@if($hasUpdate)<span class="gf-notification-dot"></span>@endif</button>
-            <div class="gf-popover" data-popover="notifications" hidden>
-                <strong>{{ __('admin.header.notifications.title') }}</strong>
-                <p>{{ $hasUpdate ? __('admin.header.notifications.update_available', ['version' => (string) ($updateState['latest_version'] ?? '')]) : __('admin.header.notifications.no_update_desc') }}</p>
-                <div class="gf-popover__actions">
-                    @if ($hasUpdate && $isSuperAdmin && config('geoflow.update_center_enabled', true))<a class="gf-button gf-button--primary gf-button--small" href="{{ \App\Support\AdminWeb::routePath('admin.system-updates.index') }}">{{ __('admin.header.notifications.open_update_center') }}</a>@endif
-                    <a class="gf-button gf-button--small" href="{{ $updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow' }}" target="_blank" rel="noopener noreferrer">GitHub</a>
+            @if ($isSuperAdmin && config('geoflow.update_center_enabled', true))
+                <a
+                    class="gf-icon-button gf-icon-button--round"
+                    href="{{ \App\Support\AdminWeb::routePath('admin.system-updates.index') }}"
+                    aria-label="{{ __('admin.header.notifications.open_update_center') }}"
+                    title="{{ __('admin.header.notifications.open_update_center') }}"
+                    data-system-update-link
+                ><i data-lucide="bell"></i>@if($hasUpdate)<span class="gf-notification-dot" data-update-indicator></span>@endif</a>
+            @else
+                <button class="gf-icon-button gf-icon-button--round" type="button" aria-label="{{ __('admin.header.notifications.label') }}" data-popover-button="notifications"><i data-lucide="bell"></i>@if($hasUpdate)<span class="gf-notification-dot" data-update-indicator></span>@endif</button>
+                <div class="gf-popover" data-popover="notifications" hidden>
+                    <strong>{{ __('admin.header.notifications.title') }}</strong>
+                    <p>{{ $hasUpdate ? __('admin.header.notifications.update_available', ['version' => (string) ($updateState['latest_version'] ?? '')]) : __('admin.header.notifications.no_update_desc') }}</p>
+                    <div class="gf-popover__actions">
+                        <a class="gf-button gf-button--small" href="{{ $updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow' }}" target="_blank" rel="noopener noreferrer">GitHub</a>
+                    </div>
                 </div>
-            </div>
+            @endif
         </div>
         <div class="gf-popover-wrap gf-language-wrap">
             <button

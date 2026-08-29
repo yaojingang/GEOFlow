@@ -176,7 +176,7 @@ class AuthorController extends Controller
             return back()->withErrors(__('admin.authors.error.delete_visible', ['count' => $visibleCount]));
         }
 
-        $trashedCount = Article::query()->where('author_id', $authorId)->whereNotNull('deleted_at')->count();
+        $trashedCount = Article::onlyTrashed()->where('author_id', $authorId)->count();
         if ($trashedCount > 0) {
             return back()->withErrors(__('admin.authors.error.delete_trashed', ['count' => $trashedCount]));
         }
@@ -208,7 +208,7 @@ class AuthorController extends Controller
         $query->withCount([
             'articles as article_count' => fn ($builder) => $builder->whereNull('deleted_at'),
             'articles as published_count' => fn ($builder) => $builder->where('status', 'published')->whereNull('deleted_at'),
-            'articles as trashed_count' => fn ($builder) => $builder->whereNotNull('deleted_at'),
+            'articles as trashed_count' => fn ($builder) => $builder->onlyTrashed(),
         ]);
 
         return $query->paginate(self::INDEX_PER_PAGE)->withQueryString()->through(static function (Author $author): array {

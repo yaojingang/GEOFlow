@@ -12,7 +12,7 @@ final class SystemUpdateManualCommandService
     public function __construct(private readonly SystemKnowledgeBaseManager $systemKnowledgeBases) {}
 
     /**
-     * @return list<array{id:string,label:string,command:string,required:bool,status:string,description:string}>
+     * @return list<array{id:string,label:string,command:string,required:bool,status:string,description:string,status_description:string}>
      */
     public function manualCommands(): array
     {
@@ -32,6 +32,9 @@ final class SystemUpdateManualCommandService
             'required' => true,
             'status' => $installed ? 'complete' : 'pending',
             'description' => (string) __('admin.system_updates.manual_commands.sync_system_knowledge_desc'),
+            'status_description' => (string) __(
+                'admin.system_updates.manual_commands.sync_system_knowledge_'.($installed ? 'complete' : 'pending').'_desc'
+            ),
         ]];
     }
 

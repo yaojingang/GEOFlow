@@ -6,13 +6,11 @@
     $updateNotification = is_array($adminUpdateNotificationPayload ?? null) ? $adminUpdateNotificationPayload : [];
     $updateState = is_array($updateNotification['state'] ?? null) ? $updateNotification['state'] : [];
     $updateLinks = is_array($updateNotification['links'] ?? null) ? $updateNotification['links'] : [];
+    $releaseNotice = is_array($updateNotification['release_notice'] ?? null) ? $updateNotification['release_notice'] : [];
     $hasVersionUpdate = !empty($updateState['is_update_available']);
     $isUpdateCenterEnabled = (bool) config('geoflow.update_center_enabled', true);
     $localeForChangelog = app()->getLocale() === 'en' ? 'en' : 'zh-CN';
-    $updatePayload = is_array($updateState['payload'] ?? null) ? $updateState['payload'] : [];
-    $updateSummary = (string) ($localeForChangelog === 'en'
-        ? ($updatePayload['summary_en'] ?? '')
-        : ($updatePayload['summary_zh'] ?? ''));
+    $updateSummary = (string) ($releaseNotice['summary'] ?? '');
     $changelogLinks = is_array($updateLinks['changelog'] ?? null) ? $updateLinks['changelog'] : [];
     $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');

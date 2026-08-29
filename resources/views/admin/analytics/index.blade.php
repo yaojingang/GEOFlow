@@ -6,17 +6,15 @@
     $alert = $overview['alert'] ?? null;
     $newLeadCount = (int) ($metrics['new_leads'] ?? 0);
     $metricCards = [
-        ['key' => 'today_visits', 'icon' => 'mouse-pointer-click', 'tone' => 'text-blue-600', 'period' => 'today'],
-        ['key' => 'published_7d', 'icon' => 'send', 'tone' => 'text-emerald-600', 'period' => '7d'],
-        ['key' => 'brand_visibility_60d', 'icon' => 'sparkles', 'tone' => 'text-violet-600', 'period' => '60d', 'suffix' => '%'],
+        ['key' => 'today_visits', 'period' => 'today'],
+        ['key' => 'published_7d', 'period' => '7d'],
+        ['key' => 'brand_visibility_60d', 'period' => '60d', 'suffix' => '%'],
         [
             'key' => 'new_leads',
-            'icon' => $newLeadCount > 0 ? 'inbox' : 'circle-check',
-            'tone' => $newLeadCount > 0 ? 'text-amber-600' : 'text-emerald-600',
             'period' => 'current',
             'state' => $newLeadCount > 0 ? 'attention' : 'clear',
         ],
-        ['key' => 'pending_followups', 'icon' => 'phone-call', 'tone' => 'text-rose-600', 'period' => 'current'],
+        ['key' => 'pending_followups', 'period' => 'current'],
     ];
     $modules = [
         [
@@ -105,7 +103,7 @@
             @foreach ($metricCards as $card)
                 <article
                     @class([
-                        'rounded-lg border p-4 shadow-sm sm:p-5',
+                        'flex min-h-[9.5rem] flex-col items-center justify-center rounded-lg border p-4 text-center shadow-sm sm:p-5',
                         'border-gray-200 bg-white' => ! isset($card['state']),
                         'border-amber-200 bg-amber-50/40' => ($card['state'] ?? null) === 'attention',
                         'border-emerald-200 bg-emerald-50/40' => ($card['state'] ?? null) === 'clear',
@@ -113,14 +111,11 @@
                     data-analytics-metric="{{ $card['key'] }}"
                     data-state="{{ $card['state'] ?? 'default' }}"
                 >
-                    <div class="flex items-start justify-between gap-3">
-                        <p class="text-sm font-medium leading-5 text-gray-500">{{ __('admin.analytics.overview.metrics.'.$card['key']) }}</p>
-                        <i data-lucide="{{ $card['icon'] }}" class="h-5 w-5 shrink-0 {{ $card['tone'] }}"></i>
-                    </div>
-                    <p class="mt-4 text-right font-mono text-3xl font-semibold tabular-nums text-gray-950">
+                    <p class="flex min-h-10 items-center justify-center text-sm font-medium leading-5 text-gray-500">{{ __('admin.analytics.overview.metrics.'.$card['key']) }}</p>
+                    <p class="mt-2 text-center font-mono text-3xl font-semibold tabular-nums text-gray-950">
                         {{ is_float($metrics[$card['key']] ?? null) ? number_format((float) $metrics[$card['key']], 1) : number_format((int) ($metrics[$card['key']] ?? 0)) }}{{ $card['suffix'] ?? '' }}
                     </p>
-                    <p class="mt-1 text-right text-xs text-gray-400">{{ __('admin.analytics.overview.periods.'.$card['period']) }}</p>
+                    <p class="mt-1 text-center text-xs text-gray-400">{{ __('admin.analytics.overview.periods.'.$card['period']) }}</p>
                 </article>
             @endforeach
         </section>

@@ -288,15 +288,22 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 ->where('exportToken', '[A-Za-z0-9]{40}')
                 ->name('batch.export-markdown.download');
             Route::post('batch/restore', [ArticleController::class, 'batchRestore'])->name('batch.restore');
-            Route::post('batch/force-delete', [ArticleController::class, 'batchForceDelete'])->name('batch.force-delete');
-            Route::post('trash/empty', [ArticleController::class, 'emptyTrash'])->name('trash.empty');
+            Route::post('batch/force-delete', [ArticleController::class, 'batchForceDelete'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('batch.force-delete');
+            Route::post('trash/empty', [ArticleController::class, 'emptyTrash'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('trash.empty');
             Route::post('editor/wechat-html', [ArticleEditorAssetController::class, 'exportWeChatHtml'])->name('editor.wechat-html');
             Route::get('editor/titles', [ArticleEditorAssistantController::class, 'titles'])->name('editor.titles');
             Route::post('editor/generate', [ArticleEditorAssistantController::class, 'generate'])->middleware('throttle:10,1')->name('editor.generate');
             Route::get('create', [ArticleController::class, 'create'])->name('create');
             Route::post('create', [ArticleController::class, 'store'])->name('store');
             Route::post('{articleId}/restore', [ArticleController::class, 'restore'])->name('restore')->whereNumber('articleId');
-            Route::post('{articleId}/force-delete', [ArticleController::class, 'forceDelete'])->name('force-delete')->whereNumber('articleId');
+            Route::post('{articleId}/force-delete', [ArticleController::class, 'forceDelete'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('force-delete')
+                ->whereNumber('articleId');
             Route::get('{articleId}/edit', [ArticleController::class, 'edit'])->name('edit');
             Route::post('{articleId}/risk-scan', [ArticleController::class, 'recheckRisk'])->name('risk-scan')->whereNumber('articleId');
             Route::post('{articleId}/ai-quality/recheck', [ArticleController::class, 'recheckAiQuality'])
