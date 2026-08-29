@@ -478,7 +478,7 @@ class AdminArticleAiQualityTest extends TestCase
         }
     }
 
-    public function test_published_article_with_a_failed_latest_check_shows_a_published_content_risk_warning(): void
+    public function test_published_article_with_a_failed_latest_check_hides_the_redundant_risk_banner(): void
     {
         [$admin, $article] = $this->qualityArticle();
         $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
@@ -499,8 +499,10 @@ class AdminArticleAiQualityTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.articles.edit', ['articleId' => $article->id]))
             ->assertOk()
-            ->assertSee(__('admin.articles.ai_quality.published_risk_title'))
-            ->assertSee(__('admin.articles.ai_quality.published_risk_desc'));
+            ->assertDontSee(__('admin.articles.ai_quality.published_risk_title'))
+            ->assertDontSee(__('admin.articles.ai_quality.published_risk_desc'))
+            ->assertSee(__('admin.articles.ai_quality.blocked'))
+            ->assertSee('关键事实与知识库不一致。');
 
         $this->assertSame('published', $article->fresh()->status);
     }
