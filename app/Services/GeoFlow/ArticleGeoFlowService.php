@@ -26,6 +26,7 @@ class ArticleGeoFlowService
         private readonly ArticleAiQualityGate $articleAiQualityGate,
         private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
         private readonly ArticleAiQualityProgressPresenter $articleAiQualityProgressPresenter,
+        private readonly ArticleAiOptimizationCoordinator $articleAiOptimizationCoordinator,
     ) {}
 
     public function listArticles(int $page = 1, int $perPage = 20, array $filters = []): array
@@ -225,7 +226,10 @@ class ArticleGeoFlowService
             throw new ApiException('article_not_found', '文章不存在', 404);
         }
 
-        return $this->articleAiQualityProgressPresenter->snapshot($article->latestAiQualityCheck);
+        $snapshot = $this->articleAiQualityProgressPresenter->snapshot($article->latestAiQualityCheck);
+        $snapshot['optimization'] = $this->articleAiOptimizationCoordinator->statusForArticle($article);
+
+        return $snapshot;
     }
 
     public function recheckAiQuality(int $articleId, int $auditAdminId, int $apiTokenId): array
@@ -241,7 +245,13 @@ class ArticleGeoFlowService
                 trigger: 'api_manual',
                 auditAdminId: $auditAdminId,
                 apiTokenId: $apiTokenId,
+                rejectWhenOptimizationActive: true,
             );
+        } catch (ArticleAiOptimizationException $exception) {
+            throw new ApiException($exception->errorCode(), 'AI 内容优化正在进行，请先取消优化再重新质检', 409, [
+                'article_id' => $articleId,
+                'can_cancel_optimization' => true,
+            ]);
         } catch (\Throwable $exception) {
             report($exception);
 

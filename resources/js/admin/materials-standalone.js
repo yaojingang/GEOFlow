@@ -1,25 +1,12 @@
 export function initializeFailClosedMaterialConfirmations(
     root,
-    confirmAction = (message) => window.confirm(message),
+    actionDialog = globalThis.window?.AdminActionDialog,
 ) {
+    const controllerReady = typeof actionDialog === 'function' || typeof actionDialog?.confirm === 'function';
+    if (!controllerReady) return;
     root.querySelectorAll('[data-material-delete-form]').forEach((form) => {
         const submitButton = form.querySelector('[data-material-delete-submit]');
         if (!submitButton || typeof submitButton.removeAttribute !== 'function') return;
-
-        form.addEventListener('submit', (event) => {
-            const message = form.dataset.confirmMessage || '';
-            let confirmed = false;
-
-            if (message) {
-                try {
-                    confirmed = confirmAction(message) === true;
-                } catch {
-                    confirmed = false;
-                }
-            }
-
-            if (!confirmed) event.preventDefault();
-        });
 
         submitButton.disabled = false;
         submitButton.removeAttribute('aria-disabled');

@@ -2,8 +2,11 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Jobs\ReconcileArticleAiOptimizationJob;
 use App\Jobs\ReconcileArticleAiQualityJob;
 use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
+use App\Models\ArticleAiOptimizationStep;
 use App\Models\ArticleAiQualityCheck;
 use App\Models\ArticleAiQualitySegment;
 use App\Models\Task;
@@ -32,6 +35,7 @@ class ArticleAiQualityInvalidationService
             $reason,
         );
         $this->dispatchReconcile($ids->merge($affectedArticleIds));
+        $this->invalidateOptimizationArticles($ids, $reason);
 
         return $updated;
     }
@@ -44,6 +48,7 @@ class ArticleAiQualityInvalidationService
             'input_changed',
             $reason,
         );
+        $this->invalidateOptimizationArticles([$articleId], $reason);
 
         if ($reconcile) {
             ReconcileArticleAiQualityJob::dispatch($articleId, $articleId)
@@ -79,8 +84,9 @@ class ArticleAiQualityInvalidationService
             ->whereIn('status', ['queued', 'running'])
             ->orderBy('id')
             ->pluck('id');
+        $optimizationUpdated = $this->cancelOptimizationArticles($articleIds, $reason);
         if ($checkIds->isEmpty()) {
-            return 0;
+            return $optimizationUpdated;
         }
 
         $updated = ArticleAiQualityCheck::query()
@@ -106,7 +112,7 @@ class ArticleAiQualityInvalidationService
                 'updated_at' => now(),
             ]);
 
-        return $updated;
+        return $updated + $optimizationUpdated;
     }
 
     public function invalidateTask(int $taskId, string $reason): int
@@ -121,6 +127,52 @@ class ArticleAiQualityInvalidationService
             $reason,
         );
         $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
+        $this->invalidateTaskOptimization($taskId, $reason);
+
+        return $updated;
+    }
+
+    public function invalidateTaskOptimization(
+        int $taskId,
+        string $reason,
+        string $stopReason = 'task_configuration_changed',
+        bool $recoverWorkflow = false,
+        bool $taskAutoOnly = false,
+    ): int {
+        $query = ArticleAiOptimizationRun::query()
+            ->where('task_id', $taskId)
+            ->when($taskAutoOnly, static function (Builder $query): void {
+                $query->where('trigger', ArticleAiOptimizationRun::TRIGGER_TASK_AUTO);
+            })
+            ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES);
+        $updated = $this->finishOptimizationRuns(
+            $query,
+            ArticleAiOptimizationRun::STATUS_STALE,
+            $stopReason,
+            $reason,
+        );
+        if ($recoverWorkflow && $updated > 0) {
+            $this->dispatchOptimizationReconcile();
+        }
+
+        return $updated;
+    }
+
+    public function cancelTaskOptimization(int $taskId, string $reason, bool $recoverWorkflow = false): int
+    {
+        $query = ArticleAiOptimizationRun::query()
+            ->where('task_id', $taskId)
+            ->where('trigger', ArticleAiOptimizationRun::TRIGGER_TASK_AUTO)
+            ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES);
+        $updated = $this->finishOptimizationRuns(
+            $query,
+            ArticleAiOptimizationRun::STATUS_CANCELLED,
+            $recoverWorkflow ? 'task_auto_optimization_disabled' : 'task_auto_optimization_cancelled',
+            $reason,
+        );
+        if ($recoverWorkflow && $updated > 0) {
+            $this->dispatchOptimizationReconcile();
+        }
 
         return $updated;
     }
@@ -138,7 +190,9 @@ class ArticleAiQualityInvalidationService
             'sampling_policy_disabled',
             $reason,
         );
-        $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
+        $affected = $this->articleIds($articles)->merge($affectedArticleIds)->unique()->values();
+        $this->dispatchReconcile($affected);
+        $this->invalidateOptimizationArticles($affected, $reason);
 
         return $updated;
     }
@@ -170,7 +224,9 @@ class ArticleAiQualityInvalidationService
             'knowledge_changed',
             $reason,
         );
-        $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
+        $affected = $this->articleIds($articles)->merge($affectedArticleIds)->unique()->values();
+        $this->dispatchReconcile($affected);
+        $this->invalidateOptimizationArticles($affected, $reason);
 
         return $updated;
     }
@@ -187,7 +243,9 @@ class ArticleAiQualityInvalidationService
             'prompt_changed',
             $reason,
         );
-        $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
+        $affected = $this->articleIds($articles)->merge($affectedArticleIds)->unique()->values();
+        $this->dispatchReconcile($affected);
+        $this->invalidateOptimizationArticles($affected, $reason);
 
         return $updated;
     }
@@ -214,7 +272,9 @@ class ArticleAiQualityInvalidationService
             'model_changed',
             $reason,
         );
-        $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
+        $affected = $this->articleIds($articles)->merge($affectedArticleIds)->unique()->values();
+        $this->dispatchReconcile($affected);
+        $this->invalidateOptimizationArticles($affected, $reason);
 
         return $updated;
     }
@@ -223,8 +283,7 @@ class ArticleAiQualityInvalidationService
     private function invalidateChecks(Builder $query, string $errorCode, string $reason): array
     {
         $updated = 0;
-        $minimumAffectedArticleId = null;
-        $maximumAffectedArticleId = null;
+        $affectedArticleIds = [];
         (clone $query)
             ->whereIn('status', ['queued', 'running', 'completed', 'failed'])
             ->select(['id', 'article_id'])
@@ -232,8 +291,7 @@ class ArticleAiQualityInvalidationService
                 $errorCode,
                 $reason,
                 &$updated,
-                &$minimumAffectedArticleId,
-                &$maximumAffectedArticleId,
+                &$affectedArticleIds,
             ): void {
                 $checkIds = $checks->pluck('id')->map('intval')->all();
                 $articleIds = $checks->pluck('article_id')->map('intval')->filter()->unique()->values();
@@ -274,18 +332,99 @@ class ArticleAiQualityInvalidationService
                             'published_at' => null,
                             'updated_at' => $timestamp,
                         ]);
-                    $chunkMinimum = (int) $articleIds->min();
-                    $chunkMaximum = (int) $articleIds->max();
-                    $minimumAffectedArticleId = $minimumAffectedArticleId === null
-                        ? $chunkMinimum
-                        : min($minimumAffectedArticleId, $chunkMinimum);
-                    $maximumAffectedArticleId = $maximumAffectedArticleId === null
-                        ? $chunkMaximum
-                        : max($maximumAffectedArticleId, $chunkMaximum);
+                    $articleIds->each(static function (int $articleId) use (&$affectedArticleIds): void {
+                        $affectedArticleIds[$articleId] = true;
+                    });
                 }
             });
 
-        return [$updated, collect([$minimumAffectedArticleId, $maximumAffectedArticleId])->filter()->unique()->values()];
+        return [$updated, collect(array_keys($affectedArticleIds))->values()];
+    }
+
+    /** @param iterable<int> $articleIds */
+    private function invalidateOptimizationArticles(iterable $articleIds, string $reason): int
+    {
+        $ids = collect($articleIds)->map('intval')->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return 0;
+        }
+
+        return $this->finishOptimizationRuns(
+            ArticleAiOptimizationRun::query()
+                ->whereIn('article_id', $ids->all())
+                ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES),
+            ArticleAiOptimizationRun::STATUS_STALE,
+            'article_changed',
+            $reason,
+        );
+    }
+
+    /** @param Collection<int,int> $articleIds */
+    private function cancelOptimizationArticles(Collection $articleIds, string $reason): int
+    {
+        if ($articleIds->isEmpty()) {
+            return 0;
+        }
+
+        return $this->finishOptimizationRuns(
+            ArticleAiOptimizationRun::query()
+                ->whereIn('article_id', $articleIds->all())
+                ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES),
+            ArticleAiOptimizationRun::STATUS_CANCELLED,
+            'article_unavailable',
+            $reason,
+        );
+    }
+
+    private function finishOptimizationRuns(
+        Builder $query,
+        string $status,
+        string $stopReason,
+        string $message,
+    ): int {
+        if (! Schema::hasTable((new ArticleAiOptimizationRun)->getTable())
+            || ! Schema::hasTable((new ArticleAiOptimizationStep)->getTable())) {
+            return 0;
+        }
+
+        $timestamp = now();
+        $runIds = (clone $query)->orderBy('id')->pluck('id');
+        if ($runIds->isEmpty()) {
+            return 0;
+        }
+        $updated = ArticleAiOptimizationRun::query()
+            ->whereIn('id', $runIds->all())
+            ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES)
+            ->update([
+                'status' => $status,
+                'stop_reason' => $stopReason,
+                'error_message' => mb_substr($message, 0, 500, 'UTF-8'),
+                'active_dedupe_key' => null,
+                'lease_owner' => null,
+                'lease_expires_at' => null,
+                'cancelled_at' => $status === ArticleAiOptimizationRun::STATUS_CANCELLED ? $timestamp : null,
+                'finished_at' => $timestamp,
+                'updated_at' => $timestamp,
+            ]);
+        $candidateIds = ArticleAiOptimizationStep::query()
+            ->whereIn('run_id', $runIds->all())
+            ->whereNotNull('output_check_id')
+            ->pluck('output_check_id');
+        if ($candidateIds->isNotEmpty()) {
+            ArticleAiQualityCheck::query()
+                ->whereIn('id', $candidateIds->all())
+                ->whereIn('status', ['queued', 'running'])
+                ->update([
+                    'status' => 'cancelled',
+                    'active_dedupe_key' => null,
+                    'error_code' => 'optimization_cancelled',
+                    'error_message' => mb_substr($message, 0, 500, 'UTF-8'),
+                    'finished_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ]);
+        }
+
+        return $updated;
     }
 
     /** @return Collection<int, int> */
@@ -316,5 +455,13 @@ class ArticleAiQualityInvalidationService
                 ->onQueue((string) config('geoflow.ai_quality_backfill_queue', 'ai-quality-backfill'))
                 ->afterCommit();
         });
+    }
+
+    private function dispatchOptimizationReconcile(): void
+    {
+        ReconcileArticleAiOptimizationJob::dispatch()
+            ->onConnection('redis')
+            ->onQueue((string) config('geoflow.ai_quality_optimization_bulk_queue', 'ai-content-optimization-bulk'))
+            ->afterCommit();
     }
 }

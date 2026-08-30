@@ -283,10 +283,17 @@ geoflow article publish ARTICLE_ID [--idempotency-key KEY]
 geoflow article ai-quality-status ARTICLE_ID
 geoflow article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]
 geoflow article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]
+geoflow article ai-optimize ARTICLE_ID [--level pass|excellent_80|excellent_90] [--model-id MODEL_ID] [--idempotency-key KEY]
+geoflow article ai-optimization-status ARTICLE_ID
+geoflow article ai-optimization-candidate ARTICLE_ID
+geoflow article ai-optimization-apply ARTICLE_ID --run-id RUN_ID --candidate-hash HASH --idempotency-key KEY
+geoflow article ai-optimization-cancel ARTICLE_ID --run-id RUN_ID --idempotency-key KEY
 geoflow article trash ARTICLE_ID [--idempotency-key KEY]
 ```
 
 `ai-quality-status` returns the current phase, elapsed time, business deadline, and safe error code. An AI quality recheck invalidates the previous result and queues a new run against the current article and task policy. Manual approval applies only above the configured floor when no critical issue remains, and `--reason` must contain an auditable basis.
+
+AI optimization creates a shadow candidate by default and leaves the stored article unchanged. Use `ai-optimization-status` for rounds and scores, then `ai-optimization-candidate` for safely truncated change snippets. Applying a candidate requires the run ID, candidate hash, and an idempotency key. Articles without a task require an explicit chat model through `--model-id`.
 
 Article create and update share these direct fields:
 

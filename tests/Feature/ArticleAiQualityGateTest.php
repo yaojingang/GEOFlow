@@ -9,6 +9,7 @@ use App\Jobs\ReconcileArticleAiQualityJob;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\KnowledgeBase;
@@ -27,6 +28,7 @@ use App\Services\GeoFlow\TaskLifecycleService;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ArticleAiQualityGateTest extends TestCase
@@ -174,6 +176,85 @@ class ArticleAiQualityGateTest extends TestCase
         $allowed = app(ArticleAiQualityGate::class)->check($article, 'test_publish');
 
         $this->assertTrue($allowed?->is($check));
+    }
+
+    public function test_a_new_full_recheck_supersedes_an_older_stale_optimization_run(): void
+    {
+        $article = $this->qualityArticle();
+        $inspection = app(ArticleAiQualityInspectionService::class);
+        $source = $inspection->createOrReuse($article, dispatch: false);
+        $source->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 96,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        $run = ArticleAiOptimizationRun::query()->create([
+            'article_id' => $article->id,
+            'task_id' => $article->task_id,
+            'source_check_id' => $source->id,
+            'request_key' => (string) Str::uuid(),
+            'trigger' => ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            'strategy' => 'excellent_80',
+            'target_score' => 85,
+            'max_rounds' => 2,
+            'status' => ArticleAiOptimizationRun::STATUS_STALE,
+            'base_article_hash' => str_repeat('a', 64),
+            'policy_hash' => str_repeat('b', 64),
+            'stop_reason' => 'article_changed',
+            'finished_at' => now(),
+        ]);
+        $run->newQuery()->whereKey($run->id)->update(['updated_at' => now()->subMinute()]);
+        $replacement = $inspection->createOrReuse($article->fresh(), trigger: 'admin_manual', dispatch: false, force: true);
+        $replacement->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 97,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $allowed = app(ArticleAiQualityGate::class)->check($article->fresh(), 'test_publish');
+
+        $this->assertTrue($allowed?->is($replacement));
+    }
+
+    public function test_a_failed_optimization_blocks_publication_even_when_the_source_check_passed(): void
+    {
+        $article = $this->qualityArticle();
+        $inspection = app(ArticleAiQualityInspectionService::class);
+        $source = $inspection->createOrReuse($article, dispatch: false);
+        $source->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 85,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        ArticleAiOptimizationRun::query()->create([
+            'article_id' => $article->id,
+            'task_id' => $article->task_id,
+            'source_check_id' => $source->id,
+            'request_key' => (string) Str::uuid(),
+            'trigger' => ArticleAiOptimizationRun::TRIGGER_TASK_AUTO,
+            'strategy' => 'excellent_90',
+            'target_score' => 90,
+            'max_rounds' => 3,
+            'status' => ArticleAiOptimizationRun::STATUS_FAILED,
+            'base_article_hash' => str_repeat('a', 64),
+            'policy_hash' => str_repeat('b', 64),
+            'error_code' => 'article_ai_optimization_provider_error',
+            'finished_at' => now(),
+        ]);
+
+        try {
+            app(ArticleAiQualityGate::class)->check($article->fresh(), 'test_publish');
+            $this->fail('Expected failed optimization to close the publication gate.');
+        } catch (ArticleAiQualityGateException $exception) {
+            $this->assertSame('article_ai_optimization_failed', $exception->getErrorCode());
+            $this->assertSame($source->id, $exception->getCheck()?->id);
+        }
     }
 
     public function test_an_article_created_under_quality_control_keeps_its_snapshot_gate_after_the_task_switches_off(): void
@@ -549,6 +630,51 @@ class ArticleAiQualityGateTest extends TestCase
 
         $this->assertSame('stale', $modelCheck->fresh()->status);
         Queue::assertPushed(ReconcileArticleAiQualityJob::class);
+    }
+
+    public function test_prompt_change_invalidates_active_optimization_runs_for_every_detached_article(): void
+    {
+        Queue::fake();
+        $runs = collect();
+        $promptId = null;
+
+        foreach (range(1, 3) as $index) {
+            $article = $this->qualityArticle();
+            $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+            $check->forceFill([
+                'status' => 'completed',
+                'decision' => 'passed',
+                'score' => 100,
+                'active_dedupe_key' => null,
+                'finished_at' => now(),
+            ])->save();
+            $article->forceFill(['task_id' => null])->save();
+            $promptId ??= (int) $check->prompt_id;
+
+            $runs->push(ArticleAiOptimizationRun::query()->create([
+                'article_id' => $article->id,
+                'task_id' => null,
+                'source_check_id' => $check->id,
+                'request_key' => (string) Str::uuid(),
+                'trigger' => ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+                'strategy' => 'excellent_80',
+                'target_score' => 85,
+                'max_rounds' => 2,
+                'status' => ArticleAiOptimizationRun::STATUS_CANDIDATE_READY,
+                'base_article_hash' => hash('sha256', 'base-'.$index),
+                'policy_hash' => hash('sha256', 'policy-'.$index),
+            ]));
+        }
+
+        app(ArticleAiQualityInvalidationService::class)->invalidatePrompt(
+            (int) $promptId,
+            '质检方案已更新',
+        );
+
+        $runs->each(function (ArticleAiOptimizationRun $run): void {
+            $this->assertSame(ArticleAiOptimizationRun::STATUS_STALE, $run->fresh()->status);
+            $this->assertSame('article_changed', $run->fresh()->stop_reason);
+        });
     }
 
     public function test_a_smart_failover_candidate_change_invalidates_quality_results(): void

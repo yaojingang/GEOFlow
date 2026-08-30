@@ -102,7 +102,11 @@ export function initializeArticleBatchExport(root = document, dependencies = {})
         || !errorFocus || !selectedCount || !filename || !errorMessage || !retryButton) return;
 
     const fetchImpl = dependencies.fetchImpl ?? globalThis.fetch?.bind(globalThis);
-    const notify = dependencies.notify ?? ((message) => globalThis.alert?.(message));
+    const notify = dependencies.notify ?? ((message) => globalThis.window?.AdminActionDialog?.notice?.({
+        tone: 'info',
+        title: '',
+        message,
+    }));
     const download = dependencies.download ?? defaultDownload;
     const formDataFactory = dependencies.formDataFactory ?? (() => new FormData());
     const now = dependencies.now ?? (() => Date.now());

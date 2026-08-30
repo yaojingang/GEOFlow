@@ -46,7 +46,7 @@ class TitleGenerationQueueTest extends TestCase
             ->assertOk()
             ->assertSee('max="100000"', false)
             ->assertSee('data-keyword-count="1"', false)
-            ->assertSee('data-keyword-reuse-dialog', false)
+            ->assertSee('data-keyword-reuse-title', false)
             ->assertSee(__('admin.title_ai_generate.button.async'));
     }
 

@@ -178,7 +178,7 @@ class DistributionQueueConfigurationTest extends TestCase
         $this->assertIsString($script);
         $maintenanceLogAt = strpos($script, 'Entering maintenance mode and draining existing application services.');
         $maintenanceAt = strpos($script, "\n  enter_maintenance_mode\n", $maintenanceLogAt === false ? 0 : $maintenanceLogAt);
-        $stopAt = strpos($script, 'stop web app queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb');
+        $stopAt = strpos($script, 'stop web app queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb');
         $migrationAt = strpos($script, '"${COMPOSE[@]}" up init');
         $resumeAt = strpos($script, 'php artisan up');
         $internalHealthAt = strpos($script, "\n  run_healthcheck 1\n");

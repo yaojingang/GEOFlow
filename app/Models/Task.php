@@ -136,6 +136,8 @@ class Task extends Model
         'max_retry_count',
         'ai_quality_enabled',
         'ai_quality_timeout_sampling_enabled',
+        'ai_quality_auto_optimize_enabled',
+        'ai_quality_optimization_level',
         'ai_quality_prompt_id',
         'ai_quality_model_id',
         'ai_quality_pass_score',
@@ -145,6 +147,8 @@ class Task extends Model
     protected $attributes = [
         'ai_quality_enabled' => false,
         'ai_quality_timeout_sampling_enabled' => false,
+        'ai_quality_auto_optimize_enabled' => false,
+        'ai_quality_optimization_level' => 'excellent_80',
         'ai_quality_pass_score' => 85,
         'ai_quality_manual_override_min_score' => 70,
     ];
@@ -181,6 +185,7 @@ class Task extends Model
             'max_retry_count' => 'integer',
             'ai_quality_enabled' => 'boolean',
             'ai_quality_timeout_sampling_enabled' => 'boolean',
+            'ai_quality_auto_optimize_enabled' => 'boolean',
             'ai_quality_prompt_id' => 'integer',
             'ai_quality_model_id' => 'integer',
             'ai_quality_pass_score' => 'integer',
@@ -265,6 +270,11 @@ class Task extends Model
     public function aiQualityChecks(): HasMany
     {
         return $this->hasMany(ArticleAiQualityCheck::class);
+    }
+
+    public function aiOptimizationRuns(): HasMany
+    {
+        return $this->hasMany(ArticleAiOptimizationRun::class);
     }
 
     public function distributionChannels(): BelongsToMany

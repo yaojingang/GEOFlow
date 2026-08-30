@@ -7,6 +7,51 @@ if (! is_file($manualPublicationsPath) && function_exists('lang_path')) {
 }
 
 return array_replace_recursive($base, [
+    'action_dialog' => [
+        'cancel' => 'キャンセル', 'close' => '閉じる', 'confirm' => '確認', 'continue' => '続行',
+        'input_label' => '値を入力', 'required' => '入力してから続行してください。',
+        'success_title' => '操作が完了しました', 'info_title' => 'ご確認ください', 'error_title' => '操作を完了できませんでした',
+        'error_guidance' => '現在の状態を確認し、必要な修正を行ってから再試行してください。',
+        'generic_impact' => '対象と影響範囲を確認してから続行してください。',
+        'target' => '対象：:name',
+        'article_ai_optimization' => [
+            'start_title' => 'AI 最適化を開始しますか？',
+            'start_message' => '完全検査とモデルによる最適化をバックグラウンドで実行します。モデル利用料金が発生する場合があります。',
+            'start_guidance' => '開始後はパネルを閉じ、後で進捗を確認できます。',
+            'start_label' => 'AI 最適化を開始',
+            'apply_title' => 'この AI 候補を適用しますか？',
+            'apply_message' => '候補を現在の下書きに書き込み、完全検査を直ちに実行します。',
+            'apply_guidance' => 'ロールバック用スナップショットを保持します。変更内容を確認してから続行してください。',
+            'apply_label' => '適用して再検査',
+            'cancel_title' => '現在の AI 最適化をキャンセルしますか？',
+            'cancel_message' => '以降の処理を停止します。実行中のモデルリクエストは完了し、料金が発生する場合があります。',
+            'cancel_guidance' => '現在の記事と保存済み記録は保持されます。',
+            'cancel_label' => '最適化をキャンセル',
+            'discard_title' => 'この最適化候補を破棄しますか？',
+            'discard_message' => '候補の変更は記事に反映されず、現在の下書きは維持されます。',
+            'discard_label' => '候補を破棄',
+            'rollback_title' => '適用した最適化を元に戻しますか？',
+            'rollback_message' => '最適化した項目を適用前のスナップショットへ戻し、再検査します。',
+            'rollback_guidance' => '未保存の手動編集がないことを確認してください。',
+            'rollback_label' => '最適化を元に戻す',
+        ],
+        'article_ai_quality' => [
+            'run_title' => 'AI コンテンツ検査を開始しますか？',
+            'run_message' => '現在のフォームを保存し、完全検査をバックグラウンドで実行します。モデル利用料金が発生する場合があります。',
+            'run_guidance' => '検査中はページを離れ、後で結果を確認できます。',
+            'run_label' => '検査を開始',
+            'override_title' => '品質判定を手動で上書きしますか？',
+            'override_message' => '確認理由を監査記録に保存し、記事を次の工程へ進められるようにします。',
+            'override_guidance' => '理由が完全で追跡可能であり、すべてのリスクを確認済みか確かめてください。',
+            'override_label' => '上書きを確認',
+        ],
+        'hosted_site' => [
+            'activate_title' => 'サイト「:hostname」を有効化', 'activate_message' => '受信と公開のワークフローを再開します。', 'activate_label' => 'サイトを有効化',
+            'index_guidance' => '現在のインデックス状態：:status',
+            'pause_title' => 'サイト「:hostname」の受信を一時停止', 'pause_message' => '新しい記事の受信を停止し、既存のコンテンツは保持します。', 'pause_guidance' => '後から再度有効化できます。', 'pause_label' => '受信を一時停止',
+            'maintenance_title' => 'サイト「:hostname」をメンテナンス状態に変更', 'maintenance_message' => '新しい記事の受信を停止し、検索エンジンのインデックスを無効にします。', 'maintenance_guidance' => 'メンテナンス完了後に事前チェックを再実行して有効化してください。', 'maintenance_label' => 'メンテナンスへ移行',
+        ],
+    ],
     'knowledge_bases' => [
         'error' => [
             'system_delete_forbidden' => 'この知識ベースは AI ワークスペースで使用されているため削除できません。詳細ページで編集またはリビジョンの復元ができます。',

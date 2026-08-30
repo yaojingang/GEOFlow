@@ -5,12 +5,14 @@ namespace App\Services\GeoFlow;
 use App\Events\ArticleAiQualityHealthChanged;
 use App\Jobs\ArticleAiQualityProbeJob;
 use App\Jobs\ProcessArticleAiQualityJob;
+use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiQualityCheck;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -27,6 +29,8 @@ class ArticleAiQualityHealthService
         $this->liveness->pruneStale();
         $frontQueue = (string) config('geoflow.ai_quality_queue', 'ai-quality');
         $backfillQueue = (string) config('geoflow.ai_quality_backfill_queue', 'ai-quality-backfill');
+        $optimizationQueue = (string) config('geoflow.ai_quality_optimization_queue', 'ai-content-optimization');
+        $optimizationBulkQueue = (string) config('geoflow.ai_quality_optimization_bulk_queue', 'ai-content-optimization-bulk');
         $counts = $this->liveness->freshCounts();
         $expected = [
             'front' => max(1, (int) config('geoflow.ai_quality_front_workers', 2)),
@@ -76,6 +80,7 @@ class ArticleAiQualityHealthService
             ->count();
         $rollout = $this->versionPolicy->rolloutState();
         $qualityMetrics = $this->qualityMetrics();
+        $optimizationMetrics = $this->optimizationMetrics();
 
         $issues = [];
         $redisAvailable = $this->redisAvailable();
@@ -84,6 +89,9 @@ class ArticleAiQualityHealthService
         }
         if ($frontQueue === '' || $backfillQueue === '' || $frontQueue === $backfillQueue) {
             $issues[] = 'queue_configuration_conflict';
+        }
+        if ($optimizationQueue === '' || $optimizationBulkQueue === '' || $optimizationQueue === $optimizationBulkQueue) {
+            $issues[] = 'optimization_queue_configuration_conflict';
         }
         if (! ($timeouts['business'] < $timeouts['job']
             && $timeouts['job'] < $timeouts['worker']
@@ -107,6 +115,12 @@ class ArticleAiQualityHealthService
         if ($expiredActive > 0) {
             $issues[] = 'expired_active_checks';
         }
+        if ((int) ($optimizationMetrics['expired_deadlines'] ?? 0) > 0) {
+            $issues[] = 'expired_active_optimizations';
+        }
+        if ((int) ($optimizationMetrics['expired_leases'] ?? 0) > 0) {
+            $issues[] = 'expired_optimization_leases';
+        }
         if ((int) data_get($qualityMetrics, 'all.workflow_exhausted', 0) > 0) {
             $issues[] = 'workflow_apply_exhausted';
         }
@@ -119,6 +133,7 @@ class ArticleAiQualityHealthService
         $status = match (true) {
             ! $redisAvailable,
             in_array('queue_configuration_conflict', $issues, true),
+            in_array('optimization_queue_configuration_conflict', $issues, true),
             in_array('timeout_configuration_conflict', $issues, true),
             in_array('front_probe_failed', $issues, true),
             in_array('rollout_incident_active', $issues, true),
@@ -129,13 +144,19 @@ class ArticleAiQualityHealthService
         $snapshot = [
             'status' => $status,
             'connection' => 'redis',
-            'queues' => ['front' => $frontQueue, 'backfill' => $backfillQueue],
+            'queues' => [
+                'front' => $frontQueue,
+                'backfill' => $backfillQueue,
+                'optimization' => $optimizationQueue,
+                'optimization_bulk' => $optimizationBulkQueue,
+            ],
             'workers' => $counts,
             'expected_workers' => $expected,
             'timeouts' => $timeouts,
             'oldest_queue_wait_ms' => $oldestQueueWaitMs,
             'expired_active_checks' => $expiredActive,
             'quality_metrics_24h' => $qualityMetrics,
+            'optimization_metrics' => $optimizationMetrics,
             'rollout' => $rollout,
             'issues' => array_values(array_unique($issues)),
             'checked_at' => now()->toIso8601String(),
@@ -160,6 +181,39 @@ class ArticleAiQualityHealthService
             'all' => $this->scopeMetrics(clone $base),
             'full' => $this->scopeMetrics((clone $base)->where('inspection_scope', 'full')),
             'fallback_sampled' => $this->scopeMetrics((clone $base)->where('inspection_scope', 'fallback_sampled')),
+        ];
+    }
+
+    /** @return array<string,int> */
+    private function optimizationMetrics(): array
+    {
+        if (! Schema::hasTable('article_ai_optimization_runs')) {
+            return [
+                'active' => 0,
+                'expired_deadlines' => 0,
+                'expired_leases' => 0,
+                'needs_review_24h' => 0,
+                'failed_24h' => 0,
+            ];
+        }
+        $active = ArticleAiOptimizationRun::query()
+            ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES);
+
+        return [
+            'active' => (clone $active)->count(),
+            'expired_deadlines' => (clone $active)
+                ->where('status', '!=', ArticleAiOptimizationRun::STATUS_CANDIDATE_READY)
+                ->where('deadline_at', '<=', now())
+                ->count(),
+            'expired_leases' => (clone $active)->whereNotNull('lease_owner')->where('lease_expires_at', '<=', now())->count(),
+            'needs_review_24h' => ArticleAiOptimizationRun::query()
+                ->where('status', ArticleAiOptimizationRun::STATUS_NEEDS_REVIEW)
+                ->where('updated_at', '>=', now()->subDay())
+                ->count(),
+            'failed_24h' => ArticleAiOptimizationRun::query()
+                ->where('status', ArticleAiOptimizationRun::STATUS_FAILED)
+                ->where('updated_at', '>=', now()->subDay())
+                ->count(),
         ];
     }
 

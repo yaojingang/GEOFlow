@@ -9,6 +9,7 @@ use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Jobs\ProcessArticleAiQualityJob;
 use App\Models\AiModel;
 use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiQualityCheck;
 use App\Models\ArticleAiQualitySegment;
 use App\Models\Prompt;
@@ -52,8 +53,10 @@ class ArticleAiQualityInspectionService
         ?int $auditAdminId = null,
         ?int $apiTokenId = null,
         ?array $requestedWorkflowState = null,
+        bool $allowSampling = true,
+        bool $rejectWhenOptimizationActive = false,
     ): ArticleAiQualityCheck {
-        return DB::transaction(function () use ($article, $trigger, $dispatch, $auditAdminId, $apiTokenId, $requestedWorkflowState): ArticleAiQualityCheck {
+        return DB::transaction(function () use ($article, $trigger, $dispatch, $auditAdminId, $apiTokenId, $requestedWorkflowState, $allowSampling, $rejectWhenOptimizationActive): ArticleAiQualityCheck {
             $article = Article::query()
                 ->whereKey((int) $article->id)
                 ->lockForUpdate()
@@ -65,7 +68,20 @@ class ArticleAiQualityInspectionService
                     $article->setRelation('task', $task);
                 }
             }
+            if ($rejectWhenOptimizationActive && ArticleAiOptimizationRun::query()
+                ->where('article_id', (int) $article->id)
+                ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES)
+                ->lockForUpdate()
+                ->exists()) {
+                throw new ArticleAiOptimizationException(
+                    'article_ai_optimization_recheck_conflict',
+                    httpStatus: 409,
+                );
+            }
             $policy = $this->policyResolver->resolveForManualInspection($article);
+            if (! $allowSampling) {
+                $policy['timeout_sampling_enabled'] = false;
+            }
             $this->policyResolver->assertExecutable($policy);
             $article->forceFill([
                 'ai_quality_required_at_creation' => true,
@@ -115,6 +131,19 @@ class ArticleAiQualityInspectionService
 
             return $check;
         });
+    }
+
+    public function dispatchQueuedInspection(ArticleAiQualityCheck|int $check): void
+    {
+        $checkId = $check instanceof ArticleAiQualityCheck ? (int) $check->id : $check;
+        if ($checkId <= 0 || ! ArticleAiQualityCheck::query()
+            ->whereKey($checkId)
+            ->where('status', 'queued')
+            ->exists()) {
+            return;
+        }
+
+        $this->dispatchCheck($checkId);
     }
 
     public function createOrReuse(
@@ -218,6 +247,8 @@ class ArticleAiQualityInspectionService
                 ->first();
             if ($previous
                 && ! hash_equals((string) $previous->input_fingerprint, $inputFingerprint)
+                && ! ((string) $previous->status === 'stale'
+                    && (string) $previous->error_code === 'quality_basis_changed')
                 && in_array((string) $previous->status, ['queued', 'running', 'completed', 'failed', 'stale'], true)) {
                 $previous->forceFill([
                     'status' => 'stale',
@@ -338,6 +369,168 @@ class ArticleAiQualityInspectionService
         });
     }
 
+    /** @param array<string,mixed> $candidateSnapshot */
+    public function createOptimizationCandidate(
+        Article $article,
+        array $candidateSnapshot,
+        ArticleAiQualityCheck $baseline,
+        int $runId,
+        string $trigger,
+        bool $dispatch = true,
+    ): ArticleAiQualityCheck {
+        $check = DB::transaction(function () use ($article, $candidateSnapshot, $baseline, $runId, $trigger): ArticleAiQualityCheck {
+            $article = Article::query()->whereKey((int) $article->id)->lockForUpdate()->firstOrFail();
+            if ($article->task_id) {
+                $task = Task::withTrashed()->whereKey((int) $article->task_id)->lockForUpdate()->first();
+                if ($task instanceof Task) {
+                    $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                    $article->setRelation('task', $task);
+                }
+            }
+            $run = ArticleAiOptimizationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();
+            if ((int) $run->article_id !== (int) $article->id
+                || ! in_array((string) $run->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
+                throw new ArticleAiOptimizationException('article_ai_optimization_run_stale');
+            }
+            $baseline = ArticleAiQualityCheck::query()->whereKey((int) $baseline->id)->lockForUpdate()->firstOrFail();
+            if ((int) $baseline->article_id !== (int) $article->id || (string) $baseline->status !== 'completed') {
+                throw new ArticleAiOptimizationException('article_ai_optimization_baseline_invalid');
+            }
+
+            $executionMeta = is_array($baseline->execution_meta) ? $baseline->execution_meta : [];
+            $storedPolicy = is_array($executionMeta['policy_snapshot'] ?? null)
+                ? $executionMeta['policy_snapshot']
+                : (array) ($article->ai_quality_policy_snapshot ?? []);
+            $storedPolicy['timeout_sampling_enabled'] = false;
+            $policy = $this->policyResolver->fromArticleSnapshot(
+                $storedPolicy,
+                (string) ($storedPolicy['source'] ?? 'article_snapshot'),
+            );
+            $this->policyResolver->assertExecutable($policy);
+            $modelCandidates = $this->policyResolver->modelCandidates($policy);
+            $policy['model_candidates'] = $modelCandidates;
+            $snapshot = array_replace(
+                $this->policyResolver->articleSnapshot($article),
+                array_intersect_key($candidateSnapshot, array_flip(['title', 'excerpt', 'content', 'keywords', 'meta_description'])),
+            );
+            $candidateArticle = clone $article;
+            $candidateArticle->forceFill($snapshot);
+            $versionSelection = is_array($executionMeta['version_selection'] ?? null)
+                ? $executionMeta['version_selection']
+                : $this->versionPolicy->selection((int) $article->id);
+            $baselineRules = $this->rulesForCheck($baseline);
+            $principleSnapshot = is_array($executionMeta['principle_snapshot'] ?? null)
+                ? $executionMeta['principle_snapshot']
+                : null;
+            if ((string) ($versionSelection['principles'] ?? 'v1') === 'v2') {
+                $fullRules = $this->rules();
+                $principleSnapshot = $this->principleCompiler->compile(
+                    $snapshot,
+                    $fullRules,
+                    array_values($this->policyResolver->fingerprintInput(
+                        $candidateArticle,
+                        $policy,
+                        $fullRules,
+                    )['knowledge'] ?? []),
+                    is_array($policy['publication_context'] ?? null) ? $policy['publication_context'] : [],
+                );
+                $rules = $this->principleCompiler->rules($principleSnapshot);
+                $fingerprintRules = $fullRules;
+            } else {
+                $rules = $baselineRules;
+                $fingerprintRules = $rules;
+            }
+            $inputFingerprint = $this->currentFingerprint(
+                $candidateArticle,
+                $policy,
+                $fingerprintRules,
+                $versionSelection,
+            );
+            $activeKey = hash('sha256', $runId."\0".$inputFingerprint."\0optimization_candidate");
+            $existing = ArticleAiQualityCheck::query()->where('active_dedupe_key', $activeKey)->first();
+            if ($existing instanceof ArticleAiQualityCheck) {
+                return $existing;
+            }
+
+            $segments = $this->segmenter->segment((string) ($snapshot['content'] ?? ''));
+            $createdAt = now();
+            $deadlineAt = $createdAt->copy()->addSeconds((int) config('geoflow.ai_quality_deadline_seconds', 180));
+            $prompt = $policy['prompt'];
+            $model = $policy['model'];
+            $promptTemplate = (string) ($baseline->prompt_template_snapshot ?: $prompt->content);
+            $check = ArticleAiQualityCheck::query()->create([
+                'article_id' => (int) $article->id,
+                'task_id' => $article->task_id ? (int) $article->task_id : null,
+                'prompt_id' => (int) $prompt->id,
+                'ai_model_id' => (int) $model->id,
+                'request_key' => (string) Str::uuid(),
+                'active_dedupe_key' => $activeKey,
+                'status' => 'queued',
+                'inspection_scope' => 'full',
+                'primary_deadline_at' => $deadlineAt,
+                'deadline_at' => $deadlineAt,
+                'pass_score' => (int) $policy['pass_score'],
+                'manual_override_min_score' => (int) $policy['manual_override_min_score'],
+                'segment_count' => count($segments),
+                'article_snapshot' => $snapshot,
+                'prompt_template_snapshot' => mb_substr($promptTemplate, 0, 50000, 'UTF-8'),
+                'advertising_rules_snapshot' => $rules,
+                'model_snapshot' => array_replace($this->modelSnapshot($model), [
+                    'selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
+                    'candidate_ids' => array_values(array_map(static fn (AiModel $candidate): int => (int) $candidate->id, $modelCandidates)),
+                ]),
+                'article_content_hash' => hash('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE)),
+                'prompt_hash' => hash('sha256', $promptTemplate),
+                'knowledge_hash' => (string) $baseline->knowledge_hash,
+                'input_fingerprint' => $inputFingerprint,
+                'algorithm_version' => (string) ($versionSelection['algorithm_version'] ?? $baseline->algorithm_version),
+                'gate_applied' => false,
+                'evaluation_mode' => 'optimization_candidate',
+                'baseline_check_id' => (int) $baseline->id,
+                'scoring_version' => (string) ($versionSelection['scoring'] ?? $baseline->scoring_version),
+                'execution_meta' => [
+                    'trigger' => $trigger,
+                    'optimization_run_id' => $runId,
+                    'policy_source' => $policy['source'] ?? 'unknown',
+                    'knowledge_base_ids' => array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])),
+                    'model_selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
+                    'model_candidate_ids' => array_values(array_map(static fn (AiModel $candidate): int => (int) $candidate->id, $modelCandidates)),
+                    'model_attempts' => [],
+                    'segment_runs' => [],
+                    'version_selection' => $versionSelection,
+                    'principle_snapshot' => $principleSnapshot,
+                    'policy_snapshot' => array_replace($this->policyResolver->snapshot($policy), ['timeout_sampling_enabled' => false]),
+                    'requested_workflow_state' => $this->sanitizeRequestedWorkflowState(
+                        is_array($executionMeta['requested_workflow_state'] ?? null)
+                            ? $executionMeta['requested_workflow_state']
+                            : null,
+                    ),
+                    'current_phase' => 'queued',
+                ],
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ]);
+
+            foreach ($segments as $segment) {
+                $check->segments()->create([
+                    'segment_index' => (int) $segment['index'],
+                    'start_offset' => (int) $segment['start_offset'],
+                    'end_offset' => (int) $segment['end_offset'],
+                    'input_hash' => (string) $segment['input_hash'],
+                    'status' => 'queued',
+                ]);
+            }
+
+            return $check;
+        });
+
+        if ($dispatch && (string) $check->status === 'queued') {
+            DB::afterCommit(fn () => $this->dispatchCheck((int) $check->id));
+        }
+
+        return $check;
+    }
+
     public function process(
         ArticleAiQualityCheck|int $check,
         bool $allowRunningRecovery = false,
@@ -356,6 +549,17 @@ class ArticleAiQualityInspectionService
         }
         if (! $check->article) {
             return $this->markCancelled($check, 'article_unavailable');
+        }
+        if ((string) $check->evaluation_mode === 'optimization_candidate') {
+            $optimizationRunId = (int) data_get($check->execution_meta, 'optimization_run_id', 0);
+            $optimizationActive = $optimizationRunId > 0 && ArticleAiOptimizationRun::query()
+                ->whereKey($optimizationRunId)
+                ->where('article_id', (int) $check->article_id)
+                ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES)
+                ->exists();
+            if (! $optimizationActive) {
+                return $this->markCancelled($check, 'optimization_run_inactive');
+            }
         }
         $storedArticleSnapshot = is_array($check->article_snapshot) ? $check->article_snapshot : [];
         if (Str::length((string) ($storedArticleSnapshot['content'] ?? ''))
@@ -402,7 +606,8 @@ class ArticleAiQualityInspectionService
             $this->policyResolver->articleSnapshot($check->article),
             JSON_UNESCAPED_UNICODE,
         ));
-        if (! hash_equals((string) $check->article_content_hash, $currentArticleHash)) {
+        if ((string) $check->evaluation_mode !== 'optimization_candidate'
+            && ! hash_equals((string) $check->article_content_hash, $currentArticleHash)) {
             return $this->markStale($check);
         }
 
@@ -534,7 +739,9 @@ class ArticleAiQualityInspectionService
                 throw new RuntimeException('ai_quality_segment_missing');
             }
             if ($segment->status === 'completed' && is_array($segment->validated_result)) {
-                $validatedResults[] = $segment->validated_result;
+                $validatedResults[] = $this->resultValidator->normalizeLegacyRemovedDisclosureArtifacts(
+                    $segment->validated_result,
+                );
                 $rawResults[] = $segment->model_result;
                 $runMeta = is_array($segmentRuns[(string) $segmentData['index']] ?? null)
                     ? $segmentRuns[(string) $segmentData['index']]
@@ -589,7 +796,10 @@ class ArticleAiQualityInspectionService
             $lastException = null;
             $modelTotalMs = 0;
             $validationMs = 0;
-            foreach ($modelCandidates as $candidateIndex => $candidate) {
+            $candidateQueue = array_values($modelCandidates);
+            $invalidOutputRetries = [];
+            for ($candidateIndex = 0; $candidateIndex < count($candidateQueue); $candidateIndex++) {
+                $candidate = $candidateQueue[$candidateIndex];
                 if ((string) $candidate->status !== 'active'
                     || ! in_array((string) ($candidate->model_type ?? ''), ['', 'chat'], true)) {
                     $attempts[] = $this->modelAttempt($segmentData, $candidate, 'skipped', 'model_unavailable', 0);
@@ -607,7 +817,7 @@ class ArticleAiQualityInspectionService
                         break;
                     }
                     $availableRequestSeconds = max(1, (int) floor($remainingSeconds - $persistenceReserveSeconds));
-                    $remainingCandidateCount = max(1, count($modelCandidates) - $candidateIndex);
+                    $remainingCandidateCount = max(1, count($candidateQueue) - $candidateIndex);
                     $candidateBudgetSeconds = $remainingCandidateCount > 1
                         ? max(10, (int) floor($availableRequestSeconds * 0.65))
                         : $availableRequestSeconds;
@@ -666,13 +876,21 @@ class ArticleAiQualityInspectionService
                     break;
                 } catch (Throwable $exception) {
                     $lastException = $exception;
+                    $errorCode = $this->safeErrorCode($exception);
                     $attempts[] = $this->modelAttempt(
                         $segmentData,
                         $candidate,
                         'failed',
-                        $this->safeErrorCode($exception),
+                        $errorCode,
                         $this->elapsedMilliseconds($candidateStartedAt),
                     );
+                    $modelId = (int) $candidate->id;
+                    if ($errorCode === 'invalid_model_output'
+                        && ! isset($invalidOutputRetries[$modelId])
+                        && $this->remainingDeadlineSeconds($deadlineAt) > $persistenceReserveSeconds + 10) {
+                        $invalidOutputRetries[$modelId] = true;
+                        array_splice($candidateQueue, $candidateIndex + 1, 0, [$candidate]);
+                    }
                 }
             }
             if (! is_array($review)) {
@@ -835,7 +1053,7 @@ class ArticleAiQualityInspectionService
         ])->save();
 
         $check = $this->latestCheck($checkId);
-        $this->applyCompletedWorkflow($check->loadMissing(['article', 'task']));
+        $this->continueAfterCompletedCheck($check->loadMissing(['article', 'task']));
         if ((bool) data_get($check->execution_meta, 'version_selection.shadow_v2', false)) {
             $this->createShadowScore($check, $aggregate);
         }
@@ -1130,6 +1348,7 @@ class ArticleAiQualityInspectionService
             ->filter(static fn (ArticleAiQualitySegment $segment): bool => (string) $segment->status === 'completed'
                 && is_array($segment->validated_result))
             ->pluck('validated_result')
+            ->map(fn (array $result): array => $this->resultValidator->normalizeLegacyRemovedDisclosureArtifacts($result))
             ->values()
             ->all();
         $aggregate = $this->aggregate(array_merge($completedSegmentResults, [$validated]), $knowledgeCoverage);
@@ -1241,7 +1460,7 @@ class ArticleAiQualityInspectionService
         }
 
         $completedCheck = $this->latestCheck($checkId);
-        $this->applyCompletedWorkflow($completedCheck->loadMissing(['article', 'task']));
+        $this->continueAfterCompletedCheck($completedCheck->loadMissing(['article', 'task']));
 
         return $this->latestCheck($checkId);
     }
@@ -1895,9 +2114,26 @@ class ArticleAiQualityInspectionService
         ];
     }
 
+    private function continueAfterCompletedCheck(ArticleAiQualityCheck $check): void
+    {
+        if ((string) $check->evaluation_mode === 'optimization_candidate') {
+            app(ArticleAiOptimizationCoordinator::class)->candidateCompleted((int) $check->id);
+
+            return;
+        }
+
+        $this->applyCompletedWorkflow($check);
+    }
+
     public function applyCompletedWorkflow(ArticleAiQualityCheck|int $check): void
     {
         $checkId = $check instanceof ArticleAiQualityCheck ? (int) $check->id : $check;
+        if ($this->supersedeCompletedCheckWhenBasisChanged($checkId)) {
+            return;
+        }
+        if (app(ArticleAiOptimizationCoordinator::class)->interceptCompletedWorkflow($checkId)) {
+            return;
+        }
         if (! $this->beginWorkflowApplyAttempt($checkId)) {
             return;
         }
@@ -1981,6 +2217,84 @@ class ArticleAiQualityInspectionService
         }
     }
 
+    private function supersedeCompletedCheckWhenBasisChanged(int $checkId): bool
+    {
+        $check = ArticleAiQualityCheck::query()->with(['article.task'])->find($checkId);
+        if (! $check
+            || (string) $check->status !== 'completed'
+            || ! (bool) $check->gate_applied
+            || (string) $check->evaluation_mode === 'optimization_candidate'
+            || ! $check->article) {
+            return false;
+        }
+
+        $article = $check->article;
+        $policy = $this->policyResolver->resolve($article);
+        $basisChanged = ! (bool) ($policy['required'] ?? false);
+        try {
+            if (! $basisChanged) {
+                $this->policyResolver->assertExecutable($policy);
+                $currentFingerprint = $this->currentFingerprint(
+                    $article,
+                    $policy,
+                    $this->rules(),
+                    $this->versionPolicy->selection((int) $article->id),
+                );
+                $basisChanged = ! hash_equals((string) $check->input_fingerprint, $currentFingerprint);
+            }
+        } catch (Throwable $exception) {
+            $basisChanged = true;
+            report($exception);
+        }
+        if (! $basisChanged) {
+            return false;
+        }
+
+        $superseded = DB::transaction(function () use ($checkId): bool {
+            $locked = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
+            if (! $locked || (string) $locked->status !== 'completed') {
+                return false;
+            }
+            $executionMeta = is_array($locked->execution_meta) ? $locked->execution_meta : [];
+            $executionMeta['workflow_apply'] = [
+                'status' => 'superseded',
+                'attempts' => (int) data_get($executionMeta, 'workflow_apply.attempts', 0),
+                'error_code' => 'quality_basis_changed',
+                'updated_at' => now()->toIso8601String(),
+            ];
+            $locked->forceFill([
+                'status' => 'stale',
+                'active_dedupe_key' => null,
+                'error_code' => 'quality_basis_changed',
+                'error_message' => '质检依据已更新，系统将使用最新依据重新质检。',
+                'execution_meta' => $executionMeta,
+                'finished_at' => $locked->finished_at ?: now(),
+            ])->save();
+
+            return true;
+        });
+        if (! $superseded) {
+            return true;
+        }
+
+        $this->holdUnpublishedArticleForReview((int) $article->id);
+        if ((bool) ($policy['required'] ?? false)) {
+            try {
+                $this->createOrReuse(
+                    $article->fresh(),
+                    trigger: 'quality_basis_changed',
+                    dispatch: true,
+                    force: true,
+                    resolvedPolicy: $policy,
+                );
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return true;
+    }
+
     public function retryCompletedWorkflow(ArticleAiQualityCheck|int $check): bool
     {
         $checkId = $check instanceof ArticleAiQualityCheck ? (int) $check->id : $check;
@@ -2020,7 +2334,10 @@ class ArticleAiQualityInspectionService
     {
         return DB::transaction(function () use ($checkId): bool {
             $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
-            if (! $check || (string) $check->status !== 'completed') {
+            if (! $check
+                || (string) $check->status !== 'completed'
+                || ! (bool) $check->gate_applied
+                || (string) $check->evaluation_mode === 'optimization_candidate') {
                 return false;
             }
 
@@ -2029,7 +2346,7 @@ class ArticleAiQualityInspectionService
                 ? $executionMeta['workflow_apply']
                 : [];
             $status = (string) ($workflowApply['status'] ?? 'pending');
-            if (in_array($status, ['succeeded', 'exhausted'], true)) {
+            if (in_array($status, ['succeeded', 'exhausted', 'waiting_optimization'], true)) {
                 return false;
             }
             if ($status === 'processing' && ! $this->workflowApplyIsStale($workflowApply)) {
@@ -2149,7 +2466,7 @@ class ArticleAiQualityInspectionService
             $trigger = is_array($check?->execution_meta)
                 ? (string) ($check->execution_meta['trigger'] ?? '')
                 : '';
-            $queue = in_array($trigger, ['reconcile', 'backfill'], true)
+            $queue = in_array($trigger, ['reconcile', 'backfill', 'optimization_task_candidate'], true)
                 ? (string) config('geoflow.ai_quality_backfill_queue', 'ai-quality-backfill')
                 : (string) config('geoflow.ai_quality_queue', 'ai-quality');
             $expectedScope = (string) ($check?->inspection_scope ?: 'full');

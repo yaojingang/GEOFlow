@@ -132,6 +132,114 @@ class ArticleAiQualityResultValidatorTest extends TestCase
         $this->assertSame('high', $validated['issues'][0]['severity']);
     }
 
+    public function test_v2_rejects_the_removed_ai_generation_disclosure_code(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('ai_quality_issue_value_invalid');
+
+        (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '发布标识待确认',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [],
+            'issues' => [[
+                'code' => 'ai_generated_disclosure',
+                'severity' => 'medium',
+                'claim_hash' => '',
+                'field' => 'content',
+                'quote' => '标准价格为 1,980 元',
+                'evidence_keys' => [],
+                'evidence_status' => 'supported',
+                'reason' => '缺少 AI 生成内容标识',
+                'suggestion' => '补充标识',
+                'confidence' => 0.9,
+            ]],
+            'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [], [], $this->rules());
+
+    }
+
+    public function test_v2_removes_ai_generation_disclosure_uncertainty_and_summary_noise(): void
+    {
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '文章缺少 AI 生成内容标识，需要人工确认。',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [],
+            'issues' => [],
+            'uncertainties' => [[
+                'claim' => 'AI 生成内容标识状态',
+                'materiality' => 'high',
+                'reason' => '无法确认是否已声明 AI 生成',
+                'needed_evidence' => '提供发布元数据标识',
+            ]],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [], [], $this->rules());
+
+        $this->assertSame([], $validated['issues']);
+        $this->assertSame([], $validated['uncertainties']);
+        $this->assertSame('已完成当前启用规则的质检。', $validated['summary']);
+    }
+
+    public function test_v2_preserves_factual_uncertainty_about_ai_labeling_rules(): void
+    {
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => 'AI 生成内容标识办法的适用范围需要知识依据。',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [],
+            'issues' => [],
+            'uncertainties' => [[
+                'claim' => 'AI 生成内容标识办法适用于全部内部文档',
+                'materiality' => 'high',
+                'reason' => '知识库未覆盖该办法的具体适用范围',
+                'needed_evidence' => '补充该办法的官方条文',
+            ]],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [], [], $this->rules());
+
+        $this->assertCount(1, $validated['uncertainties']);
+        $this->assertSame('AI 生成内容标识办法的适用范围需要知识依据。', $validated['summary']);
+    }
+
+    public function test_v2_preserves_missing_official_basis_for_ai_labeling_regulation(): void
+    {
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '缺少《AI 生成内容标识办法》的官方依据，适用范围待核验。',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [],
+            'issues' => [],
+            'uncertainties' => [[
+                'claim' => '《AI 生成内容标识办法》适用于全部内部文档',
+                'materiality' => 'high',
+                'reason' => '缺少《AI 生成内容标识办法》的官方依据，适用范围待核验',
+                'needed_evidence' => '补充该办法的官方条文',
+            ]],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [], [], $this->rules());
+
+        $this->assertCount(1, $validated['uncertainties']);
+        $this->assertSame('缺少《AI 生成内容标识办法》的官方依据，适用范围待核验。', $validated['summary']);
+    }
+
+    public function test_v2_preserves_ai_generated_report_source_uncertainty(): void
+    {
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '关键金额缺少可核验来源。',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [],
+            'issues' => [],
+            'uncertainties' => [[
+                'claim' => '合同金额为 100 万元',
+                'materiality' => 'high',
+                'reason' => '缺少 AI 生成报告的来源声明，无法核验关键金额',
+                'needed_evidence' => '提供合同或受管知识来源',
+            ]],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [], [], $this->rules());
+
+        $this->assertCount(1, $validated['uncertainties']);
+        $this->assertSame('合同金额为 100 万元', $validated['uncertainties'][0]['claim']);
+    }
+
     public function test_v2_moves_unverified_claims_to_uncertainties_without_a_score_deduction_issue(): void
     {
         $validated = (new ArticleAiQualityResultValidator)->validate([

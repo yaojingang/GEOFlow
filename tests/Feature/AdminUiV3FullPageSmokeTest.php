@@ -7,6 +7,8 @@ use App\Models\AiConversation;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
+use App\Models\ArticleAiQualityCheck;
 use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
@@ -92,6 +94,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
             $this->assertSame(200, $response->status(), $routeName);
             $response->assertSee('data-gf-shell', false, $routeName);
+            $response->assertSee('data-admin-product-footer', false, $routeName);
 
             $document = new \DOMDocument;
             @$document->loadHTML((string) $response->getContent());
@@ -130,7 +133,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $this->assertCount(2, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
         $this->assertCount(5, $routesByClassification->get('download', collect()));
-        $this->assertCount(12, $routesByClassification->get('endpoint', collect()));
+        $this->assertCount(13, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
             ->assertOk()
@@ -319,11 +322,51 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $replicationId = (int) SiteThemeReplication::query()
             ->where('theme_id', UiV3ReviewSeeder::THEME_ID)
             ->value('id');
+        $qualityCheck = ArticleAiQualityCheck::query()->create([
+            'article_id' => $article->id,
+            'task_id' => $article->task_id,
+            'prompt_id' => $prompt->id,
+            'ai_model_id' => $model->id,
+            'request_key' => '01987f84-7f01-7000-8000-000000000101',
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 88,
+            'article_snapshot' => [
+                'title' => $article->title,
+                'excerpt' => $article->excerpt,
+                'content' => $article->content,
+                'keywords' => $article->keywords,
+                'meta_description' => $article->meta_description,
+            ],
+            'input_fingerprint' => hash('sha256', 'ui-v3-optimization-check'),
+            'algorithm_version' => 'ui-v3-test',
+            'evaluation_mode' => 'optimization_candidate',
+            'inspection_scope' => 'full',
+            'gate_applied' => false,
+        ]);
+        $optimizationRun = ArticleAiOptimizationRun::query()->create([
+            'article_id' => $article->id,
+            'task_id' => $article->task_id,
+            'source_check_id' => $qualityCheck->id,
+            'best_check_id' => $qualityCheck->id,
+            'request_key' => '01987f84-7f01-7000-8000-000000000102',
+            'trigger' => ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            'strategy' => 'excellent_80',
+            'target_score' => 80,
+            'status' => ArticleAiOptimizationRun::STATUS_CANDIDATE_READY,
+            'base_article_hash' => hash('sha256', 'ui-v3-optimization-base'),
+            'candidate_hash' => hash('sha256', 'ui-v3-optimization-candidate'),
+            'policy_hash' => hash('sha256', 'ui-v3-optimization-policy'),
+        ]);
 
         return [
             'admin.ai-workspace.conversations.show' => ['conversation' => $aiConversation->id],
             'admin.articles.edit' => ['articleId' => $article->id],
             'admin.articles.ai-quality.status' => ['articleId' => $article->id],
+            'admin.articles.ai-quality.optimization.candidate' => [
+                'articleId' => $article->id,
+                'runId' => $optimizationRun->id,
+            ],
             'admin.ai-models.edit' => ['modelId' => $model->id],
             'admin.ai-source-providers.edit' => ['providerId' => $sourceProvider->id],
             'admin.ai-prompts.edit' => ['promptId' => $prompt->id],

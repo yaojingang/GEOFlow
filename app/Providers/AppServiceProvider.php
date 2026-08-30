@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Contracts\AiWorkspace\AdminHelpResponder;
+use App\Contracts\ArticleAiOptimizationRefiner;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\Outbound\HostResolver;
 use App\Contracts\Outbound\OutboundTransport;
@@ -18,6 +19,7 @@ use App\Services\GeoFlow\ArticleAiQualityWorkerLiveness;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Services\GeoFlow\HorizonMetricsAdapter;
 use App\Services\GeoFlow\JobQueueService;
+use App\Services\GeoFlow\LaravelArticleAiOptimizationRefiner;
 use App\Services\GeoFlow\LaravelArticleAiQualityReviewer;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
@@ -57,6 +59,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(HostResolver::class, SystemHostResolver::class);
         $this->app->bind(ArticleAiQualityReviewer::class, LaravelArticleAiQualityReviewer::class);
+        $this->app->bind(ArticleAiOptimizationRefiner::class, LaravelArticleAiOptimizationRefiner::class);
         $this->app->bind(AgentClient::class, UnixSocketAgentClient::class);
         $this->app->singleton(FinalOutboundSecurityPolicy::class);
         $this->app->bind(OutboundTransport::class, function () use ($fixedContextCapability): LaravelPinnedOutboundTransport {

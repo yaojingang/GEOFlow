@@ -26,10 +26,10 @@
             </div>
         </header>
 
-        <div data-selected-sync-modal class="fixed inset-0 z-50 hidden overflow-y-auto px-4 py-6 sm:px-6 lg:px-8" aria-labelledby="selected-sync-title" role="dialog" aria-modal="true">
-            <div class="fixed inset-0 bg-gray-900/40" data-selected-sync-close></div>
-            <div class="relative mx-auto max-w-4xl rounded-xl bg-white shadow-xl">
-                <form method="POST" action="{{ route('admin.distribution.sync-settings-selected.preview') }}">
+        <div data-selected-sync-modal class="fixed inset-0 z-50 hidden items-center justify-center overflow-y-auto px-4 py-4 sm:px-6" aria-labelledby="selected-sync-title" role="dialog" aria-modal="true">
+            <div class="fixed inset-0 bg-[rgba(15,23,42,0.48)]" data-selected-sync-close></div>
+            <div class="relative mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-[0_24px_72px_rgba(15,23,42,0.28)]">
+                <form method="POST" action="{{ route('admin.distribution.sync-settings-selected.preview') }}" class="flex max-h-[calc(100dvh-2rem)] flex-col">
                     @csrf
                     <div class="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5">
                         <div>
@@ -41,7 +41,7 @@
                         </button>
                     </div>
 
-                    <div class="px-6 py-5">
+                    <div class="min-h-0 overflow-y-auto px-6 py-5">
                         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div data-selected-sync-count data-count-template="{{ __('admin.distribution.selected_sync.selected_count', ['count' => '__COUNT__']) }}" class="inline-flex w-fit rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700">
                                 {{ __('admin.distribution.selected_sync.selected_count', ['count' => 0]) }}
@@ -365,6 +365,7 @@
             const countBadge = document.querySelector('[data-selected-sync-count]');
             const selectAllButton = document.querySelector('[data-selected-sync-select-all]');
             const clearButton = document.querySelector('[data-selected-sync-clear]');
+            let modalOpener = null;
 
             if (!modal || !openButton) {
                 return;
@@ -383,17 +384,27 @@
                 }
             };
 
+            const closeModal = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                document.body.classList.remove('overflow-hidden');
+                modalOpener?.focus?.({ preventScroll: true });
+                modalOpener = null;
+            };
+
             openButton.addEventListener('click', () => {
+                modalOpener = openButton;
                 modal.classList.remove('hidden');
+                modal.classList.add('flex');
                 document.body.classList.add('overflow-hidden');
                 refreshSelectedCount();
+                window.requestAnimationFrame(() => {
+                    modal.querySelector('[data-selected-sync-checkbox]:checked, [data-selected-sync-checkbox], [data-selected-sync-close]')?.focus?.({ preventScroll: true });
+                });
             });
 
             closeButtons.forEach((button) => {
-                button.addEventListener('click', () => {
-                    modal.classList.add('hidden');
-                    document.body.classList.remove('overflow-hidden');
-                });
+                button.addEventListener('click', closeModal);
             });
 
             checkboxes.forEach((checkbox) => checkbox.addEventListener('change', refreshSelectedCount));
@@ -418,8 +429,20 @@
 
             document.addEventListener('keydown', (event) => {
                 if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
-                    modal.classList.add('hidden');
-                    document.body.classList.remove('overflow-hidden');
+                    closeModal();
+                    return;
+                }
+                if (event.key !== 'Tab' || modal.classList.contains('hidden')) return;
+                const focusable = Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href]'));
+                if (focusable.length === 0) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
                 }
             });
 

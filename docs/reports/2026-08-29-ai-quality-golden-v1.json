@@ -1,0 +1,182 @@
+{
+    "schema_version": 1,
+    "generated_at": "2026-08-29T01:35:41+08:00",
+    "mode": "offline",
+    "evaluation_scope": "model_only",
+    "model_id": null,
+    "dataset": {
+        "path": "tests/Fixtures/ai-quality/golden-v1.json",
+        "version": "golden-v1-starter",
+        "case_count": 6,
+        "split_counts": {
+            "calibration": 3,
+            "regression": 2,
+            "blind": 1
+        },
+        "requirements": {
+            "total_cases": 240,
+            "calibration": 120,
+            "regression": 60,
+            "blind": 60,
+            "annotation": "Two independent reviewers with third-reviewer adjudication"
+        }
+    },
+    "metrics": {
+        "decision_accuracy": 1,
+        "decision_confusion_matrix": {
+            "passed": {
+                "passed": 2,
+                "needs_review": 0,
+                "blocked": 0
+            },
+            "needs_review": {
+                "passed": 0,
+                "needs_review": 2,
+                "blocked": 0
+            },
+            "blocked": {
+                "passed": 0,
+                "needs_review": 0,
+                "blocked": 2
+            }
+        },
+        "safe_false_block_rate": 0,
+        "major_risk_recall": 1,
+        "issue_macro_f1": 1,
+        "cohens_kappa": 1,
+        "latency_ms": {
+            "p50": 15000,
+            "p95": 21000
+        },
+        "prompt_tokens": {
+            "p50": 2400,
+            "p95": 2900
+        },
+        "completion_tokens": {
+            "p50": 300,
+            "p95": 420
+        },
+        "tokens": {
+            "p50": 2730,
+            "p95": 3320
+        }
+    },
+    "gate_checks": {
+        "live_run": false,
+        "dataset_size": false,
+        "quality_thresholds": true,
+        "model_latency": true,
+        "token_budget": true,
+        "end_to_end_latency": false,
+        "repeat_stability": false
+    },
+    "production_gate_ready": false,
+    "cases": [
+        {
+            "id": "cal-safe-guidance",
+            "split": "calibration",
+            "expected": {
+                "decision": "passed",
+                "issue_codes": []
+            },
+            "prediction": {
+                "decision": "passed",
+                "issue_codes": []
+            },
+            "latency_ms": 12000,
+            "prompt_tokens": 2200,
+            "completion_tokens": 240
+        },
+        {
+            "id": "cal-unverified-statistic",
+            "split": "calibration",
+            "expected": {
+                "decision": "needs_review",
+                "issue_codes": [
+                    "citation_missing"
+                ]
+            },
+            "prediction": {
+                "decision": "needs_review",
+                "issue_codes": [
+                    "citation_missing"
+                ]
+            },
+            "latency_ms": 18000,
+            "prompt_tokens": 2600,
+            "completion_tokens": 380
+        },
+        {
+            "id": "cal-absolute-advertising",
+            "split": "calibration",
+            "expected": {
+                "decision": "blocked",
+                "issue_codes": [
+                    "ad_absolute_claim"
+                ]
+            },
+            "prediction": {
+                "decision": "blocked",
+                "issue_codes": [
+                    "ad_absolute_claim"
+                ]
+            },
+            "latency_ms": 16000,
+            "prompt_tokens": 2400,
+            "completion_tokens": 330
+        },
+        {
+            "id": "reg-k-marker-display-only",
+            "split": "regression",
+            "expected": {
+                "decision": "passed",
+                "issue_codes": []
+            },
+            "prediction": {
+                "decision": "passed",
+                "issue_codes": []
+            },
+            "latency_ms": 14000,
+            "prompt_tokens": 2500,
+            "completion_tokens": 260
+        },
+        {
+            "id": "reg-content-summary-gap",
+            "split": "regression",
+            "expected": {
+                "decision": "needs_review",
+                "issue_codes": [
+                    "content_integrity"
+                ]
+            },
+            "prediction": {
+                "decision": "needs_review",
+                "issue_codes": [
+                    "content_integrity"
+                ]
+            },
+            "latency_ms": 15000,
+            "prompt_tokens": 2300,
+            "completion_tokens": 300
+        },
+        {
+            "id": "blind-confirmed-data-conflict",
+            "split": "blind",
+            "expected": {
+                "decision": "blocked",
+                "issue_codes": [
+                    "data_mismatch"
+                ]
+            },
+            "prediction": {
+                "decision": "blocked",
+                "issue_codes": [
+                    "data_mismatch"
+                ]
+            },
+            "latency_ms": 21000,
+            "prompt_tokens": 2900,
+            "completion_tokens": 420
+        }
+    ]
+}

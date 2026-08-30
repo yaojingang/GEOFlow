@@ -69,7 +69,7 @@ class ArticleQualityReviewerAgentTest extends TestCase
         $this->assertArrayNotHasKey('truncated_issue_count', $schema);
     }
 
-    public function test_structured_quality_schemas_constrain_issue_codes_to_backend_supported_values(): void
+    public function test_structured_quality_schemas_exclude_the_removed_ai_generation_disclosure_code(): void
     {
         foreach ([
             new ArticleQualityReviewerAgent('instructions'),
@@ -80,6 +80,7 @@ class ArticleQualityReviewerAgentTest extends TestCase
 
             $this->assertContains('citation_missing', $codeSchema['enum']);
             $this->assertContains('content_integrity', $codeSchema['enum']);
+            $this->assertNotContains('ai_generated_disclosure', $codeSchema['enum']);
             $this->assertNotContains('other', $codeSchema['enum']);
         }
     }

@@ -105,11 +105,11 @@ test('confirmed detail actions stay locked until an explicit confirmation listen
     assert.equal(form.dispatch('submit').defaultPrevented, false);
 });
 
-test('confirmed detail actions fail closed when confirmation is rejected or throws', () => {
-    assert.equal(confirmedActionFixture(() => false).form.dispatch('submit').defaultPrevented, true);
+test('confirmed detail actions delegate confirmation to the shared central controller', () => {
+    assert.equal(confirmedActionFixture(() => false).form.dispatch('submit').defaultPrevented, false);
     assert.equal(confirmedActionFixture(() => {
         throw new Error('confirmation unavailable');
-    }).form.dispatch('submit').defaultPrevented, true);
+    }).form.dispatch('submit').defaultPrevented, false);
 });
 
 function keywordBatchFixture(confirmAction) {
@@ -165,21 +165,21 @@ test('keyword batch deletion unlocks only after selection and requires confirmat
     assert.equal(fixture.form.dispatch('submit').defaultPrevented, false);
 });
 
-test('keyword batch deletion blocks empty selection, rejection, and confirmation errors', () => {
+test('keyword batch deletion blocks an empty selection and delegates selected confirmation', () => {
     const empty = keywordBatchFixture(() => true);
     assert.equal(empty.form.dispatch('submit').defaultPrevented, true);
 
     const rejected = keywordBatchFixture(() => false);
     rejected.checkbox.checked = true;
     rejected.checkbox.dispatch('change');
-    assert.equal(rejected.form.dispatch('submit').defaultPrevented, true);
+    assert.equal(rejected.form.dispatch('submit').defaultPrevented, false);
 
     const unavailable = keywordBatchFixture(() => {
         throw new Error('confirmation unavailable');
     });
     unavailable.checkbox.checked = true;
     unavailable.checkbox.dispatch('change');
-    assert.equal(unavailable.form.dispatch('submit').defaultPrevented, true);
+    assert.equal(unavailable.form.dispatch('submit').defaultPrevented, false);
 });
 
 test('import or initializer failures re-lock every destructive detail action', async () => {

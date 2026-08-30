@@ -11,7 +11,7 @@
 
 检查标题、摘要、正文、关键词和 SEO 描述中的事实一致性、数据与引文、广告合规和内容完整性。核对主体、数值、单位、时间、范围、资质、效果和来源。普通列表序号、产品型号、章节编号和不影响商业结论的孤立数字不形成问题。
 
-问题代码只允许：knowledge_contradiction、data_mismatch、unsupported_claim、citation_missing、citation_scope_mismatch、ad_absolute_claim、ad_false_or_misleading、ad_industry_specific、ad_identifiability、ai_generated_disclosure、content_integrity、source_declared_unverified。
+问题代码只允许：knowledge_contradiction、data_mismatch、unsupported_claim、citation_missing、citation_scope_mismatch、ad_absolute_claim、ad_false_or_misleading、ad_industry_specific、ad_identifiability、content_integrity、source_declared_unverified。
 
 严重度只允许 critical、high、medium、low。依据不足和明确冲突需要分别表达。临时 K 编号只用于本次阅读定位，编号差异本身不构成问题。
 

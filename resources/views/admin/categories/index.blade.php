@@ -88,9 +88,9 @@
                                         </a>
 
                                         @if ($articleCount === 0)
-                                            <form method="POST" action="{{ route('admin.categories.delete', ['categoryId' => (int) $category['id']]) }}" class="inline" onsubmit="return confirm(@js(__('admin.categories.confirm_delete')));">
+                                            <form method="POST" action="{{ route('admin.categories.delete', ['categoryId' => (int) $category['id']]) }}" class="inline" data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.categories.confirm_delete') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $category['name']]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.button.delete') }}">
                                                 @csrf
-                                                <button type="submit" class="text-red-600 hover:text-red-800" title="{{ __('admin.button.delete') }}">
+                                                <button type="submit" class="text-red-600 hover:text-red-800" title="{{ __('admin.button.delete') }}" data-admin-confirm-submit disabled aria-disabled="true">
                                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                                 </button>
                                             </form>

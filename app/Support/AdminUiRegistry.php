@@ -359,7 +359,8 @@ final class AdminUiRegistry
             'binary' => ['admin.ai-workspace.media.show'],
             'endpoint' => [
                 'admin.recent.index',
-                'admin.articles.ai-quality.status', 'admin.articles.editor.titles',
+                'admin.articles.ai-quality.status', 'admin.articles.ai-quality.optimization.candidate',
+                'admin.articles.editor.titles',
                 'admin.distribution.sync-settings*.preview',
                 'admin.enterprise-knowledge.status', 'admin.site-settings.theme-replications.status',
                 'admin.system-updates.runs.status', 'admin.tasks.health', 'admin.url-import.status',

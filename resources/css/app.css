@@ -241,11 +241,11 @@ html[data-gf-sidebar-resizing] body { cursor: col-resize; user-select: none; }
 @media (hover: hover) { .gf-popover--user > a:hover, .gf-popover--user button:hover { background: var(--gf-gray-100); } }
 .gf-popover--user .gf-popover__danger { color: var(--gf-red-600); }
 
-.gf-main { background: var(--gf-gray-50); flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
+.gf-main { background: var(--gf-gray-50); display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
 .gf-context-nav { background: var(--gf-gray-50); overflow-x: auto; scrollbar-width: none; }
 .gf-context-nav::-webkit-scrollbar { display: none; }
 .gf-context-nav__inner { align-items: end; display: flex; gap: 24px; margin: 0 auto; max-width: var(--gf-content-max); min-width: max-content; padding: 28px 48px 0; }
-.gf-content { margin: 0 auto; max-width: var(--gf-content-max); padding: 28px 48px 96px; }
+.gf-content { flex: 0 0 auto; margin: 0 auto; max-width: var(--gf-content-max); padding: 28px 48px 48px; width: 100%; }
 .gf-content > .px-4, .gf-content > .sm\:px-0 { padding-left: 0; padding-right: 0; }
 .gf-content h1 { color: var(--gf-gray-900); font-size: 30px; letter-spacing: -.02em; line-height: 1.25; }
 .gf-content[data-gf-page-heading='hidden'] h1 {
@@ -323,17 +323,17 @@ html[data-gf-sidebar-resizing] body { cursor: col-resize; user-select: none; }
 .gf-permission-list svg { height: 14px; width: 14px; }
 .gf-password-fields { display: grid; gap: 16px; padding: 22px 24px; }
 
-.gf-modal-backdrop { align-items: center; background: rgba(17, 24, 39, .36); display: flex; inset: 0; justify-content: center; opacity: 0; overscroll-behavior: contain; padding: 20px; position: fixed; transition: opacity 160ms ease-out; z-index: 120; }
+.gf-modal-backdrop { align-items: center; background: rgba(15, 23, 42, .48); display: flex; inset: 0; justify-content: center; opacity: 0; overscroll-behavior: contain; padding: 24px; position: fixed; transition: opacity 160ms ease-out; z-index: 120; }
 .gf-modal-backdrop.is-open { opacity: 1; }
-.gf-modal { background: #fff; border-radius: 12px; box-shadow: 0 20px 48px rgba(15, 23, 42, .2); max-width: 520px; opacity: 0; transform: translateY(8px) scale(.98); transition: opacity 160ms ease-out, transform 160ms cubic-bezier(.16, 1, .3, 1); width: 100%; }
+.gf-modal { background: #fff; border-radius: 16px; box-shadow: 0 24px 72px rgba(15, 23, 42, .28); display: flex; max-height: min(720px, calc(100dvh - 48px)); max-width: 520px; opacity: 0; overflow: hidden; transform: translateY(8px) scale(.98); transition: opacity 180ms ease-out, transform 180ms cubic-bezier(.16, 1, .3, 1); width: 100%; flex-direction: column; }
 .gf-modal-backdrop.is-open .gf-modal { opacity: 1; transform: translateY(0) scale(1); }
 .gf-modal--community { max-width: 700px; }
 .gf-modal__header { align-items: flex-start; border-bottom: 1px solid var(--gf-gray-100); display: flex; justify-content: space-between; padding: 20px 22px; }
 .gf-modal__eyebrow { color: var(--gf-blue-600); display: block; font-size: 10px; font-weight: 750; letter-spacing: .12em; line-height: 1.4; margin-bottom: 4px; text-transform: uppercase; }
 .gf-modal__header h2 { font-size: 18px; font-weight: 650; margin: 0; }
 .gf-modal__header p { color: var(--gf-gray-500); font-size: 12px; margin: 3px 0 0; }
-.gf-modal__body { padding: 22px; }
-.gf-modal__footer { align-items: center; background: var(--gf-gray-50); border-radius: 0 0 12px 12px; display: flex; gap: 12px; justify-content: space-between; padding: 13px 22px; }
+.gf-modal__body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 22px; }
+.gf-modal__footer { align-items: center; background: var(--gf-gray-50); border-radius: 0 0 16px 16px; display: flex; flex: 0 0 auto; gap: 12px; justify-content: space-between; padding: 13px 22px; }
 .gf-modal__footer > span { color: var(--gf-gray-400); font-size: 11px; }
 .gf-account-summary { align-items: center; display: flex; gap: 12px; }
 .gf-account-avatar--large { flex-basis: 44px; font-size: 16px; height: 44px; width: 44px; }
@@ -378,6 +378,13 @@ html[data-gf-sidebar-resizing] body { cursor: col-resize; user-select: none; }
 .gf-shortcut-list > * > svg:last-child { color: var(--gf-gray-300); height: 14px; width: 14px; }
 .gf-toast { background: var(--gf-gray-900); border-radius: 8px; bottom: 28px; color: #fff; left: 50%; opacity: 0; padding: 10px 16px; pointer-events: none; position: fixed; transform: translate(-50%, 10px); transition: opacity 160ms ease-out, transform 160ms ease-out; z-index: 160; }
 .gf-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+    .gf-modal-backdrop,
+    .gf-modal {
+        transition-duration: 0.01ms;
+    }
+}
 
 .gf-page--ai .gf-content { max-width: 960px; padding-top: 54px; }
 .gf-ai-workspace { min-height: calc(100vh - var(--gf-topbar-height) - 150px); }
@@ -927,7 +934,7 @@ details.gf-ai-trace-event[open] .gf-ai-trace-event__chevron { transform: rotate(
     .gf-pwa-install > span { display: none; }
     .gf-language { justify-content: center; padding: 0; width: 40px; }
     .gf-language__label, .gf-language__chevron { display: none; }
-    .gf-content { padding: 22px 16px 92px; }
+    .gf-content { padding: 22px 16px 40px; }
     .gf-content h1 { font-size: 26px; }
     .gf-context-nav__inner { padding-left: 16px; padding-right: 16px; padding-top: 22px; }
     .gf-page-header { flex-direction: column; gap: 16px; }
@@ -937,8 +944,8 @@ details.gf-ai-trace-event[open] .gf-ai-trace-event__chevron { transform: rotate(
     .gf-settings-actions { flex-wrap: wrap; padding: 14px 18px; }
     .gf-settings-actions > span { flex-basis: 100%; }
     .gf-settings-actions .gf-button { flex: 1; }
-    .gf-modal-backdrop { align-items: flex-end; padding: 12px; }
-    .gf-modal { max-height: calc(100vh - 24px); overflow-y: auto; }
+    .gf-modal-backdrop { align-items: center; padding: 16px; }
+    .gf-modal { max-height: calc(100dvh - 32px); }
     .gf-community-dialog { gap: 20px; grid-template-columns: 1fr; }
     .gf-community-dialog__qr { justify-self: center; width: min(230px, 68vw); }
     .gf-community-dialog__content { width: 100%; }

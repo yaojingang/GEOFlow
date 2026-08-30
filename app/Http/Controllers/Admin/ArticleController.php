@@ -18,6 +18,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\ArticleAiOptimizationCoordinator;
 use App\Services\GeoFlow\ArticleAiQualityGate;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
 use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
@@ -68,6 +69,7 @@ class ArticleController extends Controller
         private readonly ArticleAiQualityGate $articleAiQualityGate,
         private readonly ArticleAiQualityProgressPresenter $articleAiQualityProgressPresenter,
         private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
+        private readonly ArticleAiOptimizationCoordinator $articleAiOptimizationCoordinator,
     ) {}
 
     /**
@@ -525,7 +527,7 @@ class ArticleController extends Controller
     {
         $article = Article::query()
             ->with([
-                'task:id,name,ai_quality_enabled',
+                'task:id,name,ai_quality_enabled,ai_model_id',
                 'author:id,name',
                 'category:id,name',
                 'latestAiQualityCheck.prompt:id,name',
@@ -564,6 +566,7 @@ class ArticleController extends Controller
             'riskScan' => $this->riskScanViewData($article),
             'aiQualityCheck' => $aiQualityCheck,
             'aiQualityProgress' => $this->articleAiQualityProgressPresenter->snapshot($aiQualityCheck),
+            'aiOptimization' => $this->articleAiOptimizationCoordinator->statusForArticle($article),
             'aiQualityHistory' => $article->aiQualityChecks()
                 ->with(['prompt:id,name', 'aiModel:id,name'])
                 ->latest('id')
@@ -633,6 +636,7 @@ class ArticleController extends Controller
                 $article,
                 trigger: 'admin_manual',
                 auditAdminId: $this->authenticatedAdminId($request),
+                rejectWhenOptimizationActive: true,
             );
 
             return redirect()
@@ -657,8 +661,11 @@ class ArticleController extends Controller
             ->whereKey($articleId)
             ->firstOrFail();
 
+        $snapshot = $this->articleAiQualityProgressPresenter->snapshot($article->latestAiQualityCheck);
+        $snapshot['optimization'] = $this->articleAiOptimizationCoordinator->statusForArticle($article);
+
         return response()
-            ->json($this->articleAiQualityProgressPresenter->snapshot($article->latestAiQualityCheck))
+            ->json($snapshot)
             ->header('Cache-Control', 'no-cache, private, no-store, max-age=0, must-revalidate');
     }
 
@@ -678,6 +685,7 @@ class ArticleController extends Controller
     private function aiQualityRequestFailureMessage(Throwable $exception): string
     {
         return match ($exception->getMessage()) {
+            'article_ai_optimization_recheck_conflict' => __('admin.articles.ai_quality.recheck_optimization_conflict'),
             'ai_quality_knowledge_unavailable' => __('admin.articles.ai_quality.manual_unavailable_knowledge'),
             'ai_quality_prompt_unavailable' => __('admin.articles.ai_quality.manual_unavailable_prompt'),
             'ai_quality_model_unavailable' => __('admin.articles.ai_quality.manual_unavailable_model'),
@@ -831,6 +839,7 @@ class ArticleController extends Controller
                         trigger: 'admin_manual',
                         auditAdminId: $adminId,
                         requestedWorkflowState: $workflowState,
+                        rejectWhenOptimizationActive: true,
                     );
                 } catch (Throwable $exception) {
                     report($exception);

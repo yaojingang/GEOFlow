@@ -43,6 +43,8 @@ class UpdateTaskRequest extends FormRequest
             'is_loop' => ['sometimes', 'boolean'],
             'ai_quality_enabled' => ['sometimes', 'boolean'],
             'ai_quality_timeout_sampling_enabled' => ['sometimes', 'boolean'],
+            'ai_quality_auto_optimize_enabled' => ['sometimes', 'boolean'],
+            'ai_quality_optimization_level' => ['sometimes', 'string', 'in:pass,excellent_80,excellent_90'],
             'ai_quality_prompt_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'ai_quality_model_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'ai_quality_pass_score' => ['sometimes', 'integer', 'min:1', 'max:100'],

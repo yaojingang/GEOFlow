@@ -80,11 +80,6 @@
                         <x-admin.v3.ai-configurator-subnav :items="$uiV3['ai_configurator_navigation'] ?? []" />
                     @endif
                     <div class="gf-content" data-gf-page-heading="{{ $bodyHeadingMode }}">
-                        @if (session('message'))
-                            <div class="gf-flash gf-flash--success admin-flash-alert" role="status">
-                                <i data-lucide="circle-check"></i><span>{{ session('message') }}</span>
-                            </div>
-                        @endif
                         @if ($errors->any())
                             <div class="gf-flash gf-flash--danger admin-flash-alert" role="alert" data-admin-errors>
                                 <i data-lucide="circle-alert"></i>
@@ -93,11 +88,12 @@
                         @endif
                         @yield('content')
                     </div>
+                    @include('admin.partials.footer')
                 </main>
             </div>
         </div>
         <x-admin.v3.dialogs :admin="$currentAdmin" :site-url="$uiV3['site_url'] ?? config('app.url')" />
-        <div class="gf-toast" role="status" aria-live="polite" data-gf-toast></div>
+        <x-admin.action-dialog />
         @include('admin.partials.welcome-modal')
         @if (is_array($anonymousUsageTelemetryPayload ?? null))
             <script src="{{ asset('js/geoflow-pulse.js') }}" defer></script>
@@ -105,19 +101,14 @@
         @stack('scripts')
     </body>
 @else
-    <body class="bg-gray-50">
+    <body class="flex min-h-screen flex-col bg-gray-50">
         @include('admin.partials.header', [
             'adminBrandName' => $adminBrandName,
             'adminSiteName' => $adminSiteName ?? $adminBrandName,
             'pageTitle' => $pageTitle ?? '',
             'activeMenu' => $activeMenu ?? '',
         ])
-        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-            @if (session('message'))
-                <div class="admin-flash-alert mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">
-                    <span class="block sm:inline">{{ session('message') }}</span>
-                </div>
-            @endif
+        <main class="mx-auto w-full max-w-7xl flex-1 py-6 sm:px-6 lg:px-8">
             @if ($errors->any())
                 <div class="admin-flash-alert mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
                     @foreach ($errors->all() as $err)<div>{{ $err }}</div>@endforeach
@@ -126,6 +117,8 @@
             @yield('content')
         </main>
         @include('admin.partials.footer')
+        @include('admin.partials.legacy-runtime-config')
+        <x-admin.action-dialog />
         @include('admin.partials.welcome-modal')
         @vite('resources/js/app.js')
         @if (is_array($anonymousUsageTelemetryPayload ?? null))

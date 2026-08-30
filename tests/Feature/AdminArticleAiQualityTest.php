@@ -213,6 +213,35 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertSee(__('admin.articles.ai_quality.progress_auto_refresh'), false);
     }
 
+    public function test_detached_article_uses_distinct_model_selectors_for_generation_and_optimization(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 90,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        $article->forceFill(['task_id' => null])->save();
+
+        $createHtml = $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.create'))
+            ->assertOk()
+            ->getContent();
+        $editHtml = $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertSame(1, substr_count($createHtml, 'id="article-ai-model"'));
+        $this->assertSame(0, substr_count($createHtml, 'id="article-ai-optimization-model"'));
+        $this->assertSame(0, substr_count($editHtml, 'id="article-ai-model"'));
+        $this->assertSame(1, substr_count($editHtml, 'id="article-ai-optimization-model"'));
+    }
+
     public function test_progress_reconciles_the_authoritative_state_after_the_persisted_deadline(): void
     {
         [$admin, $article] = $this->qualityArticle();
@@ -291,10 +320,10 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertSee('HTTP 502')
             ->assertSee('upstream_unavailable')
             ->assertSee(route('admin.articles.ai-quality.recheck', ['articleId' => $article->id]), false)
-            ->assertDontSee('0/35')
-            ->assertDontSee('0/25')
-            ->assertDontSee('0/30')
-            ->assertDontSee('0/10')
+            ->assertDontSeeText('0/35')
+            ->assertDontSeeText('0/25')
+            ->assertDontSeeText('0/30')
+            ->assertDontSeeText('0/10')
             ->assertDontSee(__('admin.articles.ai_quality.no_issues'));
     }
 
@@ -373,7 +402,7 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertSee(route('admin.ai-models.index'), false)
             ->assertSee(__('admin.articles.ai_quality.failure_open_model_settings'))
             ->assertDontSee('data-ai-quality-failure-action="retry"', false)
-            ->assertDontSee('0/35');
+            ->assertDontSeeText('0/35');
     }
 
     public function test_guest_cannot_poll_article_ai_quality_progress(): void
@@ -467,8 +496,21 @@ class AdminArticleAiQualityTest extends TestCase
         $document = new \DOMDocument;
         @$document->loadHTML((string) $editResponse->getContent());
         $xpath = new \DOMXPath($document);
+        $collapseToggle = $xpath->query('//*[@data-ai-quality-collapse-toggle]')?->item(0);
+        $collapseBody = $xpath->query('//*[@id="ai-quality-result-content"]')?->item(0);
+        $compactSummary = $xpath->query('//*[@data-ai-quality-compact-summary]')?->item(0);
         $issueDisclosures = $xpath->query('//details[@data-ai-quality-issue]');
 
+        $this->assertNotNull($collapseToggle);
+        $this->assertSame('ai-quality-result-content', $collapseToggle->getAttribute('aria-controls'));
+        $this->assertSame('true', $collapseToggle->getAttribute('aria-expanded'));
+        $this->assertSame(__('admin.articles.ai_quality.collapse'), $collapseToggle->getAttribute('data-collapse-label'));
+        $this->assertSame(__('admin.articles.ai_quality.expand'), $collapseToggle->getAttribute('data-expand-label'));
+        $this->assertNotNull($collapseBody);
+        $this->assertNotNull($compactSummary);
+        $this->assertTrue($compactSummary->hasAttribute('hidden'));
+        $this->assertStringContainsString(__('admin.articles.ai_quality.score').' 78', $compactSummary->textContent);
+        $this->assertStringContainsString(__('admin.articles.ai_quality.issue_count', ['count' => 2]), $compactSummary->textContent);
         $this->assertSame(2, $issueDisclosures?->length);
         foreach ($issueDisclosures ?? [] as $issueDisclosure) {
             $this->assertFalse($issueDisclosure->hasAttribute('open'));

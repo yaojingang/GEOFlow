@@ -3,8 +3,15 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\ApiException;
+use App\Http\Requests\Api\ArticleAiOptimizationActionRequest;
+use App\Http\Requests\Api\StartArticleAiOptimizationRequest;
+use App\Models\AiModel;
+use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
 use App\Services\Api\ApiTokenService;
 use App\Services\Api\IdempotencyService;
+use App\Services\GeoFlow\ArticleAiOptimizationCoordinator;
+use App\Services\GeoFlow\ArticleAiOptimizationException;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -193,6 +200,126 @@ class ArticleController extends BaseApiController
         );
     }
 
+    public function startAiOptimization(
+        StartArticleAiOptimizationRequest $request,
+        int $article,
+        ArticleAiOptimizationCoordinator $coordinator,
+    ): JsonResponse {
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/ai-quality/optimization', function () use ($request, $article, $coordinator): JsonResponse {
+            $modelArticle = Article::query()->with('task.aiModel')->find($article);
+            if (! $modelArticle) {
+                throw new ApiException('article_not_found', '文章不存在', 404);
+            }
+            $model = $modelArticle->task?->aiModel;
+            if (! $model && $request->integer('optimization_model_id') > 0) {
+                $model = AiModel::query()->find($request->integer('optimization_model_id'));
+            }
+            if (! $model instanceof AiModel) {
+                throw new ApiException('article_ai_optimization_model_required', '请选择有效的内容模型', 422);
+            }
+            try {
+                $coordinator->start(
+                    $modelArticle,
+                    (string) $request->validated('strategy'),
+                    $model,
+                    ArticleAiOptimizationRun::TRIGGER_API_MANUAL,
+                    $this->auth($request)->auditAdminId,
+                );
+            } catch (ArticleAiOptimizationException $exception) {
+                throw $this->optimizationException($exception);
+            }
+
+            return $this->success($request, (array) $coordinator->statusForArticle($article), 202);
+        });
+    }
+
+    public function aiOptimizationCandidate(
+        Request $request,
+        int $article,
+        int $run,
+        ArticleAiOptimizationCoordinator $coordinator,
+    ): JsonResponse {
+        $this->assertOwnedOptimizationRun($article, $run);
+        try {
+            return $this->success($request, $coordinator->candidate($run));
+        } catch (ArticleAiOptimizationException $exception) {
+            throw $this->optimizationException($exception);
+        }
+    }
+
+    public function latestAiOptimizationCandidate(
+        Request $request,
+        int $article,
+        ArticleAiOptimizationCoordinator $coordinator,
+    ): JsonResponse {
+        $run = ArticleAiOptimizationRun::query()
+            ->where('article_id', $article)
+            ->whereNotNull('best_check_id')
+            ->latest('id')
+            ->first();
+        if (! $run) {
+            throw new ApiException('article_ai_optimization_not_found', 'AI 优化候选不存在', 404);
+        }
+        try {
+            return $this->success($request, $coordinator->candidate((int) $run->id));
+        } catch (ArticleAiOptimizationException $exception) {
+            throw $this->optimizationException($exception);
+        }
+    }
+
+    public function applyAiOptimization(
+        ArticleAiOptimizationActionRequest $request,
+        int $article,
+        int $run,
+        ArticleAiOptimizationCoordinator $coordinator,
+    ): JsonResponse {
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/ai-quality/optimization/{run}/apply', function () use ($request, $article, $run, $coordinator): JsonResponse {
+            $this->assertOwnedOptimizationRun($article, $run);
+            try {
+                $coordinator->apply($run, (string) $request->validated('candidate_hash'), $this->auth($request)->auditAdminId);
+            } catch (ArticleAiOptimizationException $exception) {
+                throw $this->optimizationException($exception);
+            }
+
+            return $this->success($request, (array) $coordinator->statusForArticle($article));
+        });
+    }
+
+    public function cancelAiOptimization(
+        ArticleAiOptimizationActionRequest $request,
+        int $article,
+        int $run,
+        ArticleAiOptimizationCoordinator $coordinator,
+    ): JsonResponse {
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/ai-quality/optimization/{run}/cancel', function () use ($request, $article, $run, $coordinator): JsonResponse {
+            $this->assertOwnedOptimizationRun($article, $run);
+            $coordinator->cancel(
+                $run,
+                adminId: $this->auth($request)->auditAdminId,
+            );
+
+            return $this->success($request, (array) $coordinator->statusForArticle($article));
+        });
+    }
+
+    public function rollbackAiOptimization(
+        ArticleAiOptimizationActionRequest $request,
+        int $article,
+        int $run,
+        ArticleAiOptimizationCoordinator $coordinator,
+    ): JsonResponse {
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/ai-quality/optimization/{run}/rollback', function () use ($request, $article, $run, $coordinator): JsonResponse {
+            $this->assertOwnedOptimizationRun($article, $run);
+            try {
+                $coordinator->rollback($run, $this->auth($request)->auditAdminId);
+            } catch (ArticleAiOptimizationException $exception) {
+                throw $this->optimizationException($exception);
+            }
+
+            return $this->success($request, (array) $coordinator->statusForArticle($article));
+        });
+    }
+
     /**
      * 软删除文章（写入 deleted_at）。幂等键：POST /articles/{id}/trash。
      */
@@ -222,5 +349,27 @@ class ArticleController extends BaseApiController
         )->withHeaders(['X-Request-Id' => $requestId]);
 
         return $response;
+    }
+
+    private function assertOwnedOptimizationRun(int $articleId, int $runId): ArticleAiOptimizationRun
+    {
+        $run = ArticleAiOptimizationRun::query()
+            ->whereKey($runId)
+            ->where('article_id', $articleId)
+            ->first();
+        if (! $run) {
+            throw new ApiException('article_ai_optimization_not_found', 'AI 优化运行不存在', 404);
+        }
+
+        return $run;
+    }
+
+    private function optimizationException(ArticleAiOptimizationException $exception): ApiException
+    {
+        return new ApiException(
+            $exception->errorCode(),
+            $exception->getMessage(),
+            $exception->httpStatus(),
+        );
     }
 }

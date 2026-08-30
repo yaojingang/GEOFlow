@@ -915,10 +915,13 @@ class AdminMaterialsPagesTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.knowledge-bases.index'))
             ->assertOk()
-            ->assertSee('data-knowledge-refresh-modal', false)
+            ->assertSee('data-admin-action-dialog', false)
             ->assertSee('data-refresh-chunks-form', false)
+            ->assertSee('data-dialog-title="'.__('admin.knowledge_bases.refresh_confirm_title').'"', false)
+            ->assertSee('data-refresh-submit-button disabled aria-disabled="true"', false)
             ->assertSee('data-refresh-progress', false)
             ->assertSee(__('admin.knowledge_bases.refresh_confirm_title'))
+            ->assertDontSee('data-knowledge-refresh-modal', false)
             ->assertSee(__('admin.knowledge_bases.refresh_progress_initial'))
             ->assertDontSee(__('admin.knowledge_bases.confirm_refresh_chunks', ['name' => '待更新切片知识库']));
     }

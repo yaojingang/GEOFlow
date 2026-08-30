@@ -74,7 +74,7 @@ main() {
     fail "Retired system update worker is still present: geoflow-system-update-queue-prod"
   fi
 
-  local required=(postgres redis app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb)
+  local required=(postgres redis app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb)
   local service missing_services=()
   for service in "${required[@]}"; do
     if "${COMPOSE[@]}" ps --status running --services | grep -qx "$service"; then
@@ -116,11 +116,14 @@ main() {
   log "Converging expired AI quality checks."
   "${COMPOSE[@]}" exec -T app php artisan geoflow:converge-ai-quality --json
 
+  log "Validating AI optimization queue configuration."
+  "${COMPOSE[@]}" exec -T app php artisan geoflow:work-ai-optimization --validate
+
   log "Checking AI quality worker heartbeats and front-queue probe."
   "${COMPOSE[@]}" exec -T app php artisan geoflow:ai-quality-health --json --probe --wait=10
 
   log "Recent application logs:"
-  "${COMPOSE[@]}" logs --tail=80 app queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler web || true
+  "${COMPOSE[@]}" logs --tail=80 app queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler web || true
 }
 
 main "$@"

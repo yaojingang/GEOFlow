@@ -99,6 +99,8 @@ class TaskLifecycleService
                 'ai_model_id' => $normalized['ai_model_id'],
                 'ai_quality_enabled' => $normalized['ai_quality_enabled'],
                 'ai_quality_timeout_sampling_enabled' => $normalized['ai_quality_timeout_sampling_enabled'],
+                'ai_quality_auto_optimize_enabled' => $normalized['ai_quality_auto_optimize_enabled'],
+                'ai_quality_optimization_level' => $normalized['ai_quality_optimization_level'],
                 'ai_quality_prompt_id' => $normalized['ai_quality_prompt_id'],
                 'ai_quality_model_id' => $normalized['ai_quality_model_id'],
                 'ai_quality_pass_score' => $normalized['ai_quality_pass_score'],
@@ -286,11 +288,13 @@ class TaskLifecycleService
         unset($normalized['status']);
         $knowledgeBaseIdsProvided = array_key_exists('knowledge_base_ids', $normalized);
         $qualityConfigurationChanged = false;
+        $optimizationLevelChanged = false;
+        $optimizationWasDisabled = false;
         $knowledgeBaseIds = $knowledgeBaseIdsProvided ? $normalized['knowledge_base_ids'] : [];
         unset($normalized['knowledge_base_ids']);
         $samplingWasDisabled = false;
 
-        DB::transaction(function () use (&$qualityConfigurationChanged, &$samplingWasDisabled, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask): void {
+        DB::transaction(function () use (&$qualityConfigurationChanged, &$optimizationLevelChanged, &$optimizationWasDisabled, &$samplingWasDisabled, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask): void {
             Article::withTrashed()
                 ->where('task_id', $taskId)
                 ->orderBy('id')
@@ -309,6 +313,8 @@ class TaskLifecycleService
                     'knowledge_base_id',
                     'ai_quality_enabled',
                     'ai_quality_timeout_sampling_enabled',
+                    'ai_quality_auto_optimize_enabled',
+                    'ai_quality_optimization_level',
                     'ai_quality_prompt_id',
                     'ai_quality_model_id',
                     'ai_quality_pass_score',
@@ -342,13 +348,21 @@ class TaskLifecycleService
                 : (bool) $current->ai_quality_enabled;
             if (! $effectiveAiQualityEnabled
                 && (array_key_exists('ai_quality_enabled', $normalized)
-                    || array_key_exists('ai_quality_timeout_sampling_enabled', $normalized))) {
+                    || array_key_exists('ai_quality_timeout_sampling_enabled', $normalized)
+                    || array_key_exists('ai_quality_auto_optimize_enabled', $normalized))) {
                 $normalized['ai_quality_timeout_sampling_enabled'] = 0;
+                $normalized['ai_quality_auto_optimize_enabled'] = 0;
             }
             $effectiveSamplingEnabled = $effectiveAiQualityEnabled && (array_key_exists('ai_quality_timeout_sampling_enabled', $normalized)
                 ? (bool) $normalized['ai_quality_timeout_sampling_enabled']
                 : (bool) $current->ai_quality_timeout_sampling_enabled);
             $samplingWasDisabled = (bool) $current->ai_quality_timeout_sampling_enabled && ! $effectiveSamplingEnabled;
+            $effectiveOptimizationEnabled = $effectiveAiQualityEnabled && (array_key_exists('ai_quality_auto_optimize_enabled', $normalized)
+                ? (bool) $normalized['ai_quality_auto_optimize_enabled']
+                : (bool) $current->ai_quality_auto_optimize_enabled);
+            $optimizationWasDisabled = (bool) $current->ai_quality_auto_optimize_enabled && ! $effectiveOptimizationEnabled;
+            $optimizationLevelChanged = array_key_exists('ai_quality_optimization_level', $normalized)
+                && (string) $normalized['ai_quality_optimization_level'] !== (string) $current->ai_quality_optimization_level;
 
             $effectiveKnowledgeBaseIds = $knowledgeBaseIdsProvided
                 ? (is_array($knowledgeBaseIds) ? $knowledgeBaseIds : [])
@@ -395,6 +409,20 @@ class TaskLifecycleService
 
             if ($qualityConfigurationChanged) {
                 $this->articleAiQualityInvalidationService->invalidateTask($taskId, '任务质检配置或知识依据已更新');
+            } elseif ($optimizationWasDisabled) {
+                $this->articleAiQualityInvalidationService->cancelTaskOptimization(
+                    $taskId,
+                    '任务已关闭自动优化',
+                    recoverWorkflow: true,
+                );
+            } elseif ($optimizationLevelChanged) {
+                $this->articleAiQualityInvalidationService->invalidateTaskOptimization(
+                    $taskId,
+                    '任务自动优化目标已更新',
+                    stopReason: 'task_optimization_level_changed',
+                    recoverWorkflow: true,
+                    taskAutoOnly: true,
+                );
             } elseif ($samplingWasDisabled) {
                 $this->articleAiQualityInvalidationService->invalidateSampledTaskChecks(
                     $taskId,
@@ -898,6 +926,7 @@ class TaskLifecycleService
             'is_loop',
             'ai_quality_enabled',
             'ai_quality_timeout_sampling_enabled',
+            'ai_quality_auto_optimize_enabled',
         ];
         foreach ($flagFields as $field) {
             if (array_key_exists($field, $data)) {
@@ -909,6 +938,18 @@ class TaskLifecycleService
 
         if (! $isUpdate && empty($output['ai_quality_enabled'])) {
             $output['ai_quality_timeout_sampling_enabled'] = 0;
+            $output['ai_quality_auto_optimize_enabled'] = 0;
+        }
+
+        if (array_key_exists('ai_quality_optimization_level', $data)) {
+            $level = trim((string) $data['ai_quality_optimization_level']);
+            if (! in_array($level, ArticleAiOptimizationPolicy::strategies(), true)) {
+                $fieldErrors['ai_quality_optimization_level'] = 'AI 自动优化等级无效';
+            } else {
+                $output['ai_quality_optimization_level'] = $level;
+            }
+        } elseif (! $isUpdate) {
+            $output['ai_quality_optimization_level'] = ArticleAiOptimizationPolicy::STRATEGY_EXCELLENT_80;
         }
 
         if (array_key_exists('ai_quality_pass_score', $data)) {
@@ -1138,6 +1179,7 @@ class TaskLifecycleService
             'next_run_at' => null,
             'updated_at' => now(),
         ]);
+        $this->articleAiQualityInvalidationService->cancelTaskOptimization($taskId, $reason);
 
         return TaskRun::query()
             ->where('task_id', $taskId)

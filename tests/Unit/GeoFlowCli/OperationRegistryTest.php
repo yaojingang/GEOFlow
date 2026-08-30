@@ -22,6 +22,11 @@ class OperationRegistryTest extends TestCase
         $apiRoutes = $v1Routes
             ->reject(fn (Route $route): bool => str_starts_with($route->uri(), 'api/v1/browser-operations')
                 || str_starts_with($route->uri(), 'api/v1/manual-publications'))
+            // The CLI reads the latest candidate and keeps rollback in the authenticated API and Admin surfaces.
+            ->reject(fn (Route $route): bool => in_array($route->getName(), [
+                'api.v1.articles.ai-quality.optimization.candidate',
+                'api.v1.articles.ai-quality.optimization.rollback',
+            ], true))
             ->map(function (Route $route): string {
                 $method = collect($route->methods())->first(fn (string $method): bool => $method !== 'HEAD');
 
@@ -32,7 +37,7 @@ class OperationRegistryTest extends TestCase
             ->all();
 
         $this->assertCount(10, $browserRoutes);
-        $this->assertCount(31, $apiRoutes);
+        $this->assertCount(35, $apiRoutes);
         $this->assertSame($apiRoutes, OperationRegistry::routeSignatures());
     }
 

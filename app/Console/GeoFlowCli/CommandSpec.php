@@ -57,6 +57,11 @@ final class CommandSpec
             'article.ai-quality-status' => self::spec('article.ai-quality-status', ['article', 'ai-quality-status'], 3, [], 'article.ai-quality-status', false, 'article ai-quality-status ARTICLE_ID'),
             'article.ai-quality-recheck' => self::spec('article.ai-quality-recheck', ['article', 'ai-quality-recheck'], 3, ['idempotency-key'], 'article.ai-quality-recheck', false, 'article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]'),
             'article.ai-quality-override' => self::spec('article.ai-quality-override', ['article', 'ai-quality-override'], 3, ['reason', 'idempotency-key'], 'article.ai-quality-override', false, 'article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]'),
+            'article.ai-optimize' => self::spec('article.ai-optimize', ['article', 'ai-optimize'], 3, ['level', 'model-id', 'idempotency-key'], 'article.ai-optimize', false, 'article ai-optimize ARTICLE_ID [--level LEVEL] [--model-id MODEL_ID] [--idempotency-key KEY]'),
+            'article.ai-optimization-status' => self::spec('article.ai-optimization-status', ['article', 'ai-optimization-status'], 3, [], 'article.ai-optimization-status', false, 'article ai-optimization-status ARTICLE_ID'),
+            'article.ai-optimization-candidate' => self::spec('article.ai-optimization-candidate', ['article', 'ai-optimization-candidate'], 3, [], 'article.ai-optimization-candidate', false, 'article ai-optimization-candidate ARTICLE_ID'),
+            'article.ai-optimization-apply' => self::spec('article.ai-optimization-apply', ['article', 'ai-optimization-apply'], 3, ['run-id', 'candidate-hash', 'idempotency-key'], 'article.ai-optimization-apply', false, 'article ai-optimization-apply ARTICLE_ID --run-id RUN_ID --candidate-hash HASH --idempotency-key KEY'),
+            'article.ai-optimization-cancel' => self::spec('article.ai-optimization-cancel', ['article', 'ai-optimization-cancel'], 3, ['run-id', 'idempotency-key'], 'article.ai-optimization-cancel', false, 'article ai-optimization-cancel ARTICLE_ID --run-id RUN_ID --idempotency-key KEY'),
             'article.trash' => self::spec('article.trash', ['article', 'trash'], 3, ['idempotency-key'], 'article.trash', false, 'article trash ARTICLE_ID [--idempotency-key KEY]'),
         ];
     }
@@ -155,6 +160,11 @@ final class CommandSpec
             'article.ai-quality-status' => [['article', 'ai-quality-status', '10'], ['article' => 10]],
             'article.ai-quality-recheck' => [['article', 'ai-quality-recheck', '10'], ['article' => 10]],
             'article.ai-quality-override' => [['article', 'ai-quality-override', '10', '--reason', 'verified evidence'], ['article' => 10]],
+            'article.ai-optimize' => [['article', 'ai-optimize', '10', '--level', 'excellent_80', '--model-id', '4'], ['article' => 10]],
+            'article.ai-optimization-status' => [['article', 'ai-optimization-status', '10'], ['article' => 10]],
+            'article.ai-optimization-candidate' => [['article', 'ai-optimization-candidate', '10'], ['article' => 10]],
+            'article.ai-optimization-apply' => [['article', 'ai-optimization-apply', '10', '--run-id', '12', '--candidate-hash', str_repeat('a', 64)], ['article' => 10, 'run' => 12]],
+            'article.ai-optimization-cancel' => [['article', 'ai-optimization-cancel', '10', '--run-id', '12'], ['article' => 10, 'run' => 12]],
             'article.trash' => [['article', 'trash', '10'], ['article' => 10]],
         ];
 

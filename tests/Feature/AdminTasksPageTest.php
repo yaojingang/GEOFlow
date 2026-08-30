@@ -100,7 +100,7 @@ class AdminTasksPageTest extends TestCase
             if ($routeName === 'admin.tasks.index') {
                 $response
                     ->assertSee('href="'.route('admin.tasks.create').'"', false)
-                    ->assertSee('onclick="executeAllActiveTasks()"', false);
+                    ->assertSee('data-run-all-tasks', false);
             }
         }
 
@@ -978,6 +978,120 @@ class AdminTasksPageTest extends TestCase
             ->assertSee('text-green-600 hover:text-green-800 hover:bg-green-50', false);
     }
 
+    public function test_task_lifecycle_actions_use_an_accessible_in_page_confirmation_dialog(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_lifecycle_dialog_admin');
+        $taskName = "Lifecycle Dialog Task\nwith 'quotes' and <markup>";
+        $task = Task::query()->create([
+            'name' => $taskName,
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('data-admin-action-dialog', false)
+            ->assertSee('role="alertdialog"', false)
+            ->assertSee('aria-modal="true"', false)
+            ->assertSee('data-admin-action-cancel', false)
+            ->assertSee('data-admin-action-confirm', false)
+            ->assertSee('window.AdminActionDialog.confirm', false)
+            ->assertSee('data-run-all-tasks', false)
+            ->assertDontSee('data-task-lifecycle-dialog', false)
+            ->assertDontSee('onclick="executeAllActiveTasks()', false)
+            ->assertDontSee('onclick="startBatchExecution(', false)
+            ->assertDontSee('onclick="stopBatchExecution(', false)
+            ->assertDontSee('onchange="handleStatusToggle(', false)
+            ->assertDontSee('window.confirm(', false);
+
+        $document = new \DOMDocument;
+        @$document->loadHTML((string) $response->getContent());
+        $button = $document->getElementById('batch-btn-'.(int) $task->id);
+
+        $this->assertNotNull($button);
+        $this->assertSame((string) $task->id, $button->getAttribute('data-task-id'));
+        $this->assertSame($taskName, $button->getAttribute('data-task-name'));
+    }
+
+    public function test_task_stop_succeeds_while_optimization_tables_are_pending_migration(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_stop_schema_rollout_admin');
+        $task = Task::query()->create([
+            'name' => 'Schema rollout stop task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'pending',
+        ]);
+
+        Schema::dropIfExists('article_ai_optimization_steps');
+        Schema::dropIfExists('article_ai_optimization_runs');
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.tasks.batch'), [
+                'task_id' => $task->id,
+                'action' => 'stop',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('paused', $task->fresh()->status);
+        $this->assertSame(0, (int) $task->fresh()->schedule_enabled);
+        $this->assertSame('cancelled', $run->fresh()->status);
+    }
+
+    public function test_task_batch_failure_does_not_expose_database_details(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_stop_error_redaction_admin');
+        $task = Task::query()->create([
+            'name' => 'Redacted stop failure task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+        ]);
+
+        Schema::dropIfExists('task_runs');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.tasks.batch'), [
+                'task_id' => $task->id,
+                'action' => 'stop',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', __('admin.tasks.message.status_update_failed'));
+
+        $this->assertStringNotContainsString('task_runs', (string) $response->getContent());
+        $this->assertSame('active', $task->fresh()->status);
+        $this->assertSame(1, (int) $task->fresh()->schedule_enabled);
+    }
+
+    public function test_task_health_failure_does_not_expose_database_details(): void
+    {
+        $admin = $this->createTaskFormAdmin('tasks_health_error_redaction_admin');
+
+        Schema::dropIfExists('task_runs');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.tasks.health'))
+            ->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', __('admin.tasks.message.status_update_failed'));
+
+        $this->assertStringNotContainsString('task_runs', (string) $response->getContent());
+    }
+
     public function test_task_list_shows_distribution_failure_summary(): void
     {
         $admin = Admin::query()->create([
@@ -1137,9 +1251,12 @@ class AdminTasksPageTest extends TestCase
         $trashPage = $this->actingAs($admin, 'admin')
             ->get(route('admin.tasks.index'))
             ->assertOk()
-            ->assertSee('data-task-restore-form', false)
+            ->assertSee('data-admin-confirm-form', false)
+            ->assertSee('data-admin-confirm-tone="success"', false)
+            ->assertSee('data-admin-confirm-title="'.__('admin.tasks.trash.confirm_restore', ['name' => $task->name]).'"', false)
+            ->assertSee('data-admin-confirm-submit disabled aria-disabled="true"', false)
             ->assertSee(__('admin.tasks.trash.action_restore'))
-            ->assertSee('onsubmit="return confirm(\'', false)
+            ->assertDontSee('onsubmit="return confirm', false)
             ->assertSee('data-lucide="rotate-ccw"', false);
 
         $snapshotId = (int) $trashPage->viewData('trashPagination')['snapshot_id'];
@@ -1615,18 +1732,17 @@ class AdminTasksPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.tasks.index'))
             ->assertOk()
-            ->assertSee('data-task-delete-form', false)
-            ->assertSee('type="button"', false)
-            ->assertSee('data-task-delete-trigger', false)
-            ->assertSee('data-task-delete-submit hidden', false)
-            ->assertSee('data-task-name="Dialog Preview Task"', false)
-            ->assertSee('data-task-delete-dialog', false)
-            ->assertSee('data-deleting-label="'.__('admin.tasks.delete_dialog.deleting').'"', false)
+            ->assertSee('data-admin-confirm-form', false)
+            ->assertSee('data-admin-confirm-tone="danger"', false)
+            ->assertSee('data-admin-confirm-title="'.__('admin.tasks.delete_dialog.title').' “Dialog Preview Task”"', false)
+            ->assertSee('data-admin-confirm-message="'.__('admin.tasks.delete_dialog.impact').'"', false)
+            ->assertSee('data-admin-confirm-submit disabled aria-disabled="true"', false)
+            ->assertSee('data-admin-action-dialog', false)
             ->assertSee('role="alertdialog"', false)
             ->assertSee('aria-modal="true"', false)
-            ->assertSee('fixed inset-0 m-auto', false)
             ->assertSee(__('admin.tasks.delete_dialog.title'))
             ->assertSee(__('admin.tasks.delete_dialog.impact'))
+            ->assertDontSee('data-task-delete-dialog', false)
             ->assertDontSee('onsubmit="return confirm', false);
     }
 

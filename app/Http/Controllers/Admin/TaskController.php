@@ -416,6 +416,8 @@ class TaskController extends Controller
                 'need_review' => (int) ($task['need_review'] ?? 0),
                 'ai_quality_enabled' => (bool) ($task['ai_quality_enabled'] ?? false),
                 'ai_quality_timeout_sampling_enabled' => (bool) ($task['ai_quality_timeout_sampling_enabled'] ?? false),
+                'ai_quality_auto_optimize_enabled' => (bool) ($task['ai_quality_auto_optimize_enabled'] ?? false),
+                'ai_quality_optimization_level' => (string) ($task['ai_quality_optimization_level'] ?? 'excellent_80'),
                 'ai_quality_prompt_id' => (string) (($task['ai_quality_prompt_id'] ?? '') ?: ''),
                 'ai_quality_model_id' => (string) (($task['ai_quality_model_id'] ?? '') ?: ''),
                 'ai_quality_pass_score' => (string) ($task['ai_quality_pass_score'] ?? 85),
@@ -505,9 +507,11 @@ class TaskController extends Controller
                 'task_summary' => $overview['task_summary'],
             ]);
         } catch (Throwable $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => __('admin.tasks.message.status_update_failed'),
             ], 500);
         }
     }
@@ -548,9 +552,11 @@ class TaskController extends Controller
                 'details' => $details,
             ], 409);
         } catch (Throwable $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => __('admin.tasks.message.status_update_failed'),
             ], 422);
         }
     }
@@ -913,6 +919,8 @@ class TaskController extends Controller
             'distribution_channel_ids.*' => ['integer', 'min:1'],
             'ai_quality_enabled' => ['nullable', 'boolean'],
             'ai_quality_timeout_sampling_enabled' => ['nullable', 'boolean'],
+            'ai_quality_auto_optimize_enabled' => ['nullable', 'boolean'],
+            'ai_quality_optimization_level' => ['nullable', 'string', 'in:pass,excellent_80,excellent_90'],
             'ai_quality_prompt_id' => ['nullable', 'integer', 'min:1', 'exists:prompts,id'],
             'ai_quality_model_id' => ['nullable', 'integer', 'min:1', 'exists:ai_models,id'],
             'ai_quality_pass_score' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -960,6 +968,9 @@ class TaskController extends Controller
             'ai_quality_enabled' => $request->boolean('ai_quality_enabled'),
             'ai_quality_timeout_sampling_enabled' => $request->boolean('ai_quality_enabled')
                 && $request->boolean('ai_quality_timeout_sampling_enabled'),
+            'ai_quality_auto_optimize_enabled' => $request->boolean('ai_quality_enabled')
+                && $request->boolean('ai_quality_auto_optimize_enabled'),
+            'ai_quality_optimization_level' => (string) ($payload['ai_quality_optimization_level'] ?? 'excellent_80'),
             'ai_quality_prompt_id' => isset($payload['ai_quality_prompt_id']) ? (int) $payload['ai_quality_prompt_id'] : null,
             'ai_quality_model_id' => isset($payload['ai_quality_model_id']) ? (int) $payload['ai_quality_model_id'] : null,
             'ai_quality_pass_score' => (int) ($payload['ai_quality_pass_score'] ?? 85),

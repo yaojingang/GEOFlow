@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use Illuminate\Support\Arr;
 use RuntimeException;
 
 class ArticleAiQualityPolicyResolver
@@ -108,12 +109,13 @@ class ArticleAiQualityPolicyResolver
             'manual_override_min_score' => (int) ($task?->ai_quality_manual_override_min_score ?: ($current['manual_override_min_score'] ?? 70)),
             'timeout_sampling_enabled' => (bool) ($task?->ai_quality_timeout_sampling_enabled ?? ($current['timeout_sampling_enabled'] ?? false)),
             'manual_review_required' => (bool) ($task?->need_review ?? ($current['manual_review_required'] ?? true)),
-            'publication_context' => array_replace(is_array($current['publication_context'] ?? null) ? $current['publication_context'] : [], [
+            'publication_context' => array_replace(Arr::except(
+                is_array($current['publication_context'] ?? null) ? $current['publication_context'] : [],
+                ['ai_generated_label_status', 'is_ai_generated'],
+            ), [
                 'publish_scope' => (string) ($task?->publish_scope ?? data_get($current, 'publication_context.publish_scope', 'public')),
                 'distribution_strategy' => (string) ($task?->distribution_strategy ?? data_get($current, 'publication_context.distribution_strategy', '')),
-                'is_ai_generated' => (bool) $article->is_ai_generated,
                 'advertising_label_status' => 'unknown',
-                'ai_generated_label_status' => 'unknown',
             ]),
         ];
     }
@@ -146,9 +148,7 @@ class ArticleAiQualityPolicyResolver
             'publication_context' => [
                 'publish_scope' => (string) ($task->publish_scope ?? 'public'),
                 'distribution_strategy' => (string) ($task->distribution_strategy ?? ''),
-                'is_ai_generated' => $article instanceof Article ? (bool) $article->is_ai_generated : true,
                 'advertising_label_status' => 'unknown',
-                'ai_generated_label_status' => 'unknown',
             ],
         ];
     }
@@ -172,7 +172,10 @@ class ArticleAiQualityPolicyResolver
             'manual_override_min_score' => (int) ($snapshot['manual_override_min_score'] ?? 70),
             'timeout_sampling_enabled' => (bool) ($snapshot['timeout_sampling_enabled'] ?? false),
             'manual_review_required' => (bool) ($snapshot['manual_review_required'] ?? true),
-            'publication_context' => is_array($snapshot['publication_context'] ?? null) ? $snapshot['publication_context'] : [],
+            'publication_context' => Arr::except(
+                is_array($snapshot['publication_context'] ?? null) ? $snapshot['publication_context'] : [],
+                ['ai_generated_label_status', 'is_ai_generated'],
+            ),
         ];
     }
 
@@ -260,7 +263,10 @@ class ArticleAiQualityPolicyResolver
             'sampling_max_ranges' => (int) config('geoflow.ai_quality_sampled_max_ranges', 12),
             'risk_scan_algorithm_version' => ArticleRiskScanner::SCAN_ALGORITHM_VERSION,
             'knowledge_base_ids' => array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])),
-            'publication_context' => is_array($policy['publication_context'] ?? null) ? $policy['publication_context'] : [],
+            'publication_context' => Arr::except(
+                is_array($policy['publication_context'] ?? null) ? $policy['publication_context'] : [],
+                ['ai_generated_label_status', 'is_ai_generated'],
+            ),
             'algorithm_version' => ArticleAiQualityFingerprint::ALGORITHM_VERSION,
         ];
     }

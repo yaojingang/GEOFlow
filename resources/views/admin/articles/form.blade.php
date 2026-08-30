@@ -102,6 +102,7 @@
     $aiQualityStatus = (string) ($aiQualityCheck?->status ?? ($aiQualityEnabled ? 'not_started' : 'disabled'));
     $aiQualityDecision = (string) ($aiQualityCheck?->decision ?? '');
     $aiQualityProgressData = is_array($aiQualityProgress ?? null) ? $aiQualityProgress : [];
+    $aiQualityProgressPercent = max(0, min(100, (int) ($aiQualityProgressData['progress_percent'] ?? 0)));
     $aiQualityWorkflowApply = is_array($aiQualityProgressData['workflow_apply'] ?? null) ? $aiQualityProgressData['workflow_apply'] : [];
     $aiQualityWorkflowApplyStatus = (string) ($aiQualityWorkflowApply['status'] ?? '');
     $aiQualityIsSampled = (string) ($aiQualityCheck?->inspection_scope ?? 'full') === 'fallback_sampled';
@@ -125,6 +126,11 @@
     ];
     $aiQualityIssues = is_array($aiQualityCheck?->issues) ? $aiQualityCheck->issues : [];
     $aiQualityUncertainties = is_array($aiQualityCheck?->uncertainties) ? $aiQualityCheck->uncertainties : [];
+    $aiOptimizationData = is_array($aiOptimization ?? null) ? $aiOptimization : null;
+    $aiOptimizationFeatureEnabled = (bool) config('geoflow.ai_quality_optimization_enabled', false);
+    $hasValidFullAiQuality = $aiQualityCheck
+        && (string) $aiQualityCheck->status === 'completed'
+        && (string) $aiQualityCheck->inspection_scope === 'full';
     $qualityFieldChecks = [
         [
             'label' => __('admin.articles.quality_scorecard.check_excerpt'),
@@ -248,8 +254,13 @@
                     </section>
 
                     @if($isEdit)
-                        <section id="ai-quality-result" class="scroll-mt-24 overflow-hidden rounded-lg border {{ $aiQualityPresentation['panel'] }} shadow-sm">
-                            <div class="border-b border-current/10 bg-white/80 px-6 py-5">
+                        <section
+                            id="ai-quality-result"
+                            data-ai-quality-collapsible
+                            data-collapsed="false"
+                            class="scroll-mt-24 overflow-hidden rounded-lg border {{ $aiQualityPresentation['panel'] }} shadow-sm"
+                        >
+                            <div data-ai-quality-collapse-header class="border-b border-current/10 bg-white/80 px-6 py-5">
                                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                     <div class="flex items-start gap-3">
                                         <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 ring-1 ring-blue-100">
@@ -263,34 +274,213 @@
                                                     <span data-ai-quality-result-label>{{ $aiQualityPresentation['label'] }}</span>
                                                 </span>
                                             </div>
-                                            <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.articles.ai_quality.desc') }}</p>
-                                            @if($aiQualityCheck)
-                                                <p class="mt-2 text-xs text-gray-500">
-                                                    {{ __('admin.articles.ai_quality.prompt_model', [
-                                                        'prompt' => $aiQualityCheck->prompt->name ?? '#'.$aiQualityCheck->prompt_id,
-                                                        'model' => $aiQualityCheck->aiModel->name ?? '#'.$aiQualityCheck->ai_model_id,
-                                                    ]) }}
+                                            <div data-ai-quality-expanded-copy>
+                                                <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.articles.ai_quality.desc') }}</p>
+                                                @if($aiQualityCheck)
+                                                    <p class="mt-2 text-xs text-gray-500">
+                                                        {{ __('admin.articles.ai_quality.prompt_model', [
+                                                            'prompt' => $aiQualityCheck->prompt->name ?? '#'.$aiQualityCheck->prompt_id,
+                                                            'model' => $aiQualityCheck->aiModel->name ?? '#'.$aiQualityCheck->ai_model_id,
+                                                        ]) }}
+                                                        @if($aiQualityCheck->finished_at)
+                                                            · {{ __('admin.articles.ai_quality.finished_at', ['time' => $aiQualityCheck->finished_at->format('Y-m-d H:i')]) }}
+                                                        @endif
+                                                    </p>
+                                                @endif
+                                            </div>
+                                            <div data-ai-quality-compact-summary hidden class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-600">
+                                                @if(in_array($aiQualityStatus, ['queued', 'running'], true))
+                                                    <span data-ai-quality-compact-progress class="font-mono font-semibold tabular-nums text-sky-700">{{ $aiQualityProgressPercent }}%</span>
+                                                    <span aria-hidden="true" class="text-gray-300">·</span>
+                                                    <span data-ai-quality-compact-message>{{ $aiQualityProgressData['message'] ?? __('admin.articles.ai_quality.progress_queued') }}</span>
+                                                @elseif($aiQualityCheck?->score !== null)
+                                                    <span class="font-semibold text-gray-800">{{ $aiQualityIsSampled ? __('admin.articles.ai_quality.sampled_score_label') : __('admin.articles.ai_quality.score') }} <span class="font-mono tabular-nums">{{ (int) $aiQualityCheck->score }}</span></span>
+                                                    <span aria-hidden="true" class="text-gray-300">·</span>
+                                                    <span>{{ __('admin.articles.ai_quality.issue_count', ['count' => count($aiQualityIssues)]) }}</span>
                                                     @if($aiQualityCheck->finished_at)
-                                                        · {{ __('admin.articles.ai_quality.finished_at', ['time' => $aiQualityCheck->finished_at->format('Y-m-d H:i')]) }}
+                                                        <span aria-hidden="true" class="hidden text-gray-300 xl:inline">·</span>
+                                                        <span class="hidden xl:inline">{{ __('admin.articles.ai_quality.finished_at', ['time' => $aiQualityCheck->finished_at->format('Y-m-d H:i')]) }}</span>
                                                     @endif
-                                                </p>
-                                            @endif
+                                                @elseif($aiQualityCheck?->finished_at)
+                                                    <span>{{ __('admin.articles.ai_quality.finished_at', ['time' => $aiQualityCheck->finished_at->format('Y-m-d H:i')]) }}</span>
+                                                @endif
+                                            </div>
                                         </div>
                                     </div>
-                                    <button
-                                        type="submit"
-                                        form="article-edit-form"
-                                        name="run_ai_quality_after_save"
-                                        value="1"
-                                        @disabled($aiQualityCheck && in_array($aiQualityStatus, ['queued', 'running'], true))
-                                        class="inline-flex shrink-0 items-center justify-center rounded-md bg-gray-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
-                                    >
-                                        <i data-lucide="{{ $aiQualityCheck ? 'refresh-cw' : 'sparkles' }}" class="mr-1.5 h-4 w-4"></i>
-                                        {{ $aiQualityCheck ? __('admin.articles.ai_quality.recheck') : __('admin.articles.ai_quality.start_manual') }}
-                                    </button>
+                                    <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            data-ai-optimization-open
+                                            @disabled(! $aiOptimizationFeatureEnabled || (string) $formData['status'] !== 'draft')
+                                            class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
+                                        >
+                                            <i data-lucide="wand-sparkles" class="mr-1.5 h-4 w-4"></i>
+                                            {{ $hasValidFullAiQuality ? __('admin.articles.ai_optimization.start') : __('admin.articles.ai_optimization.inspect_and_start') }}
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            form="article-edit-form"
+                                            name="run_ai_quality_after_save"
+                                            value="1"
+                                            data-ai-quality-submit
+                                            @disabled($aiQualityCheck && in_array($aiQualityStatus, ['queued', 'running'], true))
+                                            class="inline-flex items-center justify-center rounded-md bg-gray-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600"
+                                        >
+                                            <i data-lucide="{{ $aiQualityCheck ? 'refresh-cw' : 'sparkles' }}" class="mr-1.5 h-4 w-4"></i>
+                                            {{ $aiQualityCheck ? __('admin.articles.ai_quality.recheck') : __('admin.articles.ai_quality.start_manual') }}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            data-ai-quality-collapse-toggle
+                                            data-collapse-label="{{ __('admin.articles.ai_quality.collapse') }}"
+                                            data-expand-label="{{ __('admin.articles.ai_quality.expand') }}"
+                                            aria-controls="ai-quality-result-content"
+                                            aria-expanded="true"
+                                            aria-label="{{ __('admin.articles.ai_quality.collapse') }}"
+                                            title="{{ __('admin.articles.ai_quality.collapse') }}"
+                                            class="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition-[background-color,color,transform] duration-150 hover:bg-gray-50 hover:text-gray-900 active:scale-[.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                                        >
+                                            <i data-lucide="chevron-up" data-ai-quality-collapse-icon aria-hidden="true" class="mr-1.5 h-4 w-4 transition-transform duration-150"></i>
+                                            <span data-ai-quality-collapse-label>{{ __('admin.articles.ai_quality.collapse') }}</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
+                            <div id="ai-quality-result-content" data-ai-quality-collapse-body>
+                            <div
+                                data-ai-optimization-panel
+                                data-start-url="{{ \App\Support\AdminWeb::routePath('admin.articles.ai-quality.optimization.store', ['articleId' => (int) $articleId]) }}"
+                                data-status-url="{{ \App\Support\AdminWeb::routePath('admin.articles.ai-quality.status', ['articleId' => (int) $articleId]) }}"
+                                data-model-required="{{ empty($formData['task_name']) ? 'true' : 'false' }}"
+                                data-feature-enabled="{{ $aiOptimizationFeatureEnabled ? 'true' : 'false' }}"
+                                class="hidden border-b border-blue-100 bg-blue-50/60 px-6 py-5"
+                            >
+                                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                    <div>
+                                        <p class="text-sm font-semibold text-gray-900">{{ __('admin.articles.ai_optimization.panel_title') }}</p>
+                                        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">{{ __('admin.articles.ai_optimization.panel_help') }}</p>
+                                    </div>
+                                    <div class="grid shrink-0 grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="{{ __('admin.articles.ai_optimization.level_label') }}">
+                                        @foreach (['pass', 'excellent_80', 'excellent_90'] as $level)
+                                            <label class="cursor-pointer rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-800">
+                                                <input type="radio" name="article_ai_optimization_level" value="{{ $level }}" @checked($level === 'excellent_80') class="mr-1.5 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                                {{ __('admin.articles.ai_optimization.level_'.$level) }}
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                @if(empty($formData['task_name']))
+                                    <div class="mt-4 max-w-md">
+                                        <label for="article-ai-optimization-model" class="block text-xs font-semibold text-gray-700">{{ __('admin.article_assistant.generate.model_label') }}</label>
+                                        <div class="relative mt-1">
+                                            <select id="article-ai-optimization-model" class="block w-full appearance-none truncate rounded-md border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                <option value="">{{ __('admin.article_assistant.generate.model_placeholder') }}</option>
+                                                @foreach(($formOptions['ai_models'] ?? []) as $modelOption)
+                                                    <option value="{{ $modelOption['id'] }}">{{ $modelOption['name'] }}@if($modelOption['model_id'] !== '') · {{ $modelOption['model_id'] }}@endif</option>
+                                                @endforeach
+                                            </select>
+                                            <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
+                                        </div>
+                                    </div>
+                                @endif
+                                <p data-ai-optimization-notice class="mt-4 rounded-md bg-white px-3 py-2 text-xs leading-5 text-gray-600 ring-1 ring-blue-100" aria-live="polite">
+                                    {{ $aiOptimizationFeatureEnabled ? __('admin.articles.ai_optimization.ready') : __('admin.articles.ai_optimization.feature_disabled') }}
+                                </p>
+                                <div data-ai-optimization-progress class="mt-4 hidden">
+                                    <div class="flex items-center justify-between gap-3 text-sm">
+                                        <span data-ai-optimization-status class="font-semibold text-blue-900"></span>
+                                        <span data-ai-optimization-rounds class="text-xs text-blue-700"></span>
+                                    </div>
+                                    <div class="mt-2 h-2 overflow-hidden rounded-full bg-blue-100">
+                                        <div data-ai-optimization-progress-bar class="h-full rounded-full bg-blue-600" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div data-ai-optimization-candidate class="mt-4 hidden rounded-lg border border-gray-200 bg-white p-4">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <p class="text-sm font-semibold text-gray-900">{{ __('admin.articles.ai_optimization.candidate_title') }}</p>
+                                        <p data-ai-optimization-score class="text-xs font-medium text-blue-700"></p>
+                                    </div>
+                                    <div data-ai-optimization-modifications class="mt-3 grid gap-3"></div>
+                                </div>
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <button type="button" data-ai-optimization-start class="inline-flex min-h-10 items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-300">
+                                        <i data-lucide="wand-sparkles" class="mr-2 h-4 w-4"></i>{{ __('admin.articles.ai_optimization.start_action') }}
+                                    </button>
+                                    <button type="button" data-ai-optimization-apply class="hidden inline-flex min-h-10 items-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-emerald-300">
+                                        <i data-lucide="check" class="mr-2 h-4 w-4"></i>{{ __('admin.articles.ai_optimization.apply_action') }}
+                                    </button>
+                                    <button type="button" data-ai-optimization-cancel class="hidden inline-flex min-h-10 items-center rounded-md border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                        {{ __('admin.articles.ai_optimization.cancel_active_action') }}
+                                    </button>
+                                    <button type="button" data-ai-optimization-rollback class="hidden inline-flex min-h-10 items-center rounded-md border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-800 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400">
+                                        {{ __('admin.articles.ai_optimization.rollback_action') }}
+                                    </button>
+                                    <button type="button" data-ai-optimization-close class="inline-flex min-h-10 items-center rounded-md px-3 text-sm font-semibold text-gray-600 hover:bg-white hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+                                        {{ __('admin.articles.ai_optimization.manual_action') }}
+                                    </button>
+                                </div>
+                                @php
+                                    $aiOptimizationI18n = [
+                                        'dirty' => __('admin.articles.ai_optimization.dirty'),
+                                        'modelRequired' => __('admin.articles.ai_optimization.model_required'),
+                                        'requestFailed' => __('admin.articles.ai_optimization.request_failed'),
+                                        'score' => __('admin.articles.ai_optimization.score_change', ['before' => '__BEFORE__', 'after' => '__AFTER__']),
+                                        'rounds' => __('admin.articles.ai_optimization.round_progress', ['current' => '__CURRENT__', 'total' => '__TOTAL__']),
+                                        'field' => __('admin.articles.ai_optimization.field_change', ['field' => '__FIELD__', 'round' => '__ROUND__']),
+                                        'before' => __('admin.articles.ai_optimization.before'),
+                                        'after' => __('admin.articles.ai_optimization.after'),
+                                        'cancelActive' => __('admin.articles.ai_optimization.cancel_active_action'),
+                                        'discardCandidate' => __('admin.articles.ai_optimization.discard_candidate_action'),
+                                        'stateTargetScoreReview' => __('admin.articles.ai_optimization.state_target_score_review'),
+                                        'actionErrorTitle' => __('admin.action_dialog.error_title'),
+                                        'actionErrorGuidance' => __('admin.action_dialog.error_guidance'),
+                                        'closeLabel' => __('admin.action_dialog.close'),
+                                        'dialogs' => [
+                                            'startTitle' => __('admin.action_dialog.article_ai_optimization.start_title'),
+                                            'startMessage' => __('admin.action_dialog.article_ai_optimization.start_message'),
+                                            'startGuidance' => __('admin.action_dialog.article_ai_optimization.start_guidance'),
+                                            'startLabel' => __('admin.action_dialog.article_ai_optimization.start_label'),
+                                            'applyTitle' => __('admin.action_dialog.article_ai_optimization.apply_title'),
+                                            'applyMessage' => __('admin.action_dialog.article_ai_optimization.apply_message'),
+                                            'applyGuidance' => __('admin.action_dialog.article_ai_optimization.apply_guidance'),
+                                            'applyLabel' => __('admin.action_dialog.article_ai_optimization.apply_label'),
+                                            'cancelTitle' => __('admin.action_dialog.article_ai_optimization.cancel_title'),
+                                            'cancelMessage' => __('admin.action_dialog.article_ai_optimization.cancel_message'),
+                                            'cancelGuidance' => __('admin.action_dialog.article_ai_optimization.cancel_guidance'),
+                                            'cancelLabel' => __('admin.action_dialog.article_ai_optimization.cancel_label'),
+                                            'discardTitle' => __('admin.action_dialog.article_ai_optimization.discard_title'),
+                                            'discardMessage' => __('admin.action_dialog.article_ai_optimization.discard_message'),
+                                            'discardLabel' => __('admin.action_dialog.article_ai_optimization.discard_label'),
+                                            'rollbackTitle' => __('admin.action_dialog.article_ai_optimization.rollback_title'),
+                                            'rollbackMessage' => __('admin.action_dialog.article_ai_optimization.rollback_message'),
+                                            'rollbackGuidance' => __('admin.action_dialog.article_ai_optimization.rollback_guidance'),
+                                            'rollbackLabel' => __('admin.action_dialog.article_ai_optimization.rollback_label'),
+                                            'qualityTitle' => __('admin.action_dialog.article_ai_quality.run_title'),
+                                            'qualityMessage' => __('admin.action_dialog.article_ai_quality.run_message'),
+                                            'qualityGuidance' => __('admin.action_dialog.article_ai_quality.run_guidance'),
+                                            'qualityLabel' => __('admin.action_dialog.article_ai_quality.run_label'),
+                                        ],
+                                        'states' => [
+                                            'awaiting_quality' => __('admin.articles.ai_optimization.state_awaiting_quality'),
+                                            'queued' => __('admin.articles.ai_optimization.state_queued'),
+                                            'planning' => __('admin.articles.ai_optimization.state_planning'),
+                                            'rewriting' => __('admin.articles.ai_optimization.state_rewriting'),
+                                            'validating' => __('admin.articles.ai_optimization.state_validating'),
+                                            'evaluating' => __('admin.articles.ai_optimization.state_evaluating'),
+                                            'candidate_ready' => __('admin.articles.ai_optimization.state_candidate_ready'),
+                                            'applying' => __('admin.articles.ai_optimization.state_applying'),
+                                            'completed' => __('admin.articles.ai_optimization.state_completed'),
+                                            'needs_review' => __('admin.articles.ai_optimization.state_needs_review'),
+                                            'failed' => __('admin.articles.ai_optimization.state_failed'),
+                                            'stale' => __('admin.articles.ai_optimization.state_stale'),
+                                            'cancelled' => __('admin.articles.ai_optimization.state_cancelled'),
+                                        ],
+                                    ];
+                                @endphp
+                                <script type="application/json" data-ai-optimization-initial>@json($aiOptimizationData)</script>
+                                <script type="application/json" data-ai-optimization-i18n>@json($aiOptimizationI18n)</script>
+                            </div>
                             @if(! $aiQualityEnabled && ! $aiQualityCheck)
                                 <div class="px-6 py-6 text-sm text-gray-600">
                                     <p>{{ __('admin.articles.ai_quality.disabled') }}</p>
@@ -301,9 +491,6 @@
                                     {{ __('admin.articles.ai_quality.not_started_help') }}
                                 </div>
                             @elseif(in_array($aiQualityStatus, ['queued', 'running'], true))
-                                @php
-                                    $aiQualityProgressPercent = max(0, min(100, (int) ($aiQualityProgressData['progress_percent'] ?? 0)));
-                                @endphp
                                 <div
                                     data-ai-quality-progress
                                     data-active="true"
@@ -477,6 +664,9 @@
                                                         type="submit"
                                                         form="article-ai-quality-recheck-form"
                                                         data-ai-quality-failure-action="retry"
+                                                        data-admin-confirm-submit
+                                                        disabled
+                                                        aria-disabled="true"
                                                         class="inline-flex min-h-10 items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 active:translate-y-px"
                                                     >
                                                         <i data-lucide="{{ $aiQualityFailureAction['icon'] }}" class="mr-2 h-4 w-4"></i>
@@ -513,7 +703,7 @@
                                                     </div>
                                                 </div>
                                                 @if($aiQualityWorkflowApplyStatus === 'exhausted')
-                                                    <button type="submit" form="article-ai-quality-workflow-retry-form" data-ai-quality-workflow-retry class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-md bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">
+                                                    <button type="submit" form="article-ai-quality-workflow-retry-form" data-ai-quality-workflow-retry data-admin-confirm-submit disabled aria-disabled="true" class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-md bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60">
                                                         <i data-lucide="rotate-cw" class="mr-2 h-4 w-4"></i>
                                                         {{ __('admin.articles.ai_quality.workflow_retry_button') }}
                                                     </button>
@@ -689,7 +879,7 @@
                                             <h4 class="text-sm font-semibold text-gray-900">{{ __('admin.articles.ai_quality.override_title') }}</h4>
                                             <p class="mt-1 text-xs leading-5 text-gray-500">{{ __('admin.articles.ai_quality.override_help') }}</p>
                                             <textarea form="article-ai-quality-override-form" name="ai_quality_override_reason" rows="3" required minlength="4" maxlength="1000" class="mt-3 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" placeholder="{{ __('admin.articles.ai_quality.override_placeholder') }}">{{ old('ai_quality_override_reason') }}</textarea>
-                                            <button type="submit" form="article-ai-quality-override-form" class="mt-3 inline-flex items-center rounded-md bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+                                            <button type="submit" form="article-ai-quality-override-form" data-admin-confirm-submit disabled aria-disabled="true" class="mt-3 inline-flex items-center rounded-md bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                                                 <i data-lucide="user-check" class="mr-1.5 h-4 w-4"></i>
                                                 {{ __('admin.articles.ai_quality.override_action') }}
                                             </button>
@@ -797,6 +987,7 @@
                                     @endif
                                 </div>
                             @endif
+                            </div>
                         </section>
                     @endif
 
@@ -1237,8 +1428,8 @@
         </form>
         @if(! $isEdit)
             <div id="article-title-picker-modal" class="fixed inset-0 z-[80] hidden items-center justify-center p-4 sm:p-6" aria-hidden="true">
-                <div class="absolute inset-0 bg-slate-950/55 backdrop-blur-[1px]" data-title-picker-close></div>
-                <div class="relative flex max-h-[min(780px,92vh)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="article-title-picker-title">
+                <div class="absolute inset-0 bg-[rgba(15,23,42,0.48)]" data-title-picker-close></div>
+                <div class="relative flex max-h-[min(780px,calc(100dvh-2rem))] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_72px_rgba(15,23,42,0.28)]" role="dialog" aria-modal="true" aria-labelledby="article-title-picker-title">
                     <div class="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 sm:px-6">
                         <div>
                             <div class="flex items-center gap-2">
@@ -1323,13 +1514,13 @@
             <form id="article-risk-recheck-form" method="POST" action="{{ route('admin.articles.risk-scan', ['articleId' => (int) $articleId]) }}" class="hidden">
                 @csrf
             </form>
-            <form id="article-ai-quality-recheck-form" method="POST" action="{{ route('admin.articles.ai-quality.recheck', ['articleId' => (int) $articleId]) }}" class="hidden">
+            <form id="article-ai-quality-recheck-form" method="POST" action="{{ route('admin.articles.ai-quality.recheck', ['articleId' => (int) $articleId]) }}" class="hidden" data-admin-confirm-form data-admin-confirm-tone="success" data-admin-confirm-title="{{ __('admin.action_dialog.article_ai_quality.run_title') }}" data-admin-confirm-message="{{ __('admin.action_dialog.article_ai_quality.run_message') }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.article_ai_quality.run_guidance') }}" data-admin-confirm-label="{{ __('admin.action_dialog.article_ai_quality.run_label') }}">
                 @csrf
             </form>
-            <form id="article-ai-quality-workflow-retry-form" method="POST" action="{{ route('admin.articles.ai-quality.workflow-retry', ['articleId' => (int) $articleId]) }}" class="hidden">
+            <form id="article-ai-quality-workflow-retry-form" method="POST" action="{{ route('admin.articles.ai-quality.workflow-retry', ['articleId' => (int) $articleId]) }}" class="hidden" data-admin-confirm-form data-admin-confirm-tone="success" data-admin-confirm-title="{{ __('admin.action_dialog.article_ai_quality.run_title') }}" data-admin-confirm-message="{{ __('admin.action_dialog.article_ai_quality.run_message') }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.article_ai_quality.run_guidance') }}" data-admin-confirm-label="{{ __('admin.action_dialog.article_ai_quality.run_label') }}">
                 @csrf
             </form>
-            <form id="article-ai-quality-override-form" method="POST" action="{{ route('admin.articles.ai-quality.override', ['articleId' => (int) $articleId]) }}" class="hidden">
+            <form id="article-ai-quality-override-form" method="POST" action="{{ route('admin.articles.ai-quality.override', ['articleId' => (int) $articleId]) }}" class="hidden" data-admin-confirm-form data-admin-confirm-tone="warning" data-admin-confirm-title="{{ __('admin.action_dialog.article_ai_quality.override_title') }}" data-admin-confirm-message="{{ __('admin.action_dialog.article_ai_quality.override_message') }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.article_ai_quality.override_guidance') }}" data-admin-confirm-label="{{ __('admin.action_dialog.article_ai_quality.override_label') }}">
                 @csrf
             </form>
         @endif
@@ -1365,16 +1556,20 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(15, 23, 42, 0.52);
+            background: rgba(15, 23, 42, 0.48);
             padding: 24px;
         }
         .article-image-modal__panel {
             width: min(920px, 100%);
-            max-height: min(760px, 92vh);
+            max-height: min(760px, calc(100dvh - 48px));
             overflow: hidden;
-            border-radius: 12px;
+            border-radius: 16px;
             background: #fff;
-            box-shadow: 0 24px 80px rgba(15, 23, 42, 0.24);
+            box-shadow: 0 24px 72px rgba(15, 23, 42, 0.28);
+        }
+        @media (max-width: 480px) {
+            .article-image-modal__backdrop { padding: 16px; }
+            .article-image-modal__panel { max-height: calc(100dvh - 32px); }
         }
         .article-image-crop-stage {
             display: flex;
@@ -1515,6 +1710,7 @@
             let modalSequence = 0;
             let uploading = false;
             let savedEditorRange = null;
+            let modalOpener = null;
 
             const messages = {
                 uploadDisabled: @json(__('admin.article_editor.error.upload_disabled')),
@@ -1952,7 +2148,7 @@
                 return cropperLoadPromise;
             }
 
-            function closeModal() {
+            function closeModal(options = {}) {
                 modalSequence++;
                 destroyCropper();
                 if (currentObjectUrl) {
@@ -1967,7 +2163,11 @@
                 if (modal) {
                     modal.setAttribute('aria-hidden', 'true');
                 }
+                document.body.classList.remove('overflow-hidden');
                 setStatus('', '');
+                const focusTarget = modalOpener;
+                modalOpener = null;
+                if (options.restoreFocus !== false) focusTarget?.focus?.({ preventScroll: true });
             }
 
             function openImageModal(file) {
@@ -1979,7 +2179,8 @@
                     return messages.imageInvalid;
                 }
 
-                closeModal();
+                closeModal({ restoreFocus: false });
+                modalOpener = document.activeElement;
                 const sequence = ++modalSequence;
                 currentFile = file;
                 currentObjectUrl = URL.createObjectURL(file);
@@ -2008,7 +2209,9 @@
                 if (modal) {
                     modal.setAttribute('aria-hidden', 'false');
                 }
+                document.body.classList.add('overflow-hidden');
                 setStatus('', '');
+                window.requestAnimationFrame(() => altInput?.focus?.({ preventScroll: true }));
 
                 return null;
             }
@@ -2143,6 +2346,7 @@
                 },
                 input: function (value) {
                     textarea.value = value;
+                    window.dispatchEvent(new CustomEvent('geo-article-editor-input'));
                     window.requestAnimationFrame(saveEditorRange);
                 },
                 after: function () {
@@ -2154,6 +2358,7 @@
                             const markdown = String(value || '');
                             editor.setValue(markdown, true);
                             textarea.value = markdown;
+                            window.dispatchEvent(new CustomEvent('geo-article-editor-input'));
                         },
                         tip: showEditorTip,
                         revealRange: revealRange,
@@ -2243,7 +2448,22 @@
 
             document.addEventListener('keydown', function (event) {
                 if (event.key === 'Escape') {
+                    if (modal?.getAttribute('aria-hidden') === 'false' && !uploading) {
+                        closeModal();
+                    }
                     hideContextMenu();
+                }
+                if (event.key !== 'Tab' || modal?.getAttribute('aria-hidden') !== 'false') return;
+                const focusable = Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+                if (focusable.length === 0) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
                 }
             });
 

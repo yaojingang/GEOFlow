@@ -108,6 +108,16 @@ class Article extends Model
             ->ofMany(['id' => 'max'], static fn (Builder $query) => $query->where('gate_applied', true));
     }
 
+    public function aiOptimizationRuns(): HasMany
+    {
+        return $this->hasMany(ArticleAiOptimizationRun::class);
+    }
+
+    public function latestAiOptimizationRun(): HasOne
+    {
+        return $this->hasOne(ArticleAiOptimizationRun::class)->latestOfMany();
+    }
+
     public function taskRuns(): HasMany
     {
         return $this->hasMany(TaskRun::class, 'article_id');

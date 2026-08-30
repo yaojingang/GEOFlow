@@ -105,9 +105,9 @@
                         </div>
                     </div>
                     @if ($canEditSystemKnowledge && ($systemKnowledgeHealth['is_customized'] ?? false))
-                        <form method="POST" action="{{ route('admin.knowledge-bases.official.adopt', ['knowledgeBaseId' => (int) $knowledgeBase->id]) }}" onsubmit="return confirm(@js(__('admin.knowledge_detail.system_adopt_confirm')));" class="shrink-0">
+                        <form method="POST" action="{{ route('admin.knowledge-bases.official.adopt', ['knowledgeBaseId' => (int) $knowledgeBase->id]) }}" class="shrink-0" data-admin-confirm-form data-admin-confirm-tone="warning" data-admin-confirm-title="{{ __('admin.knowledge_detail.system_adopt_confirm') }}" data-admin-confirm-message="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.knowledge_detail.system_adopt_official') }}">
                             @csrf
-                            <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-orange-200 bg-white px-4 py-2.5 text-sm font-semibold text-orange-700 shadow-sm hover:bg-orange-50">
+                            <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-orange-200 bg-white px-4 py-2.5 text-sm font-semibold text-orange-700 shadow-sm hover:bg-orange-50" data-admin-confirm-submit disabled aria-disabled="true">
                                 <i data-lucide="package-check" class="mr-2 h-4 w-4"></i>
                                 {{ __('admin.knowledge_detail.system_adopt_official') }}
                             </button>
@@ -227,9 +227,9 @@
                                     </div>
                                 </div>
                                 @if ($canEditSystemKnowledge && hash('sha256', (string) $knowledgeBase->content) !== (string) $revision->content_hash)
-                                    <form method="POST" action="{{ route('admin.knowledge-bases.revisions.restore', ['knowledgeBaseId' => (int) $knowledgeBase->id, 'revisionId' => (int) $revision->id]) }}" onsubmit="return confirm(@js(__('admin.knowledge_detail.revision_restore_confirm')));">
+                                    <form method="POST" action="{{ route('admin.knowledge-bases.revisions.restore', ['knowledgeBaseId' => (int) $knowledgeBase->id, 'revisionId' => (int) $revision->id]) }}" data-admin-confirm-form data-admin-confirm-tone="warning" data-admin-confirm-title="{{ __('admin.knowledge_detail.revision_restore_confirm') }}" data-admin-confirm-message="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.knowledge_detail.revision_restore_action') }}">
                                         @csrf
-                                        <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                                        <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50" data-admin-confirm-submit disabled aria-disabled="true">
                                             <i data-lucide="history" class="mr-1.5 h-4 w-4"></i>
                                             {{ __('admin.knowledge_detail.revision_restore_action') }}
                                         </button>

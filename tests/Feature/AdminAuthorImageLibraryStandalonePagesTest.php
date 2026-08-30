@@ -173,7 +173,8 @@ class AdminAuthorImageLibraryStandalonePagesTest extends TestCase
             ->assertSee('data-dialog-close', false)
             ->assertSee('id="batch-form"', false)
             ->assertSee('data-image-delete-submit', false)
-            ->assertSee('window.confirm', false);
+            ->assertSee('window.AdminActionDialog', false)
+            ->assertDontSee('window.confirm', false);
     }
 
     public function test_image_library_create_edit_and_upload_pages_render_the_expected_forms(): void

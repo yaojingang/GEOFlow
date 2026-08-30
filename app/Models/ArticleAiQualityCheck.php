@@ -167,4 +167,9 @@ class ArticleAiQualityCheck extends Model
     {
         return $this->hasMany(ArticleAiQualitySegment::class);
     }
+
+    public function sourceOptimizationRuns(): HasMany
+    {
+        return $this->hasMany(ArticleAiOptimizationRun::class, 'source_check_id');
+    }
 }

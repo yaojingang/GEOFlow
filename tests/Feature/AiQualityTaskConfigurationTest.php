@@ -55,6 +55,8 @@ class AiQualityTaskConfigurationTest extends TestCase
             'ai_quality_model_id' => null,
             'ai_quality_pass_score' => 88,
             'ai_quality_manual_override_min_score' => 72,
+            'ai_quality_auto_optimize_enabled' => true,
+            'ai_quality_optimization_level' => 'excellent_90',
         ]);
 
         $this->assertTrue($task['ai_quality_enabled']);
@@ -62,6 +64,27 @@ class AiQualityTaskConfigurationTest extends TestCase
         $this->assertNull($task['ai_quality_model_id']);
         $this->assertSame(88, $task['ai_quality_pass_score']);
         $this->assertSame(72, $task['ai_quality_manual_override_min_score']);
+        $this->assertTrue($task['ai_quality_auto_optimize_enabled']);
+        $this->assertSame('excellent_90', $task['ai_quality_optimization_level']);
+    }
+
+    public function test_disabling_ai_quality_also_disables_task_auto_optimization(): void
+    {
+        $task = Task::query()->create([
+            'name' => '关闭质检的任务',
+            'status' => 'paused',
+            'ai_quality_enabled' => true,
+            'ai_quality_auto_optimize_enabled' => true,
+            'ai_quality_optimization_level' => 'excellent_90',
+        ]);
+
+        $updated = app(TaskLifecycleService::class)->updateTask($task->id, [
+            'ai_quality_enabled' => false,
+        ]);
+
+        $this->assertFalse($updated['ai_quality_enabled']);
+        $this->assertFalse($updated['ai_quality_auto_optimize_enabled']);
+        $this->assertSame('excellent_90', $updated['ai_quality_optimization_level']);
     }
 
     public function test_task_lifecycle_rejects_an_inverted_quality_threshold_range(): void

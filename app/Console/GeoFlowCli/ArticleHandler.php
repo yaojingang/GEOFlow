@@ -37,8 +37,76 @@ final class ArticleHandler
             'ai-quality-override' => $this->runtime->send('article.ai-quality-override', ['article' => $articleId()], body: [
                 'reason' => $this->runtime->requiredOption('reason'),
             ], idempotencyKey: $this->runtime->idempotencyKey()),
+            'ai-optimize' => $this->startOptimization($articleId()),
+            'ai-optimization-status' => $this->runtime->send('article.ai-optimization-status', ['article' => $articleId()]),
+            'ai-optimization-candidate' => $this->runtime->send('article.ai-optimization-candidate', ['article' => $articleId()]),
+            'ai-optimization-apply' => $this->applyOptimization($articleId()),
+            'ai-optimization-cancel' => $this->cancelOptimization($articleId()),
             'trash' => $this->runtime->send('article.trash', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
         };
+    }
+
+    private function startOptimization(int $articleId): int
+    {
+        $level = trim((string) ($this->runtime->context->options['level'] ?? 'excellent_80'));
+        if (! in_array($level, ['pass', 'excellent_80', 'excellent_90'], true)) {
+            throw new CliException('--level 必须是 pass、excellent_80 或 excellent_90');
+        }
+        $body = ['strategy' => $level];
+        $modelId = $this->runtime->optionalInteger('model-id');
+        if ($modelId !== null) {
+            $body['optimization_model_id'] = $modelId;
+        }
+
+        return $this->runtime->send(
+            'article.ai-optimize',
+            ['article' => $articleId],
+            body: $body,
+            idempotencyKey: $this->runtime->idempotencyKey(),
+        );
+    }
+
+    private function applyOptimization(int $articleId): int
+    {
+        $hash = strtolower($this->runtime->requiredOption('candidate-hash'));
+        if (preg_match('/\A[a-f0-9]{64}\z/D', $hash) !== 1) {
+            throw new CliException('--candidate-hash 必须是 64 位小写 SHA-256');
+        }
+
+        return $this->runtime->send(
+            'article.ai-optimization-apply',
+            ['article' => $articleId, 'run' => $this->requiredRunId()],
+            body: ['candidate_hash' => $hash],
+            idempotencyKey: $this->requiredIdempotencyKey(),
+        );
+    }
+
+    private function cancelOptimization(int $articleId): int
+    {
+        return $this->runtime->send(
+            'article.ai-optimization-cancel',
+            ['article' => $articleId, 'run' => $this->requiredRunId()],
+            body: [],
+            idempotencyKey: $this->requiredIdempotencyKey(),
+        );
+    }
+
+    private function requiredIdempotencyKey(): string
+    {
+        $key = $this->runtime->idempotencyKey();
+        if ($key === null) {
+            throw new CliException('该操作必须提供 --idempotency-key');
+        }
+
+        return $key;
+    }
+
+    private function requiredRunId(): int
+    {
+        return $this->runtime->positiveId(
+            $this->runtime->requiredOption('run-id'),
+            '运行 ID',
+        );
     }
 
     /** @return array<string,mixed> */

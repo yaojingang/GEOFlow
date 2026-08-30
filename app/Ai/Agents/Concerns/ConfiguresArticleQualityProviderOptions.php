@@ -9,7 +9,7 @@ trait ConfiguresArticleQualityProviderOptions
     private const ARTICLE_QUALITY_ISSUE_CODES = [
         'knowledge_contradiction', 'data_mismatch', 'unsupported_claim', 'citation_missing',
         'citation_scope_mismatch', 'ad_absolute_claim', 'ad_false_or_misleading',
-        'ad_industry_specific', 'ad_identifiability', 'ai_generated_disclosure', 'content_integrity',
+        'ad_industry_specific', 'ad_identifiability', 'content_integrity',
         'source_declared_unverified',
     ];
 

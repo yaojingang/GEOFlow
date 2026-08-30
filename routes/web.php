@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\AiWorkspaceController;
 use App\Http\Controllers\Admin\AiWorkspaceKnowledgeMediaController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
+use App\Http\Controllers\Admin\ArticleAiOptimizationController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ArticleEditorAssetController;
 use App\Http\Controllers\Admin\ArticleEditorAssistantController;
@@ -314,6 +315,26 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 ->middleware('throttle:120,1')
                 ->name('ai-quality.status')
                 ->whereNumber('articleId');
+            Route::post('{articleId}/ai-quality/optimization', [ArticleAiOptimizationController::class, 'store'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('ai-quality.optimization.store')
+                ->whereNumber('articleId');
+            Route::get('{articleId}/ai-quality/optimization/{runId}/candidate', [ArticleAiOptimizationController::class, 'candidate'])
+                ->middleware('throttle:120,1')
+                ->name('ai-quality.optimization.candidate')
+                ->whereNumber(['articleId', 'runId']);
+            Route::post('{articleId}/ai-quality/optimization/{runId}/apply', [ArticleAiOptimizationController::class, 'apply'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('ai-quality.optimization.apply')
+                ->whereNumber(['articleId', 'runId']);
+            Route::post('{articleId}/ai-quality/optimization/{runId}/cancel', [ArticleAiOptimizationController::class, 'cancel'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('ai-quality.optimization.cancel')
+                ->whereNumber(['articleId', 'runId']);
+            Route::post('{articleId}/ai-quality/optimization/{runId}/rollback', [ArticleAiOptimizationController::class, 'rollback'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('ai-quality.optimization.rollback')
+                ->whereNumber(['articleId', 'runId']);
             Route::post('{articleId}/ai-quality/workflow-retry', [ArticleController::class, 'retryAiQualityWorkflow'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('ai-quality.workflow-retry')
