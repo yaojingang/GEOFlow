@@ -16,6 +16,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Mockery\MockInterface;
@@ -71,6 +73,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ->assertSee(route('admin.system-updates.runs.show', ['runUuid' => $run->run_uuid]), false)
             ->assertSee(route('admin.system-updates.backups.show', ['backupUuid' => $backup->backup_uuid]), false)
             ->assertSee(__('admin.system_updates.backup.status_available'))
+            ->assertDontSee('data-system-update-release-notice', false)
             ->assertDontSee(route('admin.system-updates.check'), false)
             ->assertDontSee(route('admin.system-updates.updater.prepare'), false)
             ->assertDontSee('/system-updates/apply', false)
@@ -102,6 +105,75 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ->assertSee(route('admin.system-updates.updater.prepare'), false)
             ->assertDontSee('/absolute/path/to/GEOFlow', false)
             ->assertDontSee(route('admin.system-updates.check'), false);
+    }
+
+    public function test_manual_knowledge_sync_explains_its_purpose_and_keeps_the_pending_command_copyable(): void
+    {
+        $this->app->instance(AgentClient::class, new AgentClientStub);
+
+        $this->actingAs($this->createAdmin('manual_sync_copy_admin'), 'admin')
+            ->get(route('admin.system-updates.index'))
+            ->assertOk()
+            ->assertSee(__('admin.system_updates.manual_commands.title'))
+            ->assertSee(__('admin.system_updates.manual_commands.sync_system_knowledge_desc'))
+            ->assertSee(__('admin.system_updates.manual_commands.sync_system_knowledge_pending_desc'))
+            ->assertSee(__('admin.system_updates.manual_commands.command_label'))
+            ->assertSee('php artisan geoflow:sync-system-knowledge --key=ai_workspace_manual --media')
+            ->assertSee('data-system-updater-copy="#manual-command-0-sync_ai_workspace_system_knowledge"', false)
+            ->assertSee(__('admin.system_updates.updater.copy'));
+    }
+
+    public function test_new_release_notice_explains_changes_and_leads_into_the_existing_update_guidance(): void
+    {
+        Cache::flush();
+        config([
+            'geoflow.app_version' => '3.0.0',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => 'https://example.test/version.json',
+            'geoflow.update_metadata_cache_ttl_seconds' => 86400,
+        ]);
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://example.test/version.json' => Http::response([
+                'version' => '3.1.0',
+                'tag' => 'v3.1.0',
+                'release_date' => '2026-09-01',
+                'release_type' => 'minor',
+                'payload' => [
+                    'summary_zh' => '新增版本更新说明，并优化系统更新引导。',
+                    'summary_en' => 'Adds release notes and improves the system update guidance.',
+                    'release_url' => 'https://github.com/yaojingang/GEOFlow/releases/tag/v3.1.0',
+                ],
+            ]),
+        ]);
+        $this->app->instance(AgentClient::class, new AgentClientStub);
+
+        $response = $this->actingAs($this->createAdmin('release_notice_admin'), 'admin')
+            ->get(route('admin.system-updates.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee('data-system-update-release-notice', false)
+            ->assertSee(__('admin.system_updates.release_notice.title', ['version' => '3.1.0']))
+            ->assertSee(__('admin.system_updates.release_notice.version_line', ['current' => '3.0.0', 'latest' => '3.1.0']))
+            ->assertSee('新增版本更新说明，并优化系统更新引导。')
+            ->assertSee(__('admin.system_updates.release_notice.release_type.minor'))
+            ->assertSee(__('admin.system_updates.release_notice.release_date', ['date' => '2026-09-01']))
+            ->assertSee('https://github.com/yaojingang/GEOFlow/releases/tag/v3.1.0', false)
+            ->assertSee(__('admin.system_updates.release_notice.cta'))
+            ->assertSee(__('admin.system_updates.manual_commands.title'))
+            ->assertSee(__('admin.system_updates.updater.title'));
+
+        $content = (string) $response->getContent();
+        $noticePosition = strpos($content, 'data-system-update-release-notice');
+        $manualPosition = strpos($content, __('admin.system_updates.manual_commands.title'));
+        $updaterPosition = strpos($content, __('admin.system_updates.updater.title'));
+
+        $this->assertIsInt($noticePosition);
+        $this->assertIsInt($manualPosition);
+        $this->assertIsInt($updaterPosition);
+        $this->assertLessThan($manualPosition, $noticePosition);
+        $this->assertLessThan($updaterPosition, $manualPosition);
     }
 
     public function test_prepared_package_shows_a_download_entry_and_requires_a_real_host_root_before_commands(): void

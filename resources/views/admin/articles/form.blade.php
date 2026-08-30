@@ -125,14 +125,6 @@
     ];
     $aiQualityIssues = is_array($aiQualityCheck?->issues) ? $aiQualityCheck->issues : [];
     $aiQualityUncertainties = is_array($aiQualityCheck?->uncertainties) ? $aiQualityCheck->uncertainties : [];
-    $hasPublishedAiQualityRisk = $isEdit
-        && $formData['status'] === 'published'
-        && $aiQualityEnabled
-        && (
-            ! $aiQualityCheck
-            || $aiQualityStatus !== 'completed'
-            || ($aiQualityDecision !== 'passed' && ! (bool) $aiQualityCheck?->is_overridden)
-        );
     $qualityFieldChecks = [
         [
             'label' => __('admin.articles.quality_scorecard.check_excerpt'),
@@ -298,18 +290,6 @@
                                     </button>
                                 </div>
                             </div>
-
-                            @if($hasPublishedAiQualityRisk)
-                                <div class="border-b border-red-200 bg-red-50 px-6 py-4" role="alert">
-                                    <div class="flex items-start gap-3 text-red-900">
-                                        <i data-lucide="triangle-alert" class="mt-0.5 h-5 w-5 shrink-0 text-red-600"></i>
-                                        <div>
-                                            <p class="text-sm font-semibold">{{ __('admin.articles.ai_quality.published_risk_title') }}</p>
-                                            <p class="mt-1 text-sm leading-6 text-red-800">{{ __('admin.articles.ai_quality.published_risk_desc') }}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            @endif
 
                             @if(! $aiQualityEnabled && ! $aiQualityCheck)
                                 <div class="px-6 py-6 text-sm text-gray-600">

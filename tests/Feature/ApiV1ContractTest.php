@@ -912,4 +912,38 @@ class ApiV1ContractTest extends TestCase
 
         $this->assertNotNull(Category::query()->find($category->id));
     }
+
+    public function test_material_api_counts_trashed_articles_and_keeps_their_author_protected(): void
+    {
+        $admin = $this->createActiveAdmin('trashed_article_author_admin', 'p');
+        $bearer = $this->createBearerToken($admin, ['materials:read', 'materials:write']);
+        $author = Author::query()->create(['name' => 'API trashed article author']);
+        $category = Category::query()->create([
+            'name' => 'API trashed article category',
+            'slug' => 'api-trashed-article-category',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'API trashed author article',
+            'slug' => 'api-trashed-author-article',
+            'content' => 'Article retained in the trash.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+        ]);
+        $article->delete();
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/materials/authors')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.id', (int) $author->id)
+            ->assertJsonPath('data.items.0.article_count', 0)
+            ->assertJsonPath('data.items.0.trashed_count', 1);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->deleteJson('/api/v1/materials/authors/'.(int) $author->id)
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'material_in_use')
+            ->assertJsonPath('error.details.trashed_count', 1);
+
+        $this->assertModelExists($author);
+    }
 }

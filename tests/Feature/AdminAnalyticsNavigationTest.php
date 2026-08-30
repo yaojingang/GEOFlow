@@ -114,6 +114,21 @@ class AdminAnalyticsNavigationTest extends TestCase
             ->assertSee(__('admin.analytics.overview.alerts.new_leads.title', ['count' => 1]))
             ->assertDontSee(__('admin.analytics.overview.alerts.ai_unconfigured.title'));
 
+        $document = new \DOMDocument;
+        $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+        $xpath = new \DOMXPath($document);
+        $metricCards = $xpath->query('//*[@data-analytics-metric]');
+
+        $this->assertNotFalse($metricCards);
+        $this->assertSame(5, $metricCards->length);
+
+        foreach ($metricCards as $metricCard) {
+            $icons = $xpath->query('.//*[@data-lucide]', $metricCard);
+
+            $this->assertNotFalse($icons);
+            $this->assertSame(0, $icons->length);
+        }
+
         $this->assertSame(1, substr_count($response->getContent(), 'data-analytics-priority-alert'));
     }
 

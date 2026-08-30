@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Cache;
  */
 class AdminUpdateMetadataService
 {
+    private const GITHUB_REPOSITORY_URL = 'https://github.com/yaojingang/GEOFlow';
+
     public function __construct(
         private readonly SafeOutboundHttpClient $safeHttp,
         private readonly Factory $http,
@@ -114,13 +116,14 @@ class AdminUpdateMetadataService
         return [
             'state' => $state,
             'links' => [
-                'github' => 'https://github.com/yaojingang/GEOFlow',
+                'github' => self::GITHUB_REPOSITORY_URL,
                 'changelog' => [
-                    'zh-CN' => (string) ($payload['changelog_url_zh'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md'),
-                    'en' => (string) ($payload['changelog_url_en'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md'),
+                    'zh-CN' => $this->changelogUrl($state, 'docs/CHANGELOG.md'),
+                    'en' => $this->changelogUrl($state, 'docs/CHANGELOG_en.md'),
                 ],
-                'release' => (string) ($payload['release_url'] ?? 'https://github.com/yaojingang/GEOFlow'),
+                'release' => $this->releaseUrl($state),
             ],
+            'release_notice' => $this->releaseNotice($state, $payload),
         ];
     }
 
@@ -199,5 +202,81 @@ class AdminUpdateMetadataService
     private function cacheKey(string $url): string
     {
         return 'geoflow:update_metadata:'.sha1($url);
+    }
+
+    /** @param array<string, mixed> $state */
+    private function releaseUrl(array $state): string
+    {
+        $tag = $this->validatedTag($state);
+        if ($tag !== null) {
+            return self::GITHUB_REPOSITORY_URL.'/releases/tag/'.rawurlencode($tag);
+        }
+
+        return self::GITHUB_REPOSITORY_URL.'/releases';
+    }
+
+    /** @param array<string, mixed> $state */
+    private function changelogUrl(array $state, string $path): string
+    {
+        $reference = $this->validatedTag($state) ?? 'main';
+
+        return self::GITHUB_REPOSITORY_URL.'/blob/'.rawurlencode($reference).'/'.$path;
+    }
+
+    /** @param array<string, mixed> $state */
+    private function validatedTag(array $state): ?string
+    {
+        $tag = trim((string) ($state['tag'] ?? ''));
+
+        return preg_match('/\Av?[0-9A-Za-z][0-9A-Za-z._-]{0,127}\z/D', $tag) === 1
+            ? $tag
+            : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     * @param  array<string, mixed>  $payload
+     * @return array{
+     *   available: bool,
+     *   current_version: string,
+     *   latest_version: string,
+     *   release_date: string,
+     *   release_type: string,
+     *   summary: string,
+     *   url: string
+     * }
+     */
+    private function releaseNotice(array $state, array $payload): array
+    {
+        $locale = app()->getLocale();
+        $summaryKeys = array_values(array_unique(array_filter([
+            'summary_'.$locale,
+            $locale === 'zh_CN' ? 'summary_zh' : null,
+            'summary_en',
+        ])));
+        $summary = '';
+
+        foreach ($summaryKeys as $summaryKey) {
+            $candidate = trim((string) ($payload[$summaryKey] ?? ''));
+            if ($candidate !== '') {
+                $summary = $candidate;
+                break;
+            }
+        }
+
+        $releaseType = trim((string) ($state['release_type'] ?? ''));
+        if (! in_array($releaseType, ['major', 'minor', 'patch', 'feature', 'fix', 'security'], true)) {
+            $releaseType = '';
+        }
+
+        return [
+            'available' => ! empty($state['is_update_available']),
+            'current_version' => ltrim(trim((string) ($state['current_version'] ?? '')), 'vV'),
+            'latest_version' => ltrim(trim((string) ($state['latest_version'] ?? '')), 'vV'),
+            'release_date' => trim((string) ($state['release_date'] ?? '')),
+            'release_type' => $releaseType,
+            'summary' => $summary,
+            'url' => $this->releaseUrl($state),
+        ];
     }
 }

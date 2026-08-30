@@ -527,6 +527,25 @@ return array_replace_recursive($base, [
     'system_updates' => [
         'page_title' => 'Centro de Atualização do Sistema',
         'page_subtitle' => 'Verifique releases do GitHub, gere um plano seguro e crie backups locais antes de aplicar mudanças.',
+        'release_notice' => [
+            'eyebrow' => 'Nova versão disponível',
+            'title' => 'GEOFlow v:version está disponível',
+            'description' => 'Uma nova versão do GEOFlow está disponível no GitHub. Revise as mudanças e siga as orientações abaixo para preparar a atualização.',
+            'version_line' => 'Versão atual v:current. Versão mais recente v:latest.',
+            'changes_title' => 'O que mudou',
+            'summary_fallback' => 'As mudanças detalhadas desta versão estão disponíveis na página da Release no GitHub.',
+            'release_date' => 'Lançada em :date',
+            'release_type' => [
+                'major' => 'Versão principal',
+                'minor' => 'Versão com recursos',
+                'patch' => 'Versão de manutenção',
+                'feature' => 'Novos recursos',
+                'fix' => 'Correções',
+                'security' => 'Atualização de segurança',
+            ],
+            'cta' => 'Ver versão no GitHub',
+            'next_step' => 'Depois de revisar a versão, continue com as orientações do Updater abaixo para fazer backup, instalar e atualizar o GEOFlow.',
+        ],
         'updater' => [
             'title' => 'GEOFlow Updater (ferramenta do host)',
             'description' => 'O GEOFlow Updater opera fora dos contêineres do site e gerencia ativação de imagens, backups completos e reversões. Esta página conecta a ferramenta, inicia operações controladas e mostra os resultados.',
@@ -6677,13 +6696,17 @@ return array_replace_recursive($base, [
     ],
     'system_updates' => [
         'manual_commands' => [
-            'title' => 'Etapas manuais obrigatórias',
-            'description' => 'Execute estas etapas no servidor e confirme o resultado antes de concluir a atualização.',
-            'required' => 'Obrigatório',
-            'complete' => 'Concluído',
-            'pending' => 'Pendente',
-            'sync_system_knowledge' => 'Sincronizar o conhecimento do Espaço de Trabalho de IA',
-            'sync_system_knowledge_desc' => 'Instala ou atualiza com segurança o guia do sistema e suas capturas verificadas.',
+            'title' => 'Sincronização de conteúdo após a atualização',
+            'description' => 'Esta verificação confirma se a ajuda do Espaço de Trabalho de IA e os exemplos de página correspondem à versão atual.',
+            'required' => 'Verificar após atualizar',
+            'complete' => 'Nenhuma ação necessária',
+            'pending' => 'Ação necessária',
+            'command_label' => 'Comando do servidor, execute somente quando houver ação necessária',
+            'show_command' => 'Mostrar o comando correspondente',
+            'sync_system_knowledge' => 'Atualizar a ajuda do Espaço de Trabalho de IA',
+            'sync_system_knowledge_desc' => 'Finalidade: sincronizar a ajuda incluída, atualizar a busca da ajuda de IA e importar os exemplos de página correspondentes. O conteúdo personalizado é preservado.',
+            'sync_system_knowledge_complete_desc' => 'A ajuda atual e os exemplos de página correspondentes já estão sincronizados. Nenhum comando é necessário.',
+            'sync_system_knowledge_pending_desc' => 'Peça a alguém com acesso ao servidor para executar o comando abaixo no diretório do projeto GEOFlow e depois atualize esta página para confirmar o resultado.',
         ],
         'updater' => [
             'error_dialog' => [
