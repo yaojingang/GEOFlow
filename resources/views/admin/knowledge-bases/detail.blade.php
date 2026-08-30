@@ -445,6 +445,7 @@
                 </div>
             @endif
         </div>
+        @include('admin.knowledge-bases.partials.atomic-facts', ['factLibrary' => $knowledgeBase->factLibrary])
     </div>
 @endsection
 

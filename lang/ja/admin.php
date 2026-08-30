@@ -997,4 +997,10 @@ return array_replace_recursive($base, [
         'es' => 'スペイン語',
         'ru' => 'ロシア語',
     ],
+    'knowledge_facts' => [
+        'title' => 'アトミックファクトライブラリ', 'description' => '独立して検証できる回答、期間、根拠を管理します。', 'working_version' => '下書きバージョン',
+        'label' => '指標名', 'subject' => '主体', 'predicate' => '述語', 'add' => 'ファクトを追加', 'empty' => 'アトミックファクトはまだありません。', 'publish' => 'レビュー済み版を公開',
+        'message' => ['saved' => 'アトミックファクトを保存しました。', 'published' => 'ライブラリを公開しました。', 'restored' => '履歴版を新しい版として復元しました。'],
+        'validation' => ['chunks_not_ready' => 'ナレッジチャンクの準備ができていません。', 'no_facts' => '有効なファクトが1件以上必要です。', 'review_required' => 'ファクト、値、根拠のレビューと競合解消が必要です。', 'primary_evidence_required' => '重要な数値ファクトには主要根拠が必要です。'],
+    ],
 ]);

@@ -6946,4 +6946,10 @@ return [
             'no_progress' => '连续多批没有新增标题，任务已暂停。请调整提示词后重试。',
         ],
     ],
+    'knowledge_facts' => [
+        'title' => '原子事实库', 'description' => '维护可独立核验的标准事实、时效范围与证据。', 'working_version' => '草稿版本',
+        'label' => '指标名称', 'subject' => '主体', 'predicate' => '关系', 'add' => '新增事实', 'empty' => '尚未创建原子事实。', 'publish' => '发布审核版本',
+        'message' => ['saved' => '原子事实已保存。', 'published' => '原子事实库已发布。', 'restored' => '历史版本已恢复为新版本。'],
+        'validation' => ['chunks_not_ready' => '知识切片尚未就绪。', 'no_facts' => '至少需要一个已启用事实。', 'review_required' => '事实、值和证据需要完成审核并清除冲突。', 'primary_evidence_required' => '关键数值事实需要主要证据。'],
+    ],
 ];

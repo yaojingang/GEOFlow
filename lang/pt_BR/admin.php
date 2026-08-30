@@ -6958,4 +6958,10 @@ return array_replace_recursive($base, [
         'media_saved' => 'Material visual do conhecimento do sistema salvo.',
         'media_rules' => 'Somente PNG e WebP, até 8 MB e 4096 pixels no maior lado. A substituição mantém a versão anterior disponível no histórico das conversas.',
     ],
+    'knowledge_facts' => [
+        'title' => 'Biblioteca de fatos atômicos', 'description' => 'Mantenha respostas verificáveis, escopo temporal e evidências.', 'working_version' => 'Versão de rascunho',
+        'label' => 'Nome do indicador', 'subject' => 'Sujeito', 'predicate' => 'Predicado', 'add' => 'Adicionar fato', 'empty' => 'Ainda não há fatos atômicos.', 'publish' => 'Publicar versão revisada',
+        'message' => ['saved' => 'Fato atômico salvo.', 'published' => 'Biblioteca de fatos atômicos publicada.', 'restored' => 'A revisão histórica foi restaurada como uma nova revisão.'],
+        'validation' => ['chunks_not_ready' => 'Os fragmentos da base de conhecimento ainda não estão prontos.', 'no_facts' => 'É necessário ao menos um fato habilitado.', 'review_required' => 'Fatos, valores e evidências precisam estar revisados e sem conflitos.', 'primary_evidence_required' => 'Fatos numéricos críticos exigem evidência principal.'],
+    ],
 ]);

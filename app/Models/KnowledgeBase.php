@@ -60,6 +60,11 @@ class KnowledgeBase extends Model
         return $this->hasMany(KnowledgeChunk::class, 'knowledge_base_id');
     }
 
+    public function factLibrary(): HasOne
+    {
+        return $this->hasOne(KnowledgeFactLibrary::class);
+    }
+
     public function systemBinding(): HasOne
     {
         return $this->hasOne(SystemKnowledgeBase::class);

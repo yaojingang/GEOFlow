@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Jobs\ReconcileKnowledgeFactEvidenceJob;
 use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
@@ -365,6 +366,10 @@ class KnowledgeChunkSyncService
         });
 
         if ($finalized) {
+            $sourceHash = (string) KnowledgeBase::query()->whereKey($knowledgeBaseId)->value('chunk_source_hash');
+            ReconcileKnowledgeFactEvidenceJob::dispatch($knowledgeBaseId, $sourceHash)
+                ->onQueue('knowledge')
+                ->afterCommit();
             $this->qualityInvalidationService->invalidateKnowledgeBase(
                 $knowledgeBaseId,
                 '知识库切片与证据索引已更新',

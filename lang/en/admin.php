@@ -6958,4 +6958,10 @@ return [
             'no_progress' => 'Several batches produced no new titles. Adjust the prompt and try again.',
         ],
     ],
+    'knowledge_facts' => [
+        'title' => 'Atomic fact library', 'description' => 'Maintain independently verifiable answers, temporal scope, and evidence.', 'working_version' => 'Draft version',
+        'label' => 'Metric label', 'subject' => 'Subject', 'predicate' => 'Predicate', 'add' => 'Add fact', 'empty' => 'No atomic facts yet.', 'publish' => 'Publish reviewed version',
+        'message' => ['saved' => 'Atomic fact saved.', 'published' => 'Atomic fact library published.', 'restored' => 'The historical revision was restored as a new revision.'],
+        'validation' => ['chunks_not_ready' => 'Knowledge chunks are not ready.', 'no_facts' => 'At least one enabled fact is required.', 'review_required' => 'Facts, values, and evidence must be reviewed and conflict-free.', 'primary_evidence_required' => 'Critical numeric facts require primary evidence.'],
+    ],
 ];

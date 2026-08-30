@@ -82,7 +82,7 @@ class KnowledgeBaseController extends Controller
     public function detail(int $knowledgeBaseId): View|RedirectResponse
     {
         $knowledgeBase = KnowledgeBase::query()
-            ->with(['systemBinding', 'revisions.creator', 'mediaAssets.creator'])
+            ->with(['systemBinding', 'revisions.creator', 'mediaAssets.creator', 'factLibrary.facts.values.evidences', 'factLibrary.revisions'])
             ->whereKey($knowledgeBaseId)
             ->firstOrFail();
         $isSystemKnowledge = $knowledgeBase->isSystemManaged();

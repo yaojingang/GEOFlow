@@ -997,4 +997,10 @@ return array_replace_recursive($base, [
         'es' => 'Español',
         'ru' => 'Ruso',
     ],
+    'knowledge_facts' => [
+        'title' => 'Biblioteca de hechos atómicos', 'description' => 'Mantén respuestas verificables, alcance temporal y evidencias.', 'working_version' => 'Versión de borrador',
+        'label' => 'Nombre del indicador', 'subject' => 'Sujeto', 'predicate' => 'Predicado', 'add' => 'Añadir hecho', 'empty' => 'Aún no hay hechos atómicos.', 'publish' => 'Publicar versión revisada',
+        'message' => ['saved' => 'Hecho atómico guardado.', 'published' => 'Biblioteca publicada.', 'restored' => 'La revisión histórica se restauró como una revisión nueva.'],
+        'validation' => ['chunks_not_ready' => 'Los fragmentos de conocimiento aún no están listos.', 'no_facts' => 'Se requiere al menos un hecho habilitado.', 'review_required' => 'Los hechos, valores y evidencias deben estar revisados y sin conflictos.', 'primary_evidence_required' => 'Los hechos numéricos críticos requieren evidencia principal.'],
+    ],
 ]);

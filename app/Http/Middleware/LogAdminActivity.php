@@ -46,15 +46,22 @@ class LogAdminActivity
         $fullAction = mb_substr($routeName !== '' ? $routeName.':'.$action : $action, 0, 120);
 
         $isAiWorkspace = Str::startsWith($routeName, 'admin.ai-workspace.');
-        $details = $isAiWorkspace
+        $isKnowledgeFacts = Str::startsWith($routeName, 'admin.knowledge-bases.facts.')
+            || Str::startsWith($routeName, 'admin.knowledge-bases.fact-values.')
+            || Str::startsWith($routeName, 'admin.knowledge-bases.fact-evidences.')
+            || Str::startsWith($routeName, 'admin.knowledge-bases.fact-revisions.')
+            || Str::startsWith($routeName, 'admin.knowledge-bases.fact-generation.');
+        $details = $isKnowledgeFacts
+            ? $this->knowledgeFactAuditSummary($request, $response)
+            : ($isAiWorkspace
             ? $this->aiWorkspaceAuditSummary($request, $response)
             : $request->except([
                 'password', 'password_confirmation', 'package_password',
                 'current_password', 'current_admin_password', 'updater_authorization_code',
                 'new_password', 'confirm_password',
-            ]);
+            ]));
         $explicitDetails = $request->attributes->get('admin_activity_details');
-        if (is_array($explicitDetails)) {
+        if (is_array($explicitDetails) && ! $isKnowledgeFacts) {
             $details = array_replace($details, $explicitDetails);
         }
         if (! array_key_exists('success', $details)) {
@@ -65,6 +72,27 @@ class LogAdminActivity
         AdminActivityLogger::logFromRequest($request, $admin, $fullAction, $details);
 
         return $response;
+    }
+
+    /** @return array<string,mixed> */
+    private function knowledgeFactAuditSummary(Request $request, Response $response): array
+    {
+        $details = [];
+        foreach (['knowledgeBaseId', 'factId', 'valueId', 'revisionId', 'runId'] as $parameter) {
+            $value = $request->route($parameter);
+            if (is_scalar($value) && (string) $value !== '') {
+                $details[Str::snake($parameter)] = mb_substr((string) $value, 0, 80);
+            }
+        }
+        foreach (['review_status', 'mode', 'target_count', 'action', 'lock_version'] as $field) {
+            $value = $request->input($field);
+            if (is_scalar($value)) {
+                $details[$field] = mb_substr((string) $value, 0, 80);
+            }
+        }
+        $details['http_status'] = $response->getStatusCode();
+
+        return $details;
     }
 
     /** @return array<string,mixed> */
