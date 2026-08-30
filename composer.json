@@ -2,7 +2,7 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "yaojingang/geoflow",
     "type": "project",
-    "description": "Open-source GEO content engineering and multi-site distribution system with AI-assisted operations.",
+    "description": "Open-source GEO operations platform for enterprise websites, with trusted knowledge, AI quality gates, human review, multi-site delivery, and analytics.",
     "keywords": ["geoflow", "geo", "generative-engine-optimization", "content-engineering", "laravel", "multi-site", "ai"],
     "license": "AGPL-3.0-only",
     "require": {
