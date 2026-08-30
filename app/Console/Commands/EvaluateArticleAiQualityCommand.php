@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
 use App\Models\AiModel;
+use App\Services\GeoFlow\AiQualityEvaluationDataset;
 use App\Services\GeoFlow\ArticleAiQualityPromptRenderer;
 use App\Services\GeoFlow\ArticleAiQualityResultValidator;
 use App\Services\GeoFlow\ArticleAiQualitySampleBuilder;
@@ -32,6 +33,7 @@ class EvaluateArticleAiQualityCommand extends Command
         private readonly ArticleAiQualityScorerV2 $scorer,
         private readonly ArticleAiQualitySampleBuilder $sampleBuilder,
         private readonly ArticleRiskScanner $riskScanner,
+        private readonly AiQualityEvaluationDataset $datasetLoader,
     ) {
         parent::__construct();
     }
@@ -39,13 +41,13 @@ class EvaluateArticleAiQualityCommand extends Command
     public function handle(): int
     {
         $datasetPath = $this->absolutePath((string) ($this->option('dataset') ?: 'tests/Fixtures/ai-quality/golden-v1.json'));
-        if (! File::isFile($datasetPath)) {
-            $this->components->error("Dataset not found: {$datasetPath}");
+        try {
+            $dataset = $this->datasetLoader->load($datasetPath);
+        } catch (\Throwable $exception) {
+            $this->components->error($exception->getMessage());
 
             return self::FAILURE;
         }
-
-        $dataset = json_decode((string) File::get($datasetPath), true);
         $cases = is_array($dataset['cases'] ?? null) ? array_values($dataset['cases']) : [];
         if ($cases === []) {
             $this->components->error('The dataset contains no evaluation cases.');
@@ -104,6 +106,8 @@ class EvaluateArticleAiQualityCommand extends Command
                 'completion_tokens' => max(0, (int) ($prediction['completion_tokens'] ?? 0)),
                 'baseline_prompt_tokens' => max(0, (int) ($baseline['prompt_tokens'] ?? 0)),
                 'baseline_completion_tokens' => max(0, (int) ($baseline['completion_tokens'] ?? 0)),
+                'category' => (string) ($case['category'] ?? 'general_quality'),
+                'atomic_fact' => is_array($case['atomic_fact'] ?? null) ? $case['atomic_fact'] : null,
             ];
         }
 
@@ -138,7 +142,8 @@ class EvaluateArticleAiQualityCommand extends Command
         ];
         $productionGateReady = ! in_array(false, $gateChecks, true);
         $report = [
-            'schema_version' => 1,
+            'schema_version' => 2,
+            'algorithm_version' => (string) ($dataset['algorithm_version'] ?? 'legacy-quality-evaluation-1.0.0'),
             'generated_at' => now()->toIso8601String(),
             'mode' => $live ? 'live' : 'offline',
             'evaluation_scope' => $live ? 'production_components' : 'saved_predictions',
@@ -149,6 +154,7 @@ class EvaluateArticleAiQualityCommand extends Command
                 'case_count' => count($evaluated),
                 'split_counts' => $splitCounts,
                 'requirements' => $requirements,
+                'sha256' => hash_file('sha256', $datasetPath),
             ],
             'metrics' => $metrics,
             'gate_checks' => $gateChecks,
@@ -500,6 +506,14 @@ class EvaluateArticleAiQualityCommand extends Command
         $completionBaselineP50 = $this->percentile($baselineCompletionTokens, 50);
         $promptP50 = $this->percentile($promptTokens, 50);
         $completionP50 = $this->percentile($completionTokens, 50);
+        $atomicCases = array_values(array_filter($cases, static fn (array $case): bool => is_array($case['atomic_fact'] ?? null)));
+        $atomicCorrect = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] === $case['prediction']['decision']));
+        $atomicPredictedPositive = count(array_filter($atomicCases, static fn (array $case): bool => $case['prediction']['decision'] !== 'passed'));
+        $atomicExpectedPositive = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] !== 'passed'));
+        $atomicTruePositive = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] !== 'passed' && $case['prediction']['decision'] !== 'passed'));
+        $fallbackCount = count(array_filter($atomicCases, static fn (array $case): bool => (bool) data_get($case, 'atomic_fact.expected_fallback', false)));
+        $atomicPrecision = $atomicPredictedPositive > 0 ? $atomicTruePositive / $atomicPredictedPositive : 1.0;
+        $atomicRecall = $atomicExpectedPositive > 0 ? $atomicTruePositive / $atomicExpectedPositive : 1.0;
 
         return [
             'decision_accuracy' => round($observed, 4),
@@ -529,8 +543,28 @@ class EvaluateArticleAiQualityCommand extends Command
                     ? 0.0
                     : round(array_sum($repeatRatios) / count($repeatRatios), 4),
             ],
+            'atomic_facts' => [
+                'case_count' => count($atomicCases),
+                'accuracy' => round(count($atomicCases) > 0 ? $atomicCorrect / count($atomicCases) : 1.0, 4),
+                'precision' => ['value' => round($atomicPrecision, 4), 'wilson_95' => $this->wilsonInterval($atomicTruePositive, max(1, $atomicPredictedPositive))],
+                'recall' => ['value' => round($atomicRecall, 4), 'wilson_95' => $this->wilsonInterval($atomicTruePositive, max(1, $atomicExpectedPositive))],
+                'false_block_rate' => round($safeCount > 0 ? $falseBlocks / $safeCount : 0.0, 4),
+                'fallback_rate' => round(count($atomicCases) > 0 ? $fallbackCount / count($atomicCases) : 0.0, 4),
+            ],
             'by_inspection_scope' => $scopeMetrics,
         ];
+    }
+
+    /** @return array{lower:float,upper:float} */
+    private function wilsonInterval(int $successes, int $total): array
+    {
+        $z = 1.96;
+        $proportion = $successes / max(1, $total);
+        $denominator = 1 + ($z ** 2 / $total);
+        $centre = ($proportion + ($z ** 2 / (2 * $total))) / $denominator;
+        $margin = ($z * sqrt(($proportion * (1 - $proportion) / $total) + ($z ** 2 / (4 * ($total ** 2))))) / $denominator;
+
+        return ['lower' => round(max(0, $centre - $margin), 4), 'upper' => round(min(1, $centre + $margin), 4)];
     }
 
     /** @param list<int> $values */

@@ -12,6 +12,11 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_atomic_comparator_contract_contains_250_valid_deterministic_cases(): void
+    {
+        $this->artisan('geoflow:validate-atomic-comparator-contract')->assertSuccessful();
+    }
+
     public function test_offline_evaluation_generates_machine_and_human_readable_reports(): void
     {
         $directory = storage_path('framework/testing/ai-quality-evaluation');
@@ -26,7 +31,9 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertFileExists($basePath.'.md');
         $report = json_decode((string) file_get_contents($basePath.'.json'), true);
         $this->assertSame('offline', $report['mode']);
-        $this->assertSame(6, $report['dataset']['case_count']);
+        $this->assertSame(240, $report['dataset']['case_count']);
+        $this->assertSame(2, $report['schema_version']);
+        $this->assertSame(64, strlen($report['dataset']['sha256']));
         $this->assertSame('tests/Fixtures/ai-quality/golden-v1.json', $report['dataset']['path']);
         $this->assertFalse($report['production_gate_ready']);
         $this->assertSame('saved_predictions', $report['evaluation_scope']);
@@ -37,7 +44,9 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertArrayHasKey('completion_tokens', $report['metrics']);
         $this->assertArrayHasKey('token_reduction_vs_baseline', $report['metrics']);
         $this->assertArrayHasKey('repeat_stability', $report['metrics']);
-        $this->assertSame(6, $report['metrics']['by_inspection_scope']['full']['case_count']);
+        $this->assertArrayHasKey('atomic_facts', $report['metrics']);
+        $this->assertArrayHasKey('wilson_95', $report['metrics']['atomic_facts']['precision']);
+        $this->assertSame(240, $report['metrics']['by_inspection_scope']['full']['case_count']);
         $this->assertSame(0, $report['metrics']['by_inspection_scope']['fallback_sampled']['case_count']);
         $this->assertStringContainsString('AI 质检黄金集评测报告', (string) file_get_contents($basePath.'.md'));
         $this->assertStringContainsString('已保存预测离线复算', (string) file_get_contents($basePath.'.md'));
