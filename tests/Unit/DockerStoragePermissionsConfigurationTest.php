@@ -178,7 +178,8 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
     private function usesApplicationImage(string $serviceBlock): bool
     {
         return str_contains($serviceBlock, 'image: geoflow-app')
-            || str_contains($serviceBlock, 'image: ${GEOFLOW_APP_IMAGE');
+            || str_contains($serviceBlock, 'image: ${GEOFLOW_APP_IMAGE')
+            || str_contains($serviceBlock, 'image: ${COMPOSE_PROJECT_NAME');
     }
 
     /**

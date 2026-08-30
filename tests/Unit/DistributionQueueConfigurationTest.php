@@ -6,6 +6,23 @@ use PHPUnit\Framework\TestCase;
 
 class DistributionQueueConfigurationTest extends TestCase
 {
+    /**
+     * 生产 Compose 必须按项目名/镜像 tag 隔离，才能在同一台机器上跑多套实例。
+     */
+    public function test_production_compose_supports_side_by_side_projects(): void
+    {
+        $compose = file_get_contents(dirname(__DIR__, 2).'/docker-compose.prod.yml');
+        $this->assertIsString($compose);
+        $this->assertStringNotContainsString('container_name:', $compose);
+        $this->assertStringContainsString('name: ${COMPOSE_PROJECT_NAME:-geoflow-laravel-prod}', $compose);
+        $this->assertStringContainsString('image: ${GEOFLOW_APP_IMAGE:-${COMPOSE_PROJECT_NAME:-geoflow-laravel-prod}-app}', $compose);
+        $this->assertStringContainsString('image: ${GEOFLOW_WEB_IMAGE:-${COMPOSE_PROJECT_NAME:-geoflow-laravel-prod}-web}', $compose);
+        $this->assertStringContainsString(
+            'wget -q --header=\"Host: $${GEOFLOW_NGINX_PRIMARY_HOST}\"',
+            $compose
+        );
+    }
+
     public function test_docker_queue_workers_listen_to_distribution_queue(): void
     {
         $root = dirname(__DIR__, 2);
