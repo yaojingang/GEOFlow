@@ -120,7 +120,7 @@
 <h2 id="about-open-source">从开源仓库开始</h2>
 
 <p>
-    GEOFlow 以 Apache License 2.0 开源发布，允许个人与企业在遵守许可证条款的前提下使用、修改、分发和商用。仓库包含应用源码、部署配置、说明文档、测试以及 GEOFlow Agent Skill。
+    GEOFlow 以 GNU Affero General Public License v3.0 开源发布。个人与组织可以在遵守 AGPL-3.0 的前提下使用、修改、部署和分发；修改后的网络服务应按许可证向其用户提供对应源代码。闭源修改、白标、OEM、商业产品集成或其他需要免除 AGPL-3.0 义务的场景，可向版权所有者申请单独的商业许可。仓库包含应用源码、部署配置、说明文档、测试以及 GEOFlow Agent Skill。
 </p>
 
 <div class="about-repository">

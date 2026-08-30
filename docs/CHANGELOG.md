@@ -2,6 +2,14 @@
 
 该文档记录公开仓库可见功能的持续更新。后续每次推送到 GitHub 时，同步更新本文件和英文版 `CHANGELOG_en.md`。
 
+## 2026-08-30
+
+### 许可与贡献治理
+
+- 从本次变更起，GEOFlow 的新版本和仓库修订采用 GNU Affero General Public License v3.0 only；此前按 Apache-2.0 发布的版本继续适用其原有许可证。
+- 闭源修改、白标、OEM、专有产品集成及其他无法履行 AGPL-3.0 义务的场景，可以向版权所有者申请单独的商业许可。
+- 新增 Contributor License Agreement、贡献指南和 Pull Request 声明流程。贡献者保留版权，同时授予项目维护者在 AGPL 开源版本及商业或专有许可版本中使用贡献所需的转授权权利。
+
 ## 2026-08-28
 
 ### v3.0.0

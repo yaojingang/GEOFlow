@@ -4,7 +4,7 @@
     "type": "project",
     "description": "Open-source GEO content engineering and multi-site distribution system with AI-assisted operations.",
     "keywords": ["geoflow", "geo", "generative-engine-optimization", "content-engineering", "laravel", "multi-site", "ai"],
-    "license": "Apache-2.0",
+    "license": "AGPL-3.0-only",
     "require": {
         "php": "^8.3",
         "laravel/ai": "^0.10.3",

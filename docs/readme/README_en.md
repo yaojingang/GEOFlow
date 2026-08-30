@@ -8,12 +8,12 @@
 [![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-GEOFlow is released under the [Apache License 2.0](../../LICENSE). You may use, copy, modify, and distribute it, including for commercial purposes, provided that you retain copyright and license notices and comply with the patent, trademark, and warranty-disclaimer terms of Apache-2.0.
+GEOFlow is released under the [GNU Affero General Public License v3.0](../../LICENSE). Individuals and organizations may use, modify, deploy, and distribute it in compliance with AGPL-3.0. A modified version offered to users over a network must offer those users its corresponding source as required by the license. A separate commercial license is available from the copyright holder for proprietary modifications, white-label or OEM distribution, embedding in proprietary products, or other deployments that cannot comply with AGPL-3.0.
 
 ### Anonymous usage telemetry
 
@@ -383,7 +383,9 @@ composer test
 
 ## 📄 License
 
-GEOFlow is licensed under the [Apache License 2.0](../../LICENSE). It allows personal and commercial use, modification, redistribution, and private deployment, as long as the license, copyright notices, modification notices, patent terms, and warranty disclaimers are respected.
+GEOFlow is licensed under the [GNU Affero General Public License v3.0](../../LICENSE). Individuals and organizations may use, modify, deploy, and distribute GEOFlow in compliance with AGPL-3.0; modified network services must offer corresponding source to their users as required by the license. Contact the copyright holder for separate commercial terms covering proprietary modifications, white-label or OEM distribution, proprietary product integration, or other uses that cannot comply with AGPL-3.0. Versions previously released under Apache-2.0 remain under their original license.
+
+Before submitting code, documentation, designs, or other original material, read the [contribution guide](../../CONTRIBUTING.md). Copyrightable contributions require acceptance of the [GEOFlow Contributor License Agreement v1.0](../../CLA.md) before merge.
 
 ---
 
