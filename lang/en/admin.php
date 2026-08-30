@@ -6961,7 +6961,11 @@ return [
     'knowledge_facts' => [
         'title' => 'Atomic fact library', 'description' => 'Maintain independently verifiable answers, temporal scope, and evidence.', 'working_version' => 'Draft version',
         'label' => 'Metric label', 'subject' => 'Subject', 'predicate' => 'Predicate', 'add' => 'Add fact', 'empty' => 'No atomic facts yet.', 'publish' => 'Publish reviewed version',
-        'message' => ['saved' => 'Atomic fact saved.', 'published' => 'Atomic fact library published.', 'restored' => 'The historical revision was restored as a new revision.'],
+        'manual_create' => 'Manual entry', 'ai_generation' => 'AI generation', 'select_model' => 'Select model', 'target_count' => 'Target total', 'start_generation' => 'Start generation',
+        'mark_reviewed' => 'Mark reviewed', 'archive' => 'Archive fact', 'merge' => 'Merge', 'split' => 'Split fact', 'split_selected' => 'Split selected values', 'archive_value' => 'Archive value', 'add_evidence' => 'Add evidence', 'add_value' => 'Add standard value',
+        'standard_value' => 'Standard value', 'unit' => 'Unit', 'standard_answer' => 'Standard answer', 'save' => 'Save', 'generation_runs' => 'Generation runs', 'cancel' => 'Cancel run', 'resolve' => 'Resolve',
+        'revisions' => 'Published revisions', 'restore' => 'Restore as new revision', 'no_revisions' => 'No published revisions.',
+        'message' => ['saved' => 'Atomic fact saved.', 'published' => 'Atomic fact library published.', 'restored' => 'The historical revision was restored as a new revision.', 'generation_started' => 'Atomic fact generation started.', 'generation_cancelled' => 'Generation run cancelled.', 'conflict_resolved' => 'Generation conflict resolved.'],
         'validation' => ['chunks_not_ready' => 'Knowledge chunks are not ready.', 'no_facts' => 'At least one enabled fact is required.', 'review_required' => 'Facts, values, and evidence must be reviewed and conflict-free.', 'primary_evidence_required' => 'Critical numeric facts require primary evidence.'],
     ],
 ];

@@ -6,13 +6,17 @@ use App\Models\Admin;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFact;
 use App\Models\KnowledgeFactEvidence;
+use App\Models\KnowledgeFactGenerationRun;
 use App\Models\KnowledgeFactLibrary;
 use App\Models\KnowledgeFactValue;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class KnowledgeFactEditor
 {
+    public function __construct(private readonly KnowledgeFactValuePolicy $valuePolicy) {}
+
     /** @param array<string,mixed> $data */
     public function createFact(KnowledgeFactLibrary $library, array $data, Admin $admin): KnowledgeFact
     {
@@ -32,6 +36,9 @@ class KnowledgeFactEditor
             KnowledgeFactLibrary::query()->whereKey($library->id)->lockForUpdate()->firstOrFail();
             $expected = (int) $data['lock_version'];
             unset($data['lock_version']);
+            if (array_intersect(array_keys($data), ['label', 'subject', 'predicate', 'aliases_json', 'importance', 'usage_scope']) !== []) {
+                $data['review_status'] = 'draft';
+            }
             $updated = KnowledgeFact::query()->whereKey($fact->id)->where('library_id', $library->id)->where('lock_version', $expected)
                 ->update($data + ['updated_by_admin_id' => $admin->id, 'lock_version' => $expected + 1, 'updated_at' => now()]);
             if ($updated !== 1) {
@@ -48,9 +55,7 @@ class KnowledgeFactEditor
     {
         return DB::transaction(function () use ($library, $fact, $data, $admin): KnowledgeFactValue {
             KnowledgeFactLibrary::query()->whereKey($library->id)->lockForUpdate()->firstOrFail();
-            $scope = is_array($data['scope_json'] ?? null) ? $data['scope_json'] : [];
-            $data['scope_hash'] = hash('sha256', json_encode($scope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-            $this->guardInterval($fact, $data);
+            $data = $this->valuePolicy->normalizeAndValidate($fact, $data);
             $value = $fact->values()->create($data + ['created_by_admin_id' => $admin->id, 'updated_by_admin_id' => $admin->id]);
             $library->increment('working_version');
 
@@ -65,9 +70,11 @@ class KnowledgeFactEditor
             KnowledgeFactLibrary::query()->whereKey($library->id)->lockForUpdate()->firstOrFail();
             $expected = (int) $data['lock_version'];
             unset($data['lock_version']);
-            if (array_key_exists('scope_json', $data)) {
-                $data['scope_hash'] = hash('sha256', json_encode((array) $data['scope_json'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+            if (array_intersect(array_keys($data), ['canonical_value_json', 'canonical_answer', 'temporal_kind', 'scope_json', 'valid_from', 'valid_to', 'observed_at', 'comparison_policy_json']) !== []) {
+                $data['review_status'] = 'draft';
             }
+            $value->loadMissing('fact');
+            $data = $this->valuePolicy->normalizeAndValidate($value->fact, $data, $value);
             $updated = KnowledgeFactValue::query()->whereKey($value->id)->where('lock_version', $expected)->whereHas('fact', fn ($query) => $query->where('library_id', $library->id))
                 ->update($data + ['updated_by_admin_id' => $admin->id, 'lock_version' => $expected + 1, 'updated_at' => now()]);
             if ($updated !== 1) {
@@ -84,6 +91,16 @@ class KnowledgeFactEditor
     {
         return DB::transaction(function () use ($library, $value, $data, $admin): KnowledgeFactEvidence {
             KnowledgeFactLibrary::query()->whereKey($library->id)->lockForUpdate()->firstOrFail();
+            $chunk = KnowledgeChunk::query()->whereKey($data['knowledge_chunk_id'] ?? null)->where('knowledge_base_id', $library->knowledge_base_id)->first();
+            if (! $chunk) {
+                throw ValidationException::withMessages(['knowledge_chunk_id' => 'knowledge_fact_evidence_chunk_required']);
+            }
+            $data = array_merge($data, [
+                'source_hash' => (string) $chunk->source_hash,
+                'content_hash' => (string) $chunk->content_hash,
+                'source_locator_json' => ['section_path' => (string) $chunk->section_path],
+                'excerpt' => mb_substr((string) $chunk->content, 0, 5000),
+            ]);
             $data['excerpt_hash'] = hash('sha256', trim((string) $data['excerpt']));
             $evidence = $value->evidences()->create($data + ['created_by_admin_id' => $admin->id]);
             $library->increment('working_version');
@@ -98,8 +115,13 @@ class KnowledgeFactEditor
             KnowledgeFactLibrary::query()->whereKey($library->id)->lockForUpdate()->firstOrFail();
             $facts = KnowledgeFact::query()->whereIn('id', [$source->id, $target->id])->where('library_id', $library->id)->orderBy('id')->lockForUpdate()->get();
             abort_unless($facts->count() === 2, 404);
+            abort_if($source->value_type !== $target->value_type, 422, 'knowledge_fact_merge_value_type_mismatch');
+            foreach ($source->values()->where('review_status', '!=', 'rejected')->get() as $value) {
+                $this->valuePolicy->normalizeAndValidate($target, $value->toArray());
+            }
             KnowledgeFactValue::query()->where('fact_id', $source->id)->update(['fact_id' => $target->id, 'updated_at' => now()]);
             $source->forceFill(['is_enabled' => false, 'review_status' => 'rejected', 'lock_version' => $source->lock_version + 1])->save();
+            $target->forceFill(['review_status' => 'draft', 'lock_version' => $target->lock_version + 1])->save();
             $library->increment('working_version');
         }, 3);
     }
@@ -128,8 +150,14 @@ class KnowledgeFactEditor
 
         return DB::transaction(function () use ($library, $candidate, $action, $newStableKey, $admin, $runId): KnowledgeFactValue {
             $locked = KnowledgeFactLibrary::query()->whereKey($library->id)->lockForUpdate()->firstOrFail();
+            $metadata = $this->candidateValueMetadata($candidate);
             if ($action === 'merge_as_value') {
                 $fact = $locked->facts()->where('stable_key', $candidate['stable_key'])->lockForUpdate()->firstOrFail();
+                abort_if($fact->value_type !== $candidate['value_type'], 422, 'knowledge_fact_merge_value_type_mismatch');
+                if (KnowledgeFactGenerationRun::query()->whereKey($runId)->value('mode') === 'refresh_stale') {
+                    $fact->values()->where('scope_hash', $this->valuePolicy->scopeHash((array) $metadata['scope_json']))
+                        ->where('review_status', '!=', 'rejected')->update(['review_status' => 'rejected', 'updated_at' => now()]);
+                }
             } else {
                 $stableKey = trim((string) $newStableKey);
                 abort_if($stableKey === '' || $locked->facts()->where('stable_key', $stableKey)->exists(), 422, 'knowledge_fact_stable_key_invalid');
@@ -138,11 +166,13 @@ class KnowledgeFactEditor
                     'value_type' => $candidate['value_type'], 'origin_generation_run_id' => $runId, 'created_by_admin_id' => $admin->id, 'updated_by_admin_id' => $admin->id,
                 ]);
             }
-            $value = $fact->values()->create([
+            $valueData = [
                 'canonical_value_json' => ['value' => (string) $candidate['canonical_value'], 'unit' => (string) $candidate['unit']],
-                'canonical_answer' => $candidate['canonical_answer'], 'scope_hash' => hash('sha256', '{}'), 'origin_generation_run_id' => $runId,
+                'canonical_answer' => $candidate['canonical_answer'], ...$metadata, 'origin_generation_run_id' => $runId,
                 'created_by_admin_id' => $admin->id, 'updated_by_admin_id' => $admin->id,
-            ]);
+            ];
+            $valueData = $this->valuePolicy->normalizeAndValidate($fact, $valueData);
+            $value = $fact->values()->create($valueData);
             foreach (array_values(array_unique((array) ($candidate['evidence_keys'] ?? []))) as $key) {
                 if (preg_match('/\Achunk:(\d+):([a-f0-9]{12})\z/', (string) $key, $matches) !== 1) {
                     continue;
@@ -160,24 +190,24 @@ class KnowledgeFactEditor
         }, 3);
     }
 
-    /** @param array<string,mixed> $data */
-    private function guardInterval(KnowledgeFact $fact, array $data): void
+    /** @param array<string,mixed> $candidate @return array<string,mixed> */
+    private function candidateValueMetadata(array $candidate): array
     {
-        $from = $data['valid_from'] ?? null;
-        $to = $data['valid_to'] ?? null;
-        if ($from !== null && $to !== null && $from > $to) {
-            throw new ConflictHttpException('knowledge_fact_invalid_interval');
-        }
-        $overlap = $fact->values()->where('scope_hash', $data['scope_hash'])
-            ->where(function ($query) use ($to): void {
-                $query->whereNull('valid_from')->when($to, fn ($q) => $q->orWhere('valid_from', '<=', $to));
-            })
-            ->where(function ($query) use ($from): void {
-                $query->whereNull('valid_to')->when($from, fn ($q) => $q->orWhere('valid_to', '>=', $from));
-            })
-            ->exists();
-        if ($overlap) {
-            throw new ConflictHttpException('knowledge_fact_interval_conflict');
-        }
+        $scope = array_filter([
+            'entity' => trim((string) ($candidate['scope_entity'] ?? '')),
+            'region' => trim((string) ($candidate['scope_region'] ?? '')),
+            'channel' => trim((string) ($candidate['scope_channel'] ?? '')),
+            'statistic_definition' => trim((string) ($candidate['statistic_definition'] ?? '')),
+        ], static fn (string $value): bool => $value !== '');
+        $tolerance = trim((string) ($candidate['comparison_tolerance'] ?? ''));
+
+        return [
+            'temporal_kind' => in_array((string) ($candidate['temporal_kind'] ?? ''), ['timeless', 'observed', 'interval'], true) ? $candidate['temporal_kind'] : 'timeless',
+            'scope_json' => $scope,
+            'valid_from' => ($candidate['valid_from'] ?? '') !== '' ? $candidate['valid_from'] : null,
+            'valid_to' => ($candidate['valid_to'] ?? '') !== '' ? $candidate['valid_to'] : null,
+            'observed_at' => ($candidate['observed_at'] ?? '') !== '' ? $candidate['observed_at'] : null,
+            'comparison_policy_json' => $tolerance === '' ? [] : ['tolerance' => $tolerance],
+        ];
     }
 }

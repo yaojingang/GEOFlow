@@ -3,13 +3,14 @@
 namespace App\Jobs;
 
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Throwable;
 
-class GenerateKnowledgeFactBatchJob implements ShouldQueue
+class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
@@ -23,6 +24,8 @@ class GenerateKnowledgeFactBatchJob implements ShouldQueue
 
     public array $backoff = [5, 30, 120];
 
+    public int $uniqueFor = 3600;
+
     public function __construct(public readonly int $runId, public readonly int $sequence, public readonly string $inputHash, public readonly array $evidence)
     {
         $this->onQueue('knowledge');
@@ -31,6 +34,11 @@ class GenerateKnowledgeFactBatchJob implements ShouldQueue
     public function middleware(): array
     {
         return [new RateLimited('knowledge-fact-generation'), (new WithoutOverlapping("knowledge-fact-run:{$this->runId}:{$this->sequence}"))->releaseAfter(5)->expireAfter(210)];
+    }
+
+    public function uniqueId(): string
+    {
+        return "{$this->runId}:{$this->sequence}:{$this->inputHash}";
     }
 
     public function tags(): array

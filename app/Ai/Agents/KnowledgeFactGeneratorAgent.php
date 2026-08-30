@@ -34,6 +34,15 @@ final class KnowledgeFactGeneratorAgent implements Agent, HasStructuredOutput
             'canonical_value' => $fact->string()->required(),
             'canonical_answer' => $fact->string()->required(),
             'unit' => $fact->string()->required(),
+            'temporal_kind' => $fact->string()->enum(['timeless', 'observed', 'interval'])->required(),
+            'valid_from' => $fact->string()->required(),
+            'valid_to' => $fact->string()->required(),
+            'observed_at' => $fact->string()->required(),
+            'scope_entity' => $fact->string()->required(),
+            'scope_region' => $fact->string()->required(),
+            'scope_channel' => $fact->string()->required(),
+            'statistic_definition' => $fact->string()->required(),
+            'comparison_tolerance' => $fact->string()->required(),
             'evidence_keys' => $fact->array()->items($fact->string())->required(),
         ]))->required()];
     }

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\GeoFlow\KnowledgeFacts\AtomicFactComparator;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 
@@ -11,7 +12,7 @@ class ValidateAtomicComparatorContractCommand extends Command
 
     protected $description = 'Validate the deterministic atomic fact comparison contract fixture';
 
-    public function handle(): int
+    public function handle(AtomicFactComparator $comparator): int
     {
         $path = (string) $this->option('dataset');
         if (! str_starts_with($path, DIRECTORY_SEPARATOR)) {
@@ -35,8 +36,14 @@ class ValidateAtomicComparatorContractCommand extends Command
 
                 return self::FAILURE;
             }
+            $actual = $comparator->compare((array) $case['claim'], (array) $case['standard']);
+            if ($actual['result'] !== $case['expected']['result'] || $actual['decision'] !== $case['expected']['decision']) {
+                $this->components->error('Comparator mismatch: '.(string) $case['id']);
+
+                return self::FAILURE;
+            }
         }
-        $this->components->info('Atomic comparator contract is valid: 250 cases.');
+        $this->components->info('Atomic comparator contract executed successfully: 250 cases.');
 
         return self::SUCCESS;
     }

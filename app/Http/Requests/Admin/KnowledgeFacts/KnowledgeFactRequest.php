@@ -49,11 +49,11 @@ class KnowledgeFactRequest extends FormRequest
                 'review_status' => ['sometimes', 'in:draft,reviewed,rejected'], 'conflict_status' => ['sometimes', 'in:clear,unresolved,resolved'],
             ],
             'admin.knowledge-bases.fact-evidences.store' => [
-                'knowledge_chunk_id' => ['nullable', 'integer'], 'source_hash' => ['required', 'string', 'size:64'], 'content_hash' => ['required', 'string', 'size:64'],
-                'source_locator_json' => ['sometimes', 'array'], 'excerpt' => ['required', 'string', 'max:5000'], 'is_primary' => ['sometimes', 'boolean'],
+                'knowledge_chunk_id' => ['required', 'integer'], 'source_hash' => ['sometimes', 'string', 'size:64'], 'content_hash' => ['sometimes', 'string', 'size:64'],
+                'source_locator_json' => ['sometimes', 'array'], 'excerpt' => ['sometimes', 'string', 'max:5000'], 'is_primary' => ['sometimes', 'boolean'],
             ],
             'admin.knowledge-bases.facts.merge' => ['target_fact_id' => ['required', 'integer']],
-            'admin.knowledge-bases.facts.split' => ['value_ids' => ['required', 'array', 'min:1'], 'value_ids.*' => ['integer'], 'stable_key' => ['required', 'string', 'max:160'], 'label' => ['required', 'string', 'max:255']],
+            'admin.knowledge-bases.facts.split' => ['value_ids' => ['required', 'array', 'min:1'], 'value_ids.*' => ['integer'], 'stable_key' => ['required', 'string', 'max:160', 'regex:/\A[a-z0-9][a-z0-9._-]*\z/'], 'label' => ['required', 'string', 'max:255']],
             default => [],
         };
     }

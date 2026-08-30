@@ -61,24 +61,36 @@ Artisan::command('geoflow:prune-article-exports', function (ArticleMarkdownExpor
     return 0;
 })->purpose('Delete expired Markdown article export files');
 
-Artisan::command('geoflow:prune-knowledge-fact-generations {--limit=200}', function (): int {
+Artisan::command('geoflow:prune-knowledge-fact-generations {--limit=200} {--dry-run}', function (): int {
     $cutoff = now()->subDays((int) config('geoflow.knowledge_fact_generation_retention_days', 90));
     $pruned = 0;
     KnowledgeFactGenerationRun::query()->whereIn('status', ['completed', 'partial', 'failed', 'cancelled', 'obsolete'])
         ->whereNull('diagnostic_payload_pruned_at')->where('updated_at', '<', $cutoff)->orderBy('id')
-        ->limit(max(1, min(1000, (int) $this->option('limit'))))->get()->each(function (KnowledgeFactGenerationRun $run) use (&$pruned): void {
-            $result = (array) $run->result_json;
-            if ((array) ($result['conflicts'] ?? []) !== []) {
-                return;
-            }
-            $run->forceFill([
-                'result_json' => ['summary' => ['candidate_count' => count((array) ($result['candidates'] ?? [])), 'batch_count' => count((array) ($result['batches'] ?? []))]],
-                'batch_meta_json' => null, 'coverage_json' => null, 'usage_json' => null, 'error_message' => null,
-                'diagnostic_payload_pruned_at' => now(),
-            ])->save();
-            $pruned++;
+        ->limit(max(1, min(1000, (int) $this->option('limit'))))->pluck('id')->each(function (int $runId) use (&$pruned): void {
+            DB::transaction(function () use ($runId, &$pruned): void {
+                $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->first();
+                if (! $run || $run->diagnostic_payload_pruned_at !== null || ! in_array($run->status, ['completed', 'partial', 'failed', 'cancelled', 'obsolete'], true)) {
+                    return;
+                }
+                $result = (array) $run->result_json;
+                if ((array) ($result['conflicts'] ?? []) !== []) {
+                    return;
+                }
+                $pruned++;
+                if ((bool) $this->option('dry-run')) {
+                    return;
+                }
+                $summary = ['summary' => ['candidate_count' => count((array) ($result['candidates'] ?? [])), 'batch_count' => count((array) ($result['batches'] ?? []))]];
+                $run->forceFill([
+                    'result_json' => $summary,
+                    'result_hash' => hash('sha256', json_encode($summary, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)),
+                    'batch_meta_json' => null, 'coverage_json' => null, 'usage_json' => null, 'error_message' => null,
+                    'diagnostic_payload_pruned_at' => now(),
+                ])->save();
+            }, 3);
         });
-    $this->info("Pruned knowledge fact generation diagnostics: {$pruned}");
+    $verb = (bool) $this->option('dry-run') ? 'Eligible' : 'Pruned';
+    $this->info("{$verb} knowledge fact generation diagnostics: {$pruned}");
 
     return 0;
 })->purpose('Prune old knowledge fact generation diagnostics without unresolved conflicts');

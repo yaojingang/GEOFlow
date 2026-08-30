@@ -9,8 +9,10 @@ use App\Contracts\Outbound\HostResolver;
 use App\Contracts\Outbound\OutboundTransport;
 use App\Contracts\SystemUpdater\AgentClient;
 use App\Http\ApiAuthContext;
+use App\Jobs\GenerateKnowledgeFactBatchJob;
 use App\Jobs\ProcessTitleGenerationBatchJob;
 use App\Models\Admin;
+use App\Models\KnowledgeFactGenerationRun;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
 use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
@@ -186,6 +188,12 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('title-generation', function (ProcessTitleGenerationBatchJob $job): Limit {
             return Limit::perMinute((int) config('geoflow.title_ai_rate_per_minute', 30))
                 ->by('title-generation:model:'.$job->aiModelId);
+        });
+        RateLimiter::for('knowledge-fact-generation', function (GenerateKnowledgeFactBatchJob $job): Limit {
+            $modelId = (int) KnowledgeFactGenerationRun::query()->whereKey($job->runId)->value('ai_model_id');
+
+            return Limit::perMinute((int) config('geoflow.knowledge_fact_generation_rate_per_minute', 10))
+                ->by('knowledge-fact-generation:model:'.$modelId);
         });
         RateLimiter::for('title-generation-submissions', function (Request $request): array {
             $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);

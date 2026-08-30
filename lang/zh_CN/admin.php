@@ -6949,7 +6949,11 @@ return [
     'knowledge_facts' => [
         'title' => '原子事实库', 'description' => '维护可独立核验的标准事实、时效范围与证据。', 'working_version' => '草稿版本',
         'label' => '指标名称', 'subject' => '主体', 'predicate' => '关系', 'add' => '新增事实', 'empty' => '尚未创建原子事实。', 'publish' => '发布审核版本',
-        'message' => ['saved' => '原子事实已保存。', 'published' => '原子事实库已发布。', 'restored' => '历史版本已恢复为新版本。'],
+        'manual_create' => '人工创建', 'ai_generation' => 'AI 生成', 'select_model' => '选择模型', 'target_count' => '目标总数', 'start_generation' => '开始生成',
+        'mark_reviewed' => '标记已审核', 'archive' => '归档事实', 'merge' => '合并', 'split' => '拆分事实', 'split_selected' => '拆分所选值', 'archive_value' => '归档值', 'add_evidence' => '添加证据', 'add_value' => '添加标准值',
+        'standard_value' => '标准值', 'unit' => '单位', 'standard_answer' => '标准答案', 'save' => '保存', 'generation_runs' => '生成任务', 'cancel' => '取消任务', 'resolve' => '处理冲突',
+        'revisions' => '发布历史', 'restore' => '恢复为新版本', 'no_revisions' => '暂无发布版本。',
+        'message' => ['saved' => '原子事实已保存。', 'published' => '原子事实库已发布。', 'restored' => '历史版本已恢复为新版本。', 'generation_started' => '原子事实生成任务已启动。', 'generation_cancelled' => '生成任务已取消。', 'conflict_resolved' => '生成冲突已处理。'],
         'validation' => ['chunks_not_ready' => '知识切片尚未就绪。', 'no_facts' => '至少需要一个已启用事实。', 'review_required' => '事实、值和证据需要完成审核并清除冲突。', 'primary_evidence_required' => '关键数值事实需要主要证据。'],
     ],
 ];

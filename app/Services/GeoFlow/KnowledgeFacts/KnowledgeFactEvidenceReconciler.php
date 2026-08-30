@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow\KnowledgeFacts;
 
 use App\Models\KnowledgeBase;
+use App\Models\KnowledgeFactLibrary;
 use Illuminate\Support\Facades\DB;
 
 class KnowledgeFactEvidenceReconciler
@@ -10,29 +11,56 @@ class KnowledgeFactEvidenceReconciler
     public function reconcile(int $knowledgeBaseId, string $sourceHash): void
     {
         DB::transaction(function () use ($knowledgeBaseId, $sourceHash): void {
-            $knowledgeBase = KnowledgeBase::query()->with('factLibrary')->whereKey($knowledgeBaseId)->lockForUpdate()->first();
-            if (! $knowledgeBase?->factLibrary) {
+            $library = KnowledgeFactLibrary::query()->where('knowledge_base_id', $knowledgeBaseId)->lockForUpdate()->first();
+            if (! $library) {
                 return;
             }
-            $library = $knowledgeBase->factLibrary;
-            $evidences = DB::table('knowledge_fact_evidences as e')->join('knowledge_fact_values as v', 'v.id', '=', 'e.value_id')->join('knowledge_facts as f', 'f.id', '=', 'v.fact_id')->where('f.library_id', $library->id)->whereNull('e.knowledge_chunk_id')->select('e.*')->get();
+            $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
+            if (! hash_equals((string) $knowledgeBase->chunk_source_hash, $sourceHash)) {
+                return;
+            }
+            $evidences = DB::table('knowledge_fact_evidences as e')->join('knowledge_fact_values as v', 'v.id', '=', 'e.value_id')->join('knowledge_facts as f', 'f.id', '=', 'v.fact_id')
+                ->where('f.library_id', $library->id)->where('f.is_enabled', true)->where('v.review_status', '!=', 'rejected')->whereNull('e.knowledge_chunk_id')->select('e.*')->get();
             $relinked = 0;
             foreach ($evidences as $evidence) {
                 $locator = json_decode((string) ($evidence->source_locator_json ?? ''), true) ?: [];
-                $chunkId = DB::table('knowledge_chunks')->where('knowledge_base_id', $knowledgeBaseId)->where('source_hash', $sourceHash)->where('content_hash', $evidence->content_hash)
-                    ->when(isset($locator['section_path']), fn ($query) => $query->where('section_path', $locator['section_path']))->value('id');
-                if ($chunkId) {
-                    DB::table('knowledge_fact_evidences')->where('id', $evidence->id)->update(['knowledge_chunk_id' => $chunkId, 'source_hash' => $sourceHash, 'updated_at' => now()]);
+                $chunk = DB::table('knowledge_chunks')->where('knowledge_base_id', $knowledgeBaseId)->where('content_hash', $evidence->content_hash)
+                    ->when(isset($locator['section_path']), fn ($query) => $query->where('section_path', $locator['section_path']))->first(['id', 'source_hash']);
+                if ($chunk) {
+                    DB::table('knowledge_fact_evidences')->where('id', $evidence->id)->update(['knowledge_chunk_id' => $chunk->id, 'source_hash' => $chunk->source_hash, 'updated_at' => now()]);
                     $relinked++;
                 }
             }
-            $unresolved = DB::table('knowledge_fact_evidences as e')->join('knowledge_fact_values as v', 'v.id', '=', 'e.value_id')->join('knowledge_facts as f', 'f.id', '=', 'v.fact_id')->where('f.library_id', $library->id)->whereNull('e.knowledge_chunk_id')->count();
-            $library->forceFill(['source_hash' => $sourceHash, 'serving_status' => $unresolved > 0 ? 'stale' : ($library->active_revision_id ? 'ready' : 'unavailable'), 'active_health_json' => ['relinked' => $relinked, 'unresolved' => $unresolved, 'checked_at' => now()->toIso8601String()]])->save();
+            $workingUnresolved = DB::table('knowledge_fact_evidences as e')->join('knowledge_fact_values as v', 'v.id', '=', 'e.value_id')->join('knowledge_facts as f', 'f.id', '=', 'v.fact_id')
+                ->where('f.library_id', $library->id)->where('f.is_enabled', true)->where('v.review_status', '!=', 'rejected')->whereNull('e.knowledge_chunk_id')->count();
+            $library->load('activeRevision');
+            $servingStatus = $library->activeRevision === null ? 'unavailable' : 'stale';
+            if ($library->activeRevision !== null && hash_equals((string) $library->activeRevision->source_hash, $sourceHash)) {
+                $currentEvidence = DB::table('knowledge_chunks')->where('knowledge_base_id', $knowledgeBaseId)->get(['source_hash', 'content_hash'])
+                    ->mapWithKeys(fn ($chunk): array => [$chunk->source_hash.'|'.$chunk->content_hash => true]);
+                $activeEvidenceCurrent = collect((array) data_get($library->activeRevision->manifest_json, 'facts', []))
+                    ->flatMap(fn (array $fact) => (array) ($fact['values'] ?? []))
+                    ->flatMap(fn (array $value) => (array) ($value['evidence'] ?? []))
+                    ->every(fn (array $evidence): bool => $currentEvidence->has((string) ($evidence['source_hash'] ?? '').'|'.(string) ($evidence['content_hash'] ?? '')));
+                $servingStatus = $activeEvidenceCurrent ? 'ready' : 'stale';
+            }
+            $library->forceFill([
+                'serving_status' => $servingStatus,
+                'active_health_json' => [
+                    'relinked' => $relinked,
+                    'working_unresolved' => $workingUnresolved,
+                    'active_source_current' => $servingStatus === 'ready',
+                    'checked_at' => now()->toIso8601String(),
+                ],
+            ])->save();
         }, 3);
     }
 
     public function markStale(int $knowledgeBaseId, string $reason): void
     {
-        KnowledgeBase::query()->find($knowledgeBaseId)?->factLibrary()?->update(['serving_status' => 'stale', 'active_health_json' => ['reason' => $reason, 'checked_at' => now()->toIso8601String()]]);
+        $library = KnowledgeFactLibrary::query()->where('knowledge_base_id', $knowledgeBaseId)->first();
+        if ($library !== null) {
+            $library->forceFill(['serving_status' => 'stale', 'active_health_json' => ['reason' => $reason, 'checked_at' => now()->toIso8601String()]])->save();
+        }
     }
 }

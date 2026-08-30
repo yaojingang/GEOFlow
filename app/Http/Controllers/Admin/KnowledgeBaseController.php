@@ -9,6 +9,7 @@ use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeBaseRevision;
 use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeFactGenerationRun;
 use App\Models\Task;
 use App\Services\AiWorkspace\AdminHelpFeatureRegistry;
 use App\Services\AiWorkspace\SystemKnowledgeBaseManager;
@@ -82,7 +83,10 @@ class KnowledgeBaseController extends Controller
     public function detail(int $knowledgeBaseId): View|RedirectResponse
     {
         $knowledgeBase = KnowledgeBase::query()
-            ->with(['systemBinding', 'revisions.creator', 'mediaAssets.creator', 'factLibrary.facts.values.evidences', 'factLibrary.revisions'])
+            ->with([
+                'systemBinding', 'revisions.creator', 'mediaAssets.creator', 'factLibrary.revisions',
+                'factLibrary.facts' => fn ($query) => $query->with(['values' => fn ($query) => $query->withCount('evidences')]),
+            ])
             ->whereKey($knowledgeBaseId)
             ->firstOrFail();
         $isSystemKnowledge = $knowledgeBase->isSystemManaged();
@@ -105,6 +109,11 @@ class KnowledgeBaseController extends Controller
             'relatedTasks' => $this->loadRelatedTasks($knowledgeBaseId),
             'chunkStats' => $this->loadChunkStats($knowledgeBaseId),
             'chunkPreviewRows' => $this->loadChunkPreviewRows($knowledgeBaseId),
+            'factEvidenceChunks' => $knowledgeBase->chunks()->select(['id', 'knowledge_base_id', 'section_path', 'content_hash'])->orderBy('chunk_index')->limit(200)->get(),
+            'factGenerationModels' => AiModel::query()->where('status', 'active')->whereNotIn('model_type', ['embedding', 'image'])->orderBy('name')->get(['id', 'name', 'model_id']),
+            'factGenerationRuns' => $knowledgeBase->factLibrary
+                ? KnowledgeFactGenerationRun::query()->where('library_id', $knowledgeBase->factLibrary->id)->latest('id')->limit(10)->get()
+                : collect(),
             'isSystemKnowledge' => $isSystemKnowledge,
             'systemKnowledgeHealth' => $systemKnowledgeHealth,
             'systemOfficialContent' => $systemOfficialContent,

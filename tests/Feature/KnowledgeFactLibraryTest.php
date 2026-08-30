@@ -10,15 +10,21 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFact;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Models\KnowledgeFactLibrary;
+use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactAiGenerator;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactEditor;
+use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactEvidenceReconciler;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactPublisher;
 use Illuminate\Bus\PendingBatch;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Mockery;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Tests\TestCase;
 
 class KnowledgeFactLibraryTest extends TestCase
@@ -66,6 +72,10 @@ class KnowledgeFactLibraryTest extends TestCase
             'chunk_source_hash' => str_repeat('a', 64),
         ]);
         $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $knowledgeBase->id]);
+        $chunk = KnowledgeChunk::query()->create([
+            'knowledge_base_id' => $knowledgeBase->id, 'chunk_index' => 0,
+            'content' => '截至 2026 年，累计拥有 128 件专利。', 'content_hash' => str_repeat('b', 64), 'source_hash' => str_repeat('a', 64),
+        ]);
         $fact = KnowledgeFact::query()->create([
             'library_id' => $library->id,
             'stable_key' => 'company.patent_count',
@@ -82,11 +92,16 @@ class KnowledgeFactLibraryTest extends TestCase
             'review_status' => 'reviewed',
         ]);
         $value->evidences()->create([
+            'knowledge_chunk_id' => $chunk->id,
             'source_hash' => str_repeat('a', 64),
             'content_hash' => str_repeat('b', 64),
             'excerpt' => '截至 2026 年，累计拥有 128 件专利。',
-            'excerpt_hash' => str_repeat('c', 64),
+            'excerpt_hash' => hash('sha256', '截至 2026 年，累计拥有 128 件专利。'),
             'is_primary' => true,
+        ]);
+        $fact->values()->create([
+            'canonical_value_json' => ['value' => '99', 'unit' => '件'], 'canonical_answer' => '已归档旧值',
+            'scope_hash' => hash('sha256', '[]'), 'review_status' => 'rejected',
         ]);
 
         $revision = app(KnowledgeFactPublisher::class)->publish($library, $admin);
@@ -95,6 +110,10 @@ class KnowledgeFactLibraryTest extends TestCase
         $this->assertSame($revision->id, $library->fresh()->active_revision_id);
         $this->assertSame('ready', $library->fresh()->serving_status);
         $this->assertSame('128', data_get($revision->manifest_json, 'facts.0.values.0.canonical_value.value'));
+
+        $second = app(KnowledgeFactPublisher::class)->publish($library->fresh(), $admin);
+        $this->assertSame(2, $second->version);
+        $this->assertSame($revision->library_hash, $second->library_hash);
     }
 
     public function test_admin_can_create_fact_and_stale_lock_version_returns_conflict_without_audit_body_leak(): void
@@ -134,6 +153,7 @@ class KnowledgeFactLibraryTest extends TestCase
 
     public function test_generation_start_creates_one_active_run_and_batches_at_most_eight_jobs(): void
     {
+        config()->set('ai-workspace.require_verified_model', false);
         Bus::fake();
         $admin = Admin::query()->create(['username' => 'generator', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
         $model = AiModel::query()->create(['name' => 'Facts', 'model_id' => 'facts-model', 'model_type' => 'chat', 'status' => 'active']);
@@ -148,6 +168,155 @@ class KnowledgeFactLibraryTest extends TestCase
         Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->count() > 0 && $batch->jobs->count() <= 8 && $batch->allowsFailures());
         $this->expectException(\RuntimeException::class);
         app(KnowledgeFactGenerationCoordinator::class)->start($library, $model, $admin, 'supplement', 10);
+    }
+
+    public function test_generation_cancel_is_immediately_terminal_and_releases_active_key(): void
+    {
+        Bus::fake();
+        config()->set('ai-workspace.require_verified_model', false);
+        $admin = Admin::query()->create(['username' => 'cancel', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $model = AiModel::query()->create(['name' => 'Facts', 'model_id' => 'facts-model', 'model_type' => 'chat', 'status' => 'active']);
+        $base = KnowledgeBase::query()->create(['name' => 'Cancel', 'chunk_sync_status' => 'ready', 'chunk_source_hash' => str_repeat('a', 64)]);
+        KnowledgeChunk::query()->create(['knowledge_base_id' => $base->id, 'chunk_index' => 0, 'content' => '有效证据', 'content_hash' => str_repeat('b', 64), 'source_hash' => str_repeat('c', 64)]);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $coordinator = app(KnowledgeFactGenerationCoordinator::class);
+        $run = $coordinator->start($library, $model, $admin, 'initial', 10);
+
+        $coordinator->cancel($run);
+
+        $this->assertSame('cancelled', $run->fresh()->status);
+        $this->assertNull($run->fresh()->active_key);
+        $this->assertSame('idle', $library->fresh()->workflow_status);
+        $next = $coordinator->start($library->fresh(), $model, $admin, 'initial', 10);
+        $this->assertSame('running', $next->fresh()->status);
+    }
+
+    public function test_completed_generation_batch_is_not_sent_to_ai_again(): void
+    {
+        $generator = Mockery::mock(KnowledgeFactAiGenerator::class);
+        $generator->shouldNotReceive('generate');
+        $this->app->instance(KnowledgeFactAiGenerator::class, $generator);
+        $base = KnowledgeBase::query()->create(['name' => 'Idempotent', 'chunk_sync_status' => 'ready', 'chunk_source_hash' => str_repeat('a', 64)]);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $model = AiModel::query()->create(['name' => 'Facts', 'model_id' => 'facts-model', 'model_type' => 'chat', 'status' => 'active']);
+        $hash = str_repeat('d', 64);
+        $run = KnowledgeFactGenerationRun::query()->create([
+            'library_id' => $library->id, 'mode' => 'initial', 'target_count' => 1, 'source_hash' => str_repeat('a', 64), 'base_working_version' => 1,
+            'status' => 'running', 'ai_model_id' => $model->id, 'request_key' => (string) Str::uuid(), 'active_key' => 'active',
+            'result_json' => ['candidates' => [], 'conflicts' => [], 'batches' => ['1' => ['input_hash' => $hash, 'status' => 'completed']]],
+        ]);
+
+        app(KnowledgeFactGenerationCoordinator::class)->processBatch($run->id, 1, $hash, []);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_scope_hash_is_canonical_and_update_cannot_create_interval_overlap(): void
+    {
+        $admin = Admin::query()->create(['username' => 'interval', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $base = KnowledgeBase::query()->create(['name' => 'Intervals']);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $fact = $library->facts()->create(['stable_key' => 'company.count', 'label' => '数量', 'subject' => '公司', 'predicate' => '拥有', 'value_type' => 'integer']);
+        $editor = app(KnowledgeFactEditor::class);
+        $first = $editor->createValue($library, $fact, ['canonical_value_json' => ['value' => '1'], 'canonical_answer' => '一件', 'scope_json' => ['region' => 'CN', 'channel' => 'web'], 'valid_from' => '2025-01-01', 'valid_to' => '2025-12-31'], $admin);
+        $second = $editor->createValue($library, $fact, ['canonical_value_json' => ['value' => '2'], 'canonical_answer' => '两件', 'scope_json' => ['channel' => 'web', 'region' => 'CN'], 'valid_from' => '2026-01-01', 'valid_to' => '2026-12-31'], $admin);
+        $this->assertSame($first->scope_hash, $second->scope_hash);
+
+        $this->expectException(ConflictHttpException::class);
+        $editor->updateValue($library, $second, ['lock_version' => 1, 'valid_from' => '2025-06-01', 'valid_to' => '2025-10-01'], $admin);
+    }
+
+    public function test_numeric_value_requires_decimal_string_and_content_edit_resets_review(): void
+    {
+        $admin = Admin::query()->create(['username' => 'review-reset', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $base = KnowledgeBase::query()->create(['name' => 'Review reset']);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $fact = $library->facts()->create(['stable_key' => 'company.count', 'label' => '数量', 'subject' => '公司', 'predicate' => '拥有', 'value_type' => 'integer', 'review_status' => 'reviewed']);
+        $editor = app(KnowledgeFactEditor::class);
+        $updated = $editor->updateFact($library, $fact, ['lock_version' => 1, 'label' => '新数量'], $admin);
+        $this->assertSame('draft', $updated->review_status);
+
+        $this->expectException(ValidationException::class);
+        $editor->createValue($library, $updated, ['canonical_value_json' => ['value' => 128], 'canonical_answer' => '128 件'], $admin);
+    }
+
+    public function test_publisher_rejects_unlinked_or_stale_evidence(): void
+    {
+        $admin = Admin::query()->create(['username' => 'stale-publisher', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $base = KnowledgeBase::query()->create(['name' => 'Stale', 'chunk_sync_status' => 'ready', 'chunk_source_hash' => str_repeat('a', 64)]);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $fact = $library->facts()->create(['stable_key' => 'company.fact', 'label' => '事实', 'subject' => '公司', 'predicate' => '为', 'value_type' => 'string', 'review_status' => 'reviewed']);
+        $value = $fact->values()->create(['canonical_value_json' => ['value' => '值'], 'canonical_answer' => '答案', 'scope_hash' => hash('sha256', '[]'), 'review_status' => 'reviewed']);
+        $value->evidences()->create(['source_hash' => str_repeat('b', 64), 'content_hash' => str_repeat('c', 64), 'excerpt' => '失效证据', 'excerpt_hash' => hash('sha256', '失效证据')]);
+
+        $this->expectException(ValidationException::class);
+        app(KnowledgeFactPublisher::class)->publish($library, $admin);
+    }
+
+    public function test_finalize_marks_run_obsolete_when_working_copy_changed(): void
+    {
+        $base = KnowledgeBase::query()->create(['name' => 'Drift', 'chunk_sync_status' => 'ready', 'chunk_source_hash' => str_repeat('a', 64)]);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id, 'working_version' => 2, 'workflow_status' => 'generating']);
+        $run = KnowledgeFactGenerationRun::query()->create([
+            'library_id' => $library->id, 'mode' => 'initial', 'target_count' => 1, 'source_hash' => str_repeat('a', 64),
+            'base_working_version' => 1, 'status' => 'running', 'request_key' => (string) Str::uuid(), 'active_key' => 'active',
+            'result_json' => ['candidates' => [], 'conflicts' => [], 'batches' => []],
+        ]);
+
+        app(KnowledgeFactGenerationCoordinator::class)->finalize($run->id);
+
+        $this->assertSame('obsolete', $run->fresh()->status);
+        $this->assertNull($run->fresh()->active_key);
+    }
+
+    public function test_evidence_created_from_chunk_ignores_spoofed_client_content(): void
+    {
+        $admin = Admin::query()->create(['username' => 'evidence', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $base = KnowledgeBase::query()->create(['name' => 'Evidence']);
+        $chunk = KnowledgeChunk::query()->create(['knowledge_base_id' => $base->id, 'chunk_index' => 0, 'section_path' => '企业简介', 'content' => '可信证据正文', 'content_hash' => str_repeat('a', 64), 'source_hash' => str_repeat('b', 64)]);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $fact = $library->facts()->create(['stable_key' => 'company.name', 'label' => '名称', 'subject' => '公司', 'predicate' => '名称', 'value_type' => 'string']);
+        $value = $fact->values()->create(['canonical_value_json' => ['value' => '公司'], 'canonical_answer' => '公司名称', 'scope_hash' => hash('sha256', '[]')]);
+
+        $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => (int) $admin->auth_version])->actingAs($admin, 'admin')->postJson(route('admin.knowledge-bases.fact-evidences.store', [$base->id, $value->id]), [
+            'knowledge_chunk_id' => $chunk->id, 'source_hash' => str_repeat('f', 64), 'content_hash' => str_repeat('e', 64), 'excerpt' => '伪造内容', 'is_primary' => true,
+        ])->assertSuccessful();
+
+        $this->assertDatabaseHas('knowledge_fact_evidences', ['value_id' => $value->id, 'source_hash' => str_repeat('b', 64), 'content_hash' => str_repeat('a', 64), 'excerpt' => '可信证据正文']);
+    }
+
+    public function test_reconciler_relinks_by_chunk_hash_and_keeps_active_revision_stale_after_source_change(): void
+    {
+        $base = KnowledgeBase::query()->create(['name' => 'Relink', 'chunk_source_hash' => str_repeat('a', 64)]);
+        $chunk = KnowledgeChunk::query()->create(['knowledge_base_id' => $base->id, 'chunk_index' => 0, 'section_path' => '简介', 'content' => '内容', 'content_hash' => str_repeat('b', 64), 'source_hash' => str_repeat('c', 64)]);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id, 'serving_status' => 'stale']);
+        $fact = $library->facts()->create(['stable_key' => 'company.fact', 'label' => '事实', 'subject' => '公司', 'predicate' => '为', 'value_type' => 'string']);
+        $value = $fact->values()->create(['canonical_value_json' => ['value' => '值'], 'canonical_answer' => '答案', 'scope_hash' => hash('sha256', '[]')]);
+        $evidence = $value->evidences()->create(['source_hash' => str_repeat('d', 64), 'content_hash' => str_repeat('b', 64), 'source_locator_json' => ['section_path' => '简介'], 'excerpt' => '内容', 'excerpt_hash' => hash('sha256', '内容')]);
+
+        app(KnowledgeFactEvidenceReconciler::class)->reconcile($base->id, str_repeat('a', 64));
+
+        $this->assertSame($chunk->id, $evidence->fresh()->knowledge_chunk_id);
+        $this->assertSame(str_repeat('c', 64), $evidence->fresh()->source_hash);
+        $this->assertSame('unavailable', $library->fresh()->serving_status);
+    }
+
+    public function test_generation_diagnostic_prune_dry_run_is_non_mutating_and_real_run_rehashes_summary(): void
+    {
+        $base = KnowledgeBase::query()->create(['name' => 'Prune']);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $run = KnowledgeFactGenerationRun::query()->create([
+            'library_id' => $library->id, 'mode' => 'initial', 'target_count' => 1, 'source_hash' => str_repeat('a', 64),
+            'base_working_version' => 1, 'status' => 'completed', 'request_key' => (string) Str::uuid(),
+            'result_json' => ['candidates' => [['stable_key' => 'company.fact']], 'conflicts' => [], 'batches' => ['1' => ['status' => 'completed']]],
+        ]);
+        DB::table('knowledge_fact_generation_runs')->where('id', $run->id)->update(['updated_at' => now()->subDays(100), 'created_at' => now()->subDays(100)]);
+
+        $this->artisan('geoflow:prune-knowledge-fact-generations', ['--dry-run' => true])->assertSuccessful()->expectsOutputToContain('Eligible knowledge fact generation diagnostics: 1');
+        $this->assertNull($run->fresh()->diagnostic_payload_pruned_at);
+
+        $this->artisan('geoflow:prune-knowledge-fact-generations')->assertSuccessful()->expectsOutputToContain('Pruned knowledge fact generation diagnostics: 1');
+        $summary = (array) $run->fresh()->result_json;
+        $this->assertSame(hash('sha256', json_encode($summary, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)), $run->fresh()->result_hash);
     }
 
     public function test_generation_finalize_appends_review_candidates_with_scoped_evidence(): void

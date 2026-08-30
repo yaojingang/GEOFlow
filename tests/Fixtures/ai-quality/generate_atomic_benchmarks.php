@@ -69,7 +69,7 @@ $dataset = [
     'algorithm_version' => 'atomic-fact-benchmark-1.0.0',
     'version' => 'golden-v2-atomic-facts-240',
     'description' => 'Deterministic, synthetic and desensitized AI quality benchmark.',
-    'requirements' => ['total_cases' => 240, 'calibration' => 120, 'regression' => 60, 'blind' => 60, 'annotation' => 'Two independent reviewers with adjudication'],
+    'requirements' => ['total_cases' => 240, 'calibration' => 120, 'regression' => 60, 'blind' => 60, 'annotation' => 'Deterministic synthetic protocol cases; independent human annotation pending'],
     'cases' => array_merge($general, $atomic),
 ];
 file_put_contents($root.'/golden-v1.json', json_encode($dataset, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");

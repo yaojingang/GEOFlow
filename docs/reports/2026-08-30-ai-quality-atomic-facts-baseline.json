@@ -1,7 +1,7 @@
 {
     "schema_version": 2,
     "algorithm_version": "atomic-fact-benchmark-1.0.0",
-    "generated_at": "2026-08-30T16:38:43+08:00",
+    "generated_at": "2026-08-30T17:06:27+08:00",
     "mode": "offline",
     "evaluation_scope": "saved_predictions",
     "model_id": null,
@@ -19,9 +19,9 @@
             "calibration": 120,
             "regression": 60,
             "blind": 60,
-            "annotation": "Two independent reviewers with adjudication"
+            "annotation": "Deterministic synthetic protocol cases; independent human annotation pending"
         },
-        "sha256": "f8102f7167c5f2b9726cee53b8dfbc54af99b55c5c7dbd83dcaf2a2fd2b9b0dc"
+        "sha256": "f8529ce5ed1a71105b23a62544da75f2edd83754b6cdbf91d337793d5a4cd24a"
     },
     "metrics": {
         "decision_accuracy": 1,

@@ -8,7 +8,7 @@
         "calibration": 120,
         "regression": 60,
         "blind": 60,
-        "annotation": "Two independent reviewers with adjudication"
+        "annotation": "Deterministic synthetic protocol cases; independent human annotation pending"
     },
     "cases": [
         {

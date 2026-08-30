@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\KnowledgeFacts\KnowledgeFactRequest;
 use App\Models\Admin;
 use App\Models\KnowledgeBase;
+use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFactLibrary;
 use App\Models\KnowledgeFactValue;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactEditor;
@@ -82,7 +83,14 @@ class KnowledgeFactController extends Controller
         $value = KnowledgeFactValue::query()->whereKey($valueId)->whereHas('fact', fn ($query) => $query->where('library_id', $library->id))->firstOrFail();
         $data = $request->validated();
         if (isset($data['knowledge_chunk_id'])) {
-            abort_unless(KnowledgeBase::query()->whereKey($knowledgeBaseId)->whereHas('chunks', fn ($query) => $query->whereKey($data['knowledge_chunk_id']))->exists(), 404);
+            $chunk = KnowledgeChunk::query()->whereKey($data['knowledge_chunk_id'])->where('knowledge_base_id', $knowledgeBaseId)->firstOrFail();
+            $excerpt = mb_substr((string) $chunk->content, 0, 5000);
+            $data = array_merge($data, [
+                'source_hash' => (string) $chunk->source_hash,
+                'content_hash' => (string) $chunk->content_hash,
+                'source_locator_json' => ['section_path' => (string) $chunk->section_path],
+                'excerpt' => $excerpt,
+            ]);
         }
 
         return $this->response($request, ['evidence' => $editor->createEvidence($library, $value, $data, $this->admin($request))], __('admin.knowledge_facts.message.saved'));

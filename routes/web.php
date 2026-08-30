@@ -498,10 +498,10 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{knowledgeBaseId}/facts/{factId}/split', [KnowledgeFactController::class, 'split'])->name('facts.split')->whereNumber(['knowledgeBaseId', 'factId']);
             Route::post('{knowledgeBaseId}/facts/publish', [KnowledgeFactController::class, 'publish'])->name('facts.publish')->whereNumber('knowledgeBaseId');
             Route::post('{knowledgeBaseId}/fact-revisions/{revisionId}/restore', [KnowledgeFactController::class, 'restore'])->name('fact-revisions.restore')->whereNumber(['knowledgeBaseId', 'revisionId']);
-            Route::post('{knowledgeBaseId}/fact-generation', [KnowledgeFactGenerationController::class, 'store'])->name('fact-generation.store')->whereNumber('knowledgeBaseId');
+            Route::post('{knowledgeBaseId}/fact-generation', [KnowledgeFactGenerationController::class, 'store'])->name('fact-generation.store')->whereNumber('knowledgeBaseId')->middleware('throttle:admin-sensitive');
             Route::get('{knowledgeBaseId}/fact-generation/{runId}', [KnowledgeFactGenerationController::class, 'show'])->name('fact-generation.show')->whereNumber(['knowledgeBaseId', 'runId']);
-            Route::post('{knowledgeBaseId}/fact-generation/{runId}/cancel', [KnowledgeFactGenerationController::class, 'cancel'])->name('fact-generation.cancel')->whereNumber(['knowledgeBaseId', 'runId']);
-            Route::post('{knowledgeBaseId}/fact-generation/{runId}/resolve', [KnowledgeFactGenerationController::class, 'resolve'])->name('fact-generation.resolve')->whereNumber(['knowledgeBaseId', 'runId']);
+            Route::post('{knowledgeBaseId}/fact-generation/{runId}/cancel', [KnowledgeFactGenerationController::class, 'cancel'])->name('fact-generation.cancel')->whereNumber(['knowledgeBaseId', 'runId'])->middleware('throttle:admin-sensitive');
+            Route::post('{knowledgeBaseId}/fact-generation/{runId}/resolve', [KnowledgeFactGenerationController::class, 'resolve'])->name('fact-generation.resolve')->whereNumber(['knowledgeBaseId', 'runId'])->middleware('throttle:admin-sensitive');
             Route::put('{knowledgeBaseId}/detail', [KnowledgeBaseController::class, 'updateFromDetail'])->name('detail.update');
             Route::put('{knowledgeBaseId}', [KnowledgeBaseController::class, 'update'])->name('update');
             Route::post('{knowledgeBaseId}/delete', [KnowledgeBaseController::class, 'destroy'])->name('delete');

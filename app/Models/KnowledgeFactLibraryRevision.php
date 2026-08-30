@@ -14,6 +14,16 @@ class KnowledgeFactLibraryRevision extends Model
         return ['library_id' => 'integer', 'version' => 'integer', 'manifest_json' => 'array', 'published_at' => 'datetime', 'restored_from_revision_id' => 'integer'];
     }
 
+    protected static function booted(): void
+    {
+        static::updating(static function (): never {
+            throw new \LogicException('knowledge_fact_revision_is_immutable');
+        });
+        static::deleting(static function (): never {
+            throw new \LogicException('knowledge_fact_revision_is_immutable');
+        });
+    }
+
     public function library(): BelongsTo
     {
         return $this->belongsTo(KnowledgeFactLibrary::class, 'library_id');

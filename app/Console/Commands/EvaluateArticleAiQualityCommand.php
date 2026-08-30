@@ -511,6 +511,8 @@ class EvaluateArticleAiQualityCommand extends Command
         $atomicPredictedPositive = count(array_filter($atomicCases, static fn (array $case): bool => $case['prediction']['decision'] !== 'passed'));
         $atomicExpectedPositive = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] !== 'passed'));
         $atomicTruePositive = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] !== 'passed' && $case['prediction']['decision'] !== 'passed'));
+        $atomicSafeCount = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] === 'passed'));
+        $atomicFalseBlocks = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] === 'passed' && $case['prediction']['decision'] !== 'passed'));
         $fallbackCount = count(array_filter($atomicCases, static fn (array $case): bool => (bool) data_get($case, 'atomic_fact.expected_fallback', false)));
         $atomicPrecision = $atomicPredictedPositive > 0 ? $atomicTruePositive / $atomicPredictedPositive : 1.0;
         $atomicRecall = $atomicExpectedPositive > 0 ? $atomicTruePositive / $atomicExpectedPositive : 1.0;
@@ -548,7 +550,7 @@ class EvaluateArticleAiQualityCommand extends Command
                 'accuracy' => round(count($atomicCases) > 0 ? $atomicCorrect / count($atomicCases) : 1.0, 4),
                 'precision' => ['value' => round($atomicPrecision, 4), 'wilson_95' => $this->wilsonInterval($atomicTruePositive, max(1, $atomicPredictedPositive))],
                 'recall' => ['value' => round($atomicRecall, 4), 'wilson_95' => $this->wilsonInterval($atomicTruePositive, max(1, $atomicExpectedPositive))],
-                'false_block_rate' => round($safeCount > 0 ? $falseBlocks / $safeCount : 0.0, 4),
+                'false_block_rate' => round($atomicSafeCount > 0 ? $atomicFalseBlocks / $atomicSafeCount : 0.0, 4),
                 'fallback_rate' => round(count($atomicCases) > 0 ? $fallbackCount / count($atomicCases) : 0.0, 4),
             ],
             'by_inspection_scope' => $scopeMetrics,

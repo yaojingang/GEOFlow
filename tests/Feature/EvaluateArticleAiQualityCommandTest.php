@@ -79,6 +79,36 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertFalse($report['production_gate_ready']);
     }
 
+    public function test_atomic_false_block_rate_uses_only_atomic_cases(): void
+    {
+        $directory = storage_path('framework/testing/ai-quality-atomic-false-gate');
+        File::ensureDirectoryExists($directory);
+        $datasetPath = $directory.'/dataset.json';
+        $basePath = $directory.'/report';
+        $cases = [
+            ['id' => 'atomic-safe-blocked', 'split' => 'calibration', 'atomic_fact' => [
+                'claim_role' => 'material_claim', 'definition' => '安全事实', 'canonical' => ['value' => '1'], 'evidence' => [],
+                'expected_applicability' => 'applicable', 'expected_result' => 'match', 'expected_fallback' => false, 'expected_final_decision' => 'passed',
+            ], 'expected' => ['decision' => 'passed', 'issue_codes' => []], 'prediction' => ['decision' => 'blocked', 'issue_codes' => []]],
+            ['id' => 'general-safe-passed', 'split' => 'calibration', 'expected' => ['decision' => 'passed', 'issue_codes' => []], 'prediction' => ['decision' => 'passed', 'issue_codes' => []]],
+        ];
+        for ($index = 3; $index <= 240; $index++) {
+            $split = $index <= 120 ? 'calibration' : ($index <= 180 ? 'regression' : 'blind');
+            $cases[] = ['id' => 'risk-'.$index, 'split' => $split, 'expected' => ['decision' => 'blocked', 'issue_codes' => ['risk']], 'prediction' => ['decision' => 'blocked', 'issue_codes' => ['risk']]];
+        }
+        File::put($datasetPath, json_encode([
+            'version' => 'atomic-false-gate-test',
+            'requirements' => ['total_cases' => 240, 'calibration' => 120, 'regression' => 60, 'blind' => 60],
+            'cases' => $cases,
+        ], JSON_THROW_ON_ERROR));
+
+        $this->artisan('geoflow:evaluate-ai-quality', ['--dataset' => $datasetPath, '--output' => $basePath])->assertSuccessful();
+
+        $report = json_decode((string) File::get($basePath.'.json'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0.5, $report['metrics']['safe_false_block_rate']);
+        $this->assertEquals(1.0, $report['metrics']['atomic_facts']['false_block_rate']);
+    }
+
     public function test_live_evaluation_runs_distinct_full_and_sampled_production_components(): void
     {
         $reviewer = new class implements ArticleAiQualityReviewer

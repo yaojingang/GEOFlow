@@ -1000,7 +1000,8 @@ return array_replace_recursive($base, [
     'knowledge_facts' => [
         'title' => 'アトミックファクトライブラリ', 'description' => '独立して検証できる回答、期間、根拠を管理します。', 'working_version' => '下書きバージョン',
         'label' => '指標名', 'subject' => '主体', 'predicate' => '述語', 'add' => 'ファクトを追加', 'empty' => 'アトミックファクトはまだありません。', 'publish' => 'レビュー済み版を公開',
-        'message' => ['saved' => 'アトミックファクトを保存しました。', 'published' => 'ライブラリを公開しました。', 'restored' => '履歴版を新しい版として復元しました。'],
+        'manual_create' => '手動作成', 'ai_generation' => 'AI生成', 'select_model' => 'モデルを選択', 'target_count' => '目標総数', 'start_generation' => '生成を開始', 'mark_reviewed' => 'レビュー済みにする', 'archive' => 'ファクトをアーカイブ', 'merge' => 'マージ', 'split' => 'ファクトを分割', 'split_selected' => '選択した値を分割', 'archive_value' => '値をアーカイブ', 'add_evidence' => '根拠を追加', 'add_value' => '標準値を追加', 'standard_value' => '標準値', 'unit' => '単位', 'standard_answer' => '標準回答', 'save' => '保存', 'generation_runs' => '生成タスク', 'cancel' => 'キャンセル', 'resolve' => '解決', 'revisions' => '公開履歴', 'restore' => '新しい版として復元', 'no_revisions' => '公開済みの版はありません。',
+        'message' => ['saved' => 'アトミックファクトを保存しました。', 'published' => 'ライブラリを公開しました。', 'restored' => '履歴版を新しい版として復元しました。', 'generation_started' => '生成を開始しました。', 'generation_cancelled' => '生成をキャンセルしました。', 'conflict_resolved' => '競合を解決しました。'],
         'validation' => ['chunks_not_ready' => 'ナレッジチャンクの準備ができていません。', 'no_facts' => '有効なファクトが1件以上必要です。', 'review_required' => 'ファクト、値、根拠のレビューと競合解消が必要です。', 'primary_evidence_required' => '重要な数値ファクトには主要根拠が必要です。'],
     ],
 ]);
