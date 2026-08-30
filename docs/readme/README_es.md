@@ -7,12 +7,12 @@
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-GEOFlow se publica bajo la [Apache License 2.0](../../LICENSE). Puedes usarlo, copiarlo, modificarlo y distribuirlo, incluso con fines comerciales, siempre que conserves los avisos de copyright y licencia y cumplas los términos de patente, marcas y exención de garantías de Apache-2.0.
+GEOFlow se publica bajo la [GNU Affero General Public License v3.0](../../LICENSE). Las personas y organizaciones pueden usarlo, modificarlo, desplegarlo y distribuirlo cumpliendo AGPL-3.0. Una versión modificada ofrecida a usuarios a través de una red debe ofrecerles el código fuente correspondiente según la licencia. El titular de los derechos de autor puede conceder una licencia comercial separada para modificaciones privativas, distribución de marca blanca u OEM, integración en productos privativos u otros usos que no puedan cumplir AGPL-3.0.
 
 ---
 
@@ -297,7 +297,9 @@ composer test
 
 ## 📄 Licencia
 
-GEOFlow está licenciado bajo la [Apache License 2.0](../../LICENSE). Permite uso personal y comercial, modificación, redistribución y despliegue privado, siempre que se respeten los avisos de licencia, copyright, cambios, términos de patente y exenciones de garantía.
+GEOFlow está licenciado bajo la [GNU Affero General Public License v3.0](../../LICENSE). Las personas y organizaciones pueden usar, modificar, desplegar y distribuir GEOFlow cumpliendo AGPL-3.0; los servicios de red modificados deben ofrecer el código fuente correspondiente a sus usuarios según la licencia. Para modificaciones privativas, distribución de marca blanca u OEM, integración en productos privativos u otros usos que no puedan cumplir AGPL-3.0, puede solicitarse una licencia comercial separada al titular de los derechos de autor. Las versiones publicadas anteriormente bajo Apache-2.0 conservan su licencia original.
+
+Antes de enviar código, documentación, diseños u otros materiales originales, consulta la [guía de contribución](../../CONTRIBUTING.md). Las contribuciones protegidas por derechos de autor requieren la aceptación del [GEOFlow Contributor License Agreement v1.0](../../CLA.md) antes de integrarse.
 
 ---
 

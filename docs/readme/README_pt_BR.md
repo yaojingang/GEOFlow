@@ -7,12 +7,12 @@
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-O GEOFlow é lançado sob a [Licença Apache 2.0](../../LICENSE). Você pode usar, copiar, modificar e distribuir, inclusive para fins comerciais, desde que mantenha os avisos de direitos autorais e licença e cumpra os termos de patente, marca registrada e exoneração de garantia da Apache-2.0.
+O GEOFlow é distribuído sob a [GNU Affero General Public License v3.0](../../LICENSE). Pessoas e organizações podem usá-lo, modificá-lo, implantá-lo e distribuí-lo em conformidade com a AGPL-3.0. Uma versão modificada oferecida a usuários por rede deve disponibilizar a esses usuários o código-fonte correspondente conforme a licença. O titular dos direitos autorais pode conceder uma licença comercial separada para modificações proprietárias, distribuição white-label ou OEM, integração em produtos proprietários e outros usos que não possam cumprir a AGPL-3.0.
 
 ---
 
@@ -290,7 +290,9 @@ composer test
 
 ## 📄 Licença
 
-GEOFlow é software livre sob a [Licença Apache 2.0](../../LICENSE).
+GEOFlow é software livre sob a [GNU Affero General Public License v3.0](../../LICENSE). Versões anteriormente publicadas sob Apache-2.0 mantêm a licença original; termos comerciais separados podem ser solicitados ao titular dos direitos autorais para usos que não possam cumprir a AGPL-3.0.
+
+Antes de enviar código, documentação, designs ou outros materiais originais, leia o [guia de contribuição](../../CONTRIBUTING.md). Contribuições protegidas por direitos autorais exigem a aceitação do [GEOFlow Contributor License Agreement v1.0](../../CLA.md) antes da incorporação.
 
 ---
 

@@ -8,12 +8,12 @@
 [![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-GEOFlow 以 [Apache License 2.0](LICENSE) 开源发布。你可以自由使用、复制、修改和分发本项目，包括商业使用；请保留版权声明和许可证文本，并遵守 Apache-2.0 的专利授权、商标与免责声明条款。
+GEOFlow 以 [GNU Affero General Public License v3.0](LICENSE) 开源发布。个人和组织可以在遵守 AGPL-3.0 的前提下使用、修改、部署和分发；修改后的版本通过网络向用户提供服务时，应按许可证向这些用户提供对应源代码。闭源修改、白标、OEM、商业产品集成或其他需要免除 AGPL-3.0 义务的场景，可向版权所有者申请单独的商业许可。
 
 ### 匿名使用统计
 
@@ -448,7 +448,9 @@ composer test
 
 ## 📄 开源协议
 
-本项目采用 [Apache License 2.0](LICENSE)。该协议允许个人和企业在遵守许可证声明、版权保留、修改说明、专利授权和免责声明等条款的前提下使用、修改、分发和商用 GEOFlow。
+本项目采用 [GNU Affero General Public License v3.0](LICENSE)。个人和组织可以在遵守 AGPL-3.0 的前提下免费使用、修改、部署和分发 GEOFlow；修改后的网络服务应按许可证向其用户提供对应源代码。闭源修改、白标、OEM、商业产品集成或其他需要免除 AGPL-3.0 义务的场景，可向版权所有者申请单独的商业许可。此前按 Apache-2.0 发布的版本继续适用其原有许可证。
+
+提交代码、文档、设计或其他原创材料前，请阅读 [贡献指南](CONTRIBUTING.md)；可构成版权作品的贡献在合并前需要接受 [GEOFlow Contributor License Agreement v1.0](CLA.md)。
 
 ---
 

@@ -2,7 +2,7 @@
     "$schema": "https://www.schemastore.org/package.json",
     "name": "geoflow",
     "private": true,
-    "license": "Apache-2.0",
+    "license": "AGPL-3.0-only",
     "type": "module",
     "scripts": {
         "build": "vite build",

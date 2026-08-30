@@ -1,8 +1,16 @@
 GEOFlow
 Copyright 2026 Yao Jingang
 
-GEOFlow is licensed under the Apache License, Version 2.0.
+GEOFlow is licensed under the GNU Affero General Public License, Version 3 only.
 See the LICENSE file for the full license text.
+Alternative commercial terms may be available from the copyright holder for
+uses that cannot comply with AGPL-3.0.
+
+Historical releases and repository revisions distributed before the
+AGPL-3.0 license change remain available under the license terms delivered
+with those versions. Portions originally received under Apache-2.0 remain
+subject to Apache-2.0; its text is retained at
+docs/licenses/Apache-2.0.txt.
 
 The AI Workspace run-status projection, task motion, event timeline, model
 readiness and Agent Turn patterns include adaptations inspired by DeepSeek

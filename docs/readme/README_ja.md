@@ -7,12 +7,12 @@
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../../LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-GEOFlow は [Apache License 2.0](../../LICENSE) の下で公開されています。著作権表示とライセンス表示を保持し、Apache-2.0 の特許、商標、保証免責に関する条件を遵守する限り、商用利用を含む利用、複製、変更、再配布が可能です。
+GEOFlow は [GNU Affero General Public License v3.0](../../LICENSE) の下で公開されています。個人および組織は、AGPL-3.0 を遵守することで利用、変更、デプロイ、再配布できます。改変版をネットワーク経由でユーザーに提供する場合、ライセンスに従って対応するソースコードをそのユーザーに提供する必要があります。非公開の改変、ホワイトラベル／OEM 配布、プロプライエタリ製品への組み込み、その他 AGPL-3.0 に準拠できない用途については、著作権者から別途商用ライセンスを取得できます。
 
 ---
 
@@ -307,7 +307,9 @@ composer test
 
 ## 📄 ライセンス
 
-GEOFlow は [Apache License 2.0](../../LICENSE) の下で提供されます。このライセンスは、ライセンス表示、著作権表示、変更通知、特許条項、保証免責を遵守する限り、個人利用、商用利用、変更、再配布、非公開デプロイを許可します。
+GEOFlow は [GNU Affero General Public License v3.0](../../LICENSE) の下で提供されます。個人および組織は、AGPL-3.0 を遵守することで GEOFlow を利用、変更、デプロイ、再配布できます。改変したネットワークサービスは、ライセンスに従って対応するソースコードをユーザーに提供する必要があります。非公開の改変、ホワイトラベル／OEM 配布、プロプライエタリ製品への組み込み、その他 AGPL-3.0 に準拠できない用途については、著作権者に別途商用ライセンスを申請できます。以前 Apache-2.0 で公開されたバージョンには、引き続き元のライセンスが適用されます。
+
+コード、ドキュメント、デザイン、その他のオリジナル資料を提出する前に、[コントリビューションガイド](../../CONTRIBUTING.md)を確認してください。著作権の対象となるコントリビューションをマージするには、事前に [GEOFlow Contributor License Agreement v1.0](../../CLA.md) への同意が必要です。
 
 ---
 
