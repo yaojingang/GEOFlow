@@ -32,6 +32,24 @@ class KnowledgeFactController extends Controller
         return $this->response($request, ['fact' => $fact], __('admin.knowledge_facts.message.saved'));
     }
 
+    public function review(KnowledgeFactRequest $request, int $knowledgeBaseId, int $factId, KnowledgeFactEditor $editor): JsonResponse|RedirectResponse
+    {
+        $library = $this->library($knowledgeBaseId);
+        $fact = $library->facts()->whereKey($factId)->firstOrFail();
+        $fact = $editor->updateFact($library, $fact, $request->validated(), $this->admin($request));
+
+        return $this->response($request, ['fact' => $fact], __('admin.knowledge_facts.message.saved'));
+    }
+
+    public function archive(KnowledgeFactRequest $request, int $knowledgeBaseId, int $factId, KnowledgeFactEditor $editor): JsonResponse|RedirectResponse
+    {
+        $library = $this->library($knowledgeBaseId);
+        $fact = $library->facts()->whereKey($factId)->firstOrFail();
+        $fact = $editor->updateFact($library, $fact, ['lock_version' => $request->integer('lock_version'), 'is_enabled' => false, 'review_status' => 'rejected'], $this->admin($request));
+
+        return $this->response($request, ['fact' => $fact], __('admin.knowledge_facts.message.saved'));
+    }
+
     public function storeValue(KnowledgeFactRequest $request, int $knowledgeBaseId, int $factId, KnowledgeFactEditor $editor): JsonResponse|RedirectResponse
     {
         $library = $this->library($knowledgeBaseId);
@@ -47,6 +65,15 @@ class KnowledgeFactController extends Controller
         $value = KnowledgeFactValue::query()->whereKey($valueId)->whereHas('fact', fn ($query) => $query->where('library_id', $library->id))->firstOrFail();
 
         return $this->response($request, ['value' => $editor->updateValue($library, $value, $request->validated(), $this->admin($request))], __('admin.knowledge_facts.message.saved'));
+    }
+
+    public function archiveValue(KnowledgeFactRequest $request, int $knowledgeBaseId, int $valueId, KnowledgeFactEditor $editor): JsonResponse|RedirectResponse
+    {
+        $library = $this->library($knowledgeBaseId);
+        $value = KnowledgeFactValue::query()->whereKey($valueId)->whereHas('fact', fn ($query) => $query->where('library_id', $library->id))->firstOrFail();
+        $value = $editor->updateValue($library, $value, ['lock_version' => $request->integer('lock_version'), 'review_status' => 'rejected', 'conflict_status' => 'resolved'], $this->admin($request));
+
+        return $this->response($request, ['value' => $value], __('admin.knowledge_facts.message.saved'));
     }
 
     public function storeEvidence(KnowledgeFactRequest $request, int $knowledgeBaseId, int $valueId, KnowledgeFactEditor $editor): JsonResponse|RedirectResponse

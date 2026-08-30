@@ -34,6 +34,8 @@ class KnowledgeFactRequest extends FormRequest
                 'usage_scope' => ['sometimes', 'in:quality_only,quality_and_generation'], 'review_status' => ['sometimes', 'in:draft,reviewed,rejected'],
                 'is_enabled' => ['sometimes', 'boolean'],
             ],
+            'admin.knowledge-bases.facts.review' => ['lock_version' => ['required', 'integer', 'min:1'], 'review_status' => ['required', 'in:draft,reviewed,rejected']],
+            'admin.knowledge-bases.facts.archive', 'admin.knowledge-bases.fact-values.archive' => ['lock_version' => ['required', 'integer', 'min:1']],
             'admin.knowledge-bases.fact-values.store' => [
                 'canonical_value_json' => ['required', 'array'], 'canonical_answer' => ['required', 'string', 'max:5000'],
                 'temporal_kind' => ['sometimes', 'in:timeless,observed,interval'], 'scope_json' => ['sometimes', 'array'],

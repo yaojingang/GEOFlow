@@ -365,6 +365,7 @@ final class AdminUiRegistry
                 'admin.enterprise-knowledge.status', 'admin.site-settings.theme-replications.status',
                 'admin.system-updates.runs.status', 'admin.tasks.health', 'admin.url-import.status',
                 'admin.title-libraries.ai-generate.status',
+                'admin.knowledge-bases.fact-generation.show',
                 'admin.ai-workspace.conversations.index', 'admin.ai-workspace.conversations.show',
             ],
             'shell' => collect($this->modules())->pluck('patterns')->flatten()->unique()->values()->all(),

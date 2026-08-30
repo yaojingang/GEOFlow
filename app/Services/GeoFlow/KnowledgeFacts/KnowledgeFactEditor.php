@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow\KnowledgeFacts;
 
 use App\Models\Admin;
+use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFact;
 use App\Models\KnowledgeFactEvidence;
 use App\Models\KnowledgeFactLibrary;
@@ -115,6 +116,47 @@ class KnowledgeFactEditor
             $library->increment('working_version');
 
             return $new;
+        }, 3);
+    }
+
+    /** @param array<string,mixed> $candidate */
+    public function resolveGeneratedCandidate(KnowledgeFactLibrary $library, array $candidate, string $action, ?string $newStableKey, Admin $admin, int $runId): ?KnowledgeFactValue
+    {
+        if ($action === 'discard') {
+            return null;
+        }
+
+        return DB::transaction(function () use ($library, $candidate, $action, $newStableKey, $admin, $runId): KnowledgeFactValue {
+            $locked = KnowledgeFactLibrary::query()->whereKey($library->id)->lockForUpdate()->firstOrFail();
+            if ($action === 'merge_as_value') {
+                $fact = $locked->facts()->where('stable_key', $candidate['stable_key'])->lockForUpdate()->firstOrFail();
+            } else {
+                $stableKey = trim((string) $newStableKey);
+                abort_if($stableKey === '' || $locked->facts()->where('stable_key', $stableKey)->exists(), 422, 'knowledge_fact_stable_key_invalid');
+                $fact = $locked->facts()->create([
+                    'stable_key' => $stableKey, 'label' => $candidate['label'], 'subject' => $candidate['subject'], 'predicate' => $candidate['predicate'],
+                    'value_type' => $candidate['value_type'], 'origin_generation_run_id' => $runId, 'created_by_admin_id' => $admin->id, 'updated_by_admin_id' => $admin->id,
+                ]);
+            }
+            $value = $fact->values()->create([
+                'canonical_value_json' => ['value' => (string) $candidate['canonical_value'], 'unit' => (string) $candidate['unit']],
+                'canonical_answer' => $candidate['canonical_answer'], 'scope_hash' => hash('sha256', '{}'), 'origin_generation_run_id' => $runId,
+                'created_by_admin_id' => $admin->id, 'updated_by_admin_id' => $admin->id,
+            ]);
+            foreach (array_values(array_unique((array) ($candidate['evidence_keys'] ?? []))) as $key) {
+                if (preg_match('/\Achunk:(\d+):([a-f0-9]{12})\z/', (string) $key, $matches) !== 1) {
+                    continue;
+                }
+                $chunk = KnowledgeChunk::query()->whereKey((int) $matches[1])->where('knowledge_base_id', $locked->knowledge_base_id)->first();
+                if (! $chunk || ! str_starts_with((string) $chunk->content_hash, $matches[2])) {
+                    continue;
+                }
+                $excerpt = mb_substr((string) $chunk->content, 0, 5000);
+                $value->evidences()->create(['knowledge_chunk_id' => $chunk->id, 'source_hash' => $chunk->source_hash, 'content_hash' => $chunk->content_hash, 'source_locator_json' => ['section_path' => $chunk->section_path], 'excerpt' => $excerpt, 'excerpt_hash' => hash('sha256', trim($excerpt)), 'is_primary' => true, 'created_by_admin_id' => $admin->id]);
+            }
+            $locked->increment('working_version');
+
+            return $value;
         }, 3);
     }
 

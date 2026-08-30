@@ -78,6 +78,10 @@ return [
     'site_full_name' => env('SITE_FULL_NAME', 'GEOFlow'),
     // 站点根 URL，用于生成绝对链接（末尾无斜杠）
     'site_url' => rtrim((string) env('SITE_URL', 'http://localhost'), '/'),
+    'knowledge_fact_generation_max_per_run' => 200,
+    'knowledge_fact_generation_batch_size' => 25,
+    'knowledge_fact_generation_retention_days' => 90,
+
     // SEO 描述
     'site_description' => env('SITE_DESCRIPTION', ''),
     // SEO 关键词（逗号分隔等，依前端使用方式）

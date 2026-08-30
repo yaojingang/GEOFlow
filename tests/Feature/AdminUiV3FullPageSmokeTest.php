@@ -17,6 +17,8 @@ use App\Models\EnterpriseKnowledgeProject;
 use App\Models\ImageLibrary;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
+use App\Models\KnowledgeFactGenerationRun;
+use App\Models\KnowledgeFactLibrary;
 use App\Models\LeadForm;
 use App\Models\LeadSubmission;
 use App\Models\ManualPublication;
@@ -133,7 +135,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $this->assertCount(2, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
         $this->assertCount(5, $routesByClassification->get('download', collect()));
-        $this->assertCount(13, $routesByClassification->get('endpoint', collect()));
+        $this->assertCount(14, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
             ->assertOk()
@@ -296,6 +298,14 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $imageLibrary = ImageLibrary::query()->where('name', UiV3ReviewSeeder::IMAGE_LIBRARY_NAME)->firstOrFail();
         $keywordLibrary = KeywordLibrary::query()->where('name', UiV3ReviewSeeder::KEYWORD_LIBRARY_NAME)->firstOrFail();
         $knowledgeBase = KnowledgeBase::query()->where('name', UiV3ReviewSeeder::KNOWLEDGE_BASE_NAME)->firstOrFail();
+        $factLibrary = KnowledgeFactLibrary::query()->firstOrCreate(['knowledge_base_id' => $knowledgeBase->id]);
+        $factGenerationRun = KnowledgeFactGenerationRun::query()->firstOrCreate([
+            'library_id' => $factLibrary->id,
+            'request_key' => '01987f84-7f01-7000-8000-000000000103',
+        ], [
+            'mode' => 'initial', 'target_count' => 1, 'source_hash' => str_repeat('0', 64),
+            'base_working_version' => 1, 'status' => 'completed', 'completed_at' => now(),
+        ]);
         $leadForm = LeadForm::query()->where('slug', UiV3ReviewSeeder::LEAD_FORM_SLUG)->firstOrFail();
         $lead = LeadSubmission::query()->where('source_url', UiV3ReviewSeeder::LEAD_SOURCE_URL)->firstOrFail();
         $publication = ManualPublication::query()->where('target_url', UiV3ReviewSeeder::PUBLICATION_TARGET_URL)->firstOrFail();
@@ -397,6 +407,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.keyword-libraries.keywords.create' => ['libraryId' => $keywordLibrary->id],
             'admin.knowledge-bases.detail' => ['knowledgeBaseId' => $knowledgeBase->id],
             'admin.knowledge-bases.edit' => ['knowledgeBaseId' => $knowledgeBase->id],
+            'admin.knowledge-bases.fact-generation.show' => ['knowledgeBaseId' => $knowledgeBase->id, 'runId' => $factGenerationRun->id],
             'admin.lead-forms.edit' => ['formId' => $leadForm->id],
             'admin.leads.show' => ['submissionId' => $lead->id],
             'admin.manual-publications.edit' => ['manualPublicationId' => $publication->id],
