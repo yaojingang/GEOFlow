@@ -13,7 +13,29 @@ return [
     'inherit_help' => '使用任务当前保存的质检方式。',
     'source_task' => '知识库由任务配置提供',
     'source_article' => '知识库由当前文章配置提供',
-    'current_execution' => '本次实际执行：:mode',
+    'current_execution' => '最近一次实际执行：:mode',
+    'results' => [
+        'primary_title' => ':mode',
+        'participates_in_scoring' => '已参与评分',
+        'strategy_version' => '策略 :version',
+        'primary_tokens' => '模型质检 :tokens Token',
+        'atomic_shadow_title' => '原子事实影子核验',
+        'atomic_formal_title' => '原子事实核验',
+        'validation_only' => '验证数据 · 未参与评分',
+        'algorithm_version' => '算法 :version',
+        'fact_versions' => '事实版本 :versions',
+        'atomic_tokens' => '原子核验 :tokens Token',
+        'coverage' => '覆盖率 :rate%',
+        'none' => '暂无',
+        'metrics' => [
+            'supported' => '命中',
+            'contradicted' => '冲突',
+            'uncovered' => '未覆盖',
+            'ambiguous' => '歧义',
+            'fallback' => '回退',
+            'elapsed' => '耗时',
+        ],
+    ],
     'modes' => [
         'atomic_first' => [
             'label' => '原子质检',
@@ -28,7 +50,7 @@ return [
         'knowledge_broad' => [
             'label' => '知识库质检',
             'badge' => '覆盖优先',
-            'description' => '从知识库正文按章节做宽范围取证，噪音、Token 和耗时更高。',
+            'description' => '从知识库正文按段落与前中后区域做宽范围取证，噪音、Token 和耗时更高。',
         ],
     ],
 ];

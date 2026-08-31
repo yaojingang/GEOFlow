@@ -21,13 +21,17 @@ use App\Models\Task;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
 use App\Services\GeoFlow\ArticleAiQualityPolicyResolver;
 use App\Services\GeoFlow\ArticleAiQualityReconciliationService;
+use App\Services\GeoFlow\ArticleAiQualityRetrievalCoordinator;
 use App\Services\GeoFlow\ArticleAiQualityRolloutPolicy;
 use App\Services\GeoFlow\ArticleFactCandidateExtractor;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
+use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
+use App\Services\GeoFlow\KnowledgeRetrievalService;
 use Carbon\Carbon;
 use Illuminate\Contracts\Queue\Queue as QueueContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use InvalidArgumentException;
 use Mockery;
 use Tests\TestCase;
 use UnexpectedValueException;
@@ -49,6 +53,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame('full', $check->inspection_scope);
         $this->assertSame('chunk', $check->requested_retrieval_mode);
         $this->assertNull($check->effective_retrieval_mode);
+        $this->assertSame('chunk-evidence-1.1.0', $check->retrieval_strategy_version);
         $this->assertSame(64, strlen((string) $check->retrieval_basis_hash));
         $this->assertSame($check->retrieval_basis_hash, data_get($check->execution_meta, 'retrieval_basis.hash'));
         $this->assertEquals(180, $check->created_at->diffInSeconds($check->primary_deadline_at));
@@ -317,7 +322,16 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
             ],
             'finished_at' => now(),
         ])->save();
-        $check->forceFill(['completed_segment_count' => 1])->save();
+        $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
+        $executionMeta['segment_runs'] = [
+            '0' => [
+                'usage' => ['prompt_tokens' => 11, 'completion_tokens' => 7, 'total_tokens' => 18],
+            ],
+        ];
+        $check->forceFill([
+            'completed_segment_count' => 1,
+            'execution_meta' => $executionMeta,
+        ])->save();
         $this->assertTrue($service->tryStartSampledFallback(
             $check,
             new ArticleAiQualityRuntimeException('inspection_primary_deadline_exceeded', false),
@@ -339,6 +353,9 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
             data_get($completed->coverage_meta, 'mandatory_claims_total'),
             data_get($completed->coverage_meta, 'mandatory_claims_covered'),
         );
+        $this->assertSame(18, data_get($completed->usage_meta, 'primary_review.total_tokens'));
+        $this->assertSame(0, data_get($completed->usage_meta, 'atomic_verification.total_tokens'));
+        $this->assertArrayNotHasKey('knowledge_fallback', $completed->usage_meta);
     }
 
     public function test_sampled_fallback_reextracts_all_high_risk_claims_before_deciding_coverage(): void
@@ -562,6 +579,131 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame('knowledge_contradiction', data_get($result, 'inspection.issues.0.code'));
     }
 
+    public function test_chunk_checks_ignore_the_formal_atomic_rollout_track(): void
+    {
+        $this->setQualityRollout(atomicFact: 100);
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('chunk-with-formal-atomic-rollout', needReview: true);
+        $service = app(ArticleAiQualityInspectionService::class);
+
+        $completed = $service->process($service->createOrReuse($article, dispatch: false));
+
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame('chunk', $completed->effective_retrieval_mode);
+        $this->assertSame('disabled', data_get($completed->execution_meta, 'atomic_facts.mode'));
+        $this->assertFalse((bool) data_get($completed->execution_meta, 'atomic_facts.formal'));
+        $this->assertSame(['chunk'], $completed->sources()->pluck('dependency_kind')->unique()->values()->all());
+        $this->assertSame(['chunk'], $completed->sources()->whereNotNull('used_at')->pluck('used_provider')->unique()->values()->all());
+    }
+
+    public function test_knowledge_broad_checks_ignore_the_formal_atomic_rollout_track(): void
+    {
+        $this->setQualityRollout(atomicFact: 100);
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('broad-with-formal-atomic-rollout', needReview: true);
+        $article->task()->update(['ai_quality_retrieval_mode' => 'knowledge_broad']);
+        $service = app(ArticleAiQualityInspectionService::class);
+
+        $completed = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame('knowledge_broad', $completed->effective_retrieval_mode);
+        $this->assertSame('disabled', data_get($completed->execution_meta, 'atomic_facts.mode'));
+        $this->assertFalse((bool) data_get($completed->execution_meta, 'atomic_facts.formal'));
+        $this->assertSame(['raw_content'], $completed->sources()->pluck('dependency_kind')->unique()->values()->all());
+        $this->assertSame(['knowledge_broad'], $completed->sources()->whereNotNull('used_at')->pluck('used_provider')->unique()->values()->all());
+    }
+
+    public function test_knowledge_broad_marks_only_the_knowledge_bases_it_actually_reads(): void
+    {
+        config()->set('geoflow.ai_quality_max_evidence', 1);
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('broad-source-ledger', needReview: true);
+        $secondBase = KnowledgeBase::query()->create([
+            'name' => '未读取的第二知识库',
+            'content' => '第二知识库中的事实。',
+            'review_status' => 'reviewed',
+            'chunk_sync_status' => 'completed',
+            'chunk_source_hash' => 'second-source-ledger',
+        ]);
+        $article->task->knowledgeBases()->attach($secondBase->id, ['sort_order' => 1]);
+        $article->task()->update(['ai_quality_retrieval_mode' => 'knowledge_broad']);
+        $service = app(ArticleAiQualityInspectionService::class);
+
+        $completed = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+        $usedSources = $completed->sources()->whereNotNull('used_at')->get();
+
+        $this->assertSame('completed', $completed->status);
+        $this->assertCount(2, $completed->sources);
+        $this->assertCount(1, $usedSources);
+        $this->assertSame(
+            (int) data_get($completed->evidence_snapshot, '0.knowledge_base_id'),
+            (int) $usedSources->first()->knowledge_base_id,
+        );
+    }
+
+    public function test_chunk_shadow_atomic_inspection_runs_once(): void
+    {
+        $this->setQualityRollout(atomicShadow: 100);
+        $inspector = Mockery::mock(ArticleAtomicFactInspector::class);
+        $inspector->shouldReceive('inspect')->once()->andReturn([
+            'mode' => 'knowledge_fallback',
+            'algorithm_version' => ArticleAtomicFactInspector::ALGORITHM_VERSION,
+            'results' => [],
+            'issues' => [],
+            'usage' => ['input_tokens' => 0, 'output_tokens' => 0, 'total_tokens' => 0],
+        ]);
+        $this->app->instance(ArticleAtomicFactInspector::class, $inspector);
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('chunk-single-shadow-inspection', needReview: true);
+        $service = app(ArticleAiQualityInspectionService::class);
+
+        $completed = $service->process($service->createOrReuse($article, dispatch: false));
+
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame('shadow', data_get($completed->execution_meta, 'atomic_facts.mode'));
+    }
+
+    public function test_effective_mode_remains_empty_when_retrieval_never_completes(): void
+    {
+        $retrieval = Mockery::mock(KnowledgeRetrievalService::class);
+        $retrieval->shouldReceive('retrieveEvidenceFromMany')
+            ->andThrow(new \RuntimeException('retrieval unavailable'));
+        $this->app->instance(KnowledgeRetrievalService::class, $retrieval);
+        $article = $this->createQualityFixture('retrieval-never-completes', needReview: true);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article, dispatch: false);
+
+        try {
+            $service->process($check);
+            $this->fail('Expected evidence retrieval to fail.');
+        } catch (ArticleAiQualityRuntimeException $exception) {
+            $this->assertSame('evidence_retrieval_failed', $exception->safeCode());
+        }
+
+        $this->assertNull($check->fresh()->effective_retrieval_mode);
+    }
+
+    public function test_invalid_retrieval_contract_is_not_retryable(): void
+    {
+        $article = $this->createQualityFixture('invalid-retrieval-contract', needReview: true);
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $retrieval = Mockery::mock(ArticleAiQualityRetrievalCoordinator::class);
+        $retrieval->shouldReceive('strategyVersion')->andReturn('chunk-evidence-1.1.0');
+        $retrieval->shouldReceive('retrieve')->once()->andThrow(
+            new InvalidArgumentException('ai_quality_retrieval_evidence_contract_invalid'),
+        );
+        $this->app->instance(ArticleAiQualityRetrievalCoordinator::class, $retrieval);
+
+        try {
+            app(ArticleAiQualityInspectionService::class)->process($check);
+            $this->fail('Expected the invalid retrieval contract to fail.');
+        } catch (ArticleAiQualityRuntimeException $exception) {
+            $this->assertSame('evidence_retrieval_failed', $exception->safeCode());
+            $this->assertFalse($exception->retryable());
+        }
+    }
+
     public function test_a_stale_check_terminalizes_its_segments_and_holds_the_article_for_review(): void
     {
         $this->bindPassingReviewer();
@@ -750,6 +892,9 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame('sufficient', $completed->fact_candidates_snapshot[0]['coverage_status']);
         $this->assertSame(1, $completed->completed_segment_count);
         $this->assertSame(120, $completed->usage_meta['total_tokens']);
+        $this->assertSame(120, data_get($completed->usage_meta, 'primary_review.total_tokens'));
+        $this->assertSame(0, data_get($completed->usage_meta, 'atomic_verification.total_tokens'));
+        $this->assertArrayNotHasKey('knowledge_fallback', $completed->usage_meta);
         foreach (['queue_wait', 'claim_extraction', 'evidence_retrieval', 'prompt_render', 'model_total', 'validation', 'scoring', 'persistence', 'total'] as $timing) {
             $this->assertArrayHasKey($timing, $completed->execution_meta['timings_ms']);
             $this->assertGreaterThanOrEqual(0, $completed->execution_meta['timings_ms'][$timing]);
@@ -1692,12 +1837,17 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         int $scoring = 0,
         int $shadow = 0,
         int $principles = 0,
+        int $atomicShadow = 0,
+        int $atomicFact = 0,
     ): void {
         ArticleAiQualityRollout::query()->updateOrCreate(['id' => 1], [
             'execution_percent' => $execution,
             'scoring_percent' => $scoring,
             'shadow_percent' => $shadow,
             'principle_percent' => $principles,
+            'atomic_shadow_percent' => $atomicShadow,
+            'atomic_fact_percent' => $atomicFact,
+            'atomic_fact_frozen' => false,
             'sampled_auto_release_enabled' => true,
             'frozen' => false,
         ]);

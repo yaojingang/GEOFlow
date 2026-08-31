@@ -2,10 +2,12 @@
 
 namespace Tests\Unit;
 
+use App\Services\GeoFlow\ArticleAiQualityEvidenceCache;
 use App\Services\GeoFlow\AtomicFirstEvidenceStrategy;
 use App\Services\GeoFlow\ChunkEvidenceStrategy;
 use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use App\Support\GeoFlow\AiQualityRetrievalResult;
+use Illuminate\Support\Facades\Cache;
 use Mockery;
 use Tests\TestCase;
 
@@ -67,6 +69,9 @@ class AtomicFirstEvidenceStrategyTest extends TestCase
                     $candidates,
                 ),
                 'knowledge_coverage' => 'insufficient',
+                'effective_retrieval_mode' => 'chunk',
+                'retrieval_strategy_version' => 'chunk-evidence-1.1.0',
+                'retrieval_meta' => ['path' => ['chunk']],
             ]));
 
         $result = (new AtomicFirstEvidenceStrategy($inspector, $chunk))
@@ -98,28 +103,45 @@ class AtomicFirstEvidenceStrategyTest extends TestCase
                 'stable_key' => 'company.employee_count',
                 'label' => '员工人数',
                 'standard_answer' => '128 人',
+                'knowledge_base_id' => 7,
+                'source_hash' => str_repeat('a', 64),
                 'revision_id' => 9,
                 'revision_version' => 3,
             ]],
         ]);
         $chunk = Mockery::mock(ChunkEvidenceStrategy::class);
-        $chunk->shouldReceive('build')
-            ->once()
-            ->withArgs(static fn (array $_ids, array $_snapshot, array $facts): bool => $facts === [])
-            ->andReturn(new AiQualityRetrievalResult([
-                'evidence' => [],
-                'fact_candidates' => [],
-                'knowledge_coverage' => 'sufficient',
-            ]));
+        $chunk->shouldNotReceive('build');
 
         $result = (new AtomicFirstEvidenceStrategy($inspector, $chunk))
             ->build([7], $snapshot, $candidates)
             ->toArray();
 
         $this->assertSame('A1', $result['evidence'][0]['id']);
+        $this->assertSame('A1', $result['evidence'][0]['evidence_id']);
+        $this->assertSame(7, $result['evidence'][0]['knowledge_base_id']);
+        $this->assertSame(str_repeat('a', 64), $result['evidence'][0]['source_hash']);
+        $this->assertSame('atomic_first', $result['evidence'][0]['retrieval_strategy']);
+        $this->assertSame('atomic-first-1.3.0', $result['evidence'][0]['retrieval_strategy_version']);
         $this->assertSame('reviewed', data_get($result, 'evidence.0.metadata.review_status'));
         $this->assertSame(['A1'], $result['fact_candidates'][0]['knowledge_refs']);
         $this->assertSame('sufficient', $result['knowledge_coverage']);
+        $this->assertSame('atomic_first', $result['effective_retrieval_mode']);
+        $this->assertSame('atomic-first-1.3.0', $result['retrieval_strategy_version']);
+        $this->assertSame(['atomic'], data_get($result, 'retrieval_meta.path'));
+        $this->assertSame(['atomic_first'], array_values(array_unique(array_column($result['evidence'], 'retrieval_strategy'))));
         $this->assertSame(0, data_get($result, 'retrieval_meta.fallback_claim_count'));
+
+        Cache::clear();
+        config()->set('geoflow.ai_quality_evidence_cache_enabled', true);
+        $calls = 0;
+        $cache = new ArticleAiQualityEvidenceCache;
+        $resolver = static function () use (&$calls, $result): array {
+            $calls++;
+
+            return $result;
+        };
+        $this->assertFalse($cache->remember(['mode' => 'atomic_first'], $resolver)['hit']);
+        $this->assertTrue($cache->remember(['mode' => 'atomic_first'], $resolver)['hit']);
+        $this->assertSame(1, $calls);
     }
 }

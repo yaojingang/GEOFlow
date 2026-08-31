@@ -26,8 +26,18 @@ class ChunkEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
             is_array($options['generation_evidence'] ?? null) ? $options['generation_evidence'] : [],
             is_array($options['serving_generations'] ?? null) ? $options['serving_generations'] : [],
         );
+        $evidence = collect((array) ($result['evidence'] ?? []))
+            ->map(fn (array $item): array => AiQualityRetrievalResult::normalizeEvidence(
+                $item,
+                AiQualityRetrievalMode::CHUNK,
+                $this->version(),
+                ['provider' => 'chunk'],
+            ))
+            ->values()
+            ->all();
 
         return new AiQualityRetrievalResult([...$result,
+            'evidence' => $evidence,
             'effective_retrieval_mode' => AiQualityRetrievalMode::CHUNK,
             'retrieval_strategy_version' => $this->version(),
             'retrieval_meta' => array_replace(
@@ -39,6 +49,6 @@ class ChunkEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
 
     public function version(): string
     {
-        return 'chunk-evidence-1.0.0';
+        return 'chunk-evidence-1.1.0';
     }
 }

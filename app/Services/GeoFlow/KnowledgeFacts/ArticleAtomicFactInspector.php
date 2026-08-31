@@ -74,6 +74,7 @@ class ArticleAtomicFactInspector
             'mode' => $ready->isEmpty() ? 'knowledge_fallback' : 'hybrid',
             'algorithm_version' => self::ALGORITHM_VERSION,
             'revision_ids' => $ready->pluck('active_revision_id')->map(fn ($id): int => (int) $id)->values()->all(),
+            'knowledge_base_ids' => $ready->pluck('knowledge_base_id')->map(fn ($id): int => (int) $id)->values()->all(),
             'library_hashes' => $ready->pluck('active_hash')->filter()->values()->all(),
             'source_hashes' => $ready->pluck('source_hash')->filter()->values()->all(),
             'fact_count' => $facts->count(),
@@ -109,6 +110,8 @@ class ArticleAtomicFactInspector
                         'revision_id' => (int) $library->activeRevision->id,
                         'revision_version' => (int) $library->activeRevision->version,
                         'library_id' => (int) $library->id,
+                        'knowledge_base_id' => (int) $library->knowledge_base_id,
+                        'source_hash' => (string) $library->source_hash,
                         'value' => $value,
                         'evidence' => (array) ($value['evidence'] ?? []),
                     ]));
@@ -297,7 +300,9 @@ class ArticleAtomicFactInspector
             'stable_key' => (string) ($fact['stable_key'] ?? ''), 'label' => (string) ($fact['label'] ?? ''), 'status' => $status,
             'claim_count' => 1, 'article_claim' => $claim, 'standard_answer' => $standardAnswer ?: (string) data_get($fact, 'value.canonical_answer', ''),
             'comparison_method' => $method, 'importance' => (string) ($fact['importance'] ?? 'normal'),
-            'revision_id' => (int) ($fact['revision_id'] ?? 0), 'revision_version' => (int) ($fact['revision_version'] ?? 0), 'evidence' => (array) ($fact['evidence'] ?? []),
+            'revision_id' => (int) ($fact['revision_id'] ?? 0), 'revision_version' => (int) ($fact['revision_version'] ?? 0),
+            'knowledge_base_id' => (int) ($fact['knowledge_base_id'] ?? 0), 'source_hash' => (string) ($fact['source_hash'] ?? ''),
+            'evidence' => (array) ($fact['evidence'] ?? []),
         ];
     }
 

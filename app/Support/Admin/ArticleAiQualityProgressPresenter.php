@@ -153,7 +153,7 @@ class ArticleAiQualityProgressPresenter
         $queueWaitMs = $check?->started_at
             ? max(0, (int) round($check->created_at->diffInMilliseconds($check->started_at)))
             : ($active && $startedAt ? $elapsedMs : null);
-        $retryable = (bool) ($executionMeta['retryable_failure'] ?? false) || in_array($safeErrorCode, [
+        $retryableByCode = in_array($safeErrorCode, [
             'provider_timeout',
             'provider_rate_limited',
             'provider_gateway_error',
@@ -169,6 +169,9 @@ class ArticleAiQualityProgressPresenter
             'queue_worker_unavailable',
             'queue_wait_timeout',
         ], true);
+        $retryable = array_key_exists('retryable_failure', $executionMeta)
+            ? (bool) $executionMeta['retryable_failure']
+            : $retryableByCode;
         $failure = in_array($effectiveStatus, ['failed', 'stale', 'cancelled'], true)
             ? $this->failureDetails($safeErrorCode, $retryable, $executionMeta, $elapsedMs)
             : null;
@@ -210,6 +213,9 @@ class ArticleAiQualityProgressPresenter
             'sampled_deadline_at' => $sampledDeadlineAt?->toIso8601String(),
             'active_deadline_at' => $activeDeadlineAt?->toIso8601String(),
             'inspection_scope' => $scope,
+            'requested_retrieval_mode' => $check?->requested_retrieval_mode,
+            'effective_retrieval_mode' => $check?->effective_retrieval_mode,
+            'retrieval_strategy_version' => $check?->retrieval_strategy_version,
             'degraded' => $degraded,
             'result_label' => $effectiveStatus === 'failed'
                 ? __('admin.articles.ai_quality.failed')

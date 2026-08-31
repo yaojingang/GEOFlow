@@ -25,6 +25,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
@@ -357,7 +358,7 @@ class ArticleAiQualityInspectionService
                         'status' => 'queued',
                         'inspection_scope' => 'full',
                         'requested_retrieval_mode' => $retrievalMode,
-                        'retrieval_strategy_version' => 'ai-quality-retrieval-1.0.0',
+                        'retrieval_strategy_version' => (string) data_get($retrievalBasis->toArray(), 'strategy_version'),
                         'retrieval_basis_hash' => $retrievalBasis->hash(),
                         'primary_deadline_at' => $primaryDeadlineAt,
                         'deadline_at' => $deadlineAt,
@@ -756,7 +757,6 @@ class ArticleAiQualityInspectionService
                 'started_at' => $check->started_at ?: now(),
                 'error_code' => null,
                 'error_message' => null,
-                'effective_retrieval_mode' => (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()),
                 'retrieval_failure_code' => null,
                 'updated_at' => now(),
             ]);
@@ -771,13 +771,7 @@ class ArticleAiQualityInspectionService
             : 0;
 
         $articleSnapshot = is_array($check->article_snapshot) ? $check->article_snapshot : [];
-        $atomicFacts = $this->atomicFactsForCheck($check, $articleSnapshot, $policy);
         $inspectionSnapshot = $articleSnapshot;
-        if ((bool) ($atomicFacts['formal'] ?? false)) {
-            $fallbackContent = trim((string) data_get($atomicFacts, 'inspection.fallback_content', ''));
-            $inspectionSnapshot['content'] = $fallbackContent;
-            $executionMeta['atomic_facts'] = $atomicFacts;
-        }
         if (is_array($check->fact_candidates_snapshot) && is_array($check->evidence_snapshot)) {
             $facts = $check->fact_candidates_snapshot;
             $evidence = $check->evidence_snapshot;
@@ -788,6 +782,9 @@ class ArticleAiQualityInspectionService
                 'retrieval_meta' => is_array($executionMeta['retrieval'] ?? null)
                     ? $executionMeta['retrieval']
                     : [],
+                'effective_retrieval_mode' => (string) (
+                    $check->effective_retrieval_mode ?: $check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()
+                ),
                 'retrieval_strategy_version' => (string) $check->retrieval_strategy_version,
             ];
             $timings['claim_extraction'] = (int) ($timings['claim_extraction'] ?? 0);
@@ -811,7 +808,7 @@ class ArticleAiQualityInspectionService
                         $check->article?->generation_evidence_snapshot ?? [],
                         JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
                     )),
-                    'retrieval_version' => 3,
+                    'retrieval_version' => 4,
                     'retrieval_mode' => (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()),
                     'retrieval_basis_hash' => (string) $check->retrieval_basis_hash,
                     'limits' => [
@@ -839,6 +836,8 @@ class ArticleAiQualityInspectionService
                     'status' => $cacheResult['hit'] ? 'hit' : 'miss',
                     'key' => $cacheResult['key'],
                 ];
+            } catch (InvalidArgumentException $exception) {
+                throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', false, $exception);
             } catch (Throwable $exception) {
                 throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', true, $exception);
             }
@@ -846,6 +845,7 @@ class ArticleAiQualityInspectionService
             $facts = $evidenceResult['fact_candidates'];
             $evidence = $evidenceResult['evidence'];
         }
+        $effectiveRetrievalMode = $this->effectiveRetrievalMode($check, $evidenceResult);
 
         $executionMeta = array_replace($executionMeta, [
             'current_phase' => 'inspecting',
@@ -863,6 +863,7 @@ class ArticleAiQualityInspectionService
                 'fact_candidates_snapshot' => json_encode($facts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'evidence_snapshot' => json_encode($evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'knowledge_coverage' => $evidenceResult['knowledge_coverage'],
+                'effective_retrieval_mode' => $effectiveRetrievalMode,
                 'retrieval_strategy_version' => (string) ($evidenceResult['retrieval_strategy_version'] ?? $check->retrieval_strategy_version),
                 'execution_meta' => json_encode($executionMeta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'updated_at' => now(),
@@ -1094,12 +1095,7 @@ class ArticleAiQualityInspectionService
             $aggregate['issues'] = array_values(array_merge($aggregate['issues'], (array) data_get($atomicFacts, 'inspection.issues', [])));
         }
         $executionMeta['atomic_facts'] = $atomicFacts;
-        $usage['atomic_facts'] = (array) data_get($atomicFacts, 'inspection.usage', []);
-        $usage['knowledge_fallback'] = [
-            'prompt_tokens' => (int) ($usage['prompt_tokens'] ?? 0),
-            'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
-            'total_tokens' => (int) ($usage['total_tokens'] ?? 0),
-        ];
+        $usage = $this->withRetrievalUsageBreakdown($usage, $atomicFacts);
         $scoringStartedAt = hrtime(true);
         $score = (string) $check->scoring_version === 'v2'
             ? $this->scorerV2->score($aggregate, (int) $check->pass_score, (int) $check->manual_override_min_score)
@@ -1394,7 +1390,6 @@ class ArticleAiQualityInspectionService
         }
         $this->policyResolver->assertExecutable($policy);
         ArticleAiQualityCheck::query()->whereKey($checkId)->where('status', 'running')->update([
-            'effective_retrieval_mode' => (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()),
             'retrieval_failure_code' => null,
             'updated_at' => now(),
         ]);
@@ -1414,6 +1409,16 @@ class ArticleAiQualityInspectionService
             ) && (string) ($fact['coverage_status'] ?? 'insufficient') !== 'sufficient')) {
                 $knowledgeCoverage = 'insufficient';
             }
+            $evidenceResult = [
+                'evidence' => $evidence,
+                'fact_candidates' => $facts,
+                'knowledge_coverage' => $knowledgeCoverage,
+                'effective_retrieval_mode' => (string) (
+                    $check->effective_retrieval_mode ?: $check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()
+                ),
+                'retrieval_strategy_version' => (string) $check->retrieval_strategy_version,
+                'retrieval_meta' => is_array($executionMeta['retrieval'] ?? null) ? $executionMeta['retrieval'] : [],
+            ];
         } else {
             try {
                 $evidenceResult = $this->retrievalCoordinator->retrieve(
@@ -1431,6 +1436,8 @@ class ArticleAiQualityInspectionService
                         'serving_generations' => $this->frozenServingGenerations($check),
                     ],
                 )->toArray();
+            } catch (InvalidArgumentException $exception) {
+                throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', false, $exception);
             } catch (Throwable $exception) {
                 throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', true, $exception);
             }
@@ -1438,6 +1445,7 @@ class ArticleAiQualityInspectionService
             $evidence = is_array($evidenceResult['evidence'] ?? null) ? $evidenceResult['evidence'] : [];
             $knowledgeCoverage = (string) ($evidenceResult['knowledge_coverage'] ?? 'insufficient');
         }
+        $effectiveRetrievalMode = $this->effectiveRetrievalMode($check, $evidenceResult);
 
         $riskScan = $this->riskScanner->scan($articleSnapshot);
         $sample = $this->sampleBuilder->build(
@@ -1472,6 +1480,8 @@ class ArticleAiQualityInspectionService
                 'evidence_snapshot' => json_encode($evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'knowledge_coverage' => $knowledgeCoverage,
                 'coverage_meta' => json_encode($coverage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'effective_retrieval_mode' => $effectiveRetrievalMode,
+                'retrieval_strategy_version' => (string) ($evidenceResult['retrieval_strategy_version'] ?? $check->retrieval_strategy_version),
                 'execution_meta' => json_encode($executionMeta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'updated_at' => now(),
             ]);
@@ -1608,6 +1618,16 @@ class ArticleAiQualityInspectionService
             $coverage['safe_for_auto_release'] = false;
             $coverage['gate_reasons'] = array_values(array_unique($gateReasons));
         }
+        $primaryUsage = $this->mergeUsage([], is_array($review['usage'] ?? null) ? $review['usage'] : []);
+        foreach ((array) ($executionMeta['segment_runs'] ?? []) as $segmentRun) {
+            if (is_array($segmentRun)) {
+                $primaryUsage = $this->mergeUsage(
+                    $primaryUsage,
+                    is_array($segmentRun['usage'] ?? null) ? $segmentRun['usage'] : [],
+                );
+            }
+        }
+        $usage = $this->withRetrievalUsageBreakdown($primaryUsage, $atomicFacts);
 
         $completedAt = now();
         if (! $this->rolloutEpochMatches($check)) {
@@ -1638,7 +1658,7 @@ class ArticleAiQualityInspectionService
                 'truncated_issue_count' => (int) ($aggregate['truncated_issue_count'] ?? 0),
                 'coverage_meta' => json_encode($coverage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'raw_model_output' => json_encode($storedRaw, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                'usage_meta' => json_encode($this->mergeUsage([], is_array($review['usage'] ?? null) ? $review['usage'] : []), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'usage_meta' => json_encode($usage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'execution_meta' => json_encode(array_replace($executionMeta, [
                     'atomic_facts' => $atomicFacts,
                     'current_phase' => 'finished',
@@ -2117,6 +2137,18 @@ class ArticleAiQualityInspectionService
     }
 
     /** @param array<string,mixed> $retrievalResult */
+    private function effectiveRetrievalMode(ArticleAiQualityCheck $check, array $retrievalResult): string
+    {
+        $requestedMode = (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault());
+        $effectiveMode = (string) ($retrievalResult['effective_retrieval_mode'] ?? '');
+        if (! AiQualityRetrievalMode::isValid($effectiveMode) || $effectiveMode !== $requestedMode) {
+            throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', false);
+        }
+
+        return $effectiveMode;
+    }
+
+    /** @param array<string,mixed> $retrievalResult */
     private function markRetrievalSourcesUsed(int $checkId, array $retrievalResult): void
     {
         $path = array_values(array_filter(array_map(
@@ -2124,24 +2156,45 @@ class ArticleAiQualityInspectionService
             (array) data_get($retrievalResult, 'retrieval_meta.path', []),
         )));
         $providers = [
-            'raw_content' => in_array('knowledge_broad', $path, true) ? 'knowledge_broad' : null,
-            'atomic' => in_array('atomic', $path, true) ? 'atomic' : null,
-            'chunk' => in_array('chunk', $path, true) || in_array('chunk_fallback', $path, true)
-                ? (in_array('chunk_fallback', $path, true) ? 'chunk_fallback' : 'chunk')
-                : null,
+            'raw_content' => [
+                'provider' => in_array('knowledge_broad', $path, true) ? 'knowledge_broad' : null,
+                'source_key' => 'knowledge_broad',
+            ],
+            'atomic' => [
+                'provider' => in_array('atomic', $path, true) ? 'atomic' : null,
+                'source_key' => 'atomic',
+            ],
+            'chunk' => [
+                'provider' => in_array('chunk', $path, true) || in_array('chunk_fallback', $path, true)
+                    ? (in_array('chunk_fallback', $path, true) ? 'chunk_fallback' : 'chunk')
+                    : null,
+                'source_key' => 'chunk',
+            ],
         ];
-        foreach ($providers as $dependencyKind => $provider) {
+        $sourceMap = data_get($retrievalResult, 'retrieval_meta.source_knowledge_base_ids');
+        foreach ($providers as $dependencyKind => $providerConfig) {
+            $provider = $providerConfig['provider'];
             if ($provider === null) {
                 continue;
             }
-            DB::table('article_ai_quality_check_sources')
+            $query = DB::table('article_ai_quality_check_sources')
                 ->where('article_ai_quality_check_id', $checkId)
-                ->where('dependency_kind', $dependencyKind)
-                ->update([
-                    'used_provider' => $provider,
-                    'used_at' => now(),
-                    'updated_at' => now(),
-                ]);
+                ->where('dependency_kind', $dependencyKind);
+            if (is_array($sourceMap)) {
+                $sourceIds = array_values(array_unique(array_filter(array_map(
+                    'intval',
+                    (array) ($sourceMap[$providerConfig['source_key']] ?? []),
+                ))));
+                if ($sourceIds === []) {
+                    continue;
+                }
+                $query->whereIn('knowledge_base_id', $sourceIds);
+            }
+            $query->update([
+                'used_provider' => $provider,
+                'used_at' => now(),
+                'updated_at' => now(),
+            ]);
         }
     }
 
@@ -2260,9 +2313,8 @@ class ArticleAiQualityInspectionService
             ];
         }
 
-        $formal = $this->rolloutPolicy->atomicFactEnabled((int) $check->article_id);
         $shadow = $this->rolloutPolicy->atomicShadowEnabled((int) $check->article_id);
-        if (! $formal && ! $shadow) {
+        if (! $shadow) {
             return ['mode' => 'disabled', 'formal' => false, 'shadow' => false];
         }
 
@@ -2273,9 +2325,9 @@ class ArticleAiQualityInspectionService
         $inspection = $this->atomicFactInspector->inspect($content, array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])));
 
         return [
-            'mode' => $formal ? 'hybrid_formal' : 'shadow',
-            'formal' => $formal,
-            'shadow' => ! $formal && $shadow,
+            'mode' => 'shadow',
+            'formal' => false,
+            'shadow' => true,
             'inspection' => $inspection,
         ];
     }
@@ -3077,6 +3129,30 @@ class ArticleAiQualityInspectionService
                 }
             }
         }
+    }
+
+    /**
+     * @param  array<string,mixed>  $usage
+     * @param  array<string,mixed>  $atomicFacts
+     * @return array<string,mixed>
+     */
+    private function withRetrievalUsageBreakdown(array $usage, array $atomicFacts): array
+    {
+        $primaryReview = $this->mergeUsage([], $usage);
+        $atomicUsage = (array) data_get($atomicFacts, 'inspection.usage', []);
+        $atomicPrompt = (int) ($atomicUsage['prompt_tokens'] ?? $atomicUsage['input_tokens'] ?? 0);
+        $atomicCompletion = (int) ($atomicUsage['completion_tokens'] ?? $atomicUsage['output_tokens'] ?? 0);
+        $atomicTotal = (int) ($atomicUsage['total_tokens'] ?? ($atomicPrompt + $atomicCompletion));
+
+        return [
+            ...$primaryReview,
+            'primary_review' => $primaryReview,
+            'atomic_verification' => [
+                'prompt_tokens' => $atomicPrompt,
+                'completion_tokens' => $atomicCompletion,
+                'total_tokens' => $atomicTotal,
+            ],
+        ];
     }
 
     /**

@@ -93,7 +93,7 @@
                 <div class="absolute right-3 top-3" data-retrieval-mode-help>
                     <button
                         type="button"
-                        class="flex h-6 w-6 cursor-help items-center justify-center rounded-full border border-gray-300 bg-white text-gray-500 transition-[background-color,border-color,color,transform] duration-150 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 active:scale-95 motion-reduce:transition-none"
+                        class="flex h-6 w-6 cursor-help items-center justify-center text-gray-500 transition-[color,transform] duration-150 hover:text-blue-700 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 active:scale-95 motion-reduce:transition-none"
                         aria-label="{{ __('ai_quality_retrieval.details', ['mode' => __('ai_quality_retrieval.inherit')]) }}"
                         aria-controls="{{ $inheritHelpId }}"
                         aria-expanded="false"
@@ -166,7 +166,7 @@
                 <div class="absolute right-3 top-3" data-retrieval-mode-help>
                     <button
                         type="button"
-                        class="flex h-6 w-6 cursor-help items-center justify-center rounded-full border border-gray-300 bg-white text-gray-500 transition-[background-color,border-color,color,transform] duration-150 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 active:scale-95 motion-reduce:transition-none"
+                        class="flex h-6 w-6 cursor-help items-center justify-center text-gray-500 transition-[color,transform] duration-150 hover:text-blue-700 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 active:scale-95 motion-reduce:transition-none"
                         aria-label="{{ __('ai_quality_retrieval.details', ['mode' => __('ai_quality_retrieval.modes.'.$mode.'.label')]) }}"
                         aria-controls="{{ $helpId }}"
                         aria-expanded="false"
