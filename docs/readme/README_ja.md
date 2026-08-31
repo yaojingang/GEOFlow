@@ -1,204 +1,171 @@
-# GEOFlow
+# GEOFlow 3.0
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
-> GEOFlow は GEO（Generative Engine Optimization）向けのオープンソース・コンテンツエンジニアリング／マルチサイト配信システムです。ナレッジベース、素材ライブラリ、プロンプト、AI 生成タスク、レビューと公開、データ分析、GEOFlow Agent ターゲットサイトパッケージ、WordPress REST チャネル、汎用 HTTP API チャネル、リモート静的ページ配信を一つの運用フローに統合し、信頼できる資料を追跡可能で公開・配信しやすい GEO コンテンツ資産へ変換します。
+> 企業サイト向けのオープンソースGEO運用プラットフォーム
 
-[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net/)
-[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791)](https://www.postgresql.org/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-blue)](https://docs.docker.com/compose/)
+GEOFlowは、信頼できるナレッジ、AIコンテンツ制作、品質ゲート、人によるレビュー、複数サイトへの配信、分析を一つの運用フローにつなぎます。ブランド、グロース、コンテンツの各チームは、企業サイト、GEOコンテンツチャンネル、業界情報サイト、社内コンテンツ運用基盤を構築し、資料、判断、公開結果、運用データを同じシステムで管理できます。
+
+[クイックスタート](#クイックスタート) · [画面プレビュー](#画面プレビュー) · [主要機能](#geoflow-30の主要機能) · [デプロイガイド](../deployment/DEPLOYMENT.md) · [変更履歴](../CHANGELOG_en.md) · [公式サイト](https://www.geoflow.me)
+
+[![Source version](https://img.shields.io/badge/source-3.0.0-2563eb)](../../version.json)
+[![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-777bb4)](https://www.php.net/)
+[![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/yaojingang/GEOFlow)](https://github.com/yaojingang/GEOFlow/issues)
 
-GEOFlow は [GNU Affero General Public License v3.0](../../LICENSE) の下で公開されています。個人および組織は、AGPL-3.0 を遵守することで利用、変更、デプロイ、再配布できます。改変版をネットワーク経由でユーザーに提供する場合、ライセンスに従って対応するソースコードをそのユーザーに提供する必要があります。非公開の改変、ホワイトラベル／OEM 配布、プロプライエタリ製品への組み込み、その他 AGPL-3.0 に準拠できない用途については、著作権者から別途商用ライセンスを取得できます。
+> **バージョンについて：** 現在のソースバージョンは `3.0.0` です。公開済みバージョンは [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) を基準に確認してください。本番環境では公開済みリリースを使用するか、レビュー済みコミットに固定してください。
 
 ---
 
-## ✨ GEOFlow でできること
+## GEOFlowが解決する課題
 
-| 機能 | 説明 |
-|------|------|
-| 🤖 マルチモデル生成 | OpenAI 互換 API と Gemini ネイティブ API、chat / embedding、Provider URL 自動適配、スマートフェイルオーバー、リトライ、利用統計 |
-| 🧠 ナレッジ RAG | ルールベース分割、任意の LLM セマンティック計画、安定フォールバック、embedding 設定時のベクトル保存、生成時の関連文脈検索 |
-| 🗂 素材とプロンプト | タイトル、キーワード、画像、作者、ナレッジ、本文プロンプト、特殊プロンプト |
-| 📦 タスク自動化 | 生成数、下書きプール、レビュー設定、公開頻度、キュー、失敗リトライ、公開範囲、タスク別記事フィルタ |
-| 📋 レビューと記事管理 | 下書き、レビュー、公開、ゴミ箱、作者、カテゴリ、SEO、タスク由来を一元管理 |
-| 📡 マルチサイト配信 | GEOFlow Agent、WordPress REST、汎用 HTTP API チャネル、シークレット、ターゲットサイトパッケージ、静的モード、rewrite ルール、リモート編集/削除、キュー、ログ |
-| 🧾 ターゲットサイトパッケージ | チャネルごとの PHP Agent、ホーム、記事ページ、静的アセット、sitemap、`llms.txt` / TXT マップ、Schema |
-| 📊 データ分析 | システム概要、単一サイト運用、マルチサイト配信、アクセスログ、Top コンテンツ、AI クローラー識別、トレンド |
-| 🔍 SEO と LLM 向け出力 | SEO メタ、OG、Schema、GFM Markdown、独立 CSS、画像同期、sitemap、TXT マップ |
-| 🎨 フロントとテーマ | テーマ、プレビュー、管理画面でのテーマ切替、リモートサイトのタイトル・著作権・テーマ・カテゴリ同期 |
-| 🌍 管理画面 i18n | 中国語、英語、日本語、スペイン語、ロシア語、ポルトガル語（ブラジル）。Admin UI V3 モジュールも対象 |
-| 🔔 バージョン通知 | GitHub `version.json` を確認し、新バージョンを管理画面で通知 |
-| 🐳 すぐデプロイ | **Docker Compose**：PostgreSQL（pgvector）、Redis、アプリ、キュー、スケジューラ、Reverb、本番 Nginx/php-fpm |
+企業のGEO運用には、ブランドナレッジ、モデル設定、コンテンツ制作、品質確認、サイト実装、チャンネル配信、効果分析が必要です。これらが別々のツールに分かれると、資料の出所、レビュー判断、公開結果の対応関係を追いにくくなります。
 
----
+GEOFlowは一つの管理画面で運用フローを管理します。
 
-## GEOFlow CLI 0.2.0
+```mermaid
+flowchart LR
+    A[信頼できるナレッジと素材] --> B[AIコンテンツ制作]
+    B --> C[AI品質ゲート]
+    C --> D[人によるレビュー]
+    D --> E1[企業サイト]
+    D --> E2[ホストサイトと配信チャンネル]
+    D --> E3[手動投稿とChrome連携]
+    E1 --> F[アクセスとAI可視性の分析]
+    E2 --> F
+    E3 --> F
+    F -. 運用フィードバック .-> A
+```
 
-リポジトリ同梱の `bin/geoflow` から、API v1 のカタログ、タスク、ジョブ、素材、記事を操作できます。macOS、Linux、WSL を正式にサポートしています。Windows ネイティブ環境では、設定ファイルの ACL を手動で確認してください。
-
-[CLI ガイド（英語）](../GEOFLOW_CLI_en.md)
+ナレッジの出所、タスク設定、モデル呼び出し、品質判定の根拠、手動承認、公開状態、チャンネルログを記録し、チームがコンテンツ資産を継続的に見直せるようにします。
 
 ---
 
-## 🖼 画面プレビュー
+## 画面プレビュー
 
 <table>
   <tr>
-    <td width="34%" rowspan="3"><img src="../../docs/images/screenshots/analytics-en.png" alt="GEOFlow analytics preview" /><br /><sub>Analytics</sub></td>
-    <td width="33%" rowspan="2"><img src="../../docs/images/screenshots/site-settings-en.png" alt="GEOFlow site settings preview" /><br /><sub>Site Settings</sub></td>
-    <td width="33%"><img src="../../docs/images/screenshots/dashboard-en.png" alt="GEOFlow admin dashboard preview" /><br /><sub>Admin Dashboard</sub></td>
+    <td width="50%"><img src="../../resources/knowledge/ai-workspace/media/01-ai-workspace-start.webp" alt="GEOFlow Admin UI V3画像付きヘルプワークスペース" /><br /><sub>画像付きヘルプワークスペース</sub></td>
+    <td width="50%"><img src="../../resources/knowledge/ai-workspace/media/03-analytics-overview.webp" alt="GEOFlow Admin UI V3分析概要" /><br /><sub>分析概要</sub></td>
   </tr>
   <tr>
-    <td width="33%"><img src="../../docs/images/screenshots/tasks-en.png" alt="GEOFlow task management preview" /><br /><sub>Task Management</sub></td>
+    <td width="50%"><img src="../../resources/knowledge/ai-workspace/media/05-task-list.webp" alt="GEOFlow Admin UI V3タスク管理" /><br /><sub>タスク管理</sub></td>
+    <td width="50%"><img src="../../resources/knowledge/ai-workspace/media/10-article-quality.webp" alt="GEOFlow Admin UI V3記事AI品質検査" /><br /><sub>記事AI品質検査</sub></td>
   </tr>
   <tr>
-    <td width="33%"><img src="../../docs/images/screenshots/ai-config-en.png" alt="GEOFlow AI model configuration preview" /><br /><sub>AI Model Configuration</sub></td>
-    <td width="33%"><img src="../../docs/images/screenshots/materials-en.png" alt="GEOFlow materials preview" /><br /><sub>Materials</sub></td>
+    <td width="50%"><img src="../../resources/knowledge/ai-workspace/media/19-hosted-sites.webp" alt="GEOFlow Admin UI V3ホスト型チャンネルサイト" /><br /><sub>ホスト型チャンネルサイト</sub></td>
+    <td width="50%"><img src="../../resources/knowledge/ai-workspace/media/20-manual-publication.webp" alt="GEOFlow Admin UI V3手動投稿ワークスペース" /><br /><sub>手動投稿ワークスペース</sub></td>
   </tr>
 </table>
 
-管理画面トップ、データ分析、タスク、素材、モデル設定、サイト設定の主要導線をカバーします。
+これらは3.0に組み込まれた匿名化済みヘルプ素材です。ナレッジ支援、タスク実行、品質検査、ホストサイト、手動投稿、分析の主要フローを確認できます。
 
 ---
 
-## 🆕 新バージョンの主な更新点
+## GEOFlow 3.0の主要機能
 
-GEOFlow 3.0は、管理画面、AI、配信、運用連携をまとめて更新するメジャーリリースです。
+| 機能 | 3.0での運用方法 |
+|------|------------------|
+| 信頼できるナレッジとコンテンツ制作 | ナレッジベース、タイトル、キーワード、画像、著者、プロンプト、AIモデルを集中管理します。構造化チャンク、任意の意味計画、ベクトル検索、安定したフォールバックに対応します。 |
+| AI品質ゲート | ナレッジ根拠、データと引用、広告ルール、公開文脈を検査します。項目別スコア、原文位置、法規根拠、修正案、履歴を保存します。要確認、ブロック、異常、期限切れの結果を持つ記事は下書きに留まります。 |
+| レビューと運用連携 | 下書き、レビュー、公開、ごみ箱、Markdown一括出力を管理します。手動投稿ワークスペースは、投稿者情報、アカウント参照、担当者、予定時刻、リスク、実行証跡、監査履歴を保存します。 |
+| 企業サイトと複数サイト配信 | ローカルフロントエンドはSEOメタデータ、Open Graph、Schema、sitemap、`llms.txt` を出力します。ホストサイト、GEOFlow Agent、WordPress REST、汎用HTTP APIに配信できます。 |
+| 分析と運用保守 | コンテンツ、配信、アクセス、上位記事、AIクローラー、推移を分析します。独立したUpdaterが署名付き更新、完全バックアップ、環境検証、復元ポイントへのロールバックを担当します。 |
+| チームと開発者向け機能 | Admin UI V3は6言語、レスポンシブ表示、PWA、画像付きヘルプに対応します。API v1、GEOFlow CLI、同梱Agent Skillから自動化と拡張を行えます。 |
 
-- **Admin UI V3を全体に適用**：新しいサイドバー、トップバー、ナビゲーション、操作ルールを管理画面で共有し、最近の操作、サイドバー幅の調整、レスポンシブ表示、アクセシビリティ状態、ローカルアセットを追加しました。
-- **AI Workspaceを図解付きヘルプアシスタントへ更新**：システム知識は15の管理テーマ、24枚の匿名化済み画面、72問の固定評価を備えます。SSEで本文を配信し、機能リンクは現在の管理者権限に合わせて絞り込みます。旧Run、Plan、Approval、Capability、Traceワークフローは新規リクエストの受付を終了し、履歴データは保持します。
-- **記事AI品質検査を公開ゲートに追加**：知識の根拠、広告ルール、公開文脈を評価し、スコア、原文位置、法的根拠、改善提案、監査可能な承認を提供します。長文はキュー上で分段ごとに継続します。
-- **ホスト型チャネルサイトのライフサイクルを追加**：サブドメイン割り当て、状態管理、記事割り当て、公開上限、クールダウン、技術チェック、キャッシュ無効化、整合処理を、プライマリホストと信頼済みプロキシの境界内で管理できます。
-- **人工公開とChrome運用アシスタントを接続**：デバイス連携と最小権限Tokenで作業を取得し、ハートビート、アカウント確認、知乎のテキスト回答下書き入力、実行証跡の返送を行います。最終公開はユーザーが確認します。
-- **管理画面をPWAとしてインストール可能**：ローカルアイコン、Webアプリマニフェスト、Service Worker、更新フローにより、独立した作業画面として利用できます。
-- **タスクとモデル設定の安全性を向上**：タスク開始前にタイトルライブラリの容量と競合を確認し、モデル検査では実際のストリーミング対応、通常テキストへのフォールバック、フェイルオーバー、準備状態を記録します。
-- **長時間のコンテンツ処理を再開可能に**：タイトルライブラリは最大10万件を分割生成でき、タスクのゴミ箱は90日間の監査情報を保持し、選択した記事はMarkdown ZIPとして出力できます。
-- **APIとCLIが日常運用をカバー**：API v1と`bin/geoflow`から、カタログ、タスク、実行記録、素材、記事、ブラウザ運用を構造化入出力と安全確認付きで操作できます。
-- **独立アップデーターが高リスク操作を担当**：ローカルUnix socket APIから更新、完全バックアップ、環境検証、復元を依頼します。GEOFlow 3.0の最終コミットとイメージダイジェストに結び付いた署名済み互換版を使用します。
-- **インストールとデプロイ条件を整理**：新規インストールは必要なデータだけで開始し、デモ記事を自動投入しません。アップグレードではマイグレーション、フロントエンド再構築、プロセス再起動を行い、ホスト型サイトはワイルドカードDNS、ワイルドカードTLS、信頼済みプロキシ、Nginxの設定後に有効化します。
+### 3.0の主な変更
 
----
+- Admin UI V3で主要画面のサイドバー、トップバー、ナビゲーション、フォーム、ダイアログ、モバイル表示を統一し、静的アセットをローカル配信にしました。
+- AIワークスペースを管理画面向けの画像付きヘルプに変更しました。15テーマ、24枚の匿名化画像、72問の固定評価を収録し、現在の権限から機能リンクを生成します。
+- 記事AI品質検査を公開ゲートに接続し、検査結果、手動承認、ポリシー変更を監査可能にしました。
+- ホスト型チャンネルサイトにサブドメイン割り当て、ライフサイクル管理、記事割り当て、公開上限、失敗時の待機、技術確認、キャッシュ削除、状態照合を追加しました。
+- Chrome運用アシスタントは端末ペアリングと最小権限Tokenで手動投稿タスクを取得し、確認用の下書きを入力して実行証跡を返します。最終公開は担当者が確認します。
+- タイトルライブラリは最大10万件のAI一括生成、再開、キャンセル、再試行、重複除去に対応します。削除したタスクの監査情報は90日間保持します。
+- API v1と `bin/geoflow` はカタログ、タスク、実行履歴、素材、記事、ブラウザー運用プロトコルを扱います。
+- 独立したGEOFlow UpdaterはローカルUnix socketを使って更新、完全バックアップ、環境検証、復元ポイントへのロールバックを実行します。高リスク操作には管理者パスワードと6桁の認証コードが必要です。
 
-## 🏗 実行構成
-
-```
-管理画面
-  ↓
-AI 設定 / 素材 / プロンプト / タスク設定
-  ↓
-スケジューラ / キュー / Worker が AI 生成
-  ↓
-下書き / レビュー / 公開
-  ↓
-ローカルフロント記事と SEO ページ
-  ↓
-配信キュー / ターゲットサイト Agent
-  ↓
-リモート静的ホーム、記事ページ、sitemap、TXT マップ、llms.txt
-```
+詳細は [中国語の変更履歴](../CHANGELOG.md) と [英語の変更履歴](../CHANGELOG_en.md) を参照してください。
 
 ---
 
-## 🧱 システムアーキテクチャ
+## 利用シーン
 
-| 層 | 説明 |
-|----|------|
-| Web / Admin | **Laravel** ルートとコントローラ。記事サイト、**Blade** 管理画面、分析、配信、素材、タスク |
-| API / Agent | ローカル API とターゲットサイト PHP Agent。ヘルスチェック、記事受信/更新/削除、リモート設定同期、静的ファイル生成 |
-| Scheduler / Queue / Reverb | **Scheduler**、**`queue:work` / Horizon** による生成・配信処理、必要に応じ **Reverb** |
-| ドメイン / Jobs | `app/Services`、`app/Jobs`、`app/Http/Controllers` などで AI 生成、RAG、公開、配信、ログ分析を処理 |
-| 永続化 | **PostgreSQL**（**pgvector** 推奨）+ **Redis** + ターゲットサイト JSON/静的ファイル |
+| シーン | 推奨構成 | 主な機能 |
+|--------|----------|----------|
+| 企業サイトのGEO運用 | 製品、事例、FAQ、業界知識、ブランドルールを基に継続運用 | 企業ナレッジ、タスク、品質ゲート、サイト公開、分析 |
+| 既存サイト内のGEOチャンネル | サブドメインまたは別パスに情報、ナレッジ、ソリューションのチャンネルを開設 | テーマ、カテゴリ、SEO、スケジュール、リードフォーム |
+| 業界情報サイト | 一つの業界、テーマ、課題領域で検証可能な長期コンテンツを管理 | RAG、レビュー、引用しやすい出力、sitemap、`llms.txt` |
+| 社内コンテンツ運用 | 公開フロントエンドを抑え、ブランド、グロース、コンテンツチームが制作とレビューを管理 | 素材、API、CLI、手動投稿、権限、監査 |
+| 複数ブランドと複数サイト | 一つの管理画面から複数サイト、カテゴリ、公開先を管理 | ホストサイト、Agent、WordPress、汎用API、配信ログ |
 
-主な流れ：管理でモデル・プロンプトを設定 → ナレッジ、タイトル、キーワード、画像、作者を準備 → タスク作成とキュー投入 → Worker が生成 → 下書き〜公開 → ローカル SEO ページ出力 → 選択チャネルへ配信 → 分析で生産・配信・アクセス・AI クローラーを確認。
-
----
-
-## ⚡ 管理画面の最短導線
-
-1. **API を設定**：少なくとも 1 つの chat モデルを追加します。RAG を使う場合は embedding モデルを追加し、ナレッジ分割戦略を選びます。
-2. **素材を設定**：ナレッジ、タイトル、キーワード、画像、作者を準備します。まずは実在し検証できる資料を使ってください。
-3. **タスクを作成**：素材、モデル、生成数、公開頻度、公開範囲を選び、最初は下書きまたはレビューから検証します。
+GEOFlowは、実際の事業資料、明確なレビュー責任者、継続的な運用計画を持つチーム向けです。ナレッジの品質、人の判断、定期的な保守が、ユーザーとAIからの信頼を支えます。
 
 ---
 
-## 🎯 想定シーンと得られる価値
+## セキュリティとガバナンス
 
-GEOFlow は次のような実務シーンに向いています。
+| 範囲 | 境界 |
+|------|------|
+| コンテンツ品質 | ナレッジ根拠、ルールのバージョン、スコア、手動承認、結果の期限切れを追跡できます。 |
+| アカウントと権限 | 機能リンクは権限に従い、機密操作はスーパー管理者が実行します。タスクと手動投稿の状態履歴を保存します。 |
+| ブラウザー運用 | Chrome拡張は端末ペアリングと最小権限Tokenを使用し、外部サービスのパスワード、Cookie、OAuth認証情報を保存しません。 |
+| 外部リクエスト | URL取り込み、配信、AI、テーマ参照、更新確認に共通の外部通信ポリシーを適用し、プライベートネットワーク、リダイレクト、応答サイズを制限します。 |
+| 更新と復元 | Updaterは署名付きパッケージ、ローカルUnix socket、環境検証、完全バックアップ、復元ポイントを使用します。高リスク操作には追加認証が必要です。 |
+| 匿名テレメトリー | 初期状態では無効です。有効化しても許可済みフィールドだけを送信し、事業コンテンツ、アカウント、メール、ドメイン、Cookie、秘密情報を除外します。 |
 
-- **独立した GEO 公式サイト**
-  製品説明、FAQ、事例、ブランド知識を継続的に整理・公開するサイトとして運用できます。目的は AI 検索での可視性や信頼性を高めることであり、低品質ページを量産することではありません。
-- **既存公式サイト内の GEO サブチャンネル**
-  既存サイトの中に、ニュース、ナレッジ、解説などの専用チャンネルを追加できます。目的は情報を構造化し、検索や引用に強い状態にすることです。
-- **独立した GEO 信源サイト**
-  特定の業界やテーマに特化した記事、ガイド、ランキング、解説を継続的に蓄積できます。目的は信頼できる外部コンテンツ資産を作ることであり、情報汚染ではありません。
-- **社内向け GEO コンテンツ管理システム**
-  モデル、素材、ナレッジ、プロンプト、レビュー、公開フローをまとめて扱う内部バックエンドとして利用できます。目的は運用効率の向上です。
-- **マルチサイト / マルチチャンネル運用**
-  複数のテーマ、サイト、チャンネルを同じ運用設計で管理できます。目的は標準化と保守性の向上です。
-- **自動化された信源管理と配信**
-  ナレッジ、特集、更新、配信をエンジニアリングして運用できます。目的は価値ある情報をユーザーと AI にとって理解・引用・検索しやすくすることです。
-
-このシステムの価値は、**真実で質の高く維持されたナレッジベース**を前提にしてはじめて成立します。
-インターネットをノイズで汚すための仕組みではなく、信頼できる情報をより効率よく管理・配信するための基盤です。
+現在のセキュリティゲートとアップグレード手順は [デプロイガイド](../deployment/DEPLOYMENT.md) と対象バージョンのリリースノートを確認してください。
 
 ---
 
-## 🧭 シーン別の導入・利用方法
+## コンポーネントと実行環境
 
-- **独立 GEO サイトとして導入**
-  フロントエンドと管理画面をまとめて導入し、公式情報や解説コンテンツの拠点として運用します。
-- **公式サイトの GEO サブチャンネルとして導入**
-  既存サイトを大きく作り直さず、サブドメインやディレクトリ配下で専用チャンネルとして展開します。
-- **GEO 信源サイトとして導入**
-  まずナレッジベースの整備を優先し、その上でタスク機能を使って安定的に更新します。
-- **社内コンテンツ運用基盤として導入**
-  前台よりも后台、素材管理、API 連携を重視して、内部の制作・配信基盤として使います。
-- **マルチサイト運用基盤として導入**
-  複数テーマや複数ブランド向けに、同じワークフローを横展開します。
-- **自動化された信源管理システムとして導入**
-  タイトル庫、画像庫、プロンプト体系、ナレッジを長期的なインフラとして扱います。
+| コンポーネント | 現在のソースバージョンまたは状態 | 説明 |
+|----------------|----------------------------------|------|
+| GEOFlow Core | `3.0.0` | Laravelアプリ、管理画面、フロントエンド、API、キュー、配信システム |
+| GEOFlow CLI | `0.2.0` | `bin/geoflow` を同梱し、macOS、Linux、WSLをサポート |
+| Chrome運用アシスタント | `0.1.0` | ソースと配布用ファイルは `browser-extension/` と `dist/browser-extension/` に配置 |
+| GEOFlow Updater | 独立コンポーネント | 対象リリースと明示的に互換性がある署名版を使用。詳細は [geoflow-updater](https://github.com/yaojingang/geoflow-updater) を参照 |
+| 配信先Agent | チャンネルごとに生成 | ホーム、記事、静的アセット、Schema、sitemap、`llms.txt` を含む設定済みPHPパッケージを生成 |
 
-おすすめの順序は次の通りです。
+実行要件：
 
-1. 先に実際の業務目的と読者を定義する
-2. 先にナレッジベースを整備する
-3. 内容の正確性と継続保守性を確保する
-4. その上で自動化によって効率を高める
-
-ナレッジベースが弱いまま自動化を強めると、ノイズだけが増えます。GEOFlow では **ナレッジベースの品質を最優先**にすべきです。
+| コンポーネント | 要件 |
+|----------------|------|
+| PHP | 8.3以上。DockerではPHP 8.4を利用可能 |
+| データベース | PostgreSQL。pgvectorイメージまたは互換拡張を推奨 |
+| Redis | キュー、キャッシュ、実行状態に使用 |
+| Node.js | フロントエンドのビルドに使用。CIはNode.js 22 |
+| コンテナ | Docker Compose。本番環境はNginxとphp-fpm |
 
 ---
 
-## 🚀 クイックスタート
+## クイックスタート
 
-### 方法 1：Docker（開発／デモ）
+### Dockerで開発と評価
 
 ```bash
 git clone https://github.com/yaojingang/GEOFlow.git
 cd GEOFlow
 cp .env.example .env
-vi .env
-
 docker compose build
-docker compose up -d
+docker compose up -d --remove-orphans
 ```
 
-- サイト: `http://localhost:18080`（**`APP_PORT`**、既定 `18080`）
-- 管理ログイン: `http://localhost:18080/geo_admin/login`（**`ADMIN_BASE_PATH`**、既定 `geo_admin`）
+- フロントエンド： `http://localhost:18080`
+- 管理画面： `http://localhost:18080/geo_admin/login`
+- ポートは `APP_PORT`、管理画面のプレフィックスは `ADMIN_BASE_PATH` で変更できます。
+- 初回起動時は `init` サービスがマイグレーションと空データベースの初期化を行います。
 
-**`docker-compose.yml`** では **`init`** が DB 準備後にマイグレーションと `php artisan geoflow:install` を実行します。初期データは空の DB の場合だけ書き込まれます（既定管理者は下表参照）。
+開発用管理者設定は [デプロイガイド](../deployment/DEPLOYMENT.md) に記載しています。本番環境では管理者パスワード、HTTPS、Cookieの安全設定、リバースプロキシを明示的に設定してください。
 
-### 補足：Docker（本番）
+### Docker本番環境
 
-本番は **`docker-compose.prod.yml`** で **Nginx + php-fpm**（`php artisan serve` ではない構成）を推奨します。
+本番環境では `docker-compose.prod.yml` とNginx、php-fpmを使用します。デプロイ前に `.env.prod`、データベースのバックアップ、HTTPS、永続化ディレクトリ、プロセス管理を準備してください。
 
 ```bash
 cp .env.prod.example .env.prod
-vi .env.prod
 
 docker compose --env-file .env.prod -f docker-compose.prod.yml build
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres redis
@@ -206,113 +173,80 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d init
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb
 ```
 
-- フロント／管理は `web`（Nginx）経由、PHP は `app`（php-fpm）。
-- **初回インストール:** 本番の `init` サービスはマイグレーション後に `php artisan geoflow:install` を実行します。この手順は空のデータベース専用です。データまたはマイグレーション履歴がある環境では、`../../docs/deployment/DEPLOYMENT.md` 3.1 節の停止・ドレイン手順を実行してください。
-- 手順の詳細は **`../../docs/deployment/DEPLOYMENT.md`** を参照してください。
+本番構成、ヘルスチェック、リバースプロキシ、復旧方法は [`docs/deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md) を参照してください。
 
-### 方法 2：ローカル PHP
+### 2.xからのアップグレード
 
-**前提:** PHP **8.3+**（`pdo_pgsql`、`redis` 等）、**PostgreSQL**、**Redis**、**Composer 2.x**。
+データベース、`.env`、アップロード、`storage` をバックアップしてください。古いプロセスを停止して処理を完了させてから、マイグレーション、フロントエンドの再ビルド、サービスの再起動を行います。初期の2.xから更新する場合は、管理対象画像のreadinessチェックとセキュリティ監査も必要です。ホストサイトは、ワイルドカードDNS、ワイルドカードTLS、信頼済みプロキシ、Nginxの設定後に有効化してください。
 
-```bash
-git clone https://github.com/yaojingang/GEOFlow.git
-cd GEOFlow
-cp .env.example .env
-composer install --no-interaction --prefer-dist
-php artisan key:generate
-
-GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true php artisan migrate --force
-php artisan geoflow:install
-php artisan storage:link
-
-php artisan serve --host=127.0.0.1 --port=8080
-```
-
-別ターミナル:
-
-```bash
-php artisan queue:work redis --queue=geoflow,distribution,default --sleep=1 --tries=1 --timeout=300
-php artisan schedule:work
-php artisan reverb:start
-```
-
-管理: `http://127.0.0.1:8080/geo_admin/login`。**本番**は Nginx + PHP-FPM、ドキュメントルートは **`public/`**。
+既存環境は [安全な停止とマイグレーション手順](../deployment/DEPLOYMENT.md) に従ってください。`git pull` の直後にコンテナを再構築する運用は避けてください。正確なコマンドとコンポーネント互換性は対象のGitHub Releaseに従います。
 
 ---
 
-## 環境チェックリスト
+## 開発者向け入口
 
-| 項目 | メモ |
-|------|------|
-| PHP | **8.3+**（Docker は 8.4 の場合あり） |
-| DB | **PostgreSQL**（**pgvector** 推奨） |
-| Redis | キュー用（ローカル検証のみ `QUEUE_CONNECTION=sync` 可） |
+### GEOFlow CLI
 
----
+`bin/geoflow` はAPI v1を通じてカタログ、タスク、実行履歴、素材、記事を管理します。安全な設定、ログイン、JSONファイルまたはstdin、削除確認、構造化エラーに対応します。
 
-## デフォルト管理者（`geoflow:install` 後）
+[CLI中国語ガイド](../GEOFLOW_CLI.md) | [CLI英語ガイド](../GEOFLOW_CLI_en.md)
 
-| 項目 | 値 |
-|------|-----|
-| ユーザー名 | `GEOFLOW_ADMIN_USERNAME`、既定は `admin` |
-| パスワード | ローカル開発では既定 `password`。本番では `GEOFLOW_ADMIN_PASSWORD` を設定してください。未設定でアカウントがまだ存在しない場合、インストーラは一回限りのランダムパスワードを init / `geoflow:install` ログに出力します。 |
+### GEOFlow Agent Skill
 
-`geoflow:install` は空のデータベースでのみ初期 seeders を実行します。ユーザーや業務データを検出した場合はインストール済みマーカーだけを書き込み、seed はスキップします。Admin seeder 自体も冪等で、既存のユーザー名、メール、パスワードは上書きしません。
+リポジトリには [GEOFlow Agent Skill](../../.agents/skills/geoflow/) が含まれています。Laravel開発、管理画面の運用、公開フロントエンド、テーマパッケージ、チャンネルサイト、旧版移行を扱います。Agent Skills対応ツールはリポジトリから検出でき、Codexでは `$geoflow` で呼び出せます。
 
-通常のインストールと`db:seed`は`FrontendDemoSeeder`を実行しません。デモデータは専用Seederを明示的に呼び出すテストだけで使用します。デプロイ環境では`GEOFLOW_SEED_FRONTEND_DEMO=false`と`GEOFLOW_SEED_FRONTEND_DEMO_OVERWRITE=false`を維持してください。
+インストールとロールバックは [Skill README](../../.agents/skills/geoflow/README.md) を参照してください。
 
-### ログイン失敗時のロックと手動解除
-
-- 管理者アカウントは、連続 **5** 回ログインに失敗すると自動的にロックされます（`status=locked`）。
-- ロックされたアカウントは、管理者による手動解除までログインできません。
-- 解除コマンド:
+### 開発とテスト
 
 ```bash
-php artisan geoflow:admin-unlock USERNAME
-```
-
-例:
-
-```bash
-php artisan geoflow:admin-unlock admin
-```
-
----
-
-## Docker 補足
-
-**開発**（`docker-compose.yml`）：`web`がNginxの統一ゲートウェイを`127.0.0.1:${APP_PORT:-18080}:80`で公開します。`app`と`reverb`は内部ネットワークに置き、WebSocketは同一オリジンの`/reverb`を使用します。ほかに`postgres`、`redis`、`assets`、`init`、`queue`、`scheduler`が含まれます。`docker/entrypoint.sh`の変数は[README_en.md](README_en.md)と同趣旨です。
-
-**本番**（`docker-compose.prod.yml`）: `docker compose --env-file .env.prod -f docker-compose.prod.yml …` で起動（上記「補足：Docker（本番）」および **`../../docs/deployment/DEPLOYMENT.md`**）。
-
----
-
-## 開発とテスト
-
-```bash
+composer install
+npm ci
+npm run build
 composer test
-./vendor/bin/pint
+npm run test:analytics
+vendor/bin/pint --test
 ```
 
----
-
-## 🌍 他言語 README
-
-- [简体中文](../../README.md)
-- [English](README_en.md)
-- [Español](README_es.md)
-- [Русский](README_ru.md)
+変更を送る前に [コントリビューションガイド](../../CONTRIBUTING.md) を確認してください。
 
 ---
 
-## 📄 ライセンス
+## オープンソースと商用ライセンス
 
-GEOFlow は [GNU Affero General Public License v3.0](../../LICENSE) の下で提供されます。個人および組織は、AGPL-3.0 を遵守することで GEOFlow を利用、変更、デプロイ、再配布できます。改変したネットワークサービスは、ライセンスに従って対応するソースコードをユーザーに提供する必要があります。非公開の改変、ホワイトラベル／OEM 配布、プロプライエタリ製品への組み込み、その他 AGPL-3.0 に準拠できない用途については、著作権者に別途商用ライセンスを申請できます。以前 Apache-2.0 で公開されたバージョンには、引き続き元のライセンスが適用されます。
+現在のGEOFlowは [GNU Affero General Public License v3.0](../../LICENSE) で提供されます。Apache-2.0で公開済みの旧バージョンには元のライセンスが引き続き適用されます。旧ライセンス本文は [`docs/licenses/Apache-2.0.txt`](../licenses/Apache-2.0.txt) に保存されています。
 
-コード、ドキュメント、デザイン、その他のオリジナル資料を提出する前に、[コントリビューションガイド](../../CONTRIBUTING.md)を確認してください。著作権の対象となるコントリビューションをマージするには、事前に [GEOFlow Contributor License Agreement v1.0](../../CLA.md) への同意が必要です。
+| 利用方法 | ライセンス |
+|----------|------------|
+| AGPL-3.0を守って利用、変更、デプロイ、配布する | 無料で利用できます。ネットワークサービスと配布では、ライセンスが定める対応ソースコードの義務を履行してください。 |
+| 非公開の変更、ホワイトラベル、OEM、プロプライエタリ製品への組み込み、AGPL-3.0の例外が必要な利用 | 著作権者に個別の商用ライセンスを申請してください。 |
+
+商用ライセンスの初回連絡には [GitHub Issue](https://github.com/yaojingang/GEOFlow/issues/new) を利用できます。Issueは公開されるため、契約、価格、顧客情報、その他の機密情報を書かないでください。初回連絡後は非公開の連絡手段に移行できます。適用される義務はライセンス本文と署名済み契約で決まります。
+
+外部コントリビューターは貢献物の著作権を保持し、マージ前に [GEOFlow Contributor License Agreement v1.0](../../CLA.md) への同意が必要です。CLAにより、プロジェクトはAGPL版の維持と個別の商用ライセンス提供を継続できます。
+
+### 匿名テレメトリー
+
+匿名テレメトリーは初期状態で無効です。デプロイ管理者が有効化し、HTTPSの収集先を設定した場合、ログイン済み管理画面から1日最大1回のアクティビティイベントを送信します。送信項目はランダムなインスタンスID、管理者の不可逆ダイジェスト、GEOFlowバージョン、イベント種別に限定されます。
+
+```dotenv
+GEOFLOW_TELEMETRY_ENABLED=false
+```
+
+ドメイン、ページパス、管理者アカウント、メール、記事本文、Cookie、`APP_KEY`、業務上の秘密情報は送信しません。収集先が空の場合はリクエストを送信しません。
 
 ---
 
-## ⭐ スター推移
+## 他の言語
+
+- [简体中文README](../../README.md)
+- [English README](README_en.md)
+- [Español README](README_es.md)
+- [Русский README](README_ru.md)
+- [Português (BR) README](README_pt_BR.md)
+
+---
+
+## Star履歴
 
 [![Star History Chart](https://star-history.dera.page/svg?repos=yaojingang/GEOFlow&type=Date)](https://star-history.dera.page/#yaojingang/GEOFlow&Date)
