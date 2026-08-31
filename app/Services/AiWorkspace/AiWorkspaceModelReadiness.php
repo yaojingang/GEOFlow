@@ -99,6 +99,16 @@ final class AiWorkspaceModelReadiness
                         'configuration_fingerprint' => $this->configurationFingerprint($currentModel),
                     ],
                 ),
+                'knowledge_fact_structured_output' => data_get(
+                    $currentModel->ai_workspace_readiness_profile,
+                    'knowledge_fact_structured_output',
+                    [
+                        'status' => 'unknown',
+                        'observed' => false,
+                        'probe_mode' => 'lazy_runtime',
+                        'configuration_fingerprint' => $this->configurationFingerprint($currentModel),
+                    ],
+                ),
                 'tool_schema' => ['status' => 'not_required', 'observed' => false, 'business_tools_enabled' => false],
                 'tool_roundtrip' => ['status' => 'not_required', 'observed' => false, 'business_tools_enabled' => false],
                 'cancellation' => ['status' => 'guarded', 'observed' => false],

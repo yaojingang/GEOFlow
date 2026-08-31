@@ -50,11 +50,16 @@ class TaskController extends BaseApiController
     public function store(StoreTaskRequest $request, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
         $data = $this->reviewBoundTaskData($request, $request->validated(), $tokens);
+        $auth = $this->auth($request);
 
         return IdempotencyService::executeJson(
             $request,
             'POST /tasks',
-            fn (): JsonResponse => $this->success($request, $tasks->createTask($data), 201),
+            fn (): JsonResponse => $this->success($request, $tasks->createTask(
+                $data,
+                $auth->auditAdminId,
+                (int) ($auth->token['id'] ?? 0),
+            ), 201),
         );
     }
 
@@ -74,6 +79,7 @@ class TaskController extends BaseApiController
     public function update(UpdateTaskRequest $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
         $data = $this->reviewBoundTaskData($request, $request->validated(), $tokens);
+        $auth = $this->auth($request);
 
         return IdempotencyService::executeJson(
             $request,
@@ -82,6 +88,8 @@ class TaskController extends BaseApiController
                 $task,
                 $data,
                 $this->canManageHostedTask($request),
+                $auth->auditAdminId,
+                (int) ($auth->token['id'] ?? 0),
             )),
         );
     }
@@ -91,7 +99,14 @@ class TaskController extends BaseApiController
      */
     public function destroy(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        return $this->success($request, $tasks->deleteTask($task, $this->canManageHostedTask($request)));
+        $auth = $this->auth($request);
+
+        return $this->success($request, $tasks->deleteTask(
+            $task,
+            $this->canManageHostedTask($request),
+            $auth->auditAdminId,
+            (int) ($auth->token['id'] ?? 0),
+        ));
     }
 
     /**

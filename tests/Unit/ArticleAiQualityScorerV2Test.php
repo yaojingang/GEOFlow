@@ -102,6 +102,22 @@ class ArticleAiQualityScorerV2Test extends TestCase
         $this->assertContains('confirmed_high_severity_issue', $result['gate_reasons']);
     }
 
+    public function test_removed_ai_generation_disclosure_code_is_rejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('AI quality issue code is invalid.');
+
+        (new ArticleAiQualityScorerV2)->score($this->qualityResult([[
+            'code' => 'ai_generated_disclosure',
+            'severity' => 'high',
+            'claim_hash' => '',
+            'field' => 'content',
+            'quote' => '文章正文',
+            'evidence_status' => 'supported',
+        ]]), 85, 70);
+
+    }
+
     /** @param list<array<string, mixed>> $issues @return array<string, mixed> */
     private function qualityResult(array $issues): array
     {

@@ -532,8 +532,14 @@ if (assistantRoot) {
         }
 
         const currentContent = getEditorValue();
-        if (currentContent.trim() !== '' && !window.confirm(messages.replaceConfirm || '')) {
-            return;
+        if (currentContent.trim() !== '') {
+            const confirmed = await window.AdminActionDialog?.confirm?.({
+                title: messages.replaceConfirm || '',
+                message: messages.replaceConfirm || '',
+                tone: 'warning',
+                opener: generateButton,
+            });
+            if (confirmed !== true) return;
         }
 
         saveAssistantPreference();

@@ -142,6 +142,30 @@ Route::prefix('v1')
             Route::post('articles/{article}/ai-quality/override', [ArticleController::class, 'overrideAiQuality'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:publish', 'throttle:30,1']);
+            Route::post('articles/{article}/ai-quality/optimization', [ArticleController::class, 'startAiOptimization'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:publish', 'throttle:api-ai-quality-manual'])
+                ->name('api.v1.articles.ai-quality.optimization.store');
+            Route::get('articles/{article}/ai-quality/optimization/candidate', [ArticleController::class, 'latestAiOptimizationCandidate'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:read', 'throttle:120,1'])
+                ->name('api.v1.articles.ai-quality.optimization.latest-candidate');
+            Route::get('articles/{article}/ai-quality/optimization/{run}/candidate', [ArticleController::class, 'aiOptimizationCandidate'])
+                ->whereNumber(['article', 'run'])
+                ->middleware(['api.scope:articles:read', 'throttle:120,1'])
+                ->name('api.v1.articles.ai-quality.optimization.candidate');
+            Route::post('articles/{article}/ai-quality/optimization/{run}/apply', [ArticleController::class, 'applyAiOptimization'])
+                ->whereNumber(['article', 'run'])
+                ->middleware(['api.scope:articles:publish', 'throttle:api-ai-quality-manual'])
+                ->name('api.v1.articles.ai-quality.optimization.apply');
+            Route::post('articles/{article}/ai-quality/optimization/{run}/cancel', [ArticleController::class, 'cancelAiOptimization'])
+                ->whereNumber(['article', 'run'])
+                ->middleware(['api.scope:articles:publish', 'throttle:api-ai-quality-manual'])
+                ->name('api.v1.articles.ai-quality.optimization.cancel');
+            Route::post('articles/{article}/ai-quality/optimization/{run}/rollback', [ArticleController::class, 'rollbackAiOptimization'])
+                ->whereNumber(['article', 'run'])
+                ->middleware(['api.scope:articles:publish', 'throttle:api-ai-quality-manual'])
+                ->name('api.v1.articles.ai-quality.optimization.rollback');
             Route::post('articles/{article}/trash', [ArticleController::class, 'trash'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:write', 'throttle:60,1']);

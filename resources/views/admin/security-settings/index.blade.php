@@ -142,9 +142,9 @@
                                                 @endif
                                             </div>
                                             @if($isSuperAdmin)
-                                                <form method="POST" action="{{ route('admin.site-settings.sensitive-words.delete', ['wordId' => $word['id']]) }}" class="inline">
+                                                <form method="POST" action="{{ route('admin.site-settings.sensitive-words.delete', ['wordId' => $word['id']]) }}" class="inline" data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.security.confirm_delete_word') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $word['word']]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.button.delete') }}">
                                                     @csrf
-                                                    <button type="submit" aria-label="{{ __('admin.security.confirm_delete_word') }}" onclick="return confirm(@js(__('admin.security.confirm_delete_word')))" class="rounded-md p-1.5 text-red-600 transition-colors hover:bg-red-50 hover:text-red-800">
+                                                    <button type="submit" aria-label="{{ __('admin.security.confirm_delete_word') }}" class="rounded-md p-1.5 text-red-600 transition-colors hover:bg-red-50 hover:text-red-800" data-admin-confirm-submit disabled aria-disabled="true">
                                                         <i data-lucide="trash-2" class="h-4 w-4"></i>
                                                     </button>
                                                 </form>

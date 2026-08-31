@@ -90,6 +90,20 @@ function initializeLinkedFields(form, i18n) {
     const aiQualityWorkflow = form.querySelector('[data-ai-quality-workflow]');
     const aiQualityWorkflowTail = form.querySelector('[data-ai-quality-workflow-tail]');
     const aiQualityTimeoutSampling = form.querySelector('[data-ai-quality-timeout-sampling]');
+    const aiQualityPassScore = form.querySelector('#ai_quality_pass_score');
+    const aiQualityOptimization = form.querySelector('[data-ai-quality-optimization]');
+    const aiQualityOptimizationToggle = form.querySelector('[data-ai-quality-optimization-toggle]');
+    const aiQualityOptimizationLevels = form.querySelectorAll('[data-ai-quality-optimization-level]');
+    const aiQualityWorkflowOptimization = form.querySelectorAll('[data-ai-quality-workflow-optimization]');
+
+    const syncOptimizationTargets = () => {
+        const passScore = Math.max(1, Math.min(100, toCount(aiQualityPassScore?.value) || 85));
+        aiQualityOptimizationLevels.forEach((input) => {
+            const target = Math.max(passScore, toCount(input.dataset.minimumTarget));
+            const label = input.closest('label')?.querySelector('[data-ai-quality-optimization-target]');
+            if (label) label.textContent = String(label.dataset.targetTemplate || '').replace('__SCORE__', String(target));
+        });
+    };
 
     const toggleImageCountByLibrary = () => {
         if (!imageLibrarySelect || !imageCountSelect) return;
@@ -197,6 +211,14 @@ function initializeLinkedFields(form, i18n) {
             aiQualityTimeoutSampling.disabled = !enabled;
             if (!enabled) aiQualityTimeoutSampling.checked = false;
         }
+        if (aiQualityOptimizationToggle) {
+            aiQualityOptimizationToggle.disabled = !enabled;
+            if (!enabled) aiQualityOptimizationToggle.checked = false;
+        }
+        const optimizationEnabled = enabled && aiQualityOptimizationToggle?.checked === true;
+        aiQualityOptimizationLevels.forEach((field) => { field.disabled = !optimizationEnabled; });
+        aiQualityOptimization?.classList.toggle('opacity-60', !enabled);
+        aiQualityWorkflowOptimization.forEach((element) => element.classList.toggle('hidden', !optimizationEnabled));
         if (aiQualityState) {
             aiQualityState.textContent = enabled
                 ? aiQualityState.dataset.enabledLabel || ''
@@ -217,6 +239,8 @@ function initializeLinkedFields(form, i18n) {
     needReviewCheckbox?.addEventListener('change', togglePublishInterval);
     needReviewCheckbox?.addEventListener('change', syncAiQualitySettings);
     aiQualityToggle?.addEventListener('change', syncAiQualitySettings);
+    aiQualityOptimizationToggle?.addEventListener('change', syncAiQualitySettings);
+    aiQualityPassScore?.addEventListener('input', syncOptimizationTargets);
     articleLimitInput?.addEventListener('input', syncDraftLimitMax);
     categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
     publishScopeRadios.forEach((radio) => radio.addEventListener('change', syncDistributionChannelsByScope));
@@ -264,6 +288,7 @@ function initializeLinkedFields(form, i18n) {
     syncKnowledgeBaseCount();
     syncKnowledgeBaseVisibility();
     syncAiQualitySettings();
+    syncOptimizationTargets();
 }
 
 function initializeReadinessCheck(root, form, i18n, fetchImpl, requestTimeoutMs) {
@@ -277,6 +302,8 @@ function initializeReadinessCheck(root, form, i18n, fetchImpl, requestTimeoutMs)
     const status = form.querySelector('#status');
     const statsRegion = form.querySelector('[data-task-title-stats]');
     if (!dialog || !submitButton || !submitLabel || !titleLibrary || !articleLimit || !draftLimit || !loopMode || !status) return;
+    submitButton.disabled = false;
+    submitButton.removeAttribute?.('aria-disabled');
 
     const defaultSubmitLabel = submitLabel.textContent;
     const createdCount = toCount(form.dataset.createdCount);
@@ -520,6 +547,21 @@ function initializeReadinessCheck(root, form, i18n, fetchImpl, requestTimeoutMs)
         const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
             && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
         if (!inside) closeDialog();
+    });
+    dialog.addEventListener('keydown', (event) => {
+        if (event.key !== 'Tab') return;
+        const focusable = Array.from(dialog.querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'))
+            .filter((element) => !element.hidden && !element.classList.contains('hidden'));
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && root.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && root.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
     });
     adjustButton.addEventListener('click', () => {
         applySuggestedLimit(articleLimit, draftLimit, lastReport?.suggested_article_limit);

@@ -96,17 +96,17 @@ test('routes the lazy page import through the fail-closed loader', () => {
     );
 });
 
-test('prevents deletion when confirmation is declined or unavailable', () => {
+test('delegates provider deletion confirmation to the shared central controller', () => {
     const declinedForm = fixture(() => false)[0];
     const failedForm = fixture(() => {
         throw new Error('confirmation unavailable');
     })[0];
 
-    assert.equal(declinedForm.dispatch('submit').defaultPrevented, true);
-    assert.equal(failedForm.dispatch('submit').defaultPrevented, true);
+    assert.equal(declinedForm.dispatch('submit').defaultPrevented, false);
+    assert.equal(failedForm.dispatch('submit').defaultPrevented, false);
 });
 
-test('allows deletion only after explicit confirmation', () => {
+test('does not install a second synchronous provider confirmation listener', () => {
     const form = fixture(() => true)[0];
 
     assert.equal(form.dispatch('submit').defaultPrevented, false);

@@ -7,6 +7,11 @@ use JsonException;
 
 class ArticleAiQualityPromptRenderer
 {
+    private const REMOVED_RULE_IDS = [
+        'CN-AIGC-LABEL-04-06',
+        'CN-AIGC-LABEL-09-10',
+    ];
+
     /** @var array<string, array{0:string,1:string}> */
     private const VARIABLES = [
         'article' => ['ARTICLE_DATA', '文章数据'],
@@ -31,6 +36,7 @@ class ArticleAiQualityPromptRenderer
      */
     public function render(string $template, array $variables): string
     {
+        $template = $this->withoutRemovedDisclosureRule($template);
         preg_match_all('/{{\s*([a-zA-Z0-9_]+)\s*}}/', $template, $matches);
         $requested = array_values(array_unique($matches[1] ?? []));
 
@@ -62,6 +68,74 @@ class ArticleAiQualityPromptRenderer
         }
 
         return $rendered;
+    }
+
+    private function withoutRemovedDisclosureRule(string $template): string
+    {
+        $parts = preg_split('/([；;。\r\n]+)/u', $template, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if (! is_array($parts)) {
+            $parts = [$template];
+        }
+        $template = '';
+        $removedPrevious = false;
+        foreach ($parts as $part) {
+            if (preg_match('/^[；;。\r\n]+$/u', $part) === 1) {
+                if (! $removedPrevious) {
+                    $template .= $part;
+                } elseif (preg_match('/[\r\n]/u', $part) === 1) {
+                    $template .= preg_replace('/[^\r\n]/u', '', $part) ?? '';
+                }
+                $removedPrevious = false;
+
+                continue;
+            }
+            if ($this->isRemovedDisclosureInstruction($part)) {
+                preg_match('/^\s*\d+\.\s*/u', $part, $numbering);
+                $template .= (string) ($numbering[0] ?? '');
+                $removedPrevious = true;
+
+                continue;
+            }
+            $template .= $part;
+            $removedPrevious = false;
+        }
+
+        $template = str_replace([
+            '、ai_generated_disclosure',
+            'ai_generated_disclosure、',
+            ', ai_generated_disclosure',
+            'ai_generated_disclosure, ',
+            'ai_generated_disclosure',
+        ], '', $template);
+
+        return (string) preg_replace(
+            '/^\s*(?:(?:\d+\.\s*)|(?:(?:记录|使用|标记为)\s*[、,，。;；]*))\s*$\R?/mu',
+            '',
+            $template,
+        );
+    }
+
+    private function isRemovedDisclosureInstruction(string $text): bool
+    {
+        if (str_contains(strtolower($text), 'ai_generated_disclosure')) {
+            return true;
+        }
+        $factCheck = preg_match(
+            '/(?:适用范围|官方来源|知识依据|(?:要求|条文).{0,16}(?:准确|核验|来源)|(?:准确|核验).{0,16}(?:要求|条文))/u',
+            $text,
+        ) === 1;
+        if ($factCheck) {
+            return false;
+        }
+
+        $aiLabel = '(?:AI|人工智能).{0,12}(?:生成|合成).{0,16}(?:内容)?(?:标识|声明|披露|标注)';
+
+        return preg_match(
+            '/(?:发布语境|发布元数据|发布渠道|发布前).{0,20}(?:适用|需要|要求|应当).{0,20}'.$aiLabel.'.{0,12}(?:规则|要求|时)/isu',
+            $text,
+        ) === 1
+            || preg_match('/'.$aiLabel.'.{0,20}(?:状态|缺失|待确认|未确认|未提供|未声明|未标识|未披露)/isu', $text) === 1
+            || preg_match('/(?:补充|记录|标记为).{0,20}'.$aiLabel.'/isu', $text) === 1;
     }
 
     private function encode(mixed $value): string
@@ -141,6 +215,11 @@ class ArticleAiQualityPromptRenderer
             return [];
         }
         $rules = is_array($value['rules'] ?? null) ? $value['rules'] : [];
+        $rules = array_values(array_filter(
+            $rules,
+            static fn (mixed $rule): bool => is_array($rule)
+                && ! in_array((string) ($rule['id'] ?? ''), self::REMOVED_RULE_IDS, true),
+        ));
 
         return array_filter([
             'version' => $value['version'] ?? null,
@@ -154,7 +233,7 @@ class ArticleAiQualityPromptRenderer
                     'effective_date' => $rule['effective_date'] ?? null,
                     'summary' => $rule['summary'] ?? null,
                 ], static fn (mixed $item): bool => $item !== null && $item !== ''),
-                array_values(array_filter($rules, 'is_array')),
+                $rules,
             )),
         ], static fn (mixed $item): bool => $item !== null && $item !== [] && $item !== '');
     }

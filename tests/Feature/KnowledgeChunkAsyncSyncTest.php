@@ -27,9 +27,13 @@ class KnowledgeChunkAsyncSyncTest extends TestCase
             'character_count' => 9,
             'file_type' => 'markdown',
             'word_count' => 9,
+            'chunk_serving_generation' => 'serving-v1',
+            'chunk_serving_source_hash' => hash('sha256', '旧版正文。'),
+            'chunk_manifest_hash' => hash('sha256', 'manifest-v1'),
         ]);
         KnowledgeChunk::query()->create([
             'knowledge_base_id' => $knowledgeBase->id,
+            'generation_key' => 'serving-v1',
             'chunk_index' => 0,
             'content' => '仍在提供服务的旧切片。',
             'content_hash' => hash('sha256', '仍在提供服务的旧切片。'),
@@ -46,6 +50,9 @@ class KnowledgeChunkAsyncSyncTest extends TestCase
         $knowledgeBase->refresh();
         $this->assertSame('pending', $knowledgeBase->chunk_sync_status);
         $this->assertNotSame('', (string) $knowledgeBase->chunk_sync_token);
+        $this->assertSame('serving-v1', $knowledgeBase->chunk_serving_generation);
+        $this->assertSame(hash('sha256', '旧版正文。'), $knowledgeBase->chunk_serving_source_hash);
+        $this->assertSame(hash('sha256', 'manifest-v1'), $knowledgeBase->chunk_manifest_hash);
         $this->assertSame(
             '仍在提供服务的旧切片。',
             (string) KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBase->id)->value('content')
@@ -148,9 +155,12 @@ class KnowledgeChunkAsyncSyncTest extends TestCase
             'chunk_sync_status' => 'processing',
             'chunk_sync_token' => 'sync-version-1',
             'chunk_source_hash' => hash('sha256', '新版切片正文。'),
+            'chunk_serving_generation' => 'serving-v0',
+            'chunk_serving_source_hash' => hash('sha256', '旧版正文。'),
         ]);
         KnowledgeChunk::query()->create([
             'knowledge_base_id' => $knowledgeBase->id,
+            'generation_key' => 'serving-v0',
             'chunk_index' => 0,
             'content' => '旧版仍然可检索。',
             'content_hash' => hash('sha256', '旧版仍然可检索。'),
@@ -170,7 +180,16 @@ class KnowledgeChunkAsyncSyncTest extends TestCase
         $service->finalizeStagingSync((int) $knowledgeBase->id, 'sync-version-1');
 
         $this->assertSame('新版切片正文。', (string) $knowledgeBase->chunks()->value('content'));
-        $this->assertSame('ready', (string) $knowledgeBase->fresh()->chunk_sync_status);
+        $knowledgeBase->refresh();
+        $this->assertSame('ready', (string) $knowledgeBase->chunk_sync_status);
+        $this->assertSame('sync-version-1', $knowledgeBase->chunk_serving_generation);
+        $this->assertSame(hash('sha256', '新版切片正文。'), $knowledgeBase->chunk_serving_source_hash);
+        $this->assertSame(64, strlen((string) $knowledgeBase->chunk_manifest_hash));
+        $this->assertSame(
+            ['sync-version-1'],
+            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBase->id)
+                ->distinct()->pluck('generation_key')->all()
+        );
         $this->assertDatabaseCount('knowledge_chunk_sync_rows', 0);
     }
 
@@ -220,6 +239,9 @@ class KnowledgeChunkAsyncSyncTest extends TestCase
             'word_count' => 10,
             'chunk_sync_status' => 'processing',
             'chunk_sync_token' => 'failed-token',
+            'chunk_serving_generation' => 'serving-v1',
+            'chunk_serving_source_hash' => hash('sha256', '当前服务正文'),
+            'chunk_manifest_hash' => hash('sha256', 'current-manifest'),
         ]);
         $coordinator = app(KnowledgeChunkSyncCoordinator::class);
 
@@ -230,7 +252,11 @@ class KnowledgeChunkAsyncSyncTest extends TestCase
         );
 
         $this->assertFalse($coordinator->isCurrent((int) $knowledgeBase->id, 'failed-token'));
-        $this->assertSame('failed', $knowledgeBase->fresh()->chunk_sync_status);
+        $knowledgeBase->refresh();
+        $this->assertSame('failed', $knowledgeBase->chunk_sync_status);
+        $this->assertSame('serving-v1', $knowledgeBase->chunk_serving_generation);
+        $this->assertSame(hash('sha256', '当前服务正文'), $knowledgeBase->chunk_serving_source_hash);
+        $this->assertSame(hash('sha256', 'current-manifest'), $knowledgeBase->chunk_manifest_hash);
     }
 
     public function test_stale_pipeline_cannot_replace_the_current_chunks(): void

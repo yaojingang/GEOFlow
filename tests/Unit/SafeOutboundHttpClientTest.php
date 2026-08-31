@@ -1807,6 +1807,16 @@ class SafeOutboundHttpClientTest extends TestCase
     }
 
     #[Test]
+    public function transport_tls_failures_are_not_misclassified_as_dns_errors(): void
+    {
+        $exception = new OutboundRequestFailedException(
+            new \RuntimeException('cURL error 60: certificate validation failed'),
+        );
+
+        $this->assertSame('tls', $exception->transportCategory);
+    }
+
+    #[Test]
     public function provider_http_failures_retain_safe_status_code_and_quota_category(): void
     {
         $response = new Response(new PsrResponse(

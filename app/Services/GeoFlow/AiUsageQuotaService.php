@@ -10,15 +10,15 @@ use Throwable;
 
 final class AiUsageQuotaService
 {
-    public function reserveModel(AiModel $model): ?AiUsageReservation
+    public function reserveModel(AiModel $model, int $minimumRemaining = 0): ?AiUsageReservation
     {
-        return DB::transaction(function () use ($model): ?AiUsageReservation {
+        return DB::transaction(function () use ($model, $minimumRemaining): ?AiUsageReservation {
             $locked = AiModel::query()->lockForUpdate()->find((int) $model->id);
             if (! $locked instanceof AiModel || (string) ($locked->status ?? 'inactive') !== 'active') {
                 return null;
             }
 
-            return $this->reserveLockedModel($locked);
+            return $this->reserveLockedModel($locked, $minimumRemaining);
         });
     }
 
@@ -133,12 +133,13 @@ final class AiUsageQuotaService
         $this->finalizeReservation($reservation, static function (): void {});
     }
 
-    private function reserveLockedModel(AiModel $model): ?AiUsageReservation
+    private function reserveLockedModel(AiModel $model, int $minimumRemaining = 0): ?AiUsageReservation
     {
         $usageDate = now()->toDateString();
         $usedToday = $this->usedOnDate($model->usage_date, (int) ($model->used_today ?? 0), $usageDate);
         $dailyLimit = (int) ($model->daily_limit ?? 0);
-        if ($dailyLimit > 0 && $usedToday >= $dailyLimit) {
+        $minimumRemaining = max(0, $minimumRemaining);
+        if ($dailyLimit > 0 && ($dailyLimit - $usedToday) <= $minimumRemaining) {
             return null;
         }
 

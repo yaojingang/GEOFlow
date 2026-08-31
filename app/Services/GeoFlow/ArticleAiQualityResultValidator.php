@@ -10,9 +10,31 @@ class ArticleAiQualityResultValidator
     private const CODES = [
         'knowledge_contradiction', 'data_mismatch', 'unsupported_claim', 'citation_missing',
         'citation_scope_mismatch', 'ad_absolute_claim', 'ad_false_or_misleading',
-        'ad_industry_specific', 'ad_identifiability', 'ai_generated_disclosure', 'content_integrity',
+        'ad_industry_specific', 'ad_identifiability', 'content_integrity',
         'source_declared_unverified',
     ];
+
+    /** @param array<string,mixed> $result @return array<string,mixed> */
+    public function normalizeLegacyRemovedDisclosureArtifacts(array $result): array
+    {
+        $issues = array_values(array_filter(
+            is_array($result['issues'] ?? null) ? $result['issues'] : [],
+            static fn (mixed $issue): bool => ! is_array($issue)
+                || (string) ($issue['code'] ?? '') !== 'ai_generated_disclosure',
+        ));
+        $uncertainties = array_values(array_filter(
+            is_array($result['uncertainties'] ?? null) ? $result['uncertainties'] : [],
+            fn (mixed $uncertainty): bool => ! is_array($uncertainty)
+                || ! $this->isRemovedDisclosureUncertainty($uncertainty),
+        ));
+        $result['issues'] = $issues;
+        $result['uncertainties'] = $uncertainties;
+        if (array_key_exists('summary', $result)) {
+            $result['summary'] = $this->summary((string) $result['summary'], $issues, $uncertainties);
+        }
+
+        return $result;
+    }
 
     /**
      * @param  array<string, mixed>  $result
@@ -137,12 +159,14 @@ class ArticleAiQualityResultValidator
             ];
         }
 
+        $uncertainties = $this->uncertainties($result['uncertainties']);
+
         return [
-            'summary' => Str::limit(trim((string) ($result['summary'] ?? '')), 2000, ''),
+            'summary' => $this->summary((string) ($result['summary'] ?? ''), $issues, $uncertainties),
             'promotion_context' => $promotion,
             'knowledge_coverage' => $coverage,
             'issues' => $issues,
-            'uncertainties' => $this->uncertainties($result['uncertainties']),
+            'uncertainties' => $uncertainties,
         ];
     }
 
@@ -185,21 +209,48 @@ class ArticleAiQualityResultValidator
             }
         }
         $evidenceByKey = [];
+        $evidenceReferenceMap = [];
         foreach ($evidence as $item) {
             $stableKey = trim((string) ($item['stable_key'] ?? ''));
             if ($stableKey !== '') {
                 $evidenceByKey[$stableKey] = $item;
+                $evidenceReferenceMap[$stableKey] = $stableKey;
+                $evidenceId = trim((string) ($item['id'] ?? ''));
+                if ($evidenceId !== '') {
+                    $evidenceReferenceMap[$evidenceId] = $stableKey;
+                }
             }
         }
 
-        $reviewedClaimHashes = array_values(array_unique(array_map(
-            'strval',
-            array_filter($result['reviewed_claim_hashes'], static fn (mixed $hash): bool => is_scalar($hash)),
-        )));
+        $modelReviewedClaimHashes = array_values(array_map(
+            static fn (mixed $hash): string => is_scalar($hash) ? trim((string) $hash) : '',
+            $result['reviewed_claim_hashes'],
+        ));
+        if (in_array('', $modelReviewedClaimHashes, true)
+            || count($modelReviewedClaimHashes) !== count(array_unique($modelReviewedClaimHashes))
+            || collect($modelReviewedClaimHashes)->contains(
+                static fn (string $hash): bool => ! isset($factsByHash[$hash]),
+            )) {
+            throw new UnexpectedValueException('ai_quality_reviewed_claim_hashes_invalid');
+        }
+        $reviewedClaimHashes = [];
+        foreach ($modelReviewedClaimHashes as $claimHash) {
+            $fact = $factsByHash[$claimHash];
+            $references = array_values(array_unique(array_map(
+                'strval',
+                is_array($fact['knowledge_refs'] ?? null) ? $fact['knowledge_refs'] : [],
+            )));
+            if ($references !== [] && collect($references)->every(
+                static fn (string $reference): bool => isset($evidenceReferenceMap[$reference]),
+            )) {
+                $reviewedClaimHashes[] = $claimHash;
+            }
+        }
         $reviewedClaimLookup = array_fill_keys($reviewedClaimHashes, true);
 
         $issues = [];
         $generatedUncertainties = [];
+        $unverifiedClaimLookup = [];
         foreach ($result['issues'] as $rawIssue) {
             if (! is_array($rawIssue)) {
                 throw new UnexpectedValueException('ai_quality_issue_structure_invalid');
@@ -229,6 +280,9 @@ class ArticleAiQualityResultValidator
 
             $fact = $factsByHash[$claimHash] ?? null;
             if ($evidenceStatus === 'unverified') {
+                if ($claimHash !== '') {
+                    $unverifiedClaimLookup[$claimHash] = true;
+                }
                 $generatedUncertainties[] = [
                     'claim' => Str::limit(trim((string) ($fact['normalized_claim'] ?? $quote)), 500, ''),
                     'materiality' => in_array((string) ($fact['materiality'] ?? ''), ['high', 'medium', 'low'], true)
@@ -246,10 +300,10 @@ class ArticleAiQualityResultValidator
                 'strval',
                 array_filter($rawIssue['evidence_keys'], static fn (mixed $key): bool => is_scalar($key)),
             )));
-            $stableEvidenceKeys = array_values(array_filter(
+            $stableEvidenceKeys = array_values(array_unique(array_filter(array_map(
+                static fn (string $key): ?string => $evidenceReferenceMap[$key] ?? null,
                 $evidenceKeys,
-                static fn (string $key): bool => preg_match('/^K\d+$/i', $key) !== 1,
-            ));
+            ))));
             if ($code === 'citation_scope_mismatch'
                 && $evidenceStatus === 'supported'
                 && $stableEvidenceKeys === []) {
@@ -260,6 +314,7 @@ class ArticleAiQualityResultValidator
                 'citation_missing', 'citation_scope_mismatch', 'source_declared_unverified',
             ], true);
             $referencesValid = ! $requiresEvidence || ($stableEvidenceKeys !== []
+                && count($stableEvidenceKeys) === count($evidenceKeys)
                 && collect($stableEvidenceKeys)->every(static fn (string $key): bool => isset($evidenceByKey[$key])));
             $location = $this->locate(
                 (string) ($article[$field] ?? ''),
@@ -297,7 +352,9 @@ class ArticleAiQualityResultValidator
         }
 
         foreach ($factsByHash as $claimHash => $fact) {
-            if (($fact['materiality'] ?? null) !== 'high' || isset($reviewedClaimLookup[$claimHash])) {
+            if (($fact['materiality'] ?? null) !== 'high'
+                || isset($reviewedClaimLookup[$claimHash])
+                || isset($unverifiedClaimLookup[$claimHash])) {
                 continue;
             }
 
@@ -310,15 +367,17 @@ class ArticleAiQualityResultValidator
             ];
         }
 
+        $uncertainties = array_values(array_merge(
+            $this->uncertainties($result['uncertainties']),
+            $generatedUncertainties,
+        ));
+
         return [
-            'summary' => Str::limit(trim((string) ($result['summary'] ?? '')), 2000, ''),
+            'summary' => $this->summary((string) ($result['summary'] ?? ''), $issues, $uncertainties),
             'promotion_context' => $promotion,
             'knowledge_coverage' => $evidence === [] ? 'insufficient' : 'partial',
             'issues' => $issues,
-            'uncertainties' => array_values(array_merge(
-                $this->uncertainties($result['uncertainties']),
-                $generatedUncertainties,
-            )),
+            'uncertainties' => $uncertainties,
             'reviewed_claim_hashes' => $reviewedClaimHashes,
             'truncated_issue_count' => max(0, min(65535, (int) $result['truncated_issue_count'])),
         ];
@@ -421,15 +480,56 @@ class ArticleAiQualityResultValidator
             if (! in_array($materiality, ['high', 'medium', 'low'], true)) {
                 throw new UnexpectedValueException('ai_quality_uncertainty_materiality_invalid');
             }
-            $result[] = [
+            $normalized = [
                 'claim' => Str::limit(trim((string) ($item['claim'] ?? $item['subject'] ?? '')), 500, ''),
                 'materiality' => $materiality,
                 'reason' => Str::limit(trim((string) ($item['reason'] ?? '')), 1000, ''),
                 'needed_evidence' => Str::limit(trim((string) ($item['needed_evidence'] ?? '')), 1000, ''),
             ];
+            if ($this->isRemovedDisclosureUncertainty($normalized)) {
+                continue;
+            }
+            $result[] = $normalized;
         }
 
         return $result;
+    }
+
+    /** @param list<array<string,mixed>> $issues @param list<array<string,mixed>> $uncertainties */
+    private function summary(string $summary, array $issues, array $uncertainties): string
+    {
+        $summary = Str::limit(trim($summary), 2000, '');
+        if (! $this->summaryMentionsRemovedDisclosureRule($summary)) {
+            return $summary;
+        }
+        if ($issues === [] && $uncertainties === []) {
+            return '已完成当前启用规则的质检。';
+        }
+
+        return sprintf('发现 %d 项问题和 %d 项需要核验的事项。', count($issues), count($uncertainties));
+    }
+
+    /** @param array<string,mixed> $uncertainty */
+    private function isRemovedDisclosureUncertainty(array $uncertainty): bool
+    {
+        $claim = preg_replace('/\s+/u', '', (string) ($uncertainty['claim'] ?? '')) ?? '';
+
+        return preg_match(
+            '/^(?:(?:当前文章|本文|文章|发布渠道|发布元数据)(?:的|中|中的)?){0,1}'
+                .'(?:AI|人工智能)(?:生成|合成)(?:内容)?(?:发布)?(?:标识|声明|披露|标注)(?:状态|是否已(?:声明|标识|披露|标注)|待确认|未确认)?$/u',
+            $claim,
+        ) === 1;
+    }
+
+    private function summaryMentionsRemovedDisclosureRule(string $text): bool
+    {
+        return preg_match(
+            '/(?:当前文章|本文|文章|发布元数据|发布渠道).{0,16}(?:缺少|未提供|未声明|未标识|未披露).{0,16}(?:AI|人工智能).{0,12}(?:生成|合成).{0,16}(?:标识|声明|披露|标注)'
+                .'|(?:当前文章|本文|文章|发布元数据|发布渠道).{0,16}(?:AI|人工智能).{0,12}(?:生成|合成).{0,16}(?:标识|声明|披露|标注).{0,8}(?:状态|缺失|待确认|未确认)'
+                .'|(?:发布元数据|发布渠道).{0,20}(?:AI|人工智能).{0,12}(?:生成|合成).{0,16}(?:标识|声明|披露|标注)'
+                .'|补充.{0,12}(?:发布元数据|发布渠道).{0,20}(?:AI|人工智能).{0,12}(?:生成|合成).{0,16}(?:标识|声明|披露|标注)/iu',
+            $text,
+        ) === 1;
     }
 
     /** @param array<string, mixed> $value @param list<string> $allowed */

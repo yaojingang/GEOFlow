@@ -7,6 +7,51 @@ if (! is_file($manualPublicationsPath) && function_exists('lang_path')) {
 }
 
 return array_replace_recursive($base, [
+    'action_dialog' => [
+        'cancel' => 'Cancelar', 'close' => 'Cerrar', 'confirm' => 'Confirmar', 'continue' => 'Continuar',
+        'input_label' => 'Introduce un valor', 'required' => 'Introduce un valor antes de continuar.',
+        'success_title' => 'Acción completada', 'info_title' => 'Atención', 'error_title' => 'No se completó la acción',
+        'error_guidance' => 'Revisa el estado actual, aplica la corrección indicada e inténtalo de nuevo.',
+        'generic_impact' => 'Revisa el destino y el impacto antes de continuar.',
+        'target' => 'Destino: :name',
+        'article_ai_optimization' => [
+            'start_title' => '¿Iniciar la optimización con IA?',
+            'start_message' => 'GEOFlow ejecutará una inspección completa y la optimización en segundo plano. Puede generar costes de uso del modelo.',
+            'start_guidance' => 'Puedes cerrar el panel después de iniciar la tarea y volver más tarde para ver el progreso.',
+            'start_label' => 'Iniciar optimización',
+            'apply_title' => '¿Aplicar esta propuesta de IA?',
+            'apply_message' => 'La propuesta se escribirá en el borrador actual y se iniciará una inspección completa.',
+            'apply_guidance' => 'Se conservará una copia para revertir. Revisa la comparación antes de continuar.',
+            'apply_label' => 'Aplicar e inspeccionar',
+            'cancel_title' => '¿Cancelar la optimización actual?',
+            'cancel_message' => 'Se detendrán las rondas pendientes. Una solicitud de modelo en curso puede terminar y generar uso.',
+            'cancel_guidance' => 'El artículo actual y los registros guardados se conservarán.',
+            'cancel_label' => 'Cancelar optimización',
+            'discard_title' => '¿Descartar esta propuesta?',
+            'discard_message' => 'Los cambios no se escribirán en el artículo y el borrador actual no cambiará.',
+            'discard_label' => 'Descartar propuesta',
+            'rollback_title' => '¿Revertir la optimización aplicada?',
+            'rollback_message' => 'Los campos optimizados volverán a la copia anterior y se ejecutará otra inspección.',
+            'rollback_guidance' => 'Comprueba que no haya ediciones manuales sin guardar.',
+            'rollback_label' => 'Revertir contenido',
+        ],
+        'article_ai_quality' => [
+            'run_title' => '¿Iniciar la inspección de contenido con IA?',
+            'run_message' => 'GEOFlow guardará el formulario actual y ejecutará una inspección completa en segundo plano. Puede generar costes del modelo.',
+            'run_guidance' => 'Puedes salir de la página durante la inspección y volver más tarde para ver el resultado.',
+            'run_label' => 'Iniciar inspección',
+            'override_title' => '¿Confirmar la excepción manual de calidad?',
+            'override_message' => 'El motivo se guardará en el registro de auditoría y el artículo podrá continuar en el flujo.',
+            'override_guidance' => 'Comprueba que el motivo sea completo, trazable y cubra todos los riesgos.',
+            'override_label' => 'Confirmar excepción',
+        ],
+        'hosted_site' => [
+            'activate_title' => 'Activar el sitio «:hostname»', 'activate_message' => 'El sitio volverá a recibir contenidos y ejecutar flujos de publicación.', 'activate_label' => 'Activar sitio',
+            'index_guidance' => 'Estado actual de indexación: :status',
+            'pause_title' => 'Pausar la recepción en «:hostname»', 'pause_message' => 'El sitio dejará de recibir artículos nuevos y conservará el contenido existente.', 'pause_guidance' => 'Puedes volver a activar el sitio más adelante.', 'pause_label' => 'Pausar recepción',
+            'maintenance_title' => 'Poner «:hostname» en mantenimiento', 'maintenance_message' => 'El sitio dejará de recibir artículos nuevos y se desactivará la indexación en buscadores.', 'maintenance_guidance' => 'Ejecuta de nuevo la comprobación previa y activa el sitio al finalizar el mantenimiento.', 'maintenance_label' => 'Entrar en mantenimiento',
+        ],
+    ],
     'knowledge_bases' => [
         'error' => [
             'system_delete_forbidden' => 'Esta base de conocimiento alimenta el Espacio de trabajo de IA y no se puede eliminar. Puedes editarla o restaurar una revisión desde su página de detalle.',
@@ -951,5 +996,19 @@ return array_replace_recursive($base, [
         'ja' => 'Japonés',
         'es' => 'Español',
         'ru' => 'Ruso',
+    ],
+    'knowledge_navigation' => [
+        'label' => 'Navegación de gestión de :name', 'current' => 'Base actual', 'chunks' => 'Fragmentos', 'facts' => 'Hechos atómicos',
+    ],
+    'knowledge_chunks' => [
+        'page_title' => 'Gestión de fragmentos', 'subtitle' => 'Revisa el contenido, el estado vectorial y los metadatos de recuperación.', 'status_label' => 'Estado de fragmentos',
+        'list_title' => 'Fragmentos de conocimiento', 'list_desc' => 'Muestra 30 fragmentos por página para revisar límites, tokens y estado vectorial.',
+    ],
+    'knowledge_facts' => [
+        'title' => 'Biblioteca de hechos atómicos', 'description' => 'Mantén respuestas verificables, alcance temporal y evidencias.', 'working_version' => 'Versión de borrador',
+        'label' => 'Nombre del indicador', 'subject' => 'Sujeto', 'predicate' => 'Predicado', 'add' => 'Añadir hecho', 'empty' => 'Aún no hay hechos atómicos.', 'publish' => 'Publicar versión revisada',
+        'manual_create' => 'Entrada manual', 'ai_generation' => 'Generación con IA', 'select_model' => 'Seleccionar modelo', 'target_count' => 'Total objetivo', 'start_generation' => 'Iniciar generación', 'mark_reviewed' => 'Marcar revisado', 'archive' => 'Archivar hecho', 'merge' => 'Combinar', 'split' => 'Dividir hecho', 'split_selected' => 'Dividir valores seleccionados', 'archive_value' => 'Archivar valor', 'add_evidence' => 'Añadir evidencia', 'add_value' => 'Añadir valor estándar', 'standard_value' => 'Valor estándar', 'unit' => 'Unidad', 'standard_answer' => 'Respuesta estándar', 'save' => 'Guardar', 'generation_runs' => 'Tareas de generación', 'cancel' => 'Cancelar', 'resolve' => 'Resolver', 'revisions' => 'Versiones publicadas', 'restore' => 'Restaurar como nueva', 'no_revisions' => 'No hay versiones publicadas.',
+        'message' => ['saved' => 'Hecho atómico guardado.', 'published' => 'Biblioteca publicada.', 'restored' => 'La revisión histórica se restauró como una revisión nueva.', 'generation_started' => 'Generación iniciada.', 'generation_cancelled' => 'Generación cancelada.', 'conflict_resolved' => 'Conflicto resuelto.'],
+        'validation' => ['chunks_not_ready' => 'Los fragmentos de conocimiento aún no están listos.', 'no_facts' => 'Se requiere al menos un hecho habilitado.', 'review_required' => 'Los hechos, valores y evidencias deben estar revisados y sin conflictos.', 'primary_evidence_required' => 'Los hechos numéricos críticos requieren evidencia principal.'],
     ],
 ]);

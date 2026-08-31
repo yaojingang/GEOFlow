@@ -1,5 +1,5 @@
 {
-  "version": "cn-ads-content-labeling-1.1.0",
+  "version": "cn-ads-content-1.2.0",
   "jurisdiction": "中国大陆",
   "effective_date": "2026-06-12",
   "scope_note": "规则摘要用于内容风险筛查，不替代法律意见。具体结论需结合行业、媒介、受众和发布方式。",
@@ -7,8 +7,7 @@
     "https://sjfg.samr.gov.cn/law/file/pdf/3235243/1663323599406.pdf",
     "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/ggjgs/art/2023/art_64279265c896452f8f638f2de12b8003.html",
     "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_d93a579afd45413e8576e4623fab348f.html",
-    "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/ggjgs/art/2026/art_8962fc1e4eb44a87b93d265af43b6940.html",
-    "https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm"
+    "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/ggjgs/art/2026/art_8962fc1e4eb44a87b93d265af43b6940.html"
   ],
   "rules": [
     {
@@ -130,22 +129,6 @@
       "effective_date": "2023-05-01",
       "source_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2023/art_d93a579afd45413e8576e4623fab348f.html",
       "summary": "广告主应对互联网广告真实性负责，主体资格、行政许可、引证内容和证明文件应真实、合法、有效；广告经营者和发布者应查验文件并核对内容。"
-    },
-    {
-      "id": "CN-AIGC-LABEL-04-06",
-      "title": "人工智能生成合成内容显式与隐式标识",
-      "source": "人工智能生成合成内容标识办法第四条至第六条",
-      "effective_date": "2025-09-01",
-      "source_url": "https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm",
-      "summary": "适用的生成合成服务应按内容形态添加显式标识，并在文件元数据中添加隐式标识；传播服务应核验标识或用户声明，并在相应场景提供显著提示。"
-    },
-    {
-      "id": "CN-AIGC-LABEL-09-10",
-      "title": "生成合成内容发布声明与标识责任",
-      "source": "人工智能生成合成内容标识办法第九条至第十条",
-      "effective_date": "2025-09-01",
-      "source_url": "https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm",
-      "summary": "用户发布生成合成内容时应主动声明并使用服务提供者的标识功能；不得恶意删除、篡改、伪造或隐匿规定的生成合成内容标识。"
     }
   ]
 }

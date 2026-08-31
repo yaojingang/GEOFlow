@@ -1,7 +1,12 @@
 @extends('admin.layouts.app')
 
 @section('content')
-    <div class="px-4 sm:px-0">
+    <div
+        class="px-4 sm:px-0"
+        data-ai-models-index
+        data-test-initialization-error="{{ __('admin.ai_models.test_dialog.initialization_error') }}"
+        data-client-timeout-ms="100000"
+    >
         <div class="flex items-center justify-between mb-8">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.ai_models.page_title') }}</h1>
@@ -146,7 +151,7 @@
                                             @endif
                                         </div>
                                         <div class="text-sm text-gray-500">{{ $model['model_id'] }}</div>
-                                        <div class="text-xs text-gray-400">{{ __('admin.ai_models.api_key_mask') }}: {{ $model['masked_api_key'] }}</div>
+                                        <div class="text-xs text-gray-400">{{ __('admin.ai_models.api_key_mask') }}: {{ $model['api_key_configured'] ? __('admin.ai_models.api_key_configured') : __('admin.ai_models.api_key_not_configured') }}</div>
                                         <div class="text-xs text-gray-400">{{ __('admin.ai_models.failover_priority_label', ['priority' => (int) $model['failover_priority']]) }}</div>
                                     </div>
                                 </td>
@@ -209,22 +214,36 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <div class="flex items-center gap-3">
-                                        <button type="button" onclick="testModelConnection({{ (int) $model['id'] }}, this)" class="min-h-10 text-emerald-600 transition-[color,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2">{{ __('admin.ai_models.test') }}</button>
-                                        <a href="{{ route('admin.ai-models.edit', ['modelId' => $model['id']]) }}" class="inline-flex min-h-10 items-center text-blue-600 transition-[color,transform] duration-150 hover:text-blue-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">{{ __('admin.ai_models.edit') }}</a>
+                                        <button
+                                            type="button"
+                                            class="min-h-10 text-emerald-600 transition-[color,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                            data-ai-model-test-button
+                                            data-model-id="{{ (int) $model['id'] }}"
+                                            data-model-name="{{ $model['name'] }}"
+                                            data-provider-model-id="{{ $model['model_id'] }}"
+                                            data-model-type="{{ $model['model_type'] }}"
+                                            data-test-url="{{ route('admin.ai-models.test', ['modelId' => $model['id']]) }}"
+                                            data-edit-url="{{ route('admin.ai-models.edit', ['modelId' => $model['id']]) }}"
+                                            disabled
+                                            aria-disabled="true"
+                                        >{{ __('admin.ai_models.test') }}</button>
+                                        <a href="{{ route('admin.ai-models.edit', ['modelId' => $model['id']]) }}" class="inline-flex min-h-10 items-center text-blue-600 transition-[color,transform] duration-150 hover:text-blue-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" data-ai-model-test-fallback="{{ (int) $model['id'] }}">{{ __('admin.ai_models.edit') }}</a>
                                         <form
                                             method="POST"
                                             action="{{ route('admin.ai-models.delete', ['modelId' => $model['id']]) }}"
                                             class="inline-flex"
-                                            data-ai-model-delete-form
-                                            data-model-name="{{ $model['name'] }}"
-                                            data-model-edit-url="{{ route('admin.ai-models.edit', ['modelId' => $model['id']]) }}"
+                                            data-admin-confirm-form
+                                            data-admin-confirm-tone="danger"
+                                            data-admin-confirm-title="{{ __('admin.ai_models.delete_dialog.title') }} “{{ $model['name'] }}”"
+                                            data-admin-confirm-message="{{ __('admin.ai_models.delete_dialog.impact') }}"
+                                            data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}"
+                                            data-admin-confirm-label="{{ __('admin.ai_models.delete_dialog.confirm') }}"
                                         >
                                             @csrf
-                                            <button type="button" class="min-h-10 text-red-600 transition-[color,transform] duration-150 hover:text-red-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2" data-ai-model-delete-trigger>{{ __('admin.ai_models.delete') }}</button>
-                                            <button type="submit" class="hidden" data-ai-model-delete-submit tabindex="-1" aria-hidden="true"></button>
+                                            <button type="submit" class="min-h-10 text-red-600 transition-[color,transform] duration-150 hover:text-red-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2" data-admin-confirm-submit disabled aria-disabled="true">{{ __('admin.ai_models.delete') }}</button>
                                         </form>
                                     </div>
-                                    <div id="model-test-result-{{ (int) $model['id'] }}" class="mt-2 text-xs whitespace-normal max-w-xs"></div>
+                                    <p class="mt-2 hidden max-w-xs whitespace-normal text-xs text-red-700" data-ai-model-test-status aria-live="polite"></p>
                                 </td>
                             </tr>
                         @endforeach
@@ -233,110 +252,129 @@
                 </table>
             </div>
         </div>
+
+        <dialog
+            class="fixed inset-0 m-auto w-[min(640px,calc(100vw-2rem))] max-w-none overflow-hidden overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-[rgba(15,23,42,0.48)]"
+            data-ai-model-test-dialog
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ai-model-test-title"
+            aria-describedby="ai-model-test-summary"
+        >
+            <div class="flex max-h-[min(780px,calc(100dvh-2rem))] flex-col">
+                <header class="flex items-start gap-4 px-6 pb-5 pt-6 max-[520px]:px-5">
+                    <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-700" data-ai-model-test-icon-wrap aria-hidden="true">
+                        <i data-lucide="activity" class="h-5 w-5" data-ai-model-test-icon></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">{{ __('admin.ai_models.test_dialog.eyebrow') }}</p>
+                        <h2 id="ai-model-test-title" class="mt-1 text-xl font-semibold leading-7 text-gray-900 text-balance" data-ai-model-test-title>{{ __('admin.ai_models.test_dialog.testing_title') }}</h2>
+                        <p id="ai-model-test-summary" class="sr-only" data-ai-model-test-announcement aria-live="polite" role="status"></p>
+                    </div>
+                    <button type="button" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 [@media(hover:hover)]:hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:scale-[.96]" data-ai-model-test-close aria-label="{{ __('admin.ai_models.test_dialog.close') }}">
+                        <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+                    </button>
+                </header>
+
+                <div class="grid grid-cols-2 gap-px border-y border-gray-200 bg-gray-200 max-[520px]:grid-cols-1">
+                    <div class="min-w-0 bg-gray-50 px-6 py-3 max-[520px]:px-5">
+                        <p class="text-[11px] font-medium leading-4 text-gray-500">{{ __('admin.ai_models.test_dialog.model_name') }}</p>
+                        <p class="mt-0.5 truncate text-sm font-semibold text-gray-900" data-ai-model-test-model-name></p>
+                    </div>
+                    <div class="min-w-0 bg-gray-50 px-6 py-3 max-[520px]:px-5">
+                        <p class="text-[11px] font-medium leading-4 text-gray-500">{{ __('admin.ai_models.test_dialog.model_id') }}</p>
+                        <p class="mt-0.5 break-all font-mono text-xs leading-5 text-gray-700" data-ai-model-test-model-id></p>
+                    </div>
+                </div>
+
+                <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6 max-[520px]:px-5">
+                    <section class="flex min-h-52 flex-col items-center justify-center text-center" data-ai-model-test-loading>
+                        <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-50 text-sky-700" aria-hidden="true">
+                            <i data-lucide="loader-circle" class="h-7 w-7 animate-spin"></i>
+                        </span>
+                        <p class="mt-5 text-base font-semibold text-gray-900" data-ai-model-test-waiting-copy>{{ __('admin.ai_models.test_dialog.waiting_initial') }}</p>
+                        <p class="mt-2 text-sm tabular-nums text-gray-500" data-ai-model-test-elapsed>{{ __('admin.ai_models.test_dialog.waiting_seconds', ['seconds' => 0]) }}</p>
+                        <p class="mt-4 max-w-md text-xs leading-5 text-gray-400">{{ __('admin.ai_models.test_dialog.background_note') }}</p>
+                    </section>
+
+                    <section class="hidden" data-ai-model-test-success>
+                        <div class="rounded-xl bg-emerald-50 px-4 py-4 text-emerald-950">
+                            <p class="text-sm font-semibold">{{ __('admin.ai_models.test_dialog.success_summary') }}</p>
+                            <p class="mt-1 text-sm leading-6" data-ai-model-test-success-message></p>
+                        </div>
+                        <dl class="mt-5 grid grid-cols-2 overflow-hidden rounded-xl border border-gray-200 max-[520px]:grid-cols-1">
+                            @foreach ([
+                                'http-status' => __('admin.ai_models.test_dialog.http_status'),
+                                'duration' => __('admin.ai_models.test_dialog.duration'),
+                                'model-type' => __('admin.ai_models.test_dialog.model_type'),
+                                'workspace' => __('admin.ai_models.test_dialog.workspace_status'),
+                            ] as $metric => $label)
+                                <div class="border-b border-gray-200 px-4 py-3 odd:border-r last:border-b-0 max-[520px]:border-r-0">
+                                    <dt class="text-xs text-gray-500">{{ $label }}</dt>
+                                    <dd class="mt-1 text-sm font-semibold text-gray-900" data-ai-model-test-{{ $metric }}>-</dd>
+                                </div>
+                            @endforeach
+                        </dl>
+                    </section>
+
+                    <section class="hidden" data-ai-model-test-failure>
+                        <div class="rounded-xl bg-red-50 px-4 py-4 text-red-950">
+                            <p class="text-sm font-semibold" data-ai-model-test-diagnosis-title></p>
+                            <p class="mt-1 text-sm leading-6 text-pretty" data-ai-model-test-diagnosis-reason></p>
+                        </div>
+                        <div class="mt-5">
+                            <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.ai_models.test_dialog.steps_title') }}</h3>
+                            <ol class="mt-3 space-y-2 text-sm leading-6 text-gray-700" data-ai-model-test-steps></ol>
+                        </div>
+                        <details class="mt-5 rounded-xl border border-gray-200 bg-gray-50" open>
+                            <summary class="cursor-pointer px-4 py-3 text-sm font-semibold text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500">{{ __('admin.ai_models.test_dialog.technical_log') }}</summary>
+                            <div class="border-t border-gray-200 px-4 py-3">
+                                <p class="text-xs leading-5 text-gray-500">{{ __('admin.ai_models.test_dialog.log_hint') }}</p>
+                                <pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 font-mono text-xs leading-5 text-slate-100" data-ai-model-test-log></pre>
+                            </div>
+                        </details>
+                    </section>
+                </div>
+
+                <footer class="flex flex-wrap justify-end gap-2.5 border-t border-gray-100 bg-gray-50 px-6 py-4 max-[520px]:flex-col max-[520px]:px-5">
+                    <a href="#" class="hidden min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-ai-model-test-edit>{{ __('admin.ai_models.test_dialog.edit_configuration') }}</a>
+                    <button type="button" class="hidden min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] disabled:cursor-not-allowed disabled:opacity-50 max-[520px]:w-full" data-ai-model-test-retry>{{ __('admin.ai_models.test_dialog.retest') }}</button>
+                    <button type="button" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] max-[520px]:w-full" data-ai-model-test-close>{{ __('admin.ai_models.test_dialog.close') }}</button>
+                </footer>
+            </div>
+        </dialog>
+
+        @php
+            $aiModelTestCopy = [
+            'labels' => [
+                'test' => __('admin.ai_models.test'),
+                'testing' => __('admin.ai_models.testing'),
+                'viewResult' => __('admin.ai_models.test_dialog.view_result'),
+                'testingTitle' => __('admin.ai_models.test_dialog.testing_title'),
+                'successTitle' => __('admin.ai_models.test_dialog.success_title'),
+                'failureTitle' => __('admin.ai_models.test_dialog.failure_title'),
+                'waitingSeconds' => __('admin.ai_models.test_dialog.waiting_seconds', ['seconds' => '__SECONDS__']),
+                'waitingInitial' => __('admin.ai_models.test_dialog.waiting_initial'),
+                'waitingChecking' => __('admin.ai_models.test_dialog.waiting_checking'),
+                'waitingExtended' => __('admin.ai_models.test_dialog.waiting_extended'),
+                'workspaceReady' => __('admin.ai_models.test_dialog.workspace_ready'),
+                'workspaceBasic' => __('admin.ai_models.test_dialog.workspace_basic'),
+                'chat' => __('admin.ai_models.test_dialog.chat_type'),
+                'embedding' => __('admin.ai_models.test_dialog.embedding_type'),
+                'milliseconds' => __('admin.ai_models.test_dialog.milliseconds', ['duration' => '__DURATION__']),
+                'unknown' => __('admin.ai_models.test_dialog.unknown'),
+            ],
+            'clientDiagnoses' => [
+                'session_expired' => __('admin.ai_models.test_dialog.client_diagnosis.session_expired'),
+                'web_rate_limited' => __('admin.ai_models.test_dialog.client_diagnosis.web_rate_limited'),
+                'invalid_json' => __('admin.ai_models.test_dialog.client_diagnosis.invalid_json'),
+                'network_failed' => __('admin.ai_models.test_dialog.client_diagnosis.network_failed'),
+                'client_timeout' => __('admin.ai_models.test_dialog.client_diagnosis.client_timeout'),
+                'unexpected_error' => __('admin.ai_models.diagnosis.unexpected_error'),
+            ],
+            ];
+        @endphp
+        <script type="application/json" data-ai-model-test-copy>@json($aiModelTestCopy, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)</script>
     </div>
 
-    <dialog
-        class="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[min(480px,calc(100vw-2rem))] max-w-none overflow-y-auto overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-gray-950/45"
-        data-ai-model-delete-dialog
-        data-deleting-label="{{ __('admin.ai_models.delete_dialog.deleting') }}"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="ai-model-delete-title"
-        aria-describedby="ai-model-delete-description ai-model-delete-impact ai-model-delete-guidance"
-    >
-        <div class="flex items-start gap-4 px-6 pb-5 pt-6 max-[420px]:px-5">
-            <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600" aria-hidden="true">
-                <i data-lucide="trash-2" class="h-5 w-5"></i>
-            </span>
-            <div class="min-w-0 flex-1">
-                <h2 id="ai-model-delete-title" class="text-lg font-semibold leading-7 text-gray-900 text-balance">{{ __('admin.ai_models.delete_dialog.title') }}</h2>
-                <p id="ai-model-delete-description" class="mt-2 text-sm leading-6 text-gray-600">
-                    {{ __('admin.ai_models.delete_dialog.description_before') }}<strong class="break-words font-semibold text-gray-900" data-ai-model-delete-name></strong>{{ __('admin.ai_models.delete_dialog.description_after') }}
-                </p>
-                <div id="ai-model-delete-impact" class="mt-4 flex items-start gap-2.5 rounded-xl bg-gray-50 px-3.5 py-3 text-sm leading-6 text-gray-600">
-                    <i data-lucide="key-round" class="mt-1 h-4 w-4 shrink-0 text-gray-500" aria-hidden="true"></i>
-                    <span>{{ __('admin.ai_models.delete_dialog.impact') }}</span>
-                </div>
-                <p id="ai-model-delete-guidance" class="mt-3 text-xs leading-5 text-gray-500">
-                    {{ __('admin.ai_models.delete_dialog.guidance_before') }}<a href="#" class="font-semibold text-blue-700 underline decoration-blue-200 underline-offset-4 transition-[color,decoration-color] duration-150 hover:text-blue-900 hover:decoration-blue-500 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" data-ai-model-delete-edit>{{ __('admin.ai_models.delete_dialog.guidance_link') }}</a>{{ __('admin.ai_models.delete_dialog.guidance_after') }}
-                </p>
-            </div>
-        </div>
-        <div class="flex justify-end gap-2.5 border-t border-gray-100 bg-gray-50 px-6 py-4 max-[420px]:flex-col max-[420px]:px-5">
-            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96]" data-ai-model-delete-cancel autofocus>
-                {{ __('admin.ai_models.delete_dialog.cancel') }}
-            </button>
-            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-red-600 px-4 text-sm font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:scale-[.96] disabled:cursor-wait disabled:bg-red-400" data-ai-model-delete-confirm>
-                <span data-ai-model-delete-confirm-label>{{ __('admin.ai_models.delete_dialog.confirm') }}</span>
-            </button>
-        </div>
-    </dialog>
-
 @endsection
-
-@push('scripts')
-    <script>
-        const AI_MODELS_I18N = {
-            test: @json(__('admin.ai_models.test')),
-            testing: @json(__('admin.ai_models.testing')),
-            testSuccessPrefix: @json(__('admin.ai_models.test_success_prefix')),
-            testFailedPrefix: @json(__('admin.ai_models.test_failed_prefix')),
-            testNetworkError: @json(__('admin.ai_models.test_network_error')),
-            readinessTitle: @json(__('admin.ai_models.readiness_title')),
-            readinessReady: @json(__('admin.ai_models.readiness_status.ready')),
-        };
-        const TEST_URL_TEMPLATE = @json(\App\Support\AdminWeb::routePath('admin.ai-models.test', ['modelId' => '__MODEL_ID__']));
-
-        async function testModelConnection(id, button) {
-            const resultEl = document.getElementById(`model-test-result-${id}`);
-            const originalText = button.textContent;
-            button.disabled = true;
-            button.textContent = AI_MODELS_I18N.testing;
-            button.classList.add('opacity-60', 'cursor-not-allowed');
-            setModelTestResult(resultEl, 'neutral', AI_MODELS_I18N.testing);
-
-            try {
-                const response = await fetch(TEST_URL_TEMPLATE.replace('__MODEL_ID__', String(id)), {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': @json(csrf_token()),
-                    },
-                    body: JSON.stringify({}),
-                });
-                const data = await response.json().catch(() => ({}));
-                const message = data.message || (response.ok ? AI_MODELS_I18N.testSuccessPrefix : AI_MODELS_I18N.testFailedPrefix);
-                const duration = data.meta && data.meta.duration_ms ? ` · ${data.meta.duration_ms}ms` : '';
-                const readiness = data.meta && data.meta.readiness_status === 'ready'
-                    ? ` · ${AI_MODELS_I18N.readinessTitle}: ${AI_MODELS_I18N.readinessReady}`
-                    : '';
-                setModelTestResult(
-                    resultEl,
-                    response.ok && data.success ? 'success' : 'failed',
-                    `${response.ok && data.success ? AI_MODELS_I18N.testSuccessPrefix : AI_MODELS_I18N.testFailedPrefix}${message}${duration}${readiness}`
-                );
-            } catch (error) {
-                setModelTestResult(resultEl, 'failed', AI_MODELS_I18N.testNetworkError);
-            } finally {
-                button.disabled = false;
-                button.textContent = originalText;
-                button.classList.remove('opacity-60', 'cursor-not-allowed');
-            }
-        }
-
-        function setModelTestResult(element, state, message) {
-            if (!element) {
-                return;
-            }
-            const classes = {
-                neutral: 'text-slate-500',
-                success: 'text-emerald-700',
-                failed: 'text-red-700',
-            };
-            element.className = `mt-2 text-xs whitespace-normal max-w-xs ${classes[state] || classes.neutral}`;
-            element.textContent = message;
-        }
-
-    </script>
-@endpush

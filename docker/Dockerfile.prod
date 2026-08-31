@@ -56,7 +56,15 @@ RUN --mount=type=cache,id=geoflow-composer-dist,target=/tmp/composer-cache,shari
 
 COPY . .
 
-RUN composer dump-autoload \
+RUN mkdir -p \
+        bootstrap/cache \
+        storage/app/public/uploads/images \
+        storage/app/tmp \
+        storage/framework/cache/data \
+        storage/framework/sessions \
+        storage/framework/views \
+        storage/logs \
+ && composer dump-autoload \
     --no-dev \
     --no-interaction \
     --classmap-authoritative \

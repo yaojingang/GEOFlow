@@ -21,7 +21,6 @@ class ArticleAiQualityScorer
         'ad_false_or_misleading' => 'advertising_compliance',
         'ad_industry_specific' => 'advertising_compliance',
         'ad_identifiability' => 'advertising_compliance',
-        'ai_generated_disclosure' => 'advertising_compliance',
         'content_integrity' => 'content_integrity',
     ];
 
@@ -94,6 +93,10 @@ class ArticleAiQualityScorer
         foreach ($issues as $issue) {
             if (! is_array($issue)) {
                 continue;
+            }
+
+            if (! array_key_exists((string) ($issue['code'] ?? ''), self::CODE_DIMENSIONS)) {
+                throw new \InvalidArgumentException('AI quality issue code is invalid.');
             }
 
             $knowledgeRefs = is_array($issue['knowledge_refs'] ?? null) ? $issue['knowledge_refs'] : [];

@@ -147,7 +147,7 @@
                                         <i data-lucide="eye" class="w-4 h-4 mr-1"></i>
                                         {{ __('admin.button.view') }}
                                     </a>
-                                    <form method="POST" action="{{ route('admin.title-libraries.delete', ['libraryId' => (int) $library['id']]) }}" class="inline-block" data-material-delete-form data-confirm-message="{{ __('admin.title_libraries.confirm_delete', ['name' => $library['name']]) }}">
+                                    <form method="POST" action="{{ route('admin.title-libraries.delete', ['libraryId' => (int) $library['id']]) }}" class="inline-block" data-material-delete-form data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.title_libraries.confirm_delete', ['name' => $library['name']]) }}" data-admin-confirm-message="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.button.delete') }}">
                                         @csrf
                                         <button type="submit" disabled aria-disabled="true" data-material-delete-submit class="inline-flex min-h-10 items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition-[background-color,opacity,transform] duration-150 [@media(hover:hover)]:hover:bg-red-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100">
                                             <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>

@@ -15,7 +15,10 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\AiQualityAuditService;
+use App\Services\GeoFlow\AiQualityRetrievalReadinessService;
 use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
+use App\Services\GeoFlow\ArticleAiQualityPolicyResolver;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
@@ -485,7 +488,7 @@ class ApiV1ContractTest extends TestCase
         $task->distributionChannels()->attach($channel->id);
 
         $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
-            ->patchJson("/api/v1/tasks/{$task->id}", ['name' => 'Unauthorized update'])
+            ->patchJson("/api/v1/tasks/{$task->id}", ['name' => 'Unauthorized update', 'config_version' => 1])
             ->assertForbidden()
             ->assertJsonPath('error.code', 'forbidden');
         $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
@@ -523,7 +526,10 @@ class ApiV1ContractTest extends TestCase
         ]);
 
         $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
-            ->patchJson("/api/v1/tasks/{$updatedTask->id}", ['name' => 'Review-bound task'])
+            ->patchJson("/api/v1/tasks/{$updatedTask->id}", [
+                'name' => 'Review-bound task',
+                'config_version' => 1,
+            ])
             ->assertOk()
             ->assertJsonPath('data.need_review', 1);
 
@@ -538,6 +544,30 @@ class ApiV1ContractTest extends TestCase
             ->assertForbidden()
             ->assertJsonPath('error.code', 'forbidden')
             ->assertJsonPath('error.details.required_scope', 'articles:publish');
+    }
+
+    public function test_restricted_task_token_must_supply_the_current_quality_config_version(): void
+    {
+        $admin = $this->createActiveAdmin('task_config_version_admin', 'p');
+        $bearer = $this->createBearerToken($admin, ['tasks:write']);
+        $task = Task::query()->create([
+            'name' => 'CAS protected task',
+            'status' => 'paused',
+            'need_review' => true,
+            'ai_quality_config_version' => 4,
+            'ai_quality_policy_version' => 4,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->patchJson("/api/v1/tasks/{$task->id}", [
+                'ai_quality_timeout_sampling_enabled' => true,
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'task_ai_quality_config_version_required')
+            ->assertJsonPath('error.details.required_field', 'config_version');
+
+        $this->assertFalse((bool) $task->fresh()->ai_quality_timeout_sampling_enabled);
+        $this->assertSame(4, (int) $task->fresh()->ai_quality_config_version);
     }
 
     public function test_super_admin_api_can_manage_a_hosted_site_task(): void
@@ -577,7 +607,7 @@ class ApiV1ContractTest extends TestCase
         $task->distributionChannels()->attach($channel->id);
 
         $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
-            ->patchJson("/api/v1/tasks/{$task->id}", ['name' => 'Updated hosted API task'])
+            ->patchJson("/api/v1/tasks/{$task->id}", ['name' => 'Updated hosted API task', 'config_version' => 1])
             ->assertOk()
             ->assertJsonPath('data.name', 'Updated hosted API task');
         $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
@@ -841,6 +871,9 @@ class ApiV1ContractTest extends TestCase
             $realtime,
             app(TaskTitleReadinessService::class),
             app(ArticleAiQualityInvalidationService::class),
+            app(ArticleAiQualityPolicyResolver::class),
+            app(AiQualityRetrievalReadinessService::class),
+            app(AiQualityAuditService::class),
         );
 
         $baselineTransactionLevel = DB::transactionLevel();

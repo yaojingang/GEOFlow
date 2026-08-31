@@ -47,6 +47,10 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article->fresh(), dispatch: false);
 
         $this->assertSame('full', $check->inspection_scope);
+        $this->assertSame('chunk', $check->requested_retrieval_mode);
+        $this->assertNull($check->effective_retrieval_mode);
+        $this->assertSame(64, strlen((string) $check->retrieval_basis_hash));
+        $this->assertSame($check->retrieval_basis_hash, data_get($check->execution_meta, 'retrieval_basis.hash'));
         $this->assertEquals(180, $check->created_at->diffInSeconds($check->primary_deadline_at));
         $this->assertEquals(235, $check->created_at->diffInSeconds($check->deadline_at));
         $this->assertTrue((bool) data_get($check->execution_meta, 'policy_snapshot.timeout_sampling_enabled'));
@@ -56,7 +60,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
             data_get($check->execution_meta, 'policy_snapshot.sampling_algorithm_version'),
         );
         $this->assertSame(
-            'article-quality-principles-2.0.0',
+            'article-quality-principles-2.1.0',
             data_get($check->execution_meta, 'principle_snapshot.version'),
         );
         $this->assertNotEmpty(data_get($check->execution_meta, 'principle_snapshot.advertising_rules_hash'));
@@ -124,6 +128,23 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_worker_marks_a_check_stale_when_the_frozen_retrieval_source_changes(): void
+    {
+        $article = $this->createQualityFixture('retrieval-source-stale', needReview: false);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $knowledgeBase = $article->task->knowledgeBases()->firstOrFail();
+        $knowledgeBase->forceFill(['content' => '服务客户已经更新为 1200 家。'])->save();
+
+        $stale = $service->process($check);
+
+        $this->assertSame('stale', $stale->status);
+        $this->assertSame('ai_quality_retrieval_source_stale', $stale->error_code);
+        $this->assertSame('ai_quality_retrieval_source_stale', $stale->retrieval_failure_code);
+        $this->assertNull($stale->effective_retrieval_mode);
+        $this->assertSame('pending', $article->fresh()->review_status);
+    }
+
     public function test_configuration_and_capacity_failures_never_enter_sampled_fallback(): void
     {
         $article = $this->createQualityFixture('sampled-denylist', needReview: false);
@@ -134,6 +155,24 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertFalse($service->tryStartSampledFallback(
             $check,
             new ArticleAiQualityRuntimeException('provider_quota_exhausted', false),
+            dispatch: false,
+        ));
+        $this->assertSame('full', $check->fresh()->inspection_scope);
+        $this->assertSame('queued', $check->fresh()->status);
+    }
+
+    public function test_current_task_setting_can_stop_an_existing_full_check_from_entering_sampling(): void
+    {
+        $article = $this->createQualityFixture('sampled-current-policy-fence', needReview: false);
+        $article->task()->update(['ai_quality_timeout_sampling_enabled' => true]);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+
+        $article->task()->update(['ai_quality_timeout_sampling_enabled' => false]);
+
+        $this->assertFalse($service->tryStartSampledFallback(
+            $check,
+            new ArticleAiQualityRuntimeException('provider_timeout', true),
             dispatch: false,
         ));
         $this->assertSame('full', $check->fresh()->inspection_scope);
@@ -154,6 +193,65 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame('invalid_model_output', data_get($failed->execution_meta, 'failure.code'));
         $this->assertFalse((bool) data_get($failed->execution_meta, 'failure.retryable'));
         $this->assertNull($failed->score);
+    }
+
+    public function test_single_model_invalid_output_is_retried_once_within_the_same_check(): void
+    {
+        $reviewer = new class implements ArticleAiQualityReviewer
+        {
+            public int $calls = 0;
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->calls++;
+
+                return [
+                    'result' => $this->calls === 1
+                        ? [
+                            'summary' => '首次结果包含无效问题枚举。',
+                            'promotion_context' => 'informational',
+                            'knowledge_coverage' => 'sufficient',
+                            'issues' => [[
+                                'code' => 'unsupported_fact_type',
+                                'severity' => 'medium',
+                                'field' => 'content',
+                                'quote' => '测试正文。',
+                                'paragraph_index' => 0,
+                                'heading' => '',
+                                'fact_candidate_id' => '',
+                                'article_claim' => '',
+                                'evidence_value' => '',
+                                'knowledge_refs' => [],
+                                'legal_refs' => [],
+                                'reason' => '枚举无效。',
+                                'suggestion' => '重试。',
+                            ]],
+                            'uncertainties' => [],
+                        ]
+                        : [
+                            'summary' => '重试后质检通过。',
+                            'promotion_context' => 'informational',
+                            'knowledge_coverage' => 'sufficient',
+                            'issues' => [],
+                            'uncertainties' => [],
+                        ],
+                    'usage' => ['totalTokens' => 20],
+                    'model' => ['id' => (int) $model->id, 'model_id' => (string) $model->model_id],
+                    'mode' => 'structured',
+                ];
+            }
+        };
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $article = $this->createQualityFixture('same-model-invalid-output-retry', needReview: true);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article, dispatch: false);
+
+        $completed = $service->process((int) $check->id);
+
+        $this->assertSame(2, $reviewer->calls);
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame('chunk', $completed->effective_retrieval_mode);
+        $this->assertSame('passed', $completed->decision);
     }
 
     public function test_a_late_full_job_failure_cannot_overwrite_the_new_sampled_phase(): void
@@ -196,6 +294,30 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         });
         $service = app(ArticleAiQualityInspectionService::class);
         $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $completedSegment = $check->segments()->orderBy('segment_index')->firstOrFail();
+        $completedSegment->forceFill([
+            'status' => 'completed',
+            'validated_result' => [
+                'summary' => '文章缺少 AI 生成内容标识，需要人工确认。',
+                'promotion_context' => 'informational',
+                'knowledge_coverage' => 'sufficient',
+                'issues' => [[
+                    'code' => 'ai_generated_disclosure',
+                    'severity' => 'high',
+                    'field' => 'content',
+                    'quote' => '开头说明',
+                ]],
+                'uncertainties' => [[
+                    'claim' => 'AI 生成内容标识状态',
+                    'materiality' => 'high',
+                    'reason' => '无法确认是否已声明 AI 生成',
+                    'needed_evidence' => '提供发布元数据标识',
+                ]],
+                'truncated_issue_count' => 0,
+            ],
+            'finished_at' => now(),
+        ])->save();
+        $check->forceFill(['completed_segment_count' => 1])->save();
         $this->assertTrue($service->tryStartSampledFallback(
             $check,
             new ArticleAiQualityRuntimeException('inspection_primary_deadline_exceeded', false),
@@ -411,6 +533,33 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame($result->segment_count, $result->segments()->where('status', 'completed')->count());
         $this->assertSame(245, (new ProcessArticleAiQualityJob((int) $result->id))->timeout);
         $this->assertTrue((new ProcessArticleAiQualityJob((int) $result->id))->failOnTimeout);
+    }
+
+    public function test_resumed_atomic_check_recovers_atomic_results_from_persisted_execution_metadata(): void
+    {
+        $check = new ArticleAiQualityCheck([
+            'requested_retrieval_mode' => 'atomic_first',
+            'execution_meta' => [
+                'retrieval' => [
+                    'atomic_facts' => [
+                        'issues' => [['code' => 'knowledge_contradiction', 'severity' => 'critical']],
+                        'contradicted_count' => 1,
+                    ],
+                ],
+            ],
+        ]);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $recover = \Closure::bind(
+            fn (): array => $service->atomicFactsFromRetrievalResult($check, [], [], []),
+            $service,
+            ArticleAiQualityInspectionService::class,
+        );
+
+        $result = $recover();
+
+        $this->assertTrue($result['formal']);
+        $this->assertSame('atomic_first', $result['mode']);
+        $this->assertSame('knowledge_contradiction', data_get($result, 'inspection.issues.0.code'));
     }
 
     public function test_a_stale_check_terminalizes_its_segments_and_holds_the_article_for_review(): void
@@ -688,6 +837,45 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
 
         $this->assertSame('completed', $completed->status);
         $this->assertSame('passed', $completed->decision);
+    }
+
+    public function test_resumed_check_normalizes_removed_disclosure_artifacts_from_a_completed_segment(): void
+    {
+        Queue::fake();
+        $article = $this->createQualityFixture('resume-removed-disclosure-segment', needReview: false);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article, dispatch: false);
+        $segment = $check->segments()->firstOrFail();
+        $segment->forceFill([
+            'status' => 'completed',
+            'validated_result' => [
+                'summary' => '文章缺少 AI 生成内容标识，需要人工确认。',
+                'promotion_context' => 'informational',
+                'knowledge_coverage' => 'sufficient',
+                'issues' => [[
+                    'code' => 'ai_generated_disclosure',
+                    'severity' => 'high',
+                    'field' => 'content',
+                    'quote' => '产品说明',
+                ]],
+                'uncertainties' => [[
+                    'claim' => 'AI 生成内容标识状态',
+                    'materiality' => 'high',
+                    'reason' => '无法确认是否已声明 AI 生成',
+                    'needed_evidence' => '提供发布元数据标识',
+                ]],
+                'truncated_issue_count' => 0,
+            ],
+            'finished_at' => now(),
+        ])->save();
+        $check->forceFill(['completed_segment_count' => 1])->save();
+
+        $completed = $service->process($check);
+
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame('passed', $completed->decision);
+        $this->assertSame([], $completed->issues);
+        $this->assertSame([], $completed->uncertainties);
     }
 
     public function test_queue_time_consumes_the_primary_article_deadline_before_model_execution(): void
@@ -1025,6 +1213,27 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame('succeeded', data_get($completed->fresh()->execution_meta, 'workflow_apply.status'));
         $this->assertSame('approved', $article->fresh()->review_status);
         $this->assertSame(2, $transition->calls);
+    }
+
+    public function test_completed_check_is_superseded_before_workflow_apply_when_quality_basis_changed_in_queue(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('workflow-quality-basis-changed', needReview: false);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article, dispatch: false);
+        $article->task()->update(['ai_quality_pass_score' => 90]);
+
+        $service->process($check);
+
+        $check->refresh();
+        $latest = $article->aiQualityChecks()->latest('id')->firstOrFail();
+        $this->assertSame('stale', $check->status);
+        $this->assertSame('quality_basis_changed', $check->error_code);
+        $this->assertSame('pending', $article->fresh()->review_status);
+        $this->assertNotSame((int) $check->id, (int) $latest->id);
+        $this->assertSame('queued', $latest->status);
+        Queue::assertPushed(ProcessArticleAiQualityJob::class, fn (ProcessArticleAiQualityJob $job): bool => $job->checkId === (int) $latest->id);
     }
 
     public function test_exact_reconciliation_ids_do_not_touch_unrelated_stale_articles(): void

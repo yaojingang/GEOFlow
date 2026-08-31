@@ -5,6 +5,8 @@ namespace App\Services\GeoFlow;
 use App\Exceptions\ArticleAiQualityGateException;
 use App\Models\Admin;
 use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
+use App\Models\ArticleAiOptimizationStep;
 use App\Models\ArticleAiQualityCheck;
 use App\Models\Task;
 use Illuminate\Support\Facades\DB;
@@ -63,6 +65,21 @@ class ArticleAiQualityGate
                 $article->setRelation('task', $task);
             }
         }
+        $optimization = ArticleAiOptimizationRun::query()
+            ->where('article_id', (int) $article->id)
+            ->latest('id')
+            ->lockForUpdate()
+            ->first();
+        $explicitOverride = in_array($trigger, ['admin_ai_quality_override', 'api_ai_quality_override'], true);
+        if ($optimization
+            && in_array((string) $optimization->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)
+            && ! $explicitOverride) {
+            throw new ArticleAiQualityGateException(
+                'article_ai_optimization_pending',
+                'AI 内容优化正在进行，候选复检并应用后可继续发布。',
+                $optimization->bestCheck ?: $optimization->sourceCheck,
+            );
+        }
         $policy = $this->policyResolver->resolve($article);
         if (! ($policy['required'] ?? false)) {
             return null;
@@ -92,6 +109,38 @@ class ArticleAiQualityGate
             ->lockForUpdate()
             ->first();
 
+        $optimizationStillApplies = $optimization && $check && (
+            in_array((int) $check->id, array_filter([
+                (int) $optimization->source_check_id,
+                (int) $optimization->best_check_id,
+                (int) $optimization->final_check_id,
+            ]), true)
+            || ! $check->created_at
+            || ! $optimization->updated_at
+            || $check->created_at->lessThanOrEqualTo($optimization->updated_at)
+        );
+        if ($optimizationStillApplies && (string) $optimization->status === ArticleAiOptimizationRun::STATUS_STALE) {
+            throw new ArticleAiQualityGateException(
+                'article_ai_optimization_stale',
+                'AI 优化候选已经过期，请重新质检或启动新的优化。',
+                $optimization->sourceCheck,
+            );
+        }
+        if ($optimizationStillApplies && (string) $optimization->status === ArticleAiOptimizationRun::STATUS_NEEDS_REVIEW) {
+            throw new ArticleAiQualityGateException(
+                'article_ai_optimization_needs_review',
+                'AI 优化未达到目标，文章需要人工检查。',
+                $optimization->bestCheck ?: $optimization->sourceCheck,
+            );
+        }
+        if ($optimizationStillApplies && (string) $optimization->status === ArticleAiOptimizationRun::STATUS_FAILED) {
+            throw new ArticleAiQualityGateException(
+                'article_ai_optimization_failed',
+                'AI 优化执行异常，文章需要人工检查或重新启动优化。',
+                $optimization->bestCheck ?: $optimization->sourceCheck,
+            );
+        }
+
         if ($check === null) {
             $check = $this->inspectionService->createOrReuse($article, trigger: $trigger);
             throw new ArticleAiQualityGateException(
@@ -101,7 +150,12 @@ class ArticleAiQualityGate
             );
         }
 
-        if (! hash_equals((string) $check->input_fingerprint, $currentFingerprint)) {
+        if (! hash_equals((string) $check->input_fingerprint, $currentFingerprint)
+            || ! $this->inspectionService->retrievalBasisMatches(
+                $check,
+                $policy,
+                $this->inspectionService->rules(),
+            )) {
             if (in_array((string) $check->status, ['queued', 'running', 'completed', 'failed'], true)) {
                 $check->forceFill(['status' => 'stale', 'active_dedupe_key' => null])->save();
             }
@@ -175,6 +229,11 @@ class ArticleAiQualityGate
         }
         if ($check->decision === 'needs_review') {
             if ($allowExistingOverride && $check->is_overridden) {
+                if ($explicitOverride && $optimization
+                    && in_array((string) $optimization->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
+                    $this->cancelOptimizationForOverride($optimization, $adminId);
+                }
+
                 return $check;
             }
 
@@ -182,6 +241,10 @@ class ArticleAiQualityGate
             $admin = $adminId ? Admin::query()->find($adminId) : null;
             if ($allowExistingOverride && $reason !== '' && $admin
                 && (int) $check->score >= (int) $check->manual_override_min_score) {
+                if ($explicitOverride && $optimization
+                    && in_array((string) $optimization->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
+                    $this->cancelOptimizationForOverride($optimization, (int) $admin->id);
+                }
                 DB::transaction(function () use ($check, $admin, $reason): void {
                     ArticleAiQualityCheck::query()
                         ->whereKey($check->id)
@@ -210,6 +273,50 @@ class ArticleAiQualityGate
                 : 'AI 质检未通过，文章需要人工审核。',
             $check,
         );
+    }
+
+    private function cancelOptimizationForOverride(ArticleAiOptimizationRun $run, ?int $adminId): void
+    {
+        $candidateIds = ArticleAiOptimizationStep::query()
+            ->where('run_id', (int) $run->id)
+            ->whereNotNull('output_check_id')
+            ->orderBy('id')
+            ->pluck('output_check_id');
+        ArticleAiQualityCheck::query()
+            ->whereIn('id', $candidateIds)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['id']);
+        ArticleAiOptimizationStep::query()
+            ->where('run_id', (int) $run->id)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['id']);
+        ArticleAiQualityCheck::query()
+            ->whereIn('id', $candidateIds)
+            ->whereIn('status', ['queued', 'running'])
+            ->update([
+                'status' => 'cancelled',
+                'active_dedupe_key' => null,
+                'error_code' => 'optimization_cancelled_by_quality_override',
+                'error_message' => 'AI 优化已由人工质检放行操作取消。',
+                'finished_at' => now(),
+                'updated_at' => now(),
+            ]);
+        $executionMeta = is_array($run->execution_meta) ? $run->execution_meta : [];
+        $run->forceFill([
+            'status' => ArticleAiOptimizationRun::STATUS_CANCELLED,
+            'stop_reason' => 'quality_override',
+            'active_dedupe_key' => null,
+            'lease_owner' => null,
+            'lease_expires_at' => null,
+            'cancelled_at' => now(),
+            'finished_at' => now(),
+            'execution_meta' => array_replace($executionMeta, [
+                'cancelled_by_quality_override_at' => now()->toIso8601String(),
+                'cancelled_by_quality_override_admin_id' => $adminId,
+            ]),
+        ])->save();
     }
 
     private function normalizeReason(?string $reason): string

@@ -642,15 +642,15 @@
                                 <td class="py-4 pl-3 pr-4 whitespace-nowrap text-sm font-medium">
                                     @if($isTrashView)
                                         <div class="flex items-center justify-end gap-2">
-                                            <form method="POST" action="{{ route('admin.articles.restore', ['articleId' => (int) $article->id]) }}" class="inline" onsubmit="return confirm(@json(__('admin.articles.trash.confirm_restore')))">
+                                            <form method="POST" action="{{ route('admin.articles.restore', ['articleId' => (int) $article->id]) }}" class="inline" data-admin-confirm-form data-admin-confirm-tone="success" data-admin-confirm-title="{{ __('admin.articles.trash.confirm_restore') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $article->title]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.articles.trash.action_restore') }}">
                                                 @csrf
-                                                <button type="submit" class="text-green-600 hover:text-green-800" title="{{ __('admin.articles.trash.action_restore') }}">
+                                                <button type="submit" class="text-green-600 hover:text-green-800" title="{{ __('admin.articles.trash.action_restore') }}" data-admin-confirm-submit disabled aria-disabled="true">
                                                     <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
                                                 </button>
                                             </form>
-                                            <form method="POST" action="{{ route('admin.articles.force-delete', ['articleId' => (int) $article->id]) }}" class="inline" onsubmit="return confirm(@json(__('admin.articles.trash.confirm_delete')))">
+                                            <form method="POST" action="{{ route('admin.articles.force-delete', ['articleId' => (int) $article->id]) }}" class="inline" data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.articles.trash.confirm_delete') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $article->title]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.articles.trash.action_force_delete') }}">
                                                 @csrf
-                                                <button type="submit" class="text-red-600 hover:text-red-800" title="{{ __('admin.articles.trash.action_force_delete') }}">
+                                                <button type="submit" class="text-red-600 hover:text-red-800" title="{{ __('admin.articles.trash.action_force_delete') }}" data-admin-confirm-submit disabled aria-disabled="true">
                                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                                 </button>
                                             </form>
@@ -742,7 +742,7 @@
             data-request-too-large-message="{{ __('admin.articles.export.errors.request_too_large') }}"
             aria-modal="true"
             aria-labelledby="article-export-dialog-label"
-            class="m-auto max-h-[calc(100dvh-2rem)] w-[min(30rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-0 text-left shadow-2xl backdrop:bg-slate-950/40"
+            class="m-auto max-h-[calc(100dvh-2rem)] w-[min(30rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-0 text-left shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-[rgba(15,23,42,0.48)]"
         >
             <h2 id="article-export-dialog-label" class="sr-only">{{ __('admin.articles.export.dialog_label') }}</h2>
             <div data-export-state="loading" role="status" aria-live="polite" aria-busy="true" class="px-6 py-7 sm:px-8 sm:py-8">
@@ -789,10 +789,10 @@
                     <span data-export-filename class="min-w-0 truncate text-sm font-medium text-slate-700"></span>
                 </div>
                 <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                    <button type="button" data-export-close class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    <button type="button" data-export-close class="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                         {{ __('admin.articles.export.close') }}
                     </button>
-                    <button type="button" data-export-retry class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 active:scale-[0.98]">
+                    <button type="button" data-export-retry class="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 active:scale-[0.98]">
                         <i data-lucide="download" class="mr-2 h-4 w-4"></i>
                         {{ __('admin.articles.export.retry_download') }}
                     </button>
@@ -811,7 +811,7 @@
                     </div>
                 </div>
                 <div class="mt-6 flex justify-end">
-                    <button type="button" data-export-close class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 active:scale-[0.98]">
+                    <button type="button" data-export-close class="inline-flex min-h-10 items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 active:scale-[0.98]">
                         {{ __('admin.articles.export.close') }}
                     </button>
                 </div>
@@ -829,6 +829,31 @@
         const DISTRIBUTION_CHANNEL_FILTER_COUNT_LABEL = @json(__('admin.articles.filters.distribution_channel_selected_count', ['count' => '__COUNT__']));
         const DISTRIBUTION_CHANNEL_FILTER_EXPAND_LABEL = @json(__('admin.articles.filters.distribution_channel_expand'));
         const DISTRIBUTION_CHANNEL_FILTER_COLLAPSE_LABEL = @json(__('admin.articles.filters.distribution_channel_collapse'));
+        const ARTICLE_DIALOG_I18N = {
+            confirm: @json(__('admin.action_dialog.continue')),
+            close: @json(__('admin.action_dialog.close')),
+            guidance: @json(__('admin.action_dialog.generic_impact')),
+            noticeTitle: @json(__('admin.action_dialog.info_title')),
+        };
+
+        function showArticleNotice(message, focusTarget = null) {
+            window.AdminActionDialog?.notice?.({
+                tone: 'info',
+                title: ARTICLE_DIALOG_I18N.noticeTitle,
+                message,
+            });
+            focusTarget?.focus?.({ preventScroll: true });
+        }
+
+        async function confirmArticleAction(title, tone = 'danger', opener = null) {
+            return await window.AdminActionDialog?.confirm?.({
+                title,
+                message: ARTICLE_DIALOG_I18N.guidance,
+                tone,
+                confirmLabel: ARTICLE_DIALOG_I18N.confirm,
+                opener,
+            }) === true;
+        }
 
         function toggleBatchActions() {
             const batchActions = document.getElementById('batch-actions');
@@ -864,8 +889,8 @@
 
         const ARTICLE_BATCH_ROUTES = @json($articleBatchRoutes);
 
-        function submitEmptyTrash() {
-            if (!confirm(TRASH_I18N.confirmEmpty)) {
+        async function submitEmptyTrash() {
+            if (!await confirmArticleAction(TRASH_I18N.confirmEmpty, 'danger', document.activeElement)) {
                 return;
             }
             const form = document.createElement('form');
@@ -902,16 +927,16 @@
             form.submit();
         }
 
-        function deleteArticle(articleId) {
-            if (!confirm(ARTICLES_I18N.confirmDelete)) {
+        async function deleteArticle(articleId) {
+            if (!await confirmArticleAction(ARTICLES_I18N.confirmDelete, 'danger', document.activeElement)) {
                 return;
             }
             submitAction('delete_articles', articleId);
         }
 
-        function quickReview(articleId, status) {
+        async function quickReview(articleId, status) {
             const actionText = status === 'approved' ? ARTICLES_I18N.reviewApproved : ARTICLES_I18N.reviewRejected;
-            if (!confirm(ARTICLES_I18N.confirmQuickReview.replace('__ACTION__', actionText))) {
+            if (!await confirmArticleAction(ARTICLES_I18N.confirmQuickReview.replace('__ACTION__', actionText), 'info', document.activeElement)) {
                 return;
             }
             submitAction('batch_update_review', articleId, { review_status: status });
@@ -1000,53 +1025,50 @@
 
             const batchForm = document.getElementById('batch-form');
             if (batchForm) {
-                batchForm.addEventListener('submit', function(event) {
+                batchForm.addEventListener('submit', async function(event) {
+                    if (batchForm.dataset.articleBatchConfirmed === 'true') {
+                        delete batchForm.dataset.articleBatchConfirmed;
+                        return;
+                    }
+                    event.preventDefault();
                     const selected = document.querySelectorAll('.article-checkbox:checked');
                     if (selected.length === 0) {
-                        event.preventDefault();
-                        alert(IS_TRASH_VIEW ? TRASH_I18N.alertSelect : ARTICLES_I18N.selectArticles);
+                        showArticleNotice(IS_TRASH_VIEW ? TRASH_I18N.alertSelect : ARTICLES_I18N.selectArticles, document.getElementById('select-all'));
                         return;
                     }
 
                     const action = document.getElementById('batch-action')?.value ?? '';
                     if (action === '') {
-                        event.preventDefault();
-                        alert(ARTICLES_I18N.selectAction);
+                        showArticleNotice(ARTICLES_I18N.selectAction, document.getElementById('batch-action'));
                         return;
                     }
 
                     const targetAction = ARTICLE_BATCH_ROUTES[action] ?? '';
                     if (targetAction === '') {
-                        event.preventDefault();
-                        alert(ARTICLES_I18N.selectAction);
+                        showArticleNotice(ARTICLES_I18N.selectAction, document.getElementById('batch-action'));
                         return;
                     }
                     batchForm.action = targetAction;
 
                     if (IS_TRASH_VIEW) {
-                        if (action === 'batch_restore' && !confirm(TRASH_I18N.confirmBatchRestore.replace('__COUNT__', String(selected.length)))) {
-                            event.preventDefault();
+                        if (action === 'batch_restore' && !await confirmArticleAction(TRASH_I18N.confirmBatchRestore.replace('__COUNT__', String(selected.length)), 'success', event.submitter)) {
                             return;
                         }
-                        if (action === 'batch_force_delete' && !confirm(TRASH_I18N.confirmBatchForceDelete.replace('__COUNT__', String(selected.length)))) {
-                            event.preventDefault();
+                        if (action === 'batch_force_delete' && !await confirmArticleAction(TRASH_I18N.confirmBatchForceDelete.replace('__COUNT__', String(selected.length)), 'danger', event.submitter)) {
                             return;
                         }
                     } else {
                     if (action === 'batch_update_status' && !(document.getElementById('status-select')?.value ?? '')) {
-                        event.preventDefault();
-                        alert(ARTICLES_I18N.selectStatus);
+                        showArticleNotice(ARTICLES_I18N.selectStatus, document.getElementById('status-select'));
                         return;
                     }
 
                     if (action === 'batch_update_review' && !(document.getElementById('review-select')?.value ?? '')) {
-                        event.preventDefault();
-                        alert(ARTICLES_I18N.selectReview);
+                        showArticleNotice(ARTICLES_I18N.selectReview, document.getElementById('review-select'));
                         return;
                     }
 
-                    if (action === 'delete_articles' && !confirm(ARTICLES_I18N.confirmDeleteSelected.replace('__COUNT__', selected.length))) {
-                        event.preventDefault();
+                    if (action === 'delete_articles' && !await confirmArticleAction(ARTICLES_I18N.confirmDeleteSelected.replace('__COUNT__', selected.length), 'danger', event.submitter)) {
                         return;
                     }
                     }
@@ -1063,6 +1085,8 @@
                         input.value = checkbox.value;
                         selectedIdsContainer.appendChild(input);
                     });
+                    batchForm.dataset.articleBatchConfirmed = 'true';
+                    batchForm.requestSubmit(event.submitter instanceof HTMLButtonElement ? event.submitter : undefined);
                 });
             }
         });

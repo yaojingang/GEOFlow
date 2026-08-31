@@ -7,24 +7,26 @@ export function requiresKeywordReuseConfirmation(titleCount, keywordCount) {
     return normalizedKeywordCount > 0 && normalizedTitleCount > normalizedKeywordCount;
 }
 
-export function initializeTitleGenerationForm(root = document) {
+export function initializeTitleGenerationForm(root = document, dependencies = {}) {
     const form = root.querySelector('[data-title-generation-form]');
-    const dialog = root.querySelector('[data-keyword-reuse-dialog]');
-    if (!form || !dialog) return null;
+    if (!form) return null;
 
     const keywordSelect = form.querySelector('[name="keyword_library_id"]');
     const titleCountInput = form.querySelector('[name="title_count"]');
     const confirmationInput = form.querySelector('[data-keyword-reuse-confirmed]');
     const submitButton = form.querySelector('[data-title-generation-submit]');
-    const summary = dialog.querySelector('[data-keyword-reuse-summary]');
-    const cancelButton = dialog.querySelector('[data-keyword-reuse-cancel]');
-    const confirmButton = dialog.querySelector('[data-keyword-reuse-confirm]');
-    if (!keywordSelect || !titleCountInput || !confirmationInput || !summary || !cancelButton || !confirmButton) {
+    const actionDialog = dependencies.actionDialog ?? globalThis.window?.AdminActionDialog;
+    if (!keywordSelect || !titleCountInput || !confirmationInput || !actionDialog?.confirm) {
         return null;
+    }
+    if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.removeAttribute?.('aria-disabled');
     }
 
     let pendingSubmitter = null;
     let submitting = false;
+    let confirming = false;
 
     const selectedKeywordCount = () => {
         const selectedOption = keywordSelect.selectedOptions?.[0]
@@ -42,23 +44,37 @@ export function initializeTitleGenerationForm(root = document) {
         submitting = true;
         form.setAttribute?.('aria-busy', 'true');
         if (submitButton) submitButton.disabled = true;
-        confirmButton.disabled = true;
     };
 
-    const close = () => {
-        if (dialog.open) dialog.close('cancel');
-    };
-
-    const open = (submitter) => {
+    const open = async (submitter) => {
+        if (confirming || submitting) return false;
+        confirming = true;
         const titleCount = toPositiveInteger(titleCountInput.value);
         const keywordCount = selectedKeywordCount();
         pendingSubmitter = submitter || submitButton || null;
-        dialog.returnValue = '';
-        summary.textContent = String(dialog.dataset.summaryTemplate || '')
+        const summary = String(form.dataset.keywordReuseSummaryTemplate || '')
             .replaceAll('__TITLE_COUNT__', titleCount.toLocaleString())
             .replaceAll('__KEYWORD_COUNT__', keywordCount.toLocaleString());
-        if (!dialog.open) dialog.showModal();
-        cancelButton.focus({ preventScroll: true });
+        const confirmed = await actionDialog.confirm({
+            title: form.dataset.keywordReuseTitle || '',
+            message: summary,
+            guidance: form.dataset.keywordReuseGuidance || '',
+            tone: 'warning',
+            confirmLabel: form.dataset.keywordReuseConfirmLabel || '',
+            cancelLabel: form.dataset.keywordReuseCancelLabel || '',
+            opener: pendingSubmitter,
+        });
+        confirming = false;
+        if (confirmed !== true || submitting) {
+            pendingSubmitter = null;
+            return false;
+        }
+
+        confirmationInput.value = '1';
+        const confirmedSubmitter = pendingSubmitter;
+        pendingSubmitter = null;
+        form.requestSubmit(confirmedSubmitter || undefined);
+        return true;
     };
 
     keywordSelect.addEventListener('change', resetConfirmation);
@@ -79,34 +95,10 @@ export function initializeTitleGenerationForm(root = document) {
         }
 
         event.preventDefault();
-        open(event.submitter);
-
-        return;
+        void open(event.submitter);
     });
 
-    cancelButton.addEventListener('click', close);
-    confirmButton.addEventListener('click', () => {
-        if (submitting) return;
-
-        confirmationInput.value = '1';
-        const submitter = pendingSubmitter;
-        if (dialog.open) dialog.close('confirm');
-        form.requestSubmit(submitter || undefined);
-    });
-    dialog.addEventListener('close', () => {
-        const submitter = pendingSubmitter;
-        pendingSubmitter = null;
-        if (dialog.returnValue !== 'confirm') submitter?.focus?.({ preventScroll: true });
-    });
-    dialog.addEventListener('click', (event) => {
-        if (event.target !== dialog) return;
-        const bounds = dialog.getBoundingClientRect();
-        const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
-            && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
-        if (!inside) close();
-    });
-
-    return { close, open, resetConfirmation };
+    return { open, resetConfirmation };
 }
 
 if (typeof document !== 'undefined') initializeTitleGenerationForm(document);

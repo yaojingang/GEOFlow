@@ -31,10 +31,10 @@
                             <td class="px-6 py-4 text-sm text-gray-600">{{ $token['last_used_at'] ?: __('admin.browser_operations.clients.never') }}</td>
                             <td class="px-6 py-4 text-sm text-gray-600">{{ $token['expires_at'] }}</td>
                             <td class="px-6 py-4 text-right">
-                                <form method="POST" action="{{ route('admin.account.browser-clients.destroy', ['tokenId' => $token['id']]) }}" onsubmit="return confirm(@js(__('admin.browser_operations.clients.confirm')));">
+                                <form method="POST" action="{{ route('admin.account.browser-clients.destroy', ['tokenId' => $token['id']]) }}" data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.browser_operations.clients.confirm') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $token['name']]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.browser_operations.clients.disconnect') }}">
                                     @csrf
                                     @method('DELETE')
-                                    <button type="submit" class="min-h-10 rounded-lg px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 active:scale-[.96]">{{ __('admin.browser_operations.clients.disconnect') }}</button>
+                                    <button type="submit" class="min-h-10 rounded-lg px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 active:scale-[.96]" data-admin-confirm-submit disabled aria-disabled="true">{{ __('admin.browser_operations.clients.disconnect') }}</button>
                                 </form>
                             </td>
                         </tr>

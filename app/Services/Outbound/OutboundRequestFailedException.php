@@ -68,11 +68,6 @@ final class OutboundRequestFailedException extends RuntimeException
             || str_contains($messageText, 'timeout')) {
             return 'timeout';
         }
-        if (str_contains($messageText, 'curl error 6')
-            || str_contains($messageText, 'could not resolve')
-            || str_contains($messageText, 'name or service not known')) {
-            return 'dns';
-        }
         if (str_contains($messageText, 'curl error 35')
             || str_contains($messageText, 'curl error 51')
             || str_contains($messageText, 'curl error 60')
@@ -80,6 +75,11 @@ final class OutboundRequestFailedException extends RuntimeException
             || str_contains($messageText, 'tls failed')
             || str_contains($messageText, 'ssl')) {
             return 'tls';
+        }
+        if (preg_match('/curl error 6(?:\D|$)/', $messageText) === 1
+            || str_contains($messageText, 'could not resolve')
+            || str_contains($messageText, 'name or service not known')) {
+            return 'dns';
         }
         if (str_contains($typeText, 'connectexception')
             || str_contains($typeText, 'connectionexception')) {

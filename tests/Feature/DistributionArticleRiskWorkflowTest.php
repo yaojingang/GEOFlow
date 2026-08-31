@@ -218,10 +218,116 @@ class DistributionArticleRiskWorkflowTest extends TestCase
 
         $distribution = ArticleDistribution::query()->firstOrFail();
         $this->assertSame('fallback_sampled', data_get($distribution->remote_meta, 'ai_quality_guard.inspection_scope'));
+        $this->assertSame(
+            (string) $check->retrieval_basis_hash,
+            data_get($distribution->remote_meta, 'ai_quality_guard.retrieval_basis_hash'),
+        );
         $this->assertSame('inspection_primary_deadline_exceeded', data_get($distribution->remote_meta, 'ai_quality_guard.fallback_trigger_code'));
         $this->assertSame(120, data_get($distribution->remote_meta, 'ai_quality_guard.coverage.checked_chars'));
         $this->assertNull(data_get($distribution->remote_meta, 'ai_quality_guard.coverage.sampled_content'));
         $this->assertNull(data_get($distribution->remote_meta, 'ai_quality_guard.coverage.sampled_ranges.0.content'));
+    }
+
+    public function test_distribution_execution_rejects_a_changed_quality_basis(): void
+    {
+        Queue::fake();
+        [$article, $task] = $this->createDistributionArticle('Stable quality basis content.');
+        $prompt = Prompt::query()->where('system_key', 'article_quality.cn_ads_knowledge.v1')->firstOrFail();
+        $model = AiModel::query()->create([
+            'name' => 'Quality basis model',
+            'version' => '1',
+            'api_key' => 'test',
+            'model_id' => 'quality-basis-model',
+            'api_url' => 'https://example.test',
+            'status' => 'active',
+        ]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => 'Quality basis knowledge',
+            'content' => 'Stable quality basis content.',
+        ]);
+        $task->forceFill([
+            'ai_model_id' => $model->id,
+            'ai_quality_enabled' => true,
+            'ai_quality_prompt_id' => $prompt->id,
+            'ai_quality_pass_score' => 85,
+        ])->save();
+        $task->knowledgeBases()->sync([$knowledgeBase->id => ['sort_order' => 0]]);
+        $article->unsetRelation('task');
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 95,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        app(DistributionOrchestrator::class)->enqueueForArticle($article->fresh());
+        $distribution = ArticleDistribution::query()->firstOrFail();
+
+        $check->forceFill(['retrieval_basis_hash' => str_repeat('f', 64)])->save();
+        (new ProcessArticleDistributionJob((int) $distribution->id))->handle(
+            app(DistributionOrchestrator::class),
+            app(DistributionRetryPolicy::class),
+        );
+
+        $distribution->refresh();
+        $this->assertSame('failed', $distribution->status);
+        $this->assertSame(
+            'article_ai_quality_basis_changed',
+            data_get($distribution->remote_meta, 'ai_quality_dispatch.error_code'),
+        );
+    }
+
+    public function test_distribution_execution_rejects_a_guard_whose_current_quality_policy_disappeared(): void
+    {
+        [$article, $task] = $this->createDistributionArticle('Guarded quality content.');
+        $this->enableQualityPolicy($task);
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article->fresh(), dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 95,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        app(DistributionOrchestrator::class)->enqueueForArticle($article->fresh());
+        $distribution = ArticleDistribution::query()->firstOrFail();
+
+        $task->forceFill(['ai_quality_enabled' => false])->save();
+        (new ProcessArticleDistributionJob((int) $distribution->id))->handle(
+            app(DistributionOrchestrator::class),
+            app(DistributionRetryPolicy::class),
+        );
+
+        $distribution->refresh();
+        $this->assertSame('failed', $distribution->status);
+        $this->assertSame(
+            'article_ai_quality_basis_changed',
+            data_get($distribution->remote_meta, 'ai_quality_dispatch.error_code'),
+        );
+    }
+
+    public function test_reenqueue_clears_an_old_quality_guard_after_quality_is_disabled(): void
+    {
+        [$article, $task] = $this->createDistributionArticle('Quality guard reuse content.');
+        $this->enableQualityPolicy($task);
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article->fresh(), dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 95,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        $orchestrator = app(DistributionOrchestrator::class);
+        $orchestrator->enqueueForArticle($article->fresh());
+        $distribution = ArticleDistribution::query()->firstOrFail();
+        $this->assertIsArray(data_get($distribution->remote_meta, 'ai_quality_guard'));
+
+        $task->forceFill(['ai_quality_enabled' => false])->save();
+        $orchestrator->enqueueForArticle($article->fresh());
+
+        $this->assertNull(data_get($distribution->fresh()->remote_meta, 'ai_quality_guard'));
     }
 
     public function test_ai_workspace_enqueue_surfaces_an_approved_payload_mismatch(): void

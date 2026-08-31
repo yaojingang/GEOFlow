@@ -64,6 +64,8 @@ return [
     'knowledge_base_create' => '新建知识库',
     'knowledge_base_edit' => '编辑知识库',
     'knowledge_base_detail' => '知识库详情',
+    'knowledge_base_chunks' => '知识切片管理',
+    'knowledge_base_facts' => '原子事实工作台',
     'enterprise_knowledge' => '企业知识',
     'enterprise_knowledge_create' => '新建知识项目',
     'enterprise_knowledge_detail' => '知识项目详情',

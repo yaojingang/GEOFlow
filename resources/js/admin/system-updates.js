@@ -106,8 +106,71 @@ export function initializeSystemUpdaterErrorDialog(root = document) {
     return { close };
 }
 
+export function initializeSystemUpdaterAuthorizationDialogs(root = document, windowRef = window) {
+    const bypass = new WeakSet();
+    const isSubmitControl = (element) => element instanceof windowRef.HTMLButtonElement
+        || element instanceof windowRef.HTMLInputElement;
+
+    root.addEventListener('submit', async (event) => {
+        const form = event.target instanceof windowRef.Element
+            ? event.target.closest('[data-system-updater-authorized-action]')
+            : null;
+        if (!(form instanceof windowRef.HTMLFormElement)) return;
+        if (bypass.has(form)) {
+            bypass.delete(form);
+            return;
+        }
+
+        event.preventDefault();
+        const authorizationInput = form.querySelector('input[name="updater_authorization_code"]');
+        const passwordInput = form.querySelector('input[name="current_admin_password"]');
+        if (!(authorizationInput instanceof windowRef.HTMLInputElement)) return;
+
+        const fields = [{
+            name: 'authorization',
+            label: form.dataset.authorizationLabel ?? '',
+            type: 'text',
+            inputMode: 'numeric',
+            autocomplete: 'one-time-code',
+            maxLength: 6,
+            pattern: '[0-9]{6}',
+            required: true,
+            requiredMessage: form.dataset.requiredMessage ?? '',
+            patternMessage: form.dataset.authorizationPatternMessage ?? '',
+        }];
+        if (form.dataset.passwordRequired === 'true') {
+            fields.push({
+                name: 'password',
+                label: form.dataset.passwordLabel ?? '',
+                type: 'password',
+                autocomplete: 'current-password',
+                required: true,
+                requiredMessage: form.dataset.requiredMessage ?? '',
+            });
+        }
+
+        const values = await windowRef.AdminActionDialog?.prompt?.({
+            title: form.dataset.dialogTitle ?? '',
+            message: form.dataset.dialogMessage ?? '',
+            guidance: form.dataset.dialogGuidance ?? '',
+            tone: form.dataset.dialogTone ?? 'warning',
+            confirmLabel: form.dataset.dialogConfirmLabel ?? '',
+            opener: event.submitter,
+            requiredMessage: form.dataset.requiredMessage ?? '',
+            fields,
+        });
+        if (!values || typeof values !== 'object') return;
+
+        authorizationInput.value = String(values.authorization ?? '');
+        if (passwordInput instanceof windowRef.HTMLInputElement) passwordInput.value = String(values.password ?? '');
+        bypass.add(form);
+        form.requestSubmit(isSubmitControl(event.submitter) ? event.submitter : undefined);
+    });
+}
+
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     initializeSystemUpdaterAutoReload();
     initializeSystemUpdaterCopy();
     initializeSystemUpdaterErrorDialog();
+    initializeSystemUpdaterAuthorizationDialogs();
 }

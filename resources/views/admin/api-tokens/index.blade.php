@@ -102,9 +102,9 @@
                                     </td>
                                     <td class="whitespace-nowrap px-6 py-4 text-sm">
                                         @if (($token['status'] ?? 'active') === 'active')
-                                            <form action="{{ route('admin.api-tokens.revoke', ['tokenId' => (int) ($token['id'] ?? 0)]) }}" method="POST" onsubmit="return confirm(@js(__('admin.api_tokens.confirm.revoke')));">
+                                            <form action="{{ route('admin.api-tokens.revoke', ['tokenId' => (int) ($token['id'] ?? 0)]) }}" method="POST" data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.api_tokens.confirm.revoke') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $token['name'] ?? '']) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.api_tokens.button.revoke') }}">
                                                 @csrf
-                                                <button type="submit" class="whitespace-nowrap text-red-600 hover:text-red-800">{{ __('admin.api_tokens.button.revoke') }}</button>
+                                                <button type="submit" class="whitespace-nowrap text-red-600 hover:text-red-800" data-admin-confirm-submit disabled aria-disabled="true">{{ __('admin.api_tokens.button.revoke') }}</button>
                                             </form>
                                         @else
                                             <span class="text-gray-400">{{ __('admin.api_tokens.status.revoked') }}</span>
@@ -162,14 +162,32 @@
 
                 try {
                     const copied = await copyToken(tokenText);
-                    if (copied && window.AdminUtils && typeof window.AdminUtils.showToast === 'function') {
-                        window.AdminUtils.showToast(@json(__('admin.message.copied')), 'success');
+                    if (copied) {
+                        window.GeoFlowAdminUi?.showToast?.(@json(__('admin.message.copied')), 'success');
                     }
                     if (!copied) {
-                        window.prompt('复制失败，请手动复制 Token：', tokenText);
+                        await window.AdminActionDialog?.prompt?.({
+                            title: @json(__('admin.api_tokens.notice.manual_copy_title')),
+                            message: @json(__('admin.api_tokens.notice.manual_copy_help')),
+                            fieldLabel: 'Token',
+                            value: tokenText,
+                            readOnly: true,
+                            showCancel: false,
+                            confirmLabel: @json(__('admin.action_dialog.close')),
+                            opener: copyButton,
+                        });
                     }
                 } catch (error) {
-                    window.prompt('复制失败，请手动复制 Token：', tokenText);
+                    await window.AdminActionDialog?.prompt?.({
+                        title: @json(__('admin.api_tokens.notice.manual_copy_title')),
+                        message: @json(__('admin.api_tokens.notice.manual_copy_help')),
+                        fieldLabel: 'Token',
+                        value: tokenText,
+                        readOnly: true,
+                        showCancel: false,
+                        confirmLabel: @json(__('admin.action_dialog.close')),
+                        opener: copyButton,
+                    });
                 }
             });
         });

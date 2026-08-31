@@ -2,6 +2,16 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-08-31
+
+### Three-layer AI quality retrieval and governed atomic facts
+
+- Added atomic-first, chunk, and broad-knowledge retrieval modes. Task settings and standalone article editing now share readiness checks, default priority, inheritance, and override rules, with atomic-first selected when every source is ready.
+- Added readiness projections, serving generations, per-check source ledgers, and immutable execution snapshots. Checks retain requested and effective modes, strategy versions, source hashes, and audit data, while knowledge, model, prompt, article, and rollout changes selectively expire affected results and schedule reconciliation.
+- Completed governed atomic-fact generation, review, version publishing, stable keys, evidence relinking, typed comparison, and active-revision serving. Deterministic facts use the atomic path, while unsupported or ambiguous claims continue through chunk retrieval.
+- Hardened high-risk knowledge review, broad-evidence budgets, prompt-injection quarantine, cross-token API idempotency, concurrent policy-version checks, distribution guard snapshots, and deletion protection for referenced knowledge bases.
+- Expanded knowledge-base navigation, the atomic-fact workbench, AI model diagnostics, and six-language admin copy, with a legacy backfill command, Docker queue configuration, Laravel and JavaScript regressions, and benchmark reports.
+
 ## 2026-08-30
 
 ### License and contribution governance
@@ -9,6 +19,14 @@ This document tracks user-facing updates in the public repository. For future Gi
 - New GEOFlow versions and repository revisions from this change onward use the GNU Affero General Public License v3.0 only. Versions previously released under Apache-2.0 retain their original license.
 - Separate commercial terms are available from the copyright holder for proprietary modifications, white-label or OEM distribution, proprietary product integration, and other uses that cannot comply with AGPL-3.0.
 - Added a Contributor License Agreement, contribution guide, and pull request declaration. Contributors retain copyright while granting the project the sublicensing rights needed to use accepted contributions in both AGPL and commercial or proprietary versions.
+
+### Product and experience updates
+
+- Added an end-to-end article AI quality optimization workflow. Administrators can target pass, 80-point excellent, or 90-point excellent results, then review iterative candidate edits, rescored outcomes, change history, apply, cancel, rollback, and reconciliation states.
+- Improved AI quality reliability and explainability across long-form inspection, evidence positioning, result validation, scoring, invalidation, dedicated queues, health checks, quota control, versioned prompts, and task-level optimization policy.
+- Unified confirmation dialogs for sensitive admin actions across articles, tasks, models, material libraries, and knowledge bases, with clear targets, impact summaries, input validation, pending states, and recovery guidance.
+- Refined Admin UI V3 with collapsible quality results, clearer page identity, and a shared footer on every admin page for the version, changelog, license, copyright, author X profile, GitHub repository, and help links, including short-page and mobile layouts.
+- Extended API v1 and the GEOFlow CLI with article AI optimization operations, and added Docker timeout, retry, health check, queue, and worker configuration for quality inspection and optimization workloads.
 
 ## 2026-08-29
 

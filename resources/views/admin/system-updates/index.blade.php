@@ -123,11 +123,54 @@
             </a>
         </div>
 
-        @if(session('message'))
-            <div class="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('message') }}</div>
-        @endif
-        @if($errors->any())
-            <div class="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ $errors->first() }}</div>
+        @if($hasReleaseUpdate)
+            <section class="mb-6 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 shadow-sm" data-system-update-release-notice aria-labelledby="system-update-release-title">
+                <div class="px-5 py-5 sm:px-6">
+                    <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                        <div class="flex min-w-0 items-start gap-4">
+                            <span class="inline-flex h-11 w-11 flex-none items-center justify-center rounded-full bg-amber-100 text-amber-700" aria-hidden="true">
+                                <i data-lucide="sparkles" class="h-5 w-5"></i>
+                            </span>
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">{{ __('admin.system_updates.release_notice.eyebrow') }}</span>
+                                    @if($releaseDate !== '')
+                                        <span class="text-xs font-medium text-amber-800">{{ __('admin.system_updates.release_notice.release_date', ['date' => $releaseDate]) }}</span>
+                                    @endif
+                                </div>
+                                <h2 id="system-update-release-title" class="mt-2 text-xl font-semibold text-gray-950">
+                                    {{ __('admin.system_updates.release_notice.title', ['version' => $latestReleaseVersion]) }}
+                                </h2>
+                                <p class="mt-2 text-sm leading-6 text-gray-700">{{ __('admin.system_updates.release_notice.description') }}</p>
+                                <p class="mt-1 text-sm font-medium text-gray-900">
+                                    {{ __('admin.system_updates.release_notice.version_line', ['current' => $currentReleaseVersion, 'latest' => $latestReleaseVersion]) }}
+                                </p>
+                            </div>
+                        </div>
+                        <a href="{{ $releaseUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex min-h-10 w-full flex-none items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform active:scale-[0.98] motion-reduce:transform-none [@media(hover:hover)]:hover:bg-blue-700 sm:w-auto">
+                            <i data-lucide="external-link" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.system_updates.release_notice.cta') }}
+                        </a>
+                    </div>
+
+                    <div class="mt-5 rounded-lg border border-amber-200 bg-white/80 px-4 py-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="text-sm font-semibold text-gray-900">{{ __('admin.system_updates.release_notice.changes_title') }}</h3>
+                            <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+                                {{ __('admin.system_updates.release_notice.release_type.'.$releaseType) }}
+                            </span>
+                        </div>
+                        <p class="mt-2 text-sm leading-6 text-gray-700">
+                            {{ $releaseSummary !== '' ? $releaseSummary : __('admin.system_updates.release_notice.summary_fallback') }}
+                        </p>
+                    </div>
+
+                    <div class="mt-4 flex items-start gap-2 text-sm leading-6 text-amber-900">
+                        <i data-lucide="arrow-down" class="mt-1 h-4 w-4 flex-none" aria-hidden="true"></i>
+                        <p>{{ __('admin.system_updates.release_notice.next_step') }}</p>
+                    </div>
+                </div>
+            </section>
         @endif
 
         @if($hasReleaseUpdate)
@@ -340,13 +383,26 @@
                             <div class="mt-5 grid w-full gap-3 md:grid-cols-3">
                                 @foreach(['update', 'backup'] as $operationKind)
                                     @php($operationDisabled = $operationKind === 'update' ? $updateMutationDisabled : $mutationDisabled)
-                                    <form method="POST" action="{{ route('admin.system-updates.updater.'.$operationKind) }}" class="flex flex-col gap-2">
+                                    <form
+                                        method="POST"
+                                        action="{{ route('admin.system-updates.updater.'.$operationKind) }}"
+                                        class="flex flex-col gap-2"
+                                        data-system-updater-authorized-action
+                                        data-dialog-tone="{{ $operationKind === 'update' ? 'warning' : 'info' }}"
+                                        data-dialog-title="{{ __('admin.system_updates.updater.action.'.$operationKind) }}"
+                                        data-dialog-message="{{ __('admin.system_updates.updater.operations_hint') }}"
+                                        data-dialog-guidance="{{ __('admin.system_updates.release_notice.version_line', ['current' => $currentReleaseVersion, 'latest' => $latestReleaseVersion]) }}"
+                                        data-dialog-confirm-label="{{ __('admin.system_updates.updater.action.'.$operationKind) }}"
+                                        data-authorization-label="{{ __('admin.system_updates.updater.authorization_label') }}"
+                                        data-password-label="{{ __('admin.system_updates.label.current_admin_password') }}"
+                                        data-required-message="{{ __('admin.action_dialog.required') }}"
+                                        data-authorization-pattern-message="{{ __('admin.system_updates.updater.authorization_label') }}"
+                                        @if($passwordRequired) data-password-required="true" @endif
+                                    >
                                         @csrf
-                                        <label class="sr-only" for="updater-{{ $operationKind }}-authorization">{{ __('admin.system_updates.updater.authorization_label') }}</label>
-                                        <input id="updater-{{ $operationKind }}-authorization" type="text" name="updater_authorization_code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="{{ __('admin.system_updates.updater.authorization_label') }}" @disabled($operationDisabled) class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100">
+                                        <input id="updater-{{ $operationKind }}-authorization" type="hidden" name="updater_authorization_code" @disabled($operationDisabled)>
                                         @if($passwordRequired)
-                                            <label class="sr-only" for="updater-{{ $operationKind }}-password">{{ __('admin.system_updates.label.current_admin_password') }}</label>
-                                            <input id="updater-{{ $operationKind }}-password" type="password" name="current_admin_password" autocomplete="current-password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($operationDisabled) class="rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100">
+                                            <input id="updater-{{ $operationKind }}-password" type="hidden" name="current_admin_password" @disabled($operationDisabled)>
                                         @endif
                                         <button type="submit" @disabled($operationDisabled) class="inline-flex min-h-10 items-center justify-center rounded-md {{ $operationKind === 'update' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50' }} px-4 py-2 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400">
                                             <i data-lucide="{{ $operationKind === 'update' ? 'rocket' : 'archive' }}" class="mr-2 h-4 w-4"></i>
@@ -400,14 +456,27 @@
                                         <p class="mt-1 text-xs text-gray-500">v{{ (string) ($recoveryPoint['version'] ?? '') }} · {{ (string) ($recoveryPoint['created_at'] ?? '') }}</p>
                                     </div>
                                     @if((string) ($recoveryPoint['id'] ?? '') === $webRollbackPointId)
-                                        <form method="POST" action="{{ route('admin.system-updates.updater.rollback') }}" class="grid gap-2 sm:grid-cols-3">
+                                        <form
+                                            method="POST"
+                                            action="{{ route('admin.system-updates.updater.rollback') }}"
+                                            class="grid gap-2"
+                                            data-system-updater-authorized-action
+                                            data-dialog-tone="danger"
+                                            data-dialog-title="{{ __('admin.system_updates.updater.action.rollback') }} v{{ (string) ($recoveryPoint['version'] ?? '') }}"
+                                            data-dialog-message="{{ __('admin.system_updates.updater.recovery_hint') }}"
+                                            data-dialog-guidance="{{ (string) ($recoveryPoint['created_at'] ?? '') }} · {{ (string) ($recoveryPoint['id'] ?? '') }}"
+                                            data-dialog-confirm-label="{{ __('admin.system_updates.updater.action.rollback') }}"
+                                            data-authorization-label="{{ __('admin.system_updates.updater.authorization_label') }}"
+                                            data-password-label="{{ __('admin.system_updates.label.current_admin_password') }}"
+                                            data-required-message="{{ __('admin.action_dialog.required') }}"
+                                            data-authorization-pattern-message="{{ __('admin.system_updates.updater.authorization_label') }}"
+                                            @if($passwordRequired) data-password-required="true" @endif
+                                        >
                                             @csrf
                                             <input type="hidden" name="recovery_point_id" value="{{ (string) ($recoveryPoint['id'] ?? '') }}">
-                                            <label class="sr-only" for="rollback-authorization-{{ $loop->index }}">{{ __('admin.system_updates.updater.authorization_label') }}</label>
-                                            <input id="rollback-authorization-{{ $loop->index }}" type="text" name="updater_authorization_code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="{{ __('admin.system_updates.updater.authorization_label') }}" @disabled($mutationDisabled) class="rounded-md border-gray-300 text-sm shadow-sm disabled:bg-gray-100">
+                                            <input id="rollback-authorization-{{ $loop->index }}" type="hidden" name="updater_authorization_code" @disabled($mutationDisabled)>
                                             @if($passwordRequired)
-                                                <label class="sr-only" for="rollback-password-{{ $loop->index }}">{{ __('admin.system_updates.label.current_admin_password') }}</label>
-                                                <input id="rollback-password-{{ $loop->index }}" type="password" name="current_admin_password" autocomplete="current-password" placeholder="{{ __('admin.system_updates.label.current_admin_password') }}" @disabled($mutationDisabled) class="rounded-md border-gray-300 text-sm shadow-sm disabled:bg-gray-100">
+                                                <input id="rollback-password-{{ $loop->index }}" type="hidden" name="current_admin_password" @disabled($mutationDisabled)>
                                             @endif
                                             <button type="submit" @disabled($mutationDisabled) class="inline-flex min-h-10 items-center justify-center rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400">
                                                 <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
@@ -547,7 +616,7 @@
             aria-modal="true"
             aria-labelledby="system-updater-error-title"
             aria-describedby="system-updater-error-summary"
-            class="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white p-0 text-left shadow-2xl backdrop:bg-slate-950/50 backdrop:backdrop-blur-[2px]"
+            class="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white p-0 text-left shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-[rgba(15,23,42,0.48)]"
         >
             <div class="flex max-h-[calc(100dvh-2rem)] flex-col">
                 <div class="flex items-start gap-4 border-b border-gray-100 px-5 py-5 sm:px-6">

@@ -47,7 +47,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#86efac,#fb7185,#fdba74,#f0abfc,#67e8f9\" \"php artisan serve\" \"php artisan queue:listen --queue=system-updates,geoflow,distribution,theme-replication,default --tries=1 --timeout=930\" \"php artisan geoflow:work-ai-quality front\" \"php artisan geoflow:work-ai-quality backfill\" \"php artisan reverb:start\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,quality,quality-backfill,reverb,logs,vite --kill-others"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#86efac,#fb7185,#fdba74,#f0abfc,#67e8f9,#f9a8d4\" \"php artisan serve\" \"php artisan queue:listen --queue=system-updates,geoflow,distribution,theme-replication,default --tries=1 --timeout=930\" \"php artisan geoflow:work-ai-quality front\" \"php artisan geoflow:work-ai-quality backfill\" \"php artisan geoflow:work-ai-optimization\" \"php artisan reverb:start\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,quality,quality-backfill,optimization,reverb,logs,vite --kill-others"
         ],
         "test": [
             "@php artisan config:clear --ansi",

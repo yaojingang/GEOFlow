@@ -386,6 +386,49 @@ class KnowledgeRetrievalServiceTest extends TestCase
         $this->assertStringContainsString('多站分发执行需要记录目标渠道', $context);
     }
 
+    public function test_retrieval_only_reads_the_current_serving_generation(): void
+    {
+        $knowledgeBase = $this->createKnowledgeBase([
+            'name' => '代次知识库',
+            'content' => '当前正式正文',
+            'chunk_sync_status' => 'ready',
+            'chunk_source_hash' => hash('sha256', '当前正式正文'),
+            'chunk_serving_generation' => 'serving-v2',
+            'chunk_serving_source_hash' => hash('sha256', '当前正式正文'),
+        ]);
+        KnowledgeChunk::query()->create([
+            'knowledge_base_id' => $knowledgeBase->id,
+            'generation_key' => 'serving-v1',
+            'chunk_index' => 0,
+            'content' => '旧代次包含过期价格 300 元。',
+            'content_hash' => hash('sha256', '旧代次'),
+            'source_hash' => hash('sha256', '旧代次来源'),
+            'token_count' => 12,
+            'embedding_json' => '[]',
+        ]);
+        KnowledgeChunk::query()->create([
+            'knowledge_base_id' => $knowledgeBase->id,
+            'generation_key' => 'serving-v2',
+            'chunk_index' => 0,
+            'content' => '当前代次价格为 980 元。',
+            'content_hash' => hash('sha256', '当前代次'),
+            'source_hash' => hash('sha256', '当前代次来源'),
+            'token_count' => 12,
+            'embedding_json' => '[]',
+        ]);
+
+        $evidence = app(KnowledgeRetrievalService::class)->retrieveEvidence(
+            $knowledgeBase->id,
+            '价格',
+            5,
+            false,
+        );
+
+        $this->assertCount(1, $evidence);
+        $this->assertSame('当前代次价格为 980 元。', $evidence[0]['content']);
+        $this->assertSame('serving-v2', $evidence[0]['generation_key']);
+    }
+
     private function createKnowledgeBase(array $overrides = []): KnowledgeBase
     {
         return KnowledgeBase::query()->create(array_merge([

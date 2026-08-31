@@ -2,6 +2,11 @@
 .github
 .idea
 .vscode
+.agents
+.claude
+.codex
+.cursor
+.gemini
 vendor
 node_modules
 .env
@@ -10,15 +15,14 @@ node_modules
 .phpunit.result.cache
 *.log
 bak
+browser-extension
 docker-compose*.yml
 docker-data
-storage/app/public/*
-storage/app/private/*
-storage/logs/*
-storage/framework/cache/*
-storage/framework/sessions/*
-storage/framework/testing/*
-storage/framework/views/*
+storage
+tests
+
+# Vite 会在镜像构建阶段重新生成指纹资源，不复用宿主机产物。
+public/build
 
 # 本机 bootstrap 缓存可能含 dev 包发现结果；打进镜像会与 --no-dev 冲突
 bootstrap/cache/*

@@ -89,11 +89,11 @@ test('material deletion stays disabled until its confirmation handler is ready',
     assert.equal(form.button.attributes.has('aria-disabled'), false);
 });
 
-test('material deletion requires an explicit confirmation and fails closed on errors', () => {
-    assert.equal(deleteFixture(() => false).dispatch('submit').defaultPrevented, true);
+test('material deletion delegates confirmation to the shared central controller', () => {
+    assert.equal(deleteFixture(() => false).dispatch('submit').defaultPrevented, false);
     assert.equal(deleteFixture(() => {
         throw new Error('confirmation unavailable');
-    }).dispatch('submit').defaultPrevented, true);
+    }).dispatch('submit').defaultPrevented, false);
     assert.equal(deleteFixture(() => true).dispatch('submit').defaultPrevented, false);
 });
 

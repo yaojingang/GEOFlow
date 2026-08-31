@@ -72,6 +72,8 @@ final class AiWorkspaceController extends Controller
             ->unique()
             ->values()
             ->all();
+        $labels['dialogCancel'] = (string) __('admin.action_dialog.cancel');
+        $labels['dialogRequired'] = (string) __('admin.action_dialog.required');
 
         return $labels;
     }

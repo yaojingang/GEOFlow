@@ -93,18 +93,18 @@
         }
     </style>
 
-    <div id="admin-welcome-modal" class="hidden fixed inset-0 z-[70]">
-        <div class="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"></div>
+    <div id="admin-welcome-modal" class="hidden fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-labelledby="admin-welcome-title" aria-describedby="admin-welcome-subtitle">
+        <div class="absolute inset-0 bg-[rgba(15,23,42,0.48)]" data-welcome-backdrop></div>
         <div class="relative flex min-h-full items-center justify-center p-4 sm:p-6 lg:p-8">
-            <div data-kami-document class="admin-welcome-document w-full overflow-hidden rounded-2xl border border-[#e8e5da] bg-white shadow-[0_24px_80px_rgba(20,20,19,0.14)] ring-1 ring-[#e8e5da]">
+            <div data-kami-document data-welcome-dialog tabindex="-1" class="admin-welcome-document w-full overflow-hidden rounded-2xl border border-[#e8e5da] bg-white shadow-[0_24px_72px_rgba(15,23,42,0.28)] ring-1 ring-[#e8e5da]">
                 <div class="border-b border-[#e8e5da] bg-white px-5 py-3.5 sm:px-7">
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <div id="admin-welcome-badge" class="admin-welcome-meta-text inline-flex rounded-full bg-[#EEF2F7] px-2.5 py-1 font-semibold text-[#1B365D]"></div>
                         </div>
                         <div class="flex items-center gap-2 self-start sm:self-auto">
-                            <button type="button" data-welcome-switch class="admin-welcome-meta-text rounded-full border border-[#d1cfc5] bg-white px-3 py-1.5 font-medium text-[#3d3d3a] hover:border-[#1B365D] hover:text-[#1B365D]"></button>
-                            <button type="button" data-welcome-close class="admin-welcome-meta-text rounded-full border border-[#d1cfc5] bg-white px-3 py-1.5 font-medium text-[#3d3d3a] hover:bg-[#f7f6f1]"></button>
+                            <button type="button" data-welcome-switch class="admin-welcome-meta-text min-h-10 rounded-full border border-[#d1cfc5] bg-white px-3 py-1.5 font-medium text-[#3d3d3a] hover:border-[#1B365D] hover:text-[#1B365D]"></button>
+                            <button type="button" data-welcome-close class="admin-welcome-meta-text min-h-10 rounded-full border border-[#d1cfc5] bg-white px-3 py-1.5 font-medium text-[#3d3d3a] hover:bg-[#f7f6f1]"></button>
                         </div>
                     </div>
                 </div>
@@ -156,22 +156,43 @@
             const linkChangelogNode = document.getElementById('admin-welcome-link-changelog');
             const switchButton = modal.querySelector('[data-welcome-switch]');
             const closeButtons = modal.querySelectorAll('[data-welcome-close]');
+            const dialog = modal.querySelector('[data-welcome-dialog]');
+            const backdrop = modal.querySelector('[data-welcome-backdrop]');
+            let opener = null;
 
-            function blockHtml(block) {
+            function blockNode(block) {
                 if (!block || !block.type) {
-                    return '';
+                    return null;
                 }
 
                 if (block.type === 'heading') {
-                    return `<h3 class="admin-welcome-section-title">${block.content || ''}</h3>`;
+                    const heading = document.createElement('h3');
+                    heading.className = 'admin-welcome-section-title';
+                    heading.textContent = block.content || '';
+                    return heading;
                 }
 
                 if (block.type === 'list') {
                     const items = Array.isArray(block.items) ? block.items : [];
-                    return `<ul class="admin-welcome-list">${items.map((item) => `<li class="admin-welcome-list-item"><span class="admin-welcome-bullet"></span><span>${item}</span></li>`).join('')}</ul>`;
+                    const list = document.createElement('ul');
+                    list.className = 'admin-welcome-list';
+                    items.forEach((item) => {
+                        const listItem = document.createElement('li');
+                        const bullet = document.createElement('span');
+                        const text = document.createElement('span');
+                        listItem.className = 'admin-welcome-list-item';
+                        bullet.className = 'admin-welcome-bullet';
+                        text.textContent = item;
+                        listItem.append(bullet, text);
+                        list.append(listItem);
+                    });
+                    return list;
                 }
 
-                return `<p class="admin-welcome-paragraph">${block.content || ''}</p>`;
+                const paragraph = document.createElement('p');
+                paragraph.className = 'admin-welcome-paragraph';
+                paragraph.textContent = block.content || '';
+                return paragraph;
             }
 
             function render(nextLocale) {
@@ -184,7 +205,7 @@
                 badgeNode.textContent = meta.badge || '';
                 titleNode.textContent = letter.title || '';
                 subtitleNode.textContent = letter.subtitle || '';
-                contentNode.innerHTML = blocks.map((block) => blockHtml(block)).join('');
+                contentNode.replaceChildren(...blocks.map((block) => blockNode(block)).filter(Boolean));
                 linksLabelNode.textContent = meta.links_label || '';
                 linkXNode.textContent = meta.author_link || '';
                 linkXNode.href = state.links?.x || '#';
@@ -198,10 +219,12 @@
                 });
             }
 
-            function openModal() {
+            function openModal(nextOpener = document.activeElement) {
+                opener = nextOpener;
                 render('zh-CN');
                 modal.classList.remove('hidden');
                 document.body.classList.add('overflow-hidden');
+                window.requestAnimationFrame(() => switchButton?.focus({ preventScroll: true }));
             }
 
             async function persistDismissIfNeeded() {
@@ -233,6 +256,8 @@
             async function closeModal() {
                 modal.classList.add('hidden');
                 document.body.classList.remove('overflow-hidden');
+                opener?.focus?.({ preventScroll: true });
+                opener = null;
                 await persistDismissIfNeeded();
             }
 
@@ -244,16 +269,31 @@
                 button.addEventListener('click', closeModal);
             });
 
-            modal.addEventListener('click', function (event) {
-                if (event.target === modal) {
-                    closeModal();
+            backdrop?.addEventListener('click', closeModal);
+            dialog?.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    void closeModal();
+                    return;
+                }
+                if (event.key !== 'Tab') return;
+                const focusable = Array.from(dialog.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+                if (focusable.length === 0) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
                 }
             });
 
             document.querySelectorAll('[data-open-admin-welcome]').forEach((trigger) => {
                 trigger.addEventListener('click', function (event) {
                     event.preventDefault();
-                    openModal();
+                    openModal(trigger);
                 });
             });
 

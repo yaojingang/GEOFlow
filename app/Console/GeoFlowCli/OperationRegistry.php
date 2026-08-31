@@ -41,6 +41,11 @@ class OperationRegistry
             'article.ai-quality-status' => self::operation('article.ai-quality-status', 'GET', 'articles/{article}/ai-quality/status'),
             'article.ai-quality-recheck' => self::operation('article.ai-quality-recheck', 'POST', 'articles/{article}/ai-quality/recheck', idempotent: true),
             'article.ai-quality-override' => self::operation('article.ai-quality-override', 'POST', 'articles/{article}/ai-quality/override', idempotent: true),
+            'article.ai-optimize' => self::operation('article.ai-optimize', 'POST', 'articles/{article}/ai-quality/optimization', idempotent: true),
+            'article.ai-optimization-status' => self::operation('article.ai-optimization-status', 'GET', 'articles/{article}/ai-quality/status'),
+            'article.ai-optimization-candidate' => self::operation('article.ai-optimization-candidate', 'GET', 'articles/{article}/ai-quality/optimization/candidate'),
+            'article.ai-optimization-apply' => self::operation('article.ai-optimization-apply', 'POST', 'articles/{article}/ai-quality/optimization/{run}/apply', idempotent: true),
+            'article.ai-optimization-cancel' => self::operation('article.ai-optimization-cancel', 'POST', 'articles/{article}/ai-quality/optimization/{run}/cancel', idempotent: true),
             'article.trash' => self::operation('article.trash', 'POST', 'articles/{article}/trash', idempotent: true),
         ];
     }

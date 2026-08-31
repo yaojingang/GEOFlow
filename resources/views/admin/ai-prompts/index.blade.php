@@ -85,7 +85,7 @@
                                             {{ __('admin.button.edit') }}
                                         </a>
                                         @if (! $prompt['system_managed'])
-                                            <button type="button" onclick="deletePrompt({{ (int) $prompt['id'] }}, @js($prompt['name']))" class="min-h-10 text-red-600 transition-[color,transform] duration-150 hover:text-red-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2">
+                                            <button type="button" data-ai-prompt-delete data-prompt-id="{{ (int) $prompt['id'] }}" data-prompt-name="{{ $prompt['name'] }}" class="min-h-10 text-red-600 transition-[color,transform] duration-150 hover:text-red-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2">
                                                 {{ __('admin.button.delete') }}
                                             </button>
                                         @endif
@@ -106,21 +106,36 @@
         const deleteActionTemplate = @json(route('admin.ai-prompts.delete', ['promptId' => '__ID__']));
         const deletePromptTemplate = @json(__('admin.ai_prompts.confirm_delete', ['name' => '__NAME__']));
 
-        function deletePrompt(id, name) {
+        document.addEventListener('click', async (event) => {
+            if (! (event.target instanceof Element)) return;
+            const trigger = event.target.closest('[data-ai-prompt-delete]');
+            if (! trigger) return;
+
+            const id = trigger.dataset.promptId || '';
+            const name = trigger.dataset.promptName || '';
             const message = deletePromptTemplate.replace('__NAME__', name);
-            if (! window.confirm(message)) {
+            const confirmed = await window.AdminActionDialog?.confirm?.({
+                title: message,
+                message: @json(__('admin.action_dialog.generic_impact')),
+                tone: 'danger',
+                confirmLabel: @json(__('admin.button.delete')),
+                opener: trigger,
+            });
+            if (confirmed !== true) {
                 return;
             }
 
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = deleteActionTemplate.replace('__ID__', String(id));
-            form.innerHTML = `
-                <input type="hidden" name="_token" value="{{ csrf_token() }}">
-            `;
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = '_token';
+            csrfInput.value = @json(csrf_token());
+            form.appendChild(csrfInput);
             document.body.appendChild(form);
             form.submit();
-        }
+        });
 
         document.addEventListener('DOMContentLoaded', function () {
             if (! window.GeoFlowAdminUi?.refreshIcons && typeof lucide !== 'undefined') {

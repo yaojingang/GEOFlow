@@ -200,7 +200,12 @@
                     input.files = event.dataTransfer.files;
                     renderFiles();
                 } catch (error) {
-                    alert(labels.dropFallback);
+                    window.AdminActionDialog?.notice?.({
+                        tone: 'info',
+                        title: @json(__('admin.action_dialog.info_title')),
+                        message: labels.dropFallback,
+                    });
+                    input?.focus?.({ preventScroll: true });
                 }
             });
 

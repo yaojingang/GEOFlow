@@ -102,6 +102,8 @@ return [
         'redis:knowledge' => 60,
         'redis:'.trim((string) env('GEOFLOW_AI_QUALITY_QUEUE', 'ai-quality')) => 10,
         'redis:'.trim((string) env('GEOFLOW_AI_QUALITY_BACKFILL_QUEUE', 'ai-quality-backfill')) => 45,
+        'redis:'.trim((string) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_QUEUE', 'ai-content-optimization')) => 15,
+        'redis:'.trim((string) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_BULK_QUEUE', 'ai-content-optimization-bulk')) => 60,
     ],
 
     /*
@@ -251,6 +253,22 @@ return [
             'timeout' => max(75, min(950, (int) env('GEOFLOW_AI_QUALITY_WORKER_TIMEOUT_SECONDS', 250))),
             'force' => true,
             'nice' => 10,
+        ],
+        'supervisor-ai-quality-optimization' => [
+            'connection' => 'redis',
+            'queue' => [
+                trim((string) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_QUEUE', 'ai-content-optimization')),
+                trim((string) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_BULK_QUEUE', 'ai-content-optimization-bulk')),
+            ],
+            'balance' => 'simple',
+            'maxProcesses' => max(2, (int) env('AI_QUALITY_OPTIMIZATION_QUEUE_REPLICAS', 2)),
+            'maxTime' => 3600,
+            'maxJobs' => 25,
+            'memory' => 192,
+            'tries' => 1,
+            'timeout' => max(70, min(940, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_WORKER_TIMEOUT_SECONDS', 900))),
+            'force' => true,
+            'nice' => 5,
         ],
     ],
 

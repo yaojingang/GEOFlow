@@ -5,22 +5,35 @@ namespace App\Console\Commands;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
 use App\Models\AiModel;
+use App\Models\Article;
+use App\Models\KnowledgeBase;
+use App\Services\GeoFlow\AiQualityEvaluationDataset;
+use App\Services\GeoFlow\ArticleAiQualityEvidenceBuilder;
 use App\Services\GeoFlow\ArticleAiQualityPromptRenderer;
 use App\Services\GeoFlow\ArticleAiQualityResultValidator;
 use App\Services\GeoFlow\ArticleAiQualitySampleBuilder;
 use App\Services\GeoFlow\ArticleAiQualityScorerV2;
+use App\Services\GeoFlow\ArticleFactCandidateExtractor;
 use App\Services\GeoFlow\ArticleRiskScanner;
+use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
 
 class EvaluateArticleAiQualityCommand extends Command
 {
+    private const LOCAL_ATOMIC_CASE_IDS = [449, 467, 471, 473, 486];
+
+    private const LOCAL_ATOMIC_CASE_SET_VERSION = 'kb23-five-articles-v1';
+
     protected $signature = 'geoflow:evaluate-ai-quality
         {--dataset= : Golden dataset JSON path}
         {--output= : Output path without extension}
         {--live : Call a configured model instead of using saved predictions}
         {--model= : AI model database ID used by live evaluation}
+        {--articles= : Comma-separated article IDs for a real comparison run}
+        {--knowledge-base= : Knowledge base ID for a real comparison run}
+        {--compare= : Comparison modes, supported value: atomic,knowledge}
         {--repeat=1 : Repeat each live case up to five times for decision stability}';
 
     protected $description = 'Evaluate AI quality decisions against a desensitized golden dataset';
@@ -32,20 +45,28 @@ class EvaluateArticleAiQualityCommand extends Command
         private readonly ArticleAiQualityScorerV2 $scorer,
         private readonly ArticleAiQualitySampleBuilder $sampleBuilder,
         private readonly ArticleRiskScanner $riskScanner,
+        private readonly AiQualityEvaluationDataset $datasetLoader,
+        private readonly ArticleFactCandidateExtractor $factExtractor,
+        private readonly ArticleAiQualityEvidenceBuilder $evidenceBuilder,
+        private readonly ArticleAtomicFactInspector $atomicFactInspector,
     ) {
         parent::__construct();
     }
 
     public function handle(): int
     {
+        if (trim((string) $this->option('articles')) !== '') {
+            return $this->handleArticleComparison();
+        }
+
         $datasetPath = $this->absolutePath((string) ($this->option('dataset') ?: 'tests/Fixtures/ai-quality/golden-v1.json'));
-        if (! File::isFile($datasetPath)) {
-            $this->components->error("Dataset not found: {$datasetPath}");
+        try {
+            $dataset = $this->datasetLoader->load($datasetPath);
+        } catch (\Throwable $exception) {
+            $this->components->error($exception->getMessage());
 
             return self::FAILURE;
         }
-
-        $dataset = json_decode((string) File::get($datasetPath), true);
         $cases = is_array($dataset['cases'] ?? null) ? array_values($dataset['cases']) : [];
         if ($cases === []) {
             $this->components->error('The dataset contains no evaluation cases.');
@@ -94,6 +115,7 @@ class EvaluateArticleAiQualityCommand extends Command
                     : 'full',
                 'expected' => $this->normalizeOutcome(is_array($case['expected'] ?? null) ? $case['expected'] : []),
                 'prediction' => $this->normalizeOutcome($prediction),
+                'score' => max(0, min(100, (int) ($prediction['score'] ?? 0))),
                 'coverage' => is_array($prediction['coverage'] ?? null) ? $prediction['coverage'] : null,
                 'repeat_decisions' => array_values(array_filter(array_map(
                     'strval',
@@ -104,6 +126,8 @@ class EvaluateArticleAiQualityCommand extends Command
                 'completion_tokens' => max(0, (int) ($prediction['completion_tokens'] ?? 0)),
                 'baseline_prompt_tokens' => max(0, (int) ($baseline['prompt_tokens'] ?? 0)),
                 'baseline_completion_tokens' => max(0, (int) ($baseline['completion_tokens'] ?? 0)),
+                'category' => (string) ($case['category'] ?? 'general_quality'),
+                'atomic_fact' => is_array($case['atomic_fact'] ?? null) ? $case['atomic_fact'] : null,
             ];
         }
 
@@ -138,7 +162,8 @@ class EvaluateArticleAiQualityCommand extends Command
         ];
         $productionGateReady = ! in_array(false, $gateChecks, true);
         $report = [
-            'schema_version' => 1,
+            'schema_version' => 2,
+            'algorithm_version' => (string) ($dataset['algorithm_version'] ?? 'legacy-quality-evaluation-1.0.0'),
             'generated_at' => now()->toIso8601String(),
             'mode' => $live ? 'live' : 'offline',
             'evaluation_scope' => $live ? 'production_components' : 'saved_predictions',
@@ -149,6 +174,7 @@ class EvaluateArticleAiQualityCommand extends Command
                 'case_count' => count($evaluated),
                 'split_counts' => $splitCounts,
                 'requirements' => $requirements,
+                'sha256' => hash_file('sha256', $datasetPath),
             ],
             'metrics' => $metrics,
             'gate_checks' => $gateChecks,
@@ -235,6 +261,13 @@ class EvaluateArticleAiQualityCommand extends Command
         $validated['knowledge_coverage'] = ! $hasMaterialFacts
             ? 'sufficient'
             : ($promptEvidence === [] ? 'insufficient' : 'sufficient');
+        $atomicInspection = is_array($case['atomic_inspection'] ?? null) ? $case['atomic_inspection'] : [];
+        if ($atomicInspection !== []) {
+            $validated['issues'] = array_values(array_merge(
+                (array) ($validated['issues'] ?? []),
+                (array) ($atomicInspection['issues'] ?? []),
+            ));
+        }
         if ((string) ($riskScan['status'] ?? 'clean') === 'blocked') {
             foreach ((array) ($riskScan['matches'] ?? []) as $match) {
                 if ((string) ($match['severity'] ?? '') !== 'blocked') {
@@ -272,16 +305,250 @@ class EvaluateArticleAiQualityCommand extends Command
 
         return [
             'decision' => (string) $score['decision'],
+            'score' => max(0, min(100, (int) ($score['score'] ?? 0))),
             'issue_codes' => array_values(array_unique(array_map(
                 static fn (array $issue): string => (string) ($issue['code'] ?? ''),
                 array_filter($score['issues'] ?? [], 'is_array'),
             ))),
+            'issues' => array_values(array_filter($score['issues'] ?? [], 'is_array')),
             'latency_ms' => (int) round((hrtime(true) - $startedAt) / 1_000_000),
             'prompt_tokens' => (int) ($usage['prompt_tokens'] ?? $usage['promptTokens'] ?? 0),
             'completion_tokens' => (int) ($usage['completion_tokens'] ?? $usage['completionTokens'] ?? 0),
             'inspection_scope' => $scope,
             'coverage' => $coverage === null ? null : $this->publicCoverage($coverage),
+            'atomic_facts' => $atomicInspection,
         ];
+    }
+
+    private function handleArticleComparison(): int
+    {
+        if (! (bool) $this->option('live')) {
+            $this->components->error('Article comparison requires --live.');
+
+            return self::INVALID;
+        }
+        $articleIds = array_values(array_unique(array_filter(array_map('intval', explode(',', (string) $this->option('articles'))))));
+        $knowledgeBaseId = (int) $this->option('knowledge-base');
+        $modes = array_values(array_unique(array_filter(array_map('trim', explode(',', (string) $this->option('compare'))))));
+        if ($articleIds === [] || $knowledgeBaseId <= 0 || $modes !== ['atomic', 'knowledge']) {
+            $this->components->error('Use --articles=1,2 --knowledge-base=ID --compare=atomic,knowledge.');
+
+            return self::INVALID;
+        }
+        $model = $this->liveModel();
+        if (! $model instanceof AiModel) {
+            return self::FAILURE;
+        }
+        $repeat = max(1, min(5, (int) $this->option('repeat')));
+        $articles = Article::query()->whereIn('id', $articleIds)->get()->keyBy('id');
+        if ($articles->count() !== count($articleIds) || ! KnowledgeBase::query()->whereKey($knowledgeBaseId)->exists()) {
+            $this->components->error('One or more requested articles or the knowledge base do not exist.');
+
+            return self::FAILURE;
+        }
+
+        $gold = [449 => 'blocked', 486 => 'blocked', 467 => 'passed', 471 => 'passed', 473 => 'passed'];
+        $outputBase = $this->outputBasePath();
+        File::ensureDirectoryExists(dirname($outputBase));
+        $checkpointPath = $outputBase.'.partial.json';
+        $checkpoint = File::isFile($checkpointPath) ? json_decode((string) File::get($checkpointPath), true) : [];
+        $calls = is_array($checkpoint['calls'] ?? null)
+            && data_get($checkpoint, 'request.article_ids') === $articleIds
+            && (int) data_get($checkpoint, 'request.knowledge_base_id') === $knowledgeBaseId
+            && (int) data_get($checkpoint, 'request.model_id') === (int) $model->id
+            && (int) data_get($checkpoint, 'request.repeat') === $repeat
+                ? array_values($checkpoint['calls']) : [];
+        $completedKeys = collect($calls)->mapWithKeys(fn (array $call): array => [$call['attempt'].'|'.$call['article_id'].'|'.$call['mode'] => true]);
+        $totalCalls = count($articleIds) * 2 * $repeat;
+        $this->components->warn("Live comparison will perform {$totalCalls} provider calls.");
+        foreach (range(1, $repeat) as $attempt) {
+            $orderedModes = $attempt % 2 === 0 ? ['knowledge', 'atomic'] : ['atomic', 'knowledge'];
+            foreach ($articleIds as $articleId) {
+                $article = $articles->get($articleId);
+                $snapshot = [
+                    'title' => (string) $article->title,
+                    'excerpt' => (string) ($article->excerpt ?? ''),
+                    'content' => (string) ($article->content ?? ''),
+                    'keywords' => (string) ($article->keywords ?? ''),
+                    'meta_description' => (string) ($article->meta_description ?? ''),
+                ];
+                foreach ($orderedModes as $mode) {
+                    $callKey = $attempt.'|'.$articleId.'|'.$mode;
+                    if ($completedKeys->has($callKey)) {
+                        continue;
+                    }
+                    $prediction = null;
+                    $lastException = null;
+                    foreach ([1, 2] as $providerAttempt) {
+                        try {
+                            $prediction = $this->evaluateLiveCase($this->comparisonCase($snapshot, $knowledgeBaseId, $mode), $model);
+                            break;
+                        } catch (\Throwable $exception) {
+                            $lastException = $exception;
+                            if ($providerAttempt === 1) {
+                                $this->components->warn("Transient model failure for article {$articleId} ({$mode}); retrying once.");
+                            }
+                        }
+                    }
+                    if (! is_array($prediction)) {
+                        $prediction = ['decision' => 'error', 'score' => 0, 'issues' => [], 'prompt_tokens' => 0, 'completion_tokens' => 0, 'latency_ms' => 0, 'error_code' => $lastException instanceof \Throwable ? $lastException->getMessage() : 'provider_error'];
+                    }
+                    $calls[] = array_replace($prediction, [
+                        'article_id' => $articleId,
+                        'article_title' => (string) $article->title,
+                        'mode' => $mode,
+                        'attempt' => $attempt,
+                        'expected_decision' => $gold[$articleId] ?? 'needs_review',
+                    ]);
+                    File::put($checkpointPath, json_encode([
+                        'request' => ['article_ids' => $articleIds, 'knowledge_base_id' => $knowledgeBaseId, 'model_id' => $model->id, 'repeat' => $repeat],
+                        'calls' => $calls,
+                    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                    $this->line(sprintf('[%d/%d] article=%d mode=%s decision=%s tokens=%d latency=%dms', count($calls), $totalCalls, $articleId, $mode, $prediction['decision'], $prediction['prompt_tokens'] + $prediction['completion_tokens'], $prediction['latency_ms']));
+                }
+            }
+        }
+
+        $metrics = $this->comparisonMetrics($calls, $articleIds, $repeat);
+        $knowledgeBase = KnowledgeBase::query()->with('factLibrary.activeRevision')->findOrFail($knowledgeBaseId);
+        $caseSetMatches = $knowledgeBaseId === 23
+            && $model->id === 3
+            && $repeat === 3
+            && $articleIds === self::LOCAL_ATOMIC_CASE_IDS;
+        $report = [
+            'schema_version' => 2,
+            'generated_at' => now()->toIso8601String(),
+            'mode' => 'live',
+            'evaluation_scope' => 'local_atomic_comparison',
+            'model' => ['id' => $model->id, 'name' => $model->name, 'model_id' => $model->model_id],
+            'knowledge_base_id' => $knowledgeBaseId,
+            'case_set' => [
+                'version' => self::LOCAL_ATOMIC_CASE_SET_VERSION,
+                'article_ids' => $articleIds,
+                'sha256' => hash('sha256', self::LOCAL_ATOMIC_CASE_SET_VERSION.'|'.implode(',', $articleIds)),
+            ],
+            'atomic_revision' => [
+                'id' => $knowledgeBase->factLibrary?->active_revision_id,
+                'library_hash' => $knowledgeBase->factLibrary?->active_hash,
+                'source_hash' => $knowledgeBase->factLibrary?->source_hash,
+                'serving_status' => $knowledgeBase->factLibrary?->serving_status,
+            ],
+            'metrics' => $metrics,
+            'local_atomic_gate_ready' => $caseSetMatches && (bool) data_get($metrics, 'gate_checks.all_passed', false),
+            'calls' => $calls,
+        ];
+        File::put($outputBase.'.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+        File::put($outputBase.'.md', $this->comparisonMarkdown($report));
+        File::delete($checkpointPath);
+        $this->components->info('Article comparison completed.');
+        $this->line('JSON: '.$outputBase.'.json');
+        $this->line('Markdown: '.$outputBase.'.md');
+
+        return self::SUCCESS;
+    }
+
+    /** @param array<string,mixed> $snapshot @return array<string,mixed> */
+    private function comparisonCase(array $snapshot, int $knowledgeBaseId, string $mode): array
+    {
+        $facts = $this->factExtractor->extract($snapshot, 1000);
+        if ($mode === 'knowledge') {
+            $built = $this->evidenceBuilder->build([$knowledgeBaseId], $snapshot, $facts, 12, 6000, 6);
+
+            return ['article' => $snapshot, 'facts' => $built['fact_candidates'], 'evidence' => $built['evidence'], 'inspection_scope' => 'full'];
+        }
+
+        $inspection = $this->atomicFactInspector->inspect($snapshot['title']."\n".$snapshot['content'], [$knowledgeBaseId]);
+        $fallbackSnapshot = array_replace($snapshot, ['content' => (string) ($inspection['fallback_content'] ?? '')]);
+        $fallbackFacts = $this->factExtractor->extract($fallbackSnapshot, 1000);
+        $built = $this->evidenceBuilder->build([$knowledgeBaseId], $fallbackSnapshot, $fallbackFacts, 12, 6000, 6);
+
+        return [
+            'article' => $fallbackSnapshot,
+            'facts' => $built['fact_candidates'],
+            'evidence' => $built['evidence'],
+            'atomic_inspection' => $inspection,
+            'inspection_scope' => 'full',
+        ];
+    }
+
+    /** @param list<array<string,mixed>> $calls @param list<int> $articleIds @return array<string,mixed> */
+    private function comparisonMetrics(array $calls, array $articleIds, int $repeat): array
+    {
+        $byMode = [];
+        foreach (['atomic', 'knowledge'] as $mode) {
+            $rows = array_values(array_filter($calls, fn (array $call): bool => $call['mode'] === $mode));
+            $prompt = array_map(fn (array $call): int => $call['prompt_tokens'], $rows);
+            $completion = array_map(fn (array $call): int => $call['completion_tokens'], $rows);
+            $tokens = array_map(fn (array $call): int => $call['prompt_tokens'] + $call['completion_tokens'], $rows);
+            $latency = array_map(fn (array $call): int => $call['latency_ms'], $rows);
+            $correct = count(array_filter($rows, fn (array $call): bool => $call['decision'] === $call['expected_decision']));
+            $byMode[$mode] = [
+                'call_count' => count($rows),
+                'decision_accuracy' => count($rows) > 0 ? round($correct / count($rows), 4) : 0,
+                'prompt_tokens' => $this->distribution($prompt),
+                'completion_tokens' => $this->distribution($completion),
+                'total_tokens' => $this->distribution($tokens),
+                'latency_ms' => $this->distribution($latency),
+            ];
+        }
+        $stable = true;
+        foreach ($articleIds as $articleId) {
+            foreach (['atomic', 'knowledge'] as $mode) {
+                $rows = array_filter($calls, fn (array $call): bool => $call['article_id'] === $articleId && $call['mode'] === $mode);
+                $stable = $stable && count(array_unique(array_column($rows, 'decision'))) === 1;
+            }
+        }
+        $atomicRows = array_values(array_filter($calls, fn (array $call): bool => $call['mode'] === 'atomic'));
+        $conflictHits = count(array_filter($atomicRows, fn (array $call): bool => in_array($call['article_id'], [449, 486], true) && $call['decision'] === 'blocked'));
+        $conflictRecall = $conflictHits / max(1, 2 * $repeat);
+        $safeBlocks = count(array_filter($atomicRows, fn (array $call): bool => in_array($call['article_id'], [467, 471, 473], true) && $call['decision'] === 'blocked'));
+        $promptReduction = $byMode['knowledge']['prompt_tokens']['total'] > 0 ? 1 - ($byMode['atomic']['prompt_tokens']['total'] / $byMode['knowledge']['prompt_tokens']['total']) : 0.0;
+        $checks = [
+            'all_decisions_match' => count(array_filter($calls, fn (array $call): bool => $call['decision'] === $call['expected_decision'])) === count($calls),
+            'conflict_recall_100' => $conflictRecall >= 0.9999,
+            'safe_false_blocks_zero' => $safeBlocks === 0,
+            'decision_stability_100' => $stable,
+            'atomic_prompt_token_reduction_35' => $promptReduction >= 0.35,
+            'atomic_p50_latency_not_slower' => $byMode['atomic']['latency_ms']['p50'] <= $byMode['knowledge']['latency_ms']['p50'],
+            'score_issue_decision_consistent' => ! collect($calls)->contains(fn (array $call): bool => $call['decision'] === 'passed' && collect($call['issues'] ?? [])->contains(fn ($issue): bool => in_array($issue['severity'] ?? '', ['critical', 'high'], true))),
+        ];
+        $checks['all_passed'] = ! in_array(false, $checks, true);
+
+        return [
+            'article_count' => count($articleIds), 'call_count' => count($calls), 'repeat' => $repeat,
+            'by_mode' => $byMode, 'atomic_prompt_token_reduction' => round($promptReduction, 4),
+            'conflict_recall' => round($conflictRecall, 4), 'safe_false_block_count' => $safeBlocks,
+            'decision_stability' => $stable ? 1.0 : 0.0, 'gate_checks' => $checks,
+        ];
+    }
+
+    /** @param list<int> $values @return array<string,int|float> */
+    private function distribution(array $values): array
+    {
+        return ['total' => array_sum($values), 'average' => $values === [] ? 0 : round(array_sum($values) / count($values), 2), 'p50' => $this->percentile($values, 50), 'p95' => $this->percentile($values, 95)];
+    }
+
+    /** @param array<string,mixed> $report */
+    private function comparisonMarkdown(array $report): string
+    {
+        $metrics = $report['metrics'];
+        $rows = ['# KB'.$report['knowledge_base_id'].' 原子事实与完整知识库质检实测', '', '- 运行时间：'.$report['generated_at'], '- 模型：'.$report['model']['name'].'（ID '.$report['model']['id'].'）', '- 调用数：'.$metrics['call_count'], '- 本地原子通道门禁：'.($report['local_atomic_gate_ready'] ? '通过' : '未通过'), '', '## 汇总', '', '| 模式 | 准确率 | 输入 Token 总量 / P50 / P95 | 总 Token 总量 | 延迟 P50 / P95 |', '| --- | ---: | ---: | ---: | ---: |'];
+        foreach (['atomic' => '原子混合', 'knowledge' => '完整知识库'] as $mode => $label) {
+            $item = $metrics['by_mode'][$mode];
+            $rows[] = '| '.$label.' | '.number_format($item['decision_accuracy'] * 100, 2).'% | '.$item['prompt_tokens']['total'].' / '.$item['prompt_tokens']['p50'].' / '.$item['prompt_tokens']['p95'].' | '.$item['total_tokens']['total'].' | '.$item['latency_ms']['p50'].' / '.$item['latency_ms']['p95'].' ms |';
+        }
+        $rows = array_merge($rows, ['', '## 逐次结果', '', '| 文章 | 模式 | 次数 | 期望 | 决策 | 分数 | 输入 / 输出 Token | 耗时 |', '| --- | --- | ---: | --- | --- | ---: | ---: | ---: |']);
+        foreach ($report['calls'] as $call) {
+            $rows[] = '| '.$call['article_id'].'《'.str_replace('|', '｜', $call['article_title']).'》 | '.$call['mode'].' | '.$call['attempt'].' | '.$call['expected_decision'].' | '.$call['decision'].' | '.$call['score'].' | '.$call['prompt_tokens'].' / '.$call['completion_tokens'].' | '.$call['latency_ms'].' ms |';
+        }
+        $rows = array_merge($rows, ['', '## 门禁', '']);
+        foreach ($metrics['gate_checks'] as $name => $passed) {
+            if ($name !== 'all_passed') {
+                $rows[] = '- '.($passed ? '通过' : '未通过').'：'.$name;
+            }
+        }
+
+        return implode("\n", $rows)."\n";
     }
 
     /** @param list<array<string,mixed>> $facts @param list<array<string,mixed>> $ranges @return list<array<string,mixed>> */
@@ -500,6 +767,16 @@ class EvaluateArticleAiQualityCommand extends Command
         $completionBaselineP50 = $this->percentile($baselineCompletionTokens, 50);
         $promptP50 = $this->percentile($promptTokens, 50);
         $completionP50 = $this->percentile($completionTokens, 50);
+        $atomicCases = array_values(array_filter($cases, static fn (array $case): bool => is_array($case['atomic_fact'] ?? null)));
+        $atomicCorrect = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] === $case['prediction']['decision']));
+        $atomicPredictedPositive = count(array_filter($atomicCases, static fn (array $case): bool => $case['prediction']['decision'] !== 'passed'));
+        $atomicExpectedPositive = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] !== 'passed'));
+        $atomicTruePositive = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] !== 'passed' && $case['prediction']['decision'] !== 'passed'));
+        $atomicSafeCount = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] === 'passed'));
+        $atomicFalseBlocks = count(array_filter($atomicCases, static fn (array $case): bool => $case['expected']['decision'] === 'passed' && $case['prediction']['decision'] !== 'passed'));
+        $fallbackCount = count(array_filter($atomicCases, static fn (array $case): bool => (bool) data_get($case, 'atomic_fact.expected_fallback', false)));
+        $atomicPrecision = $atomicPredictedPositive > 0 ? $atomicTruePositive / $atomicPredictedPositive : 1.0;
+        $atomicRecall = $atomicExpectedPositive > 0 ? $atomicTruePositive / $atomicExpectedPositive : 1.0;
 
         return [
             'decision_accuracy' => round($observed, 4),
@@ -529,8 +806,28 @@ class EvaluateArticleAiQualityCommand extends Command
                     ? 0.0
                     : round(array_sum($repeatRatios) / count($repeatRatios), 4),
             ],
+            'atomic_facts' => [
+                'case_count' => count($atomicCases),
+                'accuracy' => round(count($atomicCases) > 0 ? $atomicCorrect / count($atomicCases) : 1.0, 4),
+                'precision' => ['value' => round($atomicPrecision, 4), 'wilson_95' => $this->wilsonInterval($atomicTruePositive, max(1, $atomicPredictedPositive))],
+                'recall' => ['value' => round($atomicRecall, 4), 'wilson_95' => $this->wilsonInterval($atomicTruePositive, max(1, $atomicExpectedPositive))],
+                'false_block_rate' => round($atomicSafeCount > 0 ? $atomicFalseBlocks / $atomicSafeCount : 0.0, 4),
+                'fallback_rate' => round(count($atomicCases) > 0 ? $fallbackCount / count($atomicCases) : 0.0, 4),
+            ],
             'by_inspection_scope' => $scopeMetrics,
         ];
+    }
+
+    /** @return array{lower:float,upper:float} */
+    private function wilsonInterval(int $successes, int $total): array
+    {
+        $z = 1.96;
+        $proportion = $successes / max(1, $total);
+        $denominator = 1 + ($z ** 2 / $total);
+        $centre = ($proportion + ($z ** 2 / (2 * $total))) / $denominator;
+        $margin = ($z * sqrt(($proportion * (1 - $proportion) / $total) + ($z ** 2 / (4 * ($total ** 2))))) / $denominator;
+
+        return ['lower' => round(max(0, $centre - $margin), 4), 'upper' => round(min(1, $centre + $margin), 4)];
     }
 
     /** @param list<int> $values */

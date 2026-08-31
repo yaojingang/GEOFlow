@@ -28,7 +28,12 @@ function refreshIcons(root = document) {
     return refreshIconPlaceholders(root, window.lucide, document);
 }
 
-function showToast(message) {
+function showToast(message, tone = 'success') {
+    if (window.AdminActionDialog?.notice) {
+        window.AdminActionDialog.notice({ message, tone });
+        return;
+    }
+
     const toast = document.querySelector('[data-gf-toast]');
     if (!toast || !message) return;
 

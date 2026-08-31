@@ -279,6 +279,33 @@ class TaskMonitoringQueryService
                 ]);
         }
 
+        $optimizationStats = collect();
+        if (Schema::hasTable('article_ai_optimization_runs')) {
+            $latestOptimizationRuns = DB::table('article_ai_optimization_runs')
+                ->selectRaw('article_id, MAX(id) AS latest_id')
+                ->whereIn('task_id', $taskIds)
+                ->groupBy('article_id');
+            $optimizationStats = DB::table('article_ai_optimization_runs as optimization_runs')
+                ->joinSub($latestOptimizationRuns, 'latest_optimization_runs', static function ($join): void {
+                    $join->on('optimization_runs.id', '=', 'latest_optimization_runs.latest_id');
+                })
+                ->selectRaw("
+                    optimization_runs.task_id,
+                    SUM(CASE WHEN status IN ('awaiting_quality','queued','planning','rewriting','validating','evaluating','candidate_ready','applying') THEN 1 ELSE 0 END) AS active_count,
+                    SUM(CASE WHEN status = 'needs_review' THEN 1 ELSE 0 END) AS needs_review_count,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count
+                ")
+                ->groupBy('optimization_runs.task_id')
+                ->get()
+                ->mapWithKeys(static fn ($row): array => [
+                    (int) $row->task_id => [
+                        'active_count' => (int) ($row->active_count ?? 0),
+                        'needs_review_count' => (int) ($row->needs_review_count ?? 0),
+                        'failed_count' => (int) ($row->failed_count ?? 0),
+                    ],
+                ]);
+        }
+
         // 运行统计（业务真相）：pending/running/completed/failed+cancelled 数量。
         // 说明：这里把 cancelled 归入 failed_jobs，用于任务页“失败”概览展示。
         $runStats = TaskRun::query()
@@ -336,7 +363,7 @@ class TaskMonitoringQueryService
 
         $taskKnowledgeBaseLinks = $this->loadTaskKnowledgeBaseLinks($taskIds);
 
-        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $qualityStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityPromptNames, $qualityModelNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks): array {
+        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $qualityStats, $optimizationStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityPromptNames, $qualityModelNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks): array {
             $taskId = (int) $task->id;
             $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0, 'draft_articles' => 0, 'publishable_drafts' => 0]);
             $distributions = $distributionStats->get($taskId, ['distribution_total_count' => 0, 'distribution_synced_count' => 0, 'distribution_failed_count' => 0]);
@@ -348,6 +375,11 @@ class TaskMonitoringQueryService
                 'pending_count' => 0,
                 'failed_count' => 0,
                 'stale_count' => 0,
+            ]);
+            $optimization = $optimizationStats->get($taskId, [
+                'active_count' => 0,
+                'needs_review_count' => 0,
+                'failed_count' => 0,
             ]);
             $runs = $runStats->get($taskId, ['pending_jobs' => 0, 'running_jobs' => 0, 'completed_jobs' => 0, 'failed_jobs' => 0]);
             /** @var TaskRun|null $latestRun */
@@ -388,7 +420,21 @@ class TaskMonitoringQueryService
                 'prompt_id' => $this->nullableInt($task->prompt_id),
                 'ai_model_id' => $this->nullableInt($task->ai_model_id),
                 'ai_quality_enabled' => (bool) ($task->ai_quality_enabled ?? false),
+                'ai_quality_retrieval_mode' => (string) ($task->ai_quality_retrieval_mode ?: 'chunk'),
+                'ai_quality_policy_version' => max(1, (int) ($task->ai_quality_policy_version ?? 1)),
+                'ai_quality_config_version' => max(
+                    1,
+                    (int) ($task->ai_quality_config_version ?? 1),
+                    (int) ($task->ai_quality_policy_version ?? 1),
+                ),
+                'config_version' => max(
+                    1,
+                    (int) ($task->ai_quality_config_version ?? 1),
+                    (int) ($task->ai_quality_policy_version ?? 1),
+                ),
                 'ai_quality_timeout_sampling_enabled' => (bool) ($task->ai_quality_timeout_sampling_enabled ?? false),
+                'ai_quality_auto_optimize_enabled' => (bool) ($task->ai_quality_auto_optimize_enabled ?? false),
+                'ai_quality_optimization_level' => (string) ($task->ai_quality_optimization_level ?? ArticleAiOptimizationPolicy::STRATEGY_EXCELLENT_80),
                 'ai_quality_prompt_id' => $this->nullableInt($task->ai_quality_prompt_id),
                 'ai_quality_prompt_name' => (string) ($qualityPromptNames[(int) ($task->ai_quality_prompt_id ?? 0)] ?? ''),
                 'ai_quality_model_id' => $this->nullableInt($task->ai_quality_model_id),
@@ -440,6 +486,11 @@ class TaskMonitoringQueryService
                     'pending' => (int) $quality['pending_count'],
                     'failed' => (int) $quality['failed_count'],
                     'stale' => (int) $quality['stale_count'],
+                ],
+                'ai_quality_optimization_stats' => [
+                    'active' => (int) $optimization['active_count'],
+                    'needs_review' => (int) $optimization['needs_review_count'],
+                    'failed' => (int) $optimization['failed_count'],
                 ],
                 'pending_jobs' => (int) $runs['pending_jobs'],
                 'running_jobs' => (int) $runs['running_jobs'],

@@ -112,6 +112,22 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
         self::assertTrue($model->ai_workspace_readiness_expires_at->isFuture());
     }
 
+    public function test_runtime_success_preserves_atomic_fact_structured_output_readiness(): void
+    {
+        $model = $this->model([
+            'ai_workspace_readiness_status' => 'ready',
+            'ai_workspace_readiness_profile' => [
+                'plain_text' => ['status' => 'ready'],
+                'knowledge_fact_structured_output' => ['status' => 'ready', 'observed' => true],
+            ],
+            'ai_workspace_readiness_expires_at' => now()->addDay(),
+        ]);
+
+        app(AiWorkspaceModelReadiness::class)->recordRuntimeSuccess($model->fresh(), false);
+
+        self::assertSame('ready', data_get($model->fresh()->ai_workspace_readiness_profile, 'knowledge_fact_structured_output.status'));
+    }
+
     public function test_first_successful_stream_marks_streaming_ready(): void
     {
         config()->set('ai-workspace.require_verified_model', false);

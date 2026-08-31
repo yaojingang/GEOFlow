@@ -130,6 +130,23 @@ class AiUsageQuotaServiceTest extends TestCase
         $this->assertSame(0, (int) $model->fresh()->total_used);
     }
 
+    public function test_a_bulk_reservation_preserves_the_configured_remaining_quota(): void
+    {
+        $model = $this->createModel();
+        $model->forceFill([
+            'daily_limit' => 5,
+            'usage_date' => now()->toDateString(),
+            'used_today' => 3,
+        ])->save();
+        $quota = app(AiUsageQuotaService::class);
+
+        $this->assertNull($quota->reserveModel($model->fresh(), 2));
+        $manualReservation = $quota->reserveModel($model->fresh());
+
+        $this->assertNotNull($manualReservation);
+        $this->assertSame(4, (int) $model->fresh()->used_today);
+    }
+
     private function createModel(): AiModel
     {
         return AiModel::query()->create([
