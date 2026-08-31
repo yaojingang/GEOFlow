@@ -825,6 +825,7 @@ class AdminTasksPageTest extends TestCase
                 'task_name' => '已更新知识库任务',
                 'knowledge_base_ids' => [(string) $knowledgeBases[2]->id],
                 'task_revision' => app(DistributionOrchestrator::class)->taskRevision($task->fresh()),
+                'config_version' => (int) $task->fresh()->ai_quality_policy_version,
             ]))
             ->assertRedirect(route('admin.tasks.index'))
             ->assertSessionHasNoErrors();
@@ -843,6 +844,7 @@ class AdminTasksPageTest extends TestCase
             ->put(route('admin.tasks.update', ['taskId' => (int) $task->id]), $this->validTaskPayload($dependencies, [
                 'task_name' => '已清空知识库任务',
                 'task_revision' => app(DistributionOrchestrator::class)->taskRevision($task->fresh()),
+                'config_version' => (int) $task->fresh()->ai_quality_policy_version,
             ]))
             ->assertRedirect(route('admin.tasks.index'))
             ->assertSessionHasNoErrors();
@@ -897,6 +899,7 @@ class AdminTasksPageTest extends TestCase
                 'publish_scope' => 'distribution_only',
                 'distribution_channel_ids' => [],
                 'task_revision' => $matches[1],
+                'config_version' => (int) $task->ai_quality_policy_version,
             ]))
             ->assertSessionHasErrors();
 

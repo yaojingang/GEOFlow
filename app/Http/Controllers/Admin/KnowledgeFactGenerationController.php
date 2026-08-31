@@ -10,30 +10,33 @@ use App\Models\KnowledgeBase;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Models\KnowledgeFactLibrary;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
+use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactLibraryPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 
 class KnowledgeFactGenerationController extends Controller
 {
-    public function store(KnowledgeFactGenerationRequest $request, int $knowledgeBaseId, KnowledgeFactGenerationCoordinator $coordinator): JsonResponse|RedirectResponse
+    public function store(KnowledgeFactGenerationRequest $request, int $knowledgeBaseId, KnowledgeFactGenerationCoordinator $coordinator, KnowledgeFactLibraryPresenter $presenter): JsonResponse|RedirectResponse
     {
         $data = $request->validated();
         $run = $coordinator->start($this->library($knowledgeBaseId), AiModel::query()->findOrFail($data['ai_model_id']), $this->admin($request), $data['mode'], (int) $data['target_count'], $data['request_key']);
 
-        return $request->expectsJson() ? response()->json(['data' => ['run' => $run]], 202) : back()->with('message', __('admin.knowledge_facts.message.generation_started'));
+        return $request->expectsJson()
+            ? response()->json(['data' => ['run' => $presenter->generationRun($run, $knowledgeBaseId)]], 202)
+            : back()->with('message', __('admin.knowledge_facts.message.generation_started'));
     }
 
-    public function show(KnowledgeFactGenerationRequest $request, int $knowledgeBaseId, int $runId): JsonResponse
+    public function show(KnowledgeFactGenerationRequest $request, int $knowledgeBaseId, int $runId, KnowledgeFactLibraryPresenter $presenter): JsonResponse
     {
-        return response()->json(['data' => ['run' => $this->run($knowledgeBaseId, $runId)]]);
+        return response()->json(['data' => ['run' => $presenter->generationRun($this->run($knowledgeBaseId, $runId), $knowledgeBaseId)]]);
     }
 
-    public function cancel(KnowledgeFactGenerationRequest $request, int $knowledgeBaseId, int $runId, KnowledgeFactGenerationCoordinator $coordinator): JsonResponse|RedirectResponse
+    public function cancel(KnowledgeFactGenerationRequest $request, int $knowledgeBaseId, int $runId, KnowledgeFactGenerationCoordinator $coordinator, KnowledgeFactLibraryPresenter $presenter): JsonResponse|RedirectResponse
     {
         $run = $this->run($knowledgeBaseId, $runId);
         $coordinator->cancel($run);
 
-        return $request->expectsJson() ? response()->json(['data' => ['run' => $run->fresh()]], 202) : back()->with('message', __('admin.knowledge_facts.message.generation_cancelled'));
+        return $request->expectsJson() ? response()->json(['data' => ['run' => $presenter->generationRun($run->fresh(), $knowledgeBaseId)]], 202) : back()->with('message', __('admin.knowledge_facts.message.generation_cancelled'));
     }
 
     public function resolve(KnowledgeFactGenerationRequest $request, int $knowledgeBaseId, int $runId, KnowledgeFactGenerationCoordinator $coordinator): JsonResponse|RedirectResponse

@@ -25,6 +25,7 @@ use App\Services\GeoFlow\ArticleAiQualitySampleBuilder;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\TaskLifecycleService;
+use App\Support\GeoFlow\AiQualityRetrievalMode;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -296,7 +297,7 @@ class ArticleAiQualityGateTest extends TestCase
         $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
 
         $this->assertNotNull($check);
-        $this->assertSame('article_snapshot', $check->execution_meta['policy_source']);
+        $this->assertSame('article_current', $check->execution_meta['policy_source']);
         $this->assertSame(85, $check->pass_score);
     }
 
@@ -427,14 +428,70 @@ class ArticleAiQualityGateTest extends TestCase
     public function test_deleting_a_task_cancels_in_flight_quality_checks_before_articles_are_detached(): void
     {
         $article = $this->qualityArticle();
+        $task = $article->task()->firstOrFail();
+        $knowledgeBaseIds = $task->knowledgeBases()
+            ->orderByPivot('sort_order')
+            ->pluck('knowledge_bases.id')
+            ->map('intval')
+            ->all();
+        $expectedMode = (string) ($task->ai_quality_retrieval_mode ?: 'chunk');
+        $expectedPolicyVersion = max(1, (int) $article->ai_quality_policy_version) + 1;
         $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
 
         app(TaskLifecycleService::class)->deleteTask((int) $article->task_id, true);
 
+        $detachedArticle = Article::withTrashed()->findOrFail($article->id);
         $this->assertSame('cancelled', $check->fresh()->status);
         $this->assertSame('article_unavailable', $check->fresh()->error_code);
-        $this->assertNotNull(Article::withTrashed()->findOrFail($article->id)->deleted_at);
-        $this->assertNull(Article::withTrashed()->findOrFail($article->id)->task_id);
+        $this->assertNotNull($detachedArticle->deleted_at);
+        $this->assertNull($detachedArticle->task_id);
+        $this->assertSame($expectedMode, $detachedArticle->ai_quality_retrieval_mode_override);
+        $this->assertSame($expectedPolicyVersion, $detachedArticle->ai_quality_policy_version);
+        $this->assertSame(
+            $knowledgeBaseIds,
+            $detachedArticle->aiQualityKnowledgeBases()
+                ->orderByPivot('sort_order')
+                ->pluck('knowledge_bases.id')
+                ->map('intval')
+                ->all(),
+        );
+    }
+
+    public function test_deleting_a_disabled_quality_task_preserves_its_complete_detached_policy(): void
+    {
+        $article = $this->qualityArticle();
+        $task = $article->task()->firstOrFail();
+        $task->forceFill([
+            'ai_quality_enabled' => false,
+            'ai_quality_retrieval_mode' => AiQualityRetrievalMode::KNOWLEDGE_BROAD,
+            'ai_quality_pass_score' => 91,
+            'ai_quality_manual_override_min_score' => 76,
+            'ai_quality_timeout_sampling_enabled' => false,
+        ])->save();
+        $expectedKnowledgeBaseIds = $task->knowledgeBases()->pluck('knowledge_bases.id')->map('intval')->all();
+
+        app(TaskLifecycleService::class)->deleteTask((int) $task->id, true);
+
+        $detachedArticle = Article::withTrashed()->findOrFail($article->id);
+        $snapshot = (array) $detachedArticle->ai_quality_policy_snapshot;
+        $this->assertNull($detachedArticle->task_id);
+        $this->assertFalse((bool) ($snapshot['required'] ?? true));
+        $this->assertSame(AiQualityRetrievalMode::KNOWLEDGE_BROAD, $snapshot['retrieval_mode'] ?? null);
+        $this->assertSame(91, $snapshot['pass_score'] ?? null);
+        $this->assertSame(76, $snapshot['manual_override_min_score'] ?? null);
+        $this->assertSame($expectedKnowledgeBaseIds, $snapshot['knowledge_base_ids'] ?? null);
+        $this->assertNotNull($snapshot['prompt_id'] ?? null);
+        $this->assertNotNull($snapshot['model_id'] ?? null);
+
+        $manualPolicy = app(ArticleAiQualityPolicyResolver::class)
+            ->resolveForManualInspection($detachedArticle);
+        $this->assertTrue((bool) ($manualPolicy['required'] ?? false));
+        $this->assertSame(AiQualityRetrievalMode::KNOWLEDGE_BROAD, $manualPolicy['retrieval_mode'] ?? null);
+        $this->assertSame(91, $manualPolicy['pass_score'] ?? null);
+        $this->assertSame(76, $manualPolicy['manual_override_min_score'] ?? null);
+        $this->assertSame($expectedKnowledgeBaseIds, $manualPolicy['knowledge_base_ids'] ?? null);
+        $this->assertSame((int) ($snapshot['prompt_id'] ?? 0), (int) ($manualPolicy['prompt']?->id ?? 0));
+        $this->assertSame((int) ($snapshot['model_id'] ?? 0), (int) ($manualPolicy['model']?->id ?? 0));
     }
 
     public function test_deleted_article_snapshot_cannot_create_a_new_quality_check(): void
@@ -590,6 +647,95 @@ class ArticleAiQualityGateTest extends TestCase
 
         $this->assertSame('stale', $check->fresh()->status);
         Queue::assertPushed(ReconcileArticleAiQualityJob::class);
+    }
+
+    public function test_independent_article_pivot_is_included_in_knowledge_invalidation(): void
+    {
+        Queue::fake();
+        $article = $this->qualityArticle();
+        $knowledgeBase = $article->task->knowledgeBases()->firstOrFail();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 100,
+            'active_dedupe_key' => null,
+            'execution_meta' => [],
+        ])->save();
+        $check->sources()->delete();
+        $article->aiQualityKnowledgeBases()->sync([$knowledgeBase->id => ['sort_order' => 0]]);
+        $article->forceFill(['task_id' => null])->save();
+
+        app(ArticleAiQualityInvalidationService::class)->invalidateKnowledgeBase(
+            (int) $knowledgeBase->id,
+            '独立文章知识依据已更新',
+        );
+
+        $this->assertSame('stale', $check->fresh()->status);
+        Queue::assertPushed(ReconcileArticleAiQualityJob::class);
+    }
+
+    public function test_ready_knowledge_generation_requeues_an_already_stale_dependent_article(): void
+    {
+        Queue::fake();
+        $article = $this->qualityArticle();
+        $knowledgeBase = $article->task->knowledgeBases()->firstOrFail();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'stale',
+            'active_dedupe_key' => null,
+            'error_code' => 'knowledge_not_ready',
+        ])->save();
+
+        app(ArticleAiQualityInvalidationService::class)->invalidateKnowledgeBase(
+            (int) $knowledgeBase->id,
+            '切片服务代次已就绪',
+            ['chunk'],
+            'chunk_generation_changed',
+        );
+
+        Queue::assertPushed(
+            ReconcileArticleAiQualityJob::class,
+            static fn (ReconcileArticleAiQualityJob $job): bool => in_array((int) $article->id, $job->articleIds, true),
+        );
+    }
+
+    public function test_atomic_revision_invalidation_only_marks_atomic_dependents_stale(): void
+    {
+        Queue::fake();
+        $article = $this->qualityArticle();
+        $knowledgeBase = $article->task->knowledgeBases()->firstOrFail();
+        $chunkCheck = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $chunkCheck->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 100,
+            'active_dedupe_key' => null,
+        ])->save();
+        $atomicCheck = $chunkCheck->replicate();
+        $atomicCheck->forceFill([
+            'request_key' => (string) Str::uuid(),
+            'active_dedupe_key' => null,
+            'requested_retrieval_mode' => 'atomic_first',
+            'effective_retrieval_mode' => 'atomic_first',
+        ])->save();
+        $atomicCheck->sources()->create([
+            'knowledge_base_id' => $knowledgeBase->id,
+            'knowledge_base_name_snapshot' => $knowledgeBase->name,
+            'dependency_kind' => 'atomic',
+            'readiness_status' => 'ready',
+        ]);
+
+        app(ArticleAiQualityInvalidationService::class)->invalidateKnowledgeBase(
+            (int) $knowledgeBase->id,
+            '原子事实版本已更新',
+            ['atomic'],
+            'atomic_revision_changed',
+        );
+
+        $this->assertSame('completed', $chunkCheck->fresh()->status);
+        $this->assertSame('stale', $atomicCheck->fresh()->status);
+        $this->assertSame('atomic_revision_changed', $atomicCheck->fresh()->error_code);
     }
 
     public function test_prompt_and_model_changes_invalidate_checks_even_after_an_article_is_detached(): void

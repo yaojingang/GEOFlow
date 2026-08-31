@@ -64,6 +64,8 @@ return [
     'knowledge_base_create' => 'Nova base de conhecimento',
     'knowledge_base_edit' => 'Editar base de conhecimento',
     'knowledge_base_detail' => 'Detalhes da base',
+    'knowledge_base_chunks' => 'Gerenciamento de blocos',
+    'knowledge_base_facts' => 'Área de fatos atômicos',
     'enterprise_knowledge' => 'Conhecimento empresarial',
     'enterprise_knowledge_create' => 'Novo projeto de conhecimento',
     'enterprise_knowledge_detail' => 'Detalhes do projeto',

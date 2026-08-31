@@ -67,6 +67,7 @@
     $defaultQualityPromptId = (string) (collect($qualityPrompts)->firstWhere('system_managed', true)['id'] ?? ($qualityPrompts[0]['id'] ?? ''));
     $qualityPromptId = (string) old('ai_quality_prompt_id', (string) ($taskForm['ai_quality_prompt_id'] ?? $defaultQualityPromptId));
     $qualityPassScore = max(1, min(100, (int) old('ai_quality_pass_score', (int) ($taskForm['ai_quality_pass_score'] ?? 85))));
+    $qualityRetrievalMode = (string) old('ai_quality_retrieval_mode', (string) ($taskForm['ai_quality_retrieval_mode'] ?? ''));
     $qualityAutoOptimizeEnabled = $qualityEnabled && (bool) old('ai_quality_auto_optimize_enabled', (bool) ($taskForm['ai_quality_auto_optimize_enabled'] ?? false));
     $qualityOptimizationLevel = (string) old('ai_quality_optimization_level', (string) ($taskForm['ai_quality_optimization_level'] ?? 'excellent_80'));
     $optimizationStrategies = (array) config('geoflow.ai_quality_optimization_strategies', []);
@@ -146,6 +147,7 @@
                 @if ($isEdit)
                     @method('PUT')
                     <input type="hidden" name="task_revision" value="{{ (string) ($taskForm['task_revision'] ?? '') }}">
+                    <input type="hidden" name="config_version" value="{{ max(1, (int) ($taskForm['ai_quality_config_version'] ?? 1), (int) ($taskForm['ai_quality_policy_version'] ?? 1)) }}">
                 @endif
 
                 <div class="bg-white shadow rounded-lg xl:col-span-12">
@@ -437,6 +439,16 @@
                                 <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.ai_quality.manual_score_help') }}</p>
                             </div>
                         </div>
+
+                        <x-admin.ai-quality-retrieval-selector
+                            id="task-ai-quality-retrieval-mode"
+                            name="ai_quality_retrieval_mode"
+                            :value="$qualityRetrievalMode"
+                            :selected-knowledge-base-ids="$selectedKnowledgeBaseIds"
+                            :readiness-by-knowledge-base="$formOptions['aiQualityRetrievalReadinessByKnowledgeBase'] ?? []"
+                            knowledge-input-selector="[data-knowledge-base-input]"
+                            :persisted="$isEdit || old('ai_quality_retrieval_mode') !== null"
+                        />
 
                         <label class="flex gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-4">
                             <input type="checkbox" name="ai_quality_timeout_sampling_enabled" id="ai_quality_timeout_sampling_enabled" value="1"

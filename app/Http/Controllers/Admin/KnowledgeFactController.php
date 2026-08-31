@@ -5,17 +5,61 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\KnowledgeFacts\KnowledgeFactRequest;
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFactLibrary;
 use App\Models\KnowledgeFactValue;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactEditor;
+use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactLibraryPresenter;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactPublisher;
+use App\Support\AdminWeb;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\View\View;
 
 class KnowledgeFactController extends Controller
 {
+    public function index(Request $request, int $knowledgeBaseId, KnowledgeFactLibraryPresenter $presenter): View
+    {
+        $knowledgeBase = KnowledgeBase::query()->with(['systemBinding', 'factLibrary.activeRevision'])->findOrFail($knowledgeBaseId);
+        $library = $knowledgeBase->factLibrary()->firstOrCreate([]);
+        $status = trim((string) $request->query('status', ''));
+        $search = trim((string) $request->query('q', ''));
+        $facts = $library->facts()
+            ->with(['values' => fn ($query) => $query->withCount('evidences')->with(['evidences' => fn ($evidences) => $evidences->select(['id', 'value_id', 'knowledge_chunk_id', 'excerpt', 'is_primary'])])])
+            ->when($search !== '', fn ($query) => $query->where(fn ($nested) => $nested
+                ->where('label', 'like', '%'.$search.'%')
+                ->orWhere('subject', 'like', '%'.$search.'%')
+                ->orWhere('predicate', 'like', '%'.$search.'%')))
+            ->when($status === 'pending', fn ($query) => $query->where('review_status', '!=', 'reviewed'))
+            ->when($status === 'reviewed', fn ($query) => $query->where('review_status', 'reviewed'))
+            ->when($status === 'conflict', fn ($query) => $query->whereHas('values', fn ($values) => $values->where('conflict_status', '!=', 'clear')))
+            ->paginate(20)
+            ->withQueryString();
+        $library->setRelation('facts', $facts->getCollection());
+        $library->load(['revisions' => fn ($query) => $query->limit(10)]);
+        $activeRun = $library->generationRuns()->whereIn('status', ['queued', 'running'])->latest('id')->first();
+
+        return view('admin.knowledge-bases.facts.index', [
+            'pageTitle' => '原子事实工作台',
+            'activeMenu' => 'materials',
+            'adminSiteName' => AdminWeb::siteName(),
+            'knowledgeBase' => $knowledgeBase,
+            'factLibrary' => $library,
+            'facts' => $facts,
+            'factSummary' => $presenter->summary($library),
+            'publishReadiness' => $presenter->publishReadiness($library),
+            'mergeTargets' => $library->facts()->where('is_enabled', true)->orderBy('label')->limit(200)->get(['id', 'label']),
+            'factEvidenceChunks' => $knowledgeBase->chunks()->select(['id', 'knowledge_base_id', 'section_path', 'content_hash'])->orderBy('chunk_index')->limit(200)->get(),
+            'factGenerationModels' => AiModel::query()->where('status', 'active')->whereNotIn('model_type', ['embedding', 'image'])->orderBy('name')->get(['id', 'name', 'model_id']),
+            'factGenerationRuns' => $library->generationRuns()->latest('id')->limit(10)->get(),
+            'activeGenerationRun' => $activeRun ? $presenter->generationRun($activeRun, $knowledgeBaseId) : null,
+            'systemReadOnly' => $knowledgeBase->isSystemManaged() && $request->user('admin')?->canManageProtectedWorkflows() !== true,
+        ]);
+    }
+
     public function store(KnowledgeFactRequest $request, int $knowledgeBaseId, KnowledgeFactEditor $editor): JsonResponse|RedirectResponse
     {
         $library = $this->library($knowledgeBaseId);

@@ -319,14 +319,14 @@ class KnowledgeChunkSyncService
                 throw new \RuntimeException('No staged knowledge chunks are available.');
             }
 
-            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId)->delete();
             (clone $stagedQuery)
                 ->orderBy('id')
-                ->chunkById(100, function ($rows): void {
+                ->chunkById(100, function ($rows) use ($syncToken): void {
                     $inserts = [];
                     foreach ($rows as $row) {
                         $inserts[] = [
                             'knowledge_base_id' => (int) $row->knowledge_base_id,
+                            'generation_key' => $syncToken,
                             'chunk_index' => (int) $row->chunk_index,
                             'content' => (string) $row->content,
                             'content_hash' => (string) $row->content_hash,
@@ -351,13 +351,26 @@ class KnowledgeChunkSyncService
                     }
                 });
 
+            $manifestHash = $this->stagedManifestHash($knowledgeBaseId, $syncToken);
+            $servingSourceHash = (string) $knowledgeBase->chunk_source_hash;
+
             $knowledgeBase->forceFill([
                 'chunk_sync_status' => 'ready',
                 'chunk_sync_token' => null,
+                'chunk_serving_generation' => $syncToken,
+                'chunk_serving_source_hash' => $servingSourceHash,
+                'chunk_manifest_hash' => $manifestHash,
                 'chunk_sync_error' => null,
                 'chunk_sync_require_real_embedding' => false,
                 'chunk_synced_at' => now(),
             ])->save();
+            KnowledgeChunk::query()
+                ->where('knowledge_base_id', $knowledgeBaseId)
+                ->where(function ($query) use ($syncToken): void {
+                    $query->whereNull('generation_key')
+                        ->orWhere('generation_key', '!=', $syncToken);
+                })
+                ->delete();
             DB::table('knowledge_chunk_sync_rows')
                 ->where('knowledge_base_id', $knowledgeBaseId)
                 ->delete();
@@ -373,10 +386,38 @@ class KnowledgeChunkSyncService
             $this->qualityInvalidationService->invalidateKnowledgeBase(
                 $knowledgeBaseId,
                 '知识库切片与证据索引已更新',
+                ['chunk', 'atomic'],
+                'chunk_generation_changed',
             );
         }
 
         return $finalized;
+    }
+
+    private function stagedManifestHash(int $knowledgeBaseId, string $syncToken): string
+    {
+        $hashContext = hash_init('sha256');
+        DB::table('knowledge_chunk_sync_rows')
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->where('sync_token', $syncToken)
+            ->orderBy('chunk_index')
+            ->orderBy('id')
+            ->cursor()
+            ->each(function (object $row) use ($hashContext): void {
+                hash_update($hashContext, json_encode([
+                    'chunk_index' => (int) $row->chunk_index,
+                    'content_hash' => (string) $row->content_hash,
+                    'source_hash' => (string) $row->source_hash,
+                    'chunk_title' => (string) $row->chunk_title,
+                    'section_path' => (string) $row->section_path,
+                    'chunk_strategy' => (string) $row->chunk_strategy,
+                    'embedding_model_id' => (int) ($row->embedding_model_id ?? 0),
+                    'embedding_provider' => (string) ($row->embedding_provider ?? ''),
+                    'embedding_hash' => hash('sha256', (string) ($row->embedding_json ?? '')),
+                ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+            });
+
+        return hash_final($hashContext);
     }
 
     public function discardStagingSync(int $knowledgeBaseId, string $syncToken): void

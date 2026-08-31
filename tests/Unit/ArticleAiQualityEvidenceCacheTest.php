@@ -24,7 +24,13 @@ class ArticleAiQualityEvidenceCacheTest extends TestCase
         $resolver = function () use (&$calls): array {
             $calls++;
 
-            return ['evidence' => [['stable_key' => '1:2:hash']], 'fact_candidates' => [], 'knowledge_coverage' => 'sufficient'];
+            return ['evidence' => [[
+                'id' => 'K1',
+                'knowledge_base_id' => 1,
+                'stable_key' => '1:2:hash',
+                'content_hash' => str_repeat('a', 64),
+                'source_hash' => str_repeat('b', 64),
+            ]], 'fact_candidates' => [], 'knowledge_coverage' => 'sufficient'];
         };
 
         $first = $cache->remember($context, $resolver);
@@ -55,5 +61,65 @@ class ArticleAiQualityEvidenceCacheTest extends TestCase
         } finally {
             $this->assertSame(1, $calls);
         }
+    }
+
+    public function test_corrupted_cache_envelopes_are_deleted_and_recomputed(): void
+    {
+        Cache::clear();
+        config()->set('geoflow.ai_quality_evidence_cache_enabled', true);
+        $calls = 0;
+        $cache = new ArticleAiQualityEvidenceCache;
+        $context = ['article' => 'integrity-check'];
+        $resolver = function () use (&$calls): array {
+            $calls++;
+
+            return [
+                'evidence' => [[
+                    'id' => 'K1',
+                    'knowledge_base_id' => 9,
+                    'stable_key' => '9:1:hash',
+                    'content' => 'Verified evidence.',
+                    'content_hash' => hash('sha256', 'Verified evidence.'),
+                    'source_hash' => str_repeat('a', 64),
+                ]],
+                'fact_candidates' => [],
+                'knowledge_coverage' => 'sufficient',
+            ];
+        };
+
+        $first = $cache->remember($context, $resolver);
+        Cache::put($first['key'], [
+            'format_version' => 1,
+            'context_hash' => str_repeat('b', 64),
+            'value_hash' => str_repeat('c', 64),
+            'byte_size' => 10,
+            'value' => $first['value'],
+        ]);
+        $second = $cache->remember($context, $resolver);
+
+        $this->assertFalse($second['hit']);
+        $this->assertSame(2, $calls);
+        $this->assertSame($first['value'], $second['value']);
+    }
+
+    public function test_invalid_resolver_payloads_are_returned_without_entering_the_cache(): void
+    {
+        Cache::clear();
+        config()->set('geoflow.ai_quality_evidence_cache_enabled', true);
+        $calls = 0;
+        $cache = new ArticleAiQualityEvidenceCache;
+        $resolver = function () use (&$calls): array {
+            $calls++;
+
+            return ['evidence' => [], 'fact_candidates' => []];
+        };
+
+        $first = $cache->remember(['article' => 'invalid-payload'], $resolver);
+        $second = $cache->remember(['article' => 'invalid-payload'], $resolver);
+
+        $this->assertFalse($first['hit']);
+        $this->assertFalse($second['hit']);
+        $this->assertSame(2, $calls);
+        $this->assertNull(Cache::get($first['key']));
     }
 }

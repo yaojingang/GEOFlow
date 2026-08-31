@@ -64,6 +64,8 @@ return [
     'knowledge_base_create' => 'New Knowledge Base',
     'knowledge_base_edit' => 'Edit Knowledge Base',
     'knowledge_base_detail' => 'Knowledge Base Details',
+    'knowledge_base_chunks' => 'Knowledge Chunk Management',
+    'knowledge_base_facts' => 'Atomic Facts Workbench',
     'enterprise_knowledge' => 'Enterprise Knowledge',
     'enterprise_knowledge_create' => 'New Knowledge Project',
     'enterprise_knowledge_detail' => 'Knowledge Project Details',

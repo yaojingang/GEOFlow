@@ -99,6 +99,16 @@
         'unscanned' => ['label' => __('admin.articles.quality_scorecard.risk_status_unscanned'), 'class' => 'bg-slate-100 text-slate-600 ring-slate-200', 'icon' => 'scan-search'],
     ][$riskDisplayStatus];
     $aiQualityEnabled = $isEdit && (bool) ($articleForm['ai_quality_enabled'] ?? false);
+    $aiQualityRetrievalData = is_array($aiQualityRetrieval ?? null) ? $aiQualityRetrieval : [];
+    $aiQualityRetrievalAttached = (bool) ($aiQualityRetrievalData['attached_to_task'] ?? false);
+    $aiQualityRetrievalSelectedIds = collect(old(
+        'ai_quality_knowledge_base_ids',
+        $aiQualityRetrievalData['selected_knowledge_base_ids'] ?? [],
+    ))->map(static fn ($id): string => (string) $id)->filter()->unique()->values()->all();
+    $aiQualityRetrievalValue = (string) old(
+        'ai_quality_retrieval_mode_override',
+        (string) ($aiQualityRetrievalData['value'] ?? ''),
+    );
     $aiQualityStatus = (string) ($aiQualityCheck?->status ?? ($aiQualityEnabled ? 'not_started' : 'disabled'));
     $aiQualityDecision = (string) ($aiQualityCheck?->decision ?? '');
     $aiQualityProgressData = is_array($aiQualityProgress ?? null) ? $aiQualityProgress : [];
@@ -125,6 +135,14 @@
         'content_integrity' => 10,
     ];
     $aiQualityIssues = is_array($aiQualityCheck?->issues) ? $aiQualityCheck->issues : [];
+    $aiQualityAtomic = is_array(data_get($aiQualityCheck?->execution_meta, 'atomic_facts')) ? data_get($aiQualityCheck?->execution_meta, 'atomic_facts') : [];
+    $aiQualityAtomicInspection = is_array($aiQualityAtomic['inspection'] ?? null) ? $aiQualityAtomic['inspection'] : [];
+    $aiQualityUsage = is_array($aiQualityCheck?->usage_meta) ? $aiQualityCheck->usage_meta : [];
+    $aiQualityAtomicModeLabel = match ($aiQualityAtomic['mode'] ?? 'disabled') {
+        'hybrid_formal' => '原子事实混合质检 · 已参与评分',
+        'shadow' => '原子事实影子核验 · 未参与评分',
+        default => '原子事实核验',
+    };
     $aiQualityUncertainties = is_array($aiQualityCheck?->uncertainties) ? $aiQualityCheck->uncertainties : [];
     $aiOptimizationData = is_array($aiOptimization ?? null) ? $aiOptimization : null;
     $aiOptimizationFeatureEnabled = (bool) config('geoflow.ai_quality_optimization_enabled', false);
@@ -345,6 +363,54 @@
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+
+                            <div class="border-b border-current/10 bg-white/70 px-6 py-5">
+                                @if(! $aiQualityRetrievalAttached)
+                                    <div class="mb-4">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div>
+                                                <p class="text-sm font-semibold text-gray-900">{{ __('ai_quality_retrieval.source_article') }}</p>
+                                                <p class="mt-1 text-xs leading-5 text-gray-600">{{ __('ai_quality_retrieval.help') }}</p>
+                                            </div>
+                                            <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">{{ count($aiQualityRetrievalSelectedIds) }}/5</span>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                            @foreach(($aiQualityRetrievalData['knowledge_bases'] ?? []) as $knowledgeBaseOption)
+                                                @php $knowledgeBaseValue = (string) $knowledgeBaseOption['id']; @endphp
+                                                <label class="flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                                                    <input
+                                                        type="checkbox"
+                                                        name="ai_quality_knowledge_base_ids[]"
+                                                        value="{{ $knowledgeBaseValue }}"
+                                                        @checked(in_array($knowledgeBaseValue, $aiQualityRetrievalSelectedIds, true))
+                                                        @disabled(! ($aiQualityRetrievalData['can_edit'] ?? false))
+                                                        data-article-ai-quality-knowledge-base
+                                                        class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                    >
+                                                    <span class="truncate">{{ $knowledgeBaseOption['name'] }}</span>
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                        @error('ai_quality_knowledge_base_ids')<p class="mt-2 text-sm text-red-600">{{ $message }}</p>@enderror
+                                    </div>
+                                @endif
+
+                                <x-admin.ai-quality-retrieval-selector
+                                    id="article-ai-quality-retrieval-mode"
+                                    name="ai_quality_retrieval_mode_override"
+                                    :value="$aiQualityRetrievalValue"
+                                    :selected-knowledge-base-ids="$aiQualityRetrievalSelectedIds"
+                                    :readiness-by-knowledge-base="$aiQualityRetrievalData['readiness_by_knowledge_base'] ?? []"
+                                    :knowledge-input-selector="$aiQualityRetrievalAttached ? '' : '[data-article-ai-quality-knowledge-base]'"
+                                    :allow-inherit="$aiQualityRetrievalAttached"
+                                    :inherited-mode="$aiQualityRetrievalData['inherited_mode'] ?? null"
+                                    :readonly="! ($aiQualityRetrievalData['can_edit'] ?? false)"
+                                    :compact="true"
+                                    :persisted="true"
+                                    :source-label="$aiQualityRetrievalAttached ? __('ai_quality_retrieval.source_task') : __('ai_quality_retrieval.source_article')"
+                                    :last-effective-mode="$aiQualityCheck?->effective_retrieval_mode"
+                                />
                             </div>
 
                             <div id="ai-quality-result-content" data-ai-quality-collapse-body>
@@ -727,6 +793,19 @@
                                             </div>
                                         </div>
                                     @endif
+                                    @if(($aiQualityAtomic['mode'] ?? 'disabled') !== 'disabled')
+                                        <section data-ai-quality-atomic-facts class="rounded-lg border border-violet-200 bg-violet-50 p-4 text-violet-950">
+                                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                                <div class="flex items-start gap-3"><i data-lucide="badge-check" class="mt-0.5 h-5 w-5 text-violet-700"></i><div><h4 class="text-sm font-semibold">{{ $aiQualityAtomicModeLabel }}</h4><p class="mt-1 text-xs leading-5 text-violet-800">算法 {{ $aiQualityAtomicInspection['algorithm_version'] ?? '暂无' }} · 事实版本 {{ implode(', ', (array) ($aiQualityAtomicInspection['revision_ids'] ?? [])) ?: '暂无' }} · 原子通道 {{ (int) data_get($aiQualityUsage, 'atomic_facts.total_tokens', 0) }} Token · 知识库回退 {{ (int) data_get($aiQualityUsage, 'knowledge_fallback.total_tokens', 0) }} Token</p></div></div>
+                                                <span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold ring-1 ring-violet-200">覆盖率 {{ number_format(((float) ($aiQualityAtomicInspection['coverage_rate'] ?? 0)) * 100, 1) }}%</span>
+                                            </div>
+                                            <dl class="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
+                                                @foreach([['命中', 'supported_count'], ['冲突', 'contradicted_count'], ['未覆盖', 'not_covered_count'], ['歧义', 'ambiguous_count'], ['回退', 'fallback_count'], ['耗时', 'elapsed_ms']] as [$label, $key])
+                                                    <div class="rounded-md bg-white px-3 py-2 ring-1 ring-violet-100"><dt class="text-violet-600">{{ $label }}</dt><dd class="mt-1 font-mono font-bold">{{ $aiQualityAtomicInspection[$key] ?? 0 }}{{ $key === 'elapsed_ms' ? ' ms' : '' }}</dd></div>
+                                                @endforeach
+                                            </dl>
+                                        </section>
+                                    @endif
                                     <div class="grid gap-3 lg:grid-cols-5">
                                         <div class="rounded-lg border border-gray-200 bg-white p-4 lg:col-span-1">
                                             <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ $aiQualityIsSampled ? __('admin.articles.ai_quality.sampled_score_label') : __('admin.articles.ai_quality.score') }}</p>
@@ -840,6 +919,11 @@
                                                                 @endif
                                                                 @if(! empty($issue['evidence_value']))
                                                                     <div><span class="font-semibold text-gray-900">{{ __('admin.articles.ai_quality.evidence_value') }}：</span><span class="text-gray-700">{{ $issue['evidence_value'] }}</span></div>
+                                                                @endif
+                                                                @if(is_array($issue['atomic_fact'] ?? null))
+                                                                    <div><span class="font-semibold text-gray-900">原子事实标准答案：</span><span class="text-gray-700">{{ data_get($issue, 'atomic_fact.standard_answer') }}</span></div>
+                                                                    <div><span class="font-semibold text-gray-900">比较方法：</span><span class="text-gray-700">{{ data_get($issue, 'atomic_fact.comparison_method') }} · revision {{ data_get($issue, 'atomic_fact.revision_id') }}</span></div>
+                                                                    @if($excerpt = data_get($issue, 'atomic_fact.evidence.0.excerpt'))<div class="lg:col-span-2"><span class="font-semibold text-gray-900">来源摘录：</span><span class="text-gray-700">{{ $excerpt }}</span></div>@endif
                                                                 @endif
                                                             </div>
                                                             @if(! empty($refs))

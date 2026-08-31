@@ -44,7 +44,9 @@ class KnowledgeFactGenerationCoordinator
 
                 return $existingRun;
             }
-            if ($locked->knowledgeBase->chunk_sync_status !== 'ready' || $locked->knowledgeBase->chunk_source_hash === '') {
+            $servingSourceHash = $locked->knowledgeBase->servingChunkSourceHash();
+            if ($locked->knowledgeBase->chunk_sync_status !== 'ready'
+                || $servingSourceHash === '') {
                 throw ValidationException::withMessages(['library' => 'knowledge_chunks_not_ready']);
             }
             if (KnowledgeFactGenerationRun::query()->where('active_key', $this->activeKey($locked->id))->exists()) {
@@ -59,7 +61,7 @@ class KnowledgeFactGenerationCoordinator
             }
             $generationLimit = $mode === 'supplement' ? max(0, $targetCount - $existingCount) : $targetCount;
             $run = $locked->generationRuns()->create([
-                'mode' => $mode, 'target_count' => $targetCount, 'source_hash' => $locked->knowledgeBase->chunk_source_hash,
+                'mode' => $mode, 'target_count' => $targetCount, 'source_hash' => $servingSourceHash,
                 'base_working_version' => $locked->working_version, 'status' => 'queued', 'ai_model_id' => $model->id,
                 'created_by_admin_id' => $admin->id, 'request_key' => $requestKey, 'active_key' => $this->activeKey($locked->id),
                 'result_json' => ['candidates' => [], 'conflicts' => [], 'batches' => []],
@@ -79,8 +81,17 @@ class KnowledgeFactGenerationCoordinator
             return $run->fresh();
         }
 
+        $claimed = KnowledgeFactGenerationRun::query()
+            ->whereKey($run->id)
+            ->where('status', 'queued')
+            ->whereNull('job_batch_id')
+            ->update(['status' => 'running', 'started_at' => now(), 'updated_at' => now()]);
+        if ($claimed !== 1) {
+            return $run->fresh();
+        }
+
         try {
-            $this->dispatch($run);
+            $this->dispatch($run->fresh());
         } catch (Throwable $exception) {
             $this->failRun($run->id, 'knowledge_fact_generation_dispatch_failed');
 
@@ -96,7 +107,15 @@ class KnowledgeFactGenerationCoordinator
             return;
         }
         $library = $run->library()->with('knowledgeBase')->firstOrFail();
-        $chunks = $library->knowledgeBase->chunks()->select(['id', 'knowledge_base_id', 'content_hash'])->get();
+        $servingGeneration = trim((string) $library->knowledgeBase->chunk_serving_generation);
+        $chunks = $library->knowledgeBase->chunks()
+            ->when(
+                $servingGeneration !== '',
+                fn ($query) => $query->where('generation_key', $servingGeneration),
+                fn ($query) => $query->whereNull('generation_key'),
+            )
+            ->select(['id', 'knowledge_base_id', 'content_hash'])
+            ->get();
         $evidence = $chunks->map(fn ($chunk) => [
             'evidence_key' => 'chunk:'.$chunk->id.':'.substr((string) $chunk->content_hash, 0, 12),
             'chunk_id' => (string) $chunk->id, 'content_hash' => (string) $chunk->content_hash,
@@ -116,7 +135,6 @@ class KnowledgeFactGenerationCoordinator
             $jobs[] = new GenerateKnowledgeFactBatchJob($run->id, $index + 1, $hash, $group);
         }
         $runId = $run->id;
-        $run->forceFill(['status' => 'running', 'started_at' => now()])->save();
         $batch = Bus::batch($jobs)->name("knowledge-facts:{$runId}")->allowFailures()->finally(static function (Batch $batch) use ($runId): void {
             FinalizeKnowledgeFactGenerationJob::dispatch($runId)->onQueue('knowledge');
         })->onQueue('knowledge')->dispatch();
@@ -132,14 +150,20 @@ class KnowledgeFactGenerationCoordinator
             || (is_array($batch) && ($batch['input_hash'] ?? null) === $inputHash && ($batch['status'] ?? null) === 'completed')) {
             return;
         }
-        if (! hash_equals((string) $run->source_hash, (string) $run->library->knowledgeBase->chunk_source_hash)
+        if (! hash_equals((string) $run->source_hash, $run->library->knowledgeBase->servingChunkSourceHash())
             || (int) $run->base_working_version !== (int) $run->library->working_version) {
             $this->markObsolete($runId);
 
             return;
         }
         $chunkIds = array_map('intval', array_column($evidence, 'chunk_id'));
+        $servingGeneration = trim((string) $run->library->knowledgeBase->chunk_serving_generation);
         $chunks = KnowledgeChunk::query()->where('knowledge_base_id', $run->library->knowledge_base_id)->whereIn('id', $chunkIds)
+            ->when(
+                $servingGeneration !== '',
+                fn ($query) => $query->where('generation_key', $servingGeneration),
+                fn ($query) => $query->whereNull('generation_key'),
+            )
             ->get(['id', 'content_hash', 'source_hash', 'section_path', 'content'])->keyBy('id');
         $hydratedEvidence = [];
         foreach ($evidence as $descriptor) {
@@ -207,7 +231,7 @@ class KnowledgeFactGenerationCoordinator
                 return;
             }
             $library->load('knowledgeBase');
-            if (! hash_equals((string) $run->source_hash, (string) $library->knowledgeBase->chunk_source_hash)
+            if (! hash_equals((string) $run->source_hash, $library->knowledgeBase->servingChunkSourceHash())
                 || (int) $run->base_working_version !== (int) $library->working_version) {
                 $run->forceFill(['status' => 'obsolete', 'active_key' => null, 'completed_at' => now()])->save();
                 $library->forceFill(['workflow_status' => 'review_required'])->save();

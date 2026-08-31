@@ -106,6 +106,7 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
         $root = dirname(__DIR__, 2);
         $deploy = (string) file_get_contents($root.'/deploy-scripts/geoflow-docker-deploy.sh');
         $healthcheck = (string) file_get_contents($root.'/deploy-scripts/geoflow-healthcheck.sh');
+        $deploymentGuide = (string) file_get_contents($root.'/docs/deployment/DEPLOYMENT.md');
 
         $this->assertStringContainsString(
             'up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb',
@@ -131,6 +132,10 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
         $this->assertStringContainsString('ps --status running -q ai-quality-queue', $healthcheck);
         $this->assertStringContainsString('geoflow:ai-quality-health --json --probe --wait=10', $healthcheck);
         $this->assertStringContainsString('geoflow:converge-ai-quality --json', $healthcheck);
+        $this->assertStringContainsString(
+            '$COMPOSE_PROD stop web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb',
+            $deploymentGuide,
+        );
 
         $routes = (string) file_get_contents($root.'/routes/console.php');
         $this->assertStringContainsString("Schedule::command('geoflow:converge-ai-quality')", $routes);

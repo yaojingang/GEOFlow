@@ -110,7 +110,7 @@
 
 .gf-admin-v3 button:disabled { cursor: not-allowed; opacity: .5; }
 .gf-admin-v3 [data-gf-submit-pending] { cursor: wait; opacity: .75; }
-.gf-admin-v3 svg { display: block; stroke-width: 1.8; }
+.gf-admin-v3 svg { stroke-width: 1.8; }
 .gf-admin-v3 h1,
 .gf-admin-v3 h2,
 .gf-admin-v3 h3 { text-wrap: balance; }

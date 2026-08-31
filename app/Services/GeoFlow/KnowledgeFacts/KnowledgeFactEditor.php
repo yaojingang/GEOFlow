@@ -36,7 +36,7 @@ class KnowledgeFactEditor
             KnowledgeFactLibrary::query()->whereKey($library->id)->lockForUpdate()->firstOrFail();
             $expected = (int) $data['lock_version'];
             unset($data['lock_version']);
-            if (array_intersect(array_keys($data), ['label', 'subject', 'predicate', 'aliases_json', 'importance', 'usage_scope']) !== []) {
+            if (array_intersect(array_keys($data), ['label', 'subject', 'predicate', 'value_type', 'aliases_json', 'importance', 'usage_scope']) !== []) {
                 $data['review_status'] = 'draft';
             }
             $updated = KnowledgeFact::query()->whereKey($fact->id)->where('library_id', $library->id)->where('lock_version', $expected)

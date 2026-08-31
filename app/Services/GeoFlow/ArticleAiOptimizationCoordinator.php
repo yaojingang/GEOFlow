@@ -9,6 +9,7 @@ use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiOptimizationStep;
 use App\Models\ArticleAiQualityCheck;
+use App\Models\ArticleAiQualityRollout;
 use App\Models\ArticleDistribution;
 use App\Models\Task;
 use Illuminate\Database\QueryException;
@@ -110,6 +111,17 @@ final class ArticleAiOptimizationCoordinator
                         $lockedArticle->setRelation('task', $lockedTask);
                     }
                 }
+                if ($trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO
+                    && (! $lockedTask instanceof Task
+                        || $lockedTask->trashed()
+                        || ! (bool) $lockedTask->ai_quality_enabled
+                        || ! (bool) $lockedTask->ai_quality_auto_optimize_enabled
+                        || (string) $lockedTask->ai_quality_optimization_level !== $strategy)) {
+                    throw new ArticleAiOptimizationException(
+                        'article_ai_optimization_task_policy_changed',
+                        httpStatus: 409,
+                    );
+                }
                 $optimizationModels = $this->optimizationModelCandidates($optimizationModel, $lockedTask);
 
                 $qualityPolicy = $this->qualityPolicyResolver->resolveForManualInspection($lockedArticle);
@@ -139,6 +151,7 @@ final class ArticleAiOptimizationCoordinator
                     $policy,
                     $optimizationModels,
                     $lockedTask,
+                    $trigger,
                 );
                 $snapshot = $this->qualityPolicyResolver->articleSnapshot($lockedArticle);
                 $baseHash = $this->riskScanner->contentHash($snapshot);
@@ -366,6 +379,14 @@ final class ArticleAiOptimizationCoordinator
         }
         $claimed = $this->claim($runId, $attemptOwner);
         if ($claimed === null) {
+            $staleRun = ArticleAiOptimizationRun::query()->find($runId);
+            if ($staleRun
+                && (string) $staleRun->status === ArticleAiOptimizationRun::STATUS_STALE
+                && (string) $staleRun->stop_reason === 'task_auto_optimization_policy_changed'
+                && $staleRun->source_check_id) {
+                $this->recoverWaitingWorkflow((int) $staleRun->source_check_id);
+            }
+
             return;
         }
 
@@ -492,6 +513,10 @@ final class ArticleAiOptimizationCoordinator
         }
 
         $outcome = DB::transaction(function () use ($runId, $runInfo, $checkId): array {
+            $committedEpoch = max(1, (int) (ArticleAiQualityRollout::query()
+                ->whereKey(1)
+                ->lockForUpdate()
+                ->value('epoch') ?? 1));
             $article = Article::query()->whereKey((int) $runInfo->article_id)->lockForUpdate()->first();
             if (! $article) {
                 return ['action' => 'none'];
@@ -525,7 +550,11 @@ final class ArticleAiOptimizationCoordinator
                 return ['action' => 'none'];
             }
             $candidate = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
-            if (! $candidate || (string) $candidate->status !== 'completed') {
+            if (! $candidate
+                || (string) $candidate->status !== 'completed'
+                || ! $this->inspectionService->rolloutEpochMatches($candidate, $committedEpoch)) {
+                $this->markRunStale($run, 'rollout_epoch_changed');
+
                 return ['action' => 'none'];
             }
             $step = ArticleAiOptimizationStep::query()
@@ -542,7 +571,9 @@ final class ArticleAiOptimizationCoordinator
                 return ['action' => 'none'];
             }
             $input = ArticleAiQualityCheck::query()->whereKey((int) $step->input_check_id)->first();
-            if (! $input) {
+            if (! $input || ! $this->inspectionService->rolloutEpochMatches($input, $committedEpoch)) {
+                $this->markRunStale($run, 'rollout_epoch_changed');
+
                 return ['action' => 'none'];
             }
 
@@ -638,6 +669,10 @@ final class ArticleAiOptimizationCoordinator
         }
         $runInfo = ArticleAiOptimizationRun::query()->whereKey($runId)->firstOrFail(['article_id', 'task_id']);
         $applyResult = DB::transaction(function () use ($runId, $runInfo, $candidateHash, $adminId): array {
+            $committedEpoch = max(1, (int) (ArticleAiQualityRollout::query()
+                ->whereKey(1)
+                ->lockForUpdate()
+                ->value('epoch') ?? 1));
             $article = Article::query()->whereKey((int) $runInfo->article_id)->lockForUpdate()->firstOrFail();
             if ($runInfo->task_id) {
                 $task = Task::withTrashed()->whereKey((int) $runInfo->task_id)->lockForUpdate()->first();
@@ -693,6 +728,12 @@ final class ArticleAiOptimizationCoordinator
             $candidate = $checks->get((int) $run->best_check_id);
             if (! $source instanceof ArticleAiQualityCheck || ! $candidate instanceof ArticleAiQualityCheck) {
                 throw new ArticleAiOptimizationException('article_ai_optimization_candidate_invalid');
+            }
+            if (! $this->inspectionService->rolloutEpochMatches($source, $committedEpoch)
+                || ! $this->inspectionService->rolloutEpochMatches($candidate, $committedEpoch)) {
+                $this->markRunStale($run, 'rollout_epoch_changed');
+
+                return ['error_code' => 'article_ai_optimization_stale'];
             }
             $step = ArticleAiOptimizationStep::query()
                 ->where('run_id', $runId)
@@ -1257,8 +1298,12 @@ final class ArticleAiOptimizationCoordinator
             if (! $article) {
                 return null;
             }
-            if ($runInfo->task_id) {
-                Task::withTrashed()->whereKey((int) $runInfo->task_id)->lockForUpdate()->first();
+            $lockedTask = $runInfo->task_id
+                ? Task::withTrashed()->whereKey((int) $runInfo->task_id)->lockForUpdate()->first()
+                : null;
+            if ($lockedTask instanceof Task && ! $lockedTask->trashed()) {
+                $lockedTask->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                $article->setRelation('task', $lockedTask);
             }
             $run = ArticleAiOptimizationRun::query()->whereKey($runId)->lockForUpdate()->first();
             if (! $run || (string) $run->status !== ArticleAiOptimizationRun::STATUS_QUEUED) {
@@ -1273,6 +1318,17 @@ final class ArticleAiOptimizationCoordinator
                 ->where('round_index', (int) $run->completed_rounds + 1)
                 ->lockForUpdate()
                 ->first();
+
+            if ((string) $run->trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO
+                && (! $lockedTask instanceof Task
+                    || $lockedTask->trashed()
+                    || ! (bool) $lockedTask->ai_quality_enabled
+                    || ! (bool) $lockedTask->ai_quality_auto_optimize_enabled
+                    || (string) $lockedTask->ai_quality_optimization_level !== (string) $run->strategy)) {
+                $this->markRunStale($run, 'task_auto_optimization_policy_changed');
+
+                return null;
+            }
 
             if ((string) $article->status !== 'draft'
                 || ! $input
@@ -2136,10 +2192,12 @@ final class ArticleAiOptimizationCoordinator
         array $policy,
         array $optimizationModels,
         ?Task $task,
+        string $trigger,
     ): string {
         return $this->optimizationPolicy->hash([
             'algorithm_version' => self::ALGORITHM_VERSION,
             'patch_validator_version' => ArticleAiOptimizationPatchValidator::VERSION,
+            'rollout_epoch' => max(1, (int) (ArticleAiQualityRollout::query()->whereKey(1)->value('epoch') ?? 1)),
             'optimization_policy' => $policy,
             'quality_fingerprint_input' => $this->qualityPolicyResolver->fingerprintInput(
                 $article,
@@ -2147,6 +2205,10 @@ final class ArticleAiOptimizationCoordinator
                 $this->inspectionService->rules(),
             ),
             'optimization_model_selection_mode' => (string) ($task?->model_selection_mode ?? 'fixed'),
+            'task_auto_policy' => $trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO ? [
+                'enabled' => (bool) $task?->ai_quality_auto_optimize_enabled,
+                'strategy' => (string) ($task?->ai_quality_optimization_level ?? ''),
+            ] : null,
             'optimization_models' => array_map(static fn (AiModel $model): array => [
                 'id' => (int) $model->id,
                 'model_id' => (string) $model->model_id,
@@ -2178,7 +2240,14 @@ final class ArticleAiOptimizationCoordinator
 
             return hash_equals(
                 (string) $run->policy_hash,
-                $this->policyHash($article, $qualityPolicy, $policy, $models, $article->task),
+                $this->policyHash(
+                    $article,
+                    $qualityPolicy,
+                    $policy,
+                    $models,
+                    $article->task,
+                    (string) $run->trigger,
+                ),
             );
         } catch (Throwable) {
             return false;

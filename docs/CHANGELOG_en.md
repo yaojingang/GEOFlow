@@ -2,6 +2,16 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-08-31
+
+### Three-layer AI quality retrieval and governed atomic facts
+
+- Added atomic-first, chunk, and broad-knowledge retrieval modes. Task settings and standalone article editing now share readiness checks, default priority, inheritance, and override rules, with atomic-first selected when every source is ready.
+- Added readiness projections, serving generations, per-check source ledgers, and immutable execution snapshots. Checks retain requested and effective modes, strategy versions, source hashes, and audit data, while knowledge, model, prompt, article, and rollout changes selectively expire affected results and schedule reconciliation.
+- Completed governed atomic-fact generation, review, version publishing, stable keys, evidence relinking, typed comparison, and active-revision serving. Deterministic facts use the atomic path, while unsupported or ambiguous claims continue through chunk retrieval.
+- Hardened high-risk knowledge review, broad-evidence budgets, prompt-injection quarantine, cross-token API idempotency, concurrent policy-version checks, distribution guard snapshots, and deletion protection for referenced knowledge bases.
+- Expanded knowledge-base navigation, the atomic-fact workbench, AI model diagnostics, and six-language admin copy, with a legacy backfill command, Docker queue configuration, Laravel and JavaScript regressions, and benchmark reports.
+
 ## 2026-08-30
 
 ### License and contribution governance

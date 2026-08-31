@@ -4,6 +4,7 @@ namespace App\Services\GeoFlow;
 
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -67,8 +68,11 @@ class KnowledgeRetrievalService
      * @param  list<int>  $allowedKnowledgeBaseIds
      * @return list<array<string,mixed>>
      */
-    public function validateEvidenceSnapshot(array $snapshot, array $allowedKnowledgeBaseIds): array
-    {
+    public function validateEvidenceSnapshot(
+        array $snapshot,
+        array $allowedKnowledgeBaseIds,
+        array $servingGenerations = [],
+    ): array {
         $allowedKnowledgeBaseIds = collect($allowedKnowledgeBaseIds)
             ->map(static fn ($id): int => (int) $id)
             ->filter(static fn (int $id): bool => $id > 0)
@@ -113,6 +117,13 @@ class KnowledgeRetrievalService
                 continue;
             }
 
+            $servingGeneration = trim((string) ($servingGenerations[(int) $knowledgeBase->id]
+                ?? $knowledgeBase->chunk_serving_generation
+                ?? ''));
+            if ((string) ($chunk->generation_key ?? '') !== $servingGeneration) {
+                continue;
+            }
+
             $content = trim((string) $chunk->content);
             $contentHash = (string) ($chunk->content_hash ?: hash('sha256', $content));
             $sourceHash = (string) ($chunk->source_hash ?? '');
@@ -133,6 +144,7 @@ class KnowledgeRetrievalService
                 'knowledge_base_id' => (int) $chunk->knowledge_base_id,
                 'chunk_id' => (int) $chunk->id,
                 'chunk_index' => (int) $chunk->chunk_index,
+                'generation_key' => (string) ($chunk->generation_key ?? ''),
                 'content' => $content,
                 'content_hash' => $contentHash,
                 'source_hash' => $sourceHash,
@@ -156,6 +168,7 @@ class KnowledgeRetrievalService
         string $query,
         int $candidateLimit = 16,
         bool $allowRemoteEmbedding = true,
+        array $servingGenerations = [],
     ): array {
         $knowledgeBaseIds = collect($knowledgeBaseIds)
             ->map(static fn ($id): int => (int) $id)
@@ -170,14 +183,26 @@ class KnowledgeRetrievalService
         }
 
         if (count($knowledgeBaseIds) === 1) {
-            return $this->retrieveEvidence($knowledgeBaseIds[0], $query, $candidateLimit, $allowRemoteEmbedding);
+            return $this->retrieveEvidence(
+                $knowledgeBaseIds[0],
+                $query,
+                $candidateLimit,
+                $allowRemoteEmbedding,
+                $servingGenerations[$knowledgeBaseIds[0]] ?? null,
+            );
         }
 
         $perBaseLimit = max(6, (int) ceil(max(1, $candidateLimit) / count($knowledgeBaseIds)) + 4);
         $merged = [];
 
         foreach ($knowledgeBaseIds as $order => $knowledgeBaseId) {
-            foreach ($this->retrieveEvidence($knowledgeBaseId, $query, $perBaseLimit, $allowRemoteEmbedding) as $candidate) {
+            foreach ($this->retrieveEvidence(
+                $knowledgeBaseId,
+                $query,
+                $perBaseLimit,
+                $allowRemoteEmbedding,
+                $servingGenerations[$knowledgeBaseId] ?? null,
+            ) as $candidate) {
                 $candidate['knowledge_base_rank'] = $order;
                 $merged[] = $candidate;
             }
@@ -210,6 +235,7 @@ class KnowledgeRetrievalService
         string $query,
         int $candidateLimit = 16,
         bool $allowRemoteEmbedding = true,
+        ?string $expectedServingGeneration = null,
     ): array {
         /** @var KnowledgeBase|null $knowledgeBase */
         $knowledgeBase = KnowledgeBase::query()
@@ -220,19 +246,23 @@ class KnowledgeRetrievalService
             return [];
         }
 
+        $servingGeneration = trim((string) ($expectedServingGeneration
+            ?? $knowledgeBase->chunk_serving_generation
+            ?? ''));
+
         $queryTerms = $this->termFrequencies($query);
         $pgvectorScores = $allowRemoteEmbedding && trim($query) !== ''
-            ? $this->fetchPgvectorScores($knowledgeBaseId, $query, max($candidateLimit, 16))
+            ? $this->fetchPgvectorScores($knowledgeBaseId, $servingGeneration, $query, max($candidateLimit, 16))
             : [];
 
-        $rows = $this->loadCandidateRows($knowledgeBaseId, $queryTerms, $pgvectorScores, $candidateLimit);
+        $rows = $this->loadCandidateRows($knowledgeBaseId, $servingGeneration, $queryTerms, $pgvectorScores, $candidateLimit);
         if ($rows === []) {
             return [];
         }
 
         $hasRealEmbeddingRows = $allowRemoteEmbedding
             && $pgvectorScores === []
-            && $this->knowledgeBaseHasRealEmbeddingRows($knowledgeBaseId);
+            && $this->knowledgeBaseHasRealEmbeddingRows($knowledgeBaseId, $servingGeneration);
         $queryVector = [];
         $useRealEmbeddingScore = false;
         if ($pgvectorScores === [] && $hasRealEmbeddingRows && trim($query) !== '') {
@@ -276,6 +306,7 @@ class KnowledgeRetrievalService
                 'knowledge_base_id' => $knowledgeBaseId,
                 'chunk_id' => (int) ($row->id ?? 0),
                 'chunk_index' => $chunkIndex,
+                'generation_key' => (string) ($row->generation_key ?? ''),
                 'content' => $content,
                 'content_hash' => (string) ($row->content_hash ?? hash('sha256', $content)),
                 'source_hash' => (string) ($row->source_hash ?? ''),
@@ -441,7 +472,7 @@ class KnowledgeRetrievalService
     private function knowledgeBaseSelectColumns(): array
     {
         $columns = ['id', 'name', 'description'];
-        foreach (['source_name', 'source_url', 'source_type', 'business_line', 'effective_date', 'risk_level', 'review_status'] as $column) {
+        foreach (['source_name', 'source_url', 'source_type', 'business_line', 'effective_date', 'risk_level', 'review_status', 'chunk_serving_generation'] as $column) {
             if (Schema::hasColumn('knowledge_bases', $column)) {
                 $columns[] = $column;
             }
@@ -477,26 +508,29 @@ class KnowledgeRetrievalService
      * @param  array<int,float>  $pgvectorScores
      * @return list<KnowledgeChunk>
      */
-    private function loadCandidateRows(int $knowledgeBaseId, array $queryTerms, array $pgvectorScores, int $candidateLimit): array
+    private function loadCandidateRows(int $knowledgeBaseId, string $generation, array $queryTerms, array $pgvectorScores, int $candidateLimit): array
     {
-        $chunkCount = KnowledgeChunk::query()
-            ->where('knowledge_base_id', $knowledgeBaseId)
-            ->count();
+        $chunkCount = $this->applyServingGeneration(
+            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId),
+            $generation,
+        )->count();
 
         if ($chunkCount <= self::FULL_SCAN_CHUNK_LIMIT) {
-            return KnowledgeChunk::query()
-                ->where('knowledge_base_id', $knowledgeBaseId)
+            return $this->applyServingGeneration(
+                KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId),
+                $generation,
+            )
                 ->orderBy('chunk_index')
                 ->get($this->knowledgeChunkSelectColumns())
                 ->all();
         }
 
         $rowsByIndex = [];
-        foreach ($this->fetchRowsByChunkIndexes($knowledgeBaseId, array_keys($pgvectorScores)) as $row) {
+        foreach ($this->fetchRowsByChunkIndexes($knowledgeBaseId, $generation, array_keys($pgvectorScores)) as $row) {
             $rowsByIndex[(int) ($row->chunk_index ?? 0)] = $row;
         }
 
-        foreach ($this->fetchKeywordCandidateRows($knowledgeBaseId, $queryTerms, $candidateLimit) as $row) {
+        foreach ($this->fetchKeywordCandidateRows($knowledgeBaseId, $generation, $queryTerms, $candidateLimit) as $row) {
             $rowsByIndex[(int) ($row->chunk_index ?? 0)] = $row;
         }
 
@@ -512,6 +546,7 @@ class KnowledgeRetrievalService
     {
         $columns = [
             'id',
+            'generation_key',
             'chunk_index',
             'content',
             'chunk_title',
@@ -535,15 +570,17 @@ class KnowledgeRetrievalService
      * @param  list<int>  $chunkIndexes
      * @return list<KnowledgeChunk>
      */
-    private function fetchRowsByChunkIndexes(int $knowledgeBaseId, array $chunkIndexes): array
+    private function fetchRowsByChunkIndexes(int $knowledgeBaseId, string $generation, array $chunkIndexes): array
     {
         $chunkIndexes = array_values(array_unique(array_map('intval', $chunkIndexes)));
         if ($chunkIndexes === []) {
             return [];
         }
 
-        return KnowledgeChunk::query()
-            ->where('knowledge_base_id', $knowledgeBaseId)
+        return $this->applyServingGeneration(
+            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId),
+            $generation,
+        )
             ->whereIn('chunk_index', $chunkIndexes)
             ->orderBy('chunk_index')
             ->get($this->knowledgeChunkSelectColumns())
@@ -554,15 +591,17 @@ class KnowledgeRetrievalService
      * @param  array<string,int>  $queryTerms
      * @return list<KnowledgeChunk>
      */
-    private function fetchKeywordCandidateRows(int $knowledgeBaseId, array $queryTerms, int $candidateLimit): array
+    private function fetchKeywordCandidateRows(int $knowledgeBaseId, string $generation, array $queryTerms, int $candidateLimit): array
     {
         $terms = $this->candidateQueryTerms($queryTerms);
         if ($terms === []) {
             return [];
         }
 
-        return KnowledgeChunk::query()
-            ->where('knowledge_base_id', $knowledgeBaseId)
+        return $this->applyServingGeneration(
+            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId),
+            $generation,
+        )
             ->where(function ($query) use ($terms): void {
                 foreach ($terms as $term) {
                     $like = '%'.mb_strtolower($term, 'UTF-8').'%';
@@ -605,14 +644,24 @@ class KnowledgeRetrievalService
         return min(self::MAX_PREFILTER_ROWS, max(80, max(1, $candidateLimit) * 12));
     }
 
-    private function knowledgeBaseHasRealEmbeddingRows(int $knowledgeBaseId): bool
+    private function knowledgeBaseHasRealEmbeddingRows(int $knowledgeBaseId, string $generation): bool
     {
-        return KnowledgeChunk::query()
-            ->where('knowledge_base_id', $knowledgeBaseId)
+        return $this->applyServingGeneration(
+            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId),
+            $generation,
+        )
             ->whereNotNull('embedding_model_id')
             ->where('embedding_model_id', '>', 0)
             ->where('embedding_dimensions', '>', 0)
             ->exists();
+    }
+
+    /** @param  Builder<KnowledgeChunk>  $query */
+    private function applyServingGeneration(Builder $query, string $generation): Builder
+    {
+        return $generation === ''
+            ? $query->whereNull('generation_key')
+            : $query->where('generation_key', $generation);
     }
 
     /**
@@ -843,7 +892,7 @@ class KnowledgeRetrievalService
     /**
      * @return array<int,float>
      */
-    private function fetchPgvectorScores(int $knowledgeBaseId, string $query, int $candidateLimit): array
+    private function fetchPgvectorScores(int $knowledgeBaseId, string $generation, string $query, int $candidateLimit): array
     {
         if (! $this->canUsePgvectorSearch()) {
             return [];
@@ -855,17 +904,22 @@ class KnowledgeRetrievalService
         }
 
         try {
+            $generationSql = $generation === '' ? 'AND generation_key IS NULL' : 'AND generation_key = ?';
+            $bindings = $generation === ''
+                ? [$vectorLiteral, $knowledgeBaseId, $vectorLiteral, max(1, $candidateLimit)]
+                : [$vectorLiteral, $knowledgeBaseId, $generation, $vectorLiteral, max(1, $candidateLimit)];
             $rows = DB::select(
                 '
                     SELECT chunk_index,
                            (embedding_vector <=> CAST(? AS vector)) AS vector_distance
                     FROM knowledge_chunks
                     WHERE knowledge_base_id = ?
+                      '.$generationSql.'
                       AND embedding_vector IS NOT NULL
                     ORDER BY embedding_vector <=> CAST(? AS vector), chunk_index ASC
                     LIMIT ?
                 ',
-                [$vectorLiteral, $knowledgeBaseId, $vectorLiteral, max(1, $candidateLimit)]
+                $bindings
             );
         } catch (Throwable) {
             return [];

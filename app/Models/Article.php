@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -35,6 +36,8 @@ class Article extends Model
         'is_featured',
         'published_at',
         'ai_quality_required_at_creation',
+        'ai_quality_retrieval_mode_override',
+        'ai_quality_policy_version',
         'ai_quality_policy_snapshot',
         'generation_evidence_snapshot',
     ];
@@ -52,6 +55,7 @@ class Article extends Model
             'is_featured' => 'boolean',
             'published_at' => 'datetime',
             'ai_quality_required_at_creation' => 'boolean',
+            'ai_quality_policy_version' => 'integer',
             'ai_quality_policy_snapshot' => 'array',
             'generation_evidence_snapshot' => 'array',
         ];
@@ -100,6 +104,18 @@ class Article extends Model
     public function aiQualityChecks(): HasMany
     {
         return $this->hasMany(ArticleAiQualityCheck::class);
+    }
+
+    public function aiQualityKnowledgeBases(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            KnowledgeBase::class,
+            'article_ai_quality_knowledge_bases'
+        )
+            ->withPivot(['sort_order'])
+            ->withTimestamps()
+            ->orderByPivot('sort_order')
+            ->orderBy('knowledge_bases.id');
     }
 
     public function latestAiQualityCheck(): HasOne

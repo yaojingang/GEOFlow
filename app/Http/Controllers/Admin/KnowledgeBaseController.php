@@ -2,25 +2,27 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Exceptions\SystemKnowledgeBaseDeletionException;
+use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeBaseRevision;
 use App\Models\KnowledgeChunk;
-use App\Models\KnowledgeFactGenerationRun;
 use App\Models\Task;
 use App\Services\AiWorkspace\AdminHelpFeatureRegistry;
 use App\Services\AiWorkspace\SystemKnowledgeBaseManager;
 use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
+use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactLibraryPresenter;
+use App\Services\GeoFlow\MaterialLibraryService;
 use App\Support\AdminActivityLogger;
 use App\Support\AdminWeb;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -45,6 +47,8 @@ class KnowledgeBaseController extends Controller
         private readonly ArticleAiQualityInvalidationService $qualityInvalidationService,
         private readonly SystemKnowledgeBaseManager $systemKnowledgeBases,
         private readonly AdminHelpFeatureRegistry $adminHelpFeatures,
+        private readonly KnowledgeFactLibraryPresenter $factLibraryPresenter,
+        private readonly MaterialLibraryService $materialLibraryService,
     ) {}
 
     /**
@@ -84,8 +88,7 @@ class KnowledgeBaseController extends Controller
     {
         $knowledgeBase = KnowledgeBase::query()
             ->with([
-                'systemBinding', 'revisions.creator', 'mediaAssets.creator', 'factLibrary.revisions',
-                'factLibrary.facts' => fn ($query) => $query->with(['values' => fn ($query) => $query->withCount('evidences')]),
+                'systemBinding', 'revisions.creator', 'mediaAssets.creator', 'factLibrary.activeRevision',
             ])
             ->whereKey($knowledgeBaseId)
             ->firstOrFail();
@@ -109,11 +112,7 @@ class KnowledgeBaseController extends Controller
             'relatedTasks' => $this->loadRelatedTasks($knowledgeBaseId),
             'chunkStats' => $this->loadChunkStats($knowledgeBaseId),
             'chunkPreviewRows' => $this->loadChunkPreviewRows($knowledgeBaseId),
-            'factEvidenceChunks' => $knowledgeBase->chunks()->select(['id', 'knowledge_base_id', 'section_path', 'content_hash'])->orderBy('chunk_index')->limit(200)->get(),
-            'factGenerationModels' => AiModel::query()->where('status', 'active')->whereNotIn('model_type', ['embedding', 'image'])->orderBy('name')->get(['id', 'name', 'model_id']),
-            'factGenerationRuns' => $knowledgeBase->factLibrary
-                ? KnowledgeFactGenerationRun::query()->where('library_id', $knowledgeBase->factLibrary->id)->latest('id')->limit(10)->get()
-                : collect(),
+            'factSummary' => $knowledgeBase->factLibrary ? $this->factLibraryPresenter->summary($knowledgeBase->factLibrary) : null,
             'isSystemKnowledge' => $isSystemKnowledge,
             'systemKnowledgeHealth' => $systemKnowledgeHealth,
             'systemOfficialContent' => $systemOfficialContent,
@@ -122,6 +121,29 @@ class KnowledgeBaseController extends Controller
                 ->filter(fn ($asset): bool => $admin instanceof Admin
                     && $this->adminHelpFeatures->canAccessRoute($admin, (string) $asset->route_name))
                 ->values(),
+        ]);
+    }
+
+    /**
+     * 知识切片管理页。
+     */
+    public function chunks(int $knowledgeBaseId): View
+    {
+        $knowledgeBase = KnowledgeBase::query()
+            ->with('systemBinding')
+            ->whereKey($knowledgeBaseId)
+            ->firstOrFail();
+        $admin = auth('admin')->user();
+
+        return view('admin.knowledge-bases.chunks.index', [
+            'pageTitle' => __('admin.knowledge_chunks.page_title'),
+            'activeMenu' => 'materials',
+            'adminSiteName' => AdminWeb::siteName(),
+            'knowledgeBase' => $knowledgeBase,
+            'chunkStats' => $this->loadChunkStats($knowledgeBaseId),
+            'chunkRows' => $this->paginateChunkRows($knowledgeBaseId),
+            'systemReadOnly' => $knowledgeBase->isSystemManaged()
+                && ! ($admin instanceof Admin && $admin->canManageProtectedWorkflows()),
         ]);
     }
 
@@ -238,6 +260,7 @@ class KnowledgeBaseController extends Controller
                 'risk_level' => (string) ($knowledgeBase->risk_level ?? 'medium'),
                 'review_status' => (string) ($knowledgeBase->review_status ?? 'unreviewed'),
             ],
+            'knowledgeBase' => $knowledgeBase,
             'chunkCount' => (int) $knowledgeBase->chunks()->count(),
             'isSystemKnowledge' => $isSystemKnowledge,
             'systemKnowledgeHealth' => $isSystemKnowledge ? $this->systemKnowledgeBases->health($knowledgeBase) : null,
@@ -309,22 +332,18 @@ class KnowledgeBaseController extends Controller
      */
     public function destroy(int $knowledgeBaseId): RedirectResponse
     {
-        $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
-
         try {
-            $this->systemKnowledgeBases->assertDeletable($knowledgeBase);
-        } catch (SystemKnowledgeBaseDeletionException $exception) {
+            $this->materialLibraryService->delete('knowledge-bases', $knowledgeBaseId);
+        } catch (ApiException $exception) {
+            if ($exception->getErrorCode() === 'material_in_use') {
+                $details = $exception->getDetails();
+                $count = (int) ($details['task_count'] ?? 0) + (int) ($details['article_count'] ?? 0);
+
+                return back()->withErrors(__('admin.knowledge_bases.error.in_use', ['count' => max(1, $count)]));
+            }
+
             return back()->withErrors($exception->getMessage());
         }
-
-        $taskCount = $this->knowledgeBaseTaskCount($knowledgeBaseId);
-        if ($taskCount > 0) {
-            return back()->withErrors(__('admin.knowledge_bases.error.in_use', ['count' => $taskCount]));
-        }
-
-        $filePath = (string) ($knowledgeBase->file_path ?? '');
-        $knowledgeBase->delete();
-        $this->cleanupKnowledgeFile($filePath);
 
         return redirect()->route('admin.knowledge-bases.index')->with('message', __('admin.knowledge_bases.message.delete_success'));
     }
@@ -767,11 +786,6 @@ class KnowledgeBaseController extends Controller
             ->get();
     }
 
-    private function knowledgeBaseTaskCount(int $knowledgeBaseId): int
-    {
-        return count($this->taskIdsUsingKnowledgeBase($knowledgeBaseId));
-    }
-
     /**
      * @return list<int>
      */
@@ -836,6 +850,42 @@ class KnowledgeBaseController extends Controller
                     'section_path' => (string) ($chunk->section_path ?? ''),
                     'chunk_strategy' => (string) ($chunk->chunk_strategy ?? 'structured_rule'),
                     'content_preview' => $preview,
+                ];
+            });
+    }
+
+    /**
+     * @return LengthAwarePaginator<int, array<string, mixed>>
+     */
+    private function paginateChunkRows(int $knowledgeBaseId): LengthAwarePaginator
+    {
+        return KnowledgeChunk::query()
+            ->select([
+                'chunk_index',
+                'content',
+                'chunk_title',
+                'section_path',
+                'chunk_strategy',
+                'token_count',
+                'embedding_model_id',
+                'embedding_dimensions',
+                'embedding_provider',
+            ])
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->orderBy('chunk_index')
+            ->paginate(30)
+            ->through(static function (KnowledgeChunk $chunk): array {
+                return [
+                    'chunk_index' => (int) $chunk->chunk_index,
+                    'content_length' => mb_strlen((string) $chunk->content, 'UTF-8'),
+                    'token_count' => (int) ($chunk->token_count ?? 0),
+                    'embedding_model_id' => $chunk->embedding_model_id !== null ? (int) $chunk->embedding_model_id : null,
+                    'embedding_dimensions' => (int) ($chunk->embedding_dimensions ?? 0),
+                    'embedding_provider' => (string) ($chunk->embedding_provider ?? ''),
+                    'chunk_title' => (string) ($chunk->chunk_title ?? ''),
+                    'section_path' => (string) ($chunk->section_path ?? ''),
+                    'chunk_strategy' => (string) ($chunk->chunk_strategy ?? 'structured_rule'),
+                    'content_preview' => mb_substr(trim((string) $chunk->content), 0, 240, 'UTF-8'),
                 ];
             });
     }
@@ -1052,14 +1102,6 @@ class KnowledgeBaseController extends Controller
         }
 
         throw new \RuntimeException(__('admin.knowledge_bases.error.file_type_invalid'));
-    }
-
-    /**
-     * 清理上传失败或删除后的知识文件。
-     */
-    private function cleanupKnowledgeFile(string $relativePath): void
-    {
-        $this->cleanupKnowledgeFiles($this->decodeKnowledgeFilePaths($relativePath));
     }
 
     /**

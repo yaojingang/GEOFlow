@@ -997,6 +997,13 @@ return array_replace_recursive($base, [
         'es' => 'Español',
         'ru' => 'Ruso',
     ],
+    'knowledge_navigation' => [
+        'label' => 'Navegación de gestión de :name', 'current' => 'Base actual', 'chunks' => 'Fragmentos', 'facts' => 'Hechos atómicos',
+    ],
+    'knowledge_chunks' => [
+        'page_title' => 'Gestión de fragmentos', 'subtitle' => 'Revisa el contenido, el estado vectorial y los metadatos de recuperación.', 'status_label' => 'Estado de fragmentos',
+        'list_title' => 'Fragmentos de conocimiento', 'list_desc' => 'Muestra 30 fragmentos por página para revisar límites, tokens y estado vectorial.',
+    ],
     'knowledge_facts' => [
         'title' => 'Biblioteca de hechos atómicos', 'description' => 'Mantén respuestas verificables, alcance temporal y evidencias.', 'working_version' => 'Versión de borrador',
         'label' => 'Nombre del indicador', 'subject' => 'Sujeto', 'predicate' => 'Predicado', 'add' => 'Añadir hecho', 'empty' => 'Aún no hay hechos atómicos.', 'publish' => 'Publicar versión revisada',

@@ -43,7 +43,7 @@ services:
       dockerfile: docker/Dockerfile
       args:
         PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
+        PECL_REDIS_VERSION: ${PECL_REDIS_VERSION:-6.3.0}
     container_name: geoflow-init
     working_dir: /var/www/html
     env_file:
@@ -65,12 +65,6 @@ services:
 
   app:
     image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
     container_name: geoflow-app
     working_dir: /var/www/html
     environment:
@@ -102,12 +96,6 @@ services:
 
   queue:
     image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
     container_name: geoflow-queue
     working_dir: /var/www/html
     environment:
@@ -126,12 +114,6 @@ services:
 
   ai-quality-queue:
     image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
@@ -151,12 +133,6 @@ services:
 
   ai-quality-backfill-queue:
     image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
     container_name: geoflow-ai-quality-backfill-queue
     working_dir: /var/www/html
     environment:
@@ -175,12 +151,6 @@ services:
 
   ai-optimization-queue:
     image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
     container_name: geoflow-ai-optimization-queue
     working_dir: /var/www/html
     environment:
@@ -199,12 +169,6 @@ services:
 
   knowledge-queue:
     image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
     container_name: geoflow-knowledge-queue
     working_dir: /var/www/html
     environment:
@@ -223,12 +187,6 @@ services:
 
   scheduler:
     image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
     container_name: geoflow-scheduler
     working_dir: /var/www/html
     environment:
@@ -245,12 +203,6 @@ services:
 
   reverb:
     image: geoflow-app:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
-        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-}
     container_name: geoflow-reverb
     working_dir: /var/www/html
     environment:

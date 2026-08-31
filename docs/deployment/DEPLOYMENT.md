@@ -122,7 +122,7 @@ $COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-b
 ```bash
 # 1. 先进入维护模式，再停止入口和所有旧版常驻进程。
 $COMPOSE_PROD exec app php artisan down
-$COMPOSE_PROD stop web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb
+$COMPOSE_PROD stop web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb
 docker stop --time 900 geoflow-system-update-queue-prod 2>/dev/null || true
 
 # 2. 等待负载均衡连接、PHP 请求、队列任务和调度任务全部结束；确认零在途后停止 app。
@@ -138,19 +138,27 @@ $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up init
 
-# 5. 迁移成功后立即将一次性确认恢复为 false，再启动全部新版本进程：
+# 5. 迁移成功后立即将一次性确认恢复为 false。先保持入口和常驻队列停止，执行三层召回回填：
 # GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED=false
+$COMPOSE_PROD run --rm app php artisan geoflow:backfill-ai-quality-retrieval --dry-run
+$COMPOSE_PROD run --rm app php artisan geoflow:backfill-ai-quality-retrieval
+$COMPOSE_PROD run --rm app php artisan geoflow:backfill-ai-quality-retrieval --dry-run
+
+# 6. 最后一次 dry-run 的 tasks、tasks_deferred、checks、checks_staled、sources、knowledge_bases、
+# readiness_projections、atomic_fact_counts 必须全部为 0，再启动全部新版本进程。
 $COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb
 
-# 6. 回填并检查受管图片身份；remaining、terminal、registry_failed 必须都为 0。
+# 7. 回填并检查受管图片身份；remaining、terminal、registry_failed 必须都为 0。
 $COMPOSE_PROD run --rm app php artisan geoflow:managed-images:readiness
 
-# 7. 运行只读安全审计，并逐项处理或确认 finding。
+# 8. 运行只读安全审计，并逐项处理或确认 finding。
 $COMPOSE_PROD run --rm app php artisan geoflow:security-audit
 
-# 8. 退出维护模式并恢复流量。
+# 9. 退出维护模式并恢复流量。
 $COMPOSE_PROD exec app php artisan up
 ```
+
+三层召回回填会在行锁内补齐知识库正文摘要、切片服务代次、原子事实数量、任务召回模式和历史质检来源账本。缺少可用切片的历史任务会计入 `tasks_deferred` 并保留空召回模式；缺少可验证召回依据的历史发布门禁结果会转为 `stale`，等待新版本重新质检。出现 `tasks_deferred` 时，保持维护模式，先修复对应知识库的切片同步，再重复执行实际回填和 dry-run。最终校验未全部归零时停止发布，不恢复入口流量。
 
 readiness 命令会回填已有图片路径哈希，并在路径锁内对账注册表、文件状态和内容哈希。永久无效的历史路径会保留稳定终态哈希，并计入 `terminal`；文件缺失、身份不一致或无法安全读取会计入 `registry_failed`。确认输出表格的 `remaining`、`terminal`、`registry_failed` 都为 `0`，再运行 `geoflow:security-audit`。该审计命令严格只读，不回填哈希、不修改数据库、不访问 HTTP/DNS，也不启动外部进程。人工可读模式和 JSON 模式使用相同 finding 集合：
 

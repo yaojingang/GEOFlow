@@ -48,6 +48,11 @@ class ArticleAiQualityCheck extends Model
         'gate_applied',
         'evaluation_mode',
         'inspection_scope',
+        'requested_retrieval_mode',
+        'effective_retrieval_mode',
+        'retrieval_strategy_version',
+        'retrieval_failure_code',
+        'retrieval_basis_hash',
         'fallback_trigger_code',
         'baseline_check_id',
         'scoring_version',
@@ -166,6 +171,11 @@ class ArticleAiQualityCheck extends Model
     public function segments(): HasMany
     {
         return $this->hasMany(ArticleAiQualitySegment::class);
+    }
+
+    public function sources(): HasMany
+    {
+        return $this->hasMany(ArticleAiQualityCheckSource::class);
     }
 
     public function sourceOptimizationRuns(): HasMany

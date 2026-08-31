@@ -470,6 +470,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('create', [KnowledgeBaseController::class, 'store'])->name('store');
             Route::get('{knowledgeBaseId}/edit', [KnowledgeBaseController::class, 'edit'])->name('edit');
             Route::get('{knowledgeBaseId}/detail', [KnowledgeBaseController::class, 'detail'])->name('detail');
+            Route::get('{knowledgeBaseId}/chunks', [KnowledgeBaseController::class, 'chunks'])
+                ->name('chunks.index')->whereNumber('knowledgeBaseId');
             Route::post('upload', [KnowledgeBaseController::class, 'uploadFile'])->name('upload');
             Route::post('{knowledgeBaseId}/chunks/refresh', [KnowledgeBaseController::class, 'refreshChunks'])->name('chunks.refresh');
             Route::post('{knowledgeBaseId}/revisions/{revisionId}/restore', [KnowledgeBaseController::class, 'restoreRevision'])
@@ -486,6 +488,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 ->name('media.replace')->whereNumber(['knowledgeBaseId', 'mediaAsset']);
             Route::post('{knowledgeBaseId}/media/{mediaAsset}/toggle', [KnowledgeBaseMediaController::class, 'toggle'])
                 ->name('media.toggle')->whereNumber(['knowledgeBaseId', 'mediaAsset']);
+            Route::get('{knowledgeBaseId}/facts', [KnowledgeFactController::class, 'index'])->name('facts.index')->whereNumber('knowledgeBaseId');
             Route::post('{knowledgeBaseId}/facts', [KnowledgeFactController::class, 'store'])->name('facts.store')->whereNumber('knowledgeBaseId');
             Route::put('{knowledgeBaseId}/facts/{factId}', [KnowledgeFactController::class, 'update'])->name('facts.update')->whereNumber(['knowledgeBaseId', 'factId']);
             Route::post('{knowledgeBaseId}/facts/{factId}/review', [KnowledgeFactController::class, 'review'])->name('facts.review')->whereNumber(['knowledgeBaseId', 'factId']);

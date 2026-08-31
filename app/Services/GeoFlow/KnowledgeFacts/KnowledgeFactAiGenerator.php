@@ -14,7 +14,12 @@ use Throwable;
 
 class KnowledgeFactAiGenerator
 {
-    public function __construct(private readonly ApiKeyCrypto $crypto, private readonly AiUsageQuotaService $quota, private readonly AiWorkspaceModelReadiness $readiness) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $crypto,
+        private readonly AiUsageQuotaService $quota,
+        private readonly AiWorkspaceModelReadiness $readiness,
+        private readonly KnowledgeFactStableKeyPolicy $stableKeyPolicy,
+    ) {}
 
     /** @param list<array<string,string>> $evidence @return list<array<string,mixed>> */
     public function generate(AiModel $model, array $evidence, int $count): array
@@ -83,6 +88,12 @@ class KnowledgeFactAiGenerator
             || ! in_array((string) ($fact['value_type'] ?? ''), ['string', 'integer', 'decimal', 'number', 'date', 'boolean', 'url'], true)) {
             return null;
         }
+        $fact['stable_key'] = $this->stableKeyPolicy->normalize(
+            $fact['stable_key'],
+            $fact['subject'],
+            $fact['predicate'],
+            $fact['label'],
+        );
         if (in_array($fact['value_type'], ['integer', 'decimal', 'number'], true)
             && preg_match('/\A-?(?:0|[1-9]\d*)(?:\.\d+)?\z/', $fact['canonical_value']) !== 1) {
             return null;

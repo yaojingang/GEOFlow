@@ -193,6 +193,8 @@ final class AdminUiRegistry
             'admin.knowledge-bases.create' => ['key' => 'knowledge_base_create', 'icon' => 'library-big', 'body_heading' => 'hidden'],
             'admin.knowledge-bases.edit' => ['key' => 'knowledge_base_edit', 'icon' => 'library-big', 'body_heading' => 'hidden'],
             'admin.knowledge-bases.detail' => ['key' => 'knowledge_base_detail', 'icon' => 'file-search', 'body_heading' => 'content'],
+            'admin.knowledge-bases.chunks.index' => ['key' => 'knowledge_base_chunks', 'icon' => 'blocks', 'body_heading' => 'content'],
+            'admin.knowledge-bases.facts.index' => ['key' => 'knowledge_base_facts', 'icon' => 'list-checks', 'body_heading' => 'content'],
             'admin.enterprise-knowledge.index' => ['key' => 'enterprise_knowledge', 'icon' => 'database-zap', 'body_heading' => 'hidden'],
             'admin.enterprise-knowledge.create' => ['key' => 'enterprise_knowledge_create', 'icon' => 'database-zap', 'body_heading' => 'hidden'],
             'admin.enterprise-knowledge.show' => ['key' => 'enterprise_knowledge_detail', 'icon' => 'file-search', 'body_heading' => 'content'],

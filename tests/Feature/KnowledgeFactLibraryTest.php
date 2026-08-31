@@ -2,9 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\GenerateKnowledgeFactBatchJob;
+use App\Jobs\ReconcileArticleAiQualityJob;
 use App\Models\Admin;
 use App\Models\AdminActivityLog;
 use App\Models\AiModel;
+use App\Models\Article;
+use App\Models\Author;
+use App\Models\Category;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFact;
@@ -20,6 +25,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -30,6 +36,47 @@ use Tests\TestCase;
 class KnowledgeFactLibraryTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_fact_workbench_is_paginated_and_scoped_to_parent_knowledge_base(): void
+    {
+        $admin = Admin::query()->create(['username' => 'workbench', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $base = KnowledgeBase::query()->create(['name' => 'Workbench']);
+        $other = KnowledgeBase::query()->create(['name' => 'Other']);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $otherLibrary = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $other->id]);
+        foreach (range(1, 26) as $index) {
+            $library->facts()->create(['stable_key' => 'workbench.fact.'.$index, 'label' => '指标 '.$index, 'subject' => 'GEOFlow', 'predicate' => '值为', 'value_type' => 'string']);
+        }
+        $otherLibrary->facts()->create(['stable_key' => 'other.secret', 'label' => '其他库秘密指标', 'subject' => '其他', 'predicate' => '值为', 'value_type' => 'string']);
+
+        $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => (int) $admin->auth_version])->actingAs($admin, 'admin')
+            ->get(route('admin.knowledge-bases.facts.index', $base->id))
+            ->assertOk()
+            ->assertSee('原子事实工作台')
+            ->assertSee('指标 1')
+            ->assertDontSee('其他库秘密指标')
+            ->assertSee('page=2', false);
+    }
+
+    public function test_generation_status_exposes_operable_progress_fields(): void
+    {
+        $admin = Admin::query()->create(['username' => 'progress-fields', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $base = KnowledgeBase::query()->create(['name' => 'Progress fields']);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $run = KnowledgeFactGenerationRun::query()->create([
+            'library_id' => $library->id, 'mode' => 'supplement', 'target_count' => 20, 'source_hash' => str_repeat('a', 64),
+            'base_working_version' => 1, 'status' => 'running', 'request_key' => (string) Str::uuid(), 'active_key' => 'active',
+            'result_json' => ['candidates' => [], 'conflicts' => []], 'started_at' => now()->subSeconds(4),
+        ]);
+
+        $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => (int) $admin->auth_version])->actingAs($admin, 'admin')
+            ->getJson(route('admin.knowledge-bases.fact-generation.show', [$base->id, $run->id]))
+            ->assertOk()
+            ->assertJsonPath('data.run.mode', 'supplement')
+            ->assertJsonPath('data.run.target_count', 20)
+            ->assertJsonPath('data.run.batch.completed', 0)
+            ->assertJsonStructure(['data' => ['run' => ['cancel_url', 'elapsed_seconds', 'actionable_error', 'batch']]]);
+    }
 
     public function test_atomic_fact_schema_and_relationships_are_available(): void
     {
@@ -112,7 +159,9 @@ class KnowledgeFactLibraryTest extends TestCase
         $this->assertSame('128', data_get($revision->manifest_json, 'facts.0.values.0.canonical_value.value'));
 
         $second = app(KnowledgeFactPublisher::class)->publish($library->fresh(), $admin);
-        $this->assertSame(2, $second->version);
+        $this->assertSame(1, $second->version);
+        $this->assertSame($revision->id, $second->id);
+        $this->assertSame(1, $library->revisions()->count());
         $this->assertSame($revision->library_hash, $second->library_hash);
     }
 
@@ -168,6 +217,47 @@ class KnowledgeFactLibraryTest extends TestCase
         Bus::assertBatched(fn (PendingBatch $batch): bool => $batch->jobs->count() > 0 && $batch->jobs->count() <= 8 && $batch->allowsFailures());
         $this->expectException(\RuntimeException::class);
         app(KnowledgeFactGenerationCoordinator::class)->start($library, $model, $admin, 'supplement', 10);
+    }
+
+    public function test_generation_job_can_be_added_to_a_laravel_batch(): void
+    {
+        $job = new GenerateKnowledgeFactBatchJob(1, 1, str_repeat('a', 64), []);
+
+        $batch = Bus::batch([$job]);
+
+        $this->assertCount(1, $batch->jobs);
+    }
+
+    public function test_generation_status_exposes_safe_modal_payload_and_detail_renders_workbench_entry(): void
+    {
+        $admin = Admin::query()->create(['username' => 'progress-dialog', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $knowledgeBase = KnowledgeBase::query()->create(['name' => 'Progress', 'chunk_sync_status' => 'ready', 'chunk_source_hash' => str_repeat('a', 64)]);
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $knowledgeBase->id]);
+        $run = KnowledgeFactGenerationRun::query()->create([
+            'library_id' => $library->id, 'mode' => 'initial', 'target_count' => 10, 'source_hash' => str_repeat('a', 64),
+            'base_working_version' => 1, 'status' => 'running', 'request_key' => (string) Str::uuid(), 'active_key' => 'active',
+            'result_json' => ['candidates' => [['stable_key' => 'must.not.leak']], 'conflicts' => []],
+            'error_message' => 'internal exception details must not leak',
+        ]);
+        $session = [Admin::AUTH_VERSION_SESSION_KEY => (int) $admin->auth_version];
+
+        $this->withSession($session)->actingAs($admin, 'admin')
+            ->getJson(route('admin.knowledge-bases.fact-generation.show', [$knowledgeBase->id, $run->id]))
+            ->assertOk()
+            ->assertJsonPath('data.run.id', $run->id)
+            ->assertJsonPath('data.run.status', 'running')
+            ->assertJsonPath('data.run.active', true)
+            ->assertJsonPath('data.run.candidate_count', 1)
+            ->assertJsonPath('data.run.progress_percent', 15)
+            ->assertJsonMissingPath('data.run.result_json')
+            ->assertJsonMissingPath('data.run.error_message');
+
+        $this->withSession($session)->actingAs($admin, 'admin')
+            ->get(route('admin.knowledge-bases.detail', $knowledgeBase->id))
+            ->assertOk()
+            ->assertSee('进入原子事实工作台')
+            ->assertSee(route('admin.knowledge-bases.facts.index', $knowledgeBase->id), false)
+            ->assertDontSee('data-atomic-fact-generation-dialog', false);
     }
 
     public function test_generation_cancel_is_immediately_terminal_and_releases_active_key(): void
@@ -298,6 +388,76 @@ class KnowledgeFactLibraryTest extends TestCase
         $this->assertSame($chunk->id, $evidence->fresh()->knowledge_chunk_id);
         $this->assertSame(str_repeat('c', 64), $evidence->fresh()->source_hash);
         $this->assertSame('unavailable', $library->fresh()->serving_status);
+    }
+
+    public function test_reconciler_requeues_atomic_quality_when_a_stale_library_becomes_ready(): void
+    {
+        Queue::fake();
+        $servingSourceHash = str_repeat('a', 64);
+        $chunkContentHash = str_repeat('b', 64);
+        $chunkSourceHash = str_repeat('c', 64);
+        $base = KnowledgeBase::query()->create([
+            'name' => 'Recovered atomic evidence',
+            'content' => '公司成立于 2020 年。',
+            'chunk_sync_status' => 'ready',
+            'chunk_source_hash' => $servingSourceHash,
+            'chunk_serving_generation' => 'generation-ready',
+            'chunk_serving_source_hash' => $servingSourceHash,
+        ]);
+        KnowledgeChunk::query()->create([
+            'knowledge_base_id' => $base->id,
+            'chunk_index' => 0,
+            'content' => '公司成立于 2020 年。',
+            'content_hash' => $chunkContentHash,
+            'source_hash' => $chunkSourceHash,
+            'generation_key' => 'generation-ready',
+        ]);
+        $library = KnowledgeFactLibrary::query()->create([
+            'knowledge_base_id' => $base->id,
+            'serving_status' => 'stale',
+            'source_hash' => $servingSourceHash,
+        ]);
+        $revision = $library->revisions()->create([
+            'version' => 1,
+            'library_hash' => hash('sha256', 'recovered-facts'),
+            'source_hash' => $servingSourceHash,
+            'published_at' => now(),
+            'manifest_json' => ['facts' => [[
+                'values' => [[
+                    'evidence' => [[
+                        'source_hash' => $chunkSourceHash,
+                        'content_hash' => $chunkContentHash,
+                    ]],
+                ]],
+            ]]],
+        ]);
+        $library->forceFill([
+            'active_revision_id' => $revision->id,
+            'active_hash' => $revision->library_hash,
+            'active_fact_count' => 1,
+        ])->save();
+        $category = Category::query()->create(['name' => '原子恢复分类', 'slug' => 'atomic-recovery-category']);
+        $author = Author::query()->create(['name' => '原子恢复作者']);
+        $article = Article::query()->create([
+            'title' => '等待原子事实恢复的文章',
+            'slug' => 'waiting-atomic-evidence-recovery',
+            'content' => '公司成立于 2020 年。',
+            'status' => 'draft',
+            'review_status' => 'pending',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'ai_quality_required_at_creation' => true,
+            'ai_quality_retrieval_mode_override' => 'atomic_first',
+        ]);
+        $article->aiQualityKnowledgeBases()->sync([$base->id => ['sort_order' => 0]]);
+
+        app(KnowledgeFactEvidenceReconciler::class)->reconcile($base->id, $servingSourceHash);
+
+        $this->assertSame('ready', $library->fresh()->serving_status);
+        Queue::assertPushed(
+            ReconcileArticleAiQualityJob::class,
+            static fn (ReconcileArticleAiQualityJob $job): bool => in_array($article->id, $job->articleIds, true),
+        );
     }
 
     public function test_generation_diagnostic_prune_dry_run_is_non_mutating_and_real_run_rehashes_summary(): void

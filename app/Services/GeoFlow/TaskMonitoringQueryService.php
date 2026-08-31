@@ -420,6 +420,18 @@ class TaskMonitoringQueryService
                 'prompt_id' => $this->nullableInt($task->prompt_id),
                 'ai_model_id' => $this->nullableInt($task->ai_model_id),
                 'ai_quality_enabled' => (bool) ($task->ai_quality_enabled ?? false),
+                'ai_quality_retrieval_mode' => (string) ($task->ai_quality_retrieval_mode ?: 'chunk'),
+                'ai_quality_policy_version' => max(1, (int) ($task->ai_quality_policy_version ?? 1)),
+                'ai_quality_config_version' => max(
+                    1,
+                    (int) ($task->ai_quality_config_version ?? 1),
+                    (int) ($task->ai_quality_policy_version ?? 1),
+                ),
+                'config_version' => max(
+                    1,
+                    (int) ($task->ai_quality_config_version ?? 1),
+                    (int) ($task->ai_quality_policy_version ?? 1),
+                ),
                 'ai_quality_timeout_sampling_enabled' => (bool) ($task->ai_quality_timeout_sampling_enabled ?? false),
                 'ai_quality_auto_optimize_enabled' => (bool) ($task->ai_quality_auto_optimize_enabled ?? false),
                 'ai_quality_optimization_level' => (string) ($task->ai_quality_optimization_level ?? ArticleAiOptimizationPolicy::STRATEGY_EXCELLENT_80),

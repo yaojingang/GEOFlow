@@ -85,7 +85,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(100, $shellRoutes);
+        $this->assertCount(102, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
@@ -406,7 +406,9 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.keyword-libraries.import.create' => ['libraryId' => $keywordLibrary->id],
             'admin.keyword-libraries.keywords.create' => ['libraryId' => $keywordLibrary->id],
             'admin.knowledge-bases.detail' => ['knowledgeBaseId' => $knowledgeBase->id],
+            'admin.knowledge-bases.chunks.index' => ['knowledgeBaseId' => $knowledgeBase->id],
             'admin.knowledge-bases.edit' => ['knowledgeBaseId' => $knowledgeBase->id],
+            'admin.knowledge-bases.facts.index' => ['knowledgeBaseId' => $knowledgeBase->id],
             'admin.knowledge-bases.fact-generation.show' => ['knowledgeBaseId' => $knowledgeBase->id, 'runId' => $factGenerationRun->id],
             'admin.lead-forms.edit' => ['formId' => $leadForm->id],
             'admin.leads.show' => ['submissionId' => $lead->id],

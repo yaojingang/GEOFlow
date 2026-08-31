@@ -280,6 +280,7 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
 
         $candidate->forceFill([
             'status' => 'completed',
+            'active_dedupe_key' => null,
             'decision' => 'passed',
             'score' => 88,
             'issues' => [],
@@ -1552,7 +1553,9 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         $token = $admin->createToken('auto-optimization-recheck', ['articles:publish'])->plainTextToken;
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->withHeader('X-Idempotency-Key', 'auto-optimization-recheck-after-apply')
-            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck")
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck", [
+                'config_version' => (int) $article->fresh()->ai_quality_policy_version,
+            ])
             ->assertOk()
             ->assertJsonPath('data.ai_quality.status', 'queued');
     }
@@ -1874,6 +1877,58 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         $this->assertNotSame('waiting_optimization', data_get($check->fresh()->execution_meta, 'workflow_apply.status'));
     }
 
+    public function test_task_auto_start_rejects_a_disabled_or_mismatched_current_policy(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        [$article, $model] = $this->qualityArticle();
+        $article->task()->update([
+            'ai_quality_auto_optimize_enabled' => false,
+            'ai_quality_optimization_level' => 'excellent_90',
+        ]);
+
+        try {
+            app(ArticleAiOptimizationCoordinator::class)->start(
+                $article,
+                'excellent_80',
+                $model,
+                ArticleAiOptimizationRun::TRIGGER_TASK_AUTO,
+                dispatch: false,
+            );
+            $this->fail('Expected the current task auto-optimization policy to reject the run.');
+        } catch (ArticleAiOptimizationException $exception) {
+            $this->assertSame('article_ai_optimization_task_policy_changed', $exception->errorCode());
+            $this->assertSame(409, $exception->httpStatus());
+        }
+
+        $this->assertDatabaseCount('article_ai_optimization_runs', 0);
+    }
+
+    public function test_claim_stales_a_queued_auto_run_when_the_task_policy_changes(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        [$article, $model] = $this->qualityArticle();
+        $article->task()->update([
+            'ai_quality_auto_optimize_enabled' => true,
+            'ai_quality_optimization_level' => 'excellent_80',
+        ]);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article->fresh(),
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_TASK_AUTO,
+            dispatch: false,
+        );
+
+        $article->task()->update(['ai_quality_optimization_level' => 'excellent_90']);
+        $coordinator->process((int) $run->id);
+
+        $run->refresh();
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_STALE, $run->status);
+        $this->assertSame('task_auto_optimization_policy_changed', $run->stop_reason);
+        $this->assertNull($run->active_dedupe_key);
+    }
+
     public function test_changing_task_optimization_level_restarts_evaluation_with_the_new_target(): void
     {
         config()->set('geoflow.ai_quality_optimization_enabled', true);
@@ -1975,6 +2030,7 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'ai_model_id' => $model->id,
             'knowledge_base_id' => $knowledgeBase->id,
             'ai_quality_enabled' => true,
+            'ai_quality_retrieval_mode' => 'knowledge_broad',
             'ai_quality_prompt_id' => $qualityPrompt->id,
             'ai_quality_model_id' => $model->id,
             'ai_quality_pass_score' => 85,
@@ -1997,13 +2053,15 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'ai_quality_required_at_creation' => true,
         ]);
         $snapshot = app(ArticleAiQualityPolicyResolver::class)->articleSnapshot($article);
-        $check = ArticleAiQualityCheck::query()->create([
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
             'article_id' => $article->id,
             'task_id' => $task->id,
             'prompt_id' => $qualityPrompt->id,
             'ai_model_id' => $model->id,
             'request_key' => (string) Str::uuid(),
             'status' => 'completed',
+            'active_dedupe_key' => null,
             'decision' => 'blocked',
             'score' => 62,
             'pass_score' => 85,
@@ -2030,7 +2088,7 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             ]],
             'evidence_snapshot' => [],
             'finished_at' => now(),
-        ]);
+        ])->save();
         $qualityPolicy = app(ArticleAiQualityPolicyResolver::class)->resolveForManualInspection($article->fresh());
         $versionSelection = app(ArticleAiQualityVersionPolicy::class)->selection((int) $article->id);
         $fullRules = app(ArticleAiQualityInspectionService::class)->rules();
@@ -2059,11 +2117,11 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'prompt_template_snapshot' => (string) $qualityPrompt->content,
             'advertising_rules_snapshot' => $rules,
             'knowledge_hash' => hash('sha256', 'knowledge'),
-            'execution_meta' => [
+            'execution_meta' => array_replace(is_array($check->execution_meta) ? $check->execution_meta : [], [
                 'policy_snapshot' => app(ArticleAiQualityPolicyResolver::class)->snapshot($qualityPolicy),
                 'version_selection' => $versionSelection,
                 'principle_snapshot' => $principleSnapshot,
-            ],
+            ]),
         ])->save();
 
         $this->assertSame(

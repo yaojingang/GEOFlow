@@ -209,21 +209,48 @@ class ArticleAiQualityResultValidator
             }
         }
         $evidenceByKey = [];
+        $evidenceReferenceMap = [];
         foreach ($evidence as $item) {
             $stableKey = trim((string) ($item['stable_key'] ?? ''));
             if ($stableKey !== '') {
                 $evidenceByKey[$stableKey] = $item;
+                $evidenceReferenceMap[$stableKey] = $stableKey;
+                $evidenceId = trim((string) ($item['id'] ?? ''));
+                if ($evidenceId !== '') {
+                    $evidenceReferenceMap[$evidenceId] = $stableKey;
+                }
             }
         }
 
-        $reviewedClaimHashes = array_values(array_unique(array_map(
-            'strval',
-            array_filter($result['reviewed_claim_hashes'], static fn (mixed $hash): bool => is_scalar($hash)),
-        )));
+        $modelReviewedClaimHashes = array_values(array_map(
+            static fn (mixed $hash): string => is_scalar($hash) ? trim((string) $hash) : '',
+            $result['reviewed_claim_hashes'],
+        ));
+        if (in_array('', $modelReviewedClaimHashes, true)
+            || count($modelReviewedClaimHashes) !== count(array_unique($modelReviewedClaimHashes))
+            || collect($modelReviewedClaimHashes)->contains(
+                static fn (string $hash): bool => ! isset($factsByHash[$hash]),
+            )) {
+            throw new UnexpectedValueException('ai_quality_reviewed_claim_hashes_invalid');
+        }
+        $reviewedClaimHashes = [];
+        foreach ($modelReviewedClaimHashes as $claimHash) {
+            $fact = $factsByHash[$claimHash];
+            $references = array_values(array_unique(array_map(
+                'strval',
+                is_array($fact['knowledge_refs'] ?? null) ? $fact['knowledge_refs'] : [],
+            )));
+            if ($references !== [] && collect($references)->every(
+                static fn (string $reference): bool => isset($evidenceReferenceMap[$reference]),
+            )) {
+                $reviewedClaimHashes[] = $claimHash;
+            }
+        }
         $reviewedClaimLookup = array_fill_keys($reviewedClaimHashes, true);
 
         $issues = [];
         $generatedUncertainties = [];
+        $unverifiedClaimLookup = [];
         foreach ($result['issues'] as $rawIssue) {
             if (! is_array($rawIssue)) {
                 throw new UnexpectedValueException('ai_quality_issue_structure_invalid');
@@ -253,6 +280,9 @@ class ArticleAiQualityResultValidator
 
             $fact = $factsByHash[$claimHash] ?? null;
             if ($evidenceStatus === 'unverified') {
+                if ($claimHash !== '') {
+                    $unverifiedClaimLookup[$claimHash] = true;
+                }
                 $generatedUncertainties[] = [
                     'claim' => Str::limit(trim((string) ($fact['normalized_claim'] ?? $quote)), 500, ''),
                     'materiality' => in_array((string) ($fact['materiality'] ?? ''), ['high', 'medium', 'low'], true)
@@ -270,10 +300,10 @@ class ArticleAiQualityResultValidator
                 'strval',
                 array_filter($rawIssue['evidence_keys'], static fn (mixed $key): bool => is_scalar($key)),
             )));
-            $stableEvidenceKeys = array_values(array_filter(
+            $stableEvidenceKeys = array_values(array_unique(array_filter(array_map(
+                static fn (string $key): ?string => $evidenceReferenceMap[$key] ?? null,
                 $evidenceKeys,
-                static fn (string $key): bool => preg_match('/^K\d+$/i', $key) !== 1,
-            ));
+            ))));
             if ($code === 'citation_scope_mismatch'
                 && $evidenceStatus === 'supported'
                 && $stableEvidenceKeys === []) {
@@ -284,6 +314,7 @@ class ArticleAiQualityResultValidator
                 'citation_missing', 'citation_scope_mismatch', 'source_declared_unverified',
             ], true);
             $referencesValid = ! $requiresEvidence || ($stableEvidenceKeys !== []
+                && count($stableEvidenceKeys) === count($evidenceKeys)
                 && collect($stableEvidenceKeys)->every(static fn (string $key): bool => isset($evidenceByKey[$key])));
             $location = $this->locate(
                 (string) ($article[$field] ?? ''),
@@ -321,7 +352,9 @@ class ArticleAiQualityResultValidator
         }
 
         foreach ($factsByHash as $claimHash => $fact) {
-            if (($fact['materiality'] ?? null) !== 'high' || isset($reviewedClaimLookup[$claimHash])) {
+            if (($fact['materiality'] ?? null) !== 'high'
+                || isset($reviewedClaimLookup[$claimHash])
+                || isset($unverifiedClaimLookup[$claimHash])) {
                 continue;
             }
 

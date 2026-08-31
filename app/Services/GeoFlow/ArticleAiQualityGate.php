@@ -150,7 +150,12 @@ class ArticleAiQualityGate
             );
         }
 
-        if (! hash_equals((string) $check->input_fingerprint, $currentFingerprint)) {
+        if (! hash_equals((string) $check->input_fingerprint, $currentFingerprint)
+            || ! $this->inspectionService->retrievalBasisMatches(
+                $check,
+                $policy,
+                $this->inspectionService->rules(),
+            )) {
             if (in_array((string) $check->status, ['queued', 'running', 'completed', 'failed'], true)) {
                 $check->forceFill(['status' => 'stale', 'active_dedupe_key' => null])->save();
             }

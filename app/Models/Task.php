@@ -135,6 +135,9 @@ class Task extends Model
         'schedule_enabled',
         'max_retry_count',
         'ai_quality_enabled',
+        'ai_quality_retrieval_mode',
+        'ai_quality_policy_version',
+        'ai_quality_config_version',
         'ai_quality_timeout_sampling_enabled',
         'ai_quality_auto_optimize_enabled',
         'ai_quality_optimization_level',
@@ -146,6 +149,8 @@ class Task extends Model
 
     protected $attributes = [
         'ai_quality_enabled' => false,
+        'ai_quality_policy_version' => 1,
+        'ai_quality_config_version' => 1,
         'ai_quality_timeout_sampling_enabled' => false,
         'ai_quality_auto_optimize_enabled' => false,
         'ai_quality_optimization_level' => 'excellent_80',
@@ -184,6 +189,8 @@ class Task extends Model
             'schedule_enabled' => 'integer',
             'max_retry_count' => 'integer',
             'ai_quality_enabled' => 'boolean',
+            'ai_quality_policy_version' => 'integer',
+            'ai_quality_config_version' => 'integer',
             'ai_quality_timeout_sampling_enabled' => 'boolean',
             'ai_quality_auto_optimize_enabled' => 'boolean',
             'ai_quality_prompt_id' => 'integer',

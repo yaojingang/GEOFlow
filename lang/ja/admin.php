@@ -997,6 +997,13 @@ return array_replace_recursive($base, [
         'es' => 'スペイン語',
         'ru' => 'ロシア語',
     ],
+    'knowledge_navigation' => [
+        'label' => ':name 管理ナビゲーション', 'current' => '現在のナレッジ', 'chunks' => 'ナレッジチャンク', 'facts' => 'アトミックファクト',
+    ],
+    'knowledge_chunks' => [
+        'page_title' => 'ナレッジチャンク管理', 'subtitle' => 'チャンク内容、ベクトル状態、検索メタデータを確認します。', 'status_label' => 'ナレッジチャンク状態',
+        'list_title' => 'ナレッジチャンク一覧', 'list_desc' => '1ページ30件を表示し、境界、Token数、ベクトル状態を確認できます。',
+    ],
     'knowledge_facts' => [
         'title' => 'アトミックファクトライブラリ', 'description' => '独立して検証できる回答、期間、根拠を管理します。', 'working_version' => '下書きバージョン',
         'label' => '指標名', 'subject' => '主体', 'predicate' => '述語', 'add' => 'ファクトを追加', 'empty' => 'アトミックファクトはまだありません。', 'publish' => 'レビュー済み版を公開',

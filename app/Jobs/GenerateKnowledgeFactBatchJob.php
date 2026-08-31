@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
+use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -12,7 +13,7 @@ use Throwable;
 
 class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
 {
-    use Queueable;
+    use Batchable, Queueable;
 
     public int $tries = 0;
 

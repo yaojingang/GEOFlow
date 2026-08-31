@@ -341,6 +341,68 @@ class ArticleAiQualityResultValidatorTest extends TestCase
         $this->assertContains('claim_coverage_incomplete', $scored['gate_reasons']);
     }
 
+    public function test_v2_does_not_trust_model_claim_coverage_without_retrieval_evidence(): void
+    {
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '模型声称已经核查全部主张',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => ['critical-price-claim'],
+            'issues' => [],
+            'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [[
+            'claim_hash' => 'critical-price-claim',
+            'normalized_claim' => '标准价格为 1,980 元',
+            'materiality' => 'high',
+            'knowledge_refs' => [],
+        ]], [[
+            'id' => 'K1',
+            'stable_key' => '3:19:evidence-hash',
+            'content' => '标准价格为 980 元。',
+        ]], $this->rules());
+
+        $this->assertSame([], $validated['reviewed_claim_hashes']);
+        $this->assertSame('claim_coverage_incomplete', $validated['uncertainties'][0]['gate_reason']);
+    }
+
+    public function test_v2_resolves_model_evidence_ids_to_frozen_stable_keys(): void
+    {
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '价格需要核对',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => ['price-claim'],
+            'issues' => [[
+                'code' => 'data_mismatch',
+                'severity' => 'high',
+                'claim_hash' => 'price-claim',
+                'field' => 'content',
+                'quote' => '标准价格为 1,980 元',
+                'evidence_keys' => ['K1'],
+                'evidence_status' => 'contradicted',
+                'reason' => '数值不同',
+                'suggestion' => '核实价格',
+                'confidence' => 0.96,
+            ]],
+            'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [[
+            'id' => 'F1',
+            'claim_hash' => 'price-claim',
+            'normalized_claim' => '标准价格为 1,980 元',
+            'type' => 'amount',
+            'materiality' => 'high',
+            'knowledge_refs' => ['K1'],
+        ]], [[
+            'id' => 'K1',
+            'stable_key' => '3:19:evidence-hash',
+            'content' => '标准价格为 980 元。',
+        ]], $this->rules());
+
+        $this->assertTrue($validated['issues'][0]['references_valid']);
+        $this->assertSame(['3:19:evidence-hash'], $validated['issues'][0]['evidence_keys']);
+        $this->assertSame(['price-claim'], $validated['reviewed_claim_hashes']);
+    }
+
     public function test_v2_rejects_non_object_or_unknown_materiality_uncertainties(): void
     {
         foreach ([

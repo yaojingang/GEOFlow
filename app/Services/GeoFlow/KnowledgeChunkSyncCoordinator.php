@@ -110,6 +110,13 @@ class KnowledgeChunkSyncCoordinator
                 'chunk_sync_error' => null,
                 'chunk_sync_require_real_embedding' => $requireRealEmbedding,
             ])->save();
+            DB::table('knowledge_fact_libraries')
+                ->where('knowledge_base_id', $knowledgeBaseId)
+                ->whereNotNull('active_revision_id')
+                ->update([
+                    'serving_status' => 'stale',
+                    'updated_at' => now(),
+                ]);
             DB::table('knowledge_chunk_sync_rows')
                 ->where('knowledge_base_id', $knowledgeBaseId)
                 ->where('sync_token', '!=', $token)

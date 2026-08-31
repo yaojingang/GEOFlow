@@ -7,12 +7,17 @@ use App\Models\Article;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Support\Arr;
 use RuntimeException;
 
 class ArticleAiQualityPolicyResolver
 {
     private const DEFAULT_PROMPT_SYSTEM_KEY = 'article_quality.cn_ads_knowledge.v1';
+
+    public function __construct(
+        private readonly AiQualityRetrievalReadinessService $retrievalReadinessService,
+    ) {}
 
     /** @return array<string, mixed> */
     public function resolve(Article $article): array
@@ -32,18 +37,21 @@ class ArticleAiQualityPolicyResolver
             return ['required' => false, 'source' => 'article_snapshot'];
         }
 
-        return $this->fromArticleSnapshot(
-            $snapshot,
-            ($snapshot['source'] ?? null) === 'manual_article' ? 'manual_article' : 'article_snapshot',
-        );
+        return $this->fromIndependentArticle($article, $snapshot);
     }
 
     /** @return array<string, mixed> */
     public function resolveForManualInspection(Article $article): array
     {
-        $current = $this->resolve($article);
         $task = $this->taskForArticle($article);
-        if ((! $task instanceof Task || $task->trashed()) && ($current['required'] ?? false)) {
+        $hasActiveTask = $task instanceof Task && ! $task->trashed();
+        $current = $hasActiveTask
+            ? $this->resolve($article)
+            : $this->fromIndependentArticle(
+                $article,
+                is_array($article->ai_quality_policy_snapshot) ? $article->ai_quality_policy_snapshot : [],
+            );
+        if (! $hasActiveTask) {
             try {
                 $this->assertExecutable($current);
 
@@ -90,6 +98,11 @@ class ArticleAiQualityPolicyResolver
             if ((int) $task->knowledge_base_id > 0) {
                 $knowledgeBaseIds[] = (int) $task->knowledge_base_id;
             }
+        } elseif ($knowledgeBaseIds === []) {
+            $knowledgeBaseIds = $article->aiQualityKnowledgeBases()
+                ->pluck('knowledge_bases.id')
+                ->map('intval')
+                ->all();
         }
 
         $modelSelectionMode = (string) ($task?->model_selection_mode ?? ($current['model_selection_mode'] ?? 'fixed'));
@@ -105,6 +118,10 @@ class ArticleAiQualityPolicyResolver
             'model' => $model,
             'model_selection_mode' => $modelSelectionMode,
             'knowledge_base_ids' => array_values(array_unique($knowledgeBaseIds)),
+            'retrieval_mode' => $this->retrievalModeFor($article, $task, $current),
+            'retrieval_mode_explicit' => $this->retrievalModeIsExplicit($article, $task, $current),
+            'policy_version' => max(1, (int) ($article->ai_quality_policy_version ?? $task?->ai_quality_policy_version ?? 1)),
+            'config_version' => max(1, (int) ($task?->ai_quality_config_version ?? $task?->ai_quality_policy_version ?? 1)),
             'pass_score' => (int) ($task?->ai_quality_pass_score ?: ($current['pass_score'] ?? 85)),
             'manual_override_min_score' => (int) ($task?->ai_quality_manual_override_min_score ?: ($current['manual_override_min_score'] ?? 70)),
             'timeout_sampling_enabled' => (bool) ($task?->ai_quality_timeout_sampling_enabled ?? ($current['timeout_sampling_enabled'] ?? false)),
@@ -123,7 +140,18 @@ class ArticleAiQualityPolicyResolver
     /** @return array<string, mixed> */
     public function fromTask(Task $task, ?Article $article = null): array
     {
-        if (! (bool) $task->ai_quality_enabled) {
+        return $this->taskPolicy($task, $article, false);
+    }
+
+    public function fromTaskForDetachment(Task $task, ?Article $article = null): array
+    {
+        return $this->taskPolicy($task, $article, true);
+    }
+
+    /** @return array<string,mixed> */
+    private function taskPolicy(Task $task, ?Article $article, bool $includeDisabledConfiguration): array
+    {
+        if (! (bool) $task->ai_quality_enabled && ! $includeDisabledConfiguration) {
             return ['required' => false, 'source' => 'task', 'task' => $task];
         }
 
@@ -134,13 +162,17 @@ class ArticleAiQualityPolicyResolver
         }
 
         return [
-            'required' => true,
-            'source' => 'task',
+            'required' => (bool) $task->ai_quality_enabled,
+            'source' => $includeDisabledConfiguration ? 'task_detachment' : 'task',
             'task' => $task,
             'prompt' => $task->qualityPrompt,
             'model' => $task->qualityModel ?: $task->aiModel,
             'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
             'knowledge_base_ids' => array_values(array_unique($knowledgeBaseIds)),
+            'retrieval_mode' => $this->retrievalModeFor($article, $task),
+            'retrieval_mode_explicit' => $this->retrievalModeIsExplicit($article, $task),
+            'policy_version' => max(1, (int) ($article?->ai_quality_policy_version ?? $task->ai_quality_policy_version ?? 1)),
+            'config_version' => max(1, (int) ($task->ai_quality_config_version ?? $task->ai_quality_policy_version ?? 1)),
             'pass_score' => (int) ($task->ai_quality_pass_score ?: 85),
             'manual_override_min_score' => (int) ($task->ai_quality_manual_override_min_score ?: 70),
             'timeout_sampling_enabled' => (bool) $task->ai_quality_timeout_sampling_enabled,
@@ -168,6 +200,12 @@ class ArticleAiQualityPolicyResolver
             'model' => $model,
             'model_selection_mode' => (string) ($snapshot['model_selection_mode'] ?? 'fixed'),
             'knowledge_base_ids' => $knowledgeBaseIds,
+            'retrieval_mode' => AiQualityRetrievalMode::isValid($snapshot['retrieval_mode'] ?? null)
+                ? (string) $snapshot['retrieval_mode']
+                : AiQualityRetrievalMode::legacyDefault(),
+            'retrieval_mode_explicit' => (bool) ($snapshot['retrieval_mode_explicit'] ?? false),
+            'policy_version' => max(1, (int) ($snapshot['policy_version'] ?? 1)),
+            'config_version' => max(1, (int) ($snapshot['config_version'] ?? $snapshot['policy_version'] ?? 1)),
             'pass_score' => (int) ($snapshot['pass_score'] ?? 85),
             'manual_override_min_score' => (int) ($snapshot['manual_override_min_score'] ?? 70),
             'timeout_sampling_enabled' => (bool) ($snapshot['timeout_sampling_enabled'] ?? false),
@@ -177,6 +215,31 @@ class ArticleAiQualityPolicyResolver
                 ['ai_generated_label_status', 'is_ai_generated'],
             ),
         ];
+    }
+
+    /** @param array<string,mixed> $snapshot @return array<string,mixed> */
+    private function fromIndependentArticle(Article $article, array $snapshot): array
+    {
+        $policy = $this->fromArticleSnapshot(
+            $snapshot,
+            ($snapshot['source'] ?? null) === 'manual_article' ? 'manual_article' : 'article_current',
+        );
+        $currentKnowledgeBaseIds = $article->aiQualityKnowledgeBases()
+            ->orderByPivot('sort_order')
+            ->pluck('knowledge_bases.id')
+            ->map('intval')
+            ->all();
+        if ($currentKnowledgeBaseIds !== []) {
+            $policy['knowledge_base_ids'] = $currentKnowledgeBaseIds;
+        }
+        if (AiQualityRetrievalMode::isValid($article->ai_quality_retrieval_mode_override)) {
+            $policy['retrieval_mode'] = (string) $article->ai_quality_retrieval_mode_override;
+            $policy['retrieval_mode_explicit'] = true;
+        }
+        $policy['policy_version'] = max(1, (int) $article->ai_quality_policy_version);
+        $policy['source'] = 'article_current';
+
+        return $policy;
     }
 
     private function taskForArticle(Article $article): ?Task
@@ -221,6 +284,16 @@ class ArticleAiQualityPolicyResolver
             || KnowledgeBase::query()->whereIn('id', $knowledgeBaseIds->all())->count() !== $knowledgeBaseIds->count()) {
             throw new RuntimeException('ai_quality_knowledge_unavailable');
         }
+        $retrievalMode = (string) ($policy['retrieval_mode'] ?? AiQualityRetrievalMode::legacyDefault());
+        if (! AiQualityRetrievalMode::isValid($retrievalMode)) {
+            throw new RuntimeException('ai_quality_retrieval_mode_invalid');
+        }
+        if ((bool) ($policy['retrieval_mode_explicit'] ?? false)) {
+            $readiness = $this->retrievalReadinessService->inspect($knowledgeBaseIds->all());
+            if (! ($readiness['modes'][$retrievalMode]['available'] ?? false)) {
+                throw new RuntimeException('ai_quality_retrieval_mode_unavailable');
+            }
+        }
         $modelSelectionMode = (string) ($policy['model_selection_mode'] ?? 'fixed');
         if (! in_array($modelSelectionMode, ['fixed', 'smart_failover'], true)
             || ($modelSelectionMode === 'fixed' && (
@@ -263,6 +336,10 @@ class ArticleAiQualityPolicyResolver
             'sampling_max_ranges' => (int) config('geoflow.ai_quality_sampled_max_ranges', 12),
             'risk_scan_algorithm_version' => ArticleRiskScanner::SCAN_ALGORITHM_VERSION,
             'knowledge_base_ids' => array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])),
+            'retrieval_mode' => (string) ($policy['retrieval_mode'] ?? AiQualityRetrievalMode::legacyDefault()),
+            'retrieval_mode_explicit' => (bool) ($policy['retrieval_mode_explicit'] ?? false),
+            'policy_version' => max(1, (int) ($policy['policy_version'] ?? 1)),
+            'config_version' => max(1, (int) ($policy['config_version'] ?? $policy['policy_version'] ?? 1)),
             'publication_context' => Arr::except(
                 is_array($policy['publication_context'] ?? null) ? $policy['publication_context'] : [],
                 ['ai_generated_label_status', 'is_ai_generated'],
@@ -276,17 +353,29 @@ class ArticleAiQualityPolicyResolver
     {
         $prompt = $policy['prompt'] ?? null;
         $model = $policy['model'] ?? null;
+        $retrievalMode = (string) ($policy['retrieval_mode'] ?? AiQualityRetrievalMode::legacyDefault());
+        $orderedKnowledgeBaseIds = array_values(array_map('intval', $policy['knowledge_base_ids'] ?? []));
         $knowledge = KnowledgeBase::query()
-            ->whereIn('id', $policy['knowledge_base_ids'] ?? [])
-            ->orderBy('id')
-            ->get(['id', 'chunk_source_hash', 'review_status', 'chunk_sync_status', 'updated_at'])
-            ->map(fn (KnowledgeBase $base): array => [
-                'id' => (int) $base->id,
-                'chunk_source_hash' => (string) ($base->chunk_source_hash ?? ''),
-                'review_status' => (string) ($base->review_status ?? 'unreviewed'),
-                'chunk_sync_status' => (string) ($base->chunk_sync_status ?? ''),
-                'updated_at' => $base->updated_at?->toISOString(),
-            ])->all();
+            ->whereIn('id', $orderedKnowledgeBaseIds)
+            ->when(
+                $retrievalMode === AiQualityRetrievalMode::ATOMIC_FIRST,
+                fn ($query) => $query->with('factLibrary.activeRevision:id,library_id,version,library_hash,source_hash'),
+            )
+            ->get([
+                'id',
+                'name',
+                'ai_quality_content_hash',
+                'chunk_source_hash',
+                'chunk_serving_generation',
+                'chunk_serving_source_hash',
+                'chunk_manifest_hash',
+                'review_status',
+                'chunk_sync_status',
+            ])
+            ->sortBy(static fn (KnowledgeBase $base): int => array_search((int) $base->id, $orderedKnowledgeBaseIds, true))
+            ->values()
+            ->map(fn (KnowledgeBase $base): array => $this->knowledgeSourceProjection($base, $retrievalMode))
+            ->all();
 
         $modelCandidates = $this->modelCandidates($policy);
 
@@ -297,6 +386,8 @@ class ArticleAiQualityPolicyResolver
                 'manual_override_min_score' => (int) ($policy['manual_override_min_score'] ?? 70),
                 'model_selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
                 'manual_review_required' => (bool) ($policy['manual_review_required'] ?? true),
+                'retrieval_mode' => (string) ($policy['retrieval_mode'] ?? AiQualityRetrievalMode::legacyDefault()),
+                'policy_version' => max(1, (int) ($policy['policy_version'] ?? 1)),
             ],
             'prompt' => [
                 'id' => $prompt instanceof Prompt ? (int) $prompt->id : null,
@@ -321,6 +412,38 @@ class ArticleAiQualityPolicyResolver
         ];
     }
 
+    /** @return array<string,mixed> */
+    private function knowledgeSourceProjection(KnowledgeBase $base, string $retrievalMode): array
+    {
+        $projection = [
+            'id' => (int) $base->id,
+            'name' => (string) $base->name,
+            'raw_content_hash' => (string) $base->ai_quality_content_hash,
+            'review_status' => (string) ($base->review_status ?? 'unreviewed'),
+        ];
+        if ($retrievalMode === AiQualityRetrievalMode::KNOWLEDGE_BROAD) {
+            return $projection;
+        }
+
+        $projection += [
+            'chunk_source_hash' => $base->servingChunkSourceHash(),
+            'chunk_serving_generation' => (string) ($base->chunk_serving_generation ?? ''),
+            'chunk_manifest_hash' => (string) ($base->chunk_manifest_hash ?? ''),
+            'chunk_sync_status' => (string) ($base->chunk_sync_status ?? ''),
+        ];
+        if ($retrievalMode === AiQualityRetrievalMode::ATOMIC_FIRST) {
+            $projection['atomic_facts'] = [
+                'revision_id' => $base->factLibrary?->active_revision_id,
+                'revision_version' => $base->factLibrary?->activeRevision?->version,
+                'library_hash' => $base->factLibrary?->active_hash,
+                'source_hash' => $base->factLibrary?->source_hash,
+                'serving_status' => $base->factLibrary?->serving_status,
+            ];
+        }
+
+        return $projection;
+    }
+
     /** @return array<string, mixed> */
     public function articleSnapshot(Article $article): array
     {
@@ -332,6 +455,30 @@ class ArticleAiQualityPolicyResolver
             'meta_description' => (string) ($article->meta_description ?? ''),
             'task_id' => $article->task_id ? (int) $article->task_id : null,
         ];
+    }
+
+    /** @param  array<string,mixed>  $fallback */
+    private function retrievalModeFor(?Article $article, ?Task $task, array $fallback = []): string
+    {
+        if ($article instanceof Article && AiQualityRetrievalMode::isValid($article->ai_quality_retrieval_mode_override)) {
+            return (string) $article->ai_quality_retrieval_mode_override;
+        }
+        if ($task instanceof Task && AiQualityRetrievalMode::isValid($task->ai_quality_retrieval_mode)) {
+            return (string) $task->ai_quality_retrieval_mode;
+        }
+        if (AiQualityRetrievalMode::isValid($fallback['retrieval_mode'] ?? null)) {
+            return (string) $fallback['retrieval_mode'];
+        }
+
+        return AiQualityRetrievalMode::legacyDefault();
+    }
+
+    /** @param  array<string,mixed>  $fallback */
+    private function retrievalModeIsExplicit(?Article $article, ?Task $task, array $fallback = []): bool
+    {
+        return ($article instanceof Article && AiQualityRetrievalMode::isValid($article->ai_quality_retrieval_mode_override))
+            || ($task instanceof Task && AiQualityRetrievalMode::isValid($task->ai_quality_retrieval_mode))
+            || (bool) ($fallback['retrieval_mode_explicit'] ?? false);
     }
 
     /** @param array<string, mixed> $policy @return list<AiModel> */

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Api;
 
 use App\Exceptions\ApiException;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
+use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -42,6 +43,7 @@ class UpdateTaskRequest extends FormRequest
             'auto_description' => ['sometimes', 'boolean'],
             'is_loop' => ['sometimes', 'boolean'],
             'ai_quality_enabled' => ['sometimes', 'boolean'],
+            'ai_quality_retrieval_mode' => ['sometimes', 'string', 'in:'.implode(',', AiQualityRetrievalMode::values())],
             'ai_quality_timeout_sampling_enabled' => ['sometimes', 'boolean'],
             'ai_quality_auto_optimize_enabled' => ['sometimes', 'boolean'],
             'ai_quality_optimization_level' => ['sometimes', 'string', 'in:pass,excellent_80,excellent_90'],
@@ -49,6 +51,7 @@ class UpdateTaskRequest extends FormRequest
             'ai_quality_model_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'ai_quality_pass_score' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'ai_quality_manual_override_min_score' => ['sometimes', 'integer', 'min:0', 'max:99'],
+            'config_version' => ['sometimes', 'integer', 'min:1'],
         ];
     }
 

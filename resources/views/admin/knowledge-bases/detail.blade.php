@@ -59,11 +59,107 @@
         .knowledge-markdown-editor .vditor-preview {
             background: #fff;
         }
+
+        .knowledge-markdown-editor .vditor-outline {
+            width: 210px;
+            flex: 0 0 210px;
+            border-right-color: #e5e7eb;
+            background: #f8fafc;
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e1 transparent;
+        }
+
+        .knowledge-markdown-editor .vditor-outline__title {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            border-bottom: 1px solid #e5e7eb;
+            background: #f8fafc;
+            padding: 12px 14px 10px;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+
+        .knowledge-markdown-editor .vditor-outline__content {
+            padding: 8px 7px 18px;
+        }
+
+        .knowledge-markdown-editor .vditor-outline__content:empty::before {
+            display: block;
+            padding: 18px 10px;
+            color: #94a3b8;
+            content: attr(data-empty-label);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .knowledge-markdown-editor .vditor-outline ul {
+            padding-left: 12px;
+        }
+
+        .knowledge-markdown-editor .vditor-outline__content > ul {
+            padding-left: 0;
+        }
+
+        .knowledge-markdown-editor .vditor-outline li > span {
+            min-width: 0;
+            border-radius: 6px;
+            padding: 6px 8px;
+            color: #475569;
+            font-size: 13px;
+            line-height: 1.45;
+            transition: background-color 120ms ease, color 120ms ease, transform 80ms ease;
+        }
+
+        .knowledge-markdown-editor .vditor-outline li > span:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+
+        .knowledge-markdown-editor .vditor-outline li > span:active {
+            transform: scale(0.98);
+        }
+
+        .knowledge-markdown-editor .vditor-outline li > span:focus-visible {
+            outline: 2px solid #fb923c;
+            outline-offset: -2px;
+        }
+
+        .knowledge-markdown-editor .vditor-outline li > span[data-heading-level="1"] {
+            color: #0f172a;
+            font-weight: 700;
+        }
+
+        .knowledge-markdown-editor .vditor-outline li > span[data-heading-level="2"] {
+            font-weight: 600;
+        }
+
+        .knowledge-markdown-editor .vditor-outline li > span[aria-current="location"] {
+            background: #fff7ed;
+            color: #c2410c;
+            font-weight: 650;
+        }
+
+        .knowledge-markdown-editor .vditor-outline__action {
+            transition: transform 150ms ease;
+        }
+
+        @media (max-width: 1023px) {
+            .knowledge-markdown-editor .vditor-outline {
+                display: none !important;
+            }
+        }
     </style>
 @endpush
 
 @section('content')
     <div class="px-4 sm:px-0">
+        <div class="mb-7">
+            <x-admin.v3.knowledge-base-subnav :knowledge-base="$knowledgeBase" active="current" />
+        </div>
+
         <div class="mb-8 flex items-center justify-between">
             <div class="flex items-center space-x-4">
                 <a href="{{ route('admin.knowledge-bases.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
@@ -176,7 +272,7 @@
                         </div>
                         <textarea id="knowledge-content-textarea" name="content" rows="28" class="{{ $systemReadOnly ? 'block' : 'hidden' }} w-full resize-y border-0 px-6 py-5 font-mono text-sm leading-7 text-slate-700 focus:ring-0 disabled:bg-white disabled:text-slate-700" @disabled($systemReadOnly)>{{ old('content', (string) ($knowledgeBase->content ?? '')) }}</textarea>
                         @unless ($systemReadOnly)
-                            <div id="knowledge-content-editor" class="knowledge-markdown-editor min-h-[720px]"></div>
+                            <div id="knowledge-content-editor" class="knowledge-markdown-editor min-h-[720px]" data-knowledge-outline-levels="1,2,3,4"></div>
                         @endunless
                     </div>
                 </div>
@@ -445,7 +541,7 @@
                 </div>
             @endif
         </div>
-        @include('admin.knowledge-bases.partials.atomic-facts', ['factLibrary' => $knowledgeBase->factLibrary])
+        @include('admin.knowledge-bases.partials.atomic-facts-summary', ['factLibrary' => $knowledgeBase->factLibrary, 'factSummary' => $factSummary])
     </div>
 @endsection
 
@@ -469,6 +565,93 @@
             }
 
             let editor = null;
+            let activeOutlineTargetId = '';
+            let outlineObserver = null;
+
+            const syncOutlineNavigation = () => {
+                const outline = editorNode.querySelector('.vditor-outline');
+                const outlineContent = outline?.querySelector('.vditor-outline__content');
+
+                if (!outline || !outlineContent) {
+                    return;
+                }
+
+                const allowedLevels = new Set(
+                    (editorNode.dataset.knowledgeOutlineLevels || '1,2,3,4')
+                        .split(',')
+                        .map((level) => Number(level)),
+                );
+                const outlineTitle = outline.querySelector('.vditor-outline__title')?.textContent?.trim();
+
+                outline.setAttribute('role', 'navigation');
+                outline.setAttribute('aria-label', outlineTitle || 'H1-H4');
+                outlineContent.dataset.emptyLabel = 'H1-H4';
+
+                outlineContent.querySelectorAll('[data-target-id]').forEach((item) => {
+                    const targetId = item.getAttribute('data-target-id') || '';
+                    const heading = targetId ? document.getElementById(targetId) : null;
+                    const level = Number(heading?.tagName?.match(/^H([1-6])$/)?.[1] || 0);
+
+                    if (!allowedLevels.has(level)) {
+                        item.closest('li')?.remove();
+                        return;
+                    }
+
+                    item.setAttribute('role', 'link');
+                    item.setAttribute('tabindex', '0');
+                    item.setAttribute('data-heading-level', String(level));
+                    item.setAttribute('aria-label', `H${level}: ${item.textContent.trim()}`);
+
+                    if (targetId === activeOutlineTargetId) {
+                        item.setAttribute('aria-current', 'location');
+                    } else {
+                        item.removeAttribute('aria-current');
+                    }
+                });
+
+                Array.from(outlineContent.querySelectorAll('ul')).reverse().forEach((list) => {
+                    if (!list.querySelector('li')) {
+                        list.remove();
+                    }
+                });
+
+                if (outline.dataset.knowledgeOutlineBound === 'true') {
+                    return;
+                }
+
+                outline.dataset.knowledgeOutlineBound = 'true';
+                outline.addEventListener('click', (event) => {
+                    if (event.target.closest('.vditor-outline__action')) {
+                        return;
+                    }
+
+                    const item = event.target.closest('[data-target-id]');
+
+                    if (!item || !outline.contains(item)) {
+                        return;
+                    }
+
+                    activeOutlineTargetId = item.getAttribute('data-target-id') || '';
+                    syncOutlineNavigation();
+                }, { capture: true });
+                outline.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') {
+                        return;
+                    }
+
+                    const item = event.target.closest('[data-target-id]');
+
+                    if (!item || !outline.contains(item)) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    item.click();
+                });
+
+                outlineObserver = new MutationObserver(syncOutlineNavigation);
+                outlineObserver.observe(outlineContent, { childList: true, subtree: true });
+            };
 
             editor = new Vditor('knowledge-content-editor', {
                 value: textarea.value || '',
@@ -477,7 +660,12 @@
                 cdn: @json(asset('vendor/vditor')),
                 lang: @json($vditorLang),
                 cache: { enable: false },
+                outline: {
+                    enable: true,
+                    position: 'left',
+                },
                 preview: {
+                    maxWidth: 1000,
                     markdown: { toc: true },
                     hljs: { lineNumber: false },
                 },
@@ -512,6 +700,7 @@
                         textarea.value = editor.getValue();
                     }
 
+                    syncOutlineNavigation();
                     window.GeoFlowAdminUi?.refreshIcons?.(editorNode);
                 },
             });
