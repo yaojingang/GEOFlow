@@ -23,6 +23,8 @@ class AtomicFactInspectionTest extends TestCase
         $this->assertSame(1, $result['contradicted_count']);
         $this->assertSame('critical', data_get($result, 'issues.0.severity'));
         $this->assertSame($library->active_revision_id, data_get($result, 'issues.0.atomic_fact.revision_id'));
+        $this->assertSame($base->id, data_get($result, 'results.0.knowledge_base_id'));
+        $this->assertSame(str_repeat('a', 64), data_get($result, 'results.0.source_hash'));
     }
 
     public function test_unmentioned_fact_is_not_covered_and_does_not_create_an_issue(): void

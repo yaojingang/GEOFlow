@@ -121,4 +121,94 @@ class KnowledgeBroadEvidenceStrategyTest extends TestCase
         $this->assertCount(1, $result['evidence']);
         $this->assertLessThanOrEqual(100, data_get($result, 'retrieval_meta.evidence_character_count'));
     }
+
+    public function test_offsets_point_to_the_exact_paragraph_aligned_content(): void
+    {
+        $content = "\n\n# 开头\n第一段介绍完整事实。\n\n# 中段\n第二段提供补充事实。\n\n# 结尾\n第三段给出最终事实。\n\n";
+        $base = KnowledgeBase::query()->create([
+            'name' => '段落知识库',
+            'content' => $content,
+            'risk_level' => 'low',
+            'review_status' => 'reviewed',
+        ]);
+
+        $result = app(KnowledgeBroadEvidenceStrategy::class)->build(
+            [$base->id],
+            ['title' => '段落核验', 'content' => '第二段提供补充事实。'],
+            [['id' => 'F1', 'quote' => '第二段提供补充事实', 'materiality' => 'high']],
+            ['max_evidence' => 3, 'max_characters' => 90],
+        )->toArray();
+
+        $this->assertNotEmpty($result['evidence']);
+        foreach ($result['evidence'] as $evidence) {
+            $start = (int) $evidence['source_offset_start'];
+            $end = (int) $evidence['source_offset_end'];
+            $this->assertSame(
+                $evidence['content'],
+                mb_substr($content, $start, $end - $start, 'UTF-8'),
+            );
+            $this->assertSame($evidence['id'], $evidence['evidence_id']);
+            $this->assertSame('knowledge_broad', $evidence['retrieval_strategy']);
+        }
+    }
+
+    public function test_back_region_reaches_the_end_of_the_knowledge_base(): void
+    {
+        $content = collect(range(1, 6))
+            ->map(static fn (int $index): string => '第'.$index.'段'.str_repeat('尾部事实', 16))
+            ->implode("\r\n\r\n");
+        $base = KnowledgeBase::query()->create([
+            'name' => '尾部覆盖知识库',
+            'content' => $content,
+            'risk_level' => 'low',
+            'review_status' => 'reviewed',
+        ]);
+
+        $result = app(KnowledgeBroadEvidenceStrategy::class)->build(
+            [$base->id],
+            ['title' => '尾部核验', 'content' => '第6段尾部事实'],
+            [['id' => 'F1', 'quote' => '第6段尾部事实', 'materiality' => 'high']],
+            ['max_evidence' => 3, 'max_characters' => 300],
+        )->toArray();
+        $back = collect($result['evidence'])->first(
+            static fn (array $evidence): bool => data_get($evidence, 'coverage_meta.region') === 'back',
+        );
+
+        $this->assertIsArray($back);
+        $this->assertSame(mb_strlen($content, 'UTF-8'), $back['source_offset_end']);
+        $this->assertStringContainsString('第6段', $back['content']);
+    }
+
+    public function test_back_region_start_inside_a_separator_keeps_the_immediately_following_paragraph(): void
+    {
+        $strategy = app(KnowledgeBroadEvidenceStrategy::class);
+        $method = new \ReflectionMethod($strategy, 'paragraphStartAtOrAfterOffset');
+
+        $this->assertSame(4, $method->invoke($strategy, "aa\n\nbb\n\ncc", 3));
+        $this->assertSame(6, $method->invoke($strategy, "aa\r\n\r\nbb\r\n\r\ncc", 4));
+    }
+
+    public function test_long_paragraph_windows_record_their_budget_truncation(): void
+    {
+        $base = KnowledgeBase::query()->create([
+            'name' => '超长单段知识库',
+            'content' => str_repeat('这是一个没有段落边界的超长事实说明。', 300),
+            'risk_level' => 'low',
+            'review_status' => 'reviewed',
+        ]);
+
+        $result = app(KnowledgeBroadEvidenceStrategy::class)->build(
+            [$base->id],
+            ['title' => '长段落核验', 'content' => '超长事实说明'],
+            [],
+            ['max_evidence' => 3, 'max_characters' => 300],
+        )->toArray();
+
+        $this->assertCount(3, $result['evidence']);
+        $this->assertSame(3, data_get($result, 'retrieval_meta.truncated_window_count'));
+        $this->assertTrue(collect($result['evidence'])->every(
+            static fn (array $evidence): bool => data_get($evidence, 'coverage_meta.paragraph_truncated') === true
+                && data_get($evidence, 'coverage_meta.truncation_reason') === 'paragraph_exceeds_window_budget',
+        ));
+    }
 }

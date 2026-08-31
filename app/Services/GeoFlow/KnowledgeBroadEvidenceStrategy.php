@@ -37,6 +37,7 @@ class KnowledgeBroadEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
         $baseCount = max(1, $knowledgeBases->count());
         $remainingTotal = $maxCharacters;
         $promptInjectionRiskCount = 0;
+        $sourceKnowledgeBaseIds = [];
 
         foreach ($knowledgeBases as $baseIndex => $knowledgeBase) {
             if (count($evidence) >= $maxEvidence || $remainingTotal <= 0) {
@@ -48,6 +49,7 @@ class KnowledgeBroadEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
                 $maxEvidence - count($evidence),
                 max(1, (int) ceil(($maxEvidence - count($evidence)) / $remainingBases)),
             );
+            $sourceKnowledgeBaseIds[] = (int) $knowledgeBase->id;
             $selected = $this->selectWindows($knowledgeBase, $baseEvidenceLimit, $baseBudget);
             foreach ($selected as $section) {
                 if (count($evidence) >= $maxEvidence || $remainingTotal <= 0) {
@@ -59,7 +61,7 @@ class KnowledgeBroadEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
                     break;
                 }
                 $id = 'K'.(count($evidence) + 1);
-                $item = [
+                $item = AiQualityRetrievalResult::normalizeEvidence([
                     'id' => $id,
                     'knowledge_base_id' => (int) $knowledgeBase->id,
                     'chunk_id' => 0,
@@ -75,7 +77,13 @@ class KnowledgeBroadEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
                     'retrieval_strategy' => AiQualityRetrievalMode::KNOWLEDGE_BROAD,
                     'retrieval_strategy_version' => $this->version(),
                     'governance_status' => (string) ($knowledgeBase->review_status ?? 'unreviewed'),
-                    'coverage_meta' => ['region' => (string) $section['region']],
+                    'coverage_meta' => [
+                        'region' => (string) $section['region'],
+                        'paragraph_truncated' => (bool) $section['paragraph_truncated'],
+                        'truncation_reason' => $section['paragraph_truncated']
+                            ? 'paragraph_exceeds_window_budget'
+                            : null,
+                    ],
                     'metadata' => array_filter([
                         'knowledge_base_id' => (int) $knowledgeBase->id,
                         'knowledge_base_name' => (string) $knowledgeBase->name,
@@ -87,7 +95,10 @@ class KnowledgeBroadEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
                         'risk_level' => (string) ($knowledgeBase->risk_level ?? 'medium'),
                         'review_status' => (string) ($knowledgeBase->review_status ?? 'unreviewed'),
                     ], static fn (mixed $value): bool => $value !== null && $value !== ''),
-                ];
+                ], AiQualityRetrievalMode::KNOWLEDGE_BROAD, $this->version(), [
+                    'provider' => 'knowledge_broad',
+                    'region' => (string) $section['region'],
+                ]);
                 if ($this->securityInspector->hasPromptInjectionRisk($item)) {
                     $promptInjectionRiskCount++;
 
@@ -142,16 +153,22 @@ class KnowledgeBroadEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
                 'source_character_count' => $knowledgeBases->sum(static fn (KnowledgeBase $base): int => (int) $base->ai_quality_content_length),
                 'evidence_character_count' => array_sum(array_map(static fn (array $item): int => mb_strlen((string) $item['content']), $evidence)),
                 'prompt_injection_risk_count' => $promptInjectionRiskCount,
+                'truncated_window_count' => collect($evidence)->filter(
+                    static fn (array $item): bool => (bool) data_get($item, 'coverage_meta.paragraph_truncated', false),
+                )->count(),
+                'source_knowledge_base_ids' => [
+                    'knowledge_broad' => array_values(array_unique($sourceKnowledgeBaseIds)),
+                ],
             ],
         ]);
     }
 
     public function version(): string
     {
-        return 'knowledge-broad-1.0.0';
+        return 'knowledge-broad-1.1.0';
     }
 
-    /** @return list<array{index:int,content:string,title:string,start:int,end:int,region:string}> */
+    /** @return list<array{index:int,content:string,title:string,start:int,end:int,region:string,paragraph_truncated:bool}> */
     private function selectWindows(KnowledgeBase $knowledgeBase, int $limit, int $budget): array
     {
         $contentLength = max(0, (int) $knowledgeBase->ai_quality_content_length);
@@ -170,27 +187,137 @@ class KnowledgeBroadEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
         $selected = [];
         foreach ($positions as $index => $window) {
             $position = (int) $window['position'];
+            $lookaround = min(1000, max(128, $windowLength));
+            $queryStart = max(1, $position - $lookaround);
+            $queryLength = min(
+                $contentLength - $queryStart + 1,
+                $windowLength + ($lookaround * 2),
+            );
             $row = DB::table('knowledge_bases')
                 ->where('id', (int) $knowledgeBase->id)
-                ->selectRaw('SUBSTR(content, ?, ?) AS content_window', [$position, $windowLength])
+                ->selectRaw('SUBSTR(content, ?, ?) AS content_window', [$queryStart, $queryLength])
                 ->first();
-            $bounded = trim((string) ($row->content_window ?? ''));
+            $contentWindow = (string) ($row->content_window ?? '');
+            $targetOffset = max(0, $position - $queryStart);
+            $region = (string) $window['region'];
+            $startInWindow = match ($region) {
+                'front' => 0,
+                'back' => $this->paragraphStartAtOrAfterOffset($contentWindow, $targetOffset),
+                default => $this->paragraphStartOffset($contentWindow, $targetOffset),
+            };
+            $bounded = mb_substr($contentWindow, $startInWindow, $windowLength, 'UTF-8');
+            if ($region !== 'back'
+                && ($queryStart - 1 + $startInWindow + mb_strlen($bounded, 'UTF-8')) < $contentLength) {
+                $bounded = $this->withoutPartialTrailingParagraph($bounded);
+            }
+            preg_match('/\A\s+/u', $bounded, $leadingWhitespace);
+            $leadingLength = mb_strlen((string) ($leadingWhitespace[0] ?? ''), 'UTF-8');
+            $startInWindow += $leadingLength;
+            $bounded = rtrim(mb_substr($bounded, $leadingLength, null, 'UTF-8'));
             if ($bounded === '') {
                 continue;
             }
-            $start = $position - 1;
+            $start = $queryStart - 1 + $startInWindow;
             $length = mb_strlen($bounded, 'UTF-8');
-            $selected[] = [
+            $end = $start + $length;
+            $selected[$start] = [
                 'index' => (int) $index,
                 'content' => $bounded,
                 'title' => $this->sectionTitle($bounded),
                 'start' => $start,
-                'end' => $start + $length,
-                'region' => (string) $window['region'],
+                'end' => $end,
+                'region' => $region,
+                'paragraph_truncated' => ! $this->isParagraphStart($contentWindow, $startInWindow, $start)
+                    || ! $this->isParagraphEnd($contentWindow, $startInWindow + $length, $end, $contentLength),
             ];
         }
 
-        return $selected;
+        return array_values($selected);
+    }
+
+    private function paragraphStartOffset(string $content, int $targetOffset): int
+    {
+        $prefix = mb_substr($content, 0, min(mb_strlen($content, 'UTF-8'), $targetOffset + 1), 'UTF-8');
+        $start = null;
+        foreach (["\n\n", "\r\n\r\n", "\r\r"] as $separator) {
+            $boundary = mb_strrpos($prefix, $separator, 0, 'UTF-8');
+            if ($boundary !== false) {
+                $candidate = $boundary + mb_strlen($separator, 'UTF-8');
+                $start = $start === null ? $candidate : max($start, $candidate);
+            }
+        }
+
+        return $start ?? $targetOffset;
+    }
+
+    private function paragraphStartAtOrAfterOffset(string $content, int $targetOffset): int
+    {
+        foreach (["\n\n", "\r\n\r\n", "\r\r"] as $separator) {
+            $separatorLength = mb_strlen($separator, 'UTF-8');
+            $searchStart = max(0, $targetOffset - $separatorLength + 1);
+            $boundary = mb_strpos($content, $separator, $searchStart, 'UTF-8');
+            if ($boundary !== false
+                && $boundary <= $targetOffset
+                && $targetOffset < ($boundary + $separatorLength)) {
+                return $boundary + $separatorLength;
+            }
+        }
+        $prefix = mb_substr($content, 0, $targetOffset, 'UTF-8');
+        foreach (["\n\n", "\r\n\r\n", "\r\r"] as $separator) {
+            if (str_ends_with($prefix, $separator)) {
+                return $targetOffset;
+            }
+        }
+        $start = null;
+        foreach (["\n\n", "\r\n\r\n", "\r\r"] as $separator) {
+            $boundary = mb_strpos($content, $separator, $targetOffset, 'UTF-8');
+            if ($boundary !== false) {
+                $candidate = $boundary + mb_strlen($separator, 'UTF-8');
+                $start = $start === null ? $candidate : min($start, $candidate);
+            }
+        }
+
+        return $start ?? $targetOffset;
+    }
+
+    private function withoutPartialTrailingParagraph(string $content): string
+    {
+        $boundary = null;
+        foreach (["\n\n", "\r\n\r\n", "\r\r"] as $separator) {
+            $candidate = mb_strrpos($content, $separator, 0, 'UTF-8');
+            if ($candidate !== false) {
+                $boundary = $boundary === null ? $candidate : max($boundary, $candidate);
+            }
+        }
+        if ($boundary === null || $boundary === 0) {
+            return $content;
+        }
+
+        return mb_substr($content, 0, $boundary, 'UTF-8');
+    }
+
+    private function isParagraphStart(string $contentWindow, int $startInWindow, int $absoluteStart): bool
+    {
+        if ($absoluteStart === 0) {
+            return true;
+        }
+        $prefix = mb_substr($contentWindow, 0, $startInWindow, 'UTF-8');
+
+        return collect(["\n\n", "\r\n\r\n", "\r\r"])->contains(
+            static fn (string $separator): bool => str_ends_with($prefix, $separator),
+        );
+    }
+
+    private function isParagraphEnd(string $contentWindow, int $endInWindow, int $absoluteEnd, int $contentLength): bool
+    {
+        if ($absoluteEnd >= $contentLength) {
+            return true;
+        }
+        $suffix = mb_substr($contentWindow, $endInWindow, null, 'UTF-8');
+
+        return collect(["\n\n", "\r\n\r\n", "\r\r"])->contains(
+            static fn (string $separator): bool => str_starts_with($suffix, $separator),
+        );
     }
 
     private function sectionTitle(string $block): string

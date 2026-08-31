@@ -53,7 +53,7 @@ final class AiQualityRetrievalMode
             self::KNOWLEDGE_BROAD => [
                 'label' => '知识库质检',
                 'badge' => '覆盖优先',
-                'description' => '从知识库正文按章节做宽范围取证，噪音、Token 和耗时更高。',
+                'description' => '从知识库正文按段落与前中后区域做宽范围取证，噪音、Token 和耗时更高。',
             ],
         ];
     }

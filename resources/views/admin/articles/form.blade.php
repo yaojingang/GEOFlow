@@ -138,11 +138,24 @@
     $aiQualityAtomic = is_array(data_get($aiQualityCheck?->execution_meta, 'atomic_facts')) ? data_get($aiQualityCheck?->execution_meta, 'atomic_facts') : [];
     $aiQualityAtomicInspection = is_array($aiQualityAtomic['inspection'] ?? null) ? $aiQualityAtomic['inspection'] : [];
     $aiQualityUsage = is_array($aiQualityCheck?->usage_meta) ? $aiQualityCheck->usage_meta : [];
-    $aiQualityAtomicModeLabel = match ($aiQualityAtomic['mode'] ?? 'disabled') {
-        'hybrid_formal' => '原子事实混合质检 · 已参与评分',
-        'shadow' => '原子事实影子核验 · 未参与评分',
-        default => '原子事实核验',
-    };
+    $aiQualityEffectiveRetrievalMode = (string) ($aiQualityCheck?->effective_retrieval_mode ?: $aiQualityCheck?->requested_retrieval_mode ?: \App\Support\GeoFlow\AiQualityRetrievalMode::legacyDefault());
+    $aiQualityEffectiveRetrievalMode = \App\Support\GeoFlow\AiQualityRetrievalMode::isValid($aiQualityEffectiveRetrievalMode)
+        ? $aiQualityEffectiveRetrievalMode
+        : \App\Support\GeoFlow\AiQualityRetrievalMode::legacyDefault();
+    $aiQualityPrimaryTokens = (int) data_get($aiQualityUsage, 'primary_review.total_tokens', data_get($aiQualityUsage, 'total_tokens', 0));
+    $aiQualityAtomicTokens = (int) data_get($aiQualityUsage, 'atomic_verification.total_tokens', data_get($aiQualityUsage, 'atomic_facts.total_tokens', 0));
+    $aiQualityAtomicScored = (bool) ($aiQualityAtomic['formal'] ?? false);
+    $aiQualityAtomicModeLabel = ($aiQualityAtomic['mode'] ?? 'disabled') === 'shadow'
+        ? __('ai_quality_retrieval.results.atomic_shadow_title')
+        : __('ai_quality_retrieval.results.atomic_formal_title');
+    $aiQualityAtomicMetrics = [
+        [__('ai_quality_retrieval.results.metrics.supported'), 'supported_count'],
+        [__('ai_quality_retrieval.results.metrics.contradicted'), 'contradicted_count'],
+        [__('ai_quality_retrieval.results.metrics.uncovered'), 'not_covered_count'],
+        [__('ai_quality_retrieval.results.metrics.ambiguous'), 'ambiguous_count'],
+        [__('ai_quality_retrieval.results.metrics.fallback'), 'fallback_count'],
+        [__('ai_quality_retrieval.results.metrics.elapsed'), 'elapsed_ms'],
+    ];
     $aiQualityUncertainties = is_array($aiQualityCheck?->uncertainties) ? $aiQualityCheck->uncertainties : [];
     $aiOptimizationData = is_array($aiOptimization ?? null) ? $aiOptimization : null;
     $aiOptimizationFeatureEnabled = (bool) config('geoflow.ai_quality_optimization_enabled', false);
@@ -793,14 +806,32 @@
                                             </div>
                                         </div>
                                     @endif
+                                    <section data-ai-quality-retrieval-result class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-950">
+                                        <div class="flex flex-wrap items-start justify-between gap-3">
+                                            <div class="flex items-start gap-3">
+                                                <i data-lucide="scan-search" class="mt-0.5 h-5 w-5 shrink-0 text-blue-700"></i>
+                                                <div>
+                                                    <h4 class="text-sm font-semibold">{{ __('ai_quality_retrieval.results.primary_title', ['mode' => __('ai_quality_retrieval.modes.'.$aiQualityEffectiveRetrievalMode.'.label')]) }}</h4>
+                                                    <p class="mt-1 text-xs leading-5 text-blue-800">
+                                                        {{ __('ai_quality_retrieval.results.strategy_version', ['version' => $aiQualityCheck?->retrieval_strategy_version ?: __('ai_quality_retrieval.results.none')]) }}
+                                                        · {{ __('ai_quality_retrieval.results.primary_tokens', ['tokens' => $aiQualityPrimaryTokens]) }}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold ring-1 ring-blue-200">{{ __('ai_quality_retrieval.results.participates_in_scoring') }}</span>
+                                        </div>
+                                    </section>
                                     @if(($aiQualityAtomic['mode'] ?? 'disabled') !== 'disabled')
                                         <section data-ai-quality-atomic-facts class="rounded-lg border border-violet-200 bg-violet-50 p-4 text-violet-950">
                                             <div class="flex flex-wrap items-start justify-between gap-3">
-                                                <div class="flex items-start gap-3"><i data-lucide="badge-check" class="mt-0.5 h-5 w-5 text-violet-700"></i><div><h4 class="text-sm font-semibold">{{ $aiQualityAtomicModeLabel }}</h4><p class="mt-1 text-xs leading-5 text-violet-800">算法 {{ $aiQualityAtomicInspection['algorithm_version'] ?? '暂无' }} · 事实版本 {{ implode(', ', (array) ($aiQualityAtomicInspection['revision_ids'] ?? [])) ?: '暂无' }} · 原子通道 {{ (int) data_get($aiQualityUsage, 'atomic_facts.total_tokens', 0) }} Token · 知识库回退 {{ (int) data_get($aiQualityUsage, 'knowledge_fallback.total_tokens', 0) }} Token</p></div></div>
-                                                <span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold ring-1 ring-violet-200">覆盖率 {{ number_format(((float) ($aiQualityAtomicInspection['coverage_rate'] ?? 0)) * 100, 1) }}%</span>
+                                                <div class="flex items-start gap-3"><i data-lucide="badge-check" class="mt-0.5 h-5 w-5 text-violet-700"></i><div><h4 class="text-sm font-semibold">{{ $aiQualityAtomicModeLabel }}</h4><p class="mt-1 text-xs leading-5 text-violet-800">{{ __('ai_quality_retrieval.results.algorithm_version', ['version' => $aiQualityAtomicInspection['algorithm_version'] ?? __('ai_quality_retrieval.results.none')]) }} · {{ __('ai_quality_retrieval.results.fact_versions', ['versions' => implode(', ', (array) ($aiQualityAtomicInspection['revision_ids'] ?? [])) ?: __('ai_quality_retrieval.results.none')]) }} · {{ __('ai_quality_retrieval.results.atomic_tokens', ['tokens' => $aiQualityAtomicTokens]) }}</p></div></div>
+                                                <div class="flex flex-wrap items-center justify-end gap-2">
+                                                    <span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold ring-1 ring-violet-200">{{ $aiQualityAtomicScored ? __('ai_quality_retrieval.results.participates_in_scoring') : __('ai_quality_retrieval.results.validation_only') }}</span>
+                                                    <span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold ring-1 ring-violet-200">{{ __('ai_quality_retrieval.results.coverage', ['rate' => number_format(((float) ($aiQualityAtomicInspection['coverage_rate'] ?? 0)) * 100, 1)]) }}</span>
+                                                </div>
                                             </div>
                                             <dl class="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
-                                                @foreach([['命中', 'supported_count'], ['冲突', 'contradicted_count'], ['未覆盖', 'not_covered_count'], ['歧义', 'ambiguous_count'], ['回退', 'fallback_count'], ['耗时', 'elapsed_ms']] as [$label, $key])
+                                                @foreach($aiQualityAtomicMetrics as [$label, $key])
                                                     <div class="rounded-md bg-white px-3 py-2 ring-1 ring-violet-100"><dt class="text-violet-600">{{ $label }}</dt><dd class="mt-1 font-mono font-bold">{{ $aiQualityAtomicInspection[$key] ?? 0 }}{{ $key === 'elapsed_ms' ? ' ms' : '' }}</dd></div>
                                                 @endforeach
                                             </dl>

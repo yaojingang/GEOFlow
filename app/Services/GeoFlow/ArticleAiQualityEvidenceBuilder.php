@@ -37,6 +37,13 @@ class ArticleAiQualityEvidenceBuilder
             $knowledgeBaseIds,
             $servingGenerations,
         );
+        $sourceKnowledgeBaseIds = collect($generationEvidence)
+            ->pluck('knowledge_base_id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
         $evidenceByKey = [];
         foreach ($generationEvidence as $row) {
             $content = trim((string) ($row['content'] ?? ''));
@@ -53,6 +60,10 @@ class ArticleAiQualityEvidenceBuilder
         $attemptedFactIds = [];
 
         if ($generationEvidence === [] && $genericQuery !== '') {
+            $sourceKnowledgeBaseIds = array_values(array_unique(array_merge(
+                $sourceKnowledgeBaseIds,
+                array_map('intval', $knowledgeBaseIds),
+            )));
             $rows = $this->knowledgeRetrievalService->retrieveEvidenceFromMany(
                 $knowledgeBaseIds,
                 $genericQuery,
@@ -77,6 +88,10 @@ class ArticleAiQualityEvidenceBuilder
 
             $factRetrievals++;
             $attemptedFactIds[$factId] = true;
+            $sourceKnowledgeBaseIds = array_values(array_unique(array_merge(
+                $sourceKnowledgeBaseIds,
+                array_map('intval', $knowledgeBaseIds),
+            )));
             $rows = $this->knowledgeRetrievalService->retrieveEvidenceFromMany(
                 $knowledgeBaseIds,
                 $query,
@@ -149,7 +164,10 @@ class ArticleAiQualityEvidenceBuilder
             'fact_candidates' => $coveredFacts,
             'knowledge_coverage' => $this->aggregateCoverage($coveredFacts, $evidence !== [], $genericQuery !== ''),
             'generation_evidence_reused_count' => count(array_intersect_key($keyToReference, $generationEvidenceKeys)),
-            'retrieval_meta' => ['prompt_injection_risk_count' => $promptInjectionRiskCount],
+            'retrieval_meta' => [
+                'prompt_injection_risk_count' => $promptInjectionRiskCount,
+                'source_knowledge_base_ids' => ['chunk' => $sourceKnowledgeBaseIds],
+            ],
         ];
     }
 

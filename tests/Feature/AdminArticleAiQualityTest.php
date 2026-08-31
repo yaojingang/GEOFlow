@@ -53,6 +53,9 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertJsonPath('active', true)
             ->assertJsonPath('reload', false)
             ->assertJsonPath('timings.evidence_retrieval', 123)
+            ->assertJsonPath('requested_retrieval_mode', AiQualityRetrievalMode::CHUNK)
+            ->assertJsonPath('effective_retrieval_mode', null)
+            ->assertJsonPath('retrieval_strategy_version', 'chunk-evidence-1.1.0')
             ->assertJsonPath('safe_error_code', null)
             ->assertJsonPath('retryable', false)
             ->assertJsonPath('next_poll_ms', 2000);
@@ -327,6 +330,33 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertDontSeeText('0/30')
             ->assertDontSeeText('0/10')
             ->assertDontSee(__('admin.articles.ai_quality.no_issues'));
+    }
+
+    public function test_persisted_non_retryable_retrieval_failure_overrides_legacy_code_inference(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'failed',
+            'decision' => 'error',
+            'error_code' => 'evidence_retrieval_failed',
+            'execution_meta' => array_replace($check->execution_meta, [
+                'retryable_failure' => false,
+                'failure' => [
+                    'code' => 'evidence_retrieval_failed',
+                    'retryable' => false,
+                ],
+            ]),
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('safe_error_code', 'evidence_retrieval_failed')
+            ->assertJsonPath('retryable', false)
+            ->assertJsonPath('failure.retryable', false);
     }
 
     public function test_exhausted_post_quality_workflow_is_visible_with_an_operator_retry_action(): void
@@ -1431,6 +1461,103 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertSee(__('ai_quality_retrieval.current_execution', [
                 'mode' => __('ai_quality_retrieval.modes.chunk.label'),
             ]));
+    }
+
+    public function test_article_edit_page_presents_chunk_as_the_primary_result_and_atomic_shadow_as_validation_data(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
+        $executionMeta['atomic_facts'] = [
+            'mode' => 'shadow',
+            'formal' => false,
+            'shadow' => true,
+            'inspection' => [
+                'algorithm_version' => 'atomic-facts-2.3.0',
+                'revision_ids' => [1],
+                'coverage_rate' => 0.5,
+            ],
+        ];
+        $check->forceFill([
+            'effective_retrieval_mode' => AiQualityRetrievalMode::CHUNK,
+            'retrieval_strategy_version' => 'chunk-evidence-1.0.0',
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 90,
+            'usage_meta' => [
+                'prompt_tokens' => 100,
+                'completion_tokens' => 20,
+                'total_tokens' => 120,
+                'atomic_facts' => ['total_tokens' => 0],
+                'knowledge_fallback' => ['total_tokens' => 120],
+            ],
+            'execution_meta' => $executionMeta,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertSee(__('ai_quality_retrieval.results.primary_title', [
+                'mode' => __('ai_quality_retrieval.modes.chunk.label'),
+            ]))
+            ->assertSee(__('ai_quality_retrieval.results.participates_in_scoring'))
+            ->assertSee(__('ai_quality_retrieval.results.primary_tokens', ['tokens' => 120]))
+            ->assertSee(__('ai_quality_retrieval.results.atomic_shadow_title'))
+            ->assertSee(__('ai_quality_retrieval.results.validation_only'))
+            ->assertDontSee('知识库回退 120 Token');
+    }
+
+    public function test_article_edit_page_presents_each_effective_retrieval_mode_as_the_primary_result(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 90,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        foreach (AiQualityRetrievalMode::values() as $mode) {
+            $check->forceFill([
+                'effective_retrieval_mode' => $mode,
+                'retrieval_strategy_version' => $mode.'-test-version',
+            ])->save();
+
+            $this->actingAs($admin, 'admin')
+                ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+                ->assertOk()
+                ->assertSee(__('ai_quality_retrieval.results.primary_title', [
+                    'mode' => __('ai_quality_retrieval.modes.'.$mode.'.label'),
+                ]))
+                ->assertSee(__('ai_quality_retrieval.results.participates_in_scoring'));
+        }
+    }
+
+    public function test_ai_quality_result_copy_is_complete_in_every_supported_locale(): void
+    {
+        $requiredKeys = [
+            'primary_title',
+            'participates_in_scoring',
+            'strategy_version',
+            'primary_tokens',
+            'atomic_shadow_title',
+            'atomic_formal_title',
+            'validation_only',
+            'atomic_tokens',
+        ];
+
+        foreach (['zh_CN', 'en', 'ja', 'es', 'ru', 'pt_BR'] as $locale) {
+            $translations = require lang_path($locale.'/ai_quality_retrieval.php');
+
+            foreach ($requiredKeys as $key) {
+                $this->assertIsString(data_get($translations, 'results.'.$key));
+                $this->assertNotSame('', trim((string) data_get($translations, 'results.'.$key)));
+            }
+        }
     }
 
     public function test_article_update_saves_a_mode_override_before_queueing_the_recheck(): void

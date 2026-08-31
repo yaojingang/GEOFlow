@@ -41,26 +41,35 @@ class AtomicFirstEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
             ->reject(static fn (array $candidate): bool => isset($supported[(string) ($candidate['id'] ?? '')]))
             ->values()
             ->all();
-        $chunk = $this->chunkStrategy->build(
-            $knowledgeBaseIds,
-            $fallbackSnapshot,
-            $fallbackFacts,
-            $options,
-        )->toArray();
+        $usesChunkFallback = $fallbackContent !== '' || $fallbackFacts !== [];
+        $chunk = $usesChunkFallback
+            ? $this->chunkStrategy->build(
+                $knowledgeBaseIds,
+                $fallbackSnapshot,
+                $fallbackFacts,
+                $options,
+            )->toArray()
+            : [
+                'evidence' => [],
+                'fact_candidates' => [],
+                'knowledge_coverage' => 'sufficient',
+                'generation_evidence_reused_count' => 0,
+                'retrieval_meta' => [],
+            ];
         $atomicEvidence = [];
         $atomicCandidates = [];
         foreach ($supported as $candidateId => $match) {
             $reference = 'A'.(count($atomicEvidence) + 1);
             $result = $match['result'];
-            $atomicEvidence[] = [
+            $atomicEvidence[] = AiQualityRetrievalResult::normalizeEvidence([
                 'id' => $reference,
-                'knowledge_base_id' => 0,
+                'knowledge_base_id' => (int) ($result['knowledge_base_id'] ?? 0),
                 'chunk_id' => 0,
                 'chunk_index' => 0,
                 'stable_key' => 'atomic:'.(string) ($result['stable_key'] ?? $candidateId),
                 'content' => trim((string) ($result['standard_answer'] ?? $result['article_claim'] ?? '')),
-                'content_hash' => hash('sha256', json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
-                'source_hash' => '',
+                'content_hash' => hash('sha256', trim((string) ($result['standard_answer'] ?? $result['article_claim'] ?? ''))),
+                'source_hash' => (string) ($result['source_hash'] ?? ''),
                 'chunk_title' => (string) ($result['label'] ?? '原子事实'),
                 'section_path' => 'atomic_facts',
                 'metadata' => [
@@ -69,8 +78,12 @@ class AtomicFirstEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
                     'fact_stable_key' => (string) ($result['stable_key'] ?? ''),
                     'revision_id' => (int) ($result['revision_id'] ?? 0),
                     'revision_version' => (int) ($result['revision_version'] ?? 0),
+                    'result_hash' => hash('sha256', json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
                 ],
-            ];
+            ], AiQualityRetrievalMode::ATOMIC_FIRST, $this->version(), [
+                'provider' => 'atomic',
+                'fact_stable_key' => (string) ($result['stable_key'] ?? ''),
+            ]);
             $atomicCandidates[$candidateId] = array_replace($match['candidate'], [
                 'knowledge_refs' => [$reference],
                 'coverage_status' => 'sufficient',
@@ -100,9 +113,19 @@ class AtomicFirstEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
             'effective_retrieval_mode' => AiQualityRetrievalMode::ATOMIC_FIRST,
             'retrieval_strategy_version' => $this->version(),
             'retrieval_meta' => array_replace(is_array($chunk['retrieval_meta'] ?? null) ? $chunk['retrieval_meta'] : [], [
-                'path' => $fallbackContent === '' && $fallbackFacts === [] ? ['atomic'] : ['atomic', 'chunk_fallback'],
+                'path' => $usesChunkFallback ? ['atomic', 'chunk_fallback'] : ['atomic'],
                 'atomic_facts' => $atomic,
                 'fallback_claim_count' => count($fallbackFacts),
+                'source_knowledge_base_ids' => [
+                    'atomic' => array_values(array_unique(array_map(
+                        'intval',
+                        (array) ($atomic['knowledge_base_ids'] ?? []),
+                    ))),
+                    'chunk' => array_values(array_unique(array_map(
+                        'intval',
+                        (array) data_get($chunk, 'retrieval_meta.source_knowledge_base_ids.chunk', []),
+                    ))),
+                ],
                 'prompt_injection_risk_count' => (int) data_get($chunk, 'retrieval_meta.prompt_injection_risk_count', 0)
                     + $atomicPromptInjectionRiskCount,
             ]),
@@ -111,7 +134,7 @@ class AtomicFirstEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
 
     public function version(): string
     {
-        return 'atomic-first-1.2.0';
+        return 'atomic-first-1.3.0';
     }
 
     /** @param array<string,mixed> $articleSnapshot */
