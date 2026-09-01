@@ -242,7 +242,7 @@ html[data-gf-sidebar-resizing] body { cursor: col-resize; user-select: none; }
 .gf-popover--user .gf-popover__danger { color: var(--gf-red-600); }
 
 .gf-main { background: var(--gf-gray-50); display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
-.gf-context-nav { background: var(--gf-gray-50); overflow-x: auto; scrollbar-width: none; }
+.gf-context-nav { background: var(--gf-gray-50); flex: 0 0 auto; overflow-x: auto; scrollbar-width: none; }
 .gf-context-nav::-webkit-scrollbar { display: none; }
 .gf-context-nav__inner { align-items: end; display: flex; gap: 24px; margin: 0 auto; max-width: var(--gf-content-max); min-width: max-content; padding: 28px 48px 0; }
 .gf-content { flex: 0 0 auto; margin: 0 auto; max-width: var(--gf-content-max); padding: 28px 48px 48px; width: 100%; }
