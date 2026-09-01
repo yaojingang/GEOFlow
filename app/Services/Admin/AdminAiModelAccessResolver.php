@@ -132,7 +132,14 @@ final class AdminAiModelAccessResolver
         $provider = $this->activeSharedProvider($actor);
 
         if (! $provider instanceof Admin) {
-            return $this->requireCandidates($actor, $personal);
+            if ($personal->isEmpty()) {
+                throw AiModelAccessException::configOwnerInactive(
+                    $actor,
+                    (int) $actor->shared_ai_config_owner_id,
+                );
+            }
+
+            return $personal;
         }
 
         return $this->requireCandidates(

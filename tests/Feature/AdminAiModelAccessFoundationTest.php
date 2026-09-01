@@ -9,6 +9,7 @@ use App\Policies\AiModelPolicy;
 use App\Services\Admin\AdminAiModelAccessResolver;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 final class AdminAiModelAccessFoundationTest extends TestCase
@@ -138,6 +139,27 @@ final class AdminAiModelAccessFoundationTest extends TestCase
             $this->fail('Expected the demoted sharing provider model to be rejected.');
         } catch (AiModelAccessException $exception) {
             $this->assertSame(AiModelAccessException::AI_CONFIG_OWNER_INACTIVE, $exception->getErrorCode());
+        }
+    }
+
+    public function test_invalid_shared_provider_is_reported_when_the_personal_candidate_pool_is_empty(): void
+    {
+        $provider = $this->admin('provider', 'super_admin', ['status' => 'inactive']);
+        $consumer = $this->admin('consumer', 'admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $this->model($provider);
+
+        try {
+            app(AdminAiModelAccessResolver::class)->resolveCandidates($consumer, 'chat');
+            $this->fail('Expected the invalid sharing provider to be reported.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame(AiModelAccessException::AI_CONFIG_OWNER_INACTIVE, $exception->getErrorCode());
+            $this->assertSame([
+                'error_code' => AiModelAccessException::AI_CONFIG_OWNER_INACTIVE,
+                'admin_id' => $consumer->id,
+                'config_owner_admin_id' => $provider->id,
+            ], $exception->context());
         }
     }
 
@@ -326,6 +348,23 @@ final class AdminAiModelAccessFoundationTest extends TestCase
             $this->assertModelExists($owner);
             $this->assertModelExists($model);
         }
+    }
+
+    public function test_ai_model_access_indexes_match_the_resolver_query_shape(): void
+    {
+        $adminIndexes = collect(Schema::getIndexes('admins'))->keyBy('name');
+        $modelIndexes = collect(Schema::getIndexes('ai_models'))->keyBy('name');
+
+        $this->assertArrayHasKey('admins_shared_ai_config_owner_id_index', $adminIndexes->all());
+        $this->assertSame(
+            ['shared_ai_config_owner_id'],
+            $adminIndexes['admins_shared_ai_config_owner_id_index']['columns'],
+        );
+        $this->assertArrayHasKey('ai_models_owner_access_candidates_index', $modelIndexes->all());
+        $this->assertSame(
+            ['owner_admin_id', 'access_scope', 'status', 'model_type', 'failover_priority', 'id'],
+            $modelIndexes['ai_models_owner_access_candidates_index']['columns'],
+        );
     }
 
     /** @param array<string, mixed> $overrides */
