@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\AdminAiSetting;
 use App\Models\AiModel;
 use App\Models\SiteSetting;
 use App\Models\Task;
+use Illuminate\Contracts\Foundation\MaintenanceMode as MaintenanceModeContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -13,6 +15,16 @@ use Tests\TestCase;
 class BackfillAdminAiAccessCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    private MaintenanceModeContract $maintenanceMode;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->maintenanceMode = new InMemoryMaintenanceMode(true);
+        $this->app->instance(MaintenanceModeContract::class, $this->maintenanceMode);
+    }
 
     public function test_preview_reports_changes_and_conflicts_without_writing(): void
     {
@@ -61,6 +73,7 @@ class BackfillAdminAiAccessCommandTest extends TestCase
 
         $arguments = [
             '--apply' => true,
+            '--maintenance-confirmed' => true,
             '--legacy-owner' => $legacyOwner->id,
             '--created-before' => '2026-09-01T00:00:00+08:00',
         ];
@@ -97,7 +110,11 @@ class BackfillAdminAiAccessCommandTest extends TestCase
         $ordinary = $this->admin('ordinary', 'admin', '2026-08-01 00:00:00');
         $inactive = $this->admin('inactive', 'super_admin', '2026-08-01 00:00:00', ['status' => 'disabled']);
         $model = $this->model(null, 'legacy-model', 'chat');
-        $base = ['--apply' => true, '--created-before' => '2026-09-01T00:00:00+08:00'];
+        $base = [
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ];
 
         $this->artisan('geoflow:backfill-admin-ai-access', $base)
             ->expectsOutput('Preflight failed: multiple_active_super_admins')
@@ -154,7 +171,12 @@ class BackfillAdminAiAccessCommandTest extends TestCase
             ->expectsOutput('Historical administrators to share: 1')
             ->assertSuccessful();
 
-        $arguments = [...$base, '--apply' => true, '--admin-max-id' => $legacyAdmin->id];
+        $arguments = [
+            ...$base,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+            '--admin-max-id' => $legacyAdmin->id,
+        ];
         $this->artisan('geoflow:backfill-admin-ai-access', $arguments)
             ->expectsOutput('Admin max ID: '.$legacyAdmin->id)
             ->expectsOutput('Administrators shared: 1')
@@ -192,7 +214,12 @@ class BackfillAdminAiAccessCommandTest extends TestCase
             ->expectsOutput('Unowned models: 1')
             ->assertSuccessful();
 
-        $arguments = [...$base, '--apply' => true, '--model-max-id' => $legacyModel->id];
+        $arguments = [
+            ...$base,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+            '--model-max-id' => $legacyModel->id,
+        ];
         $this->artisan('geoflow:backfill-admin-ai-access', $arguments)
             ->expectsOutput('Model max ID: '.$legacyModel->id)
             ->expectsOutput('Models assigned: 1')
@@ -216,6 +243,7 @@ class BackfillAdminAiAccessCommandTest extends TestCase
 
         $this->artisan('geoflow:backfill-admin-ai-access', [
             '--apply' => true,
+            '--maintenance-confirmed' => true,
             '--legacy-owner' => $legacyOwner->id,
             '--created-before' => '2026-09-01T00:00:00+08:00',
             '--admin-max-id' => $legacyAdmin->id,
@@ -270,7 +298,11 @@ class BackfillAdminAiAccessCommandTest extends TestCase
         $this->assertSame($legacyOwner->id, $boundSuper->fresh()->shared_ai_config_owner_id);
         $this->assertSame(3, $boundSuper->fresh()->ai_config_access_version);
 
-        $this->artisan('geoflow:backfill-admin-ai-access', [...$base, '--apply' => true])
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$base,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+        ])
             ->expectsOutput('Super administrator bindings cleared: 1')
             ->assertSuccessful();
 
@@ -279,7 +311,11 @@ class BackfillAdminAiAccessCommandTest extends TestCase
         $this->assertSame($legacyOwner->id, $boundOrdinary->fresh()->shared_ai_config_owner_id);
         $this->assertSame(4, $boundOrdinary->fresh()->ai_config_access_version);
 
-        $this->artisan('geoflow:backfill-admin-ai-access', [...$base, '--apply' => true])
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$base,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+        ])
             ->expectsOutput('Super administrator bindings cleared: 0')
             ->assertSuccessful();
     }
@@ -290,6 +326,7 @@ class BackfillAdminAiAccessCommandTest extends TestCase
         $legacyAdmin = $this->admin('legacy-admin', 'admin', '2026-08-15 00:00:00');
         $arguments = [
             '--apply' => true,
+            '--maintenance-confirmed' => true,
             '--legacy-owner' => $legacyOwner->id,
             '--created-before' => '2026-09-01T00:00:00+08:00',
         ];
@@ -323,6 +360,7 @@ class BackfillAdminAiAccessCommandTest extends TestCase
 
         $this->artisan('geoflow:backfill-admin-ai-access', [
             '--apply' => true,
+            '--maintenance-confirmed' => true,
             '--legacy-owner' => $legacyOwner->id,
             '--created-before' => '2026-09-01T00:00:00+08:00',
         ])->assertFailed();
@@ -376,6 +414,131 @@ class BackfillAdminAiAccessCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_apply_requires_maintenance_mode_and_explicit_operator_confirmation_without_writes(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $model = $this->model(null, 'legacy-model', 'chat');
+        $base = [
+            '--apply' => true,
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ];
+
+        $this->artisan('geoflow:backfill-admin-ai-access', $base)
+            ->expectsOutput('Preflight failed: maintenance_confirmation_required')
+            ->expectsOutput('Required: stop Web and AI workers, run php artisan down, then pass --maintenance-confirmed.')
+            ->assertFailed();
+        $this->assertNull($model->fresh()->owner_admin_id);
+
+        $this->maintenanceMode->deactivate();
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$base,
+            '--maintenance-confirmed' => true,
+        ])
+            ->expectsOutput('Preflight failed: application_maintenance_mode_required')
+            ->expectsOutput('Required: stop Web and AI workers, run php artisan down, then pass --maintenance-confirmed.')
+            ->assertFailed();
+        $this->assertNull($model->fresh()->owner_admin_id);
+    }
+
+    public function test_admin_ai_defaults_make_a_system_binding_a_stable_user_content_conflict(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $consumer = $this->admin('consumer', 'admin', '2026-08-02 00:00:00');
+        $mixedModel = $this->model(null, 'mixed-model', 'chat');
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $mixedModel->id,
+        ]);
+        $setting = new AdminAiSetting;
+        $setting->forceFill([
+            'admin_id' => $consumer->id,
+            'default_chat_model_id' => $mixedModel->id,
+            'updated_by_admin_id' => $legacyOwner->id,
+        ])->save();
+        $arguments = [
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ];
+
+        foreach ([1, 2] as $run) {
+            $this->artisan('geoflow:backfill-admin-ai-access', $arguments)
+                ->expectsOutput('System/user-content conflicts: 1')
+                ->expectsOutput('Conflict model ID: '.$mixedModel->id)
+                ->assertSuccessful();
+            $this->assertSame(
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+                $mixedModel->fresh()->access_scope,
+                'Run '.$run.' must preserve the mixed model scope.',
+            );
+        }
+    }
+
+    public function test_apply_rebuilds_the_reference_plan_after_preview_and_uses_the_current_binding(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $previewModel = $this->model(null, 'preview-model', 'embedding');
+        $applyModel = $this->model(null, 'apply-model', 'embedding');
+        $setting = SiteSetting::query()->create([
+            'setting_key' => 'default_embedding_model_id',
+            'setting_value' => (string) $previewModel->id,
+        ]);
+        $base = [
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ];
+
+        $this->artisan('geoflow:backfill-admin-ai-access', $base)
+            ->expectsOutput('System-only models to mark: 1')
+            ->assertSuccessful();
+        $setting->forceFill(['setting_value' => (string) $applyModel->id])->save();
+
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$base,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+        ])
+            ->expectsOutput('System-only models marked: 1')
+            ->assertSuccessful();
+
+        $this->assertSame(AiModel::ACCESS_SCOPE_USER_CONTENT, $previewModel->fresh()->access_scope);
+        $this->assertSame(AiModel::ACCESS_SCOPE_SYSTEM_ONLY, $applyModel->fresh()->access_scope);
+    }
+
+    public function test_automatic_owner_query_handles_historical_role_format_and_limits_candidates(): void
+    {
+        $owner = $this->admin('legacy-owner', ' Super_Admin ', '2026-08-01 00:00:00');
+        foreach (range(1, 5) as $index) {
+            $this->admin('ordinary-'.$index, 'admin', '2026-08-02 00:00:00');
+        }
+        DB::enableQueryLog();
+
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ])
+            ->expectsOutput('Legacy owner: '.$owner->id)
+            ->expectsOutput('Historical administrators to share: 5')
+            ->assertSuccessful();
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertTrue(collect($queries)->contains(static function (array $query): bool {
+            $sql = strtolower((string) $query['query']);
+
+            return str_contains($sql, 'from "admins"')
+                && str_contains($sql, 'lower(trim(role)) in')
+                && str_contains($sql, 'limit 2');
+        }));
+        $this->assertTrue(collect($queries)->contains(static function (array $query): bool {
+            $sql = strtolower((string) $query['query']);
+
+            return str_contains($sql, 'select count(*) as aggregate from "admins"')
+                && str_contains($sql, 'lower(trim(role)) not in');
+        }));
+    }
+
     /** @param array<string, mixed> $overrides */
     private function admin(
         string $username,
@@ -423,5 +586,34 @@ class BackfillAdminAiAccessCommandTest extends TestCase
         ])->save();
 
         return $model;
+    }
+}
+
+final class InMemoryMaintenanceMode implements MaintenanceModeContract
+{
+    /** @param array<string, mixed> $data */
+    public function __construct(private bool $active, private array $data = []) {}
+
+    public function activate(array $payload): void
+    {
+        $this->active = true;
+        $this->data = $payload;
+    }
+
+    public function deactivate(): void
+    {
+        $this->active = false;
+        $this->data = [];
+    }
+
+    public function active(): bool
+    {
+        return $this->active;
+    }
+
+    /** @return array<string, mixed> */
+    public function data(): array
+    {
+        return $this->data;
     }
 }

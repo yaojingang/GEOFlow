@@ -6,7 +6,10 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
 use App\Models\Task;
+use App\Services\Admin\AiModelUsageAccessSnapshot;
+use App\Services\Admin\AiModelUsageLedgerSchema;
 use App\Services\Admin\AiModelUsageRecorder;
+use Illuminate\Database\Query\Grammars\PostgresGrammar;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -22,26 +25,16 @@ class AiModelUsageEventTest extends TestCase
     public function test_recorder_persists_whitelisted_usage_metadata_without_sensitive_payloads(): void
     {
         $owner = $this->admin('owner', 'super_admin');
-        $executor = $this->admin('executor', 'admin');
+        $executor = $this->admin('executor', 'admin', [
+            'shared_ai_config_owner_id' => $owner->id,
+        ]);
         $model = $this->model($owner);
+        $snapshot = $this->snapshot($model, $executor, AiModelUsageEvent::MODEL_SOURCE_SHARED);
 
-        $event = app(AiModelUsageRecorder::class)->record([
-            'request_id' => 'request-123',
-            'call_key' => 'primary',
-            'operation' => 'article.generate',
-            'ai_model_id' => $model->id,
-            'config_owner_admin_id' => $owner->id,
-            'execution_admin_id' => $executor->id,
-            'execution_scope' => AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN,
-            'model_source' => AiModelUsageEvent::MODEL_SOURCE_SHARED,
-            'business_source' => 'article_generation',
+        $event = app(AiModelUsageRecorder::class)->record($snapshot, [
+            ...$this->usagePayload(),
             'source_type' => Task::class,
             'source_id' => 42,
-            'status' => AiModelUsageEvent::STATUS_SUCCEEDED,
-            'error_code' => null,
-            'input_tokens' => 10,
-            'output_tokens' => 15,
-            'total_tokens' => 25,
             'estimated_cost' => '0.00012500',
             'api_key' => 'must-never-persist',
             'endpoint' => 'https://sensitive.example.test',
@@ -53,29 +46,143 @@ class AiModelUsageEventTest extends TestCase
         $this->assertTrue($event->model->is($model));
         $this->assertTrue($event->configOwnerAdmin->is($owner));
         $this->assertTrue($event->executionAdmin->is($executor));
+        $this->assertSame($snapshot->aiConfigAccessVersion, $event->ai_config_access_version);
+        $this->assertSame($snapshot->requestPayloadDigest, $event->request_payload_digest);
         $this->assertSame('0.00012500', $event->estimated_cost);
         foreach (['api_key', 'endpoint', 'prompt', 'content', 'raw_response'] as $sensitiveField) {
             $this->assertArrayNotHasKey($sensitiveField, $event->getAttributes());
         }
     }
 
+    public function test_personal_and_shared_snapshots_reject_cross_admin_attribution(): void
+    {
+        $owner = $this->admin('owner', 'admin');
+        $peer = $this->admin('peer', 'admin');
+        $model = $this->model($owner);
+
+        foreach ([
+            fn () => $this->snapshot($model, $peer, AiModelUsageEvent::MODEL_SOURCE_PERSONAL),
+            fn () => $this->snapshot($model, $peer, AiModelUsageEvent::MODEL_SOURCE_SHARED),
+        ] as $invalidSnapshot) {
+            try {
+                $invalidSnapshot();
+                $this->fail('Expected cross-administrator attribution to fail.');
+            } catch (ValidationException) {
+                $this->assertDatabaseCount('ai_model_usage_events', 0);
+            }
+        }
+    }
+
+    public function test_shared_snapshot_requires_active_super_owner_ordinary_executor_and_current_binding(): void
+    {
+        $owner = $this->admin('owner', 'super_admin');
+        $executor = $this->admin('executor', 'admin');
+        $peerSuper = $this->admin('peer-super', 'super_admin', [
+            'shared_ai_config_owner_id' => $owner->id,
+        ]);
+        $model = $this->model($owner);
+
+        foreach ([$executor, $peerSuper] as $invalidExecutor) {
+            try {
+                $this->snapshot($model, $invalidExecutor, AiModelUsageEvent::MODEL_SOURCE_SHARED);
+                $this->fail('Expected invalid shared attribution to fail.');
+            } catch (ValidationException) {
+                $this->assertDatabaseCount('ai_model_usage_events', 0);
+            }
+        }
+
+        $executor->forceFill([
+            'shared_ai_config_owner_id' => $owner->id,
+            'ai_config_access_version' => 4,
+        ])->save();
+        try {
+            $this->snapshot(
+                $model,
+                $executor,
+                AiModelUsageEvent::MODEL_SOURCE_SHARED,
+                accessVersion: 3,
+            );
+            $this->fail('Expected a stale shared access version to fail.');
+        } catch (ValidationException) {
+            $this->assertDatabaseCount('ai_model_usage_events', 0);
+        }
+
+        $owner->forceFill(['status' => 'disabled'])->save();
+        $this->expectException(ValidationException::class);
+        $this->snapshot($model, $executor, AiModelUsageEvent::MODEL_SOURCE_SHARED);
+    }
+
+    public function test_pre_call_snapshot_can_record_revocation_after_sharing_is_closed(): void
+    {
+        $owner = $this->admin('owner', 'super_admin');
+        $executor = $this->admin('executor', 'admin', [
+            'shared_ai_config_owner_id' => $owner->id,
+            'ai_config_access_version' => 7,
+        ]);
+        $model = $this->model($owner);
+        $snapshot = $this->snapshot($model, $executor, AiModelUsageEvent::MODEL_SOURCE_SHARED);
+
+        $executor->forceFill([
+            'shared_ai_config_owner_id' => null,
+            'ai_config_access_version' => 8,
+        ])->save();
+        $event = app(AiModelUsageRecorder::class)->record($snapshot, [
+            ...$this->usagePayload(),
+            'status' => AiModelUsageEvent::STATUS_REVOKED,
+            'error_code' => 'ai_config_access_revoked',
+        ]);
+
+        $this->assertSame(7, $event->ai_config_access_version);
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
+        $this->assertSame($executor->id, $event->execution_admin_id);
+        $this->assertSame($owner->id, $event->config_owner_admin_id);
+    }
+
+    public function test_system_snapshot_requires_system_only_model_owned_by_active_super_admin(): void
+    {
+        $super = $this->admin('super', 'super_admin');
+        $ordinary = $this->admin('ordinary', 'admin');
+        $userContentModel = $this->model($super);
+        $ordinarySystemModel = $this->model($ordinary, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+
+        foreach ([$userContentModel, $ordinarySystemModel] as $invalidModel) {
+            try {
+                $this->snapshot($invalidModel, null, AiModelUsageEvent::MODEL_SOURCE_SYSTEM);
+                $this->fail('Expected invalid system attribution to fail.');
+            } catch (ValidationException) {
+                $this->assertDatabaseCount('ai_model_usage_events', 0);
+            }
+        }
+
+        $systemModel = $this->model($super, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $event = app(AiModelUsageRecorder::class)->record(
+            $this->snapshot($systemModel, null, AiModelUsageEvent::MODEL_SOURCE_SYSTEM),
+            $this->usagePayload(),
+        );
+
+        $this->assertNull($event->execution_admin_id);
+        $this->assertSame(0, $event->ai_config_access_version);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, $event->model_source);
+    }
+
     public function test_request_and_call_key_make_recording_idempotent_and_detect_collisions(): void
     {
         $owner = $this->admin('owner', 'super_admin');
-        $model = $this->model($owner);
-        $payload = $this->usagePayload($owner, $model);
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $snapshot = $this->snapshot($model, null, AiModelUsageEvent::MODEL_SOURCE_SYSTEM);
+        $payload = $this->usagePayload();
         $recorder = app(AiModelUsageRecorder::class);
 
-        $first = $recorder->record($payload);
-        $second = $recorder->record($payload);
-        $fallback = $recorder->record([...$payload, 'call_key' => 'shared-fallback']);
+        $first = $recorder->record($snapshot, $payload);
+        $second = $recorder->record($snapshot, $payload);
+        $fallback = $recorder->record($snapshot, [...$payload, 'call_key' => 'shared-fallback']);
 
         $this->assertTrue($first->is($second));
         $this->assertFalse($first->is($fallback));
         $this->assertDatabaseCount('ai_model_usage_events', 2);
 
         try {
-            $recorder->record([...$payload, 'total_tokens' => 999]);
+            $recorder->record($snapshot, [...$payload, 'total_tokens' => 999]);
             $this->fail('Expected a reused idempotency key with different usage metadata to fail.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('call_key', $exception->errors());
@@ -83,44 +190,31 @@ class AiModelUsageEventTest extends TestCase
         }
     }
 
-    public function test_recorder_uses_conflict_safe_idempotency_inside_an_outer_transaction(): void
-    {
-        if (DB::getDriverName() !== 'sqlite') {
-            $this->markTestSkipped('SQL shape assertion targets the SQLite conflict-safe grammar.');
-        }
-
-        $owner = $this->admin('owner', 'super_admin');
-        $model = $this->model($owner);
-        $payload = $this->usagePayload($owner, $model);
-        $queries = [];
-        DB::listen(static function ($query) use (&$queries): void {
-            $queries[] = strtolower($query->sql);
-        });
-
-        [$first, $second] = DB::transaction(function () use ($payload): array {
-            $recorder = app(AiModelUsageRecorder::class);
-
-            return [$recorder->record($payload), $recorder->record($payload)];
-        });
-
-        $this->assertTrue($first->is($second));
-        $this->assertDatabaseCount('ai_model_usage_events', 1);
-        $this->assertTrue(collect($queries)->contains(
-            static fn (string $sql): bool => str_contains($sql, 'insert or ignore into "ai_model_usage_events"'),
-        ));
-    }
-
-    public function test_reused_call_key_with_different_fingerprint_returns_a_stable_conflict(): void
+    public function test_same_request_and_call_with_a_different_request_digest_is_a_stable_conflict(): void
     {
         $owner = $this->admin('owner', 'super_admin');
-        $model = $this->model($owner);
-        $payload = $this->usagePayload($owner, $model);
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $requestId = '00000000-0000-4000-8000-000000000001';
+        $firstSnapshot = $this->snapshot(
+            $model,
+            null,
+            AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
+            $requestId,
+            hash('sha256', 'first request'),
+        );
+        $secondSnapshot = $this->snapshot(
+            $model,
+            null,
+            AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
+            $requestId,
+            hash('sha256', 'changed request'),
+        );
         $recorder = app(AiModelUsageRecorder::class);
-        $recorder->record($payload);
+        $recorder->record($firstSnapshot, $this->usagePayload());
 
         try {
-            DB::transaction(fn () => $recorder->record([...$payload, 'total_tokens' => 999]));
-            $this->fail('Expected a reused idempotency key with different usage metadata to fail.');
+            $recorder->record($secondSnapshot, $this->usagePayload());
+            $this->fail('Expected a changed request digest to conflict with the recorded call.');
         } catch (ValidationException $exception) {
             $this->assertSame(
                 ['ai_usage_event_idempotency_conflict'],
@@ -131,27 +225,95 @@ class AiModelUsageEventTest extends TestCase
         $this->assertDatabaseCount('ai_model_usage_events', 1);
     }
 
+    public function test_sensitive_or_malformed_identifiers_are_rejected(): void
+    {
+        $owner = $this->admin('owner', 'super_admin');
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+
+        foreach ([
+            ['request_id' => "secret-api-key\nrequest"],
+            ['request_payload_digest' => strtoupper(hash('sha256', 'payload'))],
+            ['request_payload_digest' => 'missing'],
+        ] as $invalidSnapshot) {
+            try {
+                $this->snapshot(
+                    $model,
+                    null,
+                    AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
+                    $invalidSnapshot['request_id'] ?? '00000000-0000-4000-8000-000000000001',
+                    $invalidSnapshot['request_payload_digest'] ?? hash('sha256', 'payload'),
+                );
+                $this->fail('Expected malformed snapshot identifiers to fail.');
+            } catch (ValidationException) {
+                $this->assertDatabaseCount('ai_model_usage_events', 0);
+            }
+        }
+
+        $snapshot = $this->snapshot($model, null, AiModelUsageEvent::MODEL_SOURCE_SYSTEM);
+        foreach ([
+            ['call_key' => "primary\napi_key=secret"],
+            ['operation' => '../article.generate'],
+            ['source_type' => "App\\Models\\Task\nsecret"],
+            ['source_id' => '42/private'],
+            ['error_code' => "provider_error\nsecret"],
+        ] as $invalidPayload) {
+            try {
+                app(AiModelUsageRecorder::class)->record(
+                    $snapshot,
+                    [...$this->usagePayload(), ...$invalidPayload],
+                );
+                $this->fail('Expected unsafe usage identifiers to fail.');
+            } catch (ValidationException) {
+                $this->assertDatabaseCount('ai_model_usage_events', 0);
+            }
+        }
+    }
+
+    public function test_recorder_uses_conflict_safe_idempotency_inside_an_outer_transaction(): void
+    {
+        if (DB::getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('SQL shape assertion targets the SQLite conflict-safe grammar.');
+        }
+
+        $owner = $this->admin('owner', 'super_admin');
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $snapshot = $this->snapshot($model, null, AiModelUsageEvent::MODEL_SOURCE_SYSTEM);
+        $payload = $this->usagePayload();
+        DB::enableQueryLog();
+
+        [$first, $second] = DB::transaction(function () use ($snapshot, $payload): array {
+            $recorder = app(AiModelUsageRecorder::class);
+
+            return [$recorder->record($snapshot, $payload), $recorder->record($snapshot, $payload)];
+        });
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertTrue($first->is($second));
+        $this->assertDatabaseCount('ai_model_usage_events', 1);
+        $this->assertTrue(collect($queries)->contains(
+            static fn (array $query): bool => str_contains(
+                strtolower((string) $query['query']),
+                'insert or ignore into "ai_model_usage_events"',
+            ),
+        ));
+    }
+
     public function test_usage_values_are_restricted_to_known_states_and_non_negative_tokens(): void
     {
         $owner = $this->admin('owner', 'super_admin');
-        $model = $this->model($owner);
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $snapshot = $this->snapshot($model, null, AiModelUsageEvent::MODEL_SOURCE_SYSTEM);
         $recorder = app(AiModelUsageRecorder::class);
 
         foreach ([
-            ['execution_scope' => 'unknown'],
-            ['model_source' => 'other_admin'],
             ['status' => 'mystery'],
             ['input_tokens' => -1],
             ['output_tokens' => -1],
             ['total_tokens' => -1],
-            [
-                'execution_scope' => AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN,
-                'model_source' => AiModelUsageEvent::MODEL_SOURCE_SHARED,
-                'execution_admin_id' => null,
-            ],
         ] as $invalid) {
             try {
-                $recorder->record([...$this->usagePayload($owner, $model), ...$invalid]);
+                $recorder->record($snapshot, [...$this->usagePayload(), ...$invalid]);
                 $this->fail('Expected usage event validation to reject invalid metadata.');
             } catch (ValidationException) {
                 $this->assertDatabaseCount('ai_model_usage_events', 0);
@@ -159,49 +321,91 @@ class AiModelUsageEventTest extends TestCase
         }
     }
 
-    public function test_usage_events_are_immutable_after_recording(): void
+    public function test_usage_events_are_append_only_through_models_and_query_builder(): void
     {
         $owner = $this->admin('owner', 'super_admin');
-        $model = $this->model($owner);
-        $event = app(AiModelUsageRecorder::class)->record($this->usagePayload($owner, $model));
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $event = app(AiModelUsageRecorder::class)->record(
+            $this->snapshot($model, null, AiModelUsageEvent::MODEL_SOURCE_SYSTEM),
+            $this->usagePayload(),
+        );
 
         try {
             $event->forceFill(['status' => AiModelUsageEvent::STATUS_FAILED])->save();
-            $this->fail('Expected usage event updates to be blocked.');
+            $this->fail('Expected model updates to be blocked.');
         } catch (LogicException) {
             $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->fresh()->status);
+        }
+
+        foreach (['update', 'delete'] as $operation) {
+            try {
+                $query = DB::table('ai_model_usage_events')->where('id', $event->id);
+                $operation === 'update'
+                    ? $query->update(['status' => AiModelUsageEvent::STATUS_FAILED])
+                    : $query->delete();
+                $this->fail('Expected database append-only enforcement to reject '.$operation.'.');
+            } catch (QueryException) {
+                $this->assertDatabaseHas('ai_model_usage_events', [
+                    'id' => $event->id,
+                    'status' => AiModelUsageEvent::STATUS_SUCCEEDED,
+                ]);
+            }
         }
 
         $this->expectException(LogicException::class);
         $event->delete();
     }
 
-    public function test_database_rejects_negative_usage_values_outside_the_recorder(): void
+    public function test_database_rejects_missing_identity_invalid_attribution_and_negative_values(): void
     {
-        $this->expectException(QueryException::class);
+        $valid = $this->rawUsageRow();
 
-        DB::table('ai_model_usage_events')->insert([
-            'event_uuid' => (string) Str::uuid(),
-            'request_id' => 'unsafe-request',
-            'call_key' => 'unsafe-call',
-            'payload_fingerprint' => str_repeat('a', 64),
-            'operation' => 'chat',
-            'execution_scope' => AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM,
-            'model_source' => AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
-            'business_source' => 'system_collection',
-            'status' => AiModelUsageEvent::STATUS_SUCCEEDED,
-            'input_tokens' => -1,
-            'output_tokens' => 0,
-            'total_tokens' => 0,
-            'created_at' => now(),
-        ]);
+        foreach ([
+            ['ai_model_id' => null],
+            ['config_owner_admin_id' => null],
+            ['created_at' => null],
+            [
+                'execution_scope' => AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM,
+                'execution_admin_id' => 10,
+                'model_source' => AiModelUsageEvent::MODEL_SOURCE_SHARED,
+            ],
+            ['input_tokens' => -1],
+        ] as $invalid) {
+            try {
+                DB::table('ai_model_usage_events')->insert([...$valid, ...$invalid]);
+                $this->fail('Expected database usage invariants to reject the row.');
+            } catch (QueryException) {
+                $this->assertDatabaseCount('ai_model_usage_events', 0);
+            }
+        }
+    }
+
+    public function test_postgresql_ddl_defines_constraints_and_append_only_triggers(): void
+    {
+        $statements = implode("\n", AiModelUsageLedgerSchema::postgresInstallStatements());
+        $query = DB::connection()->query()->from('ai_model_usage_events');
+        $postgresInsert = (new PostgresGrammar(DB::connection()))->compileInsertOrIgnore(
+            $query,
+            [['request_id' => '00000000-0000-4000-8000-000000000001']],
+        );
+
+        $this->assertStringContainsString('CHECK', $statements);
+        $this->assertStringContainsString('request_payload_digest', $statements);
+        $this->assertStringContainsString('execution_admin_id IS NULL', $statements);
+        $this->assertStringContainsString('BEFORE UPDATE OR DELETE', $statements);
+        $this->assertStringContainsString('RAISE EXCEPTION', $statements);
+        $this->assertStringContainsString('CREATE FUNCTION', $statements);
+        $this->assertStringEndsWith('on conflict do nothing', $postgresInsert);
     }
 
     public function test_usage_attribution_ids_survive_later_model_and_admin_deletion(): void
     {
         $owner = $this->admin('owner', 'super_admin');
-        $model = $this->model($owner);
-        $event = app(AiModelUsageRecorder::class)->record($this->usagePayload($owner, $model));
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $event = app(AiModelUsageRecorder::class)->record(
+            $this->snapshot($model, null, AiModelUsageEvent::MODEL_SOURCE_SYSTEM),
+            $this->usagePayload(),
+        );
 
         $model->delete();
         $owner->delete();
@@ -213,18 +417,12 @@ class AiModelUsageEventTest extends TestCase
     }
 
     /** @return array<string, mixed> */
-    private function usagePayload(Admin $owner, AiModel $model): array
+    private function usagePayload(): array
     {
         return [
-            'request_id' => 'request-123',
             'call_key' => 'primary',
             'operation' => 'article.generate',
-            'ai_model_id' => $model->id,
-            'config_owner_admin_id' => $owner->id,
-            'execution_admin_id' => null,
-            'execution_scope' => AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM,
-            'model_source' => AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
-            'business_source' => 'system_collection',
+            'business_source' => 'article_generation',
             'source_type' => null,
             'source_id' => null,
             'status' => AiModelUsageEvent::STATUS_SUCCEEDED,
@@ -236,9 +434,60 @@ class AiModelUsageEventTest extends TestCase
         ];
     }
 
-    private function admin(string $username, string $role): Admin
+    private function snapshot(
+        AiModel $model,
+        ?Admin $executor,
+        string $modelSource,
+        string $requestId = '00000000-0000-4000-8000-000000000001',
+        string $requestPayloadDigest = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        ?int $accessVersion = null,
+    ): AiModelUsageAccessSnapshot {
+        $executionScope = $modelSource === AiModelUsageEvent::MODEL_SOURCE_SYSTEM
+            ? AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM
+            : AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN;
+
+        return AiModelUsageAccessSnapshot::capture(
+            model: $model,
+            executionAdmin: $executor,
+            executionScope: $executionScope,
+            modelSource: $modelSource,
+            aiConfigAccessVersion: $accessVersion ?? ($executor instanceof Admin
+                ? (int) $executor->ai_config_access_version
+                : 0),
+            requestId: $requestId,
+            requestPayloadDigest: $requestPayloadDigest,
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function rawUsageRow(): array
     {
-        return Admin::query()->create([
+        return [
+            'event_uuid' => (string) Str::uuid(),
+            'request_id' => '00000000-0000-4000-8000-000000000001',
+            'request_payload_digest' => str_repeat('a', 64),
+            'call_key' => 'primary',
+            'payload_fingerprint' => str_repeat('b', 64),
+            'operation' => 'article.generate',
+            'ai_model_id' => 10,
+            'config_owner_admin_id' => 20,
+            'execution_admin_id' => null,
+            'ai_config_access_version' => 0,
+            'execution_scope' => AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM,
+            'model_source' => AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
+            'business_source' => 'system_collection',
+            'status' => AiModelUsageEvent::STATUS_SUCCEEDED,
+            'input_tokens' => 0,
+            'output_tokens' => 0,
+            'total_tokens' => 0,
+            'created_at' => now(),
+        ];
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function admin(string $username, string $role, array $overrides = []): Admin
+    {
+        $admin = Admin::query()->create([
             'username' => $username,
             'password' => 'secret-123',
             'email' => $username.'@example.test',
@@ -246,22 +495,25 @@ class AiModelUsageEventTest extends TestCase
             'role' => $role,
             'status' => 'active',
         ]);
+        $admin->forceFill($overrides)->save();
+
+        return $admin->refresh();
     }
 
-    private function model(Admin $owner): AiModel
+    private function model(Admin $owner, string $accessScope = AiModel::ACCESS_SCOPE_USER_CONTENT): AiModel
     {
         $model = new AiModel([
-            'name' => 'Usage model',
+            'name' => 'Usage model '.$owner->username.' '.$accessScope.' '.Str::random(4),
             'version' => 'test',
             'api_key' => 'secret-key',
-            'model_id' => 'usage-model',
+            'model_id' => 'usage-model-'.Str::uuid(),
             'model_type' => 'chat',
             'api_url' => 'https://ai.example.test',
             'status' => 'active',
         ]);
         $model->forceFill([
             'owner_admin_id' => $owner->id,
-            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'access_scope' => $accessScope,
         ])->save();
 
         return $model;

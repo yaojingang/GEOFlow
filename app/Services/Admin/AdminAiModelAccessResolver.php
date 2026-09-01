@@ -146,18 +146,30 @@ final class AdminAiModelAccessResolver
             throw AiModelAccessException::modelUnavailable($actor, $model);
         }
 
-        if ((string) $currentModel->access_scope !== AiModel::ACCESS_SCOPE_USER_CONTENT) {
-            throw AiModelAccessException::modelNotAccessible($actor, $currentModel);
+        $this->assertLockedUsable($actor, $currentModel);
+    }
+
+    /**
+     * Validate a model already locked by the caller's write transaction.
+     */
+    public function assertLockedUsable(Admin $actor, AiModel $lockedModel): void
+    {
+        if ((string) $actor->status !== 'active') {
+            throw AiModelAccessException::executionAdminInactive($actor);
         }
 
-        $isPersonal = (int) $currentModel->owner_admin_id === (int) $actor->getKey();
+        if ((string) $lockedModel->access_scope !== AiModel::ACCESS_SCOPE_USER_CONTENT) {
+            throw AiModelAccessException::modelNotAccessible($actor, $lockedModel);
+        }
+
+        $isPersonal = (int) $lockedModel->owner_admin_id === (int) $actor->getKey();
         if (! $isPersonal) {
             $sharedProviderId = $actor->isSuperAdmin()
                 ? null
                 : $actor->shared_ai_config_owner_id;
 
-            if ($sharedProviderId === null || (int) $currentModel->owner_admin_id !== (int) $sharedProviderId) {
-                throw AiModelAccessException::modelNotAccessible($actor, $currentModel);
+            if ($sharedProviderId === null || (int) $lockedModel->owner_admin_id !== (int) $sharedProviderId) {
+                throw AiModelAccessException::modelNotAccessible($actor, $lockedModel);
             }
 
             if (! $this->activeSharedProvider($actor) instanceof Admin) {
@@ -165,8 +177,8 @@ final class AdminAiModelAccessResolver
             }
         }
 
-        if ((string) $currentModel->status !== 'active' || $currentModel->archived_at !== null) {
-            throw AiModelAccessException::modelUnavailable($actor, $currentModel);
+        if ((string) $lockedModel->status !== 'active' || $lockedModel->archived_at !== null) {
+            throw AiModelAccessException::modelUnavailable($actor, $lockedModel);
         }
     }
 

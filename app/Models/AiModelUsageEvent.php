@@ -51,6 +51,7 @@ class AiModelUsageEvent extends Model
             'ai_model_id' => 'integer',
             'config_owner_admin_id' => 'integer',
             'execution_admin_id' => 'integer',
+            'ai_config_access_version' => 'integer',
             'source_id' => 'string',
             'input_tokens' => 'integer',
             'output_tokens' => 'integer',

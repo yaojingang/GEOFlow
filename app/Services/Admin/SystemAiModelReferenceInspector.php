@@ -3,39 +3,13 @@
 namespace App\Services\Admin;
 
 use App\Models\AiModel;
-use App\Models\ArticleAiOptimizationStep;
-use App\Models\ArticleAiQualityCheck;
-use App\Models\EnterpriseKnowledgeProject;
-use App\Models\KnowledgeFactGenerationRun;
 use App\Models\SiteSetting;
-use App\Models\SiteThemeReplication;
-use App\Models\Task;
-use App\Models\TitleGenerationRun;
-use App\Models\TitleLibrary;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 final class SystemAiModelReferenceInspector
 {
-    private const SYSTEM_SETTING_KEYS = [
-        'default_embedding_model_id',
-        'knowledge_chunking_model_id',
-        'ai_visibility_ark_model_id',
-        'ai_visibility_deepseek_analysis_model_id',
-    ];
-
-    private const USER_CONTENT_REFERENCES = [
-        Task::class => ['ai_model_id', 'ai_quality_model_id'],
-        TitleLibrary::class => ['ai_model_id'],
-        EnterpriseKnowledgeProject::class => ['ai_model_id'],
-        SiteThemeReplication::class => ['ai_model_id'],
-        TitleGenerationRun::class => ['ai_model_id'],
-        ArticleAiQualityCheck::class => ['ai_model_id'],
-        ArticleAiOptimizationStep::class => ['ai_model_id'],
-        KnowledgeFactGenerationRun::class => ['ai_model_id'],
-    ];
-
     /**
      * @return array{
      *   system_model_ids:list<int>,
@@ -44,11 +18,16 @@ final class SystemAiModelReferenceInspector
      *   invalid_bindings:list<array{setting_key:string,reason:string}>
      * }
      */
-    public function inspect(int $legacyOwnerId): array
+    public function inspect(int $legacyOwnerId, bool $lockForUpdate = false): array
     {
-        [$systemModelIds, $validBindings, $invalidBindings] = $this->systemModelBindings();
-        $models = AiModel::query()
+        [$systemModelIds, $validBindings, $invalidBindings] = $this->systemModelBindings($lockForUpdate);
+        $modelsQuery = AiModel::query()
             ->whereIn('id', $systemModelIds)
+            ->orderBy('id');
+        if ($lockForUpdate) {
+            $modelsQuery->lockForUpdate();
+        }
+        $models = $modelsQuery
             ->get(['id', 'owner_admin_id'])
             ->keyBy('id');
         $existingIds = $models->keys()->map(static fn (mixed $id): int => (int) $id)->all();
@@ -62,7 +41,7 @@ final class SystemAiModelReferenceInspector
             }
         }
 
-        $userContentIds = $this->userContentModelIds($existingIds);
+        $userContentIds = $this->userContentModelIds($existingIds, $lockForUpdate);
         $conflicts = [];
         $systemOnly = [];
         foreach ($existingIds as $modelId) {
@@ -102,15 +81,18 @@ final class SystemAiModelReferenceInspector
      *   list<array{setting_key:string,reason:string}>
      * }
      */
-    private function systemModelBindings(): array
+    private function systemModelBindings(bool $lockForUpdate): array
     {
         $ids = [];
         $valid = [];
         $invalid = [];
         $settings = SiteSetting::query()
-            ->whereIn('setting_key', self::SYSTEM_SETTING_KEYS)
-            ->orderBy('setting_key')
-            ->get(['setting_key', 'setting_value']);
+            ->whereIn('setting_key', AiModelReferenceCatalog::SYSTEM_SETTING_KEYS)
+            ->orderBy('setting_key');
+        if ($lockForUpdate) {
+            $settings->lockForUpdate();
+        }
+        $settings = $settings->get(['setting_key', 'setting_value']);
 
         foreach ($settings as $setting) {
             $value = trim((string) $setting->setting_value);
@@ -139,14 +121,14 @@ final class SystemAiModelReferenceInspector
     /** @param list<int> $candidateIds
      * @return list<int>
      */
-    private function userContentModelIds(array $candidateIds): array
+    private function userContentModelIds(array $candidateIds, bool $lockForUpdate): array
     {
         if ($candidateIds === []) {
             return [];
         }
 
         $ids = [];
-        foreach (self::USER_CONTENT_REFERENCES as $modelClass => $columns) {
+        foreach (AiModelReferenceCatalog::USER_CONTENT_REFERENCES as $modelClass => $columns) {
             /** @var Model $model */
             $model = new $modelClass;
             $table = $model->getTable();
@@ -154,20 +136,33 @@ final class SystemAiModelReferenceInspector
                 continue;
             }
 
-            foreach ($columns as $column) {
-                if (! Schema::hasColumn($table, $column)) {
-                    continue;
-                }
+            $availableColumns = array_values(array_filter(
+                $columns,
+                static fn (string $column): bool => Schema::hasColumn($table, $column),
+            ));
+            if ($availableColumns === []) {
+                continue;
+            }
 
-                $ids = [
-                    ...$ids,
-                    ...DB::table($table)
-                        ->whereIn($column, $candidateIds)
-                        ->distinct()
-                        ->pluck($column)
-                        ->map(static fn (mixed $id): int => (int) $id)
-                        ->all(),
-                ];
+            $query = DB::table($table)
+                ->where(function ($query) use ($availableColumns, $candidateIds): void {
+                    foreach ($availableColumns as $index => $column) {
+                        $method = $index === 0 ? 'whereIn' : 'orWhereIn';
+                        $query->{$method}($column, $candidateIds);
+                    }
+                })
+                ->orderBy($model->getKeyName());
+            if ($lockForUpdate) {
+                $query->lockForUpdate();
+            }
+
+            foreach ($query->get($availableColumns) as $row) {
+                foreach ($availableColumns as $column) {
+                    $id = $row->{$column};
+                    if ($id !== null) {
+                        $ids[] = (int) $id;
+                    }
+                }
             }
         }
 

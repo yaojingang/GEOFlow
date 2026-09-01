@@ -1,8 +1,8 @@
 <?php
 
+use App\Services\Admin\AiModelUsageLedgerSchema;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -15,13 +15,15 @@ return new class extends Migration
         Schema::create('ai_model_usage_events', function (Blueprint $table): void {
             $table->id();
             $table->uuid('event_uuid')->unique();
-            $table->string('request_id', 120);
+            $table->string('request_id', 36);
+            $table->char('request_payload_digest', 64);
             $table->string('call_key', 100);
             $table->char('payload_fingerprint', 64);
             $table->string('operation', 100);
-            $table->unsignedBigInteger('ai_model_id')->nullable();
-            $table->unsignedBigInteger('config_owner_admin_id')->nullable();
+            $table->unsignedBigInteger('ai_model_id');
+            $table->unsignedBigInteger('config_owner_admin_id');
             $table->unsignedBigInteger('execution_admin_id')->nullable();
+            $table->unsignedBigInteger('ai_config_access_version');
             $table->enum('execution_scope', ['interactive_admin', 'persisted_admin', 'system']);
             $table->enum('model_source', ['personal', 'shared', 'system']);
             $table->string('business_source', 80);
@@ -33,7 +35,7 @@ return new class extends Migration
             $table->unsignedBigInteger('output_tokens')->nullable();
             $table->unsignedBigInteger('total_tokens')->nullable();
             $table->decimal('estimated_cost', 20, 8)->nullable();
-            $table->timestamp('created_at')->nullable();
+            $table->timestamp('created_at');
 
             $table->unique(['request_id', 'call_key'], 'ai_model_usage_request_call_unique');
             $table->index(['ai_model_id', 'created_at'], 'ai_model_usage_model_created_index');
@@ -59,7 +61,7 @@ return new class extends Migration
             );
         });
 
-        $this->addNonNegativeUsageConstraints();
+        AiModelUsageLedgerSchema::install();
     }
 
     /**
@@ -67,44 +69,7 @@ return new class extends Migration
      */
     public function down(): void
     {
+        AiModelUsageLedgerSchema::uninstall();
         Schema::dropIfExists('ai_model_usage_events');
-    }
-
-    private function addNonNegativeUsageConstraints(): void
-    {
-        $check = '(input_tokens IS NULL OR input_tokens >= 0)'
-            .' AND (output_tokens IS NULL OR output_tokens >= 0)'
-            .' AND (total_tokens IS NULL OR total_tokens >= 0)'
-            .' AND (estimated_cost IS NULL OR estimated_cost >= 0)';
-
-        if (DB::getDriverName() === 'sqlite') {
-            $sqliteCheck = str_replace(
-                ['input_tokens', 'output_tokens', 'total_tokens', 'estimated_cost'],
-                ['NEW.input_tokens', 'NEW.output_tokens', 'NEW.total_tokens', 'NEW.estimated_cost'],
-                $check,
-            );
-            DB::statement(
-                'CREATE TRIGGER ai_model_usage_nonnegative_insert '
-                .'BEFORE INSERT ON ai_model_usage_events '
-                .'WHEN NOT ('.$sqliteCheck.') '
-                ."BEGIN SELECT RAISE(ABORT, 'negative AI model usage value'); END",
-            );
-            DB::statement(
-                'CREATE TRIGGER ai_model_usage_nonnegative_update '
-                .'BEFORE UPDATE OF input_tokens, output_tokens, total_tokens, estimated_cost '
-                .'ON ai_model_usage_events '
-                .'WHEN NOT ('.$sqliteCheck.') '
-                ."BEGIN SELECT RAISE(ABORT, 'negative AI model usage value'); END",
-            );
-
-            return;
-        }
-
-        if (DB::getDriverName() === 'pgsql') {
-            DB::statement(
-                'ALTER TABLE ai_model_usage_events '
-                .'ADD CONSTRAINT ai_model_usage_values_nonnegative CHECK ('.$check.')',
-            );
-        }
     }
 };

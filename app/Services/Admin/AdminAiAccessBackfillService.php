@@ -33,6 +33,7 @@ final class AdminAiAccessBackfillService
         CarbonImmutable $createdBefore,
         ?int $adminMaxId,
         ?int $modelMaxId,
+        bool $maintenanceConfirmed,
         int $batchSize,
     ): array {
         return DB::transaction(function () use (
@@ -40,11 +41,14 @@ final class AdminAiAccessBackfillService
             $createdBefore,
             $adminMaxId,
             $modelMaxId,
+            $maintenanceConfirmed,
             $batchSize,
         ): array {
+            $this->assertMaintenanceGate($maintenanceConfirmed);
             $owner = $this->resolveLegacyOwner($legacyOwnerId, true);
             $this->assertSnapshotsCoverNullTimestamps($adminMaxId, $modelMaxId);
-            $plan = $this->buildPlan($owner, $createdBefore, $adminMaxId, $modelMaxId);
+            $this->lockHistoricalCandidates($createdBefore, $adminMaxId, $modelMaxId);
+            $plan = $this->buildPlan($owner, $createdBefore, $adminMaxId, $modelMaxId, true);
 
             $modelsAssigned = $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereNull('owner_admin_id')
@@ -141,13 +145,19 @@ final class AdminAiAccessBackfillService
             return $owner;
         }
 
-        $query = Admin::query()->active();
+        $query = Admin::query()
+            ->active()
+            ->whereRaw(
+                'LOWER(TRIM(role)) IN (?, ?)',
+                ['super_admin', 'superadmin'],
+            )
+            ->orderBy('id')
+            ->limit(2);
         if ($lock) {
             $query->lockForUpdate();
         }
         $activeSuperAdmins = $query
             ->get(['id', 'role', 'status'])
-            ->filter(static fn (Admin $admin): bool => $admin->isSuperAdmin())
             ->values();
 
         if ($activeSuperAdmins->isEmpty()) {
@@ -166,8 +176,12 @@ final class AdminAiAccessBackfillService
         CarbonImmutable $createdBefore,
         ?int $adminMaxId,
         ?int $modelMaxId,
+        bool $lockReferences = false,
     ): array {
-        $references = $this->referenceInspector->inspect((int) $owner->getKey());
+        $references = $this->referenceInspector->inspect(
+            (int) $owner->getKey(),
+            $lockReferences,
+        );
 
         return [
             'legacy_owner_id' => (int) $owner->getKey(),
@@ -178,8 +192,6 @@ final class AdminAiAccessBackfillService
                 ->whereNull('owner_admin_id')
                 ->count(),
             'historical_administrators' => $this->historicalOrdinaryAdmins($createdBefore, $adminMaxId)
-                ->get(['id', 'role', 'shared_ai_config_owner_id'])
-                ->reject(static fn (Admin $admin): bool => $admin->isSuperAdmin())
                 ->count(),
             'super_admin_bindings_to_clear' => $this->historicalSuperAdminBindings(
                 $createdBefore,
@@ -270,5 +282,32 @@ final class AdminAiAccessBackfillService
         if ($modelMaxId === null && AiModel::query()->whereNull('created_at')->exists()) {
             throw new AdminAiAccessBackfillException('model_max_id_required_for_null_created_at');
         }
+    }
+
+    private function assertMaintenanceGate(bool $maintenanceConfirmed): void
+    {
+        if (! $maintenanceConfirmed) {
+            throw new AdminAiAccessBackfillException('maintenance_confirmation_required');
+        }
+        if (! app()->isDownForMaintenance()) {
+            throw new AdminAiAccessBackfillException('application_maintenance_mode_required');
+        }
+    }
+
+    private function lockHistoricalCandidates(
+        CarbonImmutable $createdBefore,
+        ?int $adminMaxId,
+        ?int $modelMaxId,
+    ): void {
+        $this->historicalAdmins($createdBefore, $adminMaxId)
+            ->select(['id'])
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        $this->historicalModels($createdBefore, $modelMaxId)
+            ->select(['id'])
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
     }
 }

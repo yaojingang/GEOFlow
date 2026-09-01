@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\Admin\AiModelWriteLock;
 use App\Contracts\AiWorkspace\AdminHelpResponder;
 use App\Contracts\ArticleAiOptimizationRefiner;
 use App\Contracts\ArticleAiQualityReviewer;
@@ -15,6 +16,7 @@ use App\Models\Admin;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
+use App\Services\Admin\DatabaseAiModelWriteLock;
 use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
 use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use App\Services\GeoFlow\ArticleAiQualityWorkerLiveness;
@@ -63,6 +65,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ArticleAiQualityReviewer::class, LaravelArticleAiQualityReviewer::class);
         $this->app->bind(ArticleAiOptimizationRefiner::class, LaravelArticleAiOptimizationRefiner::class);
         $this->app->bind(AgentClient::class, UnixSocketAgentClient::class);
+        $this->app->bind(AiModelWriteLock::class, DatabaseAiModelWriteLock::class);
         $this->app->singleton(FinalOutboundSecurityPolicy::class);
         $this->app->bind(OutboundTransport::class, function () use ($fixedContextCapability): LaravelPinnedOutboundTransport {
             return new LaravelPinnedOutboundTransport($fixedContextCapability);

@@ -2,7 +2,6 @@
 
 namespace App\Services\Admin;
 
-use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -16,14 +15,8 @@ final class AiModelUsageRecorder
     private const IDEMPOTENCY_CONFLICT = 'ai_usage_event_idempotency_conflict';
 
     private const ALLOWED_FIELDS = [
-        'request_id',
         'call_key',
         'operation',
-        'ai_model_id',
-        'config_owner_admin_id',
-        'execution_admin_id',
-        'execution_scope',
-        'model_source',
         'business_source',
         'source_type',
         'source_id',
@@ -36,7 +29,7 @@ final class AiModelUsageRecorder
     ];
 
     /** @param array<string, mixed> $payload */
-    public function record(array $payload): AiModelUsageEvent
+    public function record(AiModelUsageAccessSnapshot $accessSnapshot, array $payload): AiModelUsageEvent
     {
         $whitelisted = Arr::only($payload, self::ALLOWED_FIELDS);
         if (is_int($whitelisted['source_id'] ?? null)) {
@@ -44,25 +37,23 @@ final class AiModelUsageRecorder
         }
 
         $attributes = Validator::make($whitelisted, [
-            'request_id' => ['required', 'string', 'max:120'],
             'call_key' => ['required', 'string', 'max:100', 'regex:/\A[a-z0-9_.:-]+\z/i'],
             'operation' => ['required', 'string', 'max:100', 'regex:/\A[a-z0-9_.:-]+\z/i'],
-            'ai_model_id' => ['required', 'integer', 'exists:ai_models,id'],
-            'config_owner_admin_id' => ['required', 'integer', 'exists:admins,id'],
-            'execution_admin_id' => ['nullable', 'integer', 'exists:admins,id'],
-            'execution_scope' => ['required', Rule::in([
-                AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN,
-                AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN,
-                AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM,
-            ])],
-            'model_source' => ['required', Rule::in([
-                AiModelUsageEvent::MODEL_SOURCE_PERSONAL,
-                AiModelUsageEvent::MODEL_SOURCE_SHARED,
-                AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
-            ])],
             'business_source' => ['required', 'string', 'max:80', 'regex:/\A[a-z0-9_.:-]+\z/i'],
-            'source_type' => ['nullable', 'string', 'max:255', 'required_with:source_id'],
-            'source_id' => ['nullable', 'string', 'max:120', 'required_with:source_type'],
+            'source_type' => [
+                'nullable',
+                'string',
+                'max:255',
+                'required_with:source_id',
+                'regex:/\A[A-Za-z0-9_.:\\\\-]+\z/',
+            ],
+            'source_id' => [
+                'nullable',
+                'string',
+                'max:120',
+                'required_with:source_type',
+                'regex:/\A[a-z0-9_.:-]+\z/i',
+            ],
             'status' => ['required', Rule::in([
                 AiModelUsageEvent::STATUS_STARTED,
                 AiModelUsageEvent::STATUS_SUCCEEDED,
@@ -77,8 +68,7 @@ final class AiModelUsageRecorder
             'estimated_cost' => ['nullable', 'numeric', 'min:0'],
         ])->validate();
 
-        $this->assertOwnerMatchesModel($attributes);
-        $this->assertAttributionIsConsistent($attributes);
+        $attributes = [...$accessSnapshot->toUsageAttributes(), ...$attributes];
         $payloadFingerprint = $this->payloadFingerprint($attributes);
 
         DB::table((new AiModelUsageEvent)->getTable())->insertOrIgnore([
@@ -100,50 +90,12 @@ final class AiModelUsageRecorder
     }
 
     /** @param array<string, mixed> $attributes */
-    private function assertOwnerMatchesModel(array $attributes): void
-    {
-        $matches = AiModel::query()
-            ->whereKey((int) $attributes['ai_model_id'])
-            ->where('owner_admin_id', (int) $attributes['config_owner_admin_id'])
-            ->exists();
-
-        if (! $matches) {
-            throw ValidationException::withMessages([
-                'config_owner_admin_id' => ['The configuration owner does not own the selected AI model.'],
-            ]);
-        }
-    }
-
-    /** @param array<string, mixed> $attributes */
     private function findExisting(array $attributes): ?AiModelUsageEvent
     {
         return AiModelUsageEvent::query()
             ->where('request_id', $attributes['request_id'])
             ->where('call_key', $attributes['call_key'])
             ->first();
-    }
-
-    /** @param array<string, mixed> $attributes */
-    private function assertAttributionIsConsistent(array $attributes): void
-    {
-        $isSystem = $attributes['execution_scope'] === AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM;
-        $hasExecutor = $attributes['execution_admin_id'] !== null;
-        $usesSystemModel = $attributes['model_source'] === AiModelUsageEvent::MODEL_SOURCE_SYSTEM;
-        $ownerIsExecutor = $hasExecutor
-            && (int) $attributes['execution_admin_id'] === (int) $attributes['config_owner_admin_id'];
-        $valid = $isSystem
-            ? ! $hasExecutor && $usesSystemModel
-            : $hasExecutor
-                && ! $usesSystemModel
-                && ($attributes['model_source'] === AiModelUsageEvent::MODEL_SOURCE_PERSONAL
-                    ? $ownerIsExecutor
-                    : ! $ownerIsExecutor);
-
-        if (! $valid) {
-            throw ValidationException::withMessages([
-                'execution_scope' => ['The execution identity does not match the selected model source.'],
-            ]);
-        }
     }
 
     /** @param array<string, mixed> $attributes */

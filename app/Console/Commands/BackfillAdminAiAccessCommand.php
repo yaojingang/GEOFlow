@@ -21,6 +21,7 @@ final class BackfillAdminAiAccessCommand extends Command
         {--admin-max-id= : Stable administrator ID snapshot captured before deployment}
         {--model-max-id= : Stable AI model ID snapshot captured before deployment}
         {--apply : Apply the audited backfill in one transaction}
+        {--maintenance-confirmed : Confirm Web and AI workers are stopped and maintenance mode is active}
         {--dry-run : Explicitly request preflight-only mode}
         {--batch=200 : Administrators processed per batch}';
 
@@ -42,7 +43,7 @@ final class BackfillAdminAiAccessCommand extends Command
     public function handle(): int
     {
         try {
-            [$ownerId, $cutoff, $adminMaxId, $modelMaxId, $apply, $batchSize] = $this->argumentsForRun();
+            [$ownerId, $cutoff, $adminMaxId, $modelMaxId, $apply, $maintenanceConfirmed, $batchSize] = $this->argumentsForRun();
         } catch (AdminAiAccessBackfillException $exception) {
             $this->error('Invalid arguments: '.$exception->getErrorCode());
 
@@ -56,11 +57,18 @@ final class BackfillAdminAiAccessCommand extends Command
                     $cutoff,
                     $adminMaxId,
                     $modelMaxId,
+                    $maintenanceConfirmed,
                     $batchSize,
                 )
                 : $this->backfillService->preview($ownerId, $cutoff, $adminMaxId, $modelMaxId);
         } catch (AdminAiAccessBackfillException $exception) {
             $this->error('Preflight failed: '.$exception->getErrorCode());
+            if (in_array($exception->getErrorCode(), [
+                'maintenance_confirmation_required',
+                'application_maintenance_mode_required',
+            ], true)) {
+                $this->line('Required: stop Web and AI workers, run php artisan down, then pass --maintenance-confirmed.');
+            }
 
             return self::FAILURE;
         } catch (Throwable) {
@@ -104,7 +112,7 @@ final class BackfillAdminAiAccessCommand extends Command
         return self::SUCCESS;
     }
 
-    /** @return array{?int, CarbonImmutable, ?int, ?int, bool, int} */
+    /** @return array{?int, CarbonImmutable, ?int, ?int, bool, bool, int} */
     private function argumentsForRun(): array
     {
         $apply = (bool) $this->option('apply');
@@ -146,6 +154,7 @@ final class BackfillAdminAiAccessCommand extends Command
             $adminMaxId,
             $modelMaxId,
             $apply,
+            (bool) $this->option('maintenance-confirmed'),
             (int) $batchValue,
         ];
     }
