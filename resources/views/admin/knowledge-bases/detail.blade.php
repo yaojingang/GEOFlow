@@ -21,10 +21,15 @@
 @push('styles')
     <link rel="stylesheet" href="{{ asset('vendor/vditor/dist/index.css') }}">
     <style>
-        .knowledge-markdown-editor .vditor {
+        .knowledge-markdown-editor.vditor {
+            background: #fff;
             border: 0;
             border-radius: 0 0 0.75rem 0.75rem;
             min-height: 720px;
+        }
+
+        .knowledge-markdown-editor.vditor--fullscreen {
+            border-radius: 0;
         }
 
         .knowledge-markdown-editor .vditor-toolbar {
@@ -147,7 +152,7 @@
         }
 
         @media (max-width: 1023px) {
-            .knowledge-markdown-editor .vditor-outline {
+            .knowledge-markdown-editor:not(.vditor--fullscreen) .vditor-outline {
                 display: none !important;
             }
         }
