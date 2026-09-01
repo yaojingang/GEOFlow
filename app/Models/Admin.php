@@ -160,6 +160,16 @@ class Admin extends Authenticatable
         return $this->hasMany(AiModelUsageEvent::class, 'execution_admin_id');
     }
 
+    public function aiExecutionTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'model_access_admin_id');
+    }
+
+    public function aiExecutionTaskRuns(): HasMany
+    {
+        return $this->hasMany(TaskRun::class, 'model_access_admin_id');
+    }
+
     public function activityLogs(): HasMany
     {
         return $this->hasMany(AdminActivityLog::class, 'admin_id');

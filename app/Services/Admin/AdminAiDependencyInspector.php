@@ -10,6 +10,8 @@ use App\Models\AiModel;
 use App\Models\AiWorkspaceRun;
 use App\Models\ArticleAiOptimizationRun;
 use App\Models\KnowledgeFactGenerationRun;
+use App\Models\Task;
+use App\Models\TaskRun;
 use App\Models\TitleGenerationRun;
 use Illuminate\Support\Facades\Schema;
 
@@ -51,6 +53,8 @@ final class AdminAiDependencyInspector
                 ->count(),
             aiSettingCount: AdminAiSetting::query()->where('admin_id', $admin->getKey())->count(),
             pendingTaskCounts: $this->pendingTaskCounts($admin),
+            executionTaskCount: $this->executionTaskCount($admin),
+            executionTaskRunCount: $this->executionTaskRunCount($admin),
         );
     }
 
@@ -162,6 +166,28 @@ final class AdminAiDependencyInspector
         return AiWorkspaceRun::query()
             ->where('admin_id', $admin->getKey())
             ->whereNotIn('state', AiWorkspaceRun::TERMINAL_STATES)
+            ->count();
+    }
+
+    private function executionTaskCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new Task)->getTable(), ['model_access_admin_id'])) {
+            return 0;
+        }
+
+        return Task::withTrashed()
+            ->where('model_access_admin_id', $admin->getKey())
+            ->count();
+    }
+
+    private function executionTaskRunCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new TaskRun)->getTable(), ['model_access_admin_id'])) {
+            return 0;
+        }
+
+        return TaskRun::query()
+            ->where('model_access_admin_id', $admin->getKey())
             ->count();
     }
 

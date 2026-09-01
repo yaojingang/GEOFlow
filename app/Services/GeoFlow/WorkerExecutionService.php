@@ -2,6 +2,8 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Ai\AiExecutionContext;
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
 use App\Exceptions\TaskTitleReadinessException;
@@ -46,12 +48,13 @@ class WorkerExecutionService
         private readonly TaskTitleReadinessService $taskTitleReadinessService,
         private readonly ArticleAiQualityPolicyResolver $articleAiQualityPolicyResolver,
         private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
+        private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
     ) {}
 
     /**
      * @return array{article_id:int|null, title:string, message:string, meta:array<string,mixed>}
      */
-    public function executeTask(int $taskId): array
+    public function executeTask(int $taskId, ?AiExecutionContext $executionContext = null): array
     {
         /** @var Task|null $task */
         $task = Task::query()->find($taskId);
@@ -63,7 +66,16 @@ class WorkerExecutionService
             throw new RuntimeException('任务未激活');
         }
 
-        $publishResult = $this->publishDueDraftArticle($task);
+        if ($this->executionBoundariesEnforced()) {
+            if (! $executionContext instanceof AiExecutionContext) {
+                throw AiModelAccessException::configAccessRevokedForAdminId(
+                    (int) ($task->model_access_admin_id ?? 0),
+                );
+            }
+            $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+        }
+
+        $publishResult = $this->publishDueDraftArticle($task, $executionContext);
         if ($publishResult !== null) {
             $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
 
@@ -94,7 +106,7 @@ class WorkerExecutionService
         $knowledgeContext = $knowledgeBundle['context'];
         $generationEvidenceSnapshot = $this->generationEvidenceSnapshot($knowledgeBundle['evidence']);
         $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
-        $generation = $this->generateContentWithModelSelection($task, $contentPrompt);
+        $generation = $this->generateContentWithModelSelection($task, $contentPrompt, $executionContext);
         $aiModel = $generation['model'];
         $generatedContent = $generation['content'];
         $imageResult = $this->insertTaskImagesIntoContent($task, $generatedContent);
@@ -102,7 +114,17 @@ class WorkerExecutionService
         $selectedImages = $imageResult['images'];
         $excerpt = $this->buildExcerpt($content);
         $qualityPolicy = null;
-        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, &$qualityPolicy, $generationEvidenceSnapshot): int {
+        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, &$qualityPolicy, $generationEvidenceSnapshot, $executionContext, $aiModel): int {
+            if ($this->executionBoundariesEnforced()) {
+                if (! $executionContext instanceof AiExecutionContext) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId(
+                        (int) ($task->model_access_admin_id ?? 0),
+                    );
+                }
+                $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+                $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $aiModel, $executionAdmin);
+            }
+
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
@@ -232,7 +254,7 @@ class WorkerExecutionService
      *
      * @return array{article_id:int, title:string, message:string, meta:array<string,mixed>}|null
      */
-    private function publishDueDraftArticle(Task $task): ?array
+    private function publishDueDraftArticle(Task $task, ?AiExecutionContext $executionContext = null): ?array
     {
         if ($task->next_publish_at !== null && $task->next_publish_at->greaterThan(now())) {
             return null;
@@ -249,7 +271,16 @@ class WorkerExecutionService
             return null;
         }
 
-        return DB::transaction(function () use ($task, $candidateArticleId): ?array {
+        return DB::transaction(function () use ($task, $candidateArticleId, $executionContext): ?array {
+            if ($this->executionBoundariesEnforced()) {
+                if (! $executionContext instanceof AiExecutionContext) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId(
+                        (int) ($task->model_access_admin_id ?? 0),
+                    );
+                }
+                $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+            }
+
             /** @var Article|null $article */
             $article = Article::query()
                 ->whereKey((int) $candidateArticleId)
@@ -389,13 +420,25 @@ class WorkerExecutionService
      *
      * @return array{content:string,model:AiModel,attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}
      */
-    private function generateContentWithModelSelection(Task $task, string $contentPrompt): array
-    {
+    private function generateContentWithModelSelection(
+        Task $task,
+        string $contentPrompt,
+        ?AiExecutionContext $executionContext = null,
+    ): array {
         $mode = (string) ($task->model_selection_mode ?? 'fixed');
         $attempts = [];
         $lastMessage = '';
 
         foreach ($this->resolveAiModelCandidates($task) as $candidate) {
+            if ($this->executionBoundariesEnforced()) {
+                if (! $executionContext instanceof AiExecutionContext) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId(
+                        (int) ($task->model_access_admin_id ?? 0),
+                    );
+                }
+                $candidate = $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $candidate);
+            }
+
             $unavailableReason = $this->getAiModelUnavailableReason($candidate);
             if ($unavailableReason !== null) {
                 $attempts[] = $this->buildModelAttempt($candidate, 'skipped', $unavailableReason);
@@ -409,6 +452,12 @@ class WorkerExecutionService
 
             try {
                 $content = $this->generateContent($candidate, $contentPrompt);
+                if ($this->executionBoundariesEnforced() && $executionContext instanceof AiExecutionContext) {
+                    $this->aiExecutionAccessGuard->recordResolvedModel($executionContext, $candidate);
+                } elseif ($executionContext instanceof AiExecutionContext
+                    && (bool) config('geoflow.admin_ai_access.ownership_write_enabled', true)) {
+                    $this->aiExecutionAccessGuard->recordResolvedModelSnapshot($executionContext, $candidate);
+                }
                 $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
 
                 return [
@@ -431,6 +480,12 @@ class WorkerExecutionService
         }
 
         throw new RuntimeException('AI模型不可用或已达每日限制');
+    }
+
+    private function executionBoundariesEnforced(): bool
+    {
+        return (bool) config('geoflow.admin_ai_access.access_enforce_enabled', false)
+            || (bool) config('geoflow.admin_ai_access.revocation_enforce_enabled', false);
     }
 
     /**

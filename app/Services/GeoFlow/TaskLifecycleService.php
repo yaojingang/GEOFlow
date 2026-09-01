@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Exceptions\ApiException;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
@@ -41,6 +42,7 @@ class TaskLifecycleService
      */
     public function __construct(
         private JobQueueService $queueService,
+        private AiExecutionContextFactory $aiExecutionContextFactory,
         private TaskMonitoringQueryService $taskMonitoringQueryService,
         private TaskRealtimeBroadcastService $taskRealtimeBroadcastService,
         private TaskTitleReadinessService $taskTitleReadinessService,
@@ -105,6 +107,7 @@ class TaskLifecycleService
         }
 
         $taskId = DB::transaction(function () use ($normalized, $auditAdminId, $apiTokenId): int {
+            $executionIdentity = $this->aiExecutionContextFactory->identityForTaskCreation($auditAdminId);
             $task = Task::query()->create([
                 'name' => $normalized['name'],
                 'title_library_id' => $normalized['title_library_id'],
@@ -140,6 +143,9 @@ class TaskLifecycleService
                 'category_mode' => $normalized['category_mode'],
                 'fixed_category_id' => $normalized['fixed_category_id'],
             ]);
+            if ($executionIdentity !== null) {
+                $task->forceFill($executionIdentity)->save();
+            }
 
             $taskId = (int) $task->id;
             $this->syncTaskKnowledgeBases($taskId, $normalized['knowledge_base_ids'] ?? []);
@@ -188,7 +194,7 @@ class TaskLifecycleService
      * @param  array<string,mixed>  $data
      * @return array<string,mixed>
      */
-    public function createDraftTask(array $data): array
+    public function createDraftTask(array $data, Admin|int $executionAdmin): array
     {
         $name = trim((string) ($data['name'] ?? ''));
         if ($name === '') {
@@ -197,7 +203,8 @@ class TaskLifecycleService
         $articleLimit = max(1, min(100, (int) ($data['article_limit'] ?? 10)));
         $publishInterval = max(60, min(2592000, (int) ($data['publish_interval'] ?? 3600)));
 
-        $taskId = DB::transaction(function () use ($name, $articleLimit, $publishInterval): int {
+        $taskId = DB::transaction(function () use ($name, $articleLimit, $publishInterval, $executionAdmin): int {
+            $executionIdentity = $this->aiExecutionContextFactory->identityForTaskCreation($executionAdmin);
             $dependencies = $this->resolveDraftTaskDependencies();
             $task = Task::query()->create([
                 'name' => $name,
@@ -220,6 +227,9 @@ class TaskLifecycleService
                 'category_mode' => 'smart',
                 'max_retry_count' => 3,
             ]);
+            if ($executionIdentity !== null) {
+                $task->forceFill($executionIdentity)->save();
+            }
             $this->queueService->initializeTaskSchedule((int) $task->id);
             Task::query()->whereKey($task->id)->update([
                 'schedule_enabled' => 0,

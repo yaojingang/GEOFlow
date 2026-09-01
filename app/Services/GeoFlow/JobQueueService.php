@@ -2,7 +2,9 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Exceptions\AiModelAccessException;
 use App\Jobs\ProcessGeoFlowTaskJob;
+use App\Models\Article;
 use App\Models\Task;
 use App\Models\TaskRun;
 use Illuminate\Support\Carbon;
@@ -24,6 +26,11 @@ use Throwable;
  */
 class JobQueueService
 {
+    public function __construct(
+        private readonly AiExecutionContextFactory $aiExecutionContextFactory,
+        private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
+    ) {}
+
     /**
      * 初始化任务调度字段。
      *
@@ -95,7 +102,16 @@ class JobQueueService
             $taskRow = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
-                ->first(['id', 'status', 'schedule_enabled', 'max_retry_count']);
+                ->first([
+                    'id',
+                    'status',
+                    'schedule_enabled',
+                    'max_retry_count',
+                    'ai_model_id',
+                    'model_access_admin_id',
+                    'model_access_admin_role',
+                    'model_access_policy_version',
+                ]);
             if (! $taskRow
                 || ($taskRow->status ?? 'paused') !== 'active'
                 || (int) ($taskRow->schedule_enabled ?? 1) !== 1) {
@@ -114,14 +130,15 @@ class JobQueueService
 
             $maxAttempts = max(1, (int) ($taskRow->max_retry_count ?? 3));
             $availableAtValue = $availableAt ? Carbon::parse($availableAt) : now();
+            $executionIdentity = $this->aiExecutionContextFactory->taskRunIdentity($taskRow);
 
             // 建立“待执行记录”，作为后续状态流转的唯一主记录。
-            return TaskRun::query()->create([
+            $run = TaskRun::query()->create([
                 'task_id' => $taskId,
                 'status' => 'pending',
                 'meta' => [
                     'job_type' => $jobType,
-                    'payload' => $payload,
+                    'payload' => $this->sanitizeQueuePayload($payload),
                     'attempt_count' => 0,
                     'max_attempts' => $maxAttempts,
                     'available_at' => $availableAtValue->toDateTimeString(),
@@ -129,6 +146,9 @@ class JobQueueService
                 'started_at' => null,
                 'finished_at' => null,
             ]);
+            $run->forceFill($executionIdentity)->save();
+
+            return $run;
         });
         if (! $run) {
             return null;
@@ -174,6 +194,20 @@ class JobQueueService
                     ]);
 
                 return null;
+            }
+
+            if ($this->executionBoundariesEnforced()) {
+                try {
+                    $context = $this->aiExecutionContextFactory->fromTaskRun($run);
+                    $this->aiExecutionAccessGuard->assertCurrent(
+                        $context,
+                        validateRequestedModel: $this->taskRunRequiresAiModel($run),
+                    );
+                } catch (AiModelAccessException $exception) {
+                    $this->permanentlyFailAuthorizationRun($run, $exception->getErrorCode());
+
+                    return null;
+                }
             }
 
             $meta = $this->normalizeMeta($run->meta);
@@ -352,6 +386,40 @@ class JobQueueService
         }
 
         $this->broadcastOverviewUpdate();
+    }
+
+    public function failForAiAuthorization(
+        int $jobId,
+        int $taskId,
+        string $errorCode,
+        int $durationMs,
+    ): void {
+        $changed = DB::transaction(function () use ($jobId, $taskId, $errorCode, $durationMs): bool {
+            $run = TaskRun::query()
+                ->whereKey($jobId)
+                ->where('task_id', $taskId)
+                ->whereIn('status', ['pending', 'running'])
+                ->lockForUpdate()
+                ->first();
+            if (! $run) {
+                return false;
+            }
+
+            $this->permanentlyFailAuthorizationRun($run, $errorCode, $durationMs);
+
+            Task::query()->whereKey($taskId)->update([
+                'last_run_at' => now(),
+                'last_error_at' => now(),
+                'last_error_message' => $errorCode,
+                'updated_at' => now(),
+            ]);
+
+            return true;
+        });
+
+        if ($changed) {
+            $this->broadcastOverviewUpdate();
+        }
     }
 
     /**
@@ -763,6 +831,127 @@ class JobQueueService
         }
 
         return [];
+    }
+
+    /**
+     * Keep queue metadata free of credentials, provider endpoints, prompts, and forged identity fields.
+     *
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function sanitizeQueuePayload(array $payload): array
+    {
+        $sanitized = [];
+        foreach ($payload as $key => $value) {
+            if ($this->isBlockedQueuePayloadKey((string) $key)) {
+                continue;
+            }
+
+            $sanitized[$key] = is_array($value)
+                ? $this->sanitizeQueuePayload($value)
+                : $value;
+        }
+
+        return $sanitized;
+    }
+
+    private function isBlockedQueuePayloadKey(string $key): bool
+    {
+        $normalized = preg_replace('/[^a-z0-9]+/', '', strtolower(trim($key))) ?? '';
+        if ($normalized === '') {
+            return true;
+        }
+
+        foreach ([
+            'apikey',
+            'authorization',
+            'password',
+            'secret',
+            'token',
+            'bearer',
+            'credential',
+            'endpoint',
+            'prompt',
+        ] as $fragment) {
+            if (str_contains($normalized, $fragment)) {
+                return true;
+            }
+        }
+
+        return str_contains($normalized, 'apiurl')
+            || in_array($normalized, [
+                'modelaccessadminid',
+                'modelaccessadminrole',
+                'aiconfigaccessversion',
+                'requestedaimodelid',
+                'resolvedaimodelid',
+                'resolvedmodelsource',
+                'modelresolvedat',
+                'resolverpolicyversion',
+                'errorcode',
+            ], true);
+    }
+
+    private function executionBoundariesEnforced(): bool
+    {
+        return (bool) config('geoflow.admin_ai_access.access_enforce_enabled', false)
+            || (bool) config('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+    }
+
+    private function taskRunRequiresAiModel(TaskRun $run): bool
+    {
+        if ($run->requested_ai_model_id === null) {
+            return false;
+        }
+
+        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'next_publish_at']);
+        if (! $task instanceof Task
+            || ($task->next_publish_at !== null && $task->next_publish_at->isFuture())) {
+            return true;
+        }
+
+        return ! Article::query()
+            ->where('task_id', (int) $task->getKey())
+            ->where('status', 'draft')
+            ->whereIn('review_status', ['approved', 'auto_approved'])
+            ->whereNull('deleted_at')
+            ->exists();
+    }
+
+    private function permanentlyFailAuthorizationRun(
+        TaskRun $run,
+        string $errorCode,
+        int $durationMs = 0,
+    ): void {
+        $errorCode = $this->normalizeAuthorizationErrorCode($errorCode);
+        $meta = $this->normalizeMeta($run->meta);
+        $meta['retryable'] = false;
+        $meta['failure_class'] = 'authorization';
+        $meta['error_code'] = $errorCode;
+        $meta['last_error'] = $errorCode;
+
+        $run->forceFill([
+            'status' => 'failed',
+            'error_code' => $errorCode,
+            'error_message' => $errorCode,
+            'duration_ms' => $durationMs,
+            'finished_at' => now(),
+            'meta' => $meta,
+        ])->save();
+    }
+
+    private function normalizeAuthorizationErrorCode(string $errorCode): string
+    {
+        return in_array($errorCode, [
+            AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE,
+            AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE,
+            AiModelAccessException::AI_CONFIG_ACCESS_REVOKED,
+            AiModelAccessException::AI_CONFIG_OWNER_INACTIVE,
+            AiModelAccessException::AI_MODEL_UNAVAILABLE,
+            AiModelAccessException::AI_EMBEDDING_INCOMPATIBLE,
+        ], true)
+            ? $errorCode
+            : AiModelAccessException::AI_CONFIG_ACCESS_REVOKED;
     }
 
     /**

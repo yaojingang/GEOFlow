@@ -271,6 +271,13 @@ return [
     'semantic_chunking_max_chars' => max(1, (int) env('GEOFLOW_SEMANTIC_CHUNKING_MAX_CHARS', 20000)),
     // Embedding 文档向量化单次请求切片数；部分供应商限制 batch 较小，默认保守拆分。
     'embedding_batch_size' => max(1, min(64, (int) env('GEOFLOW_EMBEDDING_BATCH_SIZE', 1))),
+    // 管理员 AI 执行身份灰度开关：先写入和 Shadow，对账完成后再逐步强制访问与撤权边界。
+    'admin_ai_access' => [
+        'ownership_write_enabled' => filter_var(env('GEOFLOW_ADMIN_AI_OWNERSHIP_WRITE_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'shadow_enabled' => filter_var(env('GEOFLOW_ADMIN_AI_SHADOW_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'access_enforce_enabled' => filter_var(env('GEOFLOW_ADMIN_AI_ACCESS_ENFORCE_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'revocation_enforce_enabled' => filter_var(env('GEOFLOW_ADMIN_AI_REVOCATION_ENFORCE_ENABLED', false), FILTER_VALIDATE_BOOL),
+    ],
     // 单个知识向量化 Job 最多处理的切片数，控制队列进程峰值内存。
     'knowledge_embedding_job_size' => max(1, min(32, (int) env('GEOFLOW_KNOWLEDGE_EMBEDDING_JOB_SIZE', 32))),
     // Worker 心跳超过该秒数未更新时，任务页标记为 stale。

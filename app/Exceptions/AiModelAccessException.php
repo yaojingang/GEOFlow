@@ -34,6 +34,11 @@ final class AiModelAccessException extends RuntimeException
         return new self(self::AI_EXECUTION_ADMIN_INACTIVE, (int) $admin->getKey());
     }
 
+    public static function executionAdminInactiveForId(int $adminId): self
+    {
+        return new self(self::AI_EXECUTION_ADMIN_INACTIVE, max(0, $adminId));
+    }
+
     public static function configOwnerInactive(Admin $admin, int $configOwnerAdminId): self
     {
         return new self(
@@ -50,6 +55,11 @@ final class AiModelAccessException extends RuntimeException
             (int) $admin->getKey(),
             $model === null ? null : (int) $model->getKey(),
         );
+    }
+
+    public static function configAccessRevokedForAdminId(int $adminId): self
+    {
+        return new self(self::AI_CONFIG_ACCESS_REVOKED, max(0, $adminId));
     }
 
     public static function modelNotAccessible(Admin $admin, AiModel $model): self

@@ -15,6 +15,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\AiQualityAuditService;
 use App\Services\GeoFlow\AiQualityRetrievalReadinessService;
 use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
@@ -867,6 +868,7 @@ class ApiV1ContractTest extends TestCase
         $realtime->shouldReceive('broadcastOverview')->never();
         $service = new TaskLifecycleService(
             app(JobQueueService::class),
+            app(AiExecutionContextFactory::class),
             $monitoring,
             $realtime,
             app(TaskTitleReadinessService::class),

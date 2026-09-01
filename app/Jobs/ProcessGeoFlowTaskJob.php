@@ -2,10 +2,12 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
+use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\WorkerExecutionService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -57,8 +59,11 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
         ]));
     }
 
-    public function handle(JobQueueService $queueService, WorkerExecutionService $workerExecutionService): void
-    {
+    public function handle(
+        JobQueueService $queueService,
+        WorkerExecutionService $workerExecutionService,
+        ?AiExecutionContextFactory $contextFactory = null,
+    ): void {
         $workerId = gethostname().':queue:'.getmypid();
         $job = $queueService->claimPendingJobById($this->taskRunId, $workerId);
         if (! is_array($job)) {
@@ -68,6 +73,11 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
         $taskId = (int) Arr::get($job, 'task_id', 0);
         if ($taskId <= 0) {
             return;
+        }
+        $run = TaskRun::query()->whereKey($this->taskRunId)->first();
+        $context = null;
+        if ($run instanceof TaskRun && $run->model_access_admin_id !== null) {
+            $context = ($contextFactory ?? app(AiExecutionContextFactory::class))->fromTaskRun($run);
         }
 
         $this->heartbeat($workerId, 'running', [
@@ -79,7 +89,9 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
 
         $startedAt = microtime(true);
         try {
-            $result = $workerExecutionService->executeTask($taskId);
+            $result = $context === null
+                ? $workerExecutionService->executeTask($taskId)
+                : $workerExecutionService->executeTask($taskId, $context);
             $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
             $queueService->completeJob(
@@ -88,6 +100,14 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                 articleId: Arr::get($result, 'article_id') !== null ? (int) Arr::get($result, 'article_id') : null,
                 durationMs: $durationMs,
                 meta: is_array(Arr::get($result, 'meta')) ? Arr::get($result, 'meta') : []
+            );
+        } catch (AiModelAccessException $exception) {
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+            $queueService->failForAiAuthorization(
+                $this->taskRunId,
+                $taskId,
+                $exception->getErrorCode(),
+                $durationMs,
             );
         } catch (TaskTitleReadinessException $exception) {
             $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
@@ -140,6 +160,16 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
             }
 
             $queueService = app(JobQueueService::class);
+            if ($exception instanceof AiModelAccessException) {
+                $queueService->failForAiAuthorization(
+                    (int) $run->id,
+                    (int) $run->task_id,
+                    $exception->getErrorCode(),
+                    0,
+                );
+
+                return;
+            }
             if ($exception instanceof TaskTitleReadinessException) {
                 $queueService->failForTaskConfiguration(
                     (int) $run->id,

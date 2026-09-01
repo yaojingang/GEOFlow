@@ -197,6 +197,8 @@ class Task extends Model
             'ai_quality_model_id' => 'integer',
             'ai_quality_pass_score' => 'integer',
             'ai_quality_manual_override_min_score' => 'integer',
+            'model_access_admin_id' => 'integer',
+            'model_access_policy_version' => 'integer',
         ];
     }
 
@@ -218,6 +220,11 @@ class Task extends Model
     public function aiModel(): BelongsTo
     {
         return $this->belongsTo(AiModel::class, 'ai_model_id');
+    }
+
+    public function modelAccessAdmin(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'model_access_admin_id');
     }
 
     public function qualityPrompt(): BelongsTo
