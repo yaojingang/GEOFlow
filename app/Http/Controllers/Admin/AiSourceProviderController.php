@@ -433,7 +433,7 @@ class AiSourceProviderController extends Controller
     ): int {
         $modelId = $this->getConfiguredModelId($settingKey);
 
-        return $modelId > 0 && $this->configuration->isCallableModelId($modelId, $bindingType, $actor)
+        return $modelId > 0 && $this->configuration->isCallableAdminOwnedModelId($modelId, $bindingType, $actor)
             ? $modelId
             : 0;
     }

@@ -2,6 +2,7 @@
 
 namespace App\Services\GeoFlow\AiVisibility;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
@@ -17,15 +18,15 @@ final class AiVisibilityCollectionService
     /**
      * @return array<string, AiVisibilityRun>
      */
-    public function collect(string $keyword): array
+    public function collect(SystemAiIdentity $identity, string $keyword): array
     {
         $keyword = trim($keyword);
         if ($keyword === '') {
             throw new RuntimeException('AI 可见性关键词为空');
         }
 
-        $provider = $this->configuration->searchProvider();
-        $deepSeek = $this->configuration->deepSeekModel();
+        $provider = $this->configuration->searchProvider($identity);
+        $deepSeek = $this->configuration->deepSeekModel($identity);
         if ($provider instanceof AiSourceProvider && $deepSeek instanceof AiModel) {
             return $this->visibility->runDoubaoSearchThenDeepSeekAnalysis(
                 $provider,
@@ -34,7 +35,7 @@ final class AiVisibilityCollectionService
             );
         }
 
-        $ark = $this->configuration->arkModel();
+        $ark = $this->configuration->arkModel($identity);
         if ($ark instanceof AiModel) {
             return [
                 'ark_run' => $this->visibility->runDoubaoArkResponses($ark, $keyword),

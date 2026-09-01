@@ -17,7 +17,6 @@ final class AdminAiModelTestSnapshot implements JsonSerializable
         public readonly string $accessScope,
         public readonly string $status,
         public readonly ?string $archivedAt,
-        public readonly string $updatedAt,
         public readonly string $configurationDigest,
         public readonly string $name,
         public readonly string $version,
@@ -25,6 +24,7 @@ final class AdminAiModelTestSnapshot implements JsonSerializable
         public readonly string $apiUrl,
         public readonly string $endpoint,
         public readonly string $providerModelId,
+        public readonly ?int $maxTokens,
         public readonly bool $gemini,
         public readonly bool $usesOpenAiResponses,
         public readonly bool $preparedAsSuperAdmin,
@@ -53,7 +53,7 @@ final class AdminAiModelTestSnapshot implements JsonSerializable
             'status' => $this->status,
             'access_scope' => $this->accessScope,
             'archived_at' => $this->archivedAt,
-            'updated_at' => $this->updatedAt,
+            'max_tokens' => $this->maxTokens,
         ], true);
         $model->exists = true;
 

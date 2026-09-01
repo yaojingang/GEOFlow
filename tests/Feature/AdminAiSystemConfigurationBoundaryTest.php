@@ -4,21 +4,29 @@ namespace Tests\Feature;
 
 use App\Ai\Agents\AdminHelpAssistant;
 use App\Data\Admin\AdminAiSourceProviderTestSnapshot;
+use App\Data\Ai\SystemAiIdentity;
+use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
+use App\Models\AiVisibilityRun;
 use App\Models\SiteSetting;
+use App\Services\Admin\AdminAiModelTestPreparationService;
 use App\Services\Admin\AdminAiSourceProviderService;
 use App\Services\Admin\AdminAiSystemConfigurationBoundaryHook;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use ArgumentCountError;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use PHPUnit\Framework\Attributes\Test;
+use ReflectionClass;
+use ReflectionMethod;
 use Tests\TestCase;
+use TypeError;
 
 class AdminAiSystemConfigurationBoundaryTest extends TestCase
 {
@@ -186,6 +194,7 @@ class AdminAiSystemConfigurationBoundaryTest extends TestCase
         $super = $this->admin('super_admin');
         $ordinary = $this->admin('admin', 'ordinary');
         $resolver = app(AiVisibilityConfigurationResolver::class);
+        $identity = SystemAiIdentity::forVisibilityCollection();
 
         foreach ([
             $this->model($ordinary),
@@ -199,8 +208,40 @@ class AdminAiSystemConfigurationBoundaryTest extends TestCase
                 ['setting_value' => (string) $model->id],
             );
 
-            $this->assertNull($resolver->deepSeekModel());
-            $this->assertSame('ai_model_not_accessible', $resolver->modelResolution('deepseek')['reason']);
+            $this->assertNull($resolver->deepSeekModel($identity));
+            $this->assertSame('ai_model_not_accessible', $resolver->modelResolution($identity, 'deepseek')['reason']);
+        }
+    }
+
+    #[Test]
+    public function visibility_system_resolution_requires_an_explicit_typed_identity(): void
+    {
+        $resolver = app(AiVisibilityConfigurationResolver::class);
+        $identityType = new ReflectionClass(SystemAiIdentity::class);
+
+        $this->assertTrue($identityType->isFinal());
+        $this->assertTrue($identityType->getConstructor()?->isPrivate());
+
+        foreach (['searchProvider', 'arkModel', 'deepSeekModel', 'status'] as $method) {
+            $this->assertGreaterThanOrEqual(
+                1,
+                (new ReflectionMethod($resolver, $method))->getNumberOfRequiredParameters(),
+                $method,
+            );
+        }
+
+        try {
+            $resolver->searchProvider();
+            $this->fail('System configuration lookup must require an explicit identity.');
+        } catch (ArgumentCountError) {
+            $this->addToAssertionCount(1);
+        }
+
+        try {
+            $resolver->deepSeekModel($this->admin('admin', 'cannot-forge-system'));
+            $this->fail('An administrator identity must not satisfy the system identity contract.');
+        } catch (TypeError) {
+            $this->addToAssertionCount(1);
         }
     }
 
@@ -505,6 +546,263 @@ class AdminAiSystemConfigurationBoundaryTest extends TestCase
     }
 
     #[Test]
+    public function provider_snapshot_survives_quota_accounting_and_revokes_on_request_configuration_change(): void
+    {
+        $super = $this->admin('super_admin');
+        $provider = $this->provider();
+        $provider->forceFill([
+            'daily_limit' => 20,
+            'metadata_json' => [
+                'count' => 8,
+                'search_type' => 'web',
+                'need_summary' => true,
+                'need_content' => true,
+                'need_url' => true,
+                'content_formats' => 'Markdown',
+                'sites' => [],
+                'block_hosts' => [],
+            ],
+        ])->save();
+        $service = app(AdminAiSourceProviderService::class);
+        $quota = app(AiUsageQuotaService::class);
+        $snapshot = $service->prepareProviderTest($super, (int) $provider->id);
+
+        $this->assertNotNull($snapshot->reservation);
+        $quota->recordProviderSuccess($snapshot->reservation);
+        $concurrentReservation = $quota->reserveProvider($provider->fresh());
+        $this->assertNotNull($concurrentReservation);
+
+        AiSourceProvider::query()->whereKey($provider->id)->update([
+            'metadata_json' => json_encode([
+                'count' => 8,
+                'search_type' => 'web',
+                'need_summary' => true,
+                'need_content' => true,
+                'need_url' => true,
+                'content_formats' => 'Markdown',
+                'sites' => [],
+                'block_hosts' => [],
+                'display_note' => 'does not affect requests',
+            ], JSON_THROW_ON_ERROR),
+            'updated_at' => now()->addMinute(),
+        ]);
+
+        $service->revalidateProviderBeforeOutbound($snapshot);
+        $service->revalidateProviderAfterOutbound($snapshot);
+        $this->addToAssertionCount(2);
+
+        $quota->releaseProvider($concurrentReservation);
+        AiSourceProvider::query()->whereKey($provider->id)->update([
+            'daily_limit' => 21,
+            'updated_at' => now()->addMinutes(2),
+        ]);
+
+        $this->expectException(AiModelAccessException::class);
+        $service->revalidateProviderBeforeOutbound($snapshot);
+    }
+
+    #[Test]
+    public function provider_snapshot_revokes_for_every_connection_and_request_option_change(): void
+    {
+        $super = $this->admin('super_admin');
+        $service = app(AdminAiSourceProviderService::class);
+        $quota = app(AiUsageQuotaService::class);
+        $mutations = [
+            'endpoint_url' => 'https://open.feedcoopapi.com/search_api/web_search?revision=2',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('rotated-provider-key'),
+            'status' => 'inactive',
+            'daily_limit' => 13,
+            'metadata_json' => json_encode(['count' => 17], JSON_THROW_ON_ERROR),
+        ];
+
+        foreach ($mutations as $field => $value) {
+            $provider = $this->provider();
+            $snapshot = $service->prepareProviderTest($super, (int) $provider->id);
+            $this->assertNotNull($snapshot->reservation);
+            AiSourceProvider::query()->whereKey($provider->id)->update([$field => $value]);
+
+            try {
+                $service->revalidateProviderBeforeOutbound($snapshot);
+                $this->fail($field.' must revoke the provider test snapshot.');
+            } catch (AiModelAccessException $exception) {
+                $this->assertSame('ai_config_access_revoked', $exception->getErrorCode(), $field);
+            } finally {
+                $quota->releaseProvider($snapshot->reservation);
+            }
+        }
+    }
+
+    #[Test]
+    public function provider_test_rejects_a_corrupted_key_before_quota_or_http_on_every_attempt(): void
+    {
+        $this->withoutMiddleware(ThrottleRequests::class);
+        Http::preventStrayRequests();
+        $super = $this->admin('super_admin');
+        $provider = $this->provider();
+        $provider->setRawAttributes(array_replace($provider->getAttributes(), [
+            'api_key' => 'enc:v1:corrupted-provider-key',
+        ]));
+        $provider->save();
+
+        foreach (range(1, 2) as $attempt) {
+            $this->actingAs($super, 'admin')
+                ->postJson(route('admin.ai-source-providers.test', ['providerId' => $provider->id]))
+                ->assertUnprocessable()
+                ->assertJsonPath('error_code', 'ai_model_unavailable')
+                ->assertDontSee('corrupted-provider-key', false);
+        }
+
+        Http::assertNothingSent();
+        $provider->refresh();
+        $this->assertSame(0, (int) $provider->used_today);
+        $this->assertSame(0, (int) $provider->total_used);
+    }
+
+    #[Test]
+    public function ordinary_and_system_model_snapshots_ignore_usage_and_readiness_accounting(): void
+    {
+        $ordinary = $this->admin('admin', 'model-owner');
+        $super = $this->admin('super_admin', 'system-owner');
+        $ordinaryModel = $this->model($ordinary, [
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'daily_limit' => 20,
+            'max_tokens' => 1024,
+        ]);
+        $systemModel = $this->model($super, [
+            'daily_limit' => 20,
+            'max_tokens' => 2048,
+        ]);
+        $preparation = app(AdminAiModelTestPreparationService::class);
+        $quota = app(AiUsageQuotaService::class);
+
+        $ordinarySnapshot = $preparation->prepare($ordinary, (int) $ordinaryModel->id);
+        $this->assertNotNull($ordinarySnapshot->reservation);
+        $quota->recordModelSuccess($ordinarySnapshot->reservation);
+        $ordinaryConcurrent = $quota->reserveModelForTest($ordinaryModel->fresh());
+        $this->assertNotNull($ordinaryConcurrent);
+        AiModel::query()->whereKey($ordinaryModel->id)->update([
+            'ai_workspace_readiness_status' => 'ready',
+            'ai_workspace_readiness_profile' => json_encode(['plain_text' => ['status' => 'ready']], JSON_THROW_ON_ERROR),
+            'ai_workspace_readiness_checked_at' => now(),
+            'updated_at' => now()->addMinute(),
+        ]);
+        $this->assertFalse($preparation->revalidateImmediatelyBeforeOutbound($ordinarySnapshot));
+        $this->assertFalse($preparation->revalidateAfterOutbound($ordinarySnapshot));
+        $quota->releaseModel($ordinaryConcurrent);
+
+        $systemSnapshot = $preparation->prepareSystemBinding($super, (int) $systemModel->id, 'deepseek');
+        $this->assertNotNull($systemSnapshot->reservation);
+        $quota->recordModelSuccess($systemSnapshot->reservation);
+        $systemConcurrent = $quota->reserveModelForTest($systemModel->fresh());
+        $this->assertNotNull($systemConcurrent);
+        AiModel::query()->whereKey($systemModel->id)->update([
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_failure_code' => 'provider_timeout',
+            'updated_at' => now()->addMinute(),
+        ]);
+        $this->assertTrue($preparation->revalidateImmediatelyBeforeOutbound($systemSnapshot));
+        $preparation->revalidateWorkspaceAfterOutbound($systemSnapshot);
+        $this->addToAssertionCount(1);
+        $quota->releaseModel($systemConcurrent);
+
+        AiModel::query()->whereKey($ordinaryModel->id)->update(['max_tokens' => 4096]);
+        try {
+            $preparation->revalidateImmediatelyBeforeOutbound($ordinarySnapshot);
+            $this->fail('A request-affecting model change must revoke the snapshot.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame('ai_config_access_revoked', $exception->getErrorCode());
+        }
+
+        AiModel::query()->whereKey($systemModel->id)->update(['daily_limit' => 21]);
+        try {
+            $preparation->revalidateImmediatelyBeforeOutbound($systemSnapshot);
+            $this->fail('A system model authorization change must revoke the snapshot.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame('ai_config_access_revoked', $exception->getErrorCode());
+        }
+    }
+
+    #[Test]
+    public function ai_configurator_statistics_are_isolated_by_current_model_access_and_ownership(): void
+    {
+        config(['geoflow.admin_ui_v3_enabled' => true]);
+        $sharingSuper = $this->admin('super_admin', 'sharing-super');
+        $ordinary = $this->admin('admin', 'stats-owner');
+        $peerOrdinary = $this->admin('admin', 'stats-peer');
+        $peerSuper = $this->admin('super_admin', 'stats-peer-super');
+        $ordinary->forceFill([
+            'shared_ai_config_owner_id' => $sharingSuper->id,
+            'ai_config_access_version' => 7,
+        ])->save();
+        $provider = $this->provider();
+        AiVisibilityRun::query()->create([
+            'keyword' => 'isolated-statistics',
+            'provider_type' => AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            'provider_key' => AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            'ai_source_provider_id' => $provider->id,
+            'status' => AiVisibilityRun::STATUS_FAILED,
+        ]);
+
+        $this->model($ordinary, [
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'name' => 'Ordinary Own Model',
+            'used_today' => 2,
+            'usage_date' => now()->toDateString(),
+            'total_used' => 5,
+        ]);
+        $this->model($sharingSuper, [
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'name' => 'Shared Model',
+            'used_today' => 30,
+            'usage_date' => now()->toDateString(),
+            'total_used' => 300,
+        ]);
+        $peerModel = $this->model($peerOrdinary, [
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'used_today' => 40,
+            'usage_date' => now()->toDateString(),
+            'total_used' => 400,
+        ]);
+        $this->model($peerSuper, [
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'used_today' => 50,
+            'usage_date' => now()->toDateString(),
+            'total_used' => 500,
+        ]);
+
+        $ordinaryResponse = $this->actingAs($ordinary, 'admin')
+            ->get(route('admin.ai.configurator'))
+            ->assertOk();
+        $ordinaryStats = $ordinaryResponse->viewData('stats');
+        $this->assertSame(1, $ordinaryStats['model_count']);
+        $this->assertSame(5, $ordinaryStats['total_usage']);
+        $this->assertSame(2, $ordinaryStats['today_usage']);
+        $this->assertSame(0, $ordinaryStats['search_provider_count']);
+        $this->assertSame(0, $ordinaryStats['visibility_failed_runs']);
+
+        $peerModel->forceFill(['used_today' => 999, 'total_used' => 9999])->save();
+        $ordinaryResponseAfterPeerChange = $this->actingAs($ordinary, 'admin')
+            ->get(route('admin.ai.configurator'))
+            ->assertOk();
+        $ordinaryStatsAfterPeerChange = $ordinaryResponseAfterPeerChange->viewData('stats');
+        $this->assertSame($ordinaryStats, $ordinaryStatsAfterPeerChange);
+        $this->assertSame(
+            $this->aiConfiguratorOverview((string) $ordinaryResponse->getContent()),
+            $this->aiConfiguratorOverview((string) $ordinaryResponseAfterPeerChange->getContent()),
+        );
+
+        $superStats = $this->actingAs($sharingSuper, 'admin')
+            ->get(route('admin.ai.configurator'))
+            ->assertOk()
+            ->viewData('stats');
+        $this->assertSame(1, $superStats['model_count']);
+        $this->assertSame(300, $superStats['total_usage']);
+        $this->assertSame(30, $superStats['today_usage']);
+        $this->assertSame(1, $superStats['search_provider_count']);
+        $this->assertSame(1, $superStats['visibility_failed_runs']);
+    }
+
+    #[Test]
     public function provider_validation_does_not_flash_or_render_the_submitted_api_key(): void
     {
         $super = $this->admin('super_admin');
@@ -536,6 +834,18 @@ class AdminAiSystemConfigurationBoundaryTest extends TestCase
             'role' => $role,
             'status' => 'active',
         ]);
+    }
+
+    private function aiConfiguratorOverview(string $html): string
+    {
+        $matched = preg_match(
+            '/<section[^>]*data-ai-configurator-overview[^>]*>.*?<\/section>/s',
+            $html,
+            $matches,
+        );
+        $this->assertSame(1, $matched);
+
+        return (string) ($matches[0] ?? '');
     }
 
     private function provider(): AiSourceProvider

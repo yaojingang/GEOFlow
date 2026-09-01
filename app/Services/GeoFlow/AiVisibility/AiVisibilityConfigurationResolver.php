@@ -2,6 +2,7 @@
 
 namespace App\Services\GeoFlow\AiVisibility;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
@@ -18,8 +19,9 @@ final class AiVisibilityConfigurationResolver
         private readonly AiProviderEndpointPolicy $endpointPolicy,
     ) {}
 
-    public function searchProvider(): ?AiSourceProvider
+    public function searchProvider(SystemAiIdentity $identity): ?AiSourceProvider
     {
+        $identity->assertCanResolveVisibilityConfiguration();
         if (! Schema::hasTable('ai_source_providers')) {
             return null;
         }
@@ -34,34 +36,50 @@ final class AiVisibilityConfigurationResolver
                 && $this->hasStoredApiKey($provider));
     }
 
-    public function arkModel(): ?AiModel
+    public function arkModel(SystemAiIdentity $identity): ?AiModel
     {
-        return $this->configuredModel(self::ARK_MODEL_SETTING_KEY, 'ark');
+        return $this->configuredModel($identity, self::ARK_MODEL_SETTING_KEY, 'ark');
     }
 
-    public function deepSeekModel(): ?AiModel
+    public function deepSeekModel(SystemAiIdentity $identity): ?AiModel
     {
-        return $this->configuredModel(self::DEEPSEEK_MODEL_SETTING_KEY, 'deepseek');
+        return $this->configuredModel($identity, self::DEEPSEEK_MODEL_SETTING_KEY, 'deepseek');
     }
 
     /** @return array{model:?AiModel,reason:?string} */
-    public function modelResolution(string $bindingType): array
+    public function modelResolution(SystemAiIdentity $identity, string $bindingType): array
     {
+        $identity->assertCanResolveVisibilityConfiguration();
         $settingKey = $bindingType === 'ark'
             ? self::ARK_MODEL_SETTING_KEY
             : self::DEEPSEEK_MODEL_SETTING_KEY;
 
-        return $this->configuredModelResolution($settingKey, $bindingType);
+        return $this->configuredModelResolution($identity, $settingKey, $bindingType);
     }
 
-    public function isCallableModelId(int $modelId, string $bindingType, ?Admin $owner = null): bool
+    public function isCallableAdminOwnedModelId(int $modelId, string $bindingType, Admin $owner): bool
     {
         $model = AiModel::query()->whereKey($modelId)->first();
 
-        return $model instanceof AiModel && $this->isCallableModel($model, $bindingType, $owner);
+        return $model instanceof AiModel && $this->isCallableAdminOwnedModel($model, $bindingType, $owner);
     }
 
-    public function isCallableModel(AiModel $model, string $bindingType, ?Admin $owner = null): bool
+    public function isCallableAdminOwnedModel(AiModel $model, string $bindingType, Admin $owner): bool
+    {
+        return $this->isCallableSystemOnlyModel($model, $bindingType, (int) $owner->getKey());
+    }
+
+    public function isCallableSystemModel(
+        SystemAiIdentity $identity,
+        AiModel $model,
+        string $bindingType,
+    ): bool {
+        $identity->assertCanResolveVisibilityConfiguration();
+
+        return $this->isCallableSystemOnlyModel($model, $bindingType, null);
+    }
+
+    private function isCallableSystemOnlyModel(AiModel $model, string $bindingType, ?int $ownerAdminId): bool
     {
         $modelType = trim((string) ($model->model_type ?? ''));
         $modelOwner = $model->owner_admin_id === null
@@ -71,7 +89,7 @@ final class AiVisibilityConfigurationResolver
         return in_array($bindingType, ['ark', 'deepseek'], true)
             && $modelOwner instanceof Admin
             && $modelOwner->isSuperAdmin()
-            && ($owner === null || (int) $modelOwner->getKey() === (int) $owner->getKey())
+            && ($ownerAdminId === null || (int) $modelOwner->getKey() === $ownerAdminId)
             && (string) $model->access_scope === AiModel::ACCESS_SCOPE_SYSTEM_ONLY
             && (string) ($model->status ?? 'inactive') === 'active'
             && $model->archived_at === null
@@ -87,11 +105,12 @@ final class AiVisibilityConfigurationResolver
     /**
      * @return array{configured: bool, doubao_search_configured: bool, ark_configured: bool, deepseek_configured: bool}
      */
-    public function status(): array
+    public function status(SystemAiIdentity $identity): array
     {
-        $doubaoSearchConfigured = $this->searchProvider() instanceof AiSourceProvider;
-        $arkConfigured = $this->arkModel() instanceof AiModel;
-        $deepSeekConfigured = $this->deepSeekModel() instanceof AiModel;
+        $identity->assertCanResolveVisibilityConfiguration();
+        $doubaoSearchConfigured = $this->searchProvider($identity) instanceof AiSourceProvider;
+        $arkConfigured = $this->arkModel($identity) instanceof AiModel;
+        $deepSeekConfigured = $this->deepSeekModel($identity) instanceof AiModel;
 
         return [
             'configured' => $doubaoSearchConfigured || $arkConfigured || $deepSeekConfigured,
@@ -101,14 +120,21 @@ final class AiVisibilityConfigurationResolver
         ];
     }
 
-    private function configuredModel(string $settingKey, string $bindingType): ?AiModel
-    {
-        return $this->configuredModelResolution($settingKey, $bindingType)['model'];
+    private function configuredModel(
+        SystemAiIdentity $identity,
+        string $settingKey,
+        string $bindingType,
+    ): ?AiModel {
+        return $this->configuredModelResolution($identity, $settingKey, $bindingType)['model'];
     }
 
     /** @return array{model:?AiModel,reason:?string} */
-    private function configuredModelResolution(string $settingKey, string $bindingType): array
-    {
+    private function configuredModelResolution(
+        SystemAiIdentity $identity,
+        string $settingKey,
+        string $bindingType,
+    ): array {
+        $identity->assertCanResolveVisibilityConfiguration();
         if (! Schema::hasTable('site_settings') || ! Schema::hasTable('ai_models')) {
             return ['model' => null, 'reason' => 'ai_model_unavailable'];
         }
@@ -125,7 +151,7 @@ final class AiVisibilityConfigurationResolver
         if (! $model instanceof AiModel) {
             return ['model' => null, 'reason' => 'ai_model_unavailable'];
         }
-        if (! $this->isCallableModel($model, $bindingType)) {
+        if (! $this->isCallableSystemModel($identity, $model, $bindingType)) {
             return ['model' => null, 'reason' => 'ai_model_not_accessible'];
         }
 

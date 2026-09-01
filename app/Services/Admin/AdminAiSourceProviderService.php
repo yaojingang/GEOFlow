@@ -240,6 +240,12 @@ final class AdminAiSourceProviderService
             $lockedActor = $this->lockActiveSuperAdmin($actor);
             $provider = AiSourceProvider::query()->whereKey($providerId)->lockForUpdate()->firstOrFail();
             $this->assertProviderReady($provider);
+            $encryptedApiKey = (string) $provider->getRawOriginal('api_key');
+            if (trim($this->apiKeyCrypto->decrypt($encryptedApiKey)) === '') {
+                throw ValidationException::withMessages([
+                    'provider' => __('admin.ai_source_providers.error.provider_inactive'),
+                ]);
+            }
             $reservation = $this->usageQuota->reserveLockedProviderForTest($provider);
             $provider->refresh();
 
@@ -254,7 +260,7 @@ final class AdminAiSourceProviderService
                 status: (string) $provider->status,
                 options: $provider->visibilitySearchOptions(),
                 reservation: $reservation,
-                encryptedApiKey: (string) $provider->getRawOriginal('api_key'),
+                encryptedApiKey: $encryptedApiKey,
             );
         }, 3);
     }
@@ -394,12 +400,13 @@ final class AdminAiSourceProviderService
     private function providerDigest(AiSourceProvider $provider): string
     {
         return hash('sha256', json_encode([
+            'provider_id' => (int) $provider->getKey(),
             'provider_key' => (string) $provider->provider_key,
             'endpoint_url' => (string) $provider->endpoint_url,
             'status' => (string) $provider->status,
             'api_key_digest' => hash('sha256', (string) $provider->getRawOriginal('api_key')),
-            'metadata_json' => $provider->metadata_json,
-            'updated_at' => $provider->updated_at?->toISOString(),
+            'daily_limit' => (int) $provider->daily_limit,
+            'request_options' => $provider->visibilitySearchOptions(),
         ], JSON_THROW_ON_ERROR));
     }
 

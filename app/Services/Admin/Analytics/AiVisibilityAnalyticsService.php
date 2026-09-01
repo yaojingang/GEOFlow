@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin\Analytics;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
@@ -1001,7 +1002,7 @@ class AiVisibilityAnalyticsService
      */
     private function configurationStatus(): array
     {
-        return $this->configuration->status();
+        return $this->configuration->status(SystemAiIdentity::forVisibilityAnalytics());
     }
 
     private function runDate(AiVisibilityRun $run): string

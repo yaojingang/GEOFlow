@@ -48,7 +48,6 @@ final class AdminAiModelTestPreparationService
                 accessScope: (string) $lockedModel->access_scope,
                 status: (string) $lockedModel->status,
                 archivedAt: $lockedModel->archived_at?->toISOString(),
-                updatedAt: $lockedModel->updated_at?->toISOString() ?? '',
                 configurationDigest: $this->configurationDigest($lockedModel),
                 name: (string) $lockedModel->name,
                 version: (string) $lockedModel->version,
@@ -56,6 +55,7 @@ final class AdminAiModelTestPreparationService
                 apiUrl: (string) $lockedModel->api_url,
                 endpoint: $endpoint,
                 providerModelId: (string) $lockedModel->model_id,
+                maxTokens: $lockedModel->max_tokens === null ? null : (int) $lockedModel->max_tokens,
                 gemini: OpenAiRuntimeProvider::isGeminiProviderUrl($endpoint),
                 usesOpenAiResponses: $modelType === 'chat'
                     && OpenAiRuntimeProvider::resolveChatDriver(
@@ -105,7 +105,6 @@ final class AdminAiModelTestPreparationService
                 accessScope: (string) $lockedModel->access_scope,
                 status: (string) $lockedModel->status,
                 archivedAt: $lockedModel->archived_at?->toISOString(),
-                updatedAt: $lockedModel->updated_at?->toISOString() ?? '',
                 configurationDigest: $this->configurationDigest($lockedModel),
                 name: (string) $lockedModel->name,
                 version: (string) $lockedModel->version,
@@ -113,6 +112,7 @@ final class AdminAiModelTestPreparationService
                 apiUrl: (string) $lockedModel->api_url,
                 endpoint: $endpoint,
                 providerModelId: (string) $lockedModel->model_id,
+                maxTokens: $lockedModel->max_tokens === null ? null : (int) $lockedModel->max_tokens,
                 gemini: false,
                 usesOpenAiResponses: $bindingType === 'ark',
                 preparedAsSuperAdmin: true,
@@ -246,7 +246,6 @@ final class AdminAiModelTestPreparationService
                 || (string) $lockedModel->access_scope !== $snapshot->accessScope
                 || (string) $lockedModel->status !== $snapshot->status
                 || $lockedModel->archived_at?->toISOString() !== $snapshot->archivedAt
-                || ($lockedModel->updated_at?->toISOString() ?? '') !== $snapshot->updatedAt
                 || ! hash_equals($snapshot->configurationDigest, $this->configurationDigest($lockedModel))) {
                 throw AiModelAccessException::configAccessRevoked($lockedActor, $lockedModel);
             }
@@ -320,11 +319,13 @@ final class AdminAiModelTestPreparationService
             'access_scope' => (string) $model->access_scope,
             'status' => (string) $model->status,
             'archived_at' => $model->archived_at?->toISOString(),
-            'updated_at' => $model->updated_at?->toISOString(),
+            'version' => (string) $model->version,
             'model_type' => (string) $model->model_type,
             'api_url' => (string) $model->api_url,
             'model_id' => (string) $model->model_id,
             'api_key_digest' => hash('sha256', (string) $model->getRawOriginal('api_key')),
+            'max_tokens' => $model->max_tokens === null ? null : (int) $model->max_tokens,
+            'daily_limit' => (int) $model->daily_limit,
         ], JSON_THROW_ON_ERROR));
     }
 
