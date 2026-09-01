@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\AdminHelpAssistant;
 use App\Models\Admin;
 use App\Models\AdminAiSetting;
 use App\Models\AiModel;
@@ -58,6 +59,10 @@ final class AdminAiModelIsolationTest extends TestCase
             'admin_id' => $admin->id,
             'default_embedding_model_id' => $model->id,
         ]);
+        $this->assertSame(
+            (string) $model->id,
+            SiteSetting::query()->where('setting_key', 'default_embedding_model_id')->value('setting_value'),
+        );
     }
 
     public function test_system_scope_creation_rechecks_the_locked_current_actor_role(): void
@@ -173,6 +178,103 @@ final class AdminAiModelIsolationTest extends TestCase
             'rotated-user-content-key',
             app(ApiKeyCrypto::class)->decrypt((string) $current->getRawOriginal('api_key')),
         );
+    }
+
+    public function test_role_downgrade_during_update_does_not_clear_the_global_embedding_default(): void
+    {
+        $admin = $this->admin('stale-global-setting-role', 'super_admin');
+        $model = $this->model($admin, [
+            'model_type' => 'embedding',
+            'model_id' => 'global-embedding-before-downgrade',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'default_embedding_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+        (new AdminAiSetting)->forceFill([
+            'admin_id' => $admin->id,
+            'default_embedding_model_id' => $model->id,
+            'updated_by_admin_id' => $admin->id,
+        ])->save();
+        $this->app->instance(ApiKeyCrypto::class, new class((int) $admin->id) extends ApiKeyCrypto
+        {
+            public function __construct(private readonly int $adminId) {}
+
+            public function encrypt(string $apiKey): string
+            {
+                Admin::query()->whereKey($this->adminId)->update(['role' => 'admin']);
+
+                return parent::encrypt($apiKey);
+            }
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.ai-models.update', ['modelId' => $model->id]), $this->modelPayload([
+                'name' => 'Personal chat after downgrade',
+                'api_key' => 'rotated-after-downgrade',
+                'model_id' => 'personal-chat-after-downgrade',
+                'model_type' => 'chat',
+                'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            ]))
+            ->assertRedirect(route('admin.ai-models.index'));
+
+        $this->assertSame('admin', $admin->fresh()->role);
+        $this->assertSame('chat', $model->fresh()->model_type);
+        $this->assertNull(
+            AdminAiSetting::query()->where('admin_id', $admin->id)->value('default_embedding_model_id'),
+        );
+        $this->assertSame(
+            (string) $model->id,
+            SiteSetting::query()->where('setting_key', 'default_embedding_model_id')->value('setting_value'),
+        );
+    }
+
+    public function test_role_downgrade_during_connection_test_skips_the_super_admin_workspace_probe(): void
+    {
+        AdminHelpAssistant::fake(['workspace probe must not run'])->preventStrayPrompts();
+        Http::fake([
+            '*' => Http::response([
+                'choices' => [
+                    ['message' => ['content' => 'OK']],
+                ],
+            ]),
+        ]);
+        $admin = $this->admin('probe-role-downgrade', 'super_admin');
+        $model = $this->model($admin);
+        $this->app->instance(ApiKeyCrypto::class, new class((int) $admin->id) extends ApiKeyCrypto
+        {
+            public function __construct(private readonly int $adminId) {}
+
+            public function decrypt(string $encrypted): string
+            {
+                Admin::query()->whereKey($this->adminId)->update(['role' => 'admin']);
+
+                return parent::decrypt($encrypted);
+            }
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissingPath('meta.workspace_ready');
+
+        $this->assertSame('admin', $admin->fresh()->role);
+        Http::assertSentCount(1);
+    }
+
+    public function test_role_downgrade_does_not_render_global_system_configuration_from_stale_session_data(): void
+    {
+        $admin = $this->admin('stale-system-panel-role', 'super_admin');
+        $this->actingAs($admin, 'admin');
+        Admin::query()->whereKey($admin->id)->update(['role' => 'admin']);
+
+        $response = $this->get(route('admin.ai-models.index'))
+            ->assertOk()
+            ->assertDontSee('data-system-ai-configuration', false);
+
+        $this->assertFalse((bool) $response->viewData('showSystemConfiguration'));
+        $this->assertSame('admin', $admin->fresh()->role);
     }
 
     public function test_model_creation_rolls_back_when_the_initial_personal_default_cannot_be_saved(): void

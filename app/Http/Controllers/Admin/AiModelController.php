@@ -243,7 +243,7 @@ class AiModelController extends Controller
             $createData['max_tokens'] = $this->normalizeMaxTokensForModelType($payload['max_tokens'] ?? null, $modelType);
         }
 
-        $createdModel = DB::transaction(function () use ($actor, $createData, $payload): AiModel {
+        $createResult = DB::transaction(function () use ($actor, $createData, $payload): array {
             $lockedActor = Admin::query()
                 ->whereKey($actor->getKey())
                 ->lockForUpdate()
@@ -269,8 +269,19 @@ class AiModelController extends Controller
                 $this->aiSettingsService->setPersonalDefaultIfMissing($lockedActor, $model);
             }
 
-            return $model;
+            return [
+                'model' => $model,
+                'actor_is_super_admin' => $lockedActor->isSuperAdmin(),
+            ];
         }, 3);
+        /** @var AiModel $createdModel */
+        $createdModel = $createResult['model'];
+
+        if ($createResult['actor_is_super_admin']
+            && $createdModel->model_type === 'embedding'
+            && $this->getDefaultEmbeddingModelId() <= 0) {
+            $this->setDefaultEmbeddingModelId((int) $createdModel->id);
+        }
 
         if ($createdModel->model_type === 'chat') {
             $this->qualityInvalidationService->invalidateModel(
@@ -327,7 +338,7 @@ class AiModelController extends Controller
             }
         }
 
-        $updated = DB::transaction(function () use ($actor, $model, $payload, $updateData): bool {
+        $updateResult = DB::transaction(function () use ($actor, $model, $payload, $updateData): array {
             $lockedActor = Admin::query()
                 ->whereKey($actor->getKey())
                 ->lockForUpdate()
@@ -353,7 +364,10 @@ class AiModelController extends Controller
             }
 
             if ($this->activeTitleGenerationCount((int) $lockedModel->getKey()) > 0) {
-                return false;
+                return [
+                    'updated' => false,
+                    'actor_is_super_admin' => $lockedActor->isSuperAdmin(),
+                ];
             }
 
             $lockedModel->fill(Arr::except($updateData, ['access_scope']));
@@ -364,9 +378,12 @@ class AiModelController extends Controller
             ])->save();
             $this->aiSettingsService->clearIncompatibleDefaultsForModel($lockedModel, $lockedActor);
 
-            return true;
+            return [
+                'updated' => true,
+                'actor_is_super_admin' => $lockedActor->isSuperAdmin(),
+            ];
         }, 3);
-        if (! $updated) {
+        if (! $updateResult['updated']) {
             return back()
                 ->withInput(Arr::except($payload, ['api_key']))
                 ->withErrors(__('admin.ai_models.error.title_generation_in_use'));
@@ -379,7 +396,7 @@ class AiModelController extends Controller
             'AI 质检模型配置已更新',
         );
 
-        if ($actor->isSuperAdmin()) {
+        if ($updateResult['actor_is_super_admin']) {
             $defaultEmbeddingModelId = $this->getDefaultEmbeddingModelId();
             if ($defaultEmbeddingModelId === (int) $model->id && ($modelType !== 'embedding' || $status !== 'active')) {
                 $this->setDefaultEmbeddingModelId(0);
@@ -402,25 +419,49 @@ class AiModelController extends Controller
         $actor = $this->activeActor($request);
         $model = $this->configurableModel($request, $modelId, 'delete');
         $result = DB::transaction(function () use ($actor, $model): array {
-            $model = $this->accessResolver
-                ->managementQuery($actor)
+            $lockedActor = Admin::query()
+                ->whereKey($actor->getKey())
+                ->lockForUpdate()
+                ->first();
+            abort_unless($lockedActor instanceof Admin && (string) $lockedActor->status === 'active', 404);
+
+            $lockedModelQuery = AiModel::query()->ownedBy($lockedActor);
+            if (! $lockedActor->isSuperAdmin()) {
+                $lockedModelQuery->userContent();
+            }
+
+            $model = $lockedModelQuery
                 ->whereKey($model->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+            Gate::forUser($lockedActor)->authorize('delete', $model);
             if ($this->activeTitleGenerationCount((int) $model->getKey()) > 0) {
-                return ['model' => $model, 'error' => 'title_generation'];
+                return [
+                    'model' => $model,
+                    'error' => 'title_generation',
+                    'actor_is_super_admin' => $lockedActor->isSuperAdmin(),
+                ];
             }
 
             $taskCount = $model->tasks()->withTrashed()->count()
                 + $model->qualityTasks()->withTrashed()->count();
             if ($taskCount > 0) {
-                return ['model' => $model, 'error' => 'task', 'count' => $taskCount];
+                return [
+                    'model' => $model,
+                    'error' => 'task',
+                    'count' => $taskCount,
+                    'actor_is_super_admin' => $lockedActor->isSuperAdmin(),
+                ];
             }
 
-            $this->aiSettingsService->clearAllDefaultsForModel($model, $actor);
+            $this->aiSettingsService->clearAllDefaultsForModel($model, $lockedActor);
             $model->delete();
 
-            return ['model' => $model, 'error' => null];
+            return [
+                'model' => $model,
+                'error' => null,
+                'actor_is_super_admin' => $lockedActor->isSuperAdmin(),
+            ];
         }, 3);
         if ($result['error'] === 'title_generation') {
             return back()->withErrors(__('admin.ai_models.error.title_generation_in_use'));
@@ -431,7 +472,7 @@ class AiModelController extends Controller
 
         /** @var AiModel $model */
         $model = $result['model'];
-        if ($actor->isSuperAdmin() && $this->getDefaultEmbeddingModelId() === (int) $model->id) {
+        if ($result['actor_is_super_admin'] && $this->getDefaultEmbeddingModelId() === (int) $model->id) {
             $this->setDefaultEmbeddingModelId(0);
         }
 
@@ -501,6 +542,8 @@ class AiModelController extends Controller
                 );
             }
 
+            $actorIsSuperAdmin = $this->lockedActorIsSuperAdminForModelAction($request, $model, 'test');
+
             // 停用模型也可诊断，所有真实上游请求继续纳入每日额度和用量审计。
             $reservation = $this->usageQuota->reserveModelForTest($model);
             if ($reservation === null) {
@@ -514,7 +557,7 @@ class AiModelController extends Controller
                 );
             }
 
-            if ($modelType === 'chat' && (bool) $request->user('admin')?->isSuperAdmin()) {
+            if ($modelType === 'chat' && $actorIsSuperAdmin) {
                 $workspaceProbeAttempted = true;
                 $result = $this->aiWorkspaceModelProbe->probe($model);
                 try {
@@ -1370,6 +1413,36 @@ class AiModelController extends Controller
         Gate::forUser($actor)->authorize($ability, $model);
 
         return $model;
+    }
+
+    private function lockedActorIsSuperAdminForModelAction(
+        Request $request,
+        AiModel $model,
+        string $ability,
+    ): bool {
+        $authenticatedActor = $request->user('admin');
+        abort_unless($authenticatedActor instanceof Admin, 404);
+
+        return DB::transaction(function () use ($authenticatedActor, $model, $ability): bool {
+            $lockedActor = Admin::query()
+                ->whereKey($authenticatedActor->getKey())
+                ->lockForUpdate()
+                ->first();
+            abort_unless($lockedActor instanceof Admin && (string) $lockedActor->status === 'active', 404);
+
+            $lockedModelQuery = AiModel::query()->ownedBy($lockedActor);
+            if (! $lockedActor->isSuperAdmin()) {
+                $lockedModelQuery->userContent();
+            }
+
+            $lockedModel = $lockedModelQuery
+                ->whereKey($model->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            Gate::forUser($lockedActor)->authorize($ability, $lockedModel);
+
+            return $lockedActor->isSuperAdmin();
+        }, 3);
     }
 
     private function activeActor(Request $request): Admin
