@@ -134,13 +134,16 @@ class LegacyController extends Controller
         return $this->stub('admin.materials.page_title', 'materials');
     }
 
-    public function aiConfigurator(): View
+    public function aiConfigurator(Request $request): View
     {
+        $actor = $request->user('admin');
+
         return view('admin.ai-configurator.index', [
             'pageTitle' => __('admin.ai_configurator.page_title'),
             'activeMenu' => 'ai_config',
             'adminSiteName' => AdminWeb::siteName(),
             'stats' => $this->loadAiConfiguratorStats(),
+            'showSystemCollectionConfiguration' => $actor?->isSuperAdmin() === true,
         ]);
     }
 

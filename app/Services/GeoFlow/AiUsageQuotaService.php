@@ -117,6 +117,15 @@ final class AiUsageQuotaService
         });
     }
 
+    public function reserveLockedProviderForTest(AiSourceProvider $lockedProvider): ?AiUsageReservation
+    {
+        if (DB::connection()->transactionLevel() < 1) {
+            throw new \LogicException('A locked provider reservation requires an active transaction.');
+        }
+
+        return $this->reserveLockedProvider($lockedProvider);
+    }
+
     public function releaseProvider(AiUsageReservation $reservation): void
     {
         if ($reservation->resourceType !== 'provider') {

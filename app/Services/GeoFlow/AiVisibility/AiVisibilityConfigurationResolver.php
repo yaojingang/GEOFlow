@@ -2,6 +2,7 @@
 
 namespace App\Services\GeoFlow\AiVisibility;
 
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\SiteSetting;
@@ -43,20 +44,39 @@ final class AiVisibilityConfigurationResolver
         return $this->configuredModel(self::DEEPSEEK_MODEL_SETTING_KEY, 'deepseek');
     }
 
-    public function isCallableModelId(int $modelId, string $bindingType): bool
+    /** @return array{model:?AiModel,reason:?string} */
+    public function modelResolution(string $bindingType): array
+    {
+        $settingKey = $bindingType === 'ark'
+            ? self::ARK_MODEL_SETTING_KEY
+            : self::DEEPSEEK_MODEL_SETTING_KEY;
+
+        return $this->configuredModelResolution($settingKey, $bindingType);
+    }
+
+    public function isCallableModelId(int $modelId, string $bindingType, ?Admin $owner = null): bool
     {
         $model = AiModel::query()->whereKey($modelId)->first();
 
-        return $model instanceof AiModel && $this->isCallableModel($model, $bindingType);
+        return $model instanceof AiModel && $this->isCallableModel($model, $bindingType, $owner);
     }
 
-    public function isCallableModel(AiModel $model, string $bindingType): bool
+    public function isCallableModel(AiModel $model, string $bindingType, ?Admin $owner = null): bool
     {
         $modelType = trim((string) ($model->model_type ?? ''));
+        $modelOwner = $model->owner_admin_id === null
+            ? null
+            : Admin::query()->whereKey($model->owner_admin_id)->active()->first();
 
         return in_array($bindingType, ['ark', 'deepseek'], true)
+            && $modelOwner instanceof Admin
+            && $modelOwner->isSuperAdmin()
+            && ($owner === null || (int) $modelOwner->getKey() === (int) $owner->getKey())
+            && (string) $model->access_scope === AiModel::ACCESS_SCOPE_SYSTEM_ONLY
             && (string) ($model->status ?? 'inactive') === 'active'
+            && $model->archived_at === null
             && ($modelType === '' || $modelType === 'chat')
+            && trim((string) $model->model_id) !== ''
             && $this->hasStoredApiKey($model)
             && $this->endpointPolicy->acceptsModelApi(
                 $bindingType,
@@ -83,22 +103,33 @@ final class AiVisibilityConfigurationResolver
 
     private function configuredModel(string $settingKey, string $bindingType): ?AiModel
     {
+        return $this->configuredModelResolution($settingKey, $bindingType)['model'];
+    }
+
+    /** @return array{model:?AiModel,reason:?string} */
+    private function configuredModelResolution(string $settingKey, string $bindingType): array
+    {
         if (! Schema::hasTable('site_settings') || ! Schema::hasTable('ai_models')) {
-            return null;
+            return ['model' => null, 'reason' => 'ai_model_unavailable'];
         }
 
         $modelId = (int) (SiteSetting::query()
             ->where('setting_key', $settingKey)
             ->value('setting_value') ?? 0);
         if ($modelId <= 0) {
-            return null;
+            return ['model' => null, 'reason' => 'ai_model_unavailable'];
         }
 
         $model = AiModel::query()->whereKey($modelId)->first();
 
-        return $model instanceof AiModel && $this->isCallableModel($model, $bindingType)
-            ? $model
-            : null;
+        if (! $model instanceof AiModel) {
+            return ['model' => null, 'reason' => 'ai_model_unavailable'];
+        }
+        if (! $this->isCallableModel($model, $bindingType)) {
+            return ['model' => null, 'reason' => 'ai_model_not_accessible'];
+        }
+
+        return ['model' => $model, 'reason' => null];
     }
 
     private function hasStoredApiKey(AiModel|AiSourceProvider $resource): bool

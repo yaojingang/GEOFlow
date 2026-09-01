@@ -22,6 +22,7 @@ class SensitiveAdminRouteAuthorizationTest extends TestCase
                 || $name === 'admin.analytics.distribution'
                 || str_starts_with($name, 'admin.url-import')
                 || str_starts_with($name, 'admin.site-settings.theme-replications.')
+                || str_starts_with($name, 'admin.ai-source-providers.')
             ))
             ->values();
 
@@ -83,6 +84,17 @@ class SensitiveAdminRouteAuthorizationTest extends TestCase
             ->get(route('admin.tasks.create'))
             ->assertOk()
             ->assertDontSee(route('admin.distribution.create'), false);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.ai.configurator'))
+            ->assertOk()
+            ->assertDontSee(route('admin.ai-source-providers.index'), false)
+            ->assertDontSee(__('admin.ai_configurator.search_title'));
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.analytics.ai-visibility'))
+            ->assertOk()
+            ->assertDontSee(route('admin.ai-source-providers.index'), false);
     }
 
     private function admin(string $role): Admin

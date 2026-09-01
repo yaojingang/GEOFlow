@@ -568,6 +568,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             });
             Route::prefix('ai-source-providers')
                 ->name('ai-source-providers.')
+                ->middleware('admin.super')
                 ->where(['providerId' => '[1-9][0-9]{0,17}'])
                 ->group(function () {
                     Route::get('/', [AiSourceProviderController::class, 'index'])->name('index');

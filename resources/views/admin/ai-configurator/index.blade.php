@@ -29,6 +29,7 @@
                         <div class="text-2xl font-bold text-orange-600">{{ number_format((int) ($stats['today_usage'] ?? 0)) }}</div>
                         <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.today_calls') }}</div>
                     </div>
+                    @if ($showSystemCollectionConfiguration ?? false)
                     <div class="text-center">
                         <div class="text-2xl font-bold text-teal-600">{{ (int) ($stats['search_provider_count'] ?? 0) }}</div>
                         <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.active_search_providers') }}</div>
@@ -37,6 +38,7 @@
                         <div class="text-2xl font-bold text-rose-600">{{ number_format((int) ($stats['visibility_failed_runs'] ?? 0)) }}</div>
                         <div class="text-sm text-gray-500">{{ __('admin.ai_configurator.visibility_failed_runs') }}</div>
                     </div>
+                    @endif
                 </div>
             </div>
         </section>
@@ -117,6 +119,7 @@
                 </div>
             </div>
 
+            @if ($showSystemCollectionConfiguration ?? false)
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="p-6">
                     <div class="flex items-center">
@@ -141,6 +144,7 @@
                     </div>
                 </div>
             </div>
+            @endif
         </div>
 
         <div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
@@ -153,7 +157,9 @@
                     <div class="mt-2 text-sm text-blue-700">
                         <ul class="list-disc list-inside space-y-1">
                             <li>{{ __('admin.ai_configurator.help_models') }}</li>
-                            <li>{{ __('admin.ai_configurator.help_search_providers') }}</li>
+                            @if ($showSystemCollectionConfiguration ?? false)
+                                <li>{{ __('admin.ai_configurator.help_search_providers') }}</li>
+                            @endif
                             <li>{{ __('admin.ai_configurator.help_content_prompts') }}</li>
                             <li>{{ __('admin.ai_configurator.help_special_prompts') }}</li>
                             <li>{{ __('admin.ai_configurator.help_pipeline') }}</li>

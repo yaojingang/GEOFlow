@@ -8,6 +8,7 @@ use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Services\GeoFlow\AiUsageQuotaService;
+use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Closure;
@@ -20,6 +21,7 @@ final class AdminAiModelTestPreparationService
     public function __construct(
         private readonly AiUsageQuotaService $usageQuota,
         private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiProviderEndpointPolicy $endpointPolicy,
     ) {}
 
     public function prepare(Admin $authenticatedActor, int $modelId): AdminAiModelTestSnapshot
@@ -61,6 +63,59 @@ final class AdminAiModelTestPreparationService
                         (string) $lockedModel->model_id,
                     ) === 'openai',
                 preparedAsSuperAdmin: $lockedActor->isSuperAdmin(),
+                reservation: $reservation,
+                encryptedApiKey: $encryptedApiKey,
+                decryptedApiKey: $decryptedApiKey,
+            );
+        }, 3);
+    }
+
+    public function prepareSystemBinding(
+        Admin $authenticatedActor,
+        int $modelId,
+        string $bindingType,
+    ): AdminAiModelTestSnapshot {
+        return DB::transaction(function () use ($authenticatedActor, $modelId, $bindingType): AdminAiModelTestSnapshot {
+            $lockedActor = $this->lockActiveActor($authenticatedActor);
+            if (! $lockedActor->isSuperAdmin()) {
+                throw new AuthorizationException('ai_system_config_super_admin_only');
+            }
+            $lockedModel = $this->lockConfigurableModel($lockedActor, $modelId, true, true);
+            if (! in_array($bindingType, ['ark', 'deepseek'], true)
+                || ! $this->endpointPolicy->acceptsModelApi($bindingType, (string) $lockedModel->api_url)
+                || trim((string) $lockedModel->model_id) === ''
+                || trim((string) $lockedModel->getRawOriginal('api_key')) === '') {
+                throw AiModelAccessException::modelUnavailable($lockedActor, $lockedModel);
+            }
+            $encryptedApiKey = (string) ($lockedModel->getRawOriginal('api_key') ?? '');
+            $decryptedApiKey = $this->apiKeyCrypto->decrypt($encryptedApiKey);
+            $endpoint = $this->resolveEndpoint($lockedModel, 'chat');
+            $reservation = $endpoint !== ''
+                && $decryptedApiKey !== ''
+                && trim((string) $lockedModel->model_id) !== ''
+                    ? $this->usageQuota->reserveLockedModelForTest($lockedModel)
+                    : null;
+            $lockedModel->refresh();
+
+            return new AdminAiModelTestSnapshot(
+                adminId: (int) $lockedActor->getKey(),
+                adminAccessVersion: (int) $lockedActor->ai_config_access_version,
+                modelId: (int) $lockedModel->getKey(),
+                ownerAdminId: (int) $lockedModel->owner_admin_id,
+                accessScope: (string) $lockedModel->access_scope,
+                status: (string) $lockedModel->status,
+                archivedAt: $lockedModel->archived_at?->toISOString(),
+                updatedAt: $lockedModel->updated_at?->toISOString() ?? '',
+                configurationDigest: $this->configurationDigest($lockedModel),
+                name: (string) $lockedModel->name,
+                version: (string) $lockedModel->version,
+                modelType: 'chat',
+                apiUrl: (string) $lockedModel->api_url,
+                endpoint: $endpoint,
+                providerModelId: (string) $lockedModel->model_id,
+                gemini: false,
+                usesOpenAiResponses: $bindingType === 'ark',
+                preparedAsSuperAdmin: true,
                 reservation: $reservation,
                 encryptedApiKey: $encryptedApiKey,
                 decryptedApiKey: $decryptedApiKey,
@@ -210,10 +265,18 @@ final class AdminAiModelTestPreparationService
         return $lockedActor;
     }
 
-    private function lockConfigurableModel(Admin $actor, int $modelId, bool $hideMissing = false): AiModel
-    {
+    private function lockConfigurableModel(
+        Admin $actor,
+        int $modelId,
+        bool $hideMissing = false,
+        bool $systemOnly = false,
+    ): AiModel {
         $query = AiModel::query()->ownedBy($actor);
-        if (! $actor->isSuperAdmin()) {
+        if ($systemOnly) {
+            $query->systemOnly()->active()->unarchived()->where(function ($query): void {
+                $query->whereNull('model_type')->orWhere('model_type', '')->orWhere('model_type', 'chat');
+            });
+        } elseif (! $actor->isSuperAdmin()) {
             $query->userContent();
         }
 
