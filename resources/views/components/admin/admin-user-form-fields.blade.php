@@ -3,6 +3,7 @@
     'targetAdmin' => null,
     'isSelf' => false,
     'sharedProvider' => null,
+    'switchSharedProvider' => null,
     'sharingImpact' => null,
 ])
 
@@ -39,6 +40,8 @@
     }
     $providerName = $normalizeScalar(data_get($sharedProvider, 'name', ''), '');
     $providerStatus = $normalizeScalar(data_get($sharedProvider, 'status', ''), '');
+    $switchProviderName = $normalizeScalar(data_get($switchSharedProvider, 'name', ''), '');
+    $switchProviderSelected = $normalizeScalar(old('switch_shared_provider', ''), '') === '1';
     $sharedDefaultCount = (int) data_get($sharingImpact, 'sharedDefaultCount', 0);
     if (is_object($sharingImpact) && method_exists($sharingImpact, 'sharedDefaultCount')) {
         $sharedDefaultCount = $sharingImpact->sharedDefaultCount();
@@ -52,6 +55,7 @@
         'password' => 'admin-user-password-error',
         'confirm_password' => 'admin-user-confirm-password-error',
         'ai_config_mode' => 'admin-user-ai-config-mode-error',
+        'switch_shared_provider' => 'admin-user-provider-switch-error',
     ];
     $describedBy = static function (string $field, ?string $helpId = null) use ($errorIds, $errors): string {
         return implode(' ', array_filter([
@@ -138,6 +142,7 @@
 
             @unless ($isCreate)
                 <input type="hidden" name="expected_ai_config_access_version" value="{{ (int) data_get($targetAdmin, 'ai_config_access_version', 1) }}">
+                <input type="hidden" name="expected_shared_ai_config_owner_id" value="{{ data_get($targetAdmin, 'shared_ai_config_owner_id') === null ? '' : (int) data_get($targetAdmin, 'shared_ai_config_owner_id') }}">
             @endunless
 
             <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -178,6 +183,9 @@
                         <span class="block text-sm font-semibold text-gray-900">{{ __('admin.admin_users.ai_config_shared') }}</span>
                         <span class="mt-1 block text-sm leading-6 text-gray-600">{{ __('admin.admin_users.ai_config_shared_priority') }}</span>
                         <span class="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                            @unless ($isCreate)
+                                <span>{{ __('admin.admin_users.ai_config_current_provider') }}</span>
+                            @endunless
                             <span class="font-medium text-gray-800">{{ $providerName }}</span>
                             <span class="inline-flex rounded-full px-2 py-0.5 font-medium {{ $providerStatus === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }}">
                                 {{ __('admin.admin_users.ai_config_provider_status', ['status' => $providerStatus === 'active' ? __('admin.admin_users.status_active') : __('admin.admin_users.status_inactive')]) }}
@@ -186,6 +194,38 @@
                     </span>
                 </label>
             </div>
+
+            @if (! $isCreate && $switchSharedProvider !== null)
+                <div class="mt-3 rounded-xl bg-blue-50/60 p-4 ring-1 ring-inset ring-blue-200">
+                    <label for="switch_shared_provider" class="flex min-h-10 cursor-pointer items-start gap-3 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 focus-within:ring-offset-blue-50">
+                        <input
+                            id="switch_shared_provider"
+                            name="switch_shared_provider"
+                            type="checkbox"
+                            value="1"
+                            @checked($switchProviderSelected)
+                            @error('switch_shared_provider') aria-invalid="true" @enderror
+                            aria-describedby="{{ $describedBy('switch_shared_provider', 'admin-user-provider-switch-help') }}"
+                            class="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        >
+                        <span class="min-w-0">
+                            <span class="block text-sm font-semibold text-gray-900">
+                                {{ __('admin.admin_users.ai_config_switch_provider', ['provider' => $switchProviderName]) }}
+                            </span>
+                            <span id="admin-user-provider-switch-help" class="mt-1 block text-sm leading-6 text-gray-600">
+                                {{ __('admin.admin_users.ai_config_switch_provider_help', [
+                                    'provider' => $switchProviderName,
+                                    'defaults' => $sharedDefaultCount,
+                                    'tasks' => $pendingTaskCount,
+                                ]) }}
+                            </span>
+                        </span>
+                    </label>
+                    @error('switch_shared_provider')
+                        <p id="{{ $errorIds['switch_shared_provider'] }}" class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+            @endif
 
             @error('ai_config_mode')
                 <p id="{{ $errorIds['ai_config_mode'] }}" class="mt-2 text-sm text-red-600">{{ $message }}</p>

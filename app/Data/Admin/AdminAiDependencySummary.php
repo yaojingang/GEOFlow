@@ -4,7 +4,7 @@ namespace App\Data\Admin;
 
 final readonly class AdminAiDependencySummary
 {
-    /** @param array{queued: int, active: int, total: int} $pendingTaskCounts */
+    /** @param array{title_generation_runs: int, article_ai_optimization_runs: int, knowledge_fact_generation_runs: int, ai_workspace_runs: int, total: int} $pendingTaskCounts */
     public function __construct(
         public int $ownedModelCount,
         public int $dependentAdminCount,

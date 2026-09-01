@@ -4722,6 +4722,9 @@ return [
         'ai_config_independent_impact' => '切换后将清理 :defaults 个共享默认模型；当前识别到 :tasks 个待处理任务。',
         'ai_config_super_self' => '仅使用自己的配置',
         'ai_config_provider_status' => '状态：:status',
+        'ai_config_current_provider' => '当前共享方',
+        'ai_config_switch_provider' => '切换为当前超级管理员 :provider',
+        'ai_config_switch_provider_help' => '确认后将共享方改为 :provider，并清理原共享方的 :defaults 个默认模型；当前识别到 :tasks 个待处理任务',
         'create_admin_submit' => '创建管理员',
         'update_admin_submit' => '保存修改',
         'error' => [
@@ -4735,7 +4738,7 @@ return [
             'ai_config_access_version_required' => 'AI 配置状态已失效，请刷新页面后重试',
             'ai_config_access_conflict' => 'AI 配置已被其他操作更新，请刷新页面后重试',
             'super_admin_ai_config_forbidden' => '超级管理员仅使用自己的 AI 配置',
-            'delete_has_ai_dependencies' => '该管理员仍有 :count 个 AI 模型，请先完成模型归档或所有权转移',
+            'delete_has_ai_dependencies' => '该管理员仍有关联：AI 模型 :models 个、待处理 AI 任务 :tasks 个、共享依赖管理员 :dependents 个。请先处理后再删除',
             'username_exists' => '该用户名已存在',
             'status_invalid' => '管理员状态无效',
             'invalid_id' => '无效的管理员ID',

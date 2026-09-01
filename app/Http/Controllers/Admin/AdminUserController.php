@@ -68,6 +68,8 @@ class AdminUserController extends Controller
 
     public function edit(int $adminId): View
     {
+        /** @var Admin $actor */
+        $actor = auth('admin')->user();
         $targetAdmin = Admin::query()
             ->select([
                 'id',
@@ -92,7 +94,11 @@ class AdminUserController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'targetAdmin' => $targetAdmin,
             'isSelf' => $isSelf,
-            'sharedProvider' => $targetAdmin->sharedAiConfigOwner ?? auth('admin')->user(),
+            'sharedProvider' => $targetAdmin->sharedAiConfigOwner ?? $actor,
+            'switchSharedProvider' => $targetAdmin->sharedAiConfigOwner !== null
+                && ! $targetAdmin->sharedAiConfigOwner->is($actor)
+                    ? $actor
+                    : null,
             'sharingImpact' => $this->dependencyInspector->sharingImpact($targetAdmin),
         ]);
     }
@@ -126,6 +132,10 @@ class AdminUserController extends Controller
                 $targetAdmin->isSuperAdmin()
                     ? null
                     : (int) $payload['expected_ai_config_access_version'],
+                $targetAdmin->isSuperAdmin() || blank($payload['expected_shared_ai_config_owner_id'] ?? null)
+                    ? null
+                    : (int) $payload['expected_shared_ai_config_owner_id'],
+                ! $targetAdmin->isSuperAdmin() && (bool) ($payload['switch_shared_provider'] ?? false),
             );
 
             return redirect()->route('admin.admin-users.index')->with('message', __('admin.admin_users.message.update_success'));
@@ -255,10 +265,14 @@ class AdminUserController extends Controller
 
             return redirect()->route('admin.admin-users.index')->with('message', __('admin.admin_users.message.delete_success'));
         } catch (AdminAiSharingException $exception) {
-            $count = (int) ($exception->context()['owned_model_count'] ?? 0);
+            $context = $exception->context();
 
             return back()->withErrors([
-                'admin' => __('admin.admin_users.error.delete_has_ai_dependencies', ['count' => $count]),
+                'admin' => __('admin.admin_users.error.delete_has_ai_dependencies', [
+                    'models' => (int) ($context['owned_model_count'] ?? 0),
+                    'tasks' => (int) ($context['pending_task_count'] ?? 0),
+                    'dependents' => (int) ($context['dependent_admin_count'] ?? 0),
+                ]),
             ]);
         } catch (Throwable $exception) {
             report($exception);

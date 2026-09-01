@@ -687,6 +687,9 @@ return array_replace_recursive($base, [
         'ai_config_independent_impact' => 'El cambio elimina :defaults modelos compartidos predeterminados. Hay :tasks tareas identificables pendientes.',
         'ai_config_super_self' => 'Usa solo su propia configuración',
         'ai_config_provider_status' => 'Estado: :status',
+        'ai_config_current_provider' => 'Proveedor compartido actual',
+        'ai_config_switch_provider' => 'Cambiar al superadministrador actual :provider',
+        'ai_config_switch_provider_help' => 'La confirmación cambia el proveedor a :provider, elimina :defaults modelos predeterminados del proveedor anterior y afecta a :tasks tareas pendientes identificables',
         'create_admin_submit' => 'Crear administrador',
         'update_admin_submit' => 'Guardar cambios',
         'error' => [
@@ -700,7 +703,7 @@ return array_replace_recursive($base, [
             'ai_config_access_version_required' => 'El estado de la configuración de IA ha caducado. Actualiza la página e inténtalo de nuevo.',
             'ai_config_access_conflict' => 'La configuración de IA se actualizó en otra operación. Actualiza la página e inténtalo de nuevo.',
             'super_admin_ai_config_forbidden' => 'Los superadministradores usan únicamente su propia configuración de IA',
-            'delete_has_ai_dependencies' => 'Este administrador todavía posee :count modelos de IA. Archívalos o transfiérelos antes de eliminar la cuenta.',
+            'delete_has_ai_dependencies' => 'Este administrador tiene :models modelos de IA, :tasks tareas de IA pendientes y :dependents administradores que usan su configuración compartida. Resuelve estas dependencias antes de eliminar la cuenta.',
             'username_exists' => 'Este usuario ya existe',
             'status_invalid' => 'Estado de administrador inválido',
             'invalid_id' => 'ID de administrador inválido',

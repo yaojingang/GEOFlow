@@ -687,6 +687,9 @@ return array_replace_recursive($base, [
         'ai_config_independent_impact' => '切り替えると共有デフォルトモデル :defaults 件を解除します。識別済みの保留タスクは :tasks 件です。',
         'ai_config_super_self' => '自分の設定のみ利用',
         'ai_config_provider_status' => '状態：:status',
+        'ai_config_current_provider' => '現在の共有元',
+        'ai_config_switch_provider' => '現在のスーパー管理者 :provider に切り替える',
+        'ai_config_switch_provider_help' => '確認すると共有元を :provider に変更し、以前の共有元のデフォルトモデル :defaults 件を解除します。識別済みの保留タスクは :tasks 件です',
         'create_admin_submit' => '管理者を作成',
         'update_admin_submit' => '変更を保存',
         'error' => [
@@ -700,7 +703,7 @@ return array_replace_recursive($base, [
             'ai_config_access_version_required' => 'AI 設定の状態が期限切れです。ページを更新して再試行してください。',
             'ai_config_access_conflict' => 'AI 設定は別の操作で更新されました。ページを更新して再試行してください。',
             'super_admin_ai_config_forbidden' => 'スーパー管理者は自分の AI 設定のみ利用します',
-            'delete_has_ai_dependencies' => 'この管理者は AI モデルを :count 件所有しています。削除前にアーカイブまたは所有権移転を完了してください。',
+            'delete_has_ai_dependencies' => 'この管理者には AI モデル :models 件、保留中の AI タスク :tasks 件、共有設定を利用する管理者 :dependents 件があります。削除前に依存関係を解消してください。',
             'username_exists' => 'このユーザー名は既に存在します',
             'status_invalid' => '管理者状態が無効です',
             'invalid_id' => '無効な管理者IDです',

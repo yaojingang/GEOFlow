@@ -4666,6 +4666,9 @@ return [
         'ai_config_independent_impact' => 'This change clears :defaults shared default models. :tasks identifiable tasks are pending.',
         'ai_config_super_self' => 'Uses own configuration only',
         'ai_config_provider_status' => 'Status: :status',
+        'ai_config_current_provider' => 'Current shared provider',
+        'ai_config_switch_provider' => 'Switch to current super administrator :provider',
+        'ai_config_switch_provider_help' => 'Confirmation changes the provider to :provider, clears :defaults defaults from the previous provider, and affects :tasks identifiable pending tasks',
         'create_admin_submit' => 'Create Admin',
         'update_admin_submit' => 'Save Changes',
         'error' => [
@@ -4679,7 +4682,7 @@ return [
             'ai_config_access_version_required' => 'The AI configuration state has expired. Refresh the page and try again.',
             'ai_config_access_conflict' => 'The AI configuration was updated elsewhere. Refresh the page and try again.',
             'super_admin_ai_config_forbidden' => 'Super administrators use only their own AI configuration',
-            'delete_has_ai_dependencies' => 'This administrator still owns :count AI models. Archive or transfer them before deletion.',
+            'delete_has_ai_dependencies' => 'This administrator has :models AI models, :tasks pending AI tasks, and :dependents administrators using their shared configuration. Resolve these dependencies before deletion.',
             'username_exists' => 'This username already exists',
             'status_invalid' => 'Invalid admin status',
             'invalid_id' => 'Invalid admin ID',

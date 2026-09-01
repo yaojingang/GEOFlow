@@ -43,6 +43,12 @@ final class UpdateAdminUserRequest extends FormRequest
             'expected_ai_config_access_version' => $isSuperAdmin
                 ? ['prohibited']
                 : ['required', 'integer', 'min:1'],
+            'expected_shared_ai_config_owner_id' => $isSuperAdmin
+                ? ['prohibited']
+                : ['present', 'nullable', 'integer', 'min:1'],
+            'switch_shared_provider' => $isSuperAdmin
+                ? ['prohibited']
+                : ['sometimes', 'boolean'],
             'shared_ai_config_owner_id' => ['prohibited'],
             'ai_config_owner_id' => ['prohibited'],
             'provider_admin_id' => ['prohibited'],
@@ -68,6 +74,12 @@ final class UpdateAdminUserRequest extends FormRequest
             'expected_ai_config_access_version.integer' => __('admin.admin_users.error.ai_config_access_version_required'),
             'expected_ai_config_access_version.min' => __('admin.admin_users.error.ai_config_access_version_required'),
             'expected_ai_config_access_version.prohibited' => __('admin.admin_users.error.super_admin_ai_config_forbidden'),
+            'expected_shared_ai_config_owner_id.present' => __('admin.admin_users.error.ai_config_access_version_required'),
+            'expected_shared_ai_config_owner_id.integer' => __('admin.admin_users.error.ai_config_access_version_required'),
+            'expected_shared_ai_config_owner_id.min' => __('admin.admin_users.error.ai_config_access_version_required'),
+            'expected_shared_ai_config_owner_id.prohibited' => __('admin.admin_users.error.super_admin_ai_config_forbidden'),
+            'switch_shared_provider.boolean' => __('admin.admin_users.error.ai_config_provider_forged'),
+            'switch_shared_provider.prohibited' => __('admin.admin_users.error.super_admin_ai_config_forbidden'),
             'shared_ai_config_owner_id.prohibited' => __('admin.admin_users.error.ai_config_provider_forged'),
             'ai_config_owner_id.prohibited' => __('admin.admin_users.error.ai_config_provider_forged'),
             'provider_admin_id.prohibited' => __('admin.admin_users.error.ai_config_provider_forged'),

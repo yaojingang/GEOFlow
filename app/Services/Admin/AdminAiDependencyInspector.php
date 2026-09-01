@@ -7,6 +7,11 @@ use App\Data\Admin\AdminAiSharingImpact;
 use App\Models\Admin;
 use App\Models\AdminAiSetting;
 use App\Models\AiModel;
+use App\Models\AiWorkspaceRun;
+use App\Models\ArticleAiOptimizationRun;
+use App\Models\KnowledgeFactGenerationRun;
+use App\Models\TitleGenerationRun;
+use Illuminate\Support\Facades\Schema;
 
 final class AdminAiDependencyInspector
 {
@@ -49,13 +54,114 @@ final class AdminAiDependencyInspector
         );
     }
 
-    /** @return array{queued: int, active: int, total: int} */
+    /**
+     * @return array{
+     *   title_generation_runs: int,
+     *   article_ai_optimization_runs: int,
+     *   knowledge_fact_generation_runs: int,
+     *   ai_workspace_runs: int,
+     *   total: int
+     * }
+     */
     public function pendingTaskCounts(Admin $admin): array
     {
-        return [
-            'queued' => 0,
-            'active' => 0,
-            'total' => 0,
+        $counts = [
+            'title_generation_runs' => $this->pendingTitleGenerationRunCount($admin),
+            'article_ai_optimization_runs' => $this->pendingArticleAiOptimizationRunCount($admin),
+            'knowledge_fact_generation_runs' => $this->pendingKnowledgeFactGenerationRunCount($admin),
+            'ai_workspace_runs' => $this->pendingAiWorkspaceRunCount($admin),
         ];
+
+        return [...$counts, 'total' => array_sum($counts)];
+    }
+
+    private function pendingTitleGenerationRunCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new TitleGenerationRun)->getTable(), [
+            'created_by_admin_id',
+            'status',
+            'ai_model_id',
+            'failure_code',
+            'manual_retry_count',
+        ])) {
+            return 0;
+        }
+
+        return TitleGenerationRun::query()
+            ->where('created_by_admin_id', $admin->getKey())
+            ->where(function ($query): void {
+                $query->whereIn('status', [
+                    TitleGenerationRun::STATUS_QUEUED,
+                    TitleGenerationRun::STATUS_RUNNING,
+                ])->orWhere(function ($retryable): void {
+                    $retryable
+                        ->whereIn('status', [
+                            TitleGenerationRun::STATUS_PARTIAL,
+                            TitleGenerationRun::STATUS_FAILED,
+                            TitleGenerationRun::STATUS_CANCELLED,
+                        ])
+                        ->whereNotNull('ai_model_id')
+                        ->where(function ($failure): void {
+                            $failure
+                                ->whereNull('failure_code')
+                                ->orWhere('failure_code', '!=', 'request_budget_exhausted');
+                        })
+                        ->where('manual_retry_count', '<', (int) config('geoflow.title_ai_max_manual_retries', 3));
+                });
+            })
+            ->count();
+    }
+
+    private function pendingArticleAiOptimizationRunCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new ArticleAiOptimizationRun)->getTable(), [
+            'requested_by_admin_id',
+            'status',
+        ])) {
+            return 0;
+        }
+
+        return ArticleAiOptimizationRun::query()
+            ->where('requested_by_admin_id', $admin->getKey())
+            ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES)
+            ->count();
+    }
+
+    private function pendingKnowledgeFactGenerationRunCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new KnowledgeFactGenerationRun)->getTable(), [
+            'created_by_admin_id',
+            'status',
+        ])) {
+            return 0;
+        }
+
+        return KnowledgeFactGenerationRun::query()
+            ->where('created_by_admin_id', $admin->getKey())
+            ->whereIn('status', KnowledgeFactGenerationRun::ACTIVE_STATUSES)
+            ->count();
+    }
+
+    private function pendingAiWorkspaceRunCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new AiWorkspaceRun)->getTable(), [
+            'admin_id',
+            'state',
+        ])) {
+            return 0;
+        }
+
+        return AiWorkspaceRun::query()
+            ->where('admin_id', $admin->getKey())
+            ->whereNotIn('state', AiWorkspaceRun::TERMINAL_STATES)
+            ->count();
+    }
+
+    /**
+     * @param  list<string>  $columns
+     */
+    private function hasRequiredColumns(string $table, array $columns): bool
+    {
+        return Schema::hasTable($table) && Schema::hasColumns($table, $columns);
     }
 }

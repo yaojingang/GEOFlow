@@ -33,6 +33,7 @@
                     :target-admin="$targetAdmin"
                     :is-self="$isSelf"
                     :shared-provider="$sharedProvider"
+                    :switch-shared-provider="$switchSharedProvider"
                     :sharing-impact="$sharingImpact"
                 />
             </div>

@@ -246,6 +246,7 @@ class AdminUsersManagementTest extends TestCase
                 'confirm_password' => 'update-failure-password',
                 'ai_config_mode' => 'independent',
                 'expected_ai_config_access_version' => 1,
+                'expected_shared_ai_config_owner_id' => null,
             ]);
 
         $response->assertRedirect(route('admin.admin-users.edit', ['adminId' => $standardAdmin->id]))
@@ -361,6 +362,7 @@ class AdminUsersManagementTest extends TestCase
                 'confirm_password' => '',
                 'ai_config_mode' => 'independent',
                 'expected_ai_config_access_version' => 1,
+                'expected_shared_ai_config_owner_id' => null,
             ])
             ->assertRedirect(route('admin.admin-users.index'));
 
@@ -406,6 +408,7 @@ class AdminUsersManagementTest extends TestCase
                 'confirm_password' => 'new-secret-123',
                 'ai_config_mode' => 'independent',
                 'expected_ai_config_access_version' => 1,
+                'expected_shared_ai_config_owner_id' => null,
             ])
             ->assertRedirect(route('admin.admin-users.index'));
 
@@ -435,6 +438,7 @@ class AdminUsersManagementTest extends TestCase
                 'confirm_password' => 'new-secret-123',
                 'ai_config_mode' => 'independent',
                 'expected_ai_config_access_version' => 1,
+                'expected_shared_ai_config_owner_id' => null,
             ])
             ->assertRedirect(route('admin.admin-users.index'));
 

@@ -54,6 +54,8 @@ final class AdminAiSharingService
         array $attributes,
         ?string $mode,
         ?int $expectedAccessVersion,
+        ?int $expectedProviderAdminId = null,
+        bool $switchSharedProvider = false,
     ): AdminAiSharingChangeResult {
         return DB::transaction(function () use (
             $actor,
@@ -61,6 +63,8 @@ final class AdminAiSharingService
             $attributes,
             $mode,
             $expectedAccessVersion,
+            $expectedProviderAdminId,
+            $switchSharedProvider,
         ): AdminAiSharingChangeResult {
             $lockedAdmins = $this->lockAdmins($actor, $target);
             $lockedActor = $lockedAdmins->firstWhere('id', (int) $actor->getKey());
@@ -71,7 +75,15 @@ final class AdminAiSharingService
             }
 
             if ($lockedTarget->isSuperAdmin()) {
-                return $this->updateSuperAdminSelf($lockedActor, $lockedTarget, $attributes, $mode, $expectedAccessVersion);
+                return $this->updateSuperAdminSelf(
+                    $lockedActor,
+                    $lockedTarget,
+                    $attributes,
+                    $mode,
+                    $expectedAccessVersion,
+                    $expectedProviderAdminId,
+                    $switchSharedProvider,
+                );
             }
 
             return $this->updateOrdinaryAdmin(
@@ -80,6 +92,8 @@ final class AdminAiSharingService
                 $attributes,
                 $mode,
                 $expectedAccessVersion,
+                $expectedProviderAdminId,
+                $switchSharedProvider,
             );
         }, 3);
     }
@@ -103,8 +117,8 @@ final class AdminAiSharingService
 
             $oldStatus = (string) $lockedTarget->status;
             $oldVersion = max(1, (int) $lockedTarget->ai_config_access_version);
-            $deactivated = $oldStatus !== 'inactive' && $newStatus === 'inactive';
-            $newVersion = $deactivated ? $oldVersion + 1 : $oldVersion;
+            $statusChanged = $oldStatus !== $newStatus;
+            $newVersion = $statusChanged ? $oldVersion + 1 : $oldVersion;
             $providerId = $lockedTarget->shared_ai_config_owner_id === null
                 ? null
                 : (int) $lockedTarget->shared_ai_config_owner_id;
@@ -113,7 +127,7 @@ final class AdminAiSharingService
                 'status' => $newStatus,
                 'ai_config_access_version' => $newVersion,
             ])->save();
-            if ($oldStatus !== $newStatus) {
+            if ($statusChanged) {
                 $lockedTarget->revokeAuthenticationCredentials();
             }
 
@@ -138,6 +152,8 @@ final class AdminAiSharingService
         array $attributes,
         ?string $mode,
         ?int $expectedAccessVersion,
+        ?int $expectedProviderAdminId,
+        bool $switchSharedProvider,
     ): AdminAiSharingChangeResult {
         if (! in_array($mode, ['independent', 'shared_current_super'], true)) {
             throw AdminAiSharingException::providerInvalid((int) $target->getKey());
@@ -151,12 +167,28 @@ final class AdminAiSharingService
         $oldProviderId = $target->shared_ai_config_owner_id === null
             ? null
             : (int) $target->shared_ai_config_owner_id;
-        $newProviderId = $mode === 'shared_current_super' ? (int) $actor->getKey() : null;
+        if ($expectedProviderAdminId !== $oldProviderId) {
+            throw AdminAiSharingException::accessConflict((int) $target->getKey());
+        }
+        if ($switchSharedProvider && (
+            $mode !== 'shared_current_super'
+            || $oldProviderId === null
+            || $oldProviderId === (int) $actor->getKey()
+        )) {
+            throw AdminAiSharingException::providerInvalid((int) $target->getKey());
+        }
+        $newProviderId = match (true) {
+            $mode === 'independent' => null,
+            $oldProviderId === null => (int) $actor->getKey(),
+            $oldProviderId === (int) $actor->getKey() => $oldProviderId,
+            $switchSharedProvider => (int) $actor->getKey(),
+            default => $oldProviderId,
+        };
         $providerChanged = $oldProviderId !== $newProviderId;
         $oldStatus = (string) $target->status;
         $newStatus = (string) $attributes['status'];
-        $deactivated = $oldStatus !== 'inactive' && $newStatus === 'inactive';
-        $versionChanged = $providerChanged || $deactivated;
+        $statusChanged = $oldStatus !== $newStatus;
+        $versionChanged = $providerChanged || $statusChanged;
         $clearedDefaults = $providerChanged && $oldProviderId !== null
             ? $this->clearDefaultsOwnedBy($target, $oldProviderId, $actor)
             : ['model_ids' => [], 'chat' => null, 'embedding' => null];
@@ -200,11 +232,16 @@ final class AdminAiSharingService
         array $attributes,
         ?string $mode,
         ?int $expectedAccessVersion,
+        ?int $expectedProviderAdminId,
+        bool $switchSharedProvider,
     ): AdminAiSharingChangeResult {
         if (! $actor->is($target)) {
             throw AdminAiSharingException::targetInvalid((int) $target->getKey());
         }
-        if ($mode !== null || $expectedAccessVersion !== null) {
+        if ($mode !== null
+            || $expectedAccessVersion !== null
+            || $expectedProviderAdminId !== null
+            || $switchSharedProvider) {
             throw AdminAiSharingException::providerInvalid((int) $target->getKey());
         }
 

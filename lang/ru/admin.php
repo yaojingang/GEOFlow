@@ -687,6 +687,9 @@ return array_replace_recursive($base, [
         'ai_config_independent_impact' => 'Будет очищено общих моделей по умолчанию: :defaults. Ожидающих распознанных задач: :tasks.',
         'ai_config_super_self' => 'Использует только свои настройки',
         'ai_config_provider_status' => 'Статус: :status',
+        'ai_config_current_provider' => 'Текущий источник общей конфигурации',
+        'ai_config_switch_provider' => 'Переключить на текущего суперадмина :provider',
+        'ai_config_switch_provider_help' => 'После подтверждения источником станет :provider, будет очищено прежних моделей по умолчанию: :defaults. Распознанных ожидающих задач: :tasks',
         'create_admin_submit' => 'Создать администратора',
         'update_admin_submit' => 'Сохранить изменения',
         'error' => [
@@ -700,7 +703,7 @@ return array_replace_recursive($base, [
             'ai_config_access_version_required' => 'Состояние настройки ИИ устарело. Обновите страницу и повторите попытку.',
             'ai_config_access_conflict' => 'Настройка ИИ обновлена другой операцией. Обновите страницу и повторите попытку.',
             'super_admin_ai_config_forbidden' => 'Суперадмины используют только собственную настройку ИИ',
-            'delete_has_ai_dependencies' => 'У администратора остаются модели ИИ: :count. Архивируйте или перенесите их перед удалением.',
+            'delete_has_ai_dependencies' => 'У администратора есть модели ИИ: :models, ожидающие задачи ИИ: :tasks и администраторы с общей конфигурацией: :dependents. Устраните зависимости перед удалением.',
             'username_exists' => 'Такое имя пользователя уже существует',
             'status_invalid' => 'Недопустимый статус администратора',
             'invalid_id' => 'Недопустимый ID администратора',
