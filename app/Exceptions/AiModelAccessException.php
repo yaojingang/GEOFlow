@@ -16,6 +16,8 @@ final class AiModelAccessException extends RuntimeException
 
     public const AI_MODEL_UNAVAILABLE = 'ai_model_unavailable';
 
+    public const AI_EMBEDDING_INCOMPATIBLE = 'ai_embedding_incompatible';
+
     private function __construct(
         private readonly string $errorCode,
         private readonly int $adminId,
@@ -54,6 +56,15 @@ final class AiModelAccessException extends RuntimeException
             self::AI_MODEL_UNAVAILABLE,
             (int) $admin->getKey(),
             $model === null ? null : (int) $model->getKey(),
+        );
+    }
+
+    public static function embeddingIncompatible(Admin $admin, AiModel $model): self
+    {
+        return new self(
+            self::AI_EMBEDDING_INCOMPATIBLE,
+            (int) $admin->getKey(),
+            (int) $model->getKey(),
         );
     }
 

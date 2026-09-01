@@ -93,6 +93,21 @@ class AiModel extends Model
         return $this->belongsTo(Admin::class, 'owner_admin_id');
     }
 
+    public function chatDefaultForAdmins(): HasMany
+    {
+        return $this->hasMany(AdminAiSetting::class, 'default_chat_model_id');
+    }
+
+    public function embeddingDefaultForAdmins(): HasMany
+    {
+        return $this->hasMany(AdminAiSetting::class, 'default_embedding_model_id');
+    }
+
+    public function usageEvents(): HasMany
+    {
+        return $this->hasMany(AiModelUsageEvent::class, 'ai_model_id');
+    }
+
     public function scopeOwnedBy(Builder $query, Admin|int $owner): Builder
     {
         return $query->where('owner_admin_id', $owner instanceof Admin ? $owner->getKey() : $owner);

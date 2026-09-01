@@ -11,6 +11,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -137,6 +138,26 @@ class Admin extends Authenticatable
     public function ownedAiModels(): HasMany
     {
         return $this->hasMany(AiModel::class, 'owner_admin_id');
+    }
+
+    public function aiSettings(): HasOne
+    {
+        return $this->hasOne(AdminAiSetting::class);
+    }
+
+    public function updatedAiSettings(): HasMany
+    {
+        return $this->hasMany(AdminAiSetting::class, 'updated_by_admin_id');
+    }
+
+    public function ownedAiModelUsageEvents(): HasMany
+    {
+        return $this->hasMany(AiModelUsageEvent::class, 'config_owner_admin_id');
+    }
+
+    public function executedAiModelUsageEvents(): HasMany
+    {
+        return $this->hasMany(AiModelUsageEvent::class, 'execution_admin_id');
     }
 
     public function activityLogs(): HasMany
