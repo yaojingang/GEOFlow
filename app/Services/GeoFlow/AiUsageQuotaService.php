@@ -37,6 +37,15 @@ final class AiUsageQuotaService
         });
     }
 
+    public function reserveLockedModelForTest(AiModel $lockedModel): ?AiUsageReservation
+    {
+        if (DB::connection()->transactionLevel() < 1) {
+            throw new \LogicException('A locked model reservation requires an active transaction.');
+        }
+
+        return $this->reserveLockedModel($lockedModel);
+    }
+
     public function releaseModel(AiUsageReservation $reservation): void
     {
         if ($reservation->resourceType !== 'model') {

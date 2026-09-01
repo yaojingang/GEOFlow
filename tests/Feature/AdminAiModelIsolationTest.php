@@ -3,15 +3,20 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\AdminHelpAssistant;
+use App\Data\Admin\AdminAiModelTestSnapshot;
 use App\Models\Admin;
 use App\Models\AdminAiSetting;
 use App\Models\AiModel;
 use App\Models\SiteSetting;
+use App\Services\Admin\AdminAiModelTestBoundaryHook;
+use App\Services\Admin\AdminAiModelTestPreparationService;
 use App\Services\Admin\AdminAiSettingsService;
+use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class AdminAiModelIsolationTest extends TestCase
@@ -263,6 +268,100 @@ final class AdminAiModelIsolationTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    #[DataProvider('connectionRevocationCases')]
+    public function test_connection_revalidation_rejects_stale_execution_snapshots_without_external_calls(string $mutation): void
+    {
+        Http::fake();
+        $admin = $this->admin('revalidation-'.$mutation, 'admin');
+        $other = $this->admin('revalidation-other-'.$mutation, 'admin');
+        $model = $this->model($admin, [
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('snapshot-original-secret'),
+        ]);
+        $rotatedKey = app(ApiKeyCrypto::class)->encrypt('snapshot-rotated-secret');
+        $this->app->instance(
+            AdminAiModelTestBoundaryHook::class,
+            new class($mutation, (int) $admin->id, (int) $other->id, (int) $model->id, $rotatedKey) extends AdminAiModelTestBoundaryHook
+            {
+                public function __construct(
+                    private readonly string $mutation,
+                    private readonly int $adminId,
+                    private readonly int $otherAdminId,
+                    private readonly int $modelId,
+                    private readonly string $rotatedKey,
+                ) {}
+
+                public function beforeRevalidation(AdminAiModelTestSnapshot $snapshot): void
+                {
+                    match ($this->mutation) {
+                        'admin_inactive' => Admin::query()->whereKey($this->adminId)->update(['status' => 'inactive']),
+                        'access_version' => Admin::query()->whereKey($this->adminId)->increment('ai_config_access_version'),
+                        'owner' => AiModel::query()->whereKey($this->modelId)->update(['owner_admin_id' => $this->otherAdminId]),
+                        'api_key' => AiModel::query()->whereKey($this->modelId)->update(['api_key' => $this->rotatedKey]),
+                        'api_url' => AiModel::query()->whereKey($this->modelId)->update(['api_url' => 'https://rotated.example.test']),
+                        'model_id' => AiModel::query()->whereKey($this->modelId)->update(['model_id' => 'rotated-provider-model']),
+                        'status' => AiModel::query()->whereKey($this->modelId)->update(['status' => 'inactive']),
+                        'archived' => AiModel::query()->whereKey($this->modelId)->update(['archived_at' => now()]),
+                    };
+                }
+            },
+        );
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+
+        Http::assertNothingSent();
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+        $response
+            ->assertDontSee('snapshot-original-secret', false)
+            ->assertDontSee('snapshot-rotated-secret', false)
+            ->assertDontSee('rotated.example.test', false)
+            ->assertDontSee('rotated-provider-model', false);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function connectionRevocationCases(): array
+    {
+        return [
+            'admin inactive' => ['admin_inactive'],
+            'access version changed' => ['access_version'],
+            'owner changed' => ['owner'],
+            'credential rotated' => ['api_key'],
+            'endpoint changed' => ['api_url'],
+            'provider model changed' => ['model_id'],
+            'status changed' => ['status'],
+            'archived' => ['archived'],
+        ];
+    }
+
+    public function test_connection_snapshot_cannot_serialize_or_expose_credentials_in_json_and_debug_output(): void
+    {
+        $admin = $this->admin('snapshot-redaction', 'admin');
+        $model = $this->model($admin, [
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('snapshot-never-expose-secret'),
+            'api_url' => 'https://snapshot-private.example.test',
+            'model_id' => 'snapshot-private-model-id',
+        ]);
+
+        $snapshot = app(AdminAiModelTestPreparationService::class)->prepare($admin, (int) $model->id);
+        $json = json_encode($snapshot, JSON_THROW_ON_ERROR);
+        $debug = print_r($snapshot, true);
+
+        foreach (['snapshot-never-expose-secret', 'snapshot-private.example.test', 'snapshot-private-model-id'] as $sensitive) {
+            $this->assertStringNotContainsString($sensitive, $json);
+            $this->assertStringNotContainsString($sensitive, $debug);
+        }
+
+        try {
+            serialize($snapshot);
+            $this->fail('Snapshot serialization should fail.');
+        } catch (\LogicException $exception) {
+            $this->assertSame('AI model test snapshots cannot be serialized.', $exception->getMessage());
+        }
+    }
+
     public function test_role_downgrade_does_not_render_global_system_configuration_from_stale_session_data(): void
     {
         $admin = $this->admin('stale-system-panel-role', 'super_admin');
@@ -294,6 +393,128 @@ final class AdminAiModelIsolationTest extends TestCase
 
         $this->assertDatabaseCount('ai_models', 0);
         $this->assertDatabaseCount('admin_ai_settings', 0);
+    }
+
+    public function test_system_model_creation_rolls_back_when_global_default_initialization_fails(): void
+    {
+        $admin = $this->admin('atomic-system-create', 'super_admin');
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER reject_default_embedding_insert
+            BEFORE INSERT ON site_settings
+            WHEN NEW.setting_key = 'default_embedding_model_id'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced global default insert failure');
+            END
+        SQL);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.ai-models.store'), $this->modelPayload([
+                'name' => 'Atomic system embedding',
+                'model_id' => 'atomic-system-embedding',
+                'model_type' => 'embedding',
+                'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            ]))
+            ->assertServerError();
+
+        $this->assertDatabaseCount('ai_models', 0);
+        $this->assertDatabaseMissing('site_settings', ['setting_key' => 'default_embedding_model_id']);
+    }
+
+    public function test_system_model_update_rolls_back_when_global_default_cleanup_fails(): void
+    {
+        $admin = $this->admin('atomic-system-update', 'super_admin');
+        $model = $this->model($admin, [
+            'name' => 'Original system embedding',
+            'model_type' => 'embedding',
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+        ]);
+        $original = $model->getRawOriginal();
+        SiteSetting::query()->create([
+            'setting_key' => 'default_embedding_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER reject_default_embedding_update
+            BEFORE UPDATE OF setting_value ON site_settings
+            WHEN OLD.setting_key = 'default_embedding_model_id'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced global default update failure');
+            END
+        SQL);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.ai-models.update', ['modelId' => $model->id]), $this->modelPayload([
+                'name' => 'Changed system chat',
+                'api_key' => 'changed-system-key',
+                'model_id' => 'changed-system-chat',
+                'model_type' => 'chat',
+                'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            ]))
+            ->assertServerError();
+
+        $current = $model->fresh();
+        foreach (['name', 'api_key', 'model_id', 'model_type', 'access_scope', 'status'] as $attribute) {
+            $this->assertSame($original[$attribute], $current->getRawOriginal($attribute), $attribute);
+        }
+        $this->assertSame(
+            (string) $model->id,
+            SiteSetting::query()->where('setting_key', 'default_embedding_model_id')->value('setting_value'),
+        );
+    }
+
+    public function test_system_model_delete_rolls_back_when_global_default_cleanup_fails(): void
+    {
+        $admin = $this->admin('atomic-system-delete', 'super_admin');
+        $model = $this->model($admin, [
+            'model_type' => 'embedding',
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'default_embedding_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER reject_default_embedding_delete_cleanup
+            BEFORE UPDATE OF setting_value ON site_settings
+            WHEN OLD.setting_key = 'default_embedding_model_id'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced global default delete cleanup failure');
+            END
+        SQL);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.ai-models.delete', ['modelId' => $model->id]))
+            ->assertServerError();
+
+        $this->assertModelExists($model);
+        $this->assertSame(
+            (string) $model->id,
+            SiteSetting::query()->where('setting_key', 'default_embedding_model_id')->value('setting_value'),
+        );
+    }
+
+    public function test_quality_invalidation_failure_keeps_the_committed_model_mutation(): void
+    {
+        $admin = $this->admin('quality-side-effect-failure', 'admin');
+        $this->app->instance(ArticleAiQualityInvalidationService::class, new class extends ArticleAiQualityInvalidationService
+        {
+            public function invalidateModel(int $modelId, string $reason): int
+            {
+                throw new \RuntimeException('forced quality invalidation failure');
+            }
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.ai-models.store'), $this->modelPayload([
+                'name' => 'Committed despite quality side effect',
+                'model_id' => 'committed-quality-side-effect',
+            ]))
+            ->assertRedirect(route('admin.ai-models.index'));
+
+        $this->assertDatabaseHas('ai_models', [
+            'owner_admin_id' => $admin->id,
+            'name' => 'Committed despite quality side effect',
+        ]);
     }
 
     public function test_model_configuration_routes_hide_models_owned_by_another_administrator(): void

@@ -324,6 +324,24 @@ class AdminAiModelsPageTest extends TestCase
             ->assertDontSee('Tail9876', false);
     }
 
+    public function test_personal_model_table_has_a_bounded_horizontal_scroll_layout_for_long_values(): void
+    {
+        $model = $this->createAiModel('chat', [
+            'name' => str_repeat('超长模型名称', 16),
+            'version' => str_repeat('LongVersionWithoutSpaces', 5),
+            'model_id' => str_repeat('provider-model-without-spaces', 4),
+        ]);
+
+        $this->actingAs($model->owner, 'admin')
+            ->get(route('admin.ai-models.index'))
+            ->assertOk()
+            ->assertSee('data-personal-ai-model-table-scroll', false)
+            ->assertSee('max-w-full overflow-x-auto overscroll-x-contain', false)
+            ->assertSee('min-w-[920px]', false)
+            ->assertSee('min-w-60 whitespace-nowrap', false)
+            ->assertSee('break-all text-sm font-medium', false);
+    }
+
     public function test_api_model_test_dialog_copy_is_available_in_supported_locales(): void
     {
         foreach (['zh_CN', 'en', 'pt_BR'] as $locale) {
@@ -872,11 +890,17 @@ class AdminAiModelsPageTest extends TestCase
             ->assertSee(__('admin.ai_models.gemini_embedding_notice'));
     }
 
-    public function test_admin_can_update_knowledge_chunking_config(): void
+    public function test_super_admin_can_update_knowledge_chunking_config(): void
     {
         $model = $this->createAiModel('chat');
+        $admin = $this->createAdmin();
+        $admin->forceFill(['role' => 'super_admin'])->save();
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+        ])->save();
 
-        $response = $this->actingAs($this->createAdmin(), 'admin')
+        $response = $this->actingAs($admin, 'admin')
             ->post(route('admin.ai-models.chunking-config'), [
                 'knowledge_chunk_strategy' => 'semantic_llm',
                 'knowledge_chunking_model_id' => (int) $model->id,
@@ -900,6 +924,10 @@ class AdminAiModelsPageTest extends TestCase
         $model = $this->createAiModel('chat', ['name' => 'Gemini 3.1 Flash Lite']);
         $admin = $this->createAdmin();
         $admin->forceFill(['role' => 'super_admin'])->save();
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+        ])->save();
 
         $response = $this->actingAs($admin, 'admin')
             ->get(route('admin.ai-models.index'));
@@ -976,6 +1004,9 @@ class AdminAiModelsPageTest extends TestCase
             ->postJson(route('admin.ai-models.test', ['modelId' => (int) $missingUrl->id]))
             ->assertUnprocessable()
             ->assertJsonPath('meta.diagnosis.code', 'api_url_missing');
+
+        $this->assertSame(0, (int) $missingUrl->fresh()->used_today);
+        $this->assertSame(0, (int) $missingUrl->fresh()->total_used);
 
         Http::fake([
             'https://ai.test/v1/chat/completions' => Http::response(['unexpected' => true]),

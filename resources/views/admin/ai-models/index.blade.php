@@ -181,16 +181,16 @@
                 <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_models.list_desc') }}</p>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200" data-sticky-actions>
+            <div class="max-w-full overflow-x-auto overscroll-x-contain" data-personal-ai-model-table-scroll tabindex="0" aria-label="{{ __('admin.ai_models.section_my_models') }}">
+                <table class="w-full min-w-[920px] divide-y divide-gray-200" data-sticky-actions>
                     <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.info') }}</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.version') }}</th>
+                        <th class="w-[28%] min-w-64 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.info') }}</th>
+                        <th class="min-w-32 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.version') }}</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.usage') }}</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.limit') }}</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.status') }}</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.actions') }}</th>
+                        <th class="min-w-60 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.actions') }}</th>
                     </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
@@ -207,10 +207,10 @@
                     @else
                         @foreach ($models as $model)
                             <tr>
-                                <td class="px-6 py-4">
+                                <td class="min-w-64 max-w-sm px-6 py-4 align-top">
                                     <div>
                                         <div class="flex items-center gap-2">
-                                            <div class="text-sm font-medium text-gray-900">{{ $model['name'] }}</div>
+                                            <div class="break-all text-sm font-medium text-gray-900">{{ $model['name'] }}</div>
                                             <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ $model['model_type'] === 'embedding' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800' }}">
                                                 {{ $model['model_type'] === 'embedding' ? __('admin.ai_models.type_embedding_option') : __('admin.ai_models.chat') }}
                                             </span>
@@ -218,12 +218,12 @@
                                                 <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">{{ __('admin.ai_models.embedding_default') }}</span>
                                             @endif
                                         </div>
-                                        <div class="text-sm text-gray-500">{{ $model['model_id'] }}</div>
+                                        <div class="break-all text-sm text-gray-500">{{ $model['model_id'] }}</div>
                                         <div class="text-xs text-gray-400">{{ __('admin.ai_models.api_key_mask') }}: {{ $model['api_key_configured'] ? __('admin.ai_models.api_key_configured') : __('admin.ai_models.api_key_not_configured') }}</div>
                                         <div class="text-xs text-gray-400">{{ __('admin.ai_models.failover_priority_label', ['priority' => (int) $model['failover_priority']]) }}</div>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <td class="min-w-32 break-all px-6 py-4 align-top text-sm text-gray-900">
                                     {{ $model['version'] !== '' ? $model['version'] : '-' }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
@@ -280,11 +280,11 @@
                                         </span>
                                     @endif
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                    <div class="flex items-center gap-3">
+                                <td class="min-w-60 whitespace-nowrap px-6 py-4 align-top text-sm font-medium">
+                                    <div class="flex min-w-max items-center gap-3">
                                         <button
                                             type="button"
-                                            class="min-h-10 text-emerald-600 transition-[color,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                            class="inline-flex min-h-10 items-center text-emerald-600 transition-[color,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                             data-ai-model-test-button
                                             data-model-id="{{ (int) $model['id'] }}"
                                             data-model-name="{{ $model['name'] }}"

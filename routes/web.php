@@ -563,8 +563,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                     ->name('test')
                     ->whereNumber('modelId');
                 Route::post('{modelId}/delete', [AiModelController::class, 'destroy'])->name('delete')->whereNumber('modelId');
-                Route::post('default-embedding', [AiModelController::class, 'updateDefaultEmbedding'])->name('default-embedding');
-                Route::post('chunking-config', [AiModelController::class, 'updateChunkingConfig'])->name('chunking-config');
+                Route::post('default-embedding', [AiModelController::class, 'updateDefaultEmbedding'])->middleware('admin.super')->name('default-embedding');
+                Route::post('chunking-config', [AiModelController::class, 'updateChunkingConfig'])->middleware('admin.super')->name('chunking-config');
             });
             Route::prefix('ai-source-providers')
                 ->name('ai-source-providers.')

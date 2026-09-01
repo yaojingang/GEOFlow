@@ -12,6 +12,8 @@ final class AiModelAccessException extends RuntimeException
 
     public const AI_EXECUTION_ADMIN_INACTIVE = 'ai_execution_admin_inactive';
 
+    public const AI_CONFIG_ACCESS_REVOKED = 'ai_config_access_revoked';
+
     public const AI_CONFIG_OWNER_INACTIVE = 'ai_config_owner_inactive';
 
     public const AI_MODEL_UNAVAILABLE = 'ai_model_unavailable';
@@ -38,6 +40,15 @@ final class AiModelAccessException extends RuntimeException
             self::AI_CONFIG_OWNER_INACTIVE,
             (int) $admin->getKey(),
             configOwnerAdminId: $configOwnerAdminId,
+        );
+    }
+
+    public static function configAccessRevoked(Admin $admin, ?AiModel $model = null): self
+    {
+        return new self(
+            self::AI_CONFIG_ACCESS_REVOKED,
+            (int) $admin->getKey(),
+            $model === null ? null : (int) $model->getKey(),
         );
     }
 
