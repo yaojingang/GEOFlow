@@ -375,7 +375,6 @@ class AiModelController extends Controller
         $startedAt = microtime(true);
         $reservation = null;
         $outboundAttempted = false;
-        $workspaceProbeAttempted = false;
         $apiKey = '';
         $model = new AiModel;
         $model->setAttribute($model->getKeyName(), $modelId);
@@ -439,8 +438,27 @@ class AiModelController extends Controller
 
             if ($modelType === 'chat' && $actorIsSuperAdmin) {
                 $outboundAttempted = true;
-                $workspaceProbeAttempted = true;
-                $result = $this->aiWorkspaceModelProbe->probe($model);
+                $probeAttempt = $this->aiWorkspaceModelProbe->start($model);
+                $this->testBoundaryHook->afterOutboundBeforePersist($snapshot);
+                $this->testPreparation->revalidateWorkspaceAfterOutbound($snapshot);
+                try {
+                    $probeResult = $this->aiWorkspaceModelProbe->finish($model, $probeAttempt);
+                } catch (Throwable $exception) {
+                    if ($probeAttempt->requiresPlainTextFallback()) {
+                        $this->testBoundaryHook->afterOutboundBeforePersist($snapshot);
+                    }
+                    $this->testPreparation->persistWorkspaceFailure(
+                        $snapshot,
+                        $this->aiWorkspaceModelProbe->failureCode($exception),
+                    );
+
+                    throw $exception;
+                }
+                if ($probeAttempt->requiresPlainTextFallback()) {
+                    $this->testBoundaryHook->afterOutboundBeforePersist($snapshot);
+                }
+                $this->testPreparation->persistWorkspaceReadiness($snapshot, $probeResult);
+                $result = $probeResult->responseData();
                 try {
                     $this->usageQuota->recordModelSuccess($reservation);
                 } catch (Throwable $exception) {
@@ -481,6 +499,8 @@ class AiModelController extends Controller
                 (int) config('geoflow.outbound_ai_max_bytes', 8 * 1024 * 1024),
             );
 
+            $this->testBoundaryHook->afterOutboundBeforePersist($snapshot);
+            $this->testPreparation->revalidateAfterOutbound($snapshot);
             $json = $response->json();
             if (! $response->successful()) {
                 if ($reservation instanceof AiUsageReservation) {
@@ -538,9 +558,6 @@ class AiModelController extends Controller
         } catch (HttpExceptionInterface $exception) {
             throw $exception;
         } catch (Throwable $exception) {
-            if ($workspaceProbeAttempted) {
-                $this->aiWorkspaceModelProbe->recordFailure($model, $exception);
-            }
             if ($reservation instanceof AiUsageReservation) {
                 if ($outboundAttempted) {
                     $this->recordModelTestAttempt($reservation);
@@ -1163,6 +1180,10 @@ class AiModelController extends Controller
 
     private function safeExceptionDetail(Throwable $exception): string
     {
+        if ($exception instanceof AiModelAccessException) {
+            return $exception->getErrorCode();
+        }
+
         if ($exception instanceof OutboundRequestBlockedException) {
             return match ($exception->reasonCode) {
                 'dns_resolution_failed' => 'DNS resolution failed. Check container DNS and retry.',
@@ -1182,7 +1203,7 @@ class AiModelController extends Controller
     private function recordModelTestAttempt(AiUsageReservation $reservation): void
     {
         try {
-            $this->usageQuota->recordModelAttempt($reservation);
+            $this->usageQuota->recordModelOutboundAttempt($reservation);
         } catch (Throwable $exception) {
             report($exception);
         }

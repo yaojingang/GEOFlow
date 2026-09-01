@@ -88,6 +88,23 @@ final class AiUsageQuotaService
         $this->finalizeReservation($reservation, static function (): void {});
     }
 
+    /**
+     * 完成一次已发起外部请求的模型连接检测，并计入真实外呼总量。
+     */
+    public function recordModelOutboundAttempt(AiUsageReservation $reservation): void
+    {
+        if ($reservation->resourceType !== 'model') {
+            throw new \InvalidArgumentException('Expected an AI model usage reservation.');
+        }
+
+        $this->finalizeReservation($reservation, static function () use ($reservation): void {
+            AiModel::query()->whereKey($reservation->resourceId)->update([
+                'total_used' => DB::raw('COALESCE(total_used, 0) + 1'),
+                'updated_at' => now(),
+            ]);
+        });
+    }
+
     public function reserveProvider(AiSourceProvider $provider): ?AiUsageReservation
     {
         return DB::transaction(function () use ($provider): ?AiUsageReservation {

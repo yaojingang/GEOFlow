@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\AdminHelpAssistant;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
@@ -700,6 +701,47 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
         $model->refresh();
         $this->assertSame('ready', (string) $model->ai_workspace_readiness_status);
+    }
+
+    public function test_super_admin_model_binding_probe_discards_readiness_after_role_revocation(): void
+    {
+        $model = $this->createAiModel([
+            'name' => 'Revoked Super Admin Probe',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_profile' => ['sentinel' => 'keep-existing-readiness'],
+            'ai_workspace_readiness_failure_code' => 'existing_failure',
+        ]);
+        $superAdmin = Admin::query()->create([
+            'username' => 'revoked_super_probe_admin',
+            'password' => 'secret-123',
+            'email' => 'revoked-super-probe-admin@example.com',
+            'display_name' => 'Revoked Super Probe Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        AdminHelpAssistant::fake(function () use ($superAdmin): string {
+            Admin::query()->whereKey($superAdmin->id)->update(['role' => 'admin']);
+
+            return 'provider result must be discarded';
+        })->preventStrayPrompts();
+
+        $response = $this->actingAs($superAdmin, 'admin')
+            ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
+                'binding_type' => 'deepseek',
+                'model_id' => (int) $model->id,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+
+        $current = $model->fresh();
+        $this->assertSame('failed', $current->ai_workspace_readiness_status);
+        $this->assertSame('keep-existing-readiness', data_get($current->ai_workspace_readiness_profile, 'sentinel'));
+        $this->assertSame('existing_failure', $current->ai_workspace_readiness_failure_code);
+        $this->assertSame(1, (int) $current->used_today);
+        $this->assertSame(0, (int) $current->total_used);
+        $response->assertDontSee('provider result must be discarded', false);
     }
 
     public function test_failed_model_binding_test_attempt_consumes_daily_quota(): void

@@ -8,6 +8,7 @@ use App\Contracts\Outbound\OutboundTransport;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\SiteSetting;
+use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
 use App\Services\Outbound\OutboundRequestBlockedException;
 use App\Services\Outbound\ResolvedOutboundTarget;
 use App\Services\Outbound\SafeOutboundHttpClient;
@@ -85,6 +86,23 @@ class AdminAiModelsPageTest extends TestCase
         self::assertTrue($model->ai_workspace_readiness_expires_at->isFuture());
         self::assertNull($model->ai_workspace_structured_output_verified_at);
         Http::assertNothingSent();
+    }
+
+    public function test_workspace_capability_probe_computes_readiness_without_writing_the_model(): void
+    {
+        AdminHelpAssistant::fake(['纯外呼检测结果。'])->preventStrayPrompts();
+        $model = $this->createAiModel('chat', [
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_profile' => ['sentinel' => 'unchanged'],
+            'ai_workspace_readiness_failure_code' => 'existing_failure',
+        ]);
+
+        $result = app(AiWorkspaceModelCapabilityProbe::class)->probe($model->fresh());
+
+        $this->assertSame('ready', $result['readiness_status']);
+        $this->assertSame('failed', $model->fresh()->ai_workspace_readiness_status);
+        $this->assertSame('unchanged', data_get($model->fresh()->ai_workspace_readiness_profile, 'sentinel'));
+        $this->assertSame('existing_failure', $model->fresh()->ai_workspace_readiness_failure_code);
     }
 
     public function test_super_admin_chat_test_records_observed_streaming_failure_before_plain_text_fallback(): void
@@ -964,7 +982,7 @@ class AdminAiModelsPageTest extends TestCase
         $this->assertStringNotContainsString('test-api-key', (string) $response->json('message'));
 
         $this->assertSame(1, (int) $model->fresh()->used_today);
-        $this->assertSame(0, (int) $model->fresh()->total_used);
+        $this->assertSame(1, (int) $model->fresh()->total_used);
     }
 
     #[DataProvider('providerFailureDiagnoses')]
@@ -1157,7 +1175,7 @@ class AdminAiModelsPageTest extends TestCase
             ->assertJsonPath('message', __('admin.ai_models.test_error_daily_limit'));
 
         $this->assertSame(1, (int) $model->fresh()->used_today);
-        $this->assertSame(0, (int) $model->fresh()->total_used);
+        $this->assertSame(1, (int) $model->fresh()->total_used);
         Http::assertSentCount(1);
     }
 

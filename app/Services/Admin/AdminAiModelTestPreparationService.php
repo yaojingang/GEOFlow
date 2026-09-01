@@ -3,12 +3,15 @@
 namespace App\Services\Admin;
 
 use App\Data\Admin\AdminAiModelTestSnapshot;
+use App\Data\AiWorkspace\AiWorkspaceModelProbeResult;
 use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Closure;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
@@ -67,16 +70,123 @@ final class AdminAiModelTestPreparationService
 
     public function revalidateImmediatelyBeforeOutbound(AdminAiModelTestSnapshot $snapshot): bool
     {
-        return DB::transaction(function () use ($snapshot): bool {
+        return $this->withValidatedSnapshot(
+            $snapshot,
+            false,
+            static fn (Admin $actor, AiModel $model): bool => $actor->isSuperAdmin(),
+        );
+    }
+
+    public function revalidateAfterOutbound(AdminAiModelTestSnapshot $snapshot): bool
+    {
+        return $this->withValidatedSnapshot(
+            $snapshot,
+            true,
+            static fn (Admin $actor, AiModel $model): bool => $actor->isSuperAdmin(),
+        );
+    }
+
+    public function revalidateWorkspaceAfterOutbound(AdminAiModelTestSnapshot $snapshot): void
+    {
+        $this->withValidatedSnapshot(
+            $snapshot,
+            true,
+            function (Admin $actor, AiModel $model) use ($snapshot): void {
+                $this->assertWorkspaceProbePermission($snapshot, $actor, $model);
+            },
+        );
+    }
+
+    public function persistWorkspaceReadiness(
+        AdminAiModelTestSnapshot $snapshot,
+        AiWorkspaceModelProbeResult $result,
+    ): void {
+        $this->withValidatedSnapshot(
+            $snapshot,
+            true,
+            function (Admin $actor, AiModel $model) use ($snapshot, $result): void {
+                $this->assertWorkspaceProbePermission($snapshot, $actor, $model);
+                $model->forceFill($result->persistenceAttributes())->save();
+            },
+        );
+    }
+
+    public function persistWorkspaceFailure(
+        AdminAiModelTestSnapshot $snapshot,
+        string $failureCode,
+    ): void {
+        $allowedFailureCodes = [
+            'authentication_failed',
+            'plain_text_invalid',
+            'provider_timeout',
+            'provider_unavailable',
+        ];
+        $normalizedFailureCode = in_array($failureCode, $allowedFailureCodes, true)
+            ? $failureCode
+            : 'provider_unavailable';
+
+        $this->withValidatedSnapshot(
+            $snapshot,
+            true,
+            function (Admin $actor, AiModel $model) use ($snapshot, $normalizedFailureCode): void {
+                $this->assertWorkspaceProbePermission($snapshot, $actor, $model);
+                $model->forceFill([
+                    'ai_workspace_structured_output_status' => null,
+                    'ai_workspace_structured_output_verified_at' => null,
+                    'ai_workspace_readiness_status' => 'failed',
+                    'ai_workspace_readiness_profile' => null,
+                    'ai_workspace_readiness_checked_at' => now(),
+                    'ai_workspace_readiness_expires_at' => null,
+                    'ai_workspace_readiness_failure_code' => $normalizedFailureCode,
+                ])->save();
+            },
+        );
+    }
+
+    /**
+     * @template TResult
+     *
+     * @param  Closure(Admin, AiModel): TResult  $operation
+     * @return TResult
+     */
+    private function withValidatedSnapshot(
+        AdminAiModelTestSnapshot $snapshot,
+        bool $afterOutbound,
+        Closure $operation,
+    ): mixed {
+        return DB::transaction(function () use ($snapshot, $afterOutbound, $operation): mixed {
             $actorReference = new Admin;
             $actorReference->setAttribute($actorReference->getKeyName(), $snapshot->adminId);
             $actorReference->exists = true;
-            $lockedActor = $this->lockActiveActor($actorReference);
+            $lockedActor = Admin::query()->whereKey($snapshot->adminId)->lockForUpdate()->first();
+            if (! $lockedActor instanceof Admin || (string) $lockedActor->status !== 'active') {
+                throw $afterOutbound
+                    ? AiModelAccessException::configAccessRevoked($actorReference)
+                    : AiModelAccessException::executionAdminInactive($actorReference);
+            }
             if ((int) $lockedActor->ai_config_access_version !== $snapshot->adminAccessVersion) {
                 throw AiModelAccessException::configAccessRevoked($lockedActor);
             }
 
-            $lockedModel = $this->lockConfigurableModel($lockedActor, $snapshot->modelId);
+            $modelQuery = AiModel::query()->ownedBy($lockedActor);
+            if (! $lockedActor->isSuperAdmin()) {
+                $modelQuery->userContent();
+            }
+            $lockedModel = $modelQuery->whereKey($snapshot->modelId)->lockForUpdate()->first();
+            if (! $lockedModel instanceof AiModel) {
+                throw $afterOutbound
+                    ? AiModelAccessException::configAccessRevoked($lockedActor)
+                    : AiModelAccessException::modelNotAccessible($lockedActor, $this->modelReference($snapshot->modelId));
+            }
+            try {
+                Gate::forUser($lockedActor)->authorize('test', $lockedModel);
+            } catch (AuthorizationException $exception) {
+                if (! $afterOutbound) {
+                    throw $exception;
+                }
+
+                throw AiModelAccessException::configAccessRevoked($lockedActor, $lockedModel);
+            }
             if ((int) $lockedModel->owner_admin_id !== $snapshot->ownerAdminId
                 || (string) $lockedModel->access_scope !== $snapshot->accessScope
                 || (string) $lockedModel->status !== $snapshot->status
@@ -86,7 +196,7 @@ final class AdminAiModelTestPreparationService
                 throw AiModelAccessException::configAccessRevoked($lockedActor, $lockedModel);
             }
 
-            return $lockedActor->isSuperAdmin();
+            return $operation($lockedActor, $lockedModel);
         }, 3);
     }
 
@@ -119,6 +229,25 @@ final class AdminAiModelTestPreparationService
         Gate::forUser($actor)->authorize('test', $model);
 
         return $model;
+    }
+
+    private function modelReference(int $modelId): AiModel
+    {
+        $reference = new AiModel;
+        $reference->setAttribute($reference->getKeyName(), $modelId);
+        $reference->exists = true;
+
+        return $reference;
+    }
+
+    private function assertWorkspaceProbePermission(
+        AdminAiModelTestSnapshot $snapshot,
+        Admin $actor,
+        AiModel $model,
+    ): void {
+        if (! $snapshot->preparedAsSuperAdmin || ! $actor->isSuperAdmin()) {
+            throw AiModelAccessException::configAccessRevoked($actor, $model);
+        }
     }
 
     private function configurationDigest(AiModel $model): string

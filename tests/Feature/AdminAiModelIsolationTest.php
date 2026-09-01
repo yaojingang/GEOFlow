@@ -16,6 +16,7 @@ use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -333,6 +334,231 @@ final class AdminAiModelIsolationTest extends TestCase
             'provider model changed' => ['model_id'],
             'status changed' => ['status'],
             'archived' => ['archived'],
+        ];
+    }
+
+    #[DataProvider('postOutboundRevocationCases')]
+    public function test_http_connection_result_is_discarded_when_access_changes_after_outbound(
+        string $mutation,
+        bool $requiresSuperAdmin,
+    ): void {
+        $providerResult = 'provider-result-must-be-discarded';
+        Log::spy();
+        Http::fake([
+            '*' => Http::response([
+                'data' => [
+                    ['embedding' => [0.1, 0.2, 0.3], 'private_result' => $providerResult],
+                ],
+            ]),
+        ]);
+        $admin = $this->admin('post-http-'.$mutation, $requiresSuperAdmin ? 'super_admin' : 'admin');
+        $other = $this->admin('post-http-other-'.$mutation, 'admin');
+        $originalKey = 'post-http-original-secret';
+        $rotatedKey = app(ApiKeyCrypto::class)->encrypt('post-http-rotated-secret');
+        $model = $this->model($admin, [
+            'model_type' => 'embedding',
+            'model_id' => 'post-http-embedding',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt($originalKey),
+            'access_scope' => $requiresSuperAdmin
+                ? AiModel::ACCESS_SCOPE_SYSTEM_ONLY
+                : AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ]);
+        $this->installPostOutboundRevocationHook(
+            $mutation,
+            $admin,
+            $other,
+            $model,
+            $rotatedKey,
+        );
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('meta.diagnosis.code', 'ai_config_access_revoked');
+
+        Http::assertSentCount(1);
+        $this->assertSame(1, (int) $model->fresh()->used_today);
+        $this->assertSame(1, (int) $model->fresh()->total_used);
+        $response
+            ->assertDontSee($providerResult, false)
+            ->assertDontSee($originalKey, false)
+            ->assertDontSee('post-http-rotated-secret', false)
+            ->assertDontSee('post-outbound-rotated.example.test', false)
+            ->assertDontSee('post-outbound-rotated-model', false);
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            static function (string $message, array $context) use ($providerResult, $originalKey): bool {
+                $serialized = json_encode($context, JSON_THROW_ON_ERROR);
+
+                return $message === 'AI model connection test failed.'
+                    && ! str_contains($serialized, $providerResult)
+                    && ! str_contains($serialized, $originalKey)
+                    && ! str_contains($serialized, 'post-http-rotated-secret');
+            },
+        );
+    }
+
+    #[DataProvider('postOutboundRevocationCases')]
+    public function test_workspace_probe_result_is_not_persisted_when_access_changes_after_outbound(
+        string $mutation,
+        bool $requiresSuperAdmin,
+    ): void {
+        Log::spy();
+        AdminHelpAssistant::fake(['workspace-provider-result-must-be-discarded'])->preventStrayPrompts();
+        $admin = $this->admin('post-workspace-'.$mutation, 'super_admin');
+        $other = $this->admin('post-workspace-other-'.$mutation, 'admin');
+        $originalKey = 'post-workspace-original-secret';
+        $rotatedKey = app(ApiKeyCrypto::class)->encrypt('post-workspace-rotated-secret');
+        $model = $this->model($admin, [
+            'api_key' => app(ApiKeyCrypto::class)->encrypt($originalKey),
+            'access_scope' => $requiresSuperAdmin && $mutation !== 'role'
+                ? AiModel::ACCESS_SCOPE_SYSTEM_ONLY
+                : AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_profile' => ['sentinel' => 'keep-existing-readiness'],
+            'ai_workspace_readiness_failure_code' => 'existing_failure',
+        ]);
+        $this->installPostOutboundRevocationHook(
+            $mutation,
+            $admin,
+            $other,
+            $model,
+            $rotatedKey,
+        );
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('meta.diagnosis.code', 'ai_config_access_revoked');
+
+        $current = $model->fresh();
+        $this->assertSame('failed', $current->ai_workspace_readiness_status);
+        $this->assertSame('keep-existing-readiness', data_get($current->ai_workspace_readiness_profile, 'sentinel'));
+        $this->assertSame('existing_failure', $current->ai_workspace_readiness_failure_code);
+        $this->assertSame(1, (int) $current->used_today);
+        $this->assertSame(1, (int) $current->total_used);
+        $response
+            ->assertDontSee('workspace-provider-result-must-be-discarded', false)
+            ->assertDontSee($originalKey, false)
+            ->assertDontSee('post-workspace-rotated-secret', false);
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            static function (string $message, array $context) use ($originalKey): bool {
+                $serialized = json_encode($context, JSON_THROW_ON_ERROR);
+
+                return $message === 'AI model connection test failed.'
+                    && ! str_contains($serialized, 'workspace-provider-result-must-be-discarded')
+                    && ! str_contains($serialized, $originalKey)
+                    && ! str_contains($serialized, 'post-workspace-rotated-secret');
+            },
+        );
+    }
+
+    public function test_workspace_probe_does_not_start_plain_text_fallback_after_post_outbound_revocation(): void
+    {
+        $providerCalls = 0;
+        AdminHelpAssistant::fake(function () use (&$providerCalls): string {
+            $providerCalls++;
+
+            return $providerCalls === 1 ? '' : 'fallback-must-not-run';
+        })->preventStrayPrompts();
+        $admin = $this->admin('post-workspace-fallback-revoked', 'super_admin');
+        $model = $this->model($admin, [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_profile' => ['sentinel' => 'keep-existing-readiness'],
+        ]);
+        $this->app->instance(
+            AdminAiModelTestBoundaryHook::class,
+            new class((int) $admin->id) extends AdminAiModelTestBoundaryHook
+            {
+                public function __construct(private readonly int $adminId) {}
+
+                public function afterOutboundBeforePersist(AdminAiModelTestSnapshot $snapshot): void
+                {
+                    Admin::query()->whereKey($this->adminId)->increment('ai_config_access_version');
+                }
+            },
+        );
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('meta.diagnosis.code', 'ai_config_access_revoked');
+
+        $this->assertSame(1, $providerCalls);
+        $this->assertSame('failed', $model->fresh()->ai_workspace_readiness_status);
+        $this->assertSame('keep-existing-readiness', data_get($model->fresh()->ai_workspace_readiness_profile, 'sentinel'));
+        $this->assertSame(1, (int) $model->fresh()->used_today);
+        $this->assertSame(1, (int) $model->fresh()->total_used);
+    }
+
+    public function test_workspace_probe_failure_does_not_replace_readiness_after_second_outbound_revocation(): void
+    {
+        $providerCalls = 0;
+        $providerSecret = 'workspace-failure-provider-secret';
+        AdminHelpAssistant::fake(function () use (&$providerCalls, $providerSecret): string {
+            $providerCalls++;
+            if ($providerCalls === 1) {
+                return '';
+            }
+
+            throw new \RuntimeException('provider failed '.$providerSecret);
+        })->preventStrayPrompts();
+        $admin = $this->admin('post-workspace-failure-revoked', 'super_admin');
+        $model = $this->model($admin, [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'ai_workspace_readiness_status' => 'ready',
+            'ai_workspace_readiness_profile' => ['sentinel' => 'keep-ready-profile'],
+            'ai_workspace_readiness_failure_code' => null,
+        ]);
+        $this->app->instance(
+            AdminAiModelTestBoundaryHook::class,
+            new class((int) $admin->id) extends AdminAiModelTestBoundaryHook
+            {
+                private int $outboundCount = 0;
+
+                public function __construct(private readonly int $adminId) {}
+
+                public function afterOutboundBeforePersist(AdminAiModelTestSnapshot $snapshot): void
+                {
+                    $this->outboundCount++;
+                    if ($this->outboundCount === 2) {
+                        Admin::query()->whereKey($this->adminId)->increment('ai_config_access_version');
+                    }
+                }
+            },
+        );
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('meta.diagnosis.code', 'ai_config_access_revoked');
+
+        $current = $model->fresh();
+        $this->assertSame(2, $providerCalls);
+        $this->assertSame('ready', $current->ai_workspace_readiness_status);
+        $this->assertSame('keep-ready-profile', data_get($current->ai_workspace_readiness_profile, 'sentinel'));
+        $this->assertNull($current->ai_workspace_readiness_failure_code);
+        $this->assertSame(1, (int) $current->used_today);
+        $this->assertSame(1, (int) $current->total_used);
+        $response->assertDontSee($providerSecret, false);
+    }
+
+    /** @return array<string, array{string, bool}> */
+    public static function postOutboundRevocationCases(): array
+    {
+        return [
+            'admin inactive' => ['admin_inactive', false],
+            'role downgraded' => ['role', true],
+            'access version changed' => ['access_version', false],
+            'owner changed' => ['owner', false],
+            'scope changed' => ['scope', false],
+            'credential rotated' => ['api_key', false],
+            'endpoint changed' => ['api_url', false],
+            'provider model changed' => ['model_id', false],
+            'status changed' => ['status', false],
+            'archived' => ['archived', false],
         ];
     }
 
@@ -1103,5 +1329,43 @@ final class AdminAiModelIsolationTest extends TestCase
         ])->save();
 
         return $model;
+    }
+
+    private function installPostOutboundRevocationHook(
+        string $mutation,
+        Admin $admin,
+        Admin $other,
+        AiModel $model,
+        string $rotatedKey,
+    ): void {
+        $this->app->instance(
+            AdminAiModelTestBoundaryHook::class,
+            new class($mutation, (int) $admin->id, (int) $other->id, (int) $model->id, $rotatedKey) extends AdminAiModelTestBoundaryHook
+            {
+                public function __construct(
+                    private readonly string $mutation,
+                    private readonly int $adminId,
+                    private readonly int $otherAdminId,
+                    private readonly int $modelId,
+                    private readonly string $rotatedKey,
+                ) {}
+
+                public function afterOutboundBeforePersist(AdminAiModelTestSnapshot $snapshot): void
+                {
+                    match ($this->mutation) {
+                        'admin_inactive' => Admin::query()->whereKey($this->adminId)->update(['status' => 'inactive']),
+                        'role' => Admin::query()->whereKey($this->adminId)->update(['role' => 'admin']),
+                        'access_version' => Admin::query()->whereKey($this->adminId)->increment('ai_config_access_version'),
+                        'owner' => AiModel::query()->whereKey($this->modelId)->update(['owner_admin_id' => $this->otherAdminId]),
+                        'scope' => AiModel::query()->whereKey($this->modelId)->update(['access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY]),
+                        'api_key' => AiModel::query()->whereKey($this->modelId)->update(['api_key' => $this->rotatedKey]),
+                        'api_url' => AiModel::query()->whereKey($this->modelId)->update(['api_url' => 'https://post-outbound-rotated.example.test']),
+                        'model_id' => AiModel::query()->whereKey($this->modelId)->update(['model_id' => 'post-outbound-rotated-model']),
+                        'status' => AiModel::query()->whereKey($this->modelId)->update(['status' => 'inactive']),
+                        'archived' => AiModel::query()->whereKey($this->modelId)->update(['archived_at' => now()]),
+                    };
+                }
+            },
+        );
     }
 }

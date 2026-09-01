@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\AiModelAccessException;
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\SiteSetting;
 use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
+use App\Services\AiWorkspace\AiWorkspaceModelProbePersistenceService;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
 use App\Services\GeoFlow\AiVisibility\AiStructuredOutputHealthCheck;
@@ -38,6 +41,7 @@ class AiSourceProviderController extends Controller
         private readonly AiUsageQuotaService $usageQuota,
         private readonly AiVisibilityConfigurationResolver $configuration,
         private readonly AiWorkspaceModelCapabilityProbe $aiWorkspaceModelProbe,
+        private readonly AiWorkspaceModelProbePersistenceService $aiWorkspaceModelProbePersistence,
     ) {}
 
     public function index(): View
@@ -296,7 +300,8 @@ class AiSourceProviderController extends Controller
         $bindingType = (string) $payload['binding_type'];
         $model = AiModel::query()->whereKey((int) $payload['model_id'])->firstOrFail();
         $query = $this->normalizeTestQuery((string) ($payload['query'] ?? 'GEOFlow'));
-        $canUpdateWorkspaceReadiness = (bool) $request->user('admin')?->isSuperAdmin();
+        $actor = $request->user('admin');
+        $canUpdateWorkspaceReadiness = $actor instanceof Admin && $actor->isSuperAdmin();
 
         if ($bindingType === 'ark' && ! $this->isCallableArkModel($model)) {
             return response()->json([
@@ -321,12 +326,20 @@ class AiSourceProviderController extends Controller
             if ($reservation === null) {
                 throw new RuntimeException('模型已达到每日调用上限');
             }
+            $model->refresh();
 
-            $result = $canUpdateWorkspaceReadiness
-                ? $this->aiWorkspaceModelProbe->probe($model)
-                : ($bindingType === 'ark'
+            if ($canUpdateWorkspaceReadiness) {
+                $probeResult = $this->aiWorkspaceModelProbe->finish(
+                    $model,
+                    $this->aiWorkspaceModelProbe->start($model),
+                );
+                $this->aiWorkspaceModelProbePersistence->persist($actor, $model, $probeResult);
+                $result = $probeResult->responseData();
+            } else {
+                $result = $bindingType === 'ark'
                     ? $this->structuredOutputHealthCheck->testArkResponsesStructuredOutput($model, $query)
-                    : $this->structuredOutputHealthCheck->testDeepSeekJsonOutput($model, $query));
+                    : $this->structuredOutputHealthCheck->testDeepSeekJsonOutput($model, $query);
+            }
             $this->usageQuota->recordModelSuccess($reservation);
             $reservation = null;
 
@@ -334,8 +347,18 @@ class AiSourceProviderController extends Controller
                 'provider' => $bindingType === 'ark' ? 'Ark Web Search' : 'DeepSeek',
             ]));
         } catch (Throwable $exception) {
-            if ($canUpdateWorkspaceReadiness) {
-                $this->aiWorkspaceModelProbe->recordFailure($model, $exception);
+            if ($canUpdateWorkspaceReadiness && ! $exception instanceof AiModelAccessException) {
+                try {
+                    $this->aiWorkspaceModelProbePersistence->persistFailure(
+                        $actor,
+                        $model,
+                        $this->aiWorkspaceModelProbe->failureCode($exception),
+                    );
+                } catch (AiModelAccessException $accessException) {
+                    $exception = $accessException;
+                } catch (Throwable $persistenceException) {
+                    report($persistenceException);
+                }
             }
             if ($reservation !== null) {
                 $this->usageQuota->recordModelAttempt($reservation);

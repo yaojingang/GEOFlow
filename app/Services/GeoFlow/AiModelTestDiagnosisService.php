@@ -2,6 +2,7 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Exceptions\AiModelAccessException;
 use App\Models\AiModel;
 use App\Services\Outbound\OutboundRequestBlockedException;
 use App\Services\Outbound\OutboundRequestFailedException;
@@ -50,6 +51,10 @@ final class AiModelTestDiagnosisService
      */
     public function forException(Throwable $exception, AiModel $model, string $apiKey): array
     {
+        if ($exception instanceof AiModelAccessException) {
+            return $this->translated($exception->getErrorCode());
+        }
+
         if ($this->hasDeepSeekArkMismatch($model, $apiKey)) {
             return $this->translated('provider_configuration_mismatch');
         }
