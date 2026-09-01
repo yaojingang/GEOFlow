@@ -31,6 +31,7 @@
     $storedAiConfigMode = data_get($targetAdmin, 'shared_ai_config_owner_id') === null
         ? 'independent'
         : 'shared_current_super';
+    $hasPersistedSharedProvider = ! $isCreate && $storedAiConfigMode === 'shared_current_super';
     $selectedAiConfigMode = $normalizeScalar(
         old('ai_config_mode', $isCreate ? 'independent' : $storedAiConfigMode),
         $isCreate ? 'independent' : $storedAiConfigMode,
@@ -162,12 +163,14 @@
                         <span class="block text-sm font-semibold text-gray-900">{{ __('admin.admin_users.ai_config_independent') }}</span>
                         <span class="mt-1 block text-sm leading-6 text-gray-600">{{ __('admin.admin_users.ai_config_independent_description') }}</span>
                     </span>
-                    <span class="col-start-2 mt-3 hidden rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 ring-1 ring-inset ring-amber-200 peer-checked:block">
-                        {{ __('admin.admin_users.ai_config_independent_impact', ['defaults' => $sharedDefaultCount, 'tasks' => $pendingTaskCount]) }}
-                    </span>
+                    @if ($hasPersistedSharedProvider)
+                        <span class="col-start-2 mt-3 hidden rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 ring-1 ring-inset ring-amber-200 peer-checked:block">
+                            {{ __('admin.admin_users.ai_config_independent_impact', ['defaults' => $sharedDefaultCount, 'tasks' => $pendingTaskCount]) }}
+                        </span>
+                    @endif
                 </label>
 
-                <label for="ai_config_mode_shared" class="flex min-h-10 cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:border-gray-300 active:scale-[0.99] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50/50">
+                <label for="ai_config_mode_shared" class="flex min-h-10 min-w-0 cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:border-gray-300 active:scale-[0.99] focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50/50">
                     <input
                         id="ai_config_mode_shared"
                         name="ai_config_mode"
@@ -180,14 +183,18 @@
                         class="mt-1 h-4 w-4 shrink-0 border-gray-300 text-blue-600 focus:ring-blue-500"
                     >
                     <span class="min-w-0">
-                        <span class="block text-sm font-semibold text-gray-900">{{ __('admin.admin_users.ai_config_shared') }}</span>
+                        <span class="block min-w-0 text-sm font-semibold text-gray-900 [overflow-wrap:anywhere]">
+                            {{ $hasPersistedSharedProvider
+                                ? __('admin.admin_users.ai_config_shared_existing', ['provider' => $providerName])
+                                : __('admin.admin_users.ai_config_shared') }}
+                        </span>
                         <span class="mt-1 block text-sm leading-6 text-gray-600">{{ __('admin.admin_users.ai_config_shared_priority') }}</span>
-                        <span class="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                        <span class="mt-3 flex min-w-0 max-w-full flex-wrap items-center gap-2 text-xs text-gray-600">
                             @unless ($isCreate)
                                 <span>{{ __('admin.admin_users.ai_config_current_provider') }}</span>
                             @endunless
-                            <span class="font-medium text-gray-800">{{ $providerName }}</span>
-                            <span class="inline-flex rounded-full px-2 py-0.5 font-medium {{ $providerStatus === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }}">
+                            <span class="min-w-0 max-w-full font-medium text-gray-800 [overflow-wrap:anywhere]">{{ $providerName }}</span>
+                            <span class="inline-flex min-w-0 max-w-full rounded-full px-2 py-0.5 font-medium [overflow-wrap:anywhere] {{ $providerStatus === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }}">
                                 {{ __('admin.admin_users.ai_config_provider_status', ['status' => $providerStatus === 'active' ? __('admin.admin_users.status_active') : __('admin.admin_users.status_inactive')]) }}
                             </span>
                         </span>
@@ -196,8 +203,8 @@
             </div>
 
             @if (! $isCreate && $switchSharedProvider !== null)
-                <div class="mt-3 rounded-xl bg-blue-50/60 p-4 ring-1 ring-inset ring-blue-200">
-                    <label for="switch_shared_provider" class="flex min-h-10 cursor-pointer items-start gap-3 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 focus-within:ring-offset-blue-50">
+                <div class="mt-3 min-w-0 rounded-xl bg-blue-50/60 p-4 ring-1 ring-inset ring-blue-200">
+                    <label for="switch_shared_provider" class="flex min-h-10 min-w-0 cursor-pointer items-start gap-3 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 focus-within:ring-offset-blue-50">
                         <input
                             id="switch_shared_provider"
                             name="switch_shared_provider"
@@ -209,10 +216,10 @@
                             class="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         >
                         <span class="min-w-0">
-                            <span class="block text-sm font-semibold text-gray-900">
+                            <span class="block min-w-0 text-sm font-semibold text-gray-900 [overflow-wrap:anywhere]">
                                 {{ __('admin.admin_users.ai_config_switch_provider', ['provider' => $switchProviderName]) }}
                             </span>
-                            <span id="admin-user-provider-switch-help" class="mt-1 block text-sm leading-6 text-gray-600">
+                            <span id="admin-user-provider-switch-help" class="mt-1 block min-w-0 text-sm leading-6 text-gray-600 [overflow-wrap:anywhere]">
                                 {{ __('admin.admin_users.ai_config_switch_provider_help', [
                                     'provider' => $switchProviderName,
                                     'defaults' => $sharedDefaultCount,

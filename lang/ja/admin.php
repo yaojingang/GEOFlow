@@ -683,6 +683,7 @@ return array_replace_recursive($base, [
         'ai_config_independent' => '個別設定',
         'ai_config_independent_description' => 'この管理者が設定したモデルのみ利用します。個人モデルがない場合、AI 機能は利用できません。',
         'ai_config_shared' => '現在のスーパー管理者設定を共有',
+        'ai_config_shared_existing' => ':provider の共有設定を引き続き使用',
         'ai_config_shared_priority' => '個人モデルを優先し、共有モデルをフォールバックとして利用します。',
         'ai_config_independent_impact' => '切り替えると共有デフォルトモデル :defaults 件を解除します。識別済みの保留タスクは :tasks 件です。',
         'ai_config_super_self' => '自分の設定のみ利用',

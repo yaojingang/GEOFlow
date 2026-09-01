@@ -2838,6 +2838,7 @@ return array_replace_recursive($base, [
         'ai_config_independent' => 'Configuração independente',
         'ai_config_independent_description' => 'Usa apenas modelos configurados por este administrador. Os recursos de IA ficam indisponíveis até que um modelo próprio seja configurado.',
         'ai_config_shared' => 'Compartilhar configuração do superadministrador atual',
+        'ai_config_shared_existing' => 'Continuar usando a configuração compartilhada de :provider',
         'ai_config_shared_priority' => 'Os modelos próprios têm prioridade e os modelos compartilhados funcionam como contingência.',
         'ai_config_independent_impact' => 'A alteração limpa :defaults modelos compartilhados padrão. Há :tasks tarefas identificáveis pendentes.',
         'ai_config_super_self' => 'Usa apenas a própria configuração',

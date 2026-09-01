@@ -683,6 +683,7 @@ return array_replace_recursive($base, [
         'ai_config_independent' => 'Независимая настройка',
         'ai_config_independent_description' => 'Используются только модели этого администратора. Функции ИИ недоступны до настройки личной модели.',
         'ai_config_shared' => 'Общая настройка текущего суперадмина',
+        'ai_config_shared_existing' => 'Продолжить использовать общую конфигурацию от :provider',
         'ai_config_shared_priority' => 'Сначала используются личные модели, затем общие модели как резерв.',
         'ai_config_independent_impact' => 'Будет очищено общих моделей по умолчанию: :defaults. Ожидающих распознанных задач: :tasks.',
         'ai_config_super_self' => 'Использует только свои настройки',

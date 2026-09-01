@@ -4662,6 +4662,7 @@ return [
         'ai_config_independent' => 'Independent configuration',
         'ai_config_independent_description' => 'Uses only models configured by this administrator. AI features are unavailable until a personal model is configured',
         'ai_config_shared' => 'Share current super admin configuration',
+        'ai_config_shared_existing' => 'Continue using shared configuration from :provider',
         'ai_config_shared_priority' => 'Personal models are used first, with shared models as fallback.',
         'ai_config_independent_impact' => 'This change clears :defaults shared default models. :tasks identifiable tasks are pending.',
         'ai_config_super_self' => 'Uses own configuration only',

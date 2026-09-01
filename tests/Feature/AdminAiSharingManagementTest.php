@@ -184,6 +184,51 @@ class AdminAiSharingManagementTest extends TestCase
         }
     }
 
+    public function test_legacy_title_run_table_with_stable_identity_still_blocks_admin_deletion(): void
+    {
+        $superAdmin = $this->admin('root', 'super_admin');
+        $ordinaryAdmin = $this->admin('legacy-title-run-admin', 'admin');
+        $temporaryTable = 'title_generation_runs_with_retry_metadata';
+        Schema::rename('title_generation_runs', $temporaryTable);
+        Schema::create('title_generation_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('created_by_admin_id')->nullable();
+            $table->string('status');
+        });
+        DB::table('title_generation_runs')->insert([
+            [
+                'created_by_admin_id' => $ordinaryAdmin->id,
+                'status' => TitleGenerationRun::STATUS_QUEUED,
+            ],
+            [
+                'created_by_admin_id' => $ordinaryAdmin->id,
+                'status' => TitleGenerationRun::STATUS_FAILED,
+            ],
+            [
+                'created_by_admin_id' => $ordinaryAdmin->id,
+                'status' => TitleGenerationRun::STATUS_COMPLETED,
+            ],
+        ]);
+
+        try {
+            $this->assertSame(
+                2,
+                app(AdminAiDependencyInspector::class)->pendingTaskCounts($ordinaryAdmin)['title_generation_runs'],
+            );
+
+            $this->actingAs($superAdmin, 'admin')
+                ->from(route('admin.admin-users.index'))
+                ->post(route('admin.admin-users.delete', ['adminId' => $ordinaryAdmin->id]))
+                ->assertRedirect(route('admin.admin-users.index'))
+                ->assertSessionHasErrors('admin');
+
+            $this->assertModelExists($ordinaryAdmin);
+        } finally {
+            Schema::dropIfExists('title_generation_runs');
+            Schema::rename($temporaryTable, 'title_generation_runs');
+        }
+    }
+
     public function test_new_ordinary_admin_defaults_to_independent_ai_configuration(): void
     {
         $superAdmin = $this->admin('root', 'super_admin');
@@ -683,6 +728,7 @@ class AdminAiSharingManagementTest extends TestCase
         $this->assertSame(1, substr_count($createHtml, 'id="admin-user-ai-config-mode-error"'));
         $this->assertSame(2, substr_count($createHtml, 'aria-describedby="admin-user-ai-config-mode-help admin-user-ai-config-mode-error"'));
         $this->assertStringContainsString(e($superAdmin->name), $createHtml);
+        $this->assertStringContainsString(__('admin.admin_users.ai_config_shared'), $createHtml);
         $this->assertStringContainsString(__('admin.admin_users.ai_config_shared_priority'), $createHtml);
 
         $editHtml = $this->get(route('admin.admin-users.edit', ['adminId' => $ordinaryAdmin->id]))
@@ -723,6 +769,10 @@ class AdminAiSharingManagementTest extends TestCase
         $this->assertStringContainsString('Existing Provider A', $html);
         $this->assertStringContainsString('Current Provider B', $html);
         $this->assertStringContainsString(
+            __('admin.admin_users.ai_config_shared_existing', ['provider' => $existingProvider->name]),
+            $html,
+        );
+        $this->assertStringContainsString(
             __('admin.admin_users.ai_config_provider_status', [
                 'status' => __('admin.admin_users.status_inactive'),
             ]),
@@ -746,6 +796,74 @@ class AdminAiSharingManagementTest extends TestCase
             ->assertOk()
             ->getContent();
         $this->assertStringNotContainsString('name="switch_shared_provider"', $sameProviderHtml);
+    }
+
+    public function test_long_provider_names_have_scoped_overflow_protection(): void
+    {
+        $existingProviderName = str_repeat('a', 50);
+        $currentActorName = str_repeat('B', 100);
+        $existingProvider = $this->admin($existingProviderName, 'super_admin', [
+            'display_name' => '',
+        ]);
+        $currentActor = $this->admin('current-root', 'super_admin', [
+            'display_name' => $currentActorName,
+        ]);
+        $ordinaryAdmin = $this->admin('editor', 'admin', [
+            'shared_ai_config_owner_id' => $existingProvider->id,
+        ]);
+
+        $html = $this->actingAs($currentActor, 'admin')
+            ->get(route('admin.admin-users.edit', ['adminId' => $ordinaryAdmin->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/class="[^"]*min-w-0[^"]*\\[overflow-wrap:anywhere\\][^"]*"[^>]*>\s*'.preg_quote($existingProviderName, '/').'\s*<\/span>/u',
+            $html,
+        );
+        $this->assertMatchesRegularExpression(
+            '/class="[^"]*min-w-0[^"]*\\[overflow-wrap:anywhere\\][^"]*"[^>]*>\s*'.preg_quote(__('admin.admin_users.ai_config_provider_status', [
+                'status' => __('admin.admin_users.status_active'),
+            ]), '/').'\s*<\/span>/u',
+            $html,
+        );
+        $this->assertMatchesRegularExpression(
+            '/class="[^"]*min-w-0[^"]*\\[overflow-wrap:anywhere\\][^"]*"[^>]*>\s*'.preg_quote(__('admin.admin_users.ai_config_switch_provider', [
+                'provider' => $currentActorName,
+            ]), '/').'\s*<\/span>/u',
+            $html,
+        );
+        $this->assertMatchesRegularExpression(
+            '/id="admin-user-provider-switch-help" class="[^"]*min-w-0[^"]*\\[overflow-wrap:anywhere\\][^"]*"/u',
+            $html,
+        );
+    }
+
+    public function test_independent_impact_is_only_rendered_for_a_saved_shared_provider(): void
+    {
+        $superAdmin = $this->admin('root', 'super_admin');
+        $independentAdmin = $this->admin('independent-editor', 'admin');
+        $sharedAdmin = $this->admin('shared-editor', 'admin', [
+            'shared_ai_config_owner_id' => $superAdmin->id,
+        ]);
+        $impactText = __('admin.admin_users.ai_config_independent_impact', [
+            'defaults' => 0,
+            'tasks' => 0,
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.admin-users.create'))
+            ->assertOk()
+            ->assertDontSee($impactText);
+
+        $this->withSession(['_old_input' => ['ai_config_mode' => 'shared_current_super']])
+            ->get(route('admin.admin-users.edit', ['adminId' => $independentAdmin->id]))
+            ->assertOk()
+            ->assertDontSee($impactText);
+
+        $this->get(route('admin.admin-users.edit', ['adminId' => $sharedAdmin->id]))
+            ->assertOk()
+            ->assertSee($impactText);
     }
 
     public function test_super_admin_self_edit_hides_and_rejects_ordinary_admin_ai_configuration_fields(): void
@@ -812,6 +930,7 @@ class AdminAiSharingManagementTest extends TestCase
             'ai_config_heading',
             'ai_config_independent',
             'ai_config_shared',
+            'ai_config_shared_existing',
             'ai_config_shared_priority',
             'ai_config_independent_impact',
             'ai_config_super_self',

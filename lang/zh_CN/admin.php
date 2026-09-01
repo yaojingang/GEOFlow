@@ -4718,6 +4718,7 @@ return [
         'ai_config_independent' => '独立配置',
         'ai_config_independent_description' => '仅调用该管理员自己的模型。缺少个人模型时，AI 功能将不可用',
         'ai_config_shared' => '共享当前超级管理员配置',
+        'ai_config_shared_existing' => '继续使用 :provider 的共享配置',
         'ai_config_shared_priority' => '优先调用个人模型，个人模型不可用时调用共享模型。',
         'ai_config_independent_impact' => '切换后将清理 :defaults 个共享默认模型；当前识别到 :tasks 个待处理任务。',
         'ai_config_super_self' => '仅使用自己的配置',

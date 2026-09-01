@@ -77,36 +77,44 @@ final class AdminAiDependencyInspector
 
     private function pendingTitleGenerationRunCount(Admin $admin): int
     {
-        if (! $this->hasRequiredColumns((new TitleGenerationRun)->getTable(), [
+        $table = (new TitleGenerationRun)->getTable();
+        if (! $this->hasRequiredColumns($table, [
             'created_by_admin_id',
             'status',
-            'ai_model_id',
-            'failure_code',
-            'manual_retry_count',
         ])) {
             return 0;
         }
+        $availableColumns = array_fill_keys(Schema::getColumnListing($table), true);
+        $hasAiModelId = isset($availableColumns['ai_model_id']);
+        $hasFailureCode = isset($availableColumns['failure_code']);
+        $hasManualRetryCount = isset($availableColumns['manual_retry_count']);
 
         return TitleGenerationRun::query()
             ->where('created_by_admin_id', $admin->getKey())
-            ->where(function ($query): void {
+            ->where(function ($query) use ($hasAiModelId, $hasFailureCode, $hasManualRetryCount): void {
                 $query->whereIn('status', [
                     TitleGenerationRun::STATUS_QUEUED,
                     TitleGenerationRun::STATUS_RUNNING,
-                ])->orWhere(function ($retryable): void {
-                    $retryable
-                        ->whereIn('status', [
-                            TitleGenerationRun::STATUS_PARTIAL,
-                            TitleGenerationRun::STATUS_FAILED,
-                            TitleGenerationRun::STATUS_CANCELLED,
-                        ])
-                        ->whereNotNull('ai_model_id')
-                        ->where(function ($failure): void {
+                ]);
+                $query->orWhere(function ($retryable) use ($hasAiModelId, $hasFailureCode, $hasManualRetryCount): void {
+                    $retryable->whereIn('status', [
+                        TitleGenerationRun::STATUS_PARTIAL,
+                        TitleGenerationRun::STATUS_FAILED,
+                        TitleGenerationRun::STATUS_CANCELLED,
+                    ]);
+                    if ($hasAiModelId) {
+                        $retryable->whereNotNull('ai_model_id');
+                    }
+                    if ($hasFailureCode) {
+                        $retryable->where(function ($failure): void {
                             $failure
                                 ->whereNull('failure_code')
                                 ->orWhere('failure_code', '!=', 'request_budget_exhausted');
-                        })
-                        ->where('manual_retry_count', '<', (int) config('geoflow.title_ai_max_manual_retries', 3));
+                        });
+                    }
+                    if ($hasManualRetryCount) {
+                        $retryable->where('manual_retry_count', '<', (int) config('geoflow.title_ai_max_manual_retries', 3));
+                    }
                 });
             })
             ->count();
