@@ -1768,7 +1768,15 @@ class AdminMaterialsPagesTest extends TestCase
             ->assertSee('outline: {', false)
             ->assertSee('enable: true', false)
             ->assertSee("position: 'left'", false)
-            ->assertSee('data-knowledge-outline-levels="1,2,3,4"', false);
+            ->assertSee('data-knowledge-outline-levels="1,2,3,4"', false)
+            ->assertSee('.knowledge-markdown-editor:not(.vditor--fullscreen) .vditor-outline {', false)
+            ->assertSeeInOrder([
+                '.knowledge-markdown-editor.vditor {',
+                'background: #fff;',
+                'border: 0;',
+                '.knowledge-markdown-editor.vditor--fullscreen {',
+                'border-radius: 0;',
+            ], false);
     }
 
     public function test_admin_can_manage_keyword_and_title_details(): void
