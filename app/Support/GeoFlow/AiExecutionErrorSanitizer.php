@@ -64,7 +64,17 @@ final class AiExecutionErrorSanitizer
     {
         $normalized = preg_replace('/[^a-z0-9]+/', '', strtolower($key)) ?? '';
 
-        return $normalized === 'key'
+        return in_array($normalized, [
+            'aiconfigaccessversion',
+            'executionleasetoken',
+            'modelaccessadminid',
+            'modelaccessadminrole',
+            'requestedaimodelid',
+            'resolvedaimodelid',
+            'resolvedmodelsource',
+            'resolverpolicyversion',
+        ], true)
+            || $normalized === 'key'
             || str_contains($normalized, 'apikey')
             || str_contains($normalized, 'authorization')
             || str_contains($normalized, 'password')

@@ -2,6 +2,7 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Api\TaskRunData;
 use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Models\AiModel;
@@ -50,6 +51,7 @@ class TaskLifecycleService
         private ArticleAiQualityPolicyResolver $articleAiQualityPolicyResolver,
         private AiQualityRetrievalReadinessService $aiQualityRetrievalReadinessService,
         private AiQualityAuditService $aiQualityAuditService,
+        private TaskRunData $taskRunData,
     ) {}
 
     /**
@@ -1034,7 +1036,7 @@ class TaskLifecycleService
             $q->where('status', $status);
         }
 
-        return ['items' => $q->get()->map(fn (TaskRun $run) => $run->getAttributes())->all()];
+        return ['items' => $q->get()->map(fn (TaskRun $run) => $this->taskRunData->fromModel($run))->all()];
     }
 
     /**
@@ -1052,29 +1054,8 @@ class TaskLifecycleService
         if (! $run) {
             throw new ApiException('job_not_found', 'Job 不存在', 404);
         }
-        $meta = is_array($run->meta) ? $run->meta : [];
-        $payload = is_array($meta['payload'] ?? null) ? $meta['payload'] : [];
 
-        return [
-            'id' => (int) $run->id,
-            'task_id' => (int) $run->task_id,
-            'job_type' => (string) ($meta['job_type'] ?? 'generate_article'),
-            'status' => (string) $run->status,
-            'attempt_count' => (int) ($meta['attempt_count'] ?? 0),
-            'max_attempts' => (int) ($meta['max_attempts'] ?? 0),
-            'worker_id' => is_string($meta['worker_id'] ?? null) ? $meta['worker_id'] : null,
-            'claimed_at' => $run->started_at?->format('Y-m-d H:i:s'),
-            'finished_at' => $run->finished_at?->format('Y-m-d H:i:s'),
-            'error_message' => $run->error_message ?? '',
-            'payload' => $payload,
-            'task_run_summary' => [
-                'article_id' => $run->article_id !== null ? (int) $run->article_id : null,
-                'duration_ms' => (int) ($run->duration_ms ?? 0),
-                'status' => $run->status ?? null,
-                'error_message' => $run->error_message ?? '',
-                'meta' => $meta,
-            ],
-        ];
+        return $this->taskRunData->fromModel($run);
     }
 
     /**

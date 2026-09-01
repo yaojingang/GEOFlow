@@ -8,8 +8,11 @@ use App\Jobs\ProcessGeoFlowTaskJob;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
+use App\Models\ArticleImage;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\Image;
+use App\Models\ImageLibrary;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TaskRun;
@@ -17,11 +20,14 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Services\Admin\AdminAiDependencyInspector;
 use App\Services\GeoFlow\AiExecutionContextFactory;
+use App\Services\GeoFlow\ArticleAiQualityInspectionService;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
@@ -265,6 +271,149 @@ class AdminAiExecutionIdentityTest extends TestCase
         $this->assertSame('failed', TaskRun::query()->findOrFail((int) $runId)->status);
         $this->assertSame('ai_config_access_revoked', TaskRun::query()->findOrFail((int) $runId)->error_code);
         $this->assertSame(0, (int) data_get(TaskRun::query()->findOrFail((int) $runId)->meta, 'attempt_count'));
+    }
+
+    public function test_business_result_and_task_run_terminal_state_commit_before_worker_returns(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('atomic-completion-runner');
+        $model = $this->model($admin, 'atomic-completion-model');
+        [$task, $title] = $this->generationTask($admin, $model, 'Atomic completion task');
+        $imageLibrary = ImageLibrary::query()->create(['name' => 'Atomic completion images']);
+        $image = Image::query()->create([
+            'library_id' => $imageLibrary->id,
+            'filename' => 'atomic.png',
+            'original_name' => 'Atomic image.png',
+            'file_path' => 'images/atomic.png',
+            'managed_path_hash' => hash('sha256', 'images/atomic.png'),
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        $task->forceFill([
+            'image_library_id' => $imageLibrary->id,
+            'image_count' => 1,
+        ])->save();
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $this->assertIsArray(app(JobQueueService::class)->claimPendingJobById((int) $runId, 'atomic-worker'));
+        $context = app(AiExecutionContextFactory::class)->fromTaskRun(TaskRun::query()->findOrFail((int) $runId));
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+        Http::fake(Http::response([
+            'model' => 'atomic-completion-model',
+            'choices' => [[
+                'index' => 0,
+                'message' => ['role' => 'assistant', 'content' => "# Atomic\n\nCommitted content."],
+                'finish_reason' => 'stop',
+            ]],
+            'usage' => ['prompt_tokens' => 4, 'completion_tokens' => 6, 'total_tokens' => 10],
+        ]));
+
+        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id, $context);
+
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame('completed', $run->status);
+        $this->assertSame((int) $result['article_id'], (int) $run->article_id);
+        $this->assertNull($run->execution_lease_token);
+        $this->assertSame(1, Article::query()->where('task_id', $task->id)->count());
+        $this->assertSame(1, ArticleImage::query()->where('image_id', $image->id)->count());
+        $this->assertSame(1, (int) $image->fresh()->used_count);
+        $this->assertSame(1, (int) $image->fresh()->usage_count);
+        $this->assertSame(1, (int) $title->fresh()->used_count);
+        $this->assertSame(1, (int) $title->fresh()->usage_count);
+        $this->assertSame(1, (int) $task->fresh()->created_count);
+        $this->assertSame(1, (int) $task->fresh()->loop_count);
+
+        TaskRun::query()->whereKey($runId)->update(['started_at' => now()->subMinutes(20)]);
+        $this->assertSame(0, app(JobQueueService::class)->recoverStaleJobs(600));
+        $this->assertSame(1, Article::query()->where('task_id', $task->id)->count());
+    }
+
+    public function test_quality_side_effect_is_created_inside_the_business_completion_transaction(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('quality-fence-runner');
+        $model = $this->model($admin, 'quality-fence-model');
+        [$task] = $this->generationTask($admin, $model, 'Quality fence task');
+        $qualityPrompt = Prompt::query()
+            ->where('system_key', 'article_quality.cn_ads_knowledge.v1')
+            ->firstOrFail();
+        $task->forceFill([
+            'ai_quality_enabled' => true,
+            'ai_quality_prompt_id' => $qualityPrompt->id,
+            'ai_quality_model_id' => $model->id,
+        ])->save();
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $this->assertIsArray(app(JobQueueService::class)->claimPendingJobById((int) $runId, 'quality-fence-worker'));
+        $context = app(AiExecutionContextFactory::class)->fromTaskRun(TaskRun::query()->findOrFail((int) $runId));
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+        Http::fake(Http::response([
+            'model' => 'quality-fence-model',
+            'choices' => [[
+                'index' => 0,
+                'message' => ['role' => 'assistant', 'content' => "# Quality\n\nCommitted content."],
+                'finish_reason' => 'stop',
+            ]],
+            'usage' => ['prompt_tokens' => 4, 'completion_tokens' => 6, 'total_tokens' => 10],
+        ]));
+        $observedTransactionLevel = null;
+        $inspection = Mockery::mock(ArticleAiQualityInspectionService::class);
+        $inspection->shouldReceive('createOrReuse')
+            ->once()
+            ->andReturnUsing(function () use (&$observedTransactionLevel) {
+                $observedTransactionLevel = DB::transactionLevel();
+
+                return null;
+            });
+        $this->app->instance(ArticleAiQualityInspectionService::class, $inspection);
+
+        app(WorkerExecutionService::class)->executeTask((int) $task->id, $context);
+
+        $this->assertGreaterThan(1, (int) $observedTransactionLevel);
+        $this->assertSame('completed', TaskRun::query()->findOrFail((int) $runId)->status);
+    }
+
+    public function test_distribution_observes_a_terminal_run_after_draft_publication(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('distribution-fence-runner');
+        $model = $this->model($admin, 'distribution-fence-model');
+        [$task] = $this->generationTask($admin, $model, 'Distribution fence task');
+        $task->forceFill([
+            'next_publish_at' => now()->subMinute(),
+            'publish_scope' => 'local_and_distribution',
+        ])->save();
+        $author = Author::query()->create(['name' => 'Distribution fence author']);
+        $category = Category::query()->where('slug', 'execution-identity-category')->firstOrFail();
+        $article = Article::query()->create([
+            'title' => 'Distribution fence draft',
+            'slug' => 'distribution-fence-draft',
+            'content' => 'Approved content.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => $task->id,
+            'status' => 'draft',
+            'review_status' => 'approved',
+        ]);
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $this->assertIsArray(app(JobQueueService::class)->claimPendingJobById((int) $runId, 'distribution-fence-worker'));
+        $context = app(AiExecutionContextFactory::class)->fromTaskRun(TaskRun::query()->findOrFail((int) $runId));
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+        $observedRunStatus = null;
+        $distribution = Mockery::mock(DistributionOrchestrator::class);
+        $distribution->shouldReceive('enqueueForArticle')
+            ->once()
+            ->with((int) $article->id)
+            ->andReturnUsing(function () use ($runId, &$observedRunStatus): array {
+                $observedRunStatus = TaskRun::query()->findOrFail((int) $runId)->status;
+
+                return [];
+            });
+        $this->app->instance(DistributionOrchestrator::class, $distribution);
+
+        app(WorkerExecutionService::class)->executeTask((int) $task->id, $context);
+
+        $this->assertSame('completed', $observedRunStatus);
+        $this->assertSame('completed', TaskRun::query()->findOrFail((int) $runId)->status);
+        $this->assertSame('published', $article->fresh()->status);
     }
 
     public function test_inactive_shared_provider_does_not_block_a_personal_fixed_model(): void
@@ -603,6 +752,147 @@ class AdminAiExecutionIdentityTest extends TestCase
         $this->assertSame((int) $sharedModel->id, (int) $run->resolved_ai_model_id);
         $this->assertSame('shared', $run->resolved_model_source);
         $this->assertSame(1, Article::query()->where('task_id', $task->id)->count());
+    }
+
+    public function test_default_shadow_mode_never_calls_another_regular_admins_private_model(): void
+    {
+        Queue::fake();
+        $provider = $this->admin('shadow-provider', ['role' => 'super_admin']);
+        $admin = $this->admin('shadow-runner', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $otherAdmin = $this->admin('shadow-unrelated-owner');
+        $personalModel = $this->model($admin, 'shadow-personal-model');
+        $sharedModel = $this->model($provider, 'shadow-shared-model');
+        $unrelatedModel = $this->model($otherAdmin, 'shadow-unrelated-model');
+        $personalModel->forceFill(['failover_priority' => 10])->save();
+        $unrelatedModel->forceFill(['failover_priority' => 20])->save();
+        $sharedModel->forceFill(['failover_priority' => 30])->save();
+        [$task] = $this->generationTask($admin, $personalModel, 'Shadow authorized failover task');
+        $task->forceFill(['model_selection_mode' => 'smart_failover'])->save();
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        config()->set('geoflow.admin_ai_access.ownership_write_enabled', true);
+        config()->set('geoflow.admin_ai_access.shadow_enabled', true);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+        $requestedModels = [];
+        Http::fake(function ($request) use (&$requestedModels) {
+            $model = (string) $request['model'];
+            $requestedModels[] = $model;
+            if ($model === 'shadow-personal-model') {
+                return Http::response([
+                    'model' => $model,
+                    'choices' => [],
+                    'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 0, 'total_tokens' => 1],
+                ]);
+            }
+
+            return Http::response([
+                'model' => $model,
+                'choices' => [[
+                    'index' => 0,
+                    'message' => ['role' => 'assistant', 'content' => "# Shadow\n\nAuthorized fallback."],
+                    'finish_reason' => 'stop',
+                ]],
+                'usage' => ['prompt_tokens' => 4, 'completion_tokens' => 6, 'total_tokens' => 10],
+            ]);
+        });
+
+        (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame(['shadow-personal-model', 'shadow-shared-model'], $requestedModels);
+        $this->assertNotContains('shadow-unrelated-model', $requestedModels);
+        $this->assertSame('completed', $run->status);
+        $this->assertSame((int) $sharedModel->id, (int) $run->resolved_ai_model_id);
+        $this->assertSame('shared', $run->resolved_model_source);
+    }
+
+    public function test_default_shadow_mode_rejects_an_explicit_model_owned_by_another_regular_admin(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('shadow-explicit-runner');
+        $otherAdmin = $this->admin('shadow-explicit-owner');
+        $otherModel = $this->model($otherAdmin, 'shadow-explicit-private-model');
+        [$task] = $this->generationTask($admin, $otherModel, 'Shadow explicit private task');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        config()->set('geoflow.admin_ai_access.ownership_write_enabled', true);
+        config()->set('geoflow.admin_ai_access.shadow_enabled', true);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+        Http::fake();
+
+        (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+
+        Http::assertNothingSent();
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame('failed', $run->status);
+        $this->assertSame(AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE, $run->error_code);
+        $this->assertSame(0, Article::query()->where('task_id', $task->id)->count());
+    }
+
+    public function test_permanent_provider_errors_do_not_trigger_shared_model_failover(): void
+    {
+        Queue::fake();
+        $provider = $this->admin('permanent-error-provider', ['role' => 'super_admin']);
+        $sharedModel = $this->model($provider, 'permanent-error-shared-model');
+        $cases = [
+            ['status' => 401, 'message' => 'invalid api key', 'suffix' => 'auth'],
+            ['status' => 403, 'message' => 'permission denied', 'suffix' => 'permission'],
+            ['status' => 400, 'message' => 'unsupported parameter', 'suffix' => 'parameter'],
+            ['status' => 422, 'message' => 'model capability is incompatible', 'suffix' => 'capability'],
+        ];
+
+        foreach ($cases as $case) {
+            $admin = $this->admin('permanent-error-'.$case['suffix'], [
+                'shared_ai_config_owner_id' => $provider->id,
+            ]);
+            $personalModel = $this->model($admin, 'permanent-error-'.$case['suffix'].'-model');
+            [$task] = $this->generationTask($admin, $personalModel, 'Permanent error '.$case['suffix']);
+            $task->forceFill(['model_selection_mode' => 'smart_failover'])->save();
+            $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+            config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+            $requestedModels = [];
+            Http::fake(function ($request) use ($case, &$requestedModels) {
+                $model = (string) $request['model'];
+                $requestedModels[] = $model;
+                if (str_starts_with($model, 'permanent-error-') && $model !== 'permanent-error-shared-model') {
+                    return Http::response([
+                        'error' => ['message' => $case['message']],
+                    ], $case['status']);
+                }
+
+                return Http::response([
+                    'model' => $model,
+                    'choices' => [[
+                        'index' => 0,
+                        'message' => ['role' => 'assistant', 'content' => "# Shared\n\nThis must not be used."],
+                        'finish_reason' => 'stop',
+                    ]],
+                    'usage' => ['prompt_tokens' => 4, 'completion_tokens' => 6, 'total_tokens' => 10],
+                ]);
+            });
+
+            (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+                app(JobQueueService::class),
+                app(WorkerExecutionService::class),
+            );
+
+            $this->assertSame(
+                ['permanent-error-'.$case['suffix'].'-model'],
+                array_values(array_unique($requestedModels)),
+            );
+            $this->assertNotContains('permanent-error-shared-model', $requestedModels);
+            $this->assertNotSame('completed', TaskRun::query()->findOrFail((int) $runId)->status);
+            $this->assertSame(0, Article::query()->where('task_id', $task->id)->count());
+        }
+        $this->assertSame('active', $sharedModel->fresh()->status);
     }
 
     public function test_each_run_executes_the_requested_model_snapshot_captured_at_enqueue_time(): void

@@ -297,6 +297,7 @@ class JobQueueService
         array $meta = [],
         ?AiExecutionContext $executionContext = null,
         ?string $executionLeaseToken = null,
+        bool $rejectStaleExecution = false,
     ): void {
         $completed = DB::transaction(function () use ($jobId, $taskId, $articleId, $durationMs, $meta, $executionContext, $executionLeaseToken): bool {
             $task = Task::query()
@@ -339,6 +340,10 @@ class JobQueueService
             return true;
         });
         if (! $completed) {
+            if ($rejectStaleExecution && $executionContext instanceof AiExecutionContext) {
+                throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
+            }
+
             return;
         }
 

@@ -19,6 +19,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
@@ -51,6 +52,8 @@ class WorkerExecutionService
         private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
         private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
         private readonly AiExecutionErrorSanitizer $aiExecutionErrorSanitizer,
+        private readonly AiModelFailoverDecider $aiModelFailoverDecider,
+        private readonly JobQueueService $jobQueueService,
     ) {}
 
     /**
@@ -58,6 +61,7 @@ class WorkerExecutionService
      */
     public function executeTask(int $taskId, ?AiExecutionContext $executionContext = null): array
     {
+        $executionStartedAt = microtime(true);
         /** @var Task|null $task */
         $task = Task::query()->find($taskId);
         if (! $task) {
@@ -77,7 +81,7 @@ class WorkerExecutionService
             $this->aiExecutionAccessGuard->assertCurrent($executionContext);
         }
 
-        $publishResult = $this->publishDueDraftArticle($task, $executionContext);
+        $publishResult = $this->publishDueDraftArticle($task, $executionContext, $executionStartedAt);
         if ($publishResult !== null) {
             $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
 
@@ -115,8 +119,8 @@ class WorkerExecutionService
         $content = $imageResult['content'];
         $selectedImages = $imageResult['images'];
         $excerpt = $this->buildExcerpt($content);
-        $qualityPolicy = null;
-        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, &$qualityPolicy, $generationEvidenceSnapshot, $executionContext, $aiModel): int {
+
+        return DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, $generationEvidenceSnapshot, $executionContext, $aiModel, $knowledgeContext, $generation, $executionStartedAt): array {
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
@@ -216,40 +220,42 @@ class WorkerExecutionService
             }
             Task::query()->whereKey($task->id)->update($taskUpdate);
 
-            return (int) $article->id;
-        });
+            $qualityCheck = null;
+            if ($qualityPolicy['required'] ?? false) {
+                $qualityCheck = $this->articleAiQualityInspectionService->createOrReuse(
+                    $article,
+                    trigger: 'worker_generation',
+                );
+            }
 
-        $qualityCheck = null;
-        if (is_array($qualityPolicy) && ($qualityPolicy['required'] ?? false)) {
-            $qualityCheck = $this->articleAiQualityInspectionService->createOrReuse(
-                Article::query()->findOrFail($articleId),
-                trigger: 'worker_generation',
-            );
-        }
-
-        return [
-            'article_id' => $articleId,
-            'title' => (string) $titleRow->title,
-            'message' => '草稿生成成功',
-            'meta' => [
-                'task_id' => (int) $task->id,
-                'action' => 'generate_draft',
-                'title_id' => (int) $titleRow->id,
-                'author_id' => $author?->id,
-                'category_id' => $category?->id,
-                'knowledge_length' => mb_strlen($knowledgeContext, 'UTF-8'),
-                'image_count' => count($selectedImages),
-                'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
-                'used_model_id' => (int) $aiModel->id,
-                'used_model_name' => (string) $aiModel->name,
-                'model_attempts' => $generation['attempts'],
-                'ai_quality' => [
-                    'required' => (bool) (is_array($qualityPolicy) && ($qualityPolicy['required'] ?? false)),
-                    'check_id' => $qualityCheck?->id,
-                    'status' => $qualityCheck?->status,
+            $result = [
+                'article_id' => (int) $article->id,
+                'title' => (string) $titleRow->title,
+                'message' => '草稿生成成功',
+                'meta' => [
+                    'task_id' => (int) $task->id,
+                    'action' => 'generate_draft',
+                    'title_id' => (int) $titleRow->id,
+                    'author_id' => $author?->id,
+                    'category_id' => $category?->id,
+                    'knowledge_length' => mb_strlen($knowledgeContext, 'UTF-8'),
+                    'image_count' => count($selectedImages),
+                    'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
+                    'used_model_id' => (int) $aiModel->id,
+                    'used_model_name' => (string) $aiModel->name,
+                    'model_attempts' => $generation['attempts'],
+                    'ai_quality' => [
+                        'required' => (bool) ($qualityPolicy['required'] ?? false),
+                        'check_id' => $qualityCheck?->id,
+                        'status' => $qualityCheck?->status,
+                    ],
                 ],
-            ],
-        ];
+            ];
+
+            $this->completePersistedExecution($freshTask, $result, $executionContext, $executionStartedAt);
+
+            return $result;
+        });
     }
 
     /**
@@ -257,8 +263,11 @@ class WorkerExecutionService
      *
      * @return array{article_id:int, title:string, message:string, meta:array<string,mixed>}|null
      */
-    private function publishDueDraftArticle(Task $task, ?AiExecutionContext $executionContext = null): ?array
-    {
+    private function publishDueDraftArticle(
+        Task $task,
+        ?AiExecutionContext $executionContext = null,
+        ?float $executionStartedAt = null,
+    ): ?array {
         if ($task->next_publish_at !== null && $task->next_publish_at->greaterThan(now())) {
             return null;
         }
@@ -274,7 +283,7 @@ class WorkerExecutionService
             return null;
         }
 
-        return DB::transaction(function () use ($task, $candidateArticleId, $executionContext): ?array {
+        return DB::transaction(function () use ($task, $candidateArticleId, $executionContext, $executionStartedAt): ?array {
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
@@ -336,7 +345,7 @@ class WorkerExecutionService
                 'updated_at' => now(),
             ]);
 
-            return [
+            $result = [
                 'article_id' => (int) $article->id,
                 'title' => (string) $article->title,
                 'message' => '草稿发布成功',
@@ -346,6 +355,15 @@ class WorkerExecutionService
                     'publish_interval' => $publishInterval,
                 ],
             ];
+
+            $this->completePersistedExecution(
+                $freshTask,
+                $result,
+                $executionContext,
+                $executionStartedAt ?? microtime(true),
+            );
+
+            return $result;
         });
     }
 
@@ -442,6 +460,8 @@ class WorkerExecutionService
                     );
                 }
                 $candidate = $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $candidate);
+            } elseif ($executionContext instanceof AiExecutionContext) {
+                $candidate = $this->aiExecutionAccessGuard->assertModelCurrentForShadow($executionContext, $candidate);
             }
 
             $unavailableReason = $this->getAiModelUnavailableReason($candidate);
@@ -476,7 +496,7 @@ class WorkerExecutionService
                 $lastMessage = $this->aiExecutionErrorSanitizer->sanitize($exception);
                 $attempts[] = $this->buildModelAttempt($candidate, 'failed', $lastMessage);
 
-                if ($mode !== 'smart_failover') {
+                if ($mode !== 'smart_failover' || ! $this->aiModelFailoverDecider->shouldFailover($exception)) {
                     throw $exception;
                 }
             }
@@ -505,9 +525,12 @@ class WorkerExecutionService
             return [$this->resolveAiModel($task, $executionContext)];
         }
 
-        if ($this->executionBoundariesEnforced() && $executionContext instanceof AiExecutionContext) {
+        if ($executionContext instanceof AiExecutionContext) {
+            $scopedCandidates = $this->executionBoundariesEnforced()
+                ? $this->aiExecutionAccessGuard->resolveModelCandidates($executionContext, 'chat')
+                : $this->aiExecutionAccessGuard->resolveModelCandidatesForShadow($executionContext, 'chat');
             $fallbackModels = array_values(array_filter(
-                $this->aiExecutionAccessGuard->resolveModelCandidates($executionContext, 'chat'),
+                $scopedCandidates,
                 static fn (AiModel $model): bool => (int) $model->getKey() !== (int) $primaryModel->getKey(),
             ));
 
@@ -528,6 +551,33 @@ class WorkerExecutionService
             ->all();
 
         return array_values(array_merge([$primaryModel], $fallbackModels));
+    }
+
+    /**
+     * Finish the persisted run inside the same transaction as its business result.
+     *
+     * @param  array{article_id:int|null,title:string,message:string,meta:array<string,mixed>}  $result
+     */
+    private function completePersistedExecution(
+        Task $task,
+        array $result,
+        ?AiExecutionContext $executionContext,
+        float $executionStartedAt,
+    ): void {
+        if (! $executionContext instanceof AiExecutionContext || $executionContext->taskRunId === null) {
+            return;
+        }
+
+        $this->jobQueueService->completeJob(
+            jobId: $executionContext->taskRunId,
+            taskId: (int) $task->getKey(),
+            articleId: $result['article_id'],
+            durationMs: (int) round((microtime(true) - $executionStartedAt) * 1000),
+            meta: $result['meta'],
+            executionContext: $executionContext,
+            executionLeaseToken: $executionContext->executionLeaseToken(),
+            rejectStaleExecution: true,
+        );
     }
 
     private function getAiModelUnavailableReason(AiModel $aiModel): ?string

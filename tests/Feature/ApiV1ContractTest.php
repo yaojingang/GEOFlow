@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Data\Api\TaskRunData;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -572,6 +573,94 @@ class ApiV1ContractTest extends TestCase
         $this->assertSame(4, (int) $task->fresh()->ai_quality_config_version);
     }
 
+    public function test_job_list_and_detail_return_only_sanitized_public_fields(): void
+    {
+        $admin = $this->createActiveAdmin('safe_job_dto_admin', 'p');
+        $bearer = $this->createBearerToken($admin, ['tasks:read', 'jobs:read']);
+        $task = Task::query()->create([
+            'name' => 'Safe job DTO task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+        ]);
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'running',
+            'error_message' => 'provider https://secret.example.test?token=error-token api_key=error-key',
+            'meta' => [
+                'job_type' => 'generate_article',
+                'attempt_count' => 1,
+                'max_attempts' => 3,
+                'worker_id' => 'safe-worker',
+                'payload' => [
+                    'source' => 'api_enqueue',
+                    'api_key' => 'historical-payload-key',
+                    'nested' => ['password' => 'historical-nested-password'],
+                ],
+                'model_attempts' => [[
+                    'status' => 'failed',
+                    'reason' => 'Authorization: Bearer historical-bearer',
+                    'base_url' => 'https://historical.example.test?token=historical-url-token',
+                    'ai_config_access_version' => 456789,
+                    'execution_lease_token' => 'nested-lease-secret',
+                ]],
+                'note' => 'historical-note-secret',
+                'model_access_admin_id' => 999999,
+            ],
+        ]);
+        $run->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => 987654,
+            'requested_ai_model_id' => null,
+            'resolved_ai_model_id' => null,
+            'resolved_model_source' => 'personal',
+            'resolver_policy_version' => 876543,
+            'execution_lease_token' => '09070375-aa55-4f2f-b23b-5fc463ea42bc',
+        ])->save();
+
+        $listResponse = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson("/api/v1/tasks/{$task->id}/jobs")
+            ->assertOk();
+        $listItem = $listResponse->json('data.items.0');
+        $this->assertIsArray($listItem);
+        $this->assertSame((int) $run->id, (int) data_get($listItem, 'id'));
+        $this->assertSame('running', data_get($listItem, 'status'));
+        $this->assertSame('api_enqueue', data_get($listItem, 'payload.source'));
+        foreach (['execution_lease_token', 'model_access_admin_id', 'model_access_admin_role', 'ai_config_access_version', 'requested_ai_model_id', 'resolved_ai_model_id', 'resolved_model_source', 'resolver_policy_version', 'meta'] as $internalKey) {
+            $this->assertArrayNotHasKey($internalKey, $listItem);
+        }
+
+        $detailResponse = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson("/api/v1/jobs/{$run->id}")
+            ->assertOk();
+        $detail = $detailResponse->json('data');
+        $this->assertIsArray($detail);
+        $this->assertSame((int) $run->id, (int) data_get($detail, 'id'));
+        $this->assertSame('generate_article', data_get($detail, 'job_type'));
+        $this->assertSame('api_enqueue', data_get($detail, 'payload.source'));
+
+        $serialized = json_encode([$listItem, $detail], JSON_THROW_ON_ERROR);
+        foreach ([
+            '09070375-aa55-4f2f-b23b-5fc463ea42bc',
+            '987654',
+            '876543',
+            'secret.example.test',
+            'error-token',
+            'error-key',
+            'historical-payload-key',
+            'historical-nested-password',
+            'historical-bearer',
+            'historical.example.test',
+            'historical-url-token',
+            'historical-note-secret',
+            '999999',
+            '456789',
+            'nested-lease-secret',
+        ] as $secret) {
+            $this->assertStringNotContainsString($secret, $serialized);
+        }
+    }
+
     public function test_super_admin_api_can_manage_a_hosted_site_task(): void
     {
         Queue::fake();
@@ -889,6 +978,7 @@ class ApiV1ContractTest extends TestCase
             app(ArticleAiQualityPolicyResolver::class),
             app(AiQualityRetrievalReadinessService::class),
             app(AiQualityAuditService::class),
+            app(TaskRunData::class),
         );
 
         $baselineTransactionLevel = DB::transactionLevel();

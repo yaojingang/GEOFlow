@@ -109,15 +109,23 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                 : $workerExecutionService->executeTask($taskId, $context);
             $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
-            $queueService->completeJob(
-                jobId: $this->taskRunId,
-                taskId: $taskId,
-                articleId: Arr::get($result, 'article_id') !== null ? (int) Arr::get($result, 'article_id') : null,
-                durationMs: $durationMs,
-                meta: is_array(Arr::get($result, 'meta')) ? Arr::get($result, 'meta') : [],
-                executionContext: $context,
-                executionLeaseToken: $this->effectiveExecutionLeaseToken(),
-            );
+            $alreadyCompleted = $context instanceof AiExecutionContext
+                && TaskRun::query()
+                    ->whereKey($this->taskRunId)
+                    ->where('status', 'completed')
+                    ->exists();
+            if (! $alreadyCompleted) {
+                $queueService->completeJob(
+                    jobId: $this->taskRunId,
+                    taskId: $taskId,
+                    articleId: Arr::get($result, 'article_id') !== null ? (int) Arr::get($result, 'article_id') : null,
+                    durationMs: $durationMs,
+                    meta: is_array(Arr::get($result, 'meta')) ? Arr::get($result, 'meta') : [],
+                    executionContext: $context,
+                    executionLeaseToken: $this->effectiveExecutionLeaseToken(),
+                    rejectStaleExecution: $context instanceof AiExecutionContext,
+                );
+            }
         } catch (AiModelAccessException $exception) {
             $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
             $queueService->failForAiAuthorization(

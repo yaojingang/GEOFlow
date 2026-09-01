@@ -85,6 +85,50 @@ final class AiExecutionAccessGuard
             ->all();
     }
 
+    /**
+     * Resolve an ownership-scoped candidate list during shadow rollout.
+     *
+     * Shadow mode can defer access-version enforcement, while the actual provider
+     * calls must still remain inside the execution administrator's model pools.
+     *
+     * @return list<AiModel>
+     */
+    public function resolveModelCandidatesForShadow(AiExecutionContext $context, string $modelType): array
+    {
+        $admin = Admin::query()
+            ->whereKey($context->modelAccessAdminId)
+            ->active()
+            ->first();
+        if (! $admin instanceof Admin) {
+            throw AiModelAccessException::executionAdminInactiveForId($context->modelAccessAdminId);
+        }
+
+        return $this->modelAccessResolver
+            ->resolveCandidates($admin, $modelType)
+            ->all();
+    }
+
+    public function assertModelCurrentForShadow(AiExecutionContext $context, AiModel|int $model): AiModel
+    {
+        $admin = Admin::query()
+            ->whereKey($context->modelAccessAdminId)
+            ->active()
+            ->first();
+        if (! $admin instanceof Admin) {
+            throw AiModelAccessException::executionAdminInactiveForId($context->modelAccessAdminId);
+        }
+
+        $modelId = $model instanceof AiModel ? (int) $model->getKey() : $model;
+        $currentModel = AiModel::query()->whereKey($modelId)->first();
+        if (! $currentModel instanceof AiModel) {
+            throw AiModelAccessException::modelUnavailable($admin);
+        }
+
+        $this->modelAccessResolver->assertLockedUsable($admin, $currentModel);
+
+        return $currentModel;
+    }
+
     public function recordResolvedModel(AiExecutionContext $context, AiModel $model): void
     {
         if ($context->taskRunId === null) {
