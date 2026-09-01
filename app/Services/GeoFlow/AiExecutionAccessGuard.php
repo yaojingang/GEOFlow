@@ -20,6 +20,8 @@ final class AiExecutionAccessGuard
 
     public function assertCurrent(AiExecutionContext $context, bool $validateRequestedModel = false): Admin
     {
+        $this->assertExecutionLeaseCurrent($context);
+
         $admin = $this->lockWhenTransactional(
             Admin::query()->whereKey($context->modelAccessAdminId),
         )->first();
@@ -73,6 +75,16 @@ final class AiExecutionAccessGuard
         return $currentModel;
     }
 
+    /** @return list<AiModel> */
+    public function resolveModelCandidates(AiExecutionContext $context, string $modelType): array
+    {
+        $admin = $this->assertCurrent($context);
+
+        return $this->modelAccessResolver
+            ->resolveCandidates($admin, $modelType)
+            ->all();
+    }
+
     public function recordResolvedModel(AiExecutionContext $context, AiModel $model): void
     {
         if ($context->taskRunId === null) {
@@ -120,11 +132,12 @@ final class AiExecutionAccessGuard
         string $source,
     ): void {
 
-        TaskRun::query()
+        $affected = TaskRun::query()
             ->whereKey($context->taskRunId)
             ->where('model_access_admin_id', $context->modelAccessAdminId)
             ->where('ai_config_access_version', $context->aiConfigAccessVersion)
             ->where('resolver_policy_version', $context->resolverPolicyVersion)
+            ->where('execution_lease_token', $context->executionLeaseToken())
             ->where('status', 'running')
             ->whereNull('resolved_ai_model_id')
             ->update([
@@ -132,6 +145,27 @@ final class AiExecutionAccessGuard
                 'resolved_model_source' => $source,
                 'model_resolved_at' => now(),
             ]);
+        if ($affected !== 1) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+        }
+    }
+
+    private function assertExecutionLeaseCurrent(AiExecutionContext $context): void
+    {
+        if ($context->taskRunId === null) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+        }
+
+        $run = $this->lockWhenTransactional(TaskRun::query()->whereKey($context->taskRunId))->first();
+        if (! $run instanceof TaskRun
+            || (string) $run->status !== 'running'
+            || (int) $run->model_access_admin_id !== $context->modelAccessAdminId
+            || (string) $run->model_access_admin_role !== $context->modelAccessAdminRole
+            || (int) $run->ai_config_access_version !== $context->aiConfigAccessVersion
+            || (int) $run->resolver_policy_version !== $context->resolverPolicyVersion
+            || ! hash_equals($context->executionLeaseToken(), (string) $run->execution_lease_token)) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+        }
     }
 
     private function lockWhenTransactional(Builder $query): Builder

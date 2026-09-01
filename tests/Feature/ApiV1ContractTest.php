@@ -13,6 +13,7 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\TaskRun;
 use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\AiExecutionContextFactory;
@@ -616,9 +617,21 @@ class ApiV1ContractTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'active');
         $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
-            ->postJson("/api/v1/tasks/{$task->id}/enqueue")
+            ->postJson("/api/v1/tasks/{$task->id}/enqueue", [
+                'job_type' => 'generate_article',
+                'api_key' => 'api-request-secret',
+                'base_url' => 'https://provider.example.test?token=url-secret',
+                'note' => 'Bearer note-secret',
+                'nested' => ['password' => 'nested-secret'],
+            ])
             ->assertCreated()
             ->assertJsonPath('data.status', 'pending');
+        $queuedMeta = TaskRun::query()->where('task_id', $task->id)->firstOrFail()->meta;
+        $this->assertSame(['source' => 'api_enqueue'], data_get($queuedMeta, 'payload'));
+        $serializedMeta = json_encode($queuedMeta, JSON_THROW_ON_ERROR);
+        foreach (['api-request-secret', 'provider.example.test', 'url-secret', 'note-secret', 'nested-secret'] as $secret) {
+            $this->assertStringNotContainsString($secret, $serializedMeta);
+        }
         $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
             ->postJson("/api/v1/tasks/{$task->id}/stop")
             ->assertOk()

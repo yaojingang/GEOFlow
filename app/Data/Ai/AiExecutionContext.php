@@ -26,6 +26,7 @@ final readonly class AiExecutionContext
         public int $sourceId,
         public int $resolverPolicyVersion,
         public string $requestId,
+        private string $executionLeaseToken,
         public ?int $taskRunId = null,
     ) {
         if ($this->executionScope !== self::EXECUTION_SCOPE_PERSISTED_ADMIN) {
@@ -40,7 +41,13 @@ final readonly class AiExecutionContext
         if (! in_array($this->requiredCapability, [self::CAPABILITY_CHAT, self::CAPABILITY_EMBEDDING], true)) {
             throw new InvalidArgumentException('AI execution capability is invalid.');
         }
-        if ($this->sourceType === '' || $this->sourceId <= 0 || $this->resolverPolicyVersion <= 0 || $this->requestId === '') {
+        if ($this->sourceType === ''
+            || $this->sourceId <= 0
+            || $this->resolverPolicyVersion <= 0
+            || $this->requestId === ''
+            || $this->executionLeaseToken === ''
+            || $this->taskRunId === null
+            || $this->taskRunId <= 0) {
             throw new InvalidArgumentException('Persisted AI execution source is incomplete.');
         }
     }
@@ -61,6 +68,7 @@ final readonly class AiExecutionContext
             sourceId: $taskId,
             resolverPolicyVersion: (int) $run->resolver_policy_version,
             requestId: 'task-run:'.$runId,
+            executionLeaseToken: trim((string) $run->execution_lease_token),
             taskRunId: $runId,
         );
     }
@@ -81,5 +89,10 @@ final readonly class AiExecutionContext
             'request_id' => $this->requestId,
             'task_run_id' => $this->taskRunId,
         ];
+    }
+
+    public function executionLeaseToken(): string
+    {
+        return $this->executionLeaseToken;
     }
 }

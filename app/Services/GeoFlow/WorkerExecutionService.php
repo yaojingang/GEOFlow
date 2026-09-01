@@ -18,6 +18,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
@@ -49,6 +50,7 @@ class WorkerExecutionService
         private readonly ArticleAiQualityPolicyResolver $articleAiQualityPolicyResolver,
         private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
         private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
+        private readonly AiExecutionErrorSanitizer $aiExecutionErrorSanitizer,
     ) {}
 
     /**
@@ -115,6 +117,14 @@ class WorkerExecutionService
         $excerpt = $this->buildExcerpt($content);
         $qualityPolicy = null;
         $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, &$qualityPolicy, $generationEvidenceSnapshot, $executionContext, $aiModel): int {
+            $freshTask = Task::query()
+                ->whereKey((int) $task->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
+                throw new RuntimeException('任务未激活');
+            }
+
             if ($this->executionBoundariesEnforced()) {
                 if (! $executionContext instanceof AiExecutionContext) {
                     throw AiModelAccessException::configAccessRevokedForAdminId(
@@ -125,13 +135,6 @@ class WorkerExecutionService
                 $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $aiModel, $executionAdmin);
             }
 
-            $freshTask = Task::query()
-                ->whereKey((int) $task->id)
-                ->lockForUpdate()
-                ->first();
-            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
-                throw new RuntimeException('任务未激活');
-            }
             $generationBlockReason = $this->getGenerationBlockReason($freshTask, true);
             if ($generationBlockReason !== null) {
                 throw new RuntimeException($generationBlockReason);
@@ -272,6 +275,18 @@ class WorkerExecutionService
         }
 
         return DB::transaction(function () use ($task, $candidateArticleId, $executionContext): ?array {
+            $freshTask = Task::query()
+                ->whereKey((int) $task->id)
+                ->lockForUpdate()
+                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
+            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
+                throw new RuntimeException('任务未激活');
+            }
+
+            if ($freshTask->next_publish_at !== null && $freshTask->next_publish_at->greaterThan(now())) {
+                return null;
+            }
+
             if ($this->executionBoundariesEnforced()) {
                 if (! $executionContext instanceof AiExecutionContext) {
                     throw AiModelAccessException::configAccessRevokedForAdminId(
@@ -291,18 +306,6 @@ class WorkerExecutionService
                 ->lockForUpdate()
                 ->first(['id', 'task_id', 'title', 'review_status']);
             if (! $article) {
-                return null;
-            }
-
-            $freshTask = Task::query()
-                ->whereKey((int) $article->task_id)
-                ->lockForUpdate()
-                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
-            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
-                throw new RuntimeException('任务未激活');
-            }
-
-            if ($freshTask->next_publish_at !== null && $freshTask->next_publish_at->greaterThan(now())) {
                 return null;
             }
 
@@ -379,9 +382,9 @@ class WorkerExecutionService
     /**
      * 解析并校验任务绑定的 AI 模型（必须是 active + chat）。
      */
-    private function resolveAiModel(Task $task): AiModel
+    private function resolveAiModel(Task $task, ?AiExecutionContext $executionContext = null): AiModel
     {
-        $aiModel = $this->resolveConfiguredAiModel($task);
+        $aiModel = $this->resolveConfiguredAiModel($task, $executionContext);
         if (($aiModel->status ?? 'inactive') !== 'active') {
             throw new RuntimeException('任务 AI 模型不可用');
         }
@@ -392,9 +395,11 @@ class WorkerExecutionService
     /**
      * 读取任务绑定的聊天模型；智能切换会保留停用主模型的尝试记录并继续备用模型。
      */
-    private function resolveConfiguredAiModel(Task $task): AiModel
+    private function resolveConfiguredAiModel(Task $task, ?AiExecutionContext $executionContext = null): AiModel
     {
-        $aiModelId = (int) ($task->ai_model_id ?? 0);
+        $aiModelId = $executionContext instanceof AiExecutionContext
+            ? (int) ($executionContext->requestedModelId ?? 0)
+            : (int) ($task->ai_model_id ?? 0);
         if ($aiModelId <= 0) {
             throw new RuntimeException('任务未配置 AI 模型');
         }
@@ -429,7 +434,7 @@ class WorkerExecutionService
         $attempts = [];
         $lastMessage = '';
 
-        foreach ($this->resolveAiModelCandidates($task) as $candidate) {
+        foreach ($this->resolveAiModelCandidates($task, $executionContext) as $candidate) {
             if ($this->executionBoundariesEnforced()) {
                 if (! $executionContext instanceof AiExecutionContext) {
                     throw AiModelAccessException::configAccessRevokedForAdminId(
@@ -465,8 +470,10 @@ class WorkerExecutionService
                     'model' => $candidate,
                     'attempts' => $attempts,
                 ];
+            } catch (AiModelAccessException $exception) {
+                throw $exception;
             } catch (Throwable $exception) {
-                $lastMessage = trim($exception->getMessage());
+                $lastMessage = $this->aiExecutionErrorSanitizer->sanitize($exception);
                 $attempts[] = $this->buildModelAttempt($candidate, 'failed', $lastMessage);
 
                 if ($mode !== 'smart_failover') {
@@ -491,11 +498,20 @@ class WorkerExecutionService
     /**
      * @return list<AiModel>
      */
-    private function resolveAiModelCandidates(Task $task): array
+    private function resolveAiModelCandidates(Task $task, ?AiExecutionContext $executionContext = null): array
     {
-        $primaryModel = $this->resolveConfiguredAiModel($task);
+        $primaryModel = $this->resolveConfiguredAiModel($task, $executionContext);
         if (($task->model_selection_mode ?? 'fixed') !== 'smart_failover') {
-            return [$this->resolveAiModel($task)];
+            return [$this->resolveAiModel($task, $executionContext)];
+        }
+
+        if ($this->executionBoundariesEnforced() && $executionContext instanceof AiExecutionContext) {
+            $fallbackModels = array_values(array_filter(
+                $this->aiExecutionAccessGuard->resolveModelCandidates($executionContext, 'chat'),
+                static fn (AiModel $model): bool => (int) $model->getKey() !== (int) $primaryModel->getKey(),
+            ));
+
+            return array_values(array_merge([$primaryModel], $fallbackModels));
         }
 
         $fallbackModels = AiModel::query()
@@ -532,7 +548,7 @@ class WorkerExecutionService
             'model_id' => (int) $aiModel->id,
             'model_name' => (string) $aiModel->name,
             'status' => $status,
-            'reason' => $reason,
+            'reason' => $reason === null ? null : $this->aiExecutionErrorSanitizer->sanitize($reason, ''),
         ];
     }
 

@@ -11,6 +11,10 @@ class TaskRun extends Model
 
     protected $table = 'task_runs';
 
+    protected $hidden = [
+        'execution_lease_token',
+    ];
+
     protected $fillable = [
         'task_id',
         'status',

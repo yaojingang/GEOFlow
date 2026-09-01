@@ -150,15 +150,13 @@ class TaskController extends BaseApiController
     /**
      * 向队列投递一条 Job；成功 HTTP 201。
      *
-     * 请求体可含 job_type，其余字段进入 payload。幂等键：POST /tasks/{id}/enqueue
+     * 请求体仅接受业务任务类型；队列来源由服务端写入。幂等键：POST /tasks/{id}/enqueue
      */
     public function enqueue(Request $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
         $this->assertTaskExecutionScope($request, $task, $tokens);
         $body = $request->all();
         $jobType = trim((string) ($body['job_type'] ?? 'generate_article'));
-        $payload = $body;
-        unset($payload['job_type']);
 
         return IdempotencyService::executeJson(
             $request,
@@ -166,7 +164,7 @@ class TaskController extends BaseApiController
             fn (): JsonResponse => $this->success($request, $tasks->enqueueTask(
                 $task,
                 $jobType,
-                $payload,
+                ['source' => 'api_enqueue'],
                 $this->canManageHostedTask($request),
             ), 201),
         );

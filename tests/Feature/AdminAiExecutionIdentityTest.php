@@ -77,8 +77,8 @@ class AdminAiExecutionIdentityTest extends TestCase
             'model_access_policy_version' => 1,
         ])->save();
 
-        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id, payload: [
-            'source' => 'test',
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id, 'https://jobs.example.test?token=job-token', [
+            'source' => 'api_manual_start',
             'model_access_admin_id' => 999999,
             'ai_config_access_version' => 999999,
             'api_key' => 'never-log-this-key',
@@ -86,9 +86,13 @@ class AdminAiExecutionIdentityTest extends TestCase
             'access_token' => 'access-token-value',
             'bearer' => 'bearer-value',
             'clientSecret' => 'client-secret-value',
+            'key' => 'short-key-value',
+            'base_url' => 'https://private.example.test/v1?token=query-token-value',
+            'note' => 'Prompt text with bearer note-secret-value',
             'nested' => [
                 'endpoint' => 'https://private.example.test',
                 'prompt' => 'private prompt',
+                'safe_looking' => 'nested-secret-value',
             ],
         ]);
 
@@ -105,14 +109,37 @@ class AdminAiExecutionIdentityTest extends TestCase
         $this->assertStringNotContainsString('access-token-value', $serializedMeta);
         $this->assertStringNotContainsString('bearer-value', $serializedMeta);
         $this->assertStringNotContainsString('client-secret-value', $serializedMeta);
+        $this->assertStringNotContainsString('short-key-value', $serializedMeta);
+        $this->assertStringNotContainsString('query-token-value', $serializedMeta);
+        $this->assertStringNotContainsString('note-secret-value', $serializedMeta);
+        $this->assertStringNotContainsString('nested-secret-value', $serializedMeta);
         $this->assertStringNotContainsString('private.example.test', $serializedMeta);
         $this->assertStringNotContainsString('private prompt', $serializedMeta);
         $this->assertNull(data_get($run->meta, 'payload.model_access_admin_id'));
+        $this->assertSame('generate_article', data_get($run->meta, 'job_type'));
+        $this->assertSame(['source' => 'api_manual_start'], data_get($run->meta, 'payload'));
 
-        $context = app(AiExecutionContextFactory::class)->fromTaskRun($run);
+        $this->assertIsArray(app(JobQueueService::class)->claimPendingJobById((int) $runId, 'context-worker'));
+        $context = app(AiExecutionContextFactory::class)->fromTaskRun($run->fresh());
         $this->assertSame('task-run:'.$run->id, $context->requestId);
         $this->assertSame((int) $admin->id, $context->modelAccessAdminId);
+        $this->assertArrayNotHasKey('execution_lease_token', $context->toSafeArray());
+        $this->assertArrayNotHasKey('execution_lease_token', $run->fresh()->toArray());
+        $this->assertStringNotContainsString(
+            (string) $run->fresh()->execution_lease_token,
+            json_encode($context, JSON_THROW_ON_ERROR),
+        );
         $this->assertStringNotContainsString('never-log-this-key', json_encode($context->toSafeArray(), JSON_THROW_ON_ERROR));
+
+        $unsafeTask = $this->executableTask($admin, $model, 'Unsafe API metadata task');
+        $unsafeRunId = app(JobQueueService::class)->enqueueTaskJob(
+            (int) $unsafeTask->id,
+            'generate_article',
+            ['source' => 'api_key=source-secret'],
+        );
+        $unsafeMeta = TaskRun::query()->findOrFail((int) $unsafeRunId)->meta;
+        $this->assertSame([], data_get($unsafeMeta, 'payload'));
+        $this->assertStringNotContainsString('source-secret', json_encode($unsafeMeta, JSON_THROW_ON_ERROR));
     }
 
     public function test_claim_permanently_fails_when_sharing_was_revoked_after_enqueue(): void
@@ -187,6 +214,7 @@ class AdminAiExecutionIdentityTest extends TestCase
         ]);
         $admin = $this->admin('mid-call-runner', ['ai_config_access_version' => 5]);
         $model = $this->model($admin, 'mid-call-model');
+        $this->model($admin, 'mid-call-fallback-model');
         $library = TitleLibrary::query()->create(['name' => 'Mid-call titles']);
         $title = Title::query()->create([
             'library_id' => $library->id,
@@ -200,11 +228,14 @@ class AdminAiExecutionIdentityTest extends TestCase
             'article_limit' => 10,
             'created_count' => 0,
             'loop_count' => 0,
+            'model_selection_mode' => 'smart_failover',
         ])->save();
         $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
         config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', true);
         config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
-        Http::fake(function () use ($admin) {
+        $providerCalls = 0;
+        Http::fake(function () use ($admin, &$providerCalls) {
+            $providerCalls++;
             $admin->newQuery()->whereKey($admin->id)->update([
                 'ai_config_access_version' => 6,
             ]);
@@ -230,8 +261,10 @@ class AdminAiExecutionIdentityTest extends TestCase
         $this->assertSame(0, (int) $title->fresh()->usage_count);
         $this->assertSame(0, (int) $task->fresh()->created_count);
         $this->assertSame(0, (int) $task->fresh()->loop_count);
+        $this->assertSame(1, $providerCalls);
         $this->assertSame('failed', TaskRun::query()->findOrFail((int) $runId)->status);
         $this->assertSame('ai_config_access_revoked', TaskRun::query()->findOrFail((int) $runId)->error_code);
+        $this->assertSame(0, (int) data_get(TaskRun::query()->findOrFail((int) $runId)->meta, 'attempt_count'));
     }
 
     public function test_inactive_shared_provider_does_not_block_a_personal_fixed_model(): void
@@ -368,6 +401,32 @@ class AdminAiExecutionIdentityTest extends TestCase
         Queue::assertPushed(ProcessGeoFlowTaskJob::class, 2);
     }
 
+    public function test_reinstantiated_failed_callback_uses_the_serialized_claim_lease(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('serialized-failure-runner');
+        $model = $this->model($admin, 'serialized-failure-model');
+        $task = $this->executableTask($admin, $model, 'Serialized failure lease task');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $claimLease = '5a36e75b-803a-4a63-b8d4-dc6adcf05d4d';
+
+        $this->assertIsArray(app(JobQueueService::class)->claimPendingJobById(
+            (int) $runId,
+            'serialized-failure-worker',
+            $claimLease,
+        ));
+        $this->assertSame($claimLease, TaskRun::query()->findOrFail((int) $runId)->execution_lease_token);
+
+        (new ProcessGeoFlowTaskJob((int) $runId, $claimLease))->failed(
+            new RuntimeException('provider process exited'),
+        );
+
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame('pending', $run->status);
+        $this->assertNull($run->execution_lease_token);
+        $this->assertSame(1, (int) data_get($run->meta, 'attempt_count'));
+    }
+
     public function test_stale_recovery_preserves_the_original_execution_identity_snapshot(): void
     {
         Queue::fake();
@@ -389,6 +448,270 @@ class AdminAiExecutionIdentityTest extends TestCase
         $this->assertSame(13, (int) $run->ai_config_access_version);
         $this->assertSame((int) $model->id, (int) $run->requested_ai_model_id);
         $this->assertSame(1, (int) $run->resolver_policy_version);
+    }
+
+    public function test_recovery_rotates_the_execution_lease_and_discards_the_old_workers_provider_result(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('lease-runner', ['ai_config_access_version' => 21]);
+        $model = $this->model($admin, 'lease-model');
+        [$task, $title] = $this->generationTask($admin, $model, 'Lease fencing task');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $this->assertIsArray(app(JobQueueService::class)->claimPendingJobById((int) $runId, 'old-worker'));
+        $oldRun = TaskRun::query()->findOrFail((int) $runId);
+        $oldContext = app(AiExecutionContextFactory::class)->fromTaskRun($oldRun);
+        $oldLease = (string) $oldRun->execution_lease_token;
+        $newLease = null;
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+
+        Http::fake(function () use ($runId, &$newLease) {
+            TaskRun::query()->whereKey($runId)->update(['started_at' => now()->subMinutes(20)]);
+            $this->assertSame(1, app(JobQueueService::class)->recoverStaleJobs(600));
+            $this->assertIsArray(app(JobQueueService::class)->claimPendingJobById((int) $runId, 'new-worker'));
+            $newLease = (string) TaskRun::query()->findOrFail((int) $runId)->execution_lease_token;
+
+            return Http::response([
+                'model' => 'lease-model',
+                'choices' => [[
+                    'index' => 0,
+                    'message' => ['role' => 'assistant', 'content' => "# Stale\n\nDiscard this result."],
+                    'finish_reason' => 'stop',
+                ]],
+                'usage' => ['prompt_tokens' => 4, 'completion_tokens' => 6, 'total_tokens' => 10],
+            ]);
+        });
+
+        try {
+            app(WorkerExecutionService::class)->executeTask((int) $task->id, $oldContext);
+            $this->fail('The recovered worker lease must fence the old provider result.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame('ai_config_access_revoked', $exception->getErrorCode());
+        }
+
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertNotSame('', $oldLease);
+        $this->assertNotSame($oldLease, $newLease);
+        $this->assertSame('running', $run->status);
+        $this->assertSame($newLease, $run->execution_lease_token);
+        $this->assertNull($run->resolved_ai_model_id);
+        $this->assertSame(0, Article::query()->where('task_id', $task->id)->count());
+        $this->assertSame(0, (int) $title->fresh()->used_count);
+        $this->assertSame(0, (int) $task->fresh()->created_count);
+
+        app(JobQueueService::class)->completeJob(
+            (int) $runId,
+            (int) $task->id,
+            null,
+            1,
+            executionContext: $oldContext,
+        );
+        $this->assertSame('running', $run->fresh()->status);
+        $this->assertSame($newLease, $run->fresh()->execution_lease_token);
+
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        app(JobQueueService::class)->completeJob((int) $runId, (int) $task->id, null, 1);
+        app(JobQueueService::class)->failJob((int) $runId, (int) $task->id, 'unleased callback', 1);
+        $this->assertSame('running', $run->fresh()->status);
+        $this->assertSame($newLease, $run->fresh()->execution_lease_token);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+
+        app(JobQueueService::class)->failJob(
+            (int) $runId,
+            (int) $task->id,
+            'stale worker failure',
+            1,
+            executionContext: $oldContext,
+        );
+        app(JobQueueService::class)->failForAiAuthorization(
+            (int) $runId,
+            (int) $task->id,
+            'ai_config_access_revoked',
+            1,
+            $oldContext,
+        );
+        app(JobQueueService::class)->failForTaskConfiguration(
+            (int) $runId,
+            (int) $task->id,
+            'stale configuration failure',
+            1,
+            [],
+            $oldContext,
+        );
+        $run = $run->fresh();
+        $this->assertSame('running', $run->status);
+        $this->assertSame($newLease, $run->execution_lease_token);
+        $this->assertSame(0, (int) data_get($run->meta, 'attempt_count'));
+        $this->assertSame('active', $task->fresh()->status);
+
+        (new ProcessGeoFlowTaskJob((int) $runId, $oldLease))->failed(
+            new RuntimeException('old worker terminated after recovery'),
+        );
+        $this->assertSame('running', $run->fresh()->status);
+        $this->assertSame($newLease, $run->fresh()->execution_lease_token);
+    }
+
+    public function test_smart_failover_only_uses_personal_then_shared_authorized_models(): void
+    {
+        Queue::fake();
+        $provider = $this->admin('failover-provider', ['role' => 'super_admin']);
+        $admin = $this->admin('failover-runner', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $otherAdmin = $this->admin('unrelated-model-owner');
+        $personalModel = $this->model($admin, 'failover-personal-model');
+        $sharedModel = $this->model($provider, 'failover-shared-model');
+        $unrelatedModel = $this->model($otherAdmin, 'failover-unrelated-model');
+        $personalModel->forceFill(['failover_priority' => 10])->save();
+        $unrelatedModel->forceFill(['failover_priority' => 20])->save();
+        $sharedModel->forceFill(['failover_priority' => 30])->save();
+        [$task] = $this->generationTask($admin, $personalModel, 'Authorized failover task');
+        $task->forceFill(['model_selection_mode' => 'smart_failover'])->save();
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+        $requestedModels = [];
+        Http::fake(function ($request) use (&$requestedModels) {
+            $model = (string) $request['model'];
+            $requestedModels[] = $model;
+            if ($model === 'failover-personal-model') {
+                return Http::response([
+                    'model' => $model,
+                    'choices' => [],
+                    'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 0, 'total_tokens' => 1],
+                ]);
+            }
+
+            return Http::response([
+                'model' => $model,
+                'choices' => [[
+                    'index' => 0,
+                    'message' => ['role' => 'assistant', 'content' => "# Shared fallback\n\nAuthorized result."],
+                    'finish_reason' => 'stop',
+                ]],
+                'usage' => ['prompt_tokens' => 4, 'completion_tokens' => 6, 'total_tokens' => 10],
+            ]);
+        });
+
+        (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame(['failover-personal-model', 'failover-shared-model'], $requestedModels);
+        $this->assertNotContains('failover-unrelated-model', $requestedModels);
+        $this->assertSame('completed', $run->status);
+        $this->assertSame((int) $sharedModel->id, (int) $run->resolved_ai_model_id);
+        $this->assertSame('shared', $run->resolved_model_source);
+        $this->assertSame(1, Article::query()->where('task_id', $task->id)->count());
+    }
+
+    public function test_each_run_executes_the_requested_model_snapshot_captured_at_enqueue_time(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('model-snapshot-runner');
+        $oldModel = $this->model($admin, 'snapshot-old-model');
+        $newModel = $this->model($admin, 'snapshot-new-model');
+        [$task] = $this->generationTask($admin, $oldModel, 'Model snapshot task');
+        $task->forceFill(['is_loop' => 1])->save();
+        $oldRunId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $task->forceFill(['ai_model_id' => $newModel->id])->save();
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+        $requestedModels = [];
+        Http::fake(function ($request) use (&$requestedModels) {
+            $requestedModels[] = (string) $request['model'];
+
+            return Http::response([
+                'model' => (string) $request['model'],
+                'choices' => [[
+                    'index' => 0,
+                    'message' => ['role' => 'assistant', 'content' => "# Snapshot\n\nGenerated content."],
+                    'finish_reason' => 'stop',
+                ]],
+                'usage' => ['prompt_tokens' => 4, 'completion_tokens' => 6, 'total_tokens' => 10],
+            ]);
+        });
+
+        (new ProcessGeoFlowTaskJob((int) $oldRunId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+        $oldRun = TaskRun::query()->findOrFail((int) $oldRunId);
+        $this->assertSame((int) $oldModel->id, (int) $oldRun->requested_ai_model_id);
+        $this->assertSame((int) $oldModel->id, (int) $oldRun->resolved_ai_model_id);
+
+        $task->forceFill(['model_selection_mode' => 'smart_failover'])->save();
+        $newRunId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        (new ProcessGeoFlowTaskJob((int) $newRunId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+        $newRun = TaskRun::query()->findOrFail((int) $newRunId);
+        $this->assertSame((int) $newModel->id, (int) $newRun->requested_ai_model_id);
+        $this->assertSame((int) $newModel->id, (int) $newRun->resolved_ai_model_id);
+        $this->assertSame(['snapshot-old-model', 'snapshot-new-model'], $requestedModels);
+    }
+
+    public function test_queue_failure_and_completion_metadata_never_persist_provider_secrets_or_urls(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('sanitized-error-runner');
+        $model = $this->model($admin, 'sanitized-error-model');
+        $task = $this->executableTask($admin, $model, 'Sanitized error task');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $sensitive = 'provider https://api.example.test/v1/chat?token=query-secret Authorization: Bearer bearer-secret api_key=plain-key secret=plain-secret password=plain-pass credential=plain-credential {"api_key":"json-key","key":"json-bare-key","base_url":"https://json.example.test?token=json-url-secret","note":"json-note-secret","nested":{"password":"json-pass"}}';
+
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $this->assertIsArray(app(JobQueueService::class)->claimPendingJobById((int) $runId, 'failure-worker-'.$attempt));
+            $context = app(AiExecutionContextFactory::class)->fromTaskRun(TaskRun::query()->findOrFail((int) $runId));
+            app(JobQueueService::class)->failJob(
+                (int) $runId,
+                (int) $task->id,
+                $sensitive,
+                10,
+                1,
+                executionContext: $context,
+            );
+            if ($attempt < 3) {
+                TaskRun::query()->whereKey($runId)->update([
+                    'meta->available_at' => now()->subSecond()->toDateTimeString(),
+                ]);
+            }
+        }
+
+        $failedRun = TaskRun::query()->findOrFail((int) $runId);
+        $failedState = json_encode([
+            'error' => $failedRun->error_message,
+            'meta' => $failedRun->meta,
+            'task_error' => $task->fresh()->last_error_message,
+        ], JSON_THROW_ON_ERROR);
+        foreach (['api.example.test', 'query-secret', 'bearer-secret', 'plain-key', 'plain-secret', 'plain-pass', 'plain-credential', 'json-key', 'json-bare-key', 'json.example.test', 'json-url-secret', 'json-note-secret', 'json-pass'] as $secret) {
+            $this->assertStringNotContainsString($secret, $failedState);
+        }
+        $this->assertSame('failed', $failedRun->status);
+        $this->assertLessThanOrEqual(500, mb_strlen((string) $failedRun->error_message, 'UTF-8'));
+
+        $completedTask = $this->executableTask($admin, $model, 'Sanitized completion task');
+        $completedRunId = app(JobQueueService::class)->enqueueTaskJob((int) $completedTask->id);
+        $this->assertIsArray(app(JobQueueService::class)->claimPendingJobById((int) $completedRunId, 'completion-worker'));
+        $completedContext = app(AiExecutionContextFactory::class)->fromTaskRun(TaskRun::query()->findOrFail((int) $completedRunId));
+        app(JobQueueService::class)->completeJob(
+            (int) $completedRunId,
+            (int) $completedTask->id,
+            null,
+            10,
+            [
+                'model_attempts' => [['status' => 'failed', 'reason' => $sensitive]],
+                'key' => 'completed-key-secret',
+                'base_url' => 'https://completed.example.test?token=completed-url-secret',
+                'note' => 'completed-note-secret',
+                'nested' => ['accessToken' => 'completed-nested-secret'],
+            ],
+            $completedContext,
+        );
+        $completedMeta = json_encode(TaskRun::query()->findOrFail((int) $completedRunId)->meta, JSON_THROW_ON_ERROR);
+        foreach (['api.example.test', 'query-secret', 'bearer-secret', 'plain-key', 'plain-secret', 'plain-pass', 'plain-credential', 'json-key', 'json-bare-key', 'json.example.test', 'json-url-secret', 'json-note-secret', 'json-pass', 'completed-key-secret', 'completed.example.test', 'completed-url-secret', 'completed-note-secret', 'completed-nested-secret'] as $secret) {
+            $this->assertStringNotContainsString($secret, $completedMeta);
+        }
     }
 
     public function test_admin_deletion_dependencies_include_persisted_tasks_and_run_history(): void
