@@ -84,6 +84,97 @@ final class AdminAiModelIsolationTest extends TestCase
         $this->assertDatabaseCount('ai_models', 0);
     }
 
+    public function test_system_scope_update_rechecks_the_locked_current_actor_role_atomically(): void
+    {
+        $admin = $this->admin('role-revoked-during-update', 'super_admin');
+        $model = $this->model($admin, [
+            'name' => 'Original name',
+            'version' => 'original-version',
+            'model_id' => 'original-model-id',
+            'api_url' => 'https://original.example.test',
+            'failover_priority' => 40,
+            'daily_limit' => 120,
+        ]);
+        $original = $model->getRawOriginal();
+        $this->app->instance(ApiKeyCrypto::class, new class($admin) extends ApiKeyCrypto
+        {
+            public function __construct(private readonly Admin $admin) {}
+
+            public function encrypt(string $apiKey): string
+            {
+                $this->admin->forceFill(['role' => 'admin'])->save();
+
+                return parent::encrypt($apiKey);
+            }
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.ai-models.update', ['modelId' => $model->id]), $this->modelPayload([
+                'name' => 'Forged updated name',
+                'version' => 'forged-version',
+                'api_key' => 'rotated-secret-key',
+                'model_id' => 'forged-model-id',
+                'api_url' => 'https://forged.example.test',
+                'failover_priority' => 1,
+                'daily_limit' => 1,
+                'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            ]))
+            ->assertSessionHasErrors('access_scope');
+
+        $current = $model->fresh();
+        foreach ([
+            'owner_admin_id',
+            'access_scope',
+            'name',
+            'version',
+            'api_key',
+            'model_id',
+            'model_type',
+            'api_url',
+            'failover_priority',
+            'daily_limit',
+            'status',
+        ] as $attribute) {
+            $this->assertSame($original[$attribute], $current->getRawOriginal($attribute), $attribute);
+        }
+    }
+
+    public function test_role_downgrade_during_encryption_can_update_an_owned_user_content_model(): void
+    {
+        $admin = $this->admin('role-downgraded-user-content', 'super_admin');
+        $model = $this->model($admin);
+        $this->app->instance(ApiKeyCrypto::class, new class($admin) extends ApiKeyCrypto
+        {
+            public function __construct(private readonly Admin $admin) {}
+
+            public function encrypt(string $apiKey): string
+            {
+                $this->admin->forceFill(['role' => 'admin'])->save();
+
+                return parent::encrypt($apiKey);
+            }
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.ai-models.update', ['modelId' => $model->id]), $this->modelPayload([
+                'name' => 'Updated after role downgrade',
+                'api_key' => 'rotated-user-content-key',
+                'model_id' => $model->model_id,
+                'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            ]))
+            ->assertRedirect(route('admin.ai-models.index'));
+
+        $current = $model->fresh();
+        $this->assertSame('admin', $admin->fresh()->role);
+        $this->assertSame($admin->id, $current->owner_admin_id);
+        $this->assertSame(AiModel::ACCESS_SCOPE_USER_CONTENT, $current->access_scope);
+        $this->assertSame('Updated after role downgrade', $current->name);
+        $this->assertSame(
+            'rotated-user-content-key',
+            app(ApiKeyCrypto::class)->decrypt((string) $current->getRawOriginal('api_key')),
+        );
+    }
+
     public function test_model_creation_rolls_back_when_the_initial_personal_default_cannot_be_saved(): void
     {
         $admin = $this->admin('atomic-model-owner', 'admin');

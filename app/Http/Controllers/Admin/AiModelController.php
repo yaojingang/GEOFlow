@@ -311,9 +311,6 @@ class AiModelController extends Controller
             'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
             'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
             'status' => $status,
-            'access_scope' => $actor->isSuperAdmin()
-                ? (string) ($payload['access_scope'] ?? $model->access_scope)
-                : AiModel::ACCESS_SCOPE_USER_CONTENT,
         ];
         if ($this->supportsModelMaxTokens()) {
             $updateData['max_tokens'] = $this->normalizeMaxTokensForModelType($payload['max_tokens'] ?? null, $modelType);
@@ -330,21 +327,42 @@ class AiModelController extends Controller
             }
         }
 
-        $updated = DB::transaction(function () use ($actor, $model, $updateData): bool {
-            $lockedModel = $this->accessResolver
-                ->managementQuery($actor)
+        $updated = DB::transaction(function () use ($actor, $model, $payload, $updateData): bool {
+            $lockedActor = Admin::query()
+                ->whereKey($actor->getKey())
+                ->lockForUpdate()
+                ->first();
+            abort_unless($lockedActor instanceof Admin && (string) $lockedActor->status === 'active', 404);
+
+            $lockedModelQuery = AiModel::query()->ownedBy($lockedActor);
+            if (! $lockedActor->isSuperAdmin()) {
+                $lockedModelQuery->userContent();
+            }
+
+            $lockedModel = $lockedModelQuery
                 ->whereKey($model->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+            Gate::forUser($lockedActor)->authorize('update', $lockedModel);
+
+            $requestedScope = (string) ($payload['access_scope'] ?? $lockedModel->access_scope);
+            if ($requestedScope === AiModel::ACCESS_SCOPE_SYSTEM_ONLY && ! $lockedActor->isSuperAdmin()) {
+                throw ValidationException::withMessages([
+                    'access_scope' => __('admin.ai_models.error.system_scope_super_admin_only'),
+                ]);
+            }
+
             if ($this->activeTitleGenerationCount((int) $lockedModel->getKey()) > 0) {
                 return false;
             }
 
             $lockedModel->fill(Arr::except($updateData, ['access_scope']));
             $lockedModel->forceFill([
-                'access_scope' => $updateData['access_scope'],
+                'access_scope' => $lockedActor->isSuperAdmin()
+                    ? $requestedScope
+                    : AiModel::ACCESS_SCOPE_USER_CONTENT,
             ])->save();
-            $this->aiSettingsService->clearIncompatibleDefaultsForModel($lockedModel, $actor);
+            $this->aiSettingsService->clearIncompatibleDefaultsForModel($lockedModel, $lockedActor);
 
             return true;
         }, 3);
