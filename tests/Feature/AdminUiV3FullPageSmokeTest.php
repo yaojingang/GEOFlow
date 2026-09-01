@@ -105,12 +105,32 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             $topbarIdentities = $xpath->query('//*[@data-gf-topbar-identity]');
             $content = $xpath->query('//main[@id="main-content"]//*[@data-gf-page-heading]')?->item(0);
             $identity = $registry->pageIdentity($routeName);
+            $settingsNavigations = $xpath->query('//*[@data-settings-navigation]');
 
             $this->assertSame(1, $headings?->length, $routeName.' must render exactly one page title');
             $this->assertSame(1, $topbarIdentities?->length, $routeName.' must render one topbar identity');
             $this->assertSame($identity['icon'], $topbarIdentities?->item(0)?->attributes?->getNamedItem('data-page-icon')?->nodeValue, $routeName);
             $this->assertSame($identity['body_heading'], $content?->attributes?->getNamedItem('data-gf-page-heading')?->nodeValue, $routeName);
             $this->assertStringContainsString($identity['title'], $topbarIdentities?->item(0)?->textContent ?? '', $routeName);
+
+            $showsSettingsNavigation = $registry->activeKey($routeName) === 'site_settings'
+                && ! str_starts_with($routeName, 'admin.account.');
+            $this->assertSame($showsSettingsNavigation ? 1 : 0, $settingsNavigations?->length, $routeName);
+
+            if ($showsSettingsNavigation) {
+                $settingsNavigation = $settingsNavigations?->item(0);
+                $activeSettingsItems = $xpath->query('.//*[@aria-current="page"]', $settingsNavigation);
+                $expectedActiveItem = collect($registry->settingsNavigation($admin, $routeName))
+                    ->firstWhere('active', true);
+
+                $this->assertIsArray($expectedActiveItem, $routeName);
+                $this->assertSame(1, $activeSettingsItems?->length, $routeName);
+                $this->assertSame(
+                    $expectedActiveItem['key'],
+                    $activeSettingsItems?->item(0)?->attributes?->getNamedItem('data-settings-navigation-item')?->nodeValue,
+                    $routeName,
+                );
+            }
         }
     }
 
