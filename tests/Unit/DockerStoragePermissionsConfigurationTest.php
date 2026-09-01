@@ -109,6 +109,79 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         $this->assertStringContainsString('sleep "$((attempt * 15))"', $dockerfile);
     }
 
+    public function test_production_compose_renders_distinct_project_resources(): void
+    {
+        $docker = new Process(['docker', 'compose', 'version']);
+        $docker->run();
+
+        if (! $docker->isSuccessful()) {
+            $this->markTestSkipped('Docker Compose is required to verify rendered deployment configuration.');
+        }
+
+        $root = dirname(__DIR__, 2);
+        $first = $this->renderCompose($root, 'docker-compose.prod.yml', [
+            'GEOFLOW_APP_IMAGE' => false,
+            'GEOFLOW_WEB_IMAGE' => false,
+            'DOCKER_NETWORK_NAME' => 'geoflow-a-net',
+            'DOCKER_NETWORK_SUBNET' => '10.89.0.0/16',
+            'DOCKER_NETWORK_GATEWAY' => '10.89.0.1',
+            'WEB_PORT' => '18081',
+            'POSTGRES_DATA_DIR' => './docker-data/prod-a/postgres',
+        ], 'geoflow-a');
+        $second = $this->renderCompose($root, 'docker-compose.prod.yml', [
+            'GEOFLOW_APP_IMAGE' => false,
+            'GEOFLOW_WEB_IMAGE' => false,
+            'DOCKER_NETWORK_NAME' => 'geoflow-b-net',
+            'DOCKER_NETWORK_SUBNET' => '10.90.0.0/16',
+            'DOCKER_NETWORK_GATEWAY' => '10.90.0.1',
+            'WEB_PORT' => '18082',
+            'POSTGRES_DATA_DIR' => './docker-data/prod-b/postgres',
+        ], 'geoflow-b');
+
+        $this->assertSame('geoflow-a', $first['name'] ?? null);
+        $this->assertSame('geoflow-b', $second['name'] ?? null);
+        $this->assertSame('geoflow-a-web', $first['services']['web']['image'] ?? null);
+        $this->assertSame('geoflow-b-web', $second['services']['web']['image'] ?? null);
+        $this->assertSame('geoflow-a-net', $first['networks']['default']['name'] ?? null);
+        $this->assertSame('geoflow-b-net', $second['networks']['default']['name'] ?? null);
+        $this->assertSame('10.89.0.0/16', $first['networks']['default']['ipam']['config'][0]['subnet'] ?? null);
+        $this->assertSame('10.90.0.0/16', $second['networks']['default']['ipam']['config'][0]['subnet'] ?? null);
+        $this->assertSame('18081', $first['services']['web']['ports'][0]['published'] ?? null);
+        $this->assertSame('18082', $second['services']['web']['ports'][0]['published'] ?? null);
+        $this->assertStringEndsWith(
+            '/docker-data/prod-a/postgres',
+            $first['services']['postgres']['volumes'][0]['source'] ?? ''
+        );
+        $this->assertStringEndsWith(
+            '/docker-data/prod-b/postgres',
+            $second['services']['postgres']['volumes'][0]['source'] ?? ''
+        );
+
+        foreach ([['project' => 'geoflow-a', 'rendered' => $first], ['project' => 'geoflow-b', 'rendered' => $second]] as $scenario) {
+            $rendered = $scenario['rendered'];
+            foreach ($rendered['services'] ?? [] as $service => $configuration) {
+                $this->assertArrayNotHasKey(
+                    'container_name',
+                    $configuration,
+                    sprintf('Production service %s must use the Compose project prefix.', $service)
+                );
+
+                if (($configuration['build']['dockerfile'] ?? null) === 'docker/Dockerfile.prod') {
+                    $this->assertSame(
+                        $scenario['project'].'-app',
+                        $configuration['image'] ?? null,
+                        sprintf('Production service %s must use the project-scoped application image.', $service)
+                    );
+                }
+            }
+        }
+
+        $this->assertSame(
+            'wget -q --header="Host: $${GEOFLOW_NGINX_PRIMARY_HOST}" -O /dev/null http://127.0.0.1/up || exit 1',
+            $first['services']['web']['healthcheck']['test'][1] ?? null
+        );
+    }
+
     public function test_compose_renders_the_operator_storage_permission_override_when_available(): void
     {
         $docker = new Process(['docker', 'compose', 'version']);
@@ -186,8 +259,12 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
      * @param  array<string, string|false>  $environment
      * @return array<string, mixed>
      */
-    private function renderCompose(string $root, string $composeFile, array $environment): array
-    {
+    private function renderCompose(
+        string $root,
+        string $composeFile,
+        array $environment,
+        ?string $projectName = null
+    ): array {
         $emptyEnvFile = tempnam(sys_get_temp_dir(), 'geoflow-compose-env-');
         $this->assertNotFalse($emptyEnvFile);
 
@@ -198,19 +275,24 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
             $createdRuntimeEnvFile = true;
         }
 
+        $command = ['docker', 'compose'];
+        if ($projectName !== null) {
+            array_push($command, '-p', $projectName);
+        }
+        array_push(
+            $command,
+            '--env-file',
+            $emptyEnvFile,
+            '-f',
+            $composeFile,
+            'config',
+            '--no-env-resolution',
+            '--format',
+            'json'
+        );
+
         $process = new Process(
-            [
-                'docker',
-                'compose',
-                '--env-file',
-                $emptyEnvFile,
-                '-f',
-                $composeFile,
-                'config',
-                '--no-env-resolution',
-                '--format',
-                'json',
-            ],
+            $command,
             $root,
             array_merge(
                 [

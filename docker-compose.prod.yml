@@ -1,6 +1,6 @@
 # postgres 凭据由 DB_* 插值映射为官方镜像的 POSTGRES_*；redis 使用 REDIS_PASSWORD。
-# 多版本部署：不要写 container_name。每套实例在 .env.prod 里设不同的 COMPOSE_PROJECT_NAME，镜像会自动变成 {项目名}-app / {项目名}-web。
-# -p 只改容器/网络前缀，不会改 image:；请把同一个名字写进 COMPOSE_PROJECT_NAME，或 export 后再用 -p。
+# 多版本部署：每套实例设置不同的项目名、网络、子网、WEB_PORT 和数据目录；镜像会自动变成 {项目名}-app / {项目名}-web。
+# -p 会覆盖 Compose 项目名并参与 image: 插值；显式网络名、子网、WEB_PORT 和数据目录仍须逐实例设置。
 # 推荐：docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans
 name: ${COMPOSE_PROJECT_NAME:-geoflow-laravel-prod}
 
@@ -202,13 +202,12 @@ services:
     restart: unless-stopped
 
   ai-optimization-queue:
-    image: geoflow-app-prod:latest
+    image: ${GEOFLOW_APP_IMAGE:-${COMPOSE_PROJECT_NAME:-geoflow-laravel-prod}-app}
     build:
       context: .
       dockerfile: docker/Dockerfile.prod
       network: ${DOCKER_BUILD_NETWORK:-default}
       args: *prod_app_build_args
-    container_name: geoflow-ai-optimization-queue-prod
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
