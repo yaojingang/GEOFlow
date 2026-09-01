@@ -663,7 +663,7 @@ class AiSourceProviderController extends Controller
                 'http_status' => $result['http_status'],
                 'latency_ms' => $result['latency_ms'],
                 'endpoint' => $result['endpoint'],
-                'structured_output' => $result['structured_output'],
+                'structured_output' => $result['structured_output'] ?? [],
                 'answer_preview' => $result['raw_preview'],
                 'workspace_readiness' => $result['profile'] ?? null,
                 'workspace_readiness_expires_at' => $result['expires_at'] ?? null,

@@ -657,6 +657,51 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->assertSame(now()->toDateString(), $model->usage_date?->toDateString());
     }
 
+    public function test_super_admin_probe_result_without_structured_output_key_does_not_crash(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://api.deepseek.com/v1/chat/completions' => Http::response(
+                "data: {\"id\":\"1\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\\u4f60\\u597d\"},\"finish_reason\":null}]}\n\n"
+                ."data: {\"id\":\"1\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\uff0c\"},\"finish_reason\":null}]}\n\n"
+                ."data: {\"id\":\"1\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
+                ."data: [DONE]\n\n",
+                200,
+                ['Content-Type' => 'text/event-stream'],
+            ),
+        ]);
+
+        $model = $this->createAiModel([
+            'name' => 'DeepSeek Super Admin Probe',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+        ]);
+
+        $superAdmin = Admin::query()->create([
+            'username' => 'deepseek_super_probe_admin',
+            'password' => 'secret-123',
+            'email' => 'deepseek-super-probe-admin@example.com',
+            'display_name' => 'DeepSeek Super Probe Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($superAdmin, 'admin')
+            ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
+                'binding_type' => 'deepseek',
+                'model_id' => (int) $model->id,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.structured_output', [])
+            ->assertJsonPath('meta.workspace_readiness.configuration.status', 'ready')
+            ->assertJsonPath('meta.workspace_readiness.streaming.status', 'ready');
+
+        $model->refresh();
+        $this->assertSame('ready', (string) $model->ai_workspace_readiness_status);
+    }
+
     public function test_failed_model_binding_test_attempt_consumes_daily_quota(): void
     {
         Http::preventStrayRequests();
