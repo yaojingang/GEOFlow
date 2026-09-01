@@ -18,6 +18,8 @@ final class BackfillAdminAiAccessCommand extends Command
     protected $signature = 'geoflow:backfill-admin-ai-access
         {--legacy-owner= : Explicit legacy super administrator ID}
         {--created-before= : Historical administrator cutoff with an explicit timezone}
+        {--admin-max-id= : Stable administrator ID snapshot captured before deployment}
+        {--model-max-id= : Stable AI model ID snapshot captured before deployment}
         {--apply : Apply the audited backfill in one transaction}
         {--dry-run : Explicitly request preflight-only mode}
         {--batch=200 : Administrators processed per batch}';
@@ -40,7 +42,7 @@ final class BackfillAdminAiAccessCommand extends Command
     public function handle(): int
     {
         try {
-            [$ownerId, $cutoff, $apply, $batchSize] = $this->argumentsForRun();
+            [$ownerId, $cutoff, $adminMaxId, $modelMaxId, $apply, $batchSize] = $this->argumentsForRun();
         } catch (AdminAiAccessBackfillException $exception) {
             $this->error('Invalid arguments: '.$exception->getErrorCode());
 
@@ -49,8 +51,14 @@ final class BackfillAdminAiAccessCommand extends Command
 
         try {
             $result = $apply
-                ? $this->backfillService->apply($ownerId, $cutoff, $batchSize)
-                : $this->backfillService->preview($ownerId, $cutoff);
+                ? $this->backfillService->apply(
+                    $ownerId,
+                    $cutoff,
+                    $adminMaxId,
+                    $modelMaxId,
+                    $batchSize,
+                )
+                : $this->backfillService->preview($ownerId, $cutoff, $adminMaxId, $modelMaxId);
         } catch (AdminAiAccessBackfillException $exception) {
             $this->error('Preflight failed: '.$exception->getErrorCode());
 
@@ -64,8 +72,11 @@ final class BackfillAdminAiAccessCommand extends Command
         $this->line('Mode: '.($apply ? 'apply' : 'dry-run'));
         $this->line('Legacy owner: '.$result['legacy_owner_id']);
         $this->line('Created before: '.$result['created_before']);
+        $this->line('Admin max ID: '.($result['admin_max_id'] ?? 'not set'));
+        $this->line('Model max ID: '.($result['model_max_id'] ?? 'not set'));
         $this->line('Unowned models: '.$result['unowned_models']);
         $this->line('Historical administrators to share: '.$result['historical_administrators']);
+        $this->line('Super administrator bindings to clear: '.$result['super_admin_bindings_to_clear']);
         $this->line('Access versions to normalize: '.$result['invalid_access_versions']);
         $this->line('System-only models to mark: '.$result['system_models_to_mark']);
         $this->line('System/user-content conflicts: '.count($result['conflict_model_ids']));
@@ -85,6 +96,7 @@ final class BackfillAdminAiAccessCommand extends Command
         if ($apply) {
             $this->line('Models assigned: '.$result['models_assigned']);
             $this->line('Administrators shared: '.$result['administrators_shared']);
+            $this->line('Super administrator bindings cleared: '.$result['super_admin_bindings_cleared']);
             $this->line('Access versions normalized: '.$result['access_versions_normalized']);
             $this->line('System-only models marked: '.$result['system_models_marked']);
         }
@@ -92,7 +104,7 @@ final class BackfillAdminAiAccessCommand extends Command
         return self::SUCCESS;
     }
 
-    /** @return array{?int, CarbonImmutable, bool, int} */
+    /** @return array{?int, CarbonImmutable, ?int, ?int, bool, int} */
     private function argumentsForRun(): array
     {
         $apply = (bool) $this->option('apply');
@@ -109,7 +121,8 @@ final class BackfillAdminAiAccessCommand extends Command
         }
 
         try {
-            $cutoff = CarbonImmutable::parse($cutoffValue);
+            $cutoff = CarbonImmutable::parse($cutoffValue)
+                ->setTimezone((string) config('app.timezone', 'UTC'));
         } catch (Throwable) {
             throw new AdminAiAccessBackfillException('created_before_invalid');
         }
@@ -119,6 +132,9 @@ final class BackfillAdminAiAccessCommand extends Command
             throw new AdminAiAccessBackfillException('legacy_owner_invalid');
         }
 
+        $adminMaxId = $this->optionalSnapshotId('admin-max-id');
+        $modelMaxId = $this->optionalSnapshotId('model-max-id');
+
         $batchValue = trim((string) $this->option('batch'));
         if (! ctype_digit($batchValue) || (int) $batchValue < 1 || (int) $batchValue > 1000) {
             throw new AdminAiAccessBackfillException('batch_invalid');
@@ -127,8 +143,23 @@ final class BackfillAdminAiAccessCommand extends Command
         return [
             $ownerValue === '' ? null : (int) $ownerValue,
             $cutoff,
+            $adminMaxId,
+            $modelMaxId,
             $apply,
             (int) $batchValue,
         ];
+    }
+
+    private function optionalSnapshotId(string $option): ?int
+    {
+        $value = trim((string) $this->option($option));
+        if ($value === '') {
+            return null;
+        }
+        if (! ctype_digit($value) || filter_var($value, FILTER_VALIDATE_INT) === false) {
+            throw new AdminAiAccessBackfillException(str_replace('-', '_', $option).'_invalid');
+        }
+
+        return (int) $value;
     }
 }

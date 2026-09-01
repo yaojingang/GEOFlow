@@ -4,8 +4,8 @@ namespace App\Services\Admin;
 
 use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -13,6 +13,8 @@ use Illuminate\Validation\ValidationException;
 
 final class AiModelUsageRecorder
 {
+    private const IDEMPOTENCY_CONFLICT = 'ai_usage_event_idempotency_conflict';
+
     private const ALLOWED_FIELDS = [
         'request_id',
         'call_key',
@@ -79,33 +81,22 @@ final class AiModelUsageRecorder
         $this->assertAttributionIsConsistent($attributes);
         $payloadFingerprint = $this->payloadFingerprint($attributes);
 
-        $existing = $this->findExisting($attributes);
-        if ($existing instanceof AiModelUsageEvent) {
-            $this->assertIdempotentMatch($existing, $payloadFingerprint);
-
-            return $existing;
-        }
-
-        $event = new AiModelUsageEvent;
-        $event->forceFill([
+        DB::table((new AiModelUsageEvent)->getTable())->insertOrIgnore([
             'event_uuid' => (string) Str::uuid(),
             'payload_fingerprint' => $payloadFingerprint,
             ...$attributes,
+            'created_at' => now(),
         ]);
 
-        try {
-            $event->save();
-        } catch (QueryException $exception) {
-            $existing = $this->findExisting($attributes);
-            if (! $existing instanceof AiModelUsageEvent) {
-                throw $exception;
-            }
-            $this->assertIdempotentMatch($existing, $payloadFingerprint);
-
-            return $existing;
+        $existing = $this->findExisting($attributes);
+        if (! $existing instanceof AiModelUsageEvent) {
+            throw ValidationException::withMessages([
+                'call_key' => ['ai_usage_event_insert_failed'],
+            ]);
         }
+        $this->assertIdempotentMatch($existing, $payloadFingerprint);
 
-        return $event->refresh();
+        return $existing;
     }
 
     /** @param array<string, mixed> $attributes */
@@ -173,7 +164,7 @@ final class AiModelUsageRecorder
         }
 
         throw ValidationException::withMessages([
-            'call_key' => ['The request and call key are already associated with different usage metadata.'],
+            'call_key' => [self::IDEMPOTENCY_CONFLICT],
         ]);
     }
 }

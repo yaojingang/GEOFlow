@@ -83,6 +83,54 @@ class AiModelUsageEventTest extends TestCase
         }
     }
 
+    public function test_recorder_uses_conflict_safe_idempotency_inside_an_outer_transaction(): void
+    {
+        if (DB::getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('SQL shape assertion targets the SQLite conflict-safe grammar.');
+        }
+
+        $owner = $this->admin('owner', 'super_admin');
+        $model = $this->model($owner);
+        $payload = $this->usagePayload($owner, $model);
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+
+        [$first, $second] = DB::transaction(function () use ($payload): array {
+            $recorder = app(AiModelUsageRecorder::class);
+
+            return [$recorder->record($payload), $recorder->record($payload)];
+        });
+
+        $this->assertTrue($first->is($second));
+        $this->assertDatabaseCount('ai_model_usage_events', 1);
+        $this->assertTrue(collect($queries)->contains(
+            static fn (string $sql): bool => str_contains($sql, 'insert or ignore into "ai_model_usage_events"'),
+        ));
+    }
+
+    public function test_reused_call_key_with_different_fingerprint_returns_a_stable_conflict(): void
+    {
+        $owner = $this->admin('owner', 'super_admin');
+        $model = $this->model($owner);
+        $payload = $this->usagePayload($owner, $model);
+        $recorder = app(AiModelUsageRecorder::class);
+        $recorder->record($payload);
+
+        try {
+            DB::transaction(fn () => $recorder->record([...$payload, 'total_tokens' => 999]));
+            $this->fail('Expected a reused idempotency key with different usage metadata to fail.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['ai_usage_event_idempotency_conflict'],
+                $exception->errors()['call_key'] ?? [],
+            );
+        }
+
+        $this->assertDatabaseCount('ai_model_usage_events', 1);
+    }
+
     public function test_usage_values_are_restricted_to_known_states_and_non_negative_tokens(): void
     {
         $owner = $this->admin('owner', 'super_admin');

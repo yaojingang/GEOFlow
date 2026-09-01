@@ -14,65 +14,112 @@ final class AdminAiAccessBackfillService
     public function __construct(private readonly SystemAiModelReferenceInspector $referenceInspector) {}
 
     /** @return array<string, mixed> */
-    public function preview(?int $legacyOwnerId, CarbonImmutable $createdBefore): array
-    {
+    public function preview(
+        ?int $legacyOwnerId,
+        CarbonImmutable $createdBefore,
+        ?int $adminMaxId,
+        ?int $modelMaxId,
+    ): array {
         $owner = $this->resolveLegacyOwner($legacyOwnerId);
 
-        return $this->buildPlan($owner, $createdBefore);
+        $this->assertSnapshotsCoverNullTimestamps($adminMaxId, $modelMaxId);
+
+        return $this->buildPlan($owner, $createdBefore, $adminMaxId, $modelMaxId);
     }
 
     /** @return array<string, mixed> */
-    public function apply(?int $legacyOwnerId, CarbonImmutable $createdBefore, int $batchSize): array
-    {
-        return DB::transaction(function () use ($legacyOwnerId, $createdBefore, $batchSize): array {
+    public function apply(
+        ?int $legacyOwnerId,
+        CarbonImmutable $createdBefore,
+        ?int $adminMaxId,
+        ?int $modelMaxId,
+        int $batchSize,
+    ): array {
+        return DB::transaction(function () use (
+            $legacyOwnerId,
+            $createdBefore,
+            $adminMaxId,
+            $modelMaxId,
+            $batchSize,
+        ): array {
             $owner = $this->resolveLegacyOwner($legacyOwnerId, true);
-            $plan = $this->buildPlan($owner, $createdBefore);
+            $this->assertSnapshotsCoverNullTimestamps($adminMaxId, $modelMaxId);
+            $plan = $this->buildPlan($owner, $createdBefore, $adminMaxId, $modelMaxId);
 
-            $modelsAssigned = $this->historicalModels($createdBefore)
+            $modelsAssigned = $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereNull('owner_admin_id')
                 ->update(['owner_admin_id' => $owner->getKey(), 'updated_at' => now()]);
-            $systemModelsMarked = $this->historicalModels($createdBefore)
+            $systemModelsMarked = $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereIn('id', $plan['system_only_model_ids'])
                 ->where('access_scope', '!=', AiModel::ACCESS_SCOPE_SYSTEM_ONLY)
                 ->update(['access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY, 'updated_at' => now()]);
 
+            $versionsNormalized = $this->historicalAdmins($createdBefore, $adminMaxId)
+                ->where('ai_config_access_version', '<', 1)
+                ->update(['ai_config_access_version' => 1, 'updated_at' => now()]);
+
+            $superBindingsCleared = 0;
+            $this->historicalSuperAdminBindings($createdBefore, $adminMaxId)
+                ->select(['id', 'role', 'shared_ai_config_owner_id', 'ai_config_access_version'])
+                ->lockForUpdate()
+                ->chunkById($batchSize, function ($admins) use (
+                    $createdBefore,
+                    $adminMaxId,
+                    &$superBindingsCleared,
+                ): void {
+                    foreach ($admins as $admin) {
+                        $version = max(1, (int) $admin->ai_config_access_version) + 1;
+                        $query = Admin::query()
+                            ->whereKey($admin->getKey())
+                            ->whereNotNull('shared_ai_config_owner_id')
+                            ->whereRaw(
+                                'LOWER(TRIM(role)) IN (?, ?)',
+                                ['super_admin', 'superadmin'],
+                            );
+                        $this->applyHistoricalBoundary($query, $createdBefore, $adminMaxId);
+                        $superBindingsCleared += $query->update([
+                            'shared_ai_config_owner_id' => null,
+                            'ai_config_access_version' => $version,
+                            'updated_at' => now(),
+                        ]);
+                    }
+                });
+
             $administratorsShared = 0;
-            $this->historicalOrdinaryAdmins($createdBefore)
+            $this->historicalOrdinaryAdmins($createdBefore, $adminMaxId)
                 ->select(['id', 'role', 'shared_ai_config_owner_id'])
-                ->chunkById($batchSize, function ($admins) use ($owner, $createdBefore, &$administratorsShared): void {
+                ->chunkById($batchSize, function ($admins) use (
+                    $owner,
+                    $createdBefore,
+                    $adminMaxId,
+                    &$administratorsShared,
+                ): void {
                     foreach ($admins as $admin) {
                         if ($admin->isSuperAdmin() || $admin->shared_ai_config_owner_id !== null) {
                             continue;
                         }
 
-                        $administratorsShared += Admin::query()
+                        $query = Admin::query()
                             ->whereKey($admin->getKey())
                             ->whereNull('shared_ai_config_owner_id')
                             ->where('ai_config_access_version', '<=', 1)
-                            ->where(function (Builder $query) use ($createdBefore): void {
-                                $query
-                                    ->whereNull('created_at')
-                                    ->orWhere('created_at', '<=', $createdBefore);
-                            })
                             ->whereRaw(
                                 'LOWER(TRIM(role)) NOT IN (?, ?)',
                                 ['super_admin', 'superadmin'],
-                            )
-                            ->update([
-                                'shared_ai_config_owner_id' => $owner->getKey(),
-                                'updated_at' => now(),
-                            ]);
+                            );
+                        $this->applyHistoricalBoundary($query, $createdBefore, $adminMaxId);
+                        $administratorsShared += $query->update([
+                            'shared_ai_config_owner_id' => $owner->getKey(),
+                            'updated_at' => now(),
+                        ]);
                     }
                 });
-
-            $versionsNormalized = Admin::query()
-                ->where('ai_config_access_version', '<', 1)
-                ->update(['ai_config_access_version' => 1, 'updated_at' => now()]);
 
             return [
                 ...$plan,
                 'models_assigned' => $modelsAssigned,
                 'administrators_shared' => $administratorsShared,
+                'super_admin_bindings_cleared' => $superBindingsCleared,
                 'access_versions_normalized' => $versionsNormalized,
                 'system_models_marked' => $systemModelsMarked,
             ];
@@ -114,22 +161,34 @@ final class AdminAiAccessBackfillService
     }
 
     /** @return array<string, mixed> */
-    private function buildPlan(Admin $owner, CarbonImmutable $createdBefore): array
-    {
+    private function buildPlan(
+        Admin $owner,
+        CarbonImmutable $createdBefore,
+        ?int $adminMaxId,
+        ?int $modelMaxId,
+    ): array {
         $references = $this->referenceInspector->inspect((int) $owner->getKey());
 
         return [
             'legacy_owner_id' => (int) $owner->getKey(),
             'created_before' => $createdBefore->toIso8601String(),
-            'unowned_models' => $this->historicalModels($createdBefore)
+            'admin_max_id' => $adminMaxId,
+            'model_max_id' => $modelMaxId,
+            'unowned_models' => $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereNull('owner_admin_id')
                 ->count(),
-            'historical_administrators' => $this->historicalOrdinaryAdmins($createdBefore)
+            'historical_administrators' => $this->historicalOrdinaryAdmins($createdBefore, $adminMaxId)
                 ->get(['id', 'role', 'shared_ai_config_owner_id'])
                 ->reject(static fn (Admin $admin): bool => $admin->isSuperAdmin())
                 ->count(),
-            'invalid_access_versions' => Admin::query()->where('ai_config_access_version', '<', 1)->count(),
-            'system_models_to_mark' => $this->historicalModels($createdBefore)
+            'super_admin_bindings_to_clear' => $this->historicalSuperAdminBindings(
+                $createdBefore,
+                $adminMaxId,
+            )->count(),
+            'invalid_access_versions' => $this->historicalAdmins($createdBefore, $adminMaxId)
+                ->where('ai_config_access_version', '<', 1)
+                ->count(),
+            'system_models_to_mark' => $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereIn('id', $references['system_only_model_ids'])
                 ->where('access_scope', '!=', AiModel::ACCESS_SCOPE_SYSTEM_ONLY)
                 ->count(),
@@ -137,26 +196,79 @@ final class AdminAiAccessBackfillService
         ];
     }
 
-    private function historicalOrdinaryAdmins(CarbonImmutable $createdBefore): Builder
-    {
-        return Admin::query()
+    private function historicalOrdinaryAdmins(
+        CarbonImmutable $createdBefore,
+        ?int $adminMaxId,
+    ): Builder {
+        return $this->historicalAdmins($createdBefore, $adminMaxId)
             ->whereNull('shared_ai_config_owner_id')
             ->where('ai_config_access_version', '<=', 1)
-            ->where(function (Builder $query) use ($createdBefore): void {
-                $query
-                    ->whereNull('created_at')
-                    ->orWhere('created_at', '<=', $createdBefore);
-            })
+            ->whereRaw(
+                'LOWER(TRIM(role)) NOT IN (?, ?)',
+                ['super_admin', 'superadmin'],
+            )
             ->orderBy('id');
     }
 
-    private function historicalModels(CarbonImmutable $createdBefore): Builder
+    private function historicalSuperAdminBindings(
+        CarbonImmutable $createdBefore,
+        ?int $adminMaxId,
+    ): Builder {
+        return $this->historicalAdmins($createdBefore, $adminMaxId)
+            ->whereNotNull('shared_ai_config_owner_id')
+            ->whereRaw(
+                'LOWER(TRIM(role)) IN (?, ?)',
+                ['super_admin', 'superadmin'],
+            )
+            ->orderBy('id');
+    }
+
+    private function historicalAdmins(CarbonImmutable $createdBefore, ?int $adminMaxId): Builder
     {
-        return AiModel::query()
-            ->where(function (Builder $query) use ($createdBefore): void {
-                $query
+        $query = Admin::query();
+        $this->applyHistoricalBoundary($query, $createdBefore, $adminMaxId);
+
+        return $query;
+    }
+
+    private function historicalModels(CarbonImmutable $createdBefore, ?int $modelMaxId): Builder
+    {
+        $query = AiModel::query();
+        $this->applyHistoricalBoundary($query, $createdBefore, $modelMaxId);
+
+        return $query;
+    }
+
+    private function applyHistoricalBoundary(
+        Builder $query,
+        CarbonImmutable $createdBefore,
+        ?int $maxId,
+    ): void {
+        $storageCutoff = $createdBefore->format('Y-m-d H:i:s');
+        if ($maxId === null) {
+            $query
+                ->whereNotNull('created_at')
+                ->where('created_at', '<=', $storageCutoff);
+
+            return;
+        }
+
+        $query
+            ->where('id', '<=', $maxId)
+            ->where(function (Builder $boundary) use ($storageCutoff): void {
+                $boundary
                     ->whereNull('created_at')
-                    ->orWhere('created_at', '<=', $createdBefore);
+                    ->orWhere('created_at', '<=', $storageCutoff);
             });
+    }
+
+    private function assertSnapshotsCoverNullTimestamps(?int $adminMaxId, ?int $modelMaxId): void
+    {
+        if ($adminMaxId === null && Admin::query()->whereNull('created_at')->exists()) {
+            throw new AdminAiAccessBackfillException('admin_max_id_required_for_null_created_at');
+        }
+        if ($modelMaxId === null && AiModel::query()->whereNull('created_at')->exists()) {
+            throw new AdminAiAccessBackfillException('model_max_id_required_for_null_created_at');
+        }
     }
 }
