@@ -2,11 +2,21 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Data\Admin\GovernanceAiModelData;
+use App\Data\Admin\SharedAiModelData;
+use App\Exceptions\AiModelAccessException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreAiModelRequest;
+use App\Http\Requests\Admin\UpdateAiModelRequest;
+use App\Http\Requests\Admin\UpdatePersonalAiDefaultsRequest;
+use App\Models\Admin;
+use App\Models\AdminAiSetting;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\SiteSetting;
 use App\Models\TitleGenerationRun;
+use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Services\Admin\AdminAiSettingsService;
 use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
 use App\Services\GeoFlow\AiModelTestDiagnosisService;
 use App\Services\GeoFlow\AiUsageQuotaService;
@@ -18,15 +28,19 @@ use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Throwable;
 
@@ -52,6 +66,8 @@ class AiModelController extends Controller
         private readonly AiModelTestDiagnosisService $modelTestDiagnosis,
         private readonly AiWorkspaceModelCapabilityProbe $aiWorkspaceModelProbe,
         private readonly ArticleAiQualityInvalidationService $qualityInvalidationService,
+        private readonly AdminAiModelAccessResolver $accessResolver,
+        private readonly AdminAiSettingsService $aiSettingsService,
     ) {}
 
     /**
@@ -60,41 +76,101 @@ class AiModelController extends Controller
      * 输出页面所需完整数据：模型列表、可选 embedding 模型、默认 embedding 模型 ID、
      * 以及 pgvector 可用状态，保证页面在一个请求内即可渲染。
      */
-    public function index(): View
+    public function index(Request $request): View
     {
-        return view('admin.ai-models.index', [
+        $actor = $this->activeActor($request);
+        Gate::forUser($actor)->authorize('viewAny', AiModel::class);
+        $personalSettings = AdminAiSetting::query()
+            ->where('admin_id', $actor->getKey())
+            ->first();
+        $myModels = $this->loadModels(
+            $this->accessResolver->managementQuery($actor),
+            (int) ($personalSettings?->default_embedding_model_id ?? 0),
+        );
+        $sharedModels = $actor->isSuperAdmin() ? [] : $this->loadSharedModels($actor);
+        $governancePaginator = $actor->isSuperAdmin() ? $this->loadGovernanceModels($actor) : null;
+        $governanceModels = $governancePaginator?->items() ?? [];
+        $personalDefaultModelOptions = $this->personalDefaultModelOptions($actor);
+
+        $viewData = [
             'pageTitle' => __('admin.ai_models.page_title'),
             'activeMenu' => 'ai_config',
             'adminSiteName' => AdminWeb::siteName(),
-            'models' => $this->loadModels(),
-            'embeddingModels' => $this->loadActiveEmbeddingModels(),
-            'chatModels' => $this->loadActiveChatModels(),
-            'defaultEmbeddingModelId' => $this->getDefaultEmbeddingModelId(),
-            'chunkingConfig' => $this->getChunkingConfig(),
-            'pgvectorEnabled' => $this->isPgvectorEnabled(),
+            'models' => $myModels,
+            'myModels' => $myModels,
+            'sharedModels' => $sharedModels,
+            'governanceModels' => $governanceModels,
+            'governancePaginator' => $governancePaginator,
+            'showSystemConfiguration' => $actor->isSuperAdmin(),
+            'actorIsSuperAdmin' => $actor->isSuperAdmin(),
+            'accessPreview' => $actor->isSuperAdmin()
+                ? null
+                : $this->accessPreview($actor, $personalDefaultModelOptions),
+            'personalDefaultModelOptions' => $personalDefaultModelOptions,
+            'personalDefaultChatModelId' => (int) ($personalSettings?->default_chat_model_id ?? 0),
+            'personalDefaultEmbeddingModelId' => (int) ($personalSettings?->default_embedding_model_id ?? 0),
             'contentMaxTokens' => $this->defaultContentMaxTokens(),
             'supportsModelMaxTokens' => $this->supportsModelMaxTokens(),
-        ]);
+        ];
+        if ($actor->isSuperAdmin()) {
+            $viewData += [
+                'embeddingModels' => $this->loadActiveEmbeddingModels($actor),
+                'chatModels' => $this->loadActiveChatModels($actor),
+                'defaultEmbeddingModelId' => $this->getDefaultEmbeddingModelId(),
+                'chunkingConfig' => $this->getChunkingConfig(),
+                'pgvectorEnabled' => $this->isPgvectorEnabled(),
+            ];
+        }
+
+        return view('admin.ai-models.index', $viewData);
+    }
+
+    public function updatePersonalDefaults(UpdatePersonalAiDefaultsRequest $request): RedirectResponse
+    {
+        $actor = $this->activeActor($request);
+
+        try {
+            $this->aiSettingsService->setDefaults(
+                $actor,
+                $request->modelReference('default_chat_model_id'),
+                $request->modelReference('default_embedding_model_id'),
+                $actor,
+            );
+        } catch (AiModelAccessException $exception) {
+            return back()->withErrors([
+                'personal_defaults' => __('admin.ai_models.error.personal_default_rejected', [
+                    'code' => $exception->getErrorCode(),
+                ]),
+            ]);
+        }
+
+        return redirect()
+            ->route('admin.ai-models.index')
+            ->with('message', __('admin.ai_models.message.personal_defaults_updated'));
     }
 
     /**
      * AI 模型创建页。
      */
-    public function create(): View
+    public function create(Request $request): View
     {
+        $actor = $this->activeActor($request);
+        Gate::forUser($actor)->authorize('create', AiModel::class);
+
         return view('admin.ai-models.create', [
             'pageTitle' => __('admin.ai_models.create_page_title'),
             'activeMenu' => 'ai_config',
             'adminSiteName' => AdminWeb::siteName(),
             'contentMaxTokens' => $this->defaultContentMaxTokens(),
             'supportsModelMaxTokens' => $this->supportsModelMaxTokens(),
+            'actorIsSuperAdmin' => $actor->isSuperAdmin(),
         ]);
     }
 
     /**
      * AI 模型编辑页。
      */
-    public function edit(int $modelId): View
+    public function edit(Request $request, int $modelId): View
     {
         $columns = [
             'id',
@@ -106,12 +182,13 @@ class AiModelController extends Controller
             'failover_priority',
             'daily_limit',
             'status',
+            'access_scope',
         ];
         if ($this->supportsModelMaxTokens()) {
             $columns[] = 'max_tokens';
         }
 
-        $model = AiModel::query()->select($columns)->whereKey($modelId)->firstOrFail();
+        $model = $this->configurableModel($request, $modelId, 'update', $columns);
 
         return view('admin.ai-models.edit', [
             'pageTitle' => __('admin.ai_models.modal_edit'),
@@ -120,6 +197,7 @@ class AiModelController extends Controller
             'model' => $model,
             'contentMaxTokens' => $this->defaultContentMaxTokens(),
             'supportsModelMaxTokens' => $this->supportsModelMaxTokens(),
+            'actorIsSuperAdmin' => $this->activeActor($request)->isSuperAdmin(),
         ]);
     }
 
@@ -128,11 +206,13 @@ class AiModelController extends Controller
      *
      * 说明：
      * - 创建时 API Key 必填，并在写入前加密；
-     * - 若新增的是 embedding 模型，且系统尚未设置默认 embedding，则自动兜底为该模型。
+     * - 首次新增个人 Chat 或 Embedding 模型时，安全补充对应的个人默认模型。
      */
-    public function store(Request $request): RedirectResponse
+    public function store(StoreAiModelRequest $request): RedirectResponse
     {
-        $payload = $this->validateModelPayload($request, false);
+        $actor = $request->user('admin');
+        abort_unless($actor instanceof Admin, 404);
+        $payload = $request->validated();
 
         $apiKey = trim((string) ($payload['api_key'] ?? ''));
         if ($apiKey === '') {
@@ -140,33 +220,58 @@ class AiModelController extends Controller
         }
 
         try {
-            $modelType = $this->normalizeModelType((string) ($payload['model_type'] ?? 'chat'));
-            $createData = [
-                'name' => trim((string) $payload['name']),
-                'version' => trim((string) ($payload['version'] ?? '')),
-                'api_key' => $this->encryptApiKey($apiKey),
-                'model_id' => trim((string) $payload['model_id']),
-                'model_type' => $modelType,
-                'api_url' => trim((string) ($payload['api_url'] ?? '')),
-                'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
-                'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
-                'status' => 'active',
-            ];
-            if ($this->supportsModelMaxTokens()) {
-                $createData['max_tokens'] = $this->normalizeMaxTokensForModelType($payload['max_tokens'] ?? null, $modelType);
-            }
-
-            $createdModel = AiModel::query()->create($createData);
+            $encryptedApiKey = $this->encryptApiKey($apiKey);
         } catch (\RuntimeException) {
             return back()
                 ->withInput(Arr::except($payload, ['api_key']))
                 ->withErrors(__('admin.ai_models.error.crypto_key_missing'));
         }
 
-        // 当系统尚未指定默认 embedding 模型时，首次创建 embedding 模型自动兜底。
-        if ($createdModel->model_type === 'embedding' && $this->getDefaultEmbeddingModelId() <= 0) {
-            $this->setDefaultEmbeddingModelId((int) $createdModel->id);
+        $modelType = $this->normalizeModelType((string) ($payload['model_type'] ?? 'chat'));
+        $createData = [
+            'name' => trim((string) $payload['name']),
+            'version' => trim((string) ($payload['version'] ?? '')),
+            'api_key' => $encryptedApiKey,
+            'model_id' => trim((string) $payload['model_id']),
+            'model_type' => $modelType,
+            'api_url' => trim((string) ($payload['api_url'] ?? '')),
+            'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
+            'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
+            'status' => 'active',
+        ];
+        if ($this->supportsModelMaxTokens()) {
+            $createData['max_tokens'] = $this->normalizeMaxTokensForModelType($payload['max_tokens'] ?? null, $modelType);
         }
+
+        $createdModel = DB::transaction(function () use ($actor, $createData, $payload): AiModel {
+            $lockedActor = Admin::query()
+                ->whereKey($actor->getKey())
+                ->lockForUpdate()
+                ->first();
+            abort_unless($lockedActor instanceof Admin && (string) $lockedActor->status === 'active', 404);
+
+            $requestedScope = (string) ($payload['access_scope'] ?? AiModel::ACCESS_SCOPE_USER_CONTENT);
+            if ($requestedScope === AiModel::ACCESS_SCOPE_SYSTEM_ONLY && ! $lockedActor->isSuperAdmin()) {
+                throw ValidationException::withMessages([
+                    'access_scope' => __('admin.ai_models.error.system_scope_super_admin_only'),
+                ]);
+            }
+
+            $model = new AiModel($createData);
+            $model->forceFill([
+                'owner_admin_id' => (int) $lockedActor->getKey(),
+                'access_scope' => $lockedActor->isSuperAdmin()
+                    ? $requestedScope
+                    : AiModel::ACCESS_SCOPE_USER_CONTENT,
+            ])->save();
+
+            if ((string) $model->access_scope === AiModel::ACCESS_SCOPE_USER_CONTENT) {
+                $this->aiSettingsService->setPersonalDefaultIfMissing($lockedActor, $model);
+            }
+
+            return $model;
+        }, 3);
+
         if ($createdModel->model_type === 'chat') {
             $this->qualityInvalidationService->invalidateModel(
                 (int) $createdModel->id,
@@ -182,13 +287,14 @@ class AiModelController extends Controller
      *
      * 说明：
      * - 编辑时 API Key 可留空（留空表示保留原值）；
-     * - 若当前模型是默认 embedding，但更新后不再是“active + embedding”，
-     *   则清空默认 embedding 配置，避免指向不可用模型。
+     * - 更新后清理已失效或类型不兼容的个人默认模型引用；
+     * - 超级管理员更新系统默认 embedding 时继续保持原有兼容清理。
      */
-    public function update(Request $request, int $modelId): RedirectResponse
+    public function update(UpdateAiModelRequest $request, int $modelId): RedirectResponse
     {
-        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
-        $payload = $this->validateModelPayload($request, true);
+        $actor = $this->activeActor($request);
+        $model = $request->aiModel();
+        $payload = $request->validated();
 
         $modelType = $this->normalizeModelType((string) ($payload['model_type'] ?? 'chat'));
         $status = (string) ($payload['status'] ?? 'active');
@@ -205,6 +311,9 @@ class AiModelController extends Controller
             'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
             'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
             'status' => $status,
+            'access_scope' => $actor->isSuperAdmin()
+                ? (string) ($payload['access_scope'] ?? $model->access_scope)
+                : AiModel::ACCESS_SCOPE_USER_CONTENT,
         ];
         if ($this->supportsModelMaxTokens()) {
             $updateData['max_tokens'] = $this->normalizeMaxTokensForModelType($payload['max_tokens'] ?? null, $modelType);
@@ -221,13 +330,21 @@ class AiModelController extends Controller
             }
         }
 
-        $updated = DB::transaction(function () use ($model, $updateData): bool {
-            $lockedModel = AiModel::query()->whereKey($model->getKey())->lockForUpdate()->firstOrFail();
+        $updated = DB::transaction(function () use ($actor, $model, $updateData): bool {
+            $lockedModel = $this->accessResolver
+                ->managementQuery($actor)
+                ->whereKey($model->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
             if ($this->activeTitleGenerationCount((int) $lockedModel->getKey()) > 0) {
                 return false;
             }
 
-            $lockedModel->update($updateData);
+            $lockedModel->fill(Arr::except($updateData, ['access_scope']));
+            $lockedModel->forceFill([
+                'access_scope' => $updateData['access_scope'],
+            ])->save();
+            $this->aiSettingsService->clearIncompatibleDefaultsForModel($lockedModel, $actor);
 
             return true;
         }, 3);
@@ -244,9 +361,11 @@ class AiModelController extends Controller
             'AI 质检模型配置已更新',
         );
 
-        $defaultEmbeddingModelId = $this->getDefaultEmbeddingModelId();
-        if ($defaultEmbeddingModelId === (int) $model->id && ($modelType !== 'embedding' || $status !== 'active')) {
-            $this->setDefaultEmbeddingModelId(0);
+        if ($actor->isSuperAdmin()) {
+            $defaultEmbeddingModelId = $this->getDefaultEmbeddingModelId();
+            if ($defaultEmbeddingModelId === (int) $model->id && ($modelType !== 'embedding' || $status !== 'active')) {
+                $this->setDefaultEmbeddingModelId(0);
+            }
         }
 
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.update_success'));
@@ -257,12 +376,19 @@ class AiModelController extends Controller
      *
      * 删除策略：
      * - 仅当任务引用数为 0 时允许删除；
-     * - 若删除目标是默认 embedding 模型，同步清空默认设置。
+     * - 删除前清理所有管理员的个人默认引用；
+     * - 超级管理员删除系统默认 embedding 时同步清理全局设置。
      */
-    public function destroy(int $modelId): RedirectResponse
+    public function destroy(Request $request, int $modelId): RedirectResponse
     {
-        $result = DB::transaction(function () use ($modelId): array {
-            $model = AiModel::query()->whereKey($modelId)->lockForUpdate()->firstOrFail();
+        $actor = $this->activeActor($request);
+        $model = $this->configurableModel($request, $modelId, 'delete');
+        $result = DB::transaction(function () use ($actor, $model): array {
+            $model = $this->accessResolver
+                ->managementQuery($actor)
+                ->whereKey($model->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
             if ($this->activeTitleGenerationCount((int) $model->getKey()) > 0) {
                 return ['model' => $model, 'error' => 'title_generation'];
             }
@@ -273,6 +399,7 @@ class AiModelController extends Controller
                 return ['model' => $model, 'error' => 'task', 'count' => $taskCount];
             }
 
+            $this->aiSettingsService->clearAllDefaultsForModel($model, $actor);
             $model->delete();
 
             return ['model' => $model, 'error' => null];
@@ -286,7 +413,7 @@ class AiModelController extends Controller
 
         /** @var AiModel $model */
         $model = $result['model'];
-        if ($this->getDefaultEmbeddingModelId() === (int) $model->id) {
+        if ($actor->isSuperAdmin() && $this->getDefaultEmbeddingModelId() === (int) $model->id) {
             $this->setDefaultEmbeddingModelId(0);
         }
 
@@ -311,7 +438,7 @@ class AiModelController extends Controller
      */
     public function testConnection(Request $request, int $modelId): JsonResponse
     {
-        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
+        $model = $this->configurableModel($request, $modelId, 'test');
         $startedAt = microtime(true);
         $reservation = null;
         $workspaceProbeAttempted = false;
@@ -565,7 +692,7 @@ class AiModelController extends Controller
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function loadModels(): array
+    private function loadModels(Builder $query, int $defaultEmbeddingModelId): array
     {
         $supportsMaxTokens = $this->supportsModelMaxTokens();
         $columns = [
@@ -600,7 +727,7 @@ class AiModelController extends Controller
             }
         }
 
-        $models = AiModel::query()
+        $models = $query
             ->select($columns)
             ->withCount([
                 'tasks as content_task_count' => fn ($query) => $query->withTrashed(),
@@ -614,8 +741,6 @@ class AiModelController extends Controller
             ])
             ->orderByDesc('created_at')
             ->get();
-
-        $defaultEmbeddingModelId = $this->getDefaultEmbeddingModelId();
 
         return $models->map(function (AiModel $model) use ($defaultEmbeddingModelId, $supportsMaxTokens): array {
             $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
@@ -650,14 +775,87 @@ class AiModelController extends Controller
         })->all();
     }
 
+    /** @return array<int, array<string, mixed>> */
+    private function loadSharedModels(Admin $actor): array
+    {
+        return $this->accessResolver
+            ->visibleQuery($actor)
+            ->where('owner_admin_id', '!=', $actor->getKey())
+            ->orderBy('failover_priority')
+            ->orderBy('id')
+            ->get()
+            ->map(static fn (AiModel $model): array => SharedAiModelData::fromModel($model, true)->toArray())
+            ->all();
+    }
+
+    /** @return LengthAwarePaginator<int, array<string, mixed>> */
+    private function loadGovernanceModels(Admin $actor): LengthAwarePaginator
+    {
+        $paginator = $this->accessResolver
+            ->governanceQuery($actor)
+            ->where('owner_admin_id', '!=', $actor->getKey())
+            ->with('owner:id,username,display_name,role,status')
+            ->orderBy('owner_admin_id')
+            ->orderBy('failover_priority')
+            ->orderBy('id')
+            ->paginate(50, ['*'], 'governance_page');
+        $paginator->setCollection(
+            $paginator->getCollection()
+                ->map(static fn (AiModel $model): array => GovernanceAiModelData::fromModel($model)->toArray()),
+        );
+
+        return $paginator;
+    }
+
+    /**
+     * @param  array<int, array{id:int,name:string,version:string,model_type:string,source:string}>  $availableModels
+     * @return array{mode:string,provider_available:bool,provider_name:string,needs_repair:bool}
+     */
+    private function accessPreview(Admin $actor, array $availableModels): array
+    {
+        $provider = $actor->shared_ai_config_owner_id === null
+            ? null
+            : Admin::query()
+                ->select(['id', 'username', 'display_name', 'role', 'status'])
+                ->whereKey($actor->shared_ai_config_owner_id)
+                ->first();
+        $providerAvailable = $provider instanceof Admin
+            && $provider->isSuperAdmin()
+            && (string) $provider->status === 'active';
+
+        return [
+            'mode' => $actor->shared_ai_config_owner_id === null ? 'independent' : 'shared',
+            'provider_available' => $providerAvailable,
+            'provider_name' => (string) ($provider?->display_name ?: $provider?->username),
+            'needs_repair' => $availableModels === [],
+        ];
+    }
+
+    /** @return array<int, array{id:int,name:string,version:string,model_type:string,source:string}> */
+    private function personalDefaultModelOptions(Admin $actor): array
+    {
+        return $this->accessResolver
+            ->usableQuery($actor)
+            ->select(['id', 'owner_admin_id', 'name', 'version', 'model_type'])
+            ->get()
+            ->map(static fn (AiModel $model): array => [
+                'id' => (int) $model->getKey(),
+                'name' => (string) $model->name,
+                'version' => (string) $model->version,
+                'model_type' => (string) ($model->model_type ?: 'chat'),
+                'source' => (int) $model->owner_admin_id === (int) $actor->getKey() ? 'personal' : 'shared',
+            ])
+            ->all();
+    }
+
     /**
      * 可用于默认 embedding 下拉框的模型列表。
      *
      * @return array<int, array{id:int,name:string,model_id:string}>
      */
-    private function loadActiveEmbeddingModels(): array
+    private function loadActiveEmbeddingModels(Admin $actor): array
     {
-        return AiModel::query()
+        return $this->accessResolver->managementQuery($actor)
             ->select(['id', 'name', 'model_id'])
             ->where('status', 'active')
             ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'")
@@ -677,9 +875,9 @@ class AiModelController extends Controller
      *
      * @return array<int, array{id:int,name:string,model_id:string}>
      */
-    private function loadActiveChatModels(): array
+    private function loadActiveChatModels(Admin $actor): array
     {
-        return AiModel::query()
+        return $this->accessResolver->managementQuery($actor)
             ->select(['id', 'name', 'model_id'])
             ->where('status', 'active')
             ->where(function ($query): void {
@@ -696,32 +894,6 @@ class AiModelController extends Controller
                 'model_id' => $this->modelTestDiagnosis->modelIdForDisplay((string) ($model->model_id ?? '')),
             ])
             ->all();
-    }
-
-    /**
-     * 校验模型表单字段。
-     *
-     * @param  bool  $isUpdate  true 表示编辑模式（允许 api_key 为空）
-     * @return array<string, mixed>
-     */
-    private function validateModelPayload(Request $request, bool $isUpdate): array
-    {
-        $rules = [
-            'name' => ['required', 'string', 'max:100'],
-            'version' => ['nullable', 'string', 'max:50'],
-            'api_key' => [$isUpdate ? 'nullable' : 'required', 'string', 'max:500'],
-            'model_id' => ['required', 'string', 'max:100'],
-            'model_type' => ['required', 'in:chat,embedding'],
-            'api_url' => ['nullable', 'string', 'max:500'],
-            'failover_priority' => ['nullable', 'integer', 'min:1'],
-            'daily_limit' => ['nullable', 'integer', 'min:0'],
-            'max_tokens' => ['nullable', 'integer', 'min:1', 'max:1000000'],
-        ];
-        if ($isUpdate) {
-            $rules['status'] = ['nullable', 'in:active,inactive'];
-        }
-
-        return $request->validate($rules);
     }
 
     /**
@@ -1161,5 +1333,32 @@ class AiModelController extends Controller
         } catch (Throwable $exception) {
             report($exception);
         }
+    }
+
+    /** @param list<string>|null $columns */
+    private function configurableModel(
+        Request $request,
+        int $modelId,
+        string $ability,
+        ?array $columns = null,
+    ): AiModel {
+        $actor = $this->activeActor($request);
+        $query = $this->accessResolver->managementQuery($actor);
+        if ($columns !== null) {
+            $query->select($columns);
+        }
+
+        $model = $query->whereKey($modelId)->firstOrFail();
+        Gate::forUser($actor)->authorize($ability, $model);
+
+        return $model;
+    }
+
+    private function activeActor(Request $request): Admin
+    {
+        $actor = $request->user('admin');
+        abort_unless($actor instanceof Admin && (string) $actor->status === 'active', 404);
+
+        return $actor;
     }
 }

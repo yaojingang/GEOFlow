@@ -52,6 +52,38 @@ final class AdminAiSettingsService
         }, 3);
     }
 
+    public function setPersonalDefaultIfMissing(Admin $admin, AiModel $model): AdminAiSetting
+    {
+        return DB::transaction(function () use ($admin, $model): AdminAiSetting {
+            $lockedAdmin = Admin::query()
+                ->whereKey($admin->getKey())
+                ->lockForUpdate()
+                ->first();
+            $this->assertActive($lockedAdmin, $admin);
+            $lockedModel = $this->modelWriteLock
+                ->lockByIds([(int) $model->getKey()])
+                ->first();
+            if (! $lockedModel instanceof AiModel
+                || (int) $lockedModel->owner_admin_id !== (int) $lockedAdmin->getKey()) {
+                throw AiModelAccessException::modelNotAccessible($lockedAdmin, $model);
+            }
+            $this->accessResolver->assertLockedUsable($lockedAdmin, $lockedModel);
+            $setting = $this->lockedSetting($lockedAdmin);
+            $attributes = [
+                'admin_id' => $lockedAdmin->getKey(),
+                'updated_by_admin_id' => $lockedAdmin->getKey(),
+            ];
+            $modelType = trim((string) $lockedModel->model_type) === 'embedding' ? 'embedding' : 'chat';
+            $field = $modelType === 'embedding' ? 'default_embedding_model_id' : 'default_chat_model_id';
+            if ($setting->getAttribute($field) === null) {
+                $attributes[$field] = $lockedModel->getKey();
+            }
+            $setting->forceFill($attributes)->save();
+
+            return $setting->refresh();
+        }, 3);
+    }
+
     public function clearDefaultsFromOwner(
         Admin $admin,
         Admin $owner,
@@ -78,6 +110,25 @@ final class AdminAiSettingsService
 
             return $setting->refresh();
         }, 3);
+    }
+
+    public function clearIncompatibleDefaultsForModel(AiModel $model, Admin $updatedBy): int
+    {
+        $clearChat = (string) $model->status !== 'active'
+            || $model->archived_at !== null
+            || (string) $model->access_scope !== AiModel::ACCESS_SCOPE_USER_CONTENT
+            || (string) $model->model_type === 'embedding';
+        $clearEmbedding = (string) $model->status !== 'active'
+            || $model->archived_at !== null
+            || (string) $model->access_scope !== AiModel::ACCESS_SCOPE_USER_CONTENT
+            || (string) $model->model_type !== 'embedding';
+
+        return $this->clearModelDefaults($model, $updatedBy, $clearChat, $clearEmbedding);
+    }
+
+    public function clearAllDefaultsForModel(AiModel $model, Admin $updatedBy): int
+    {
+        return $this->clearModelDefaults($model, $updatedBy, true, true);
     }
 
     private function assertCapability(Admin $admin, ?AiModel $model, string $capability): ?AiModel
@@ -152,6 +203,44 @@ final class AdminAiSettingsService
             ->whereKey((int) $modelId)
             ->ownedBy($owner)
             ->exists();
+    }
+
+    private function clearModelDefaults(
+        AiModel $model,
+        Admin $updatedBy,
+        bool $clearChat,
+        bool $clearEmbedding,
+    ): int {
+        if (! $clearChat && ! $clearEmbedding) {
+            return 0;
+        }
+
+        return DB::transaction(function () use ($model, $updatedBy, $clearChat, $clearEmbedding): int {
+            $modelId = (int) $model->getKey();
+            $query = AdminAiSetting::query()->where(function ($query) use ($model, $clearChat, $clearEmbedding): void {
+                if ($clearChat) {
+                    $query->where('default_chat_model_id', $model->getKey());
+                }
+                if ($clearEmbedding) {
+                    $method = $clearChat ? 'orWhere' : 'where';
+                    $query->{$method}('default_embedding_model_id', $model->getKey());
+                }
+            });
+
+            $attributes = ['updated_by_admin_id' => $updatedBy->getKey()];
+            if ($clearChat) {
+                $attributes['default_chat_model_id'] = $clearEmbedding
+                    ? DB::raw("CASE WHEN default_chat_model_id = {$modelId} THEN NULL ELSE default_chat_model_id END")
+                    : null;
+            }
+            if ($clearEmbedding) {
+                $attributes['default_embedding_model_id'] = $clearChat
+                    ? DB::raw("CASE WHEN default_embedding_model_id = {$modelId} THEN NULL ELSE default_embedding_model_id END")
+                    : null;
+            }
+
+            return $query->update($attributes);
+        }, 3);
     }
 
     /** @return Collection<int, AiModel> */

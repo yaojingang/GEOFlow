@@ -384,7 +384,7 @@ class AdminAiModelsPageTest extends TestCase
             ->get(route('admin.ai-models.index'));
 
         $response->assertOk()
-            ->assertSee(__('admin.ai_models.list_title'));
+            ->assertSee(__('admin.ai_models.section_my_models'));
     }
 
     public function test_admin_saves_max_tokens_only_for_chat_models(): void
@@ -898,8 +898,10 @@ class AdminAiModelsPageTest extends TestCase
     public function test_admin_models_page_shows_knowledge_chunking_config(): void
     {
         $model = $this->createAiModel('chat', ['name' => 'Gemini 3.1 Flash Lite']);
+        $admin = $this->createAdmin();
+        $admin->forceFill(['role' => 'super_admin'])->save();
 
-        $response = $this->actingAs($this->createAdmin(), 'admin')
+        $response = $this->actingAs($admin, 'admin')
             ->get(route('admin.ai-models.index'));
 
         $response->assertOk()
@@ -1176,8 +1178,7 @@ class AdminAiModelsPageTest extends TestCase
 
     private function createAdmin(): Admin
     {
-        return Admin::query()->create([
-            'username' => 'ai_model_admin',
+        return Admin::query()->firstOrCreate(['username' => 'ai_model_admin'], [
             'password' => 'secret-123',
             'email' => 'ai-model-admin@example.com',
             'display_name' => 'AI Model Admin',
@@ -1188,7 +1189,8 @@ class AdminAiModelsPageTest extends TestCase
 
     private function createAiModel(string $type, array $overrides = []): AiModel
     {
-        return AiModel::query()->create(array_merge([
+        $owner = $this->createAdmin();
+        $model = new AiModel(array_merge([
             'name' => $type === 'embedding' ? 'Test Embedding' : 'Test Chat',
             'version' => 'test',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -1201,5 +1203,11 @@ class AdminAiModelsPageTest extends TestCase
             'total_used' => 0,
             'status' => 'active',
         ], $overrides));
+        $model->forceFill([
+            'owner_admin_id' => $owner->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+
+        return $model;
     }
 }

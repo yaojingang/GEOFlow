@@ -555,6 +555,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::get('/', [AiModelController::class, 'index'])->name('index');
                 Route::get('create', [AiModelController::class, 'create'])->name('create');
                 Route::post('create', [AiModelController::class, 'store'])->name('store');
+                Route::post('personal-defaults', [AiModelController::class, 'updatePersonalDefaults'])->name('personal-defaults');
                 Route::get('{modelId}/edit', [AiModelController::class, 'edit'])->name('edit')->whereNumber('modelId');
                 Route::put('{modelId}', [AiModelController::class, 'update'])->name('update')->whereNumber('modelId');
                 Route::post('{modelId}/test', [AiModelController::class, 'testConnection'])

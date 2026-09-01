@@ -955,7 +955,7 @@ class TitleGenerationQueueTest extends TestCase
             'generation_rounds' => 1,
             'is_ai_generated' => 0,
         ]);
-        $aiModel = AiModel::query()->create([
+        $aiModel = new AiModel([
             'name' => 'Title Model',
             'version' => 'test',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('title-test-key'),
@@ -967,6 +967,10 @@ class TitleGenerationQueueTest extends TestCase
             'total_used' => 0,
             'status' => 'active',
         ]);
+        $aiModel->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
 
         return [$admin, $keywordLibrary, $library, $aiModel];
     }

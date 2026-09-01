@@ -125,6 +125,10 @@ class UiV3ReviewSeeder extends Seeder
                     'max_tokens' => 4096,
                 ],
             );
+            $model->forceFill([
+                'owner_admin_id' => $admin->id,
+                'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            ])->save();
 
             AiSourceProvider::query()->updateOrCreate(
                 ['provider_key' => self::AI_SOURCE_PROVIDER_KEY],

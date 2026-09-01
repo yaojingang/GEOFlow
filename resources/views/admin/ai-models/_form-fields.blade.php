@@ -17,6 +17,7 @@
     };
     $selectedModelType = $fieldValue('model_type', 'chat');
     $selectedStatus = $fieldValue('status', 'active');
+    $selectedAccessScope = $fieldValue('access_scope', \App\Models\AiModel::ACCESS_SCOPE_USER_CONTENT);
     $maxTokensVisible = ($supportsModelMaxTokens ?? false) && $selectedModelType === 'chat';
 @endphp
 
@@ -31,6 +32,19 @@
                     <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p>
                 @enderror
             </div>
+            @if ($actorIsSuperAdmin ?? false)
+                <div>
+                    <label for="access_scope" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_access_scope') }}</label>
+                    <select name="access_scope" id="access_scope" class="mt-1 block min-h-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <option value="{{ \App\Models\AiModel::ACCESS_SCOPE_USER_CONTENT }}" @selected($selectedAccessScope === \App\Models\AiModel::ACCESS_SCOPE_USER_CONTENT)>{{ __('admin.ai_models.access_scope_user_content') }}</option>
+                        <option value="{{ \App\Models\AiModel::ACCESS_SCOPE_SYSTEM_ONLY }}" @selected($selectedAccessScope === \App\Models\AiModel::ACCESS_SCOPE_SYSTEM_ONLY)>{{ __('admin.ai_models.access_scope_system_only') }}</option>
+                    </select>
+                    <p class="mt-1.5 text-xs leading-5 text-gray-500">{{ __('admin.ai_models.access_scope_help') }}</p>
+                    @error('access_scope')
+                        <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+            @endif
             <div>
                 <label for="version" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.field_version') }}</label>
                 <input type="text" name="version" id="version" value="{{ $fieldValue('version') }}" @error('version') aria-invalid="true" @enderror class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" placeholder="{{ __('admin.ai_models.placeholder_version') }}" autocomplete="off">
