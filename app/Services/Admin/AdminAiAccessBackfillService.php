@@ -49,6 +49,9 @@ final class AdminAiAccessBackfillService
             $this->assertSnapshotsCoverNullTimestamps($adminMaxId, $modelMaxId);
             $this->lockHistoricalCandidates($createdBefore, $adminMaxId, $modelMaxId);
             $plan = $this->buildPlan($owner, $createdBefore, $adminMaxId, $modelMaxId, true);
+            if ($plan['active_blocking_structured_reference_finding_count'] > 0) {
+                throw new AdminAiAccessBackfillException('active_structured_model_reference_invalid');
+            }
 
             $modelsAssigned = $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereNull('owner_admin_id')

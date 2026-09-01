@@ -89,6 +89,8 @@ final class BackfillAdminAiAccessCommand extends Command
         $this->line('System-only models to mark: '.$result['system_models_to_mark']);
         $this->line('System/user-content conflicts: '.count($result['conflict_model_ids']));
         $this->line('Invalid system bindings: '.count($result['invalid_bindings']));
+        $this->line('Historical structured model references: '.$result['historical_structured_reference_count']);
+        $this->line('Structured model reference findings: '.$result['structured_reference_finding_count']);
 
         foreach ($result['conflict_model_ids'] as $modelId) {
             $this->line('Conflict model ID: '.$modelId);
@@ -98,6 +100,16 @@ final class BackfillAdminAiAccessCommand extends Command
                 'Invalid system binding: %s (%s)',
                 $invalidBinding['setting_key'],
                 $invalidBinding['reason'],
+            ));
+        }
+        foreach ($result['structured_reference_findings'] as $finding) {
+            $this->line(sprintf(
+                'Structured model reference finding: %s#%d %s (%s:%s)',
+                $finding['reference'],
+                $finding['row_id'],
+                $finding['path'],
+                $finding['state'],
+                $finding['reason'],
             ));
         }
 

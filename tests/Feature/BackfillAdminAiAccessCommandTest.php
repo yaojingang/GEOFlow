@@ -5,11 +5,17 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use App\Models\AdminAiSetting;
 use App\Models\AiModel;
+use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
+use App\Models\ArticleAiQualityCheck;
+use App\Models\Author;
+use App\Models\Category;
 use App\Models\SiteSetting;
 use App\Models\Task;
 use Illuminate\Contracts\Foundation\MaintenanceMode as MaintenanceModeContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class BackfillAdminAiAccessCommandTest extends TestCase
@@ -476,6 +482,290 @@ class BackfillAdminAiAccessCommandTest extends TestCase
         }
     }
 
+    public function test_active_optimization_json_references_block_system_scope_while_terminal_history_does_not(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $queuedModel = $this->model(null, 'queued-model', 'chat');
+        $awaitingModel = $this->model(null, 'awaiting-model', 'chat');
+        $terminalModel = $this->model(null, 'terminal-model', 'chat');
+        $embeddingModel = $this->model(null, 'embedding-model', 'embedding');
+        foreach ([
+            'default_embedding_model_id' => $embeddingModel,
+            'knowledge_chunking_model_id' => $queuedModel,
+            'ai_visibility_ark_model_id' => $awaitingModel,
+            'ai_visibility_deepseek_analysis_model_id' => $terminalModel,
+        ] as $settingKey => $model) {
+            SiteSetting::query()->create([
+                'setting_key' => $settingKey,
+                'setting_value' => (string) $model->id,
+            ]);
+        }
+
+        $article = $this->article();
+        $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_QUEUED, [
+            'optimization_model_ids' => [$queuedModel->id],
+        ]);
+        $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_AWAITING_QUALITY, [
+            'optimization_model_id' => $awaitingModel->id,
+        ]);
+        $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_COMPLETED, [
+            'optimization_model_ids' => [$terminalModel->id],
+        ]);
+        $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_FAILED, [
+            'optimization_model_id' => $terminalModel->id,
+        ]);
+
+        $arguments = [
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ];
+
+        foreach ([1, 2] as $run) {
+            $this->artisan('geoflow:backfill-admin-ai-access', $arguments)
+                ->expectsOutput('System/user-content conflicts: 2')
+                ->expectsOutput('Historical structured model references: 2')
+                ->assertSuccessful();
+
+            $this->assertSame(
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+                $queuedModel->fresh()->access_scope,
+                'Queued run '.$run.' must preserve the model scope.',
+            );
+            $this->assertSame(
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+                $awaitingModel->fresh()->access_scope,
+                'Awaiting run '.$run.' must preserve the model scope.',
+            );
+            $this->assertSame(AiModel::ACCESS_SCOPE_SYSTEM_ONLY, $terminalModel->fresh()->access_scope);
+            $this->assertSame(AiModel::ACCESS_SCOPE_SYSTEM_ONLY, $embeddingModel->fresh()->access_scope);
+        }
+    }
+
+    public function test_structured_json_findings_are_stable_and_never_echo_raw_values(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $mixedModel = $this->model(null, 'mixed-model', 'chat');
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $mixedModel->id,
+        ]);
+        $article = $this->article();
+        $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_QUEUED, [
+            'optimization_model_id' => (string) $mixedModel->id,
+            'optimization_model_ids' => [$mixedModel->id, 'raw-secret-model', 999999],
+            'provider_model_id' => 'provider-secret-model',
+        ]);
+
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ])
+            ->expectsOutput('System/user-content conflicts: 1')
+            ->expectsOutput('Structured model reference findings: 2')
+            ->expectsOutputToContain('execution_meta.optimization_model_ids (active:invalid_model_id)')
+            ->expectsOutputToContain('execution_meta.optimization_model_ids (active:model_not_found)')
+            ->doesntExpectOutputToContain('raw-secret-model')
+            ->doesntExpectOutputToContain('provider-secret-model')
+            ->assertSuccessful();
+    }
+
+    public function test_active_invalid_structured_references_abort_apply_without_writes(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $legacyAdmin = $this->admin('legacy-admin', 'admin', '2026-08-02 00:00:00');
+        $systemModel = $this->model(null, 'system-model', 'chat');
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $systemModel->id,
+        ]);
+        $article = $this->article();
+        $qualityPrimary = $this->model($legacyOwner, 'quality-primary', 'chat');
+        $malformed = $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_QUEUED, []);
+        $nonArray = $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_AWAITING_QUALITY, []);
+        $mixed = $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_QUEUED, []);
+        $historical = $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_COMPLETED, []);
+        $qualityMalformed = $this->qualityCheck($article, $qualityPrimary, 'queued', $qualityPrimary);
+        DB::table('article_ai_optimization_runs')->where('id', $malformed->id)->update([
+            'execution_meta' => '{"optimization_model_id":'.$systemModel->id,
+        ]);
+        DB::table('article_ai_optimization_runs')->where('id', $nonArray->id)->update([
+            'execution_meta' => '42',
+        ]);
+        DB::table('article_ai_optimization_runs')->where('id', $mixed->id)->update([
+            'execution_meta' => json_encode([
+                'optimization_model_ids' => [$systemModel->id, -1, 'sensitive-invalid-id', 999999],
+            ], JSON_THROW_ON_ERROR),
+        ]);
+        DB::table('article_ai_optimization_runs')->where('id', $historical->id)->update([
+            'execution_meta' => '{"optimization_model_id":"historical-sensitive-value"',
+        ]);
+        DB::table('article_ai_quality_checks')->where('id', $qualityMalformed->id)->update([
+            'execution_meta' => null,
+            'model_snapshot' => '{"candidate_ids":["quality-sensitive-value"',
+        ]);
+
+        $base = [
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ];
+        $this->artisan('geoflow:backfill-admin-ai-access', $base)
+            ->expectsOutput('System/user-content conflicts: 1')
+            ->expectsOutput('Historical structured model references: 0')
+            ->expectsOutput('Structured model reference findings: 6')
+            ->expectsOutputToContain('article_ai_optimization_runs#'.$malformed->id.' execution_meta (active:invalid_json)')
+            ->expectsOutputToContain('article_ai_optimization_runs#'.$nonArray->id.' execution_meta (active:invalid_json)')
+            ->expectsOutputToContain('article_ai_optimization_runs#'.$mixed->id.' execution_meta.optimization_model_ids (active:invalid_model_id)')
+            ->expectsOutputToContain('article_ai_optimization_runs#'.$mixed->id.' execution_meta.optimization_model_ids (active:model_not_found)')
+            ->expectsOutputToContain('article_ai_optimization_runs#'.$historical->id.' execution_meta (historical:invalid_json)')
+            ->expectsOutputToContain('article_ai_quality_checks#'.$qualityMalformed->id.' model_snapshot (active:invalid_json)')
+            ->doesntExpectOutputToContain('sensitive-invalid-id')
+            ->doesntExpectOutputToContain('historical-sensitive-value')
+            ->doesntExpectOutputToContain('quality-sensitive-value')
+            ->assertSuccessful();
+
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$base,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+        ])
+            ->expectsOutput('Preflight failed: active_structured_model_reference_invalid')
+            ->doesntExpectOutputToContain('sensitive-invalid-id')
+            ->doesntExpectOutputToContain('historical-sensitive-value')
+            ->doesntExpectOutputToContain('quality-sensitive-value')
+            ->assertFailed();
+
+        $this->assertNull($systemModel->fresh()->owner_admin_id);
+        $this->assertSame(AiModel::ACCESS_SCOPE_USER_CONTENT, $systemModel->fresh()->access_scope);
+        $this->assertNull($legacyAdmin->fresh()->shared_ai_config_owner_id);
+    }
+
+    public function test_terminal_invalid_structured_references_are_reported_without_blocking_apply(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $systemModel = $this->model(null, 'system-model', 'chat');
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $systemModel->id,
+        ]);
+        $article = $this->article();
+        $malformed = $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_COMPLETED, []);
+        $invalidIds = $this->optimizationRun($article, ArticleAiOptimizationRun::STATUS_FAILED, []);
+        DB::table('article_ai_optimization_runs')->where('id', $malformed->id)->update([
+            'execution_meta' => '{"optimization_model_id":"historical-sensitive-value"',
+        ]);
+        DB::table('article_ai_optimization_runs')->where('id', $invalidIds->id)->update([
+            'execution_meta' => json_encode([
+                'optimization_model_ids' => [-1, 999999],
+            ], JSON_THROW_ON_ERROR),
+        ]);
+
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ])
+            ->expectsOutput('Mode: apply')
+            ->expectsOutput('System-only models to mark: 1')
+            ->expectsOutput('Historical structured model references: 1')
+            ->expectsOutput('Structured model reference findings: 3')
+            ->expectsOutputToContain('article_ai_optimization_runs#'.$malformed->id.' execution_meta (historical:invalid_json)')
+            ->expectsOutputToContain('article_ai_optimization_runs#'.$invalidIds->id.' execution_meta.optimization_model_ids (historical:invalid_model_id)')
+            ->expectsOutputToContain('article_ai_optimization_runs#'.$invalidIds->id.' execution_meta.optimization_model_ids (historical:model_not_found)')
+            ->doesntExpectOutputToContain('historical-sensitive-value')
+            ->expectsOutput('System-only models marked: 1')
+            ->assertSuccessful();
+
+        $this->assertSame($legacyOwner->id, $systemModel->fresh()->owner_admin_id);
+        $this->assertSame(AiModel::ACCESS_SCOPE_SYSTEM_ONLY, $systemModel->fresh()->access_scope);
+    }
+
+    public function test_active_quality_fallback_and_article_policy_snapshots_remain_user_content(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $policyModel = $this->model(null, 'policy-model', 'chat');
+        $fallbackModel = $this->model(null, 'fallback-model', 'chat');
+        $historicalModel = $this->model(null, 'historical-model', 'chat');
+        $primaryModel = $this->model($legacyOwner, 'primary-model', 'chat');
+        foreach ([
+            'knowledge_chunking_model_id' => $policyModel,
+            'ai_visibility_ark_model_id' => $fallbackModel,
+            'ai_visibility_deepseek_analysis_model_id' => $historicalModel,
+        ] as $settingKey => $model) {
+            SiteSetting::query()->create([
+                'setting_key' => $settingKey,
+                'setting_value' => (string) $model->id,
+            ]);
+        }
+
+        $article = $this->article();
+        $article->forceFill([
+            'ai_quality_required_at_creation' => true,
+            'ai_quality_policy_snapshot' => [
+                'required' => true,
+                'model_id' => $policyModel->id,
+            ],
+        ])->save();
+        $this->qualityCheck($article, $primaryModel, 'queued', $fallbackModel);
+        $this->qualityCheck($article, $primaryModel, 'completed', $historicalModel);
+
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ])
+            ->expectsOutput('System-only models to mark: 1')
+            ->expectsOutput('System/user-content conflicts: 2')
+            ->expectsOutput('Structured model reference findings: 0')
+            ->doesntExpectOutputToContain('provider-sensitive-name')
+            ->assertSuccessful();
+    }
+
+    public function test_article_snapshot_does_not_block_a_model_replaced_by_an_enabled_task_policy(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $staleSnapshotModel = $this->model(null, 'stale-snapshot-model', 'chat');
+        $currentTaskModel = $this->model($legacyOwner, 'current-task-model', 'chat');
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $staleSnapshotModel->id,
+        ]);
+        $task = Task::query()->create([
+            'name' => 'Current quality task',
+            'status' => 'paused',
+            'ai_model_id' => $currentTaskModel->id,
+            'ai_quality_model_id' => $currentTaskModel->id,
+            'ai_quality_enabled' => true,
+        ]);
+        $article = $this->article();
+        $article->forceFill([
+            'task_id' => $task->id,
+            'ai_quality_required_at_creation' => true,
+            'ai_quality_policy_snapshot' => [
+                'required' => true,
+                'model_id' => $staleSnapshotModel->id,
+            ],
+        ])->save();
+
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ])
+            ->expectsOutput('System-only models to mark: 1')
+            ->expectsOutput('System/user-content conflicts: 0')
+            ->assertSuccessful();
+
+        $task->forceFill(['ai_quality_enabled' => false])->save();
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ])
+            ->expectsOutput('System-only models to mark: 0')
+            ->expectsOutput('System/user-content conflicts: 1')
+            ->assertSuccessful();
+    }
+
     public function test_apply_rebuilds_the_reference_plan_after_preview_and_uses_the_current_binding(): void
     {
         $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
@@ -586,6 +876,73 @@ class BackfillAdminAiAccessCommandTest extends TestCase
         ])->save();
 
         return $model;
+    }
+
+    private function article(): Article
+    {
+        $suffix = Str::lower(Str::random(10));
+        $author = Author::query()->create([
+            'name' => 'Author '.$suffix,
+            'email' => $suffix.'@example.test',
+        ]);
+        $category = Category::query()->create([
+            'name' => 'Category '.$suffix,
+            'slug' => 'category-'.$suffix,
+        ]);
+
+        return Article::query()->create([
+            'title' => 'Article '.$suffix,
+            'slug' => 'article-'.$suffix,
+            'excerpt' => 'Excerpt',
+            'content' => 'Content',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'keywords' => 'keyword',
+            'meta_description' => 'Description',
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+    }
+
+    /** @param array<string, mixed> $executionMeta */
+    private function optimizationRun(
+        Article $article,
+        string $status,
+        array $executionMeta,
+    ): ArticleAiOptimizationRun {
+        return ArticleAiOptimizationRun::query()->create([
+            'article_id' => $article->id,
+            'request_key' => (string) Str::uuid(),
+            'trigger' => ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            'status' => $status,
+            'base_article_hash' => hash('sha256', (string) Str::uuid()),
+            'policy_hash' => hash('sha256', (string) Str::uuid()),
+            'execution_meta' => $executionMeta,
+        ]);
+    }
+
+    private function qualityCheck(
+        Article $article,
+        AiModel $primaryModel,
+        string $status,
+        AiModel $candidateModel,
+    ): ArticleAiQualityCheck {
+        return ArticleAiQualityCheck::query()->create([
+            'article_id' => $article->id,
+            'ai_model_id' => $primaryModel->id,
+            'request_key' => (string) Str::uuid(),
+            'status' => $status,
+            'input_fingerprint' => hash('sha256', (string) Str::uuid()),
+            'algorithm_version' => 'test-v1',
+            'execution_meta' => [
+                'model_candidate_ids' => [$candidateModel->id],
+            ],
+            'model_snapshot' => [
+                'id' => $primaryModel->id,
+                'model_id' => 'provider-sensitive-name',
+                'candidate_ids' => [$candidateModel->id],
+            ],
+        ]);
     }
 }
 

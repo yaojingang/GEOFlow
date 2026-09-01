@@ -3,12 +3,16 @@
 namespace App\Services\Admin;
 
 use App\Models\AdminAiSetting;
+use App\Models\AiVisibilityRun;
+use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiOptimizationStep;
 use App\Models\ArticleAiQualityCheck;
 use App\Models\EnterpriseKnowledgeProject;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Models\SiteThemeReplication;
 use App\Models\Task;
+use App\Models\TaskRun;
 use App\Models\TitleGenerationRun;
 use App\Models\TitleLibrary;
 
@@ -32,5 +36,120 @@ final class AiModelReferenceCatalog
         ArticleAiQualityCheck::class => ['ai_model_id'],
         ArticleAiOptimizationStep::class => ['ai_model_id'],
         KnowledgeFactGenerationRun::class => ['ai_model_id'],
+    ];
+
+    /**
+     * Persisted JSON paths containing ai_models.id values that can still select a
+     * model for a future user-content call. Rows in an unknown status are treated
+     * as active by the inspector so a newly introduced executable state cannot be
+     * silently reclassified as system-only.
+     *
+     * @var list<array{
+     *   model:class-string,
+     *   json_column:string,
+     *   paths:list<array{path:string,many:bool}>,
+     *   status_column?:string,
+     *   active_statuses?:list<string>,
+     *   terminal_statuses?:list<string>,
+     *   active_boolean_column?:string,
+     *   active_parent_guard?:array{
+     *     model:class-string,
+     *     foreign_key:string,
+     *     parent_key:string,
+     *     active_columns:array<string, scalar>,
+     *     active_null_columns:list<string>
+     *   }
+     * }>
+     */
+    public const STRUCTURED_USER_CONTENT_REFERENCES = [
+        [
+            'model' => ArticleAiOptimizationRun::class,
+            'json_column' => 'execution_meta',
+            'paths' => [
+                ['path' => 'optimization_model_id', 'many' => false],
+                ['path' => 'optimization_model_ids', 'many' => true],
+                ['path' => 'quality_policy_snapshot.model_id', 'many' => false],
+            ],
+            'status_column' => 'status',
+            'active_statuses' => ArticleAiOptimizationRun::ACTIVE_STATUSES,
+            'terminal_statuses' => ArticleAiOptimizationRun::TERMINAL_STATUSES,
+        ],
+        [
+            'model' => ArticleAiQualityCheck::class,
+            'json_column' => 'execution_meta',
+            'paths' => [
+                ['path' => 'model_candidate_ids', 'many' => true],
+                ['path' => 'policy_snapshot.model_id', 'many' => false],
+            ],
+            'status_column' => 'status',
+            'active_statuses' => ['queued', 'running', 'failed'],
+            'terminal_statuses' => ['completed', 'stale', 'cancelled'],
+        ],
+        [
+            'model' => ArticleAiQualityCheck::class,
+            'json_column' => 'model_snapshot',
+            'paths' => [
+                ['path' => 'candidate_ids', 'many' => true],
+            ],
+            'status_column' => 'status',
+            'active_statuses' => ['queued', 'running', 'failed'],
+            'terminal_statuses' => ['completed', 'stale', 'cancelled'],
+        ],
+        [
+            'model' => Article::class,
+            'json_column' => 'ai_quality_policy_snapshot',
+            'paths' => [
+                ['path' => 'model_id', 'many' => false],
+            ],
+            'active_boolean_column' => 'ai_quality_required_at_creation',
+            'active_parent_guard' => [
+                'model' => Task::class,
+                'foreign_key' => 'task_id',
+                'parent_key' => 'id',
+                'active_columns' => ['ai_quality_enabled' => true],
+                'active_null_columns' => ['deleted_at'],
+            ],
+        ],
+    ];
+
+    /**
+     * Audited model identifiers that are deliberately excluded from ai_models.id
+     * matching. These paths persist provider-facing names or completed-call
+     * telemetry and must never be parsed as database keys.
+     *
+     * @var array<class-string, list<string>>
+     */
+    public const NON_DATABASE_MODEL_IDENTIFIERS = [
+        ArticleAiQualityCheck::class => ['model_snapshot.model_id'],
+        AiVisibilityRun::class => [
+            'analysis_json.model_id',
+            'raw_request_json.model',
+            'raw_response_json.model',
+        ],
+    ];
+
+    /**
+     * Audited database IDs retained only as completed-call history. Their owning
+     * scalar columns or active candidate snapshots cover every future call.
+     *
+     * @var array<class-string, list<string>>
+     */
+    public const NON_BLOCKING_DATABASE_ID_HISTORY = [
+        ArticleAiQualityCheck::class => [
+            'model_snapshot.id',
+            'execution_meta.model_attempts.*.model_id',
+        ],
+        ArticleAiOptimizationStep::class => [
+            'execution_meta.model_attempts.*.model_id',
+            'usage_meta.model_attempts.*.model_id',
+        ],
+        ArticleAiOptimizationRun::class => [
+            'execution_meta.model_attempts.*.model_id',
+            'usage_meta.model_attempts.*.model_id',
+        ],
+        TaskRun::class => [
+            'meta.used_model_id',
+            'meta.model_attempts.*.model_id',
+        ],
     ];
 }

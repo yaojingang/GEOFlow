@@ -10,12 +10,20 @@ use Illuminate\Support\Facades\Schema;
 
 final class SystemAiModelReferenceInspector
 {
+    public function __construct(
+        private readonly StructuredAiModelReferenceInspector $structuredReferenceInspector,
+    ) {}
+
     /**
      * @return array{
      *   system_model_ids:list<int>,
      *   system_only_model_ids:list<int>,
      *   conflict_model_ids:list<int>,
-     *   invalid_bindings:list<array{setting_key:string,reason:string}>
+     *   invalid_bindings:list<array{setting_key:string,reason:string}>,
+     *   historical_structured_reference_count:int,
+     *   structured_reference_finding_count:int,
+     *   active_blocking_structured_reference_finding_count:int,
+     *   structured_reference_findings:list<array{reference:string,row_id:int,path:string,state:string,reason:string}>
      * }
      */
     public function inspect(int $legacyOwnerId, bool $lockForUpdate = false): array
@@ -42,6 +50,11 @@ final class SystemAiModelReferenceInspector
         }
 
         $userContentIds = $this->userContentModelIds($existingIds, $lockForUpdate);
+        $structuredReferences = $this->structuredReferenceInspector->inspect($existingIds, $lockForUpdate);
+        $userContentIds = array_values(array_unique([
+            ...$userContentIds,
+            ...$structuredReferences['active_model_ids'],
+        ]));
         $conflicts = [];
         $systemOnly = [];
         foreach ($existingIds as $modelId) {
@@ -71,6 +84,10 @@ final class SystemAiModelReferenceInspector
             'system_only_model_ids' => array_values(array_unique($systemOnly)),
             'conflict_model_ids' => array_values(array_unique($conflicts)),
             'invalid_bindings' => $invalidBindings,
+            'historical_structured_reference_count' => $structuredReferences['historical_reference_count'],
+            'structured_reference_finding_count' => $structuredReferences['finding_count'],
+            'active_blocking_structured_reference_finding_count' => $structuredReferences['active_blocking_finding_count'],
+            'structured_reference_findings' => $structuredReferences['findings'],
         ];
     }
 
