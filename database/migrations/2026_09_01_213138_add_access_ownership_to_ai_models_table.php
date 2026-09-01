@@ -13,7 +13,8 @@ return new class extends Migration
                 ->nullable()
                 ->constrained('admins')
                 ->restrictOnDelete();
-            $table->string('access_scope', 20)->default('user_content');
+            $table->enum('access_scope', ['user_content', 'system_only'])
+                ->default('user_content');
             $table->timestamp('archived_at')->nullable();
             $table->index(
                 ['owner_admin_id', 'access_scope', 'status', 'model_type', 'failover_priority', 'id'],

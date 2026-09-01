@@ -20,18 +20,7 @@ final class AiModelPolicy
 
     public function view(Admin $admin, AiModel $model): bool
     {
-        if (! $this->isActive($admin)) {
-            return false;
-        }
-
-        if ($admin->isSuperAdmin()) {
-            return true;
-        }
-
-        return $this->accessResolver
-            ->visibleQuery($admin)
-            ->whereKey($model->getKey())
-            ->exists();
+        return $this->accessResolver->canView($admin, $model);
     }
 
     public function create(Admin $admin): bool
@@ -52,45 +41,32 @@ final class AiModelPolicy
 
     public function update(Admin $admin, AiModel $model): bool
     {
-        return $this->canManageOwnedModel($admin, $model);
+        return $this->accessResolver->canManage($admin, $model);
     }
 
     public function test(Admin $admin, AiModel $model): bool
     {
-        return $this->canManageOwnedModel($admin, $model);
+        return $this->accessResolver->canManage($admin, $model);
     }
 
     public function disable(Admin $admin, AiModel $model): bool
     {
-        return $this->isActive($admin)
-            && ($admin->isSuperAdmin() || $this->isOwner($admin, $model));
+        return $this->accessResolver->canManage($admin, $model);
     }
 
     public function archive(Admin $admin, AiModel $model): bool
     {
-        return $this->disable($admin, $model);
+        return $this->accessResolver->canManage($admin, $model);
     }
 
     public function delete(Admin $admin, AiModel $model): bool
     {
-        return $this->canManageOwnedModel($admin, $model);
+        return $this->accessResolver->canManage($admin, $model);
     }
 
     public function viewApiKey(Admin $admin, AiModel $model): bool
     {
-        return false;
-    }
-
-    private function canManageOwnedModel(Admin $admin, AiModel $model): bool
-    {
-        return $this->isActive($admin)
-            && $this->isOwner($admin, $model)
-            && ($admin->isSuperAdmin() || $model->access_scope === AiModel::ACCESS_SCOPE_USER_CONTENT);
-    }
-
-    private function isOwner(Admin $admin, AiModel $model): bool
-    {
-        return (int) $model->owner_admin_id === (int) $admin->getKey();
+        return $this->accessResolver->canManage($admin, $model);
     }
 
     private function isActive(Admin $admin): bool

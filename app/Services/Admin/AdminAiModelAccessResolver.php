@@ -42,9 +42,14 @@ final class AdminAiModelAccessResolver
     public function managementQuery(Admin $actor): Builder
     {
         $actor = $this->activeActor($actor);
-        $query = AiModel::query()->ownedBy($actor);
 
-        return $actor->isSuperAdmin() ? $query : $query->userContent();
+        if (! $actor->isSuperAdmin()) {
+            return AiModel::query()
+                ->ownedBy($actor)
+                ->userContent();
+        }
+
+        return $this->scopeSuperAdminGovernanceOwners(AiModel::query(), $actor);
     }
 
     public function manageableBy(Admin $actor): Builder
@@ -52,19 +57,45 @@ final class AdminAiModelAccessResolver
         return $this->managementQuery($actor);
     }
 
+    public function canManage(Admin $actor, AiModel $model): bool
+    {
+        try {
+            return $this->managementQuery($actor)
+                ->whereKey($model->getKey())
+                ->exists();
+        } catch (AiModelAccessException) {
+            return false;
+        }
+    }
+
     public function visibleQuery(Admin $actor): Builder
     {
         $actor = $this->activeActor($actor);
-        $query = AiModel::query()
-            ->select(self::SANITIZED_COLUMNS)
-            ->whereIn('owner_admin_id', $this->visibleOwnerIds($actor));
+        $query = AiModel::query()->select(self::SANITIZED_COLUMNS);
 
-        return $actor->isSuperAdmin() ? $query : $query->userContent();
+        if ($actor->isSuperAdmin()) {
+            return $this->scopeSuperAdminGovernanceOwners($query, $actor);
+        }
+
+        return $query
+            ->whereIn('owner_admin_id', $this->visibleOwnerIds($actor))
+            ->userContent();
     }
 
     public function visibleTo(Admin $actor): Builder
     {
         return $this->visibleQuery($actor);
+    }
+
+    public function canView(Admin $actor, AiModel $model): bool
+    {
+        try {
+            return $this->visibleQuery($actor)
+                ->whereKey($model->getKey())
+                ->exists();
+        } catch (AiModelAccessException) {
+            return false;
+        }
     }
 
     public function usableQuery(Admin $actor): Builder
@@ -157,6 +188,20 @@ final class AdminAiModelAccessResolver
             ->unarchived()
             ->when($modelType !== null, static fn (Builder $query): Builder => $query->where('model_type', $modelType))
             ->inFailoverOrder();
+    }
+
+    private function scopeSuperAdminGovernanceOwners(Builder $query, Admin $actor): Builder
+    {
+        return $query->where(function (Builder $query) use ($actor): void {
+            $query
+                ->where('owner_admin_id', $actor->getKey())
+                ->orWhereHas('owner', static function (Builder $ownerQuery): void {
+                    $ownerQuery->whereRaw(
+                        'LOWER(TRIM(role)) NOT IN (?, ?)',
+                        ['super_admin', 'superadmin'],
+                    );
+                });
+        });
     }
 
     private function activeActor(Admin $actor): Admin
