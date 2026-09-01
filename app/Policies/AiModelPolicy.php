@@ -41,32 +41,32 @@ final class AiModelPolicy
 
     public function update(Admin $admin, AiModel $model): bool
     {
-        return $this->accessResolver->canManage($admin, $model);
+        return $this->accessResolver->canConfigure($admin, $model);
     }
 
     public function test(Admin $admin, AiModel $model): bool
     {
-        return $this->accessResolver->canManage($admin, $model);
+        return $this->accessResolver->canConfigure($admin, $model);
     }
 
     public function disable(Admin $admin, AiModel $model): bool
     {
-        return $this->accessResolver->canManage($admin, $model);
+        return $this->accessResolver->canGovern($admin, $model);
     }
 
     public function archive(Admin $admin, AiModel $model): bool
     {
-        return $this->accessResolver->canManage($admin, $model);
+        return $this->accessResolver->canGovern($admin, $model);
     }
 
     public function delete(Admin $admin, AiModel $model): bool
     {
-        return $this->accessResolver->canManage($admin, $model);
+        return $this->accessResolver->canConfigure($admin, $model);
     }
 
     public function viewApiKey(Admin $admin, AiModel $model): bool
     {
-        return $this->accessResolver->canManage($admin, $model);
+        return false;
     }
 
     private function isActive(Admin $admin): bool

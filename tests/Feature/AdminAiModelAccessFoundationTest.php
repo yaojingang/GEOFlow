@@ -256,6 +256,25 @@ final class AdminAiModelAccessFoundationTest extends TestCase
         $this->assertFalse($policy->viewApiKey($consumer, $sharedModel));
     }
 
+    public function test_api_key_cannot_be_viewed_for_any_ownership_or_governance_relationship(): void
+    {
+        $ordinary = $this->admin('ordinary', 'admin');
+        $provider = $this->admin('provider', 'super_admin');
+        $superAdmin = $this->admin('super-a', 'super_admin');
+        $peerSuperAdmin = $this->admin('super-b', 'super_admin');
+        $ordinaryModel = $this->model($ordinary);
+        $sharedModel = $this->model($provider);
+        $governedModel = $this->model($this->admin('governed', 'admin'));
+        $peerModel = $this->model($peerSuperAdmin);
+        $ordinary->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $policy = app(AiModelPolicy::class);
+
+        $this->assertFalse($policy->viewApiKey($ordinary, $ordinaryModel));
+        $this->assertFalse($policy->viewApiKey($ordinary, $sharedModel));
+        $this->assertFalse($policy->viewApiKey($superAdmin, $governedModel));
+        $this->assertFalse($policy->viewApiKey($superAdmin, $peerModel));
+    }
+
     public function test_ordinary_administrator_can_manage_only_its_own_user_content_model(): void
     {
         $consumer = $this->admin('consumer', 'admin');
@@ -263,8 +282,10 @@ final class AdminAiModelAccessFoundationTest extends TestCase
         $otherModel = $this->model($this->admin('other', 'admin'));
         $policy = app(AiModelPolicy::class);
 
-        $this->assertPolicyManagement($policy, $consumer, $ownModel, true);
-        $this->assertPolicyManagement($policy, $consumer, $otherModel, false);
+        $this->assertPolicyConfiguration($policy, $consumer, $ownModel, true);
+        $this->assertPolicyGovernance($policy, $consumer, $ownModel, true);
+        $this->assertPolicyConfiguration($policy, $consumer, $otherModel, false);
+        $this->assertPolicyGovernance($policy, $consumer, $otherModel, false);
     }
 
     public function test_ordinary_administrator_cannot_manage_a_system_only_model_it_owns(): void
@@ -274,7 +295,13 @@ final class AdminAiModelAccessFoundationTest extends TestCase
             'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
         ]);
 
-        $this->assertPolicyManagement(
+        $this->assertPolicyConfiguration(
+            app(AiModelPolicy::class),
+            $consumer,
+            $systemModel,
+            false,
+        );
+        $this->assertPolicyGovernance(
             app(AiModelPolicy::class),
             $consumer,
             $systemModel,
@@ -282,21 +309,49 @@ final class AdminAiModelAccessFoundationTest extends TestCase
         );
     }
 
-    public function test_super_administrator_can_manage_an_ordinary_administrator_model(): void
+    public function test_super_administrator_can_configure_and_govern_its_own_model(): void
+    {
+        $superAdmin = $this->admin('super-a', 'super_admin');
+        $ownModel = $this->model($superAdmin, [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+        ]);
+        $policy = app(AiModelPolicy::class);
+
+        $this->assertPolicyConfiguration($policy, $superAdmin, $ownModel, true);
+        $this->assertPolicyGovernance($policy, $superAdmin, $ownModel, true);
+        $this->assertTrue(
+            app(AdminAiModelAccessResolver::class)
+                ->managementQuery($superAdmin)
+                ->whereKey($ownModel->id)
+                ->exists(),
+        );
+    }
+
+    public function test_super_administrator_can_govern_an_ordinary_model_without_configuration_access(): void
     {
         $superAdmin = $this->admin('super-a', 'super_admin');
         $ordinaryModel = $this->model($this->admin('ordinary', 'admin'), [
             'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_key' => 'encrypted-secret',
+            'api_url' => 'https://private-endpoint.example.test/v1',
+            'model_id' => 'private-provider-model-id',
         ]);
         $resolver = app(AdminAiModelAccessResolver::class);
+        $policy = app(AiModelPolicy::class);
 
-        $this->assertPolicyManagement(
-            app(AiModelPolicy::class),
-            $superAdmin,
-            $ordinaryModel,
-            true,
-        );
-        $this->assertTrue($resolver->managementQuery($superAdmin)->whereKey($ordinaryModel->id)->exists());
+        $this->assertFalse($policy->update($superAdmin, $ordinaryModel));
+        $this->assertFalse($policy->test($superAdmin, $ordinaryModel));
+        $this->assertFalse($policy->delete($superAdmin, $ordinaryModel));
+        $this->assertTrue($policy->disable($superAdmin, $ordinaryModel));
+        $this->assertTrue($policy->archive($superAdmin, $ordinaryModel));
+        $this->assertFalse($resolver->canConfigure($superAdmin, $ordinaryModel));
+        $this->assertTrue($resolver->canGovern($superAdmin, $ordinaryModel));
+        $this->assertFalse($resolver->managementQuery($superAdmin)->whereKey($ordinaryModel->id)->exists());
+
+        $governanceModel = $resolver->governanceQuery($superAdmin)->findOrFail($ordinaryModel->id);
+        $this->assertArrayNotHasKey('api_key', $governanceModel->getAttributes());
+        $this->assertArrayNotHasKey('api_url', $governanceModel->getAttributes());
+        $this->assertArrayNotHasKey('model_id', $governanceModel->getAttributes());
     }
 
     public function test_super_administrator_cannot_manage_another_super_administrator_model(): void
@@ -305,7 +360,13 @@ final class AdminAiModelAccessFoundationTest extends TestCase
         $peerModel = $this->model($this->admin('super-b', ' Super_Admin '));
         $resolver = app(AdminAiModelAccessResolver::class);
 
-        $this->assertPolicyManagement(
+        $this->assertPolicyConfiguration(
+            app(AiModelPolicy::class),
+            $superAdmin,
+            $peerModel,
+            false,
+        );
+        $this->assertPolicyGovernance(
             app(AiModelPolicy::class),
             $superAdmin,
             $peerModel,
@@ -495,7 +556,7 @@ final class AdminAiModelAccessFoundationTest extends TestCase
         return $model;
     }
 
-    private function assertPolicyManagement(
+    private function assertPolicyConfiguration(
         AiModelPolicy $policy,
         Admin $actor,
         AiModel $model,
@@ -503,9 +564,16 @@ final class AdminAiModelAccessFoundationTest extends TestCase
     ): void {
         $this->assertSame($expected, $policy->update($actor, $model));
         $this->assertSame($expected, $policy->test($actor, $model));
+        $this->assertSame($expected, $policy->delete($actor, $model));
+    }
+
+    private function assertPolicyGovernance(
+        AiModelPolicy $policy,
+        Admin $actor,
+        AiModel $model,
+        bool $expected,
+    ): void {
         $this->assertSame($expected, $policy->disable($actor, $model));
         $this->assertSame($expected, $policy->archive($actor, $model));
-        $this->assertSame($expected, $policy->viewApiKey($actor, $model));
-        $this->assertSame($expected, $policy->delete($actor, $model));
     }
 }

@@ -42,14 +42,9 @@ final class AdminAiModelAccessResolver
     public function managementQuery(Admin $actor): Builder
     {
         $actor = $this->activeActor($actor);
+        $query = AiModel::query()->ownedBy($actor);
 
-        if (! $actor->isSuperAdmin()) {
-            return AiModel::query()
-                ->ownedBy($actor)
-                ->userContent();
-        }
-
-        return $this->scopeSuperAdminGovernanceOwners(AiModel::query(), $actor);
+        return $actor->isSuperAdmin() ? $query : $query->userContent();
     }
 
     public function manageableBy(Admin $actor): Builder
@@ -57,10 +52,35 @@ final class AdminAiModelAccessResolver
         return $this->managementQuery($actor);
     }
 
-    public function canManage(Admin $actor, AiModel $model): bool
+    public function canConfigure(Admin $actor, AiModel $model): bool
     {
         try {
             return $this->managementQuery($actor)
+                ->whereKey($model->getKey())
+                ->exists();
+        } catch (AiModelAccessException) {
+            return false;
+        }
+    }
+
+    public function governanceQuery(Admin $actor): Builder
+    {
+        $actor = $this->activeActor($actor);
+        $query = AiModel::query()->select(self::SANITIZED_COLUMNS);
+
+        if ($actor->isSuperAdmin()) {
+            return $this->scopeSuperAdminGovernanceOwners($query, $actor);
+        }
+
+        return $query
+            ->ownedBy($actor)
+            ->userContent();
+    }
+
+    public function canGovern(Admin $actor, AiModel $model): bool
+    {
+        try {
+            return $this->governanceQuery($actor)
                 ->whereKey($model->getKey())
                 ->exists();
         } catch (AiModelAccessException) {
