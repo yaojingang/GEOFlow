@@ -7,6 +7,8 @@ use App\Models\AiConversation;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
+use App\Models\ArticleAiQualityCheck;
 use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
@@ -15,6 +17,8 @@ use App\Models\EnterpriseKnowledgeProject;
 use App\Models\ImageLibrary;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
+use App\Models\KnowledgeFactGenerationRun;
+use App\Models\KnowledgeFactLibrary;
 use App\Models\LeadForm;
 use App\Models\LeadSubmission;
 use App\Models\ManualPublication;
@@ -81,7 +85,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(100, $shellRoutes);
+        $this->assertCount(102, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
@@ -92,6 +96,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
             $this->assertSame(200, $response->status(), $routeName);
             $response->assertSee('data-gf-shell', false, $routeName);
+            $response->assertSee('data-admin-product-footer', false, $routeName);
 
             $document = new \DOMDocument;
             @$document->loadHTML((string) $response->getContent());
@@ -130,7 +135,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $this->assertCount(2, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
         $this->assertCount(5, $routesByClassification->get('download', collect()));
-        $this->assertCount(12, $routesByClassification->get('endpoint', collect()));
+        $this->assertCount(14, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
             ->assertOk()
@@ -293,6 +298,14 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $imageLibrary = ImageLibrary::query()->where('name', UiV3ReviewSeeder::IMAGE_LIBRARY_NAME)->firstOrFail();
         $keywordLibrary = KeywordLibrary::query()->where('name', UiV3ReviewSeeder::KEYWORD_LIBRARY_NAME)->firstOrFail();
         $knowledgeBase = KnowledgeBase::query()->where('name', UiV3ReviewSeeder::KNOWLEDGE_BASE_NAME)->firstOrFail();
+        $factLibrary = KnowledgeFactLibrary::query()->firstOrCreate(['knowledge_base_id' => $knowledgeBase->id]);
+        $factGenerationRun = KnowledgeFactGenerationRun::query()->firstOrCreate([
+            'library_id' => $factLibrary->id,
+            'request_key' => '01987f84-7f01-7000-8000-000000000103',
+        ], [
+            'mode' => 'initial', 'target_count' => 1, 'source_hash' => str_repeat('0', 64),
+            'base_working_version' => 1, 'status' => 'completed', 'completed_at' => now(),
+        ]);
         $leadForm = LeadForm::query()->where('slug', UiV3ReviewSeeder::LEAD_FORM_SLUG)->firstOrFail();
         $lead = LeadSubmission::query()->where('source_url', UiV3ReviewSeeder::LEAD_SOURCE_URL)->firstOrFail();
         $publication = ManualPublication::query()->where('target_url', UiV3ReviewSeeder::PUBLICATION_TARGET_URL)->firstOrFail();
@@ -319,11 +332,51 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $replicationId = (int) SiteThemeReplication::query()
             ->where('theme_id', UiV3ReviewSeeder::THEME_ID)
             ->value('id');
+        $qualityCheck = ArticleAiQualityCheck::query()->create([
+            'article_id' => $article->id,
+            'task_id' => $article->task_id,
+            'prompt_id' => $prompt->id,
+            'ai_model_id' => $model->id,
+            'request_key' => '01987f84-7f01-7000-8000-000000000101',
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 88,
+            'article_snapshot' => [
+                'title' => $article->title,
+                'excerpt' => $article->excerpt,
+                'content' => $article->content,
+                'keywords' => $article->keywords,
+                'meta_description' => $article->meta_description,
+            ],
+            'input_fingerprint' => hash('sha256', 'ui-v3-optimization-check'),
+            'algorithm_version' => 'ui-v3-test',
+            'evaluation_mode' => 'optimization_candidate',
+            'inspection_scope' => 'full',
+            'gate_applied' => false,
+        ]);
+        $optimizationRun = ArticleAiOptimizationRun::query()->create([
+            'article_id' => $article->id,
+            'task_id' => $article->task_id,
+            'source_check_id' => $qualityCheck->id,
+            'best_check_id' => $qualityCheck->id,
+            'request_key' => '01987f84-7f01-7000-8000-000000000102',
+            'trigger' => ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            'strategy' => 'excellent_80',
+            'target_score' => 80,
+            'status' => ArticleAiOptimizationRun::STATUS_CANDIDATE_READY,
+            'base_article_hash' => hash('sha256', 'ui-v3-optimization-base'),
+            'candidate_hash' => hash('sha256', 'ui-v3-optimization-candidate'),
+            'policy_hash' => hash('sha256', 'ui-v3-optimization-policy'),
+        ]);
 
         return [
             'admin.ai-workspace.conversations.show' => ['conversation' => $aiConversation->id],
             'admin.articles.edit' => ['articleId' => $article->id],
             'admin.articles.ai-quality.status' => ['articleId' => $article->id],
+            'admin.articles.ai-quality.optimization.candidate' => [
+                'articleId' => $article->id,
+                'runId' => $optimizationRun->id,
+            ],
             'admin.ai-models.edit' => ['modelId' => $model->id],
             'admin.ai-source-providers.edit' => ['providerId' => $sourceProvider->id],
             'admin.ai-prompts.edit' => ['promptId' => $prompt->id],
@@ -353,7 +406,10 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.keyword-libraries.import.create' => ['libraryId' => $keywordLibrary->id],
             'admin.keyword-libraries.keywords.create' => ['libraryId' => $keywordLibrary->id],
             'admin.knowledge-bases.detail' => ['knowledgeBaseId' => $knowledgeBase->id],
+            'admin.knowledge-bases.chunks.index' => ['knowledgeBaseId' => $knowledgeBase->id],
             'admin.knowledge-bases.edit' => ['knowledgeBaseId' => $knowledgeBase->id],
+            'admin.knowledge-bases.facts.index' => ['knowledgeBaseId' => $knowledgeBase->id],
+            'admin.knowledge-bases.fact-generation.show' => ['knowledgeBaseId' => $knowledgeBase->id, 'runId' => $factGenerationRun->id],
             'admin.lead-forms.edit' => ['formId' => $leadForm->id],
             'admin.leads.show' => ['submissionId' => $lead->id],
             'admin.manual-publications.edit' => ['manualPublicationId' => $publication->id],

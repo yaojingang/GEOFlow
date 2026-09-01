@@ -216,8 +216,13 @@ class IdempotencyService
     /**
      * 先独立提交预留，再原子提交业务变更和最终响应；缓存锁仅提供快速互斥。
      */
-    public static function executeJson(Request $request, string $routeKey, Closure $operation, ?Closure $operationGuard = null): JsonResponse
-    {
+    public static function executeJson(
+        Request $request,
+        string $routeKey,
+        Closure $operation,
+        ?Closure $operationGuard = null,
+        array|Closure|null $fingerprintContext = null,
+    ): JsonResponse {
         $runGuarded = static function (Closure $callback) use ($operationGuard): JsonResponse {
             return $operationGuard !== null ? $operationGuard($callback) : $callback();
         };
@@ -226,7 +231,14 @@ class IdempotencyService
             return $runGuarded($operation);
         }
 
+        $context = $fingerprintContext instanceof Closure
+            ? $fingerprintContext()
+            : $fingerprintContext;
+        if ($context !== null) {
+            $request->attributes->set(self::fingerprintContextAttribute($routeKey), $context);
+        }
         self::requestHashFor($request, $routeKey);
+        $storageRouteKey = self::storageRouteKey($request, $routeKey);
 
         $lock = Cache::lock(self::lockName($key, $routeKey), self::LEASE_SECONDS);
         if (! $lock->get()) {
@@ -234,13 +246,21 @@ class IdempotencyService
         }
 
         try {
-            $cached = self::maybeReplayJson($request, $routeKey);
+            $requestHash = self::requestHashFor($request, $routeKey);
+            $cached = self::loadReplay($key, $storageRouteKey, $requestHash);
             if ($cached !== null) {
-                return $cached;
+                return response()->json($cached['payload'], $cached['status']);
             }
 
-            $requestHash = self::requestHashFor($request, $routeKey);
-            $reservation = self::reserve($key, $routeKey, $requestHash);
+            // Keep records created before the caller namespace rollout replayable.
+            // A v2 fingerprint already binds the token and concrete request target,
+            // while an unbound v1 record fails closed in loadReplay().
+            $legacy = self::loadReplay($key, $routeKey, $requestHash);
+            if ($legacy !== null) {
+                return response()->json($legacy['payload'], $legacy['status']);
+            }
+
+            $reservation = self::reserve($key, $storageRouteKey, $requestHash);
             if ($reservation['replay'] !== null) {
                 return response()->json(
                     $reservation['replay']['payload'],
@@ -314,12 +334,19 @@ class IdempotencyService
                 'method' => strtoupper($request->method()),
                 'target' => $target,
                 'token_id' => is_numeric($tokenId) ? (int) $tokenId : null,
+                'if_match' => trim((string) $request->header('If-Match', '')),
             ],
             'payload' => $request->all(),
+            'context' => $request->attributes->get(self::fingerprintContextAttribute($routeKey)),
         ]);
         $request->attributes->set($attribute, $hash);
 
         return $hash;
+    }
+
+    private static function fingerprintContextAttribute(string $routeKey): string
+    {
+        return 'geoflow.idempotency_context.'.hash('sha256', $routeKey);
     }
 
     private static function expectedHashForVersion(
@@ -343,6 +370,16 @@ class IdempotencyService
         return 'geoflow:idempotency:'.hash('sha256', $routeKey."\0".$idempotencyKey);
     }
 
+    private static function storageRouteKey(Request $request, string $routeKey): string
+    {
+        $auth = $request->attributes->get('api_auth');
+        $tokenId = $auth instanceof ApiAuthContext && is_numeric($auth->token['id'] ?? null)
+            ? (int) $auth->token['id']
+            : 0;
+
+        return 'v2:'.hash('sha256', $routeKey."\0token=".$tokenId);
+    }
+
     private static function validatedKey(Request $request): ?string
     {
         $key = $request->header('X-Idempotency-Key');
@@ -361,6 +398,7 @@ class IdempotencyService
      */
     private static function reserve(string $idempotencyKey, string $routeKey, string $requestHash): array
     {
+        self::pruneCompletedRecords();
         $now = now();
         $ownerToken = bin2hex(random_bytes(32));
         $inserted = ApiIdempotencyKey::query()->insertOrIgnore([
@@ -395,6 +433,20 @@ class IdempotencyService
             'owner_token' => $ownerToken,
             'replay' => null,
         ];
+    }
+
+    private static function pruneCompletedRecords(): void
+    {
+        $retentionDays = max(1, (int) config('geoflow.api_idempotency_retention_days', 7));
+        $ids = ApiIdempotencyKey::query()
+            ->where('state', 'completed')
+            ->where('updated_at', '<', now()->subDays($retentionDays))
+            ->orderBy('id')
+            ->limit(100)
+            ->pluck('id');
+        if ($ids->isNotEmpty()) {
+            ApiIdempotencyKey::query()->whereKey($ids->all())->delete();
+        }
     }
 
     private static function claimReservation(int $reservationId, string $requestHash, string $ownerToken): void

@@ -86,9 +86,18 @@
                         <i data-lucide="pencil" class="h-4 w-4"></i>
                         {{ __('admin.button.edit') }}
                     </a>
-                    <form method="POST" action="{{ $channel->status === 'active' ? route('admin.distribution.pause', ['channelId' => (int) $channel->id]) : route('admin.distribution.activate', ['channelId' => (int) $channel->id]) }}">
+                    <form
+                        method="POST"
+                        action="{{ $channel->status === 'active' ? route('admin.distribution.pause', ['channelId' => (int) $channel->id]) : route('admin.distribution.activate', ['channelId' => (int) $channel->id]) }}"
+                        data-admin-confirm-form
+                        data-admin-confirm-tone="{{ $channel->status === 'active' ? 'warning' : 'success' }}"
+                        data-admin-confirm-title="{{ $channel->status === 'active' ? __('admin.distribution.button.pause') : __('admin.distribution.button.activate') }} “{{ $channel->name }}”"
+                        data-admin-confirm-message="{{ __('admin.action_dialog.generic_impact') }}"
+                        data-admin-confirm-guidance="{{ $healthStatus !== '' ? $healthStatusLabel : __('admin.common.none') }}"
+                        data-admin-confirm-label="{{ $channel->status === 'active' ? __('admin.distribution.button.pause') : __('admin.distribution.button.activate') }}"
+                    >
                         @csrf
-                        <button type="submit" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-blue-600 bg-blue-600 px-4 text-sm font-medium text-white transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-blue-700 [@media(hover:hover)]:hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                        <button type="submit" class="inline-flex min-h-10 items-center gap-2 rounded-md border border-blue-600 bg-blue-600 px-4 text-sm font-medium text-white transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-blue-700 [@media(hover:hover)]:hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" data-admin-confirm-submit disabled aria-disabled="true">
                             <i data-lucide="{{ $channel->status === 'active' ? 'pause-circle' : 'play-circle' }}" class="h-4 w-4"></i>
                             {{ $channel->status === 'active' ? __('admin.distribution.button.pause') : __('admin.distribution.button.activate') }}
                         </button>
@@ -121,9 +130,9 @@
                                 同步预览
                             </a>
                             @if ($channel->isGeoFlowAgent())
-                                <form method="POST" action="{{ route('admin.distribution.rotate-secret', ['channelId' => (int) $channel->id]) }}" onsubmit="return confirm('{{ __('admin.distribution.confirm.rotate_secret') }}')">
+                                <form method="POST" action="{{ route('admin.distribution.rotate-secret', ['channelId' => (int) $channel->id]) }}" data-admin-confirm-form data-admin-confirm-tone="warning" data-admin-confirm-title="{{ __('admin.distribution.confirm.rotate_secret') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $channel->name]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.distribution.button.rotate_secret') }}">
                                     @csrf
-                                    <button type="submit" class="inline-flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium text-amber-800 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-amber-50 active:scale-[0.98]">
+                                    <button type="submit" class="inline-flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium text-amber-800 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-amber-50 active:scale-[0.98]" data-admin-confirm-submit disabled aria-disabled="true">
                                         <i data-lucide="refresh-cw" class="h-4 w-4"></i>
                                         {{ __('admin.distribution.button.rotate_secret') }}
                                     </button>

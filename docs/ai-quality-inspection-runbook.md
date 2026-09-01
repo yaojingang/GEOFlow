@@ -49,6 +49,8 @@ AI 质检覆盖知识一致性、数据与引文、广告合规风险和内容�
 | --- | ---: | --- | ---: |
 | `ai-quality` | 2 | 人工质检、发布门禁和在线请求 | 10 秒 |
 | `ai-quality-backfill` | 1 | 历史补算、异常恢复和版本回填 | 45 秒 |
+| `ai-content-optimization` | 1 | 单篇文章 AI 优化 | 15 秒 |
+| `ai-content-optimization-bulk` | 1，共用优化 Worker | 任务自动优化、恢复和对账 | 60 秒 |
 
 回填每批最多处理 25 篇。前台检查等待超过 10 秒、当前模型熔断或模型当日额度接近保留水位时，回填暂停并保存文章游标。调度器每 5 秒同步执行一次过期状态收敛，不经过回填队列；全文记录到达 `primary_deadline_at` 后按策略快照进入抽样或失败，到达最终 `deadline_at` 后统一进入失败终态。每分钟对账只处理历史补算、版本变化、缺失记录及已完成质检的发布流程补偿。页面通过 `retryable` 提示是否适合人工重检，避免供应商持续故障时形成无限请求循环。
 
@@ -95,6 +97,19 @@ GEOFLOW_AI_QUALITY_FRONT_QUEUE_WAIT_SECONDS=10
 GEOFLOW_AI_QUALITY_BACKFILL_QUOTA_RESERVE=2
 GEOFLOW_AI_QUALITY_RECOVERY_STALE_SECONDS=60
 GEOFLOW_AI_QUALITY_STRUCTURED_REPROBE_SECONDS=86400
+
+GEOFLOW_AI_QUALITY_OPTIMIZATION_ENABLED=false
+GEOFLOW_AI_QUALITY_OPTIMIZATION_AUTO_APPLY_ENABLED=false
+GEOFLOW_AI_QUALITY_OPTIMIZATION_PERCENT=0
+GEOFLOW_AI_QUALITY_OPTIMIZATION_AUTO_APPLY_PERCENT=0
+GEOFLOW_AI_QUALITY_OPTIMIZATION_QUEUE=ai-content-optimization
+GEOFLOW_AI_QUALITY_OPTIMIZATION_BULK_QUEUE=ai-content-optimization-bulk
+GEOFLOW_AI_QUALITY_OPTIMIZATION_BULK_QUOTA_RESERVE=2
+GEOFLOW_AI_QUALITY_OPTIMIZATION_MAX_MODEL_ATTEMPTS=2
+GEOFLOW_AI_QUALITY_OPTIMIZATION_MAX_ROUNDS=3
+GEOFLOW_AI_QUALITY_OPTIMIZATION_RECOVERY_STALE_SECONDS=300
+GEOFLOW_AI_QUALITY_OPTIMIZATION_JOB_TIMEOUT_SECONDS=850
+GEOFLOW_AI_QUALITY_OPTIMIZATION_WORKER_TIMEOUT_SECONDS=900
 
 GEOFLOW_AI_QUALITY_EVIDENCE_CACHE_ENABLED=true
 GEOFLOW_AI_QUALITY_EVIDENCE_CACHE_TTL_SECONDS=86400
@@ -157,11 +172,26 @@ php artisan config:cache
 php artisan queue:restart
 php artisan geoflow:work-ai-quality front --validate
 php artisan geoflow:work-ai-quality backfill --validate
+php artisan geoflow:work-ai-optimization --validate
 php artisan geoflow:converge-ai-quality --json
 php artisan geoflow:ai-quality-health --probe --wait=10 --json
 php artisan geoflow:evaluate-ai-quality
 php artisan geoflow:reconcile-ai-quality --limit=25
+php artisan geoflow:reconcile-ai-optimization --limit=25
 ```
+
+## AI 质检自动优化
+
+自动优化使用“质检问题、局部补丁、后端校验、完整复检”的有限循环。单篇入口默认只生成影子候选，任务自动应用还受独立开关和稳定灰度百分比控制。候选复检固定禁用抽样，来源或文章指纹变化会让运行进入 `stale`，正式文章只在候选达到目标且事务校验通过后更新。
+
+上线时依次开启单篇预览、任务影子运行和任务自动应用。自动应用需要先完成 240 条基础质检集、120 条优化基准和 30 条对抗样本，并满足安全指标。紧急停用顺序如下：
+
+1. 将 `GEOFLOW_AI_QUALITY_OPTIMIZATION_AUTO_APPLY_PERCENT` 调为 `0`。
+2. 需要停止新运行时，将 `GEOFLOW_AI_QUALITY_OPTIMIZATION_PERCENT` 调为 `0` 并关闭 `GEOFLOW_AI_QUALITY_OPTIMIZATION_ENABLED`。
+3. 刷新配置，重启 Worker，执行优化对账命令。
+4. 检查 `applying`、过期租约和 `waiting_optimization` 数量已经收敛。
+
+健康快照的 `optimization_metrics` 会显示活跃运行、过期截止时间、过期租约、24 小时转人工和失败数量。恢复任务每分钟清理过期租约、继续已完成候选、补偿最终工作流，并处理缺少活跃运行的 `waiting_optimization` 记录。
 
 ## 状态查询
 

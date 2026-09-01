@@ -1,0 +1,4507 @@
+{
+    "schema_version": 1,
+    "algorithm_version": "atomic-comparator-contract-1.0.0",
+    "case_count": 250,
+    "cases": [
+        {
+            "id": "comparison-001",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 1",
+                "value": "1",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 1 件",
+                "value": "1",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-002",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 2",
+                "value": "2",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 2 件",
+                "value": "3",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-003",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 3",
+                "value": "3",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 3 件",
+                "value": "3",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-004",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 4",
+                "value": "4",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 4 件",
+                "value": "4",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-005",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 5",
+                "value": "5",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 5 件",
+                "value": "5",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-006",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 6",
+                "value": "6",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 6 件",
+                "value": "6",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-007",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 7",
+                "value": "7",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 7 件",
+                "value": "8",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-008",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 8",
+                "value": "8",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 8 件",
+                "value": "8",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-009",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 9",
+                "value": "9",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 9 件",
+                "value": "9",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-010",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 10",
+                "value": "10",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 10 件",
+                "value": "10",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-011",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 11",
+                "value": "11",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 11 件",
+                "value": "11",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-012",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 12",
+                "value": "12",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 12 件",
+                "value": "13",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-013",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 13",
+                "value": "13",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 13 件",
+                "value": "13",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-014",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 14",
+                "value": "14",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 14 件",
+                "value": "14",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-015",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 15",
+                "value": "15",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 15 件",
+                "value": "15",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-016",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 16",
+                "value": "16",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 16 件",
+                "value": "16",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-017",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 17",
+                "value": "17",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 17 件",
+                "value": "18",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-018",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 18",
+                "value": "18",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 18 件",
+                "value": "18",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-019",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 19",
+                "value": "19",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 19 件",
+                "value": "19",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-020",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 20",
+                "value": "20",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 20 件",
+                "value": "20",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-021",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 21",
+                "value": "21",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 21 件",
+                "value": "21",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-022",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 22",
+                "value": "22",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 22 件",
+                "value": "23",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-023",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 23",
+                "value": "23",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 23 件",
+                "value": "23",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-024",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 24",
+                "value": "24",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 24 件",
+                "value": "24",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-025",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 25",
+                "value": "25",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 25 件",
+                "value": "25",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-026",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 26",
+                "value": "26",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 26 件",
+                "value": "26",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-027",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 27",
+                "value": "27",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 27 件",
+                "value": "28",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-028",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 28",
+                "value": "28",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 28 件",
+                "value": "28",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-029",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 29",
+                "value": "29",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 29 件",
+                "value": "29",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-030",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 30",
+                "value": "30",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 30 件",
+                "value": "30",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-031",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 31",
+                "value": "31",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 31 件",
+                "value": "31",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-032",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 32",
+                "value": "32",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 32 件",
+                "value": "33",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-033",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 33",
+                "value": "33",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 33 件",
+                "value": "33",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-034",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 34",
+                "value": "34",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 34 件",
+                "value": "34",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-035",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 35",
+                "value": "35",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 35 件",
+                "value": "35",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-036",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 36",
+                "value": "36",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 36 件",
+                "value": "36",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-037",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 37",
+                "value": "37",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 37 件",
+                "value": "38",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-038",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 38",
+                "value": "38",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 38 件",
+                "value": "38",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-039",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 39",
+                "value": "39",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 39 件",
+                "value": "39",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-040",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 40",
+                "value": "40",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 40 件",
+                "value": "40",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-041",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 41",
+                "value": "41",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 41 件",
+                "value": "41",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-042",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 42",
+                "value": "42",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 42 件",
+                "value": "43",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-043",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 43",
+                "value": "43",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 43 件",
+                "value": "43",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-044",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 44",
+                "value": "44",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 44 件",
+                "value": "44",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-045",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 45",
+                "value": "45",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 45 件",
+                "value": "45",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-046",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 46",
+                "value": "46",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 46 件",
+                "value": "46",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-047",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 47",
+                "value": "47",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 47 件",
+                "value": "48",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-048",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 48",
+                "value": "48",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 48 件",
+                "value": "48",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-049",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 49",
+                "value": "49",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 49 件",
+                "value": "49",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-050",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 50",
+                "value": "50",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 50 件",
+                "value": "50",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-051",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 51",
+                "value": "51",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 51 件",
+                "value": "51",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-052",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 52",
+                "value": "52",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 52 件",
+                "value": "53",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-053",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 53",
+                "value": "53",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 53 件",
+                "value": "53",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-054",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 54",
+                "value": "54",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 54 件",
+                "value": "54",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-055",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 55",
+                "value": "55",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 55 件",
+                "value": "55",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-056",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 56",
+                "value": "56",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 56 件",
+                "value": "56",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-057",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 57",
+                "value": "57",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 57 件",
+                "value": "58",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-058",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 58",
+                "value": "58",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 58 件",
+                "value": "58",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-059",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 59",
+                "value": "59",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 59 件",
+                "value": "59",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-060",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 60",
+                "value": "60",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 60 件",
+                "value": "60",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-061",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 61",
+                "value": "61",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 61 件",
+                "value": "61",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-062",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 62",
+                "value": "62",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 62 件",
+                "value": "63",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-063",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 63",
+                "value": "63",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 63 件",
+                "value": "63",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-064",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 64",
+                "value": "64",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 64 件",
+                "value": "64",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-065",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 65",
+                "value": "65",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 65 件",
+                "value": "65",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-066",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 66",
+                "value": "66",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 66 件",
+                "value": "66",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-067",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 67",
+                "value": "67",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 67 件",
+                "value": "68",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-068",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 68",
+                "value": "68",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 68 件",
+                "value": "68",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-069",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 69",
+                "value": "69",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 69 件",
+                "value": "69",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-070",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 70",
+                "value": "70",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 70 件",
+                "value": "70",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-071",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 71",
+                "value": "71",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 71 件",
+                "value": "71",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-072",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 72",
+                "value": "72",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 72 件",
+                "value": "73",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-073",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 73",
+                "value": "73",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 73 件",
+                "value": "73",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-074",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 74",
+                "value": "74",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 74 件",
+                "value": "74",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-075",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 75",
+                "value": "75",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 75 件",
+                "value": "75",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-076",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 76",
+                "value": "76",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 76 件",
+                "value": "76",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-077",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 77",
+                "value": "77",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 77 件",
+                "value": "78",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-078",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 78",
+                "value": "78",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 78 件",
+                "value": "78",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-079",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 79",
+                "value": "79",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 79 件",
+                "value": "79",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-080",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 80",
+                "value": "80",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 80 件",
+                "value": "80",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-081",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 81",
+                "value": "81",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 81 件",
+                "value": "81",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-082",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 82",
+                "value": "82",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 82 件",
+                "value": "83",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-083",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 83",
+                "value": "83",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 83 件",
+                "value": "83",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-084",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 84",
+                "value": "84",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 84 件",
+                "value": "84",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-085",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 85",
+                "value": "85",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 85 件",
+                "value": "85",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-086",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 86",
+                "value": "86",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 86 件",
+                "value": "86",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-087",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 87",
+                "value": "87",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 87 件",
+                "value": "88",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-088",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 88",
+                "value": "88",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 88 件",
+                "value": "88",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-089",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 89",
+                "value": "89",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 89 件",
+                "value": "89",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-090",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 90",
+                "value": "90",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 90 件",
+                "value": "90",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-091",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 91",
+                "value": "91",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 91 件",
+                "value": "91",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-092",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 92",
+                "value": "92",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 92 件",
+                "value": "93",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-093",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 93",
+                "value": "93",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 93 件",
+                "value": "93",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-094",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 94",
+                "value": "94",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 94 件",
+                "value": "94",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-095",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 95",
+                "value": "95",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 95 件",
+                "value": "95",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-096",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 96",
+                "value": "96",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 96 件",
+                "value": "96",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-097",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 97",
+                "value": "97",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 97 件",
+                "value": "98",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-098",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 98",
+                "value": "98",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 98 件",
+                "value": "98",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-099",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 99",
+                "value": "99",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 99 件",
+                "value": "99",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-100",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 100",
+                "value": "100",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 100 件",
+                "value": "100",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-101",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 101",
+                "value": "101",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 101 件",
+                "value": "101",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-102",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 102",
+                "value": "102",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 102 件",
+                "value": "103",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-103",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 103",
+                "value": "103",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 103 件",
+                "value": "103",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-104",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 104",
+                "value": "104",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 104 件",
+                "value": "104",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-105",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 105",
+                "value": "105",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 105 件",
+                "value": "105",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-106",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 106",
+                "value": "106",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 106 件",
+                "value": "106",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-107",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 107",
+                "value": "107",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 107 件",
+                "value": "108",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-108",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 108",
+                "value": "108",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 108 件",
+                "value": "108",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-109",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 109",
+                "value": "109",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 109 件",
+                "value": "109",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-110",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 110",
+                "value": "110",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 110 件",
+                "value": "110",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-111",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 111",
+                "value": "111",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 111 件",
+                "value": "111",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-112",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 112",
+                "value": "112",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 112 件",
+                "value": "113",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-113",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 113",
+                "value": "113",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 113 件",
+                "value": "113",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-114",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 114",
+                "value": "114",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 114 件",
+                "value": "114",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-115",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 115",
+                "value": "115",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 115 件",
+                "value": "115",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-116",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 116",
+                "value": "116",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 116 件",
+                "value": "116",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-117",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 117",
+                "value": "117",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 117 件",
+                "value": "118",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-118",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 118",
+                "value": "118",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 118 件",
+                "value": "118",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-119",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 119",
+                "value": "119",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 119 件",
+                "value": "119",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-120",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 120",
+                "value": "120",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 120 件",
+                "value": "120",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-121",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 121",
+                "value": "121",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 121 件",
+                "value": "121",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-122",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 122",
+                "value": "122",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 122 件",
+                "value": "123",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-123",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 123",
+                "value": "123",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 123 件",
+                "value": "123",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-124",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 124",
+                "value": "124",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 124 件",
+                "value": "124",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-125",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 125",
+                "value": "125",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 125 件",
+                "value": "125",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-126",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 126",
+                "value": "126",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 126 件",
+                "value": "126",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-127",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 127",
+                "value": "127",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 127 件",
+                "value": "128",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-128",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 128",
+                "value": "128",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 128 件",
+                "value": "128",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-129",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 129",
+                "value": "129",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 129 件",
+                "value": "129",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-130",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 130",
+                "value": "130",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 130 件",
+                "value": "130",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-131",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 131",
+                "value": "131",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 131 件",
+                "value": "131",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-132",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 132",
+                "value": "132",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 132 件",
+                "value": "133",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-133",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 133",
+                "value": "133",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 133 件",
+                "value": "133",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-134",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 134",
+                "value": "134",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 134 件",
+                "value": "134",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-135",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 135",
+                "value": "135",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 135 件",
+                "value": "135",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-136",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 136",
+                "value": "136",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 136 件",
+                "value": "136",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-137",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 137",
+                "value": "137",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 137 件",
+                "value": "138",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-138",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 138",
+                "value": "138",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 138 件",
+                "value": "138",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-139",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 139",
+                "value": "139",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 139 件",
+                "value": "139",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-140",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 140",
+                "value": "140",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 140 件",
+                "value": "140",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-141",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 141",
+                "value": "141",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 141 件",
+                "value": "141",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-142",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 142",
+                "value": "142",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 142 件",
+                "value": "143",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-143",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 143",
+                "value": "143",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 143 件",
+                "value": "143",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-144",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 144",
+                "value": "144",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 144 件",
+                "value": "144",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-145",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 145",
+                "value": "145",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 145 件",
+                "value": "145",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-146",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 146",
+                "value": "146",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 146 件",
+                "value": "146",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-147",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 147",
+                "value": "147",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 147 件",
+                "value": "148",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-148",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 148",
+                "value": "148",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 148 件",
+                "value": "148",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-149",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 149",
+                "value": "149",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 149 件",
+                "value": "149",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-150",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 150",
+                "value": "150",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 150 件",
+                "value": "150",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-151",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 151",
+                "value": "151",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 151 件",
+                "value": "151",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-152",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 152",
+                "value": "152",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 152 件",
+                "value": "153",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-153",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 153",
+                "value": "153",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 153 件",
+                "value": "153",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-154",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 154",
+                "value": "154",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 154 件",
+                "value": "154",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-155",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 155",
+                "value": "155",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 155 件",
+                "value": "155",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-156",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 156",
+                "value": "156",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 156 件",
+                "value": "156",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-157",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 157",
+                "value": "157",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 157 件",
+                "value": "158",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-158",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 158",
+                "value": "158",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 158 件",
+                "value": "158",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-159",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 159",
+                "value": "159",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 159 件",
+                "value": "159",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-160",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 160",
+                "value": "160",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 160 件",
+                "value": "160",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-161",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 161",
+                "value": "161",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 161 件",
+                "value": "161",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-162",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 162",
+                "value": "162",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 162 件",
+                "value": "163",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-163",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 163",
+                "value": "163",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 163 件",
+                "value": "163",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-164",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 164",
+                "value": "164",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 164 件",
+                "value": "164",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-165",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 165",
+                "value": "165",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 165 件",
+                "value": "165",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-166",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 166",
+                "value": "166",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 166 件",
+                "value": "166",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-167",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 167",
+                "value": "167",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 167 件",
+                "value": "168",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-168",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 168",
+                "value": "168",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 168 件",
+                "value": "168",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-169",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 169",
+                "value": "169",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 169 件",
+                "value": "169",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-170",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 170",
+                "value": "170",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 170 件",
+                "value": "170",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-171",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 171",
+                "value": "171",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 171 件",
+                "value": "171",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-172",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 172",
+                "value": "172",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 172 件",
+                "value": "173",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-173",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 173",
+                "value": "173",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 173 件",
+                "value": "173",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-174",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 174",
+                "value": "174",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 174 件",
+                "value": "174",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-175",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 175",
+                "value": "175",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 175 件",
+                "value": "175",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-176",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 176",
+                "value": "176",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 176 件",
+                "value": "176",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-177",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 177",
+                "value": "177",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 177 件",
+                "value": "178",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-178",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 178",
+                "value": "178",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 178 件",
+                "value": "178",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-179",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 179",
+                "value": "179",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 179 件",
+                "value": "179",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-180",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 180",
+                "value": "180",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 180 件",
+                "value": "180",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-181",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 181",
+                "value": "181",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 181 件",
+                "value": "181",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-182",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 182",
+                "value": "182",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 182 件",
+                "value": "183",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-183",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 183",
+                "value": "183",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 183 件",
+                "value": "183",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-184",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 184",
+                "value": "184",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 184 件",
+                "value": "184",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-185",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 185",
+                "value": "185",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 185 件",
+                "value": "185",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-186",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 186",
+                "value": "186",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 186 件",
+                "value": "186",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-187",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 187",
+                "value": "187",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 187 件",
+                "value": "188",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-188",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 188",
+                "value": "188",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 188 件",
+                "value": "188",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-189",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 189",
+                "value": "189",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 189 件",
+                "value": "189",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-190",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 190",
+                "value": "190",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 190 件",
+                "value": "190",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-191",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 191",
+                "value": "191",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 191 件",
+                "value": "191",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-192",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 192",
+                "value": "192",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 192 件",
+                "value": "193",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-193",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 193",
+                "value": "193",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 193 件",
+                "value": "193",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-194",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 194",
+                "value": "194",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 194 件",
+                "value": "194",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-195",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 195",
+                "value": "195",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 195 件",
+                "value": "195",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-196",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 196",
+                "value": "196",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 196 件",
+                "value": "196",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-197",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 197",
+                "value": "197",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 197 件",
+                "value": "198",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-198",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 198",
+                "value": "198",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 198 件",
+                "value": "198",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-199",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 199",
+                "value": "199",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 199 件",
+                "value": "199",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-200",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 200",
+                "value": "200",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 200 件",
+                "value": "200",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-201",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 201",
+                "value": "201",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 201 件",
+                "value": "201",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-202",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 202",
+                "value": "202",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 202 件",
+                "value": "203",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-203",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 203",
+                "value": "203",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 203 件",
+                "value": "203",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-204",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 204",
+                "value": "204",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 204 件",
+                "value": "204",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-205",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 205",
+                "value": "205",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 205 件",
+                "value": "205",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-206",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 206",
+                "value": "206",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 206 件",
+                "value": "206",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-207",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 207",
+                "value": "207",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 207 件",
+                "value": "208",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-208",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 208",
+                "value": "208",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 208 件",
+                "value": "208",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-209",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 209",
+                "value": "209",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 209 件",
+                "value": "209",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-210",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 210",
+                "value": "210",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 210 件",
+                "value": "210",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-211",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 211",
+                "value": "211",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 211 件",
+                "value": "211",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-212",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 212",
+                "value": "212",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 212 件",
+                "value": "213",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-213",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 213",
+                "value": "213",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 213 件",
+                "value": "213",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-214",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 214",
+                "value": "214",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 214 件",
+                "value": "214",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-215",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 215",
+                "value": "215",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 215 件",
+                "value": "215",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-216",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 216",
+                "value": "216",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 216 件",
+                "value": "216",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-217",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 217",
+                "value": "217",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 217 件",
+                "value": "218",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-218",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 218",
+                "value": "218",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 218 件",
+                "value": "218",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-219",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 219",
+                "value": "219",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 219 件",
+                "value": "219",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-220",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 220",
+                "value": "220",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 220 件",
+                "value": "220",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-221",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 221",
+                "value": "221",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 221 件",
+                "value": "221",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-222",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 222",
+                "value": "222",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 222 件",
+                "value": "223",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-223",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 223",
+                "value": "223",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 223 件",
+                "value": "223",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-224",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 224",
+                "value": "224",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 224 件",
+                "value": "224",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-225",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 225",
+                "value": "225",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 225 件",
+                "value": "225",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-226",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 226",
+                "value": "226",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 226 件",
+                "value": "226",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-227",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 227",
+                "value": "227",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 227 件",
+                "value": "228",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-228",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 228",
+                "value": "228",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 228 件",
+                "value": "228",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-229",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 229",
+                "value": "229",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 229 件",
+                "value": "229",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-230",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 230",
+                "value": "230",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 230 件",
+                "value": "230",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-231",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 231",
+                "value": "231",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 231 件",
+                "value": "231",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-232",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 232",
+                "value": "232",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 232 件",
+                "value": "233",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-233",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 233",
+                "value": "233",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 233 件",
+                "value": "233",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-234",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 234",
+                "value": "234",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 234 件",
+                "value": "234",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-235",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 235",
+                "value": "235",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 235 件",
+                "value": "235",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-236",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 236",
+                "value": "236",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 236 件",
+                "value": "236",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-237",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 237",
+                "value": "237",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 237 件",
+                "value": "238",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-238",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 238",
+                "value": "238",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 238 件",
+                "value": "238",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-239",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 239",
+                "value": "239",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 239 件",
+                "value": "239",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-240",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 240",
+                "value": "240",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 240 件",
+                "value": "240",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-241",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 241",
+                "value": "241",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 241 件",
+                "value": "241",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-242",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 242",
+                "value": "242",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 242 件",
+                "value": "243",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-243",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 243",
+                "value": "243",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 243 件",
+                "value": "243",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-244",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 244",
+                "value": "244",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 244 件",
+                "value": "244",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-245",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 245",
+                "value": "245",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 245 件",
+                "value": "245",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-246",
+            "kind": "paraphrase",
+            "claim": {
+                "text": "指标样本 246",
+                "value": "246",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 246 件",
+                "value": "246",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-247",
+            "kind": "numeric_mismatch",
+            "claim": {
+                "text": "指标样本 247",
+                "value": "247",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 247 件",
+                "value": "248",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "mismatch",
+                "decision": "blocked"
+            }
+        },
+        {
+            "id": "comparison-248",
+            "kind": "unit_conversion",
+            "claim": {
+                "text": "指标样本 248",
+                "value": "248",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 248 件",
+                "value": "248",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-249",
+            "kind": "temporal_scope",
+            "claim": {
+                "text": "指标样本 249",
+                "value": "249",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 249 件",
+                "value": "249",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        },
+        {
+            "id": "comparison-250",
+            "kind": "exact",
+            "claim": {
+                "text": "指标样本 250",
+                "value": "250",
+                "unit": "件"
+            },
+            "standard": {
+                "answer": "标准指标 250 件",
+                "value": "250",
+                "unit": "件"
+            },
+            "expected": {
+                "result": "match",
+                "decision": "passed"
+            }
+        }
+    ]
+}

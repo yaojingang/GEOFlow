@@ -6,7 +6,17 @@ use RuntimeException;
 
 class ArticleAiQualityPrincipleCompiler
 {
-    public const VERSION = 'article-quality-principles-2.0.0';
+    public const VERSION = 'article-quality-principles-2.1.0';
+
+    private const COMPATIBLE_VERSIONS = [
+        self::VERSION,
+        'article-quality-principles-2.0.0',
+    ];
+
+    private const DEPRECATED_RULE_IDS = [
+        'CN-AIGC-LABEL-04-06',
+        'CN-AIGC-LABEL-09-10',
+    ];
 
     private const UNIVERSAL_RULE_IDS = [
         'CN-AD-LAW-04',
@@ -49,11 +59,6 @@ class ArticleAiQualityPrincipleCompiler
                 }
             }
         }
-        if ((bool) ($publicationContext['is_ai_generated'] ?? true)) {
-            $selectedIds['CN-AIGC-LABEL-04-06'] = true;
-            $selectedIds['CN-AIGC-LABEL-09-10'] = true;
-        }
-
         $selectedRules = array_values(array_filter(
             is_array($rules['rules'] ?? null) ? $rules['rules'] : [],
             static fn (mixed $rule): bool => is_array($rule) && isset($selectedIds[(string) ($rule['id'] ?? '')]),
@@ -81,13 +86,19 @@ class ArticleAiQualityPrincipleCompiler
         $rules = is_array($snapshot['advertising_rules'] ?? null) ? $snapshot['advertising_rules'] : [];
         $expectedHash = (string) ($snapshot['advertising_rules_hash'] ?? '');
         $actualHash = hash('sha256', json_encode($rules, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        if ((string) ($snapshot['version'] ?? '') !== self::VERSION
+        if (! in_array((string) ($snapshot['version'] ?? ''), self::COMPATIBLE_VERSIONS, true)
             || $expectedHash === ''
             || ! hash_equals($expectedHash, $actualHash)
             || ! is_array($rules['rules'] ?? null)) {
             throw new RuntimeException('principle_snapshot_invalid');
         }
 
-        return $rules;
+        return array_replace($rules, [
+            'rules' => array_values(array_filter(
+                $rules['rules'],
+                static fn (mixed $rule): bool => is_array($rule)
+                    && ! in_array((string) ($rule['id'] ?? ''), self::DEPRECATED_RULE_IDS, true),
+            )),
+        ]);
     }
 }

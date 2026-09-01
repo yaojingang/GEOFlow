@@ -4,7 +4,10 @@ namespace App\Services\GeoFlow;
 
 class ArticleAiQualityEvidenceBuilder
 {
-    public function __construct(private readonly KnowledgeRetrievalService $knowledgeRetrievalService) {}
+    public function __construct(
+        private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
+        private readonly KnowledgeEvidenceSecurityInspector $securityInspector = new KnowledgeEvidenceSecurityInspector,
+    ) {}
 
     /**
      * @param  list<int>  $knowledgeBaseIds
@@ -21,6 +24,7 @@ class ArticleAiQualityEvidenceBuilder
         int $maxCharacters = 6000,
         int $maxFactRetrievals = 6,
         array $generationEvidenceSnapshot = [],
+        array $servingGenerations = [],
     ): array {
         $genericQuery = trim(implode("\n", array_filter([
             (string) ($articleSnapshot['title'] ?? ''),
@@ -31,7 +35,15 @@ class ArticleAiQualityEvidenceBuilder
         $generationEvidence = $this->knowledgeRetrievalService->validateEvidenceSnapshot(
             $generationEvidenceSnapshot,
             $knowledgeBaseIds,
+            $servingGenerations,
         );
+        $sourceKnowledgeBaseIds = collect($generationEvidence)
+            ->pluck('knowledge_base_id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
         $evidenceByKey = [];
         foreach ($generationEvidence as $row) {
             $content = trim((string) ($row['content'] ?? ''));
@@ -48,11 +60,16 @@ class ArticleAiQualityEvidenceBuilder
         $attemptedFactIds = [];
 
         if ($generationEvidence === [] && $genericQuery !== '') {
+            $sourceKnowledgeBaseIds = array_values(array_unique(array_merge(
+                $sourceKnowledgeBaseIds,
+                array_map('intval', $knowledgeBaseIds),
+            )));
             $rows = $this->knowledgeRetrievalService->retrieveEvidenceFromMany(
                 $knowledgeBaseIds,
                 $genericQuery,
                 20,
                 false,
+                $servingGenerations,
             );
             $this->mergeEvidenceRows($evidenceByKey, $rows);
         }
@@ -71,11 +88,16 @@ class ArticleAiQualityEvidenceBuilder
 
             $factRetrievals++;
             $attemptedFactIds[$factId] = true;
+            $sourceKnowledgeBaseIds = array_values(array_unique(array_merge(
+                $sourceKnowledgeBaseIds,
+                array_map('intval', $knowledgeBaseIds),
+            )));
             $rows = $this->knowledgeRetrievalService->retrieveEvidenceFromMany(
                 $knowledgeBaseIds,
                 $query,
                 4,
                 false,
+                $servingGenerations,
             );
             $this->mergeEvidenceRows($evidenceByKey, $rows);
             $this->mapMatchingEvidence($factCandidates, $evidenceByKey, $factEvidenceKeys);
@@ -85,7 +107,13 @@ class ArticleAiQualityEvidenceBuilder
         $keyToReference = [];
         $characterCount = 0;
         $characterBudget = max(1000, $maxCharacters);
+        $promptInjectionRiskCount = collect($evidenceByKey)
+            ->filter(fn (array $row): bool => $this->securityInspector->hasPromptInjectionRisk($row))
+            ->count();
         foreach ($evidenceByKey as $key => $row) {
+            if ($this->securityInspector->hasPromptInjectionRisk($row)) {
+                continue;
+            }
             if (count($evidence) >= max(1, $maxEvidence) || $characterCount >= $characterBudget) {
                 break;
             }
@@ -136,6 +164,10 @@ class ArticleAiQualityEvidenceBuilder
             'fact_candidates' => $coveredFacts,
             'knowledge_coverage' => $this->aggregateCoverage($coveredFacts, $evidence !== [], $genericQuery !== ''),
             'generation_evidence_reused_count' => count(array_intersect_key($keyToReference, $generationEvidenceKeys)),
+            'retrieval_meta' => [
+                'prompt_injection_risk_count' => $promptInjectionRiskCount,
+                'source_knowledge_base_ids' => ['chunk' => $sourceKnowledgeBaseIds],
+            ],
         ];
     }
 

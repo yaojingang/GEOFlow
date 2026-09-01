@@ -8,11 +8,13 @@ use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\DistributionChannel;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
 use App\Services\GeoFlow\ArticleGeoFlowService;
+use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -51,6 +53,9 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertJsonPath('active', true)
             ->assertJsonPath('reload', false)
             ->assertJsonPath('timings.evidence_retrieval', 123)
+            ->assertJsonPath('requested_retrieval_mode', AiQualityRetrievalMode::CHUNK)
+            ->assertJsonPath('effective_retrieval_mode', null)
+            ->assertJsonPath('retrieval_strategy_version', 'chunk-evidence-1.1.0')
             ->assertJsonPath('safe_error_code', null)
             ->assertJsonPath('retryable', false)
             ->assertJsonPath('next_poll_ms', 2000);
@@ -213,6 +218,35 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertSee(__('admin.articles.ai_quality.progress_auto_refresh'), false);
     }
 
+    public function test_detached_article_uses_distinct_model_selectors_for_generation_and_optimization(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 90,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        $article->forceFill(['task_id' => null])->save();
+
+        $createHtml = $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.create'))
+            ->assertOk()
+            ->getContent();
+        $editHtml = $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertSame(1, substr_count($createHtml, 'id="article-ai-model"'));
+        $this->assertSame(0, substr_count($createHtml, 'id="article-ai-optimization-model"'));
+        $this->assertSame(0, substr_count($editHtml, 'id="article-ai-model"'));
+        $this->assertSame(1, substr_count($editHtml, 'id="article-ai-optimization-model"'));
+    }
+
     public function test_progress_reconciles_the_authoritative_state_after_the_persisted_deadline(): void
     {
         [$admin, $article] = $this->qualityArticle();
@@ -291,11 +325,38 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertSee('HTTP 502')
             ->assertSee('upstream_unavailable')
             ->assertSee(route('admin.articles.ai-quality.recheck', ['articleId' => $article->id]), false)
-            ->assertDontSee('0/35')
-            ->assertDontSee('0/25')
-            ->assertDontSee('0/30')
-            ->assertDontSee('0/10')
+            ->assertDontSeeText('0/35')
+            ->assertDontSeeText('0/25')
+            ->assertDontSeeText('0/30')
+            ->assertDontSeeText('0/10')
             ->assertDontSee(__('admin.articles.ai_quality.no_issues'));
+    }
+
+    public function test_persisted_non_retryable_retrieval_failure_overrides_legacy_code_inference(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'failed',
+            'decision' => 'error',
+            'error_code' => 'evidence_retrieval_failed',
+            'execution_meta' => array_replace($check->execution_meta, [
+                'retryable_failure' => false,
+                'failure' => [
+                    'code' => 'evidence_retrieval_failed',
+                    'retryable' => false,
+                ],
+            ]),
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.articles.ai-quality.status', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertJsonPath('safe_error_code', 'evidence_retrieval_failed')
+            ->assertJsonPath('retryable', false)
+            ->assertJsonPath('failure.retryable', false);
     }
 
     public function test_exhausted_post_quality_workflow_is_visible_with_an_operator_retry_action(): void
@@ -373,7 +434,7 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertSee(route('admin.ai-models.index'), false)
             ->assertSee(__('admin.articles.ai_quality.failure_open_model_settings'))
             ->assertDontSee('data-ai-quality-failure-action="retry"', false)
-            ->assertDontSee('0/35');
+            ->assertDontSeeText('0/35');
     }
 
     public function test_guest_cannot_poll_article_ai_quality_progress(): void
@@ -467,8 +528,21 @@ class AdminArticleAiQualityTest extends TestCase
         $document = new \DOMDocument;
         @$document->loadHTML((string) $editResponse->getContent());
         $xpath = new \DOMXPath($document);
+        $collapseToggle = $xpath->query('//*[@data-ai-quality-collapse-toggle]')?->item(0);
+        $collapseBody = $xpath->query('//*[@id="ai-quality-result-content"]')?->item(0);
+        $compactSummary = $xpath->query('//*[@data-ai-quality-compact-summary]')?->item(0);
         $issueDisclosures = $xpath->query('//details[@data-ai-quality-issue]');
 
+        $this->assertNotNull($collapseToggle);
+        $this->assertSame('ai-quality-result-content', $collapseToggle->getAttribute('aria-controls'));
+        $this->assertSame('true', $collapseToggle->getAttribute('aria-expanded'));
+        $this->assertSame(__('admin.articles.ai_quality.collapse'), $collapseToggle->getAttribute('data-collapse-label'));
+        $this->assertSame(__('admin.articles.ai_quality.expand'), $collapseToggle->getAttribute('data-expand-label'));
+        $this->assertNotNull($collapseBody);
+        $this->assertNotNull($compactSummary);
+        $this->assertTrue($compactSummary->hasAttribute('hidden'));
+        $this->assertStringContainsString(__('admin.articles.ai_quality.score').' 78', $compactSummary->textContent);
+        $this->assertStringContainsString(__('admin.articles.ai_quality.issue_count', ['count' => 2]), $compactSummary->textContent);
         $this->assertSame(2, $issueDisclosures?->length);
         foreach ($issueDisclosures ?? [] as $issueDisclosure) {
             $this->assertFalse($issueDisclosure->hasAttribute('open'));
@@ -638,6 +712,59 @@ class AdminArticleAiQualityTest extends TestCase
             'is_overridden' => true,
             'overridden_by' => $admin->id,
             'override_reason' => '已核对客户盖章的数据证明材料',
+        ]);
+    }
+
+    public function test_hosted_article_quality_override_requires_protected_workflow_permission(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Protected quality channel',
+            'domain' => 'protected-quality.test',
+            'endpoint_url' => 'https://protected-quality.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+        $article->task->distributionChannels()->attach($channel->id);
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'needs_review',
+            'score' => 78,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        $token = $admin->createToken('hosted-quality-override', ['articles:publish'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/override", [
+                'reason' => '已通过企业原始证明材料核对',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+
+        $this->assertFalse((bool) $check->fresh()->is_overridden);
+        $this->assertDatabaseHas('ai_quality_audit_events', [
+            'event_type' => 'article_quality_decision_authorization_denied',
+            'article_id' => $article->id,
+            'admin_id' => $admin->id,
+            'authorization_result' => 'denied',
+        ]);
+
+        $admin->forceFill(['role' => 'super_admin'])->save();
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/override", [
+                'reason' => '已通过企业原始证明材料核对',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.ai_quality.is_overridden', true);
+
+        $this->assertDatabaseHas('ai_quality_audit_events', [
+            'event_type' => 'article_quality_decision_overridden',
+            'article_id' => $article->id,
+            'article_ai_quality_check_id' => $check->id,
+            'admin_id' => $admin->id,
+            'authorization_result' => 'allowed',
         ]);
     }
 
@@ -915,7 +1042,9 @@ class AdminArticleAiQualityTest extends TestCase
 
         $token = $admin->createToken('quality-error-api', ['articles:publish'])->plainTextToken;
         $apiResponse = $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck");
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck", [
+                'config_version' => (int) $article->fresh()->ai_quality_policy_version,
+            ]);
 
         $apiResponse->assertStatus(409)
             ->assertJsonPath('error.code', 'article_ai_quality_failed');
@@ -964,7 +1093,9 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertJsonPath('data.ai_quality.is_overridden', true);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck")
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck", [
+                'config_version' => (int) $article->fresh()->ai_quality_policy_version,
+            ])
             ->assertOk()
             ->assertJsonPath('data.ai_quality.status', 'queued');
 
@@ -972,6 +1103,237 @@ class AdminArticleAiQualityTest extends TestCase
         $this->assertSame((int) $admin->id, (int) $manualRequest['admin_id']);
         $this->assertSame((int) $issuedToken->accessToken->id, (int) $manualRequest['api_token_id']);
         Queue::assertPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_api_quality_configuration_requires_publish_scope_and_matching_policy_version(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $article->forceFill(['ai_quality_policy_version' => 3])->save();
+        $writeToken = $admin->createToken('quality-config-write', ['articles:write'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$writeToken)
+            ->patchJson("/api/v1/articles/{$article->id}", [
+                'config_version' => 3,
+                'ai_quality_retrieval_mode_override' => 'knowledge_broad',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('error.details.required_scope', 'articles:publish');
+
+        $publishToken = $admin->createToken('quality-config-publish', [
+            'articles:write',
+            'articles:publish',
+        ])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$publishToken)
+            ->patchJson("/api/v1/articles/{$article->id}", [
+                'config_version' => 2,
+                'ai_quality_retrieval_mode_override' => 'knowledge_broad',
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'article_ai_quality_config_version_conflict')
+            ->assertJsonPath('error.details.current_config_version', 3);
+
+        $this->withHeader('Authorization', 'Bearer '.$publishToken)
+            ->patchJson("/api/v1/articles/{$article->id}", [
+                'config_version' => 3,
+                'ai_quality_retrieval_mode_override' => 'knowledge_broad',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.ai_quality.config_version', 4)
+            ->assertJsonPath('data.ai_quality.requested_retrieval_mode', 'knowledge_broad');
+
+        $this->assertDatabaseHas('ai_quality_audit_events', [
+            'event_type' => 'article_quality_configuration_changed',
+            'article_id' => $article->id,
+            'admin_id' => $admin->id,
+            'policy_version' => 4,
+        ]);
+    }
+
+    public function test_api_content_change_advances_the_article_quality_policy_version(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $article->forceFill(['ai_quality_policy_version' => 7])->save();
+        $token = $admin->createToken('quality-content-version', ['articles:write'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->patchJson("/api/v1/articles/{$article->id}", [
+                'content' => '服务客户超过 1200 家。',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.ai_quality.config_version', 8);
+
+        $this->assertSame(8, $article->fresh()->ai_quality_policy_version);
+    }
+
+    public function test_api_can_update_content_and_quality_configuration_with_one_expected_version(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $article->forceFill(['ai_quality_policy_version' => 4])->save();
+        $token = $admin->createToken('quality-mixed-update', [
+            'articles:write',
+            'articles:publish',
+        ])->plainTextToken;
+
+        $headers = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Idempotency-Key' => 'article-mixed-quality-update',
+        ];
+        $payload = [
+            'config_version' => 4,
+            'content' => '服务客户超过 1200 家，并建立了完整交付体系。',
+            'ai_quality_retrieval_mode_override' => 'knowledge_broad',
+        ];
+        $first = $this->withHeaders($headers)
+            ->patchJson("/api/v1/articles/{$article->id}", $payload)
+            ->assertOk()
+            ->assertJsonPath('data.ai_quality.config_version', 6)
+            ->assertJsonPath('data.ai_quality.requested_retrieval_mode', 'knowledge_broad');
+        $second = $this->withHeaders($headers)
+            ->patchJson("/api/v1/articles/{$article->id}", $payload)
+            ->assertOk();
+        $second->assertExactJson($first->json());
+
+        $article->refresh();
+        $this->assertSame(6, $article->ai_quality_policy_version);
+        $this->assertSame('knowledge_broad', $article->ai_quality_retrieval_mode_override);
+        $this->assertStringContainsString('完整交付体系', $article->content);
+    }
+
+    public function test_api_cannot_detach_a_hosted_article_without_protected_workflow_permission(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Protected configuration channel',
+            'domain' => 'protected-configuration.test',
+            'endpoint_url' => 'https://protected-configuration.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE,
+            'status' => DistributionChannel::STATUS_ACTIVE,
+        ]);
+        $article->task->distributionChannels()->attach($channel->id);
+        $originalTaskId = (int) $article->task_id;
+        $version = (int) $article->fresh()->ai_quality_policy_version;
+
+        $writeToken = $admin->createToken('hosted-detach-write', ['articles:write'])->plainTextToken;
+        $this->withHeader('Authorization', 'Bearer '.$writeToken)
+            ->patchJson("/api/v1/articles/{$article->id}", [
+                'config_version' => $version,
+                'task_id' => null,
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('error.details.required_scope', 'articles:publish');
+        $this->assertSame($originalTaskId, (int) $article->fresh()->task_id);
+
+        $publishToken = $admin->createToken('hosted-detach-publish', [
+            'articles:write',
+            'articles:publish',
+        ])->plainTextToken;
+        $this->withHeader('Authorization', 'Bearer '.$publishToken)
+            ->patchJson("/api/v1/articles/{$article->id}", [
+                'config_version' => $version,
+                'task_id' => null,
+                'ai_quality_retrieval_mode_override' => 'knowledge_broad',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden');
+
+        $this->assertSame($originalTaskId, (int) $article->fresh()->task_id);
+        $this->assertDatabaseHas('ai_quality_audit_events', [
+            'event_type' => 'article_quality_configuration_authorization_denied',
+            'article_id' => $article->id,
+            'admin_id' => $admin->id,
+            'authorization_result' => 'denied',
+            'reason_code' => 'hosted_task_permission_required',
+        ]);
+    }
+
+    public function test_task_article_rejects_a_direct_knowledge_base_override(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $other = KnowledgeBase::query()->create([
+            'name' => '不可覆盖知识库',
+            'content' => '此知识库不应直接绑定到任务文章。',
+        ]);
+        $token = $admin->createToken('task-article-kb-override', [
+            'articles:write',
+            'articles:publish',
+        ])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->patchJson("/api/v1/articles/{$article->id}", [
+                'config_version' => (int) $article->fresh()->ai_quality_policy_version,
+                'ai_quality_knowledge_base_ids' => [$other->id],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'validation_failed');
+
+        $this->assertSame([], $article->aiQualityKnowledgeBases()->pluck('knowledge_bases.id')->all());
+    }
+
+    public function test_api_recheck_rejects_missing_or_stale_configuration_version(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $article->forceFill(['ai_quality_policy_version' => 5])->save();
+        $token = $admin->createToken('quality-versioned-recheck', ['articles:publish'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck")
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'article_ai_quality_config_version_required');
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck", ['config_version' => 4])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'article_ai_quality_config_version_conflict')
+            ->assertJsonPath('error.details.current_config_version', 5);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck", ['config_version' => 5])
+            ->assertOk()
+            ->assertJsonPath('data.ai_quality.status', 'queued');
+
+        Queue::assertPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_api_recheck_idempotency_rejects_replay_after_knowledge_source_drift(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $token = $admin->createToken('quality-context-recheck', ['articles:publish'])->plainTextToken;
+        $headers = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Idempotency-Key' => 'quality-context-recheck-1',
+        ];
+        $payload = ['config_version' => (int) $article->fresh()->ai_quality_policy_version];
+
+        $firstResponse = $this->withHeaders($headers)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck", $payload)
+            ->assertOk();
+        $this->withHeaders($headers)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck", $payload)
+            ->assertOk()
+            ->assertExactJson($firstResponse->json());
+
+        $article->task()->update(['next_run_at' => now()->addHour()]);
+        Admin::query()->whereKey($admin->id)->update(['updated_at' => now()->addMinute()]);
+
+        $this->withHeaders($headers)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck", $payload)
+            ->assertOk()
+            ->assertExactJson($firstResponse->json());
+
+        $article->task->knowledgeBases()->firstOrFail()->update([
+            'content' => '服务客户为 900 家，知识依据已经更新。',
+        ]);
+
+        $this->withHeaders($headers)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/recheck", $payload)
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'idempotency_conflict');
     }
 
     public function test_api_failed_quality_filter_returns_execution_failures(): void
@@ -1023,6 +1385,250 @@ class AdminArticleAiQualityTest extends TestCase
         $this->assertTrue($article->ai_quality_required_at_creation);
         $this->assertTrue((bool) data_get($article->ai_quality_policy_snapshot, 'required'));
         $this->assertSame($taskId, $article->task_id);
+    }
+
+    public function test_api_task_rebinding_migrates_knowledge_sources_between_independent_and_task_policies(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $task = $article->task()->firstOrFail();
+        $independentBase = KnowledgeBase::query()->create([
+            'name' => '独立文章知识库 '.uniqid(),
+            'content' => '独立文章依据。',
+        ]);
+        $replacementBase = KnowledgeBase::query()->create([
+            'name' => '任务最新知识库 '.uniqid(),
+            'content' => '任务最新依据。',
+        ]);
+        $article->forceFill([
+            'task_id' => null,
+            'ai_quality_retrieval_mode_override' => AiQualityRetrievalMode::KNOWLEDGE_BROAD,
+            'ai_quality_policy_snapshot' => null,
+        ])->save();
+        $article->aiQualityKnowledgeBases()->sync([$independentBase->id => ['sort_order' => 0]]);
+
+        app(ArticleGeoFlowService::class)->updateArticle($article->id, [
+            'task_id' => $task->id,
+        ], $admin->id);
+
+        $article->refresh();
+        $this->assertSame($task->id, $article->task_id);
+        $this->assertNull($article->ai_quality_retrieval_mode_override);
+        $this->assertSame([], $article->aiQualityKnowledgeBases()->pluck('knowledge_bases.id')->all());
+
+        $task->knowledgeBases()->sync([$replacementBase->id => ['sort_order' => 0]]);
+        $task->forceFill([
+            'ai_quality_retrieval_mode' => AiQualityRetrievalMode::CHUNK,
+            'ai_quality_policy_version' => max(1, (int) $task->ai_quality_policy_version) + 1,
+        ])->save();
+        app(ArticleGeoFlowService::class)->updateArticle($article->id, [
+            'task_id' => null,
+        ], $admin->id);
+
+        $article->refresh();
+        $this->assertNull($article->task_id);
+        $this->assertSame(AiQualityRetrievalMode::CHUNK, $article->ai_quality_retrieval_mode_override);
+        $this->assertSame(
+            [$replacementBase->id],
+            $article->aiQualityKnowledgeBases()->orderByPivot('sort_order')->pluck('knowledge_bases.id')->map('intval')->all(),
+        );
+        $this->assertSame(
+            [$replacementBase->id],
+            data_get($article->ai_quality_policy_snapshot, 'knowledge_base_ids'),
+        );
+    }
+
+    public function test_article_edit_page_shows_the_shared_retrieval_selector_and_frozen_execution_mode(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'effective_retrieval_mode' => 'chunk',
+            'status' => 'completed',
+            'decision' => 'passed',
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertSee('data-ai-quality-retrieval-selector', false)
+            ->assertSee('name="ai_quality_retrieval_mode_override"', false)
+            ->assertSee('data-retrieval-mode-help-trigger', false)
+            ->assertSee('aria-controls="article-ai-quality-retrieval-mode-chunk-help"', false)
+            ->assertSee(__('ai_quality_retrieval.modes.chunk.description'))
+            ->assertSee(__('ai_quality_retrieval.current_execution', [
+                'mode' => __('ai_quality_retrieval.modes.chunk.label'),
+            ]));
+    }
+
+    public function test_article_edit_page_presents_chunk_as_the_primary_result_and_atomic_shadow_as_validation_data(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
+        $executionMeta['atomic_facts'] = [
+            'mode' => 'shadow',
+            'formal' => false,
+            'shadow' => true,
+            'inspection' => [
+                'algorithm_version' => 'atomic-facts-2.3.0',
+                'revision_ids' => [1],
+                'coverage_rate' => 0.5,
+            ],
+        ];
+        $check->forceFill([
+            'effective_retrieval_mode' => AiQualityRetrievalMode::CHUNK,
+            'retrieval_strategy_version' => 'chunk-evidence-1.0.0',
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 90,
+            'usage_meta' => [
+                'prompt_tokens' => 100,
+                'completion_tokens' => 20,
+                'total_tokens' => 120,
+                'atomic_facts' => ['total_tokens' => 0],
+                'knowledge_fallback' => ['total_tokens' => 120],
+            ],
+            'execution_meta' => $executionMeta,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertOk()
+            ->assertSee(__('ai_quality_retrieval.results.primary_title', [
+                'mode' => __('ai_quality_retrieval.modes.chunk.label'),
+            ]))
+            ->assertSee(__('ai_quality_retrieval.results.participates_in_scoring'))
+            ->assertSee(__('ai_quality_retrieval.results.primary_tokens', ['tokens' => 120]))
+            ->assertSee(__('ai_quality_retrieval.results.atomic_shadow_title'))
+            ->assertSee(__('ai_quality_retrieval.results.validation_only'))
+            ->assertDontSee('知识库回退 120 Token');
+    }
+
+    public function test_article_edit_page_presents_each_effective_retrieval_mode_as_the_primary_result(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 90,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+
+        foreach (AiQualityRetrievalMode::values() as $mode) {
+            $check->forceFill([
+                'effective_retrieval_mode' => $mode,
+                'retrieval_strategy_version' => $mode.'-test-version',
+            ])->save();
+
+            $this->actingAs($admin, 'admin')
+                ->get(route('admin.articles.edit', ['articleId' => $article->id]))
+                ->assertOk()
+                ->assertSee(__('ai_quality_retrieval.results.primary_title', [
+                    'mode' => __('ai_quality_retrieval.modes.'.$mode.'.label'),
+                ]))
+                ->assertSee(__('ai_quality_retrieval.results.participates_in_scoring'));
+        }
+    }
+
+    public function test_ai_quality_result_copy_is_complete_in_every_supported_locale(): void
+    {
+        $requiredKeys = [
+            'primary_title',
+            'participates_in_scoring',
+            'strategy_version',
+            'primary_tokens',
+            'atomic_shadow_title',
+            'atomic_formal_title',
+            'validation_only',
+            'atomic_tokens',
+        ];
+
+        foreach (['zh_CN', 'en', 'ja', 'es', 'ru', 'pt_BR'] as $locale) {
+            $translations = require lang_path($locale.'/ai_quality_retrieval.php');
+
+            foreach ($requiredKeys as $key) {
+                $this->assertIsString(data_get($translations, 'results.'.$key));
+                $this->assertNotSame('', trim((string) data_get($translations, 'results.'.$key)));
+            }
+        }
+    }
+
+    public function test_article_update_saves_a_mode_override_before_queueing_the_recheck(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.articles.update', ['articleId' => $article->id]), [
+                'title' => $article->title,
+                'excerpt' => $article->excerpt,
+                'content' => $article->content,
+                'keywords' => $article->keywords,
+                'meta_description' => $article->meta_description,
+                'category_id' => $article->category_id,
+                'author_id' => $article->author_id,
+                'status' => 'draft',
+                'review_status' => 'pending',
+                'ai_quality_retrieval_mode_override' => 'knowledge_broad',
+                'run_ai_quality_after_save' => '1',
+            ])
+            ->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('knowledge_broad', $article->fresh()->ai_quality_retrieval_mode_override);
+        $this->assertSame('knowledge_broad', $article->aiQualityChecks()->latest('id')->value('requested_retrieval_mode'));
+        $this->assertDatabaseHas('ai_quality_audit_events', [
+            'event_type' => 'article_quality_configuration_changed',
+            'article_id' => $article->id,
+            'admin_id' => $admin->id,
+        ]);
+        $this->assertDatabaseHas('ai_quality_audit_events', [
+            'event_type' => 'article_quality_check_requested',
+            'article_id' => $article->id,
+            'admin_id' => $admin->id,
+        ]);
+        Queue::assertPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_independent_article_saves_its_ordered_quality_knowledge_bases(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $first = KnowledgeBase::query()->create(['name' => '独立知识库一', 'content' => '正文一']);
+        $second = KnowledgeBase::query()->create(['name' => '独立知识库二', 'content' => '正文二']);
+        $article->forceFill(['task_id' => null])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.articles.update', ['articleId' => $article->id]), [
+                'title' => $article->title,
+                'excerpt' => $article->excerpt,
+                'content' => $article->content,
+                'keywords' => $article->keywords,
+                'meta_description' => $article->meta_description,
+                'category_id' => $article->category_id,
+                'author_id' => $article->author_id,
+                'status' => 'draft',
+                'review_status' => 'pending',
+                'ai_quality_retrieval_mode_override' => 'knowledge_broad',
+                'ai_quality_knowledge_base_ids' => [$second->id, $first->id],
+            ])
+            ->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertSessionHasNoErrors();
+
+        $article->refresh();
+        $this->assertSame('knowledge_broad', $article->ai_quality_retrieval_mode_override);
+        $this->assertSame(2, $article->ai_quality_policy_version);
+        $this->assertSame(
+            [$second->id, $first->id],
+            $article->aiQualityKnowledgeBases()->orderByPivot('sort_order')->pluck('knowledge_bases.id')->map('intval')->all(),
+        );
     }
 
     /** @return array{Admin, Article} */

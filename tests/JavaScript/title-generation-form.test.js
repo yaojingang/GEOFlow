@@ -63,33 +63,21 @@ class FakeSelect extends FakeEventTarget {
     }
 }
 
-class FakeDialog extends FakeEventTarget {
-    constructor(elements) {
-        super();
-        this.dataset = {
-            summaryTemplate: '计划生成 __TITLE_COUNT__ 个标题，关键词数量为 __KEYWORD_COUNT__ 个。',
-        };
-        this.elements = elements;
-        this.open = false;
-        this.returnValue = '';
+class FakeActionDialog {
+    constructor() {
+        this.calls = [];
+        this.resolve = null;
     }
 
-    querySelector(selector) {
-        return this.elements[selector] ?? null;
+    confirm(options) {
+        this.calls.push(options);
+        return new Promise((resolve) => { this.resolve = resolve; });
     }
 
-    showModal() {
-        this.open = true;
-    }
-
-    close(returnValue = '') {
-        this.open = false;
-        this.returnValue = returnValue;
-        this.dispatch('close');
-    }
-
-    getBoundingClientRect() {
-        return { left: 100, right: 500, top: 100, bottom: 400 };
+    finish(value) {
+        const resolve = this.resolve;
+        this.resolve = null;
+        resolve?.(value);
     }
 }
 
@@ -99,6 +87,13 @@ class FakeForm extends FakeEventTarget {
         this.elements = elements;
         this.submitCount = 0;
         this.attributes = new Map();
+        this.dataset = {
+            keywordReuseTitle: '确认复用关键词',
+            keywordReuseSummaryTemplate: '计划生成 __TITLE_COUNT__ 个标题，关键词数量为 __KEYWORD_COUNT__ 个。',
+            keywordReuseGuidance: '超出关键词数量后会复用关键词。',
+            keywordReuseConfirmLabel: '继续生成',
+            keywordReuseCancelLabel: '取消',
+        };
     }
 
     querySelector(selector) {
@@ -126,39 +121,28 @@ function fixture({ titleCount = 100, keywordCount = 9 } = {}) {
     const titleCountInput = new FakeInput(String(titleCount));
     const confirmationInput = new FakeInput('0');
     const submitButton = new FakeButton();
-    const cancelButton = new FakeButton();
-    const confirmButton = new FakeButton();
-    const summary = { textContent: '' };
+    const actionDialog = new FakeActionDialog();
     const form = new FakeForm({
         '[name="keyword_library_id"]': keywordSelect,
         '[name="title_count"]': titleCountInput,
         '[data-keyword-reuse-confirmed]': confirmationInput,
         '[data-title-generation-submit]': submitButton,
     });
-    const dialog = new FakeDialog({
-        '[data-keyword-reuse-summary]': summary,
-        '[data-keyword-reuse-cancel]': cancelButton,
-        '[data-keyword-reuse-confirm]': confirmButton,
-    });
     const root = {
         querySelector(selector) {
             if (selector === '[data-title-generation-form]') return form;
-            if (selector === '[data-keyword-reuse-dialog]') return dialog;
             return null;
         },
     };
 
-    initializeTitleGenerationForm(root);
+    initializeTitleGenerationForm(root, { actionDialog });
 
     return {
-        cancelButton,
+        actionDialog,
         confirmationInput,
-        confirmButton,
-        dialog,
         form,
         keywordSelect,
         submitButton,
-        summary,
         titleCountInput,
     };
 }
@@ -170,48 +154,48 @@ test('requires confirmation only when a positive keyword count is exceeded', () 
 });
 
 test('submits directly when the title count does not exceed the keyword count', () => {
-    const { dialog, form, submitButton } = fixture({ titleCount: 9, keywordCount: 9 });
+    const { actionDialog, form, submitButton } = fixture({ titleCount: 9, keywordCount: 9 });
 
     form.submit(submitButton);
 
     assert.equal(form.submitCount, 1);
-    assert.equal(dialog.open, false);
+    assert.equal(actionDialog.calls.length, 0);
 });
 
 test('opens a centered confirmation flow before keyword reuse', () => {
-    const { cancelButton, dialog, form, submitButton, summary } = fixture();
+    const { actionDialog, form, submitButton } = fixture();
     fakeDocument.activeElement = submitButton;
 
     form.submit(submitButton);
 
     assert.equal(form.submitCount, 0);
-    assert.equal(dialog.open, true);
-    assert.equal(fakeDocument.activeElement, cancelButton);
-    assert.equal(summary.textContent, '计划生成 100 个标题，关键词数量为 9 个。');
+    assert.equal(actionDialog.calls.length, 1);
+    assert.equal(actionDialog.calls[0].message, '计划生成 100 个标题，关键词数量为 9 个。');
+    assert.equal(actionDialog.calls[0].tone, 'warning');
+    assert.equal(actionDialog.calls[0].opener, submitButton);
 });
 
-test('cancel keeps the form unsubmitted and returns focus to the submit button', () => {
-    const { cancelButton, dialog, form, submitButton } = fixture();
+test('cancel keeps the form unsubmitted', async () => {
+    const { actionDialog, form, submitButton } = fixture();
     fakeDocument.activeElement = submitButton;
     form.submit(submitButton);
 
-    cancelButton.dispatch('click');
+    actionDialog.finish(false);
+    await Promise.resolve();
 
-    assert.equal(dialog.open, false);
     assert.equal(form.submitCount, 0);
-    assert.equal(fakeDocument.activeElement, submitButton);
 });
 
-test('confirm records consent and submits exactly once', () => {
-    const { confirmationInput, confirmButton, form, submitButton } = fixture();
+test('confirm records consent and submits exactly once', async () => {
+    const { actionDialog, confirmationInput, form, submitButton } = fixture();
     form.submit(submitButton);
 
-    confirmButton.dispatch('click');
-    confirmButton.dispatch('click');
+    actionDialog.finish(true);
+    await Promise.resolve();
+    await Promise.resolve();
 
     assert.equal(confirmationInput.value, '1');
     assert.equal(form.submitCount, 1);
-    assert.equal(confirmButton.disabled, true);
     assert.equal(submitButton.disabled, true);
     assert.equal(form.attributes.get('aria-busy'), 'true');
 });
@@ -225,15 +209,15 @@ test('a repeated submit is ignored after the first request starts', () => {
     assert.equal(form.submitCount, 1);
 });
 
-test('escape after reopening returns focus even after an earlier confirmation close', () => {
-    const { dialog, form, submitButton } = fixture();
-    dialog.returnValue = 'confirm';
-    fakeDocument.activeElement = submitButton;
-
+test('a cancelled shared confirmation can be opened again', async () => {
+    const { actionDialog, form, submitButton } = fixture();
     form.submit(submitButton);
-    dialog.close('cancel');
+    actionDialog.finish(false);
+    await Promise.resolve();
+    form.submit(submitButton);
 
-    assert.equal(fakeDocument.activeElement, submitButton);
+    assert.equal(actionDialog.calls.length, 2);
+    assert.equal(form.submitCount, 0);
 });
 
 test('changing the keyword library or title count clears previous consent', () => {

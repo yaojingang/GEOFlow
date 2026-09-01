@@ -157,7 +157,7 @@
                         </form>
                     </div>
                     <div class="{{ $generationRun->isActive() ? '' : 'hidden' }} mt-4" data-generation-cancel>
-                        <form method="POST" action="{{ route('admin.title-libraries.ai-generate.cancel', ['libraryId' => (int) $library->id, 'runId' => (int) $generationRun->id]) }}" data-library-confirm-form data-confirm-message="{{ __('admin.title_detail.generation.cancel_confirm') }}">
+                        <form method="POST" action="{{ route('admin.title-libraries.ai-generate.cancel', ['libraryId' => (int) $library->id, 'runId' => (int) $generationRun->id]) }}" data-library-confirm-form data-admin-confirm-form data-admin-confirm-tone="warning" data-admin-confirm-title="{{ __('admin.title_detail.generation.cancel_confirm') }}" data-admin-confirm-message="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.title_detail.generation.cancel') }}">
                             @csrf
                             <button type="submit" disabled aria-disabled="true" data-library-detail-destructive-submit class="inline-flex min-h-10 items-center rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition-[background-color,opacity,transform] duration-150 [@media(hover:hover)]:hover:bg-red-50 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100">
                                 <i data-lucide="square" class="mr-2 h-4 w-4"></i>
@@ -216,7 +216,7 @@
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-2">
-                                    <form method="POST" action="{{ route('admin.title-libraries.titles.delete', ['libraryId' => (int) $library->id]) }}" data-material-delete-form data-confirm-message="{{ __('admin.title_detail.confirm_delete', ['name' => $title->title]) }}">
+                                    <form method="POST" action="{{ route('admin.title-libraries.titles.delete', ['libraryId' => (int) $library->id]) }}" data-material-delete-form data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.title_detail.confirm_delete', ['name' => $title->title]) }}" data-admin-confirm-message="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.button.delete') }}">
                                         @csrf
                                         <input type="hidden" name="title_ids[]" value="{{ (int) $title->id }}">
                                         <button type="submit" disabled aria-disabled="true" data-material-delete-submit class="inline-flex min-h-10 items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition-[background-color,opacity,transform] duration-150 [@media(hover:hover)]:hover:bg-red-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100">

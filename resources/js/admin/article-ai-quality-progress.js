@@ -8,6 +8,9 @@ export function renderArticleAiQualityProgress(root, payload) {
     const elapsedElement = root.querySelector('[data-ai-quality-progress-elapsed]');
     const errorElement = root.querySelector('[data-ai-quality-progress-error]');
     const resultLabelElement = document.querySelector('[data-ai-quality-result-label]');
+    const qualityCard = root.closest?.('[data-ai-quality-collapsible]');
+    const compactProgress = qualityCard?.querySelector('[data-ai-quality-compact-progress]');
+    const compactMessage = qualityCard?.querySelector('[data-ai-quality-compact-message]');
 
     const waitingForTerminalState = Boolean(payload.active || payload.reconciling);
     root.setAttribute('aria-busy', waitingForTerminalState ? 'true' : 'false');
@@ -22,6 +25,8 @@ export function renderArticleAiQualityProgress(root, payload) {
         progressBar.setAttribute('aria-valuenow', String(progress));
     }
     if (progressPercent) progressPercent.textContent = `${progress}%`;
+    if (compactProgress) compactProgress.textContent = `${progress}%`;
+    if (compactMessage && typeof payload.message === 'string') compactMessage.textContent = payload.message;
     if (segmentsElement && typeof payload.segments_label === 'string') {
         segmentsElement.textContent = payload.segments_label;
     }

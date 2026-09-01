@@ -24,7 +24,6 @@ final class ArticleAiQualityScorerV2
         'ad_false_or_misleading' => 'advertising_compliance',
         'ad_industry_specific' => 'advertising_compliance',
         'ad_identifiability' => 'advertising_compliance',
-        'ai_generated_disclosure' => 'advertising_compliance',
         'content_integrity' => 'content_integrity',
     ];
 
@@ -146,6 +145,9 @@ final class ArticleAiQualityScorerV2
             if (! is_array($issue)) {
                 continue;
             }
+            if (! array_key_exists((string) ($issue['code'] ?? ''), self::CODE_DIMENSIONS)) {
+                throw new InvalidArgumentException('AI quality issue code is invalid.');
+            }
             $rootKey = $this->rootCauseKey($issue);
             $occurrence = [
                 'field' => (string) ($issue['field'] ?? ''),
@@ -187,7 +189,7 @@ final class ArticleAiQualityScorerV2
         $code = (string) ($issue['code'] ?? 'content_integrity');
         $family = match (true) {
             str_starts_with($code, 'citation_'), $code === 'source_declared_unverified' => 'citation',
-            str_starts_with($code, 'ad_'), $code === 'ai_generated_disclosure' => (string) ($issue['code_family'] ?? $code),
+            str_starts_with($code, 'ad_') => (string) ($issue['code_family'] ?? $code),
             default => (string) ($issue['code_family'] ?? $code),
         };
         $claim = trim((string) ($issue['claim_hash'] ?? $issue['fact_candidate_id'] ?? ''));

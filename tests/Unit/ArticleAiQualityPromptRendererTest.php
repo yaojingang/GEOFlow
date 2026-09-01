@@ -39,6 +39,61 @@ class ArticleAiQualityPromptRendererTest extends TestCase
         ]);
     }
 
+    public function test_default_quality_prompt_does_not_request_ai_generation_disclosure_review(): void
+    {
+        foreach (['article-quality-cn-v1.txt', 'article-quality-cn-v1-legacy.txt'] as $filename) {
+            $template = (string) file_get_contents(dirname(__DIR__, 2).'/resources/prompts/'.$filename);
+            $rendered = (new ArticleAiQualityPromptRenderer)->render($template, []);
+
+            $this->assertStringNotContainsString('ai_generated_disclosure', $rendered);
+            $this->assertStringNotContainsString('生成合成内容标识', $rendered);
+        }
+    }
+
+    public function test_frozen_prompt_snapshots_are_sanitized_before_model_review(): void
+    {
+        $rendered = (new ArticleAiQualityPromptRenderer)->render(
+            "检查 citation_missing。\n8. 发布语境适用 AI 生成合成内容标识规则时，\n记录 ai_generated_disclosure。\n9. 继续检查 content_integrity。\n问题代码：citation_missing、ai_generated_disclosure、content_integrity。",
+            [],
+        );
+
+        $this->assertStringContainsString('citation_missing', $rendered);
+        $this->assertStringContainsString('content_integrity', $rendered);
+        $this->assertStringNotContainsString('ai_generated_disclosure', $rendered);
+        $this->assertStringNotContainsString('生成合成内容标识', $rendered);
+        $this->assertStringNotContainsString('记录 。', $rendered);
+    }
+
+    public function test_frozen_prompt_keeps_fact_checks_about_ai_labeling_regulations(): void
+    {
+        foreach ([
+            '检查文章关于《人工智能生成合成内容标识办法》的适用范围、条文和官方来源是否准确。',
+            '检查发布语境下《人工智能生成合成内容标识办法》的适用范围和官方来源是否准确。',
+            '检查发布语境下适用的《人工智能生成合成内容标识办法》条文和官方来源是否准确。',
+            '检查发布语境适用《人工智能生成合成内容标识办法》的要求是否准确。',
+        ] as $instruction) {
+            $rendered = (new ArticleAiQualityPromptRenderer)->render(
+                "1. {$instruction}\n2. 检查 citation_missing。",
+                [],
+            );
+
+            $this->assertStringContainsString('《人工智能生成合成内容标识办法》', $rendered);
+            $this->assertStringContainsString('citation_missing', $rendered);
+        }
+    }
+
+    public function test_frozen_prompt_removes_metadata_instruction_next_to_a_law_fact_check(): void
+    {
+        $rendered = (new ArticleAiQualityPromptRenderer)->render(
+            '1. 核验《人工智能生成合成内容标识办法》的官方来源；记录 AI 生成内容标识问题。'."\n".'2. 检查 citation_missing。',
+            [],
+        );
+
+        $this->assertStringContainsString('官方来源', $rendered);
+        $this->assertStringContainsString('citation_missing', $rendered);
+        $this->assertStringNotContainsString('记录 AI 生成内容标识问题', $rendered);
+    }
+
     public function test_untrusted_content_cannot_close_a_prompt_data_boundary(): void
     {
         $rendered = (new ArticleAiQualityPromptRenderer)->render(
@@ -94,6 +149,10 @@ class ArticleAiQualityPromptRendererTest extends TestCase
                         'source_url' => 'https://example.test/law',
                         'effective_date' => '2021-04-29',
                         'summary' => '检查最高级、最佳等表述。',
+                    ], [
+                        'id' => 'CN-AIGC-LABEL-04-06',
+                        'title' => '已移除的 AI 生成内容标识规则',
+                        'summary' => '检查发布元数据标识。',
                     ]],
                 ],
             ],
@@ -102,6 +161,7 @@ class ArticleAiQualityPromptRendererTest extends TestCase
         $this->assertStringContainsString('kb:1:chunk:2', $rendered);
         $this->assertStringContainsString('年度报告', $rendered);
         $this->assertStringContainsString('CN-AD-LAW-09', $rendered);
+        $this->assertStringNotContainsString('CN-AIGC-LABEL-04-06', $rendered);
         $this->assertStringNotContainsString('private-content-hash', $rendered);
         $this->assertStringNotContainsString('private-source-hash', $rendered);
         $this->assertStringNotContainsString('internal.example.test', $rendered);

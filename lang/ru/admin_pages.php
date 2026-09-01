@@ -64,6 +64,8 @@ return [
     'knowledge_base_create' => 'Новая база знаний',
     'knowledge_base_edit' => 'Изменить базу знаний',
     'knowledge_base_detail' => 'Детали базы знаний',
+    'knowledge_base_chunks' => 'Управление фрагментами знаний',
+    'knowledge_base_facts' => 'Рабочая область атомарных фактов',
     'enterprise_knowledge' => 'Корпоративные знания',
     'enterprise_knowledge_create' => 'Новый проект знаний',
     'enterprise_knowledge_detail' => 'Детали проекта знаний',

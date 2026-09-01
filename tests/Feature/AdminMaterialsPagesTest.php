@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Jobs\PrepareKnowledgeChunkSyncJob;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\Article;
+use App\Models\Author;
+use App\Models\Category;
 use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\Keyword;
@@ -820,6 +823,55 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
     }
 
+    public function test_admin_cannot_delete_knowledge_base_referenced_by_independent_article_quality_configuration(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_delete_article_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-delete-article-admin@example.com',
+            'display_name' => 'Knowledge Delete Article Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '被独立文章引用知识库',
+            'description' => '',
+            'content' => '独立文章的质检知识库引用需要阻止删除。',
+            'character_count' => 20,
+            'file_type' => 'markdown',
+            'word_count' => 20,
+        ]);
+        $category = Category::query()->create([
+            'name' => '知识库删除保护',
+            'slug' => 'knowledge-delete-protection',
+        ]);
+        $author = Author::query()->create(['name' => '知识库删除保护作者']);
+        $article = Article::query()->create([
+            'title' => '独立文章质检知识库删除保护',
+            'slug' => 'independent-article-quality-knowledge-delete-protection',
+            'content' => '文章正文。',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+        $article->aiQualityKnowledgeBases()->attach((int) $knowledgeBase->id, ['sort_order' => 0]);
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.knowledge-bases.index'))
+            ->post(route('admin.knowledge-bases.delete', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
+            ->assertRedirect(route('admin.knowledge-bases.index'))
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseHas('knowledge_bases', [
+            'id' => (int) $knowledgeBase->id,
+        ]);
+        $this->assertDatabaseHas('article_ai_quality_knowledge_bases', [
+            'article_id' => (int) $article->id,
+            'knowledge_base_id' => (int) $knowledgeBase->id,
+        ]);
+    }
+
     public function test_admin_can_refresh_knowledge_chunks_with_real_embedding_model(): void
     {
         Http::fake([
@@ -915,10 +967,13 @@ class AdminMaterialsPagesTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.knowledge-bases.index'))
             ->assertOk()
-            ->assertSee('data-knowledge-refresh-modal', false)
+            ->assertSee('data-admin-action-dialog', false)
             ->assertSee('data-refresh-chunks-form', false)
+            ->assertSee('data-dialog-title="'.__('admin.knowledge_bases.refresh_confirm_title').'"', false)
+            ->assertSee('data-refresh-submit-button disabled aria-disabled="true"', false)
             ->assertSee('data-refresh-progress', false)
             ->assertSee(__('admin.knowledge_bases.refresh_confirm_title'))
+            ->assertDontSee('data-knowledge-refresh-modal', false)
             ->assertSee(__('admin.knowledge_bases.refresh_progress_initial'))
             ->assertDontSee(__('admin.knowledge_bases.confirm_refresh_chunks', ['name' => '待更新切片知识库']));
     }
@@ -1682,6 +1737,46 @@ class AdminMaterialsPagesTest extends TestCase
             ->get(route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
             ->assertOk()
             ->assertSee(__('admin.knowledge_detail.heading'));
+    }
+
+    public function test_knowledge_editor_exposes_a_left_heading_navigation_tree(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_outline_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-outline-admin@example.com',
+            'display_name' => 'Knowledge Outline Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '目录导航知识库',
+            'description' => '验证 Markdown 目录导航。',
+            'content' => "# 一级标题\n\n## 二级标题\n\n### 三级标题\n\n#### 四级标题",
+            'character_count' => 31,
+            'used_task_count' => 0,
+            'file_type' => 'markdown',
+            'file_path' => '',
+            'word_count' => 4,
+            'usage_count' => 0,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
+            ->assertOk()
+            ->assertSee('outline: {', false)
+            ->assertSee('enable: true', false)
+            ->assertSee("position: 'left'", false)
+            ->assertSee('data-knowledge-outline-levels="1,2,3,4"', false)
+            ->assertSee('.knowledge-markdown-editor:not(.vditor--fullscreen) .vditor-outline {', false)
+            ->assertSeeInOrder([
+                '.knowledge-markdown-editor.vditor {',
+                'background: #fff;',
+                'border: 0;',
+                '.knowledge-markdown-editor.vditor--fullscreen {',
+                'border-radius: 0;',
+            ], false);
     }
 
     public function test_admin_can_manage_keyword_and_title_details(): void

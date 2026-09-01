@@ -52,6 +52,10 @@ services:
     image: geoflow-ui-v3-app:latest
     container_name: geoflow-ui-v3-knowledge-queue
 
+  ai-optimization-queue:
+    image: geoflow-ui-v3-app:latest
+    container_name: geoflow-ui-v3-ai-optimization-queue
+
   system-update-queue:
     image: geoflow-ui-v3-app:latest
     container_name: geoflow-ui-v3-system-update-queue

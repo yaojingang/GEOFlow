@@ -12,6 +12,11 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_atomic_comparator_contract_contains_250_valid_deterministic_cases(): void
+    {
+        $this->artisan('geoflow:validate-atomic-comparator-contract')->assertSuccessful();
+    }
+
     public function test_offline_evaluation_generates_machine_and_human_readable_reports(): void
     {
         $directory = storage_path('framework/testing/ai-quality-evaluation');
@@ -26,7 +31,9 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertFileExists($basePath.'.md');
         $report = json_decode((string) file_get_contents($basePath.'.json'), true);
         $this->assertSame('offline', $report['mode']);
-        $this->assertSame(6, $report['dataset']['case_count']);
+        $this->assertSame(240, $report['dataset']['case_count']);
+        $this->assertSame(2, $report['schema_version']);
+        $this->assertSame(64, strlen($report['dataset']['sha256']));
         $this->assertSame('tests/Fixtures/ai-quality/golden-v1.json', $report['dataset']['path']);
         $this->assertFalse($report['production_gate_ready']);
         $this->assertSame('saved_predictions', $report['evaluation_scope']);
@@ -37,7 +44,9 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertArrayHasKey('completion_tokens', $report['metrics']);
         $this->assertArrayHasKey('token_reduction_vs_baseline', $report['metrics']);
         $this->assertArrayHasKey('repeat_stability', $report['metrics']);
-        $this->assertSame(6, $report['metrics']['by_inspection_scope']['full']['case_count']);
+        $this->assertArrayHasKey('atomic_facts', $report['metrics']);
+        $this->assertArrayHasKey('wilson_95', $report['metrics']['atomic_facts']['precision']);
+        $this->assertSame(240, $report['metrics']['by_inspection_scope']['full']['case_count']);
         $this->assertSame(0, $report['metrics']['by_inspection_scope']['fallback_sampled']['case_count']);
         $this->assertStringContainsString('AI 质检黄金集评测报告', (string) file_get_contents($basePath.'.md'));
         $this->assertStringContainsString('已保存预测离线复算', (string) file_get_contents($basePath.'.md'));
@@ -68,6 +77,36 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $report = json_decode((string) File::get($basePath.'.json'), true, flags: JSON_THROW_ON_ERROR);
         $this->assertEquals(1.0, $report['metrics']['safe_false_block_rate']);
         $this->assertFalse($report['production_gate_ready']);
+    }
+
+    public function test_atomic_false_block_rate_uses_only_atomic_cases(): void
+    {
+        $directory = storage_path('framework/testing/ai-quality-atomic-false-gate');
+        File::ensureDirectoryExists($directory);
+        $datasetPath = $directory.'/dataset.json';
+        $basePath = $directory.'/report';
+        $cases = [
+            ['id' => 'atomic-safe-blocked', 'split' => 'calibration', 'atomic_fact' => [
+                'claim_role' => 'material_claim', 'definition' => '安全事实', 'canonical' => ['value' => '1'], 'evidence' => [],
+                'expected_applicability' => 'applicable', 'expected_result' => 'match', 'expected_fallback' => false, 'expected_final_decision' => 'passed',
+            ], 'expected' => ['decision' => 'passed', 'issue_codes' => []], 'prediction' => ['decision' => 'blocked', 'issue_codes' => []]],
+            ['id' => 'general-safe-passed', 'split' => 'calibration', 'expected' => ['decision' => 'passed', 'issue_codes' => []], 'prediction' => ['decision' => 'passed', 'issue_codes' => []]],
+        ];
+        for ($index = 3; $index <= 240; $index++) {
+            $split = $index <= 120 ? 'calibration' : ($index <= 180 ? 'regression' : 'blind');
+            $cases[] = ['id' => 'risk-'.$index, 'split' => $split, 'expected' => ['decision' => 'blocked', 'issue_codes' => ['risk']], 'prediction' => ['decision' => 'blocked', 'issue_codes' => ['risk']]];
+        }
+        File::put($datasetPath, json_encode([
+            'version' => 'atomic-false-gate-test',
+            'requirements' => ['total_cases' => 240, 'calibration' => 120, 'regression' => 60, 'blind' => 60],
+            'cases' => $cases,
+        ], JSON_THROW_ON_ERROR));
+
+        $this->artisan('geoflow:evaluate-ai-quality', ['--dataset' => $datasetPath, '--output' => $basePath])->assertSuccessful();
+
+        $report = json_decode((string) File::get($basePath.'.json'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0.5, $report['metrics']['safe_false_block_rate']);
+        $this->assertEquals(1.0, $report['metrics']['atomic_facts']['false_block_rate']);
     }
 
     public function test_live_evaluation_runs_distinct_full_and_sampled_production_components(): void

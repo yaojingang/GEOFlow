@@ -4,6 +4,7 @@
  * Artisan 自定义命令注册（闭包命令或后续类命令）。
  */
 
+use App\Models\KnowledgeFactGenerationRun;
 use App\Services\GeoFlow\ArticleMarkdownExportService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use Illuminate\Foundation\Inspiring;
@@ -60,6 +61,40 @@ Artisan::command('geoflow:prune-article-exports', function (ArticleMarkdownExpor
     return 0;
 })->purpose('Delete expired Markdown article export files');
 
+Artisan::command('geoflow:prune-knowledge-fact-generations {--limit=200} {--dry-run}', function (): int {
+    $cutoff = now()->subDays((int) config('geoflow.knowledge_fact_generation_retention_days', 90));
+    $pruned = 0;
+    KnowledgeFactGenerationRun::query()->whereIn('status', ['completed', 'partial', 'failed', 'cancelled', 'obsolete'])
+        ->whereNull('diagnostic_payload_pruned_at')->where('updated_at', '<', $cutoff)->orderBy('id')
+        ->limit(max(1, min(1000, (int) $this->option('limit'))))->pluck('id')->each(function (int $runId) use (&$pruned): void {
+            DB::transaction(function () use ($runId, &$pruned): void {
+                $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->first();
+                if (! $run || $run->diagnostic_payload_pruned_at !== null || ! in_array($run->status, ['completed', 'partial', 'failed', 'cancelled', 'obsolete'], true)) {
+                    return;
+                }
+                $result = (array) $run->result_json;
+                if ((array) ($result['conflicts'] ?? []) !== []) {
+                    return;
+                }
+                $pruned++;
+                if ((bool) $this->option('dry-run')) {
+                    return;
+                }
+                $summary = ['summary' => ['candidate_count' => count((array) ($result['candidates'] ?? [])), 'batch_count' => count((array) ($result['batches'] ?? []))]];
+                $run->forceFill([
+                    'result_json' => $summary,
+                    'result_hash' => hash('sha256', json_encode($summary, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)),
+                    'batch_meta_json' => null, 'coverage_json' => null, 'usage_json' => null, 'error_message' => null,
+                    'diagnostic_payload_pruned_at' => now(),
+                ])->save();
+            }, 3);
+        });
+    $verb = (bool) $this->option('dry-run') ? 'Eligible' : 'Pruned';
+    $this->info("{$verb} knowledge fact generation diagnostics: {$pruned}");
+
+    return 0;
+})->purpose('Prune old knowledge fact generation diagnostics without unresolved conflicts');
+
 /**
  * Horizon 监控快照：用于沉淀队列吞吐、等待等时序指标。
  */
@@ -91,6 +126,11 @@ Schedule::command('geoflow:reconcile-ai-quality')
     ->onOneServer()
     ->withoutOverlapping(2);
 
+Schedule::command('geoflow:reconcile-ai-optimization')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(2);
+
 Schedule::command('geoflow:converge-ai-quality')
     ->everyFiveSeconds()
     ->onOneServer()
@@ -113,6 +153,11 @@ Schedule::command('geoflow:prune-article-exports')
 
 Schedule::command('geoflow:prune-ai-workspace')
     ->dailyAt('02:30')
+    ->onOneServer()
+    ->withoutOverlapping(60);
+
+Schedule::command('geoflow:prune-knowledge-fact-generations')
+    ->dailyAt('02:45')
     ->onOneServer()
     ->withoutOverlapping(60);
 

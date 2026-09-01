@@ -66,6 +66,16 @@
     $qualityPrompts = $formOptions['qualityPrompts'] ?? [];
     $defaultQualityPromptId = (string) (collect($qualityPrompts)->firstWhere('system_managed', true)['id'] ?? ($qualityPrompts[0]['id'] ?? ''));
     $qualityPromptId = (string) old('ai_quality_prompt_id', (string) ($taskForm['ai_quality_prompt_id'] ?? $defaultQualityPromptId));
+    $qualityPassScore = max(1, min(100, (int) old('ai_quality_pass_score', (int) ($taskForm['ai_quality_pass_score'] ?? 85))));
+    $qualityRetrievalMode = (string) old('ai_quality_retrieval_mode', (string) ($taskForm['ai_quality_retrieval_mode'] ?? ''));
+    $qualityAutoOptimizeEnabled = $qualityEnabled && (bool) old('ai_quality_auto_optimize_enabled', (bool) ($taskForm['ai_quality_auto_optimize_enabled'] ?? false));
+    $qualityOptimizationLevel = (string) old('ai_quality_optimization_level', (string) ($taskForm['ai_quality_optimization_level'] ?? 'excellent_80'));
+    $optimizationStrategies = (array) config('geoflow.ai_quality_optimization_strategies', []);
+    $optimizationStrategyOptions = [
+        'pass' => ['minimum' => 0, 'label' => $t('task_create.ai_quality.optimization_pass'), 'desc' => $t('task_create.ai_quality.optimization_pass_help')],
+        'excellent_80' => ['minimum' => 80, 'label' => $t('task_create.ai_quality.optimization_80'), 'desc' => $t('task_create.ai_quality.optimization_80_help')],
+        'excellent_90' => ['minimum' => 90, 'label' => $t('task_create.ai_quality.optimization_90'), 'desc' => $t('task_create.ai_quality.optimization_90_help')],
+    ];
 @endphp
 
 @section('content')
@@ -137,6 +147,7 @@
                 @if ($isEdit)
                     @method('PUT')
                     <input type="hidden" name="task_revision" value="{{ (string) ($taskForm['task_revision'] ?? '') }}">
+                    <input type="hidden" name="config_version" value="{{ max(1, (int) ($taskForm['ai_quality_config_version'] ?? 1), (int) ($taskForm['ai_quality_policy_version'] ?? 1)) }}">
                 @endif
 
                 <div class="bg-white shadow rounded-lg xl:col-span-12">
@@ -238,8 +249,11 @@
                                 @else
                                     <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                                         @foreach ($knowledgeBases as $knowledgeBaseIndex => $kb)
-                                            @php($knowledgeBaseId = (string) $kb['id'])
-                                            @php($knowledgeBaseInitiallyHidden = $knowledgeBaseIndex >= $visibleKnowledgeBaseLimit && ! in_array($knowledgeBaseId, $selectedKnowledgeBaseIds, true))
+                                            @php
+                                                $knowledgeBaseId = (string) $kb['id'];
+                                                $knowledgeBaseInitiallyHidden = $knowledgeBaseIndex >= $visibleKnowledgeBaseLimit
+                                                    && ! in_array($knowledgeBaseId, $selectedKnowledgeBaseIds, true);
+                                            @endphp
                                             <label data-knowledge-base-card @if($knowledgeBaseInitiallyHidden) data-knowledge-base-collapsed="true" @endif
                                                    @class([
                                                        'flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm transition hover:border-blue-300 hover:bg-blue-50',
@@ -291,7 +305,9 @@
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.image_desc') }}</p>
                     </div>
                     <div class="px-6 py-4">
-                        @php($imageCountValue = (string) old('image_count', (string) ($taskForm['image_count'] ?? '1')))
+                        @php
+                            $imageCountValue = (string) old('image_count', (string) ($taskForm['image_count'] ?? '1'));
+                        @endphp
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label for="image_library_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.image_library') }}</label>
@@ -424,6 +440,16 @@
                             </div>
                         </div>
 
+                        <x-admin.ai-quality-retrieval-selector
+                            id="task-ai-quality-retrieval-mode"
+                            name="ai_quality_retrieval_mode"
+                            :value="$qualityRetrievalMode"
+                            :selected-knowledge-base-ids="$selectedKnowledgeBaseIds"
+                            :readiness-by-knowledge-base="$formOptions['aiQualityRetrievalReadinessByKnowledgeBase'] ?? []"
+                            knowledge-input-selector="[data-knowledge-base-input]"
+                            :persisted="$isEdit || old('ai_quality_retrieval_mode') !== null"
+                        />
+
                         <label class="flex gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-4">
                             <input type="checkbox" name="ai_quality_timeout_sampling_enabled" id="ai_quality_timeout_sampling_enabled" value="1"
                                    @checked((bool) old('ai_quality_timeout_sampling_enabled', (bool) ($taskForm['ai_quality_timeout_sampling_enabled'] ?? false)))
@@ -435,6 +461,47 @@
                             </span>
                         </label>
 
+                        <fieldset class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4" data-ai-quality-optimization>
+                            <legend class="sr-only">{{ $t('task_create.ai_quality.optimization_title') }}</legend>
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div class="max-w-3xl">
+                                    <p class="text-sm font-semibold text-gray-900">{{ $t('task_create.ai_quality.optimization_title') }}</p>
+                                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ $t('task_create.ai_quality.optimization_help') }}</p>
+                                </div>
+                                <label class="relative inline-flex shrink-0 cursor-pointer items-center gap-3">
+                                    <span class="text-sm font-medium text-gray-700">{{ $t('task_create.ai_quality.optimization_switch') }}</span>
+                                    <input type="checkbox" name="ai_quality_auto_optimize_enabled" id="ai_quality_auto_optimize_enabled" value="1"
+                                           @checked($qualityAutoOptimizeEnabled) class="peer sr-only" data-ai-quality-optimization-toggle>
+                                    <span class="relative h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"></span>
+                                </label>
+                            </div>
+
+                            <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3" data-ai-quality-optimization-options>
+                                @foreach ($optimizationStrategyOptions as $strategyValue => $strategy)
+                                    @php
+                                        $strategyConfig = (array) ($optimizationStrategies[$strategyValue] ?? []);
+                                        $strategyRounds = max(1, min(3, (int) ($strategyConfig['max_rounds'] ?? ($strategyValue === 'pass' ? 1 : ($strategyValue === 'excellent_80' ? 2 : 3)))));
+                                        $actualTarget = max($qualityPassScore, (int) $strategy['minimum']);
+                                    @endphp
+                                    <label class="flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                                        <input type="radio" name="ai_quality_optimization_level" value="{{ $strategyValue }}"
+                                               @checked($qualityOptimizationLevel === $strategyValue)
+                                               class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+                                               data-ai-quality-optimization-level data-minimum-target="{{ $strategy['minimum'] }}">
+                                        <span class="min-w-0">
+                                            <span class="block text-sm font-semibold text-gray-900">{{ $strategy['label'] }}</span>
+                                            <span class="mt-1 block text-xs leading-5 text-gray-600">{{ $strategy['desc'] }}</span>
+                                            <span class="mt-2 block text-xs font-medium text-blue-700"
+                                                  data-ai-quality-optimization-target
+                                                  data-target-template="{{ $t('task_create.ai_quality.optimization_actual_target', ['score' => '__SCORE__']) }}">{{ $t('task_create.ai_quality.optimization_actual_target', ['score' => $actualTarget]) }}</span>
+                                            <span class="mt-1 block text-xs text-gray-500">{{ $t('task_create.ai_quality.optimization_rounds', ['rounds' => $strategyRounds, 'steps' => $strategyRounds * 2]) }}</span>
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            <p class="mt-3 text-xs leading-5 text-gray-500">{{ $t('task_create.ai_quality.optimization_sampling_note') }}</p>
+                        </fieldset>
+
                         <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-4">
                             <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">{{ $t('task_create.ai_quality.workflow_title') }}</p>
                             <div class="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-700" data-ai-quality-workflow
@@ -444,6 +511,8 @@
                                 <i data-lucide="arrow-right" class="h-4 w-4 text-gray-400"></i>
                                 <span class="rounded-md bg-white px-3 py-2 font-medium text-blue-700 shadow-sm">{{ $t('task_create.ai_quality.workflow_inspect') }}</span>
                                 <i data-lucide="arrow-right" class="h-4 w-4 text-gray-400"></i>
+                                <span @class(['rounded-md bg-white px-3 py-2 font-medium text-blue-700 shadow-sm', 'hidden' => ! $qualityAutoOptimizeEnabled]) data-ai-quality-workflow-optimization>{{ $t('task_create.ai_quality.workflow_optimize') }}</span>
+                                <i @class(['h-4 w-4 text-gray-400', 'hidden' => ! $qualityAutoOptimizeEnabled]) data-ai-quality-workflow-optimization data-lucide="arrow-right"></i>
                                 <span class="rounded-md bg-white px-3 py-2 shadow-sm" data-ai-quality-workflow-tail>{{ $t('task_create.ai_quality.workflow_manual') }}</span>
                             </div>
                             <p class="mt-3 text-xs leading-5 text-blue-800">{{ $t('task_create.ai_quality.workflow_help') }}</p>
@@ -557,8 +626,11 @@
                             </div>
                             <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                                 @foreach ($distributionChannels as $index => $channel)
-                                    @php($channelId = (string) $channel['id'])
-                                    @php($channelInitiallyHidden = $index >= $visibleDistributionChannelLimit && ! in_array($channelId, $selectedDistributionChannelIds, true))
+                                    @php
+                                        $channelId = (string) $channel['id'];
+                                        $channelInitiallyHidden = $index >= $visibleDistributionChannelLimit
+                                            && ! in_array($channelId, $selectedDistributionChannelIds, true);
+                                    @endphp
                                     <label data-distribution-channel-card @if($index >= $visibleDistributionChannelLimit) data-distribution-channel-collapsed="true" @endif @class([
                                         'flex items-start gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm transition',
                                         'cursor-pointer hover:border-blue-300 hover:bg-blue-50' => ! $distributionChannelsDisabled,
@@ -621,7 +693,9 @@
                         <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.category_title') }}</h3>
                         <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.category_desc') }}</p>
                     </div>
-                    @php($categoryMode = (string) old('category_mode', (string) ($taskForm['category_mode'] ?? 'smart')))
+                    @php
+                        $categoryMode = (string) old('category_mode', (string) ($taskForm['category_mode'] ?? 'smart'));
+                    @endphp
                     <div class="px-6 py-4 space-y-4">
                         <div>
                             <label class="text-base font-medium text-gray-900">{{ $t('task_create.field.category_mode') }}</label>
@@ -719,7 +793,7 @@
                     <a href="{{ route('admin.tasks.index') }}" class="px-6 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                         {{ __('admin.button.cancel') }}
                     </a>
-                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-md border border-transparent bg-blue-600 px-6 py-2 text-sm font-medium text-white shadow-sm transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] disabled:cursor-wait disabled:bg-blue-400" data-task-form-submit>
+                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-md border border-transparent bg-blue-600 px-6 py-2 text-sm font-medium text-white shadow-sm transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96] disabled:cursor-wait disabled:bg-blue-400" data-task-form-submit disabled aria-disabled="true">
                         <span data-task-form-submit-label>{{ $isEdit ? __('admin.task_edit.button.save_changes') : __('admin.button.create_task') }}</span>
                     </button>
                 </div>
@@ -730,7 +804,7 @@
 
     @if ($hasCategories)
         <dialog
-            class="fixed inset-0 m-auto w-[min(600px,calc(100vw-2rem))] max-w-none overflow-hidden overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-gray-950/45"
+            class="fixed inset-0 m-auto w-[min(600px,calc(100vw-2rem))] max-w-none overflow-hidden overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-[rgba(15,23,42,0.48)]"
             data-task-title-readiness-dialog
             role="alertdialog"
             aria-modal="true"

@@ -78,6 +78,10 @@ return [
     'site_full_name' => env('SITE_FULL_NAME', 'GEOFlow'),
     // 站点根 URL，用于生成绝对链接（末尾无斜杠）
     'site_url' => rtrim((string) env('SITE_URL', 'http://localhost'), '/'),
+    'knowledge_fact_generation_max_per_run' => 200,
+    'knowledge_fact_generation_batch_size' => 25,
+    'knowledge_fact_generation_retention_days' => 90,
+
     // SEO 描述
     'site_description' => env('SITE_DESCRIPTION', ''),
     // SEO 关键词（逗号分隔等，依前端使用方式）
@@ -229,6 +233,28 @@ return [
     'ai_quality_backfill_quota_reserve' => max(0, min(100, (int) env('GEOFLOW_AI_QUALITY_BACKFILL_QUOTA_RESERVE', 2))),
     'ai_quality_recovery_stale_seconds' => max(60, min(900, (int) env('GEOFLOW_AI_QUALITY_RECOVERY_STALE_SECONDS', 60))),
     'ai_quality_structured_reprobe_seconds' => max(300, min(604800, (int) env('GEOFLOW_AI_QUALITY_STRUCTURED_REPROBE_SECONDS', 86400))),
+
+    // AI 质检自动优化默认关闭，完成评测与灰度门槛后再逐步放量。
+    'ai_quality_optimization_enabled' => filter_var(env('GEOFLOW_AI_QUALITY_OPTIMIZATION_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'ai_quality_optimization_auto_apply_enabled' => filter_var(env('GEOFLOW_AI_QUALITY_OPTIMIZATION_AUTO_APPLY_ENABLED', false), FILTER_VALIDATE_BOOL),
+    'ai_quality_optimization_percent' => max(0, min(100, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_PERCENT', 0))),
+    'ai_quality_optimization_auto_apply_percent' => max(0, min(100, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_AUTO_APPLY_PERCENT', 0))),
+    'ai_quality_optimization_bulk_quota_reserve' => max(0, min(100, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_BULK_QUOTA_RESERVE', 2))),
+    'ai_quality_optimization_max_model_attempts' => max(1, min(3, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_MAX_MODEL_ATTEMPTS', 2))),
+    'ai_quality_optimization_queue' => trim((string) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_QUEUE', 'ai-content-optimization')),
+    'ai_quality_optimization_bulk_queue' => trim((string) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_BULK_QUEUE', 'ai-content-optimization-bulk')),
+    'ai_quality_optimization_max_rounds' => max(1, min(3, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_MAX_ROUNDS', 3))),
+    'ai_quality_optimization_max_edit_characters' => max(100, min(8000, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_MAX_EDIT_CHARACTERS', 8000))),
+    'ai_quality_optimization_round_estimated_seconds' => max(30, min(600, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_ROUND_ESTIMATED_SECONDS', 235))),
+    'ai_quality_optimization_lease_seconds' => max(60, min(900, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_LEASE_SECONDS', 300))),
+    'ai_quality_optimization_recovery_stale_seconds' => max(60, min(900, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_RECOVERY_STALE_SECONDS', 300))),
+    'ai_quality_optimization_job_timeout_seconds' => max(60, min(900, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_JOB_TIMEOUT_SECONDS', 850))),
+    'ai_quality_optimization_worker_timeout_seconds' => max(70, min(940, (int) env('GEOFLOW_AI_QUALITY_OPTIMIZATION_WORKER_TIMEOUT_SECONDS', 900))),
+    'ai_quality_optimization_strategies' => [
+        'pass' => ['max_rounds' => 1, 'edit_budget_percent' => 15],
+        'excellent_80' => ['max_rounds' => 2, 'edit_budget_percent' => 25],
+        'excellent_90' => ['max_rounds' => 3, 'edit_budget_percent' => 35],
+    ],
     // 统一出站安全网关：仅此处列出的精确 host:port 可连接私网地址；不支持通配符或路径。
     'outbound_private_targets' => array_values(array_filter(array_map('trim', explode(',', (string) env('GEOFLOW_OUTBOUND_PRIVATE_TARGETS', ''))), static fn (string $target): bool => $target !== '')),
     'outbound_json_max_bytes' => max(1, (int) env('GEOFLOW_OUTBOUND_JSON_MAX_BYTES', 4 * 1024 * 1024)),

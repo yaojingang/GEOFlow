@@ -11,6 +11,7 @@ class KnowledgeChunk extends Model
 
     protected $fillable = [
         'knowledge_base_id',
+        'generation_key',
         'chunk_index',
         'content',
         'content_hash',

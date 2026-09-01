@@ -1,0 +1,37 @@
+<?php
+
+return [
+    'title' => 'Método de inspección',
+    'help' => 'La disponibilidad depende de las bases seleccionadas. Las configuraciones nuevas usan el método disponible más preciso.',
+    'available' => 'Disponible',
+    'unavailable' => 'No disponible',
+    'unavailable_reasons' => 'Motivos de la indisponibilidad',
+    'select_knowledge_base' => 'Selecciona al menos una base de conocimiento',
+    'selection_unavailable' => 'No hay ningún método disponible. Selecciona un signo de interrogación para ver los motivos.',
+    'details' => 'Ver detalles de :mode',
+    'inherit' => 'Seguir la tarea',
+    'inherit_help' => 'Usar el método de inspección guardado en la tarea.',
+    'source_task' => 'Las bases de conocimiento se administran en la tarea',
+    'source_article' => 'Las bases de conocimiento se administran en este artículo',
+    'current_execution' => 'Última ejecución: :mode',
+    'results' => [
+        'primary_title' => ':mode',
+        'participates_in_scoring' => 'Incluido en la puntuación',
+        'strategy_version' => 'Estrategia :version',
+        'primary_tokens' => 'Inspección del modelo: :tokens tokens',
+        'atomic_shadow_title' => 'Verificación atómica en sombra',
+        'atomic_formal_title' => 'Verificación de hechos atómicos',
+        'validation_only' => 'Datos de validación · No incluidos en la puntuación',
+        'algorithm_version' => 'Algoritmo :version',
+        'fact_versions' => 'Versiones de hechos :versions',
+        'atomic_tokens' => 'Verificación atómica: :tokens tokens',
+        'coverage' => 'Cobertura :rate%',
+        'none' => 'Ninguna',
+        'metrics' => ['supported' => 'Coincidencias', 'contradicted' => 'Conflictos', 'uncovered' => 'Sin cobertura', 'ambiguous' => 'Ambiguos', 'fallback' => 'Alternativa', 'elapsed' => 'Tiempo'],
+    ],
+    'modes' => [
+        'atomic_first' => ['label' => 'Inspección atómica', 'badge' => 'Precisión', 'description' => 'Verifica afirmaciones con hechos atómicos publicados y usa fragmentos para las no cubiertas.'],
+        'chunk' => ['label' => 'Inspección por fragmentos', 'badge' => 'Equilibrio', 'description' => 'Recupera fragmentos por afirmación y equilibra precisión, coste y velocidad.'],
+        'knowledge_broad' => ['label' => 'Inspección de conocimiento', 'badge' => 'Cobertura', 'description' => 'Muestrea ampliamente párrafos y regiones iniciales, centrales y finales, con más ruido, tokens y latencia.'],
+    ],
+];

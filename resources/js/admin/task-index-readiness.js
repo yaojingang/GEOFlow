@@ -120,6 +120,21 @@ export function initializeTaskIndexReadiness(root = document, windowRef = window
             && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
         if (!inside) close();
     });
+    dialog.addEventListener('keydown', (event) => {
+        if (event.key !== 'Tab') return;
+        const focusable = Array.from(dialog.querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'))
+            .filter((element) => !element.hidden && !element.classList.contains('hidden'));
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && root.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && root.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
     windowRef.addEventListener('geoflow:task-title-readiness', (event) => {
         if (event.detail?.report) open(event.detail.report, event.detail.trigger);
     });

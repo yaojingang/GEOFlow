@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
     copySystemUpdaterCommand,
     initializeSystemUpdaterAutoReload,
+    initializeSystemUpdaterAuthorizationDialogs,
     initializeSystemUpdaterErrorDialog,
     updaterReloadDelay,
 } from '../../resources/js/admin/system-updates.js';
@@ -111,4 +112,81 @@ test('updater error remains server-visible when the dialog API is unavailable', 
 
     assert.equal(controller, null);
     assert.equal(dialog.open, true);
+});
+
+test('authorized updater actions collect central prompt fields and preserve the original submitter', async () => {
+    class FakeElement {
+        closest() { return null; }
+    }
+    class FakeInput extends FakeElement {
+        constructor() {
+            super();
+            this.value = '';
+        }
+    }
+    class FakeButton extends FakeElement {}
+    class FakeForm extends FakeElement {
+        constructor() {
+            super();
+            this.authorization = new FakeInput();
+            this.password = new FakeInput();
+            this.dataset = {
+                authorizationLabel: 'Authorization code',
+                authorizationPatternMessage: 'Enter six digits',
+                dialogConfirmLabel: 'Update system',
+                dialogGuidance: 'A verified backup is available.',
+                dialogMessage: 'The service will restart.',
+                dialogTitle: 'Update GEOFlow',
+                dialogTone: 'warning',
+                passwordLabel: 'Current password',
+                passwordRequired: 'true',
+                requiredMessage: 'Required',
+            };
+            this.submitter = null;
+        }
+        closest() { return this; }
+        querySelector(selector) {
+            if (selector.includes('updater_authorization_code')) return this.authorization;
+            if (selector.includes('current_admin_password')) return this.password;
+            return null;
+        }
+        requestSubmit(submitter) { this.submitter = submitter; }
+    }
+
+    const listeners = new Map();
+    const root = {
+        addEventListener(type, listener) { listeners.set(type, listener); },
+    };
+    const promptCalls = [];
+    const windowRef = {
+        AdminActionDialog: {
+            async prompt(options) {
+                promptCalls.push(options);
+                return { authorization: '123456', password: 'secret-123' };
+            },
+        },
+        Element: FakeElement,
+        HTMLButtonElement: FakeButton,
+        HTMLFormElement: FakeForm,
+        HTMLInputElement: FakeInput,
+    };
+    const form = new FakeForm();
+    const button = new FakeInput();
+    const event = {
+        target: form,
+        submitter: button,
+        defaultPrevented: false,
+        preventDefault() { this.defaultPrevented = true; },
+    };
+
+    initializeSystemUpdaterAuthorizationDialogs(root, windowRef);
+    await listeners.get('submit')(event);
+
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(promptCalls.length, 1);
+    assert.equal(promptCalls[0].fields.length, 2);
+    assert.equal(promptCalls[0].fields[0].pattern, '[0-9]{6}');
+    assert.equal(form.authorization.value, '123456');
+    assert.equal(form.password.value, 'secret-123');
+    assert.equal(form.submitter, button);
 });

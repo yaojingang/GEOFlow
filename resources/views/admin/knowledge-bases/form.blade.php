@@ -58,6 +58,12 @@
 
 @section('content')
     <div class="px-4 sm:px-0">
+        @if ($isEdit)
+            <div class="mb-7">
+                <x-admin.v3.knowledge-base-subnav :knowledge-base="$knowledgeBase" active="current" />
+            </div>
+        @endif
+
         <div class="mb-8 flex items-start gap-3 sm:gap-4">
             <a href="{{ route('admin.knowledge-bases.index') }}" aria-label="{{ __('admin.common.back') }}" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-gray-400 transition-[background-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-gray-700 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600">
                 <i data-lucide="arrow-left" class="h-5 w-5"></i>

@@ -297,22 +297,32 @@
         const batchForm = document.getElementById('batch-form');
         const batchDeleteSubmit = batchForm?.querySelector('[data-image-delete-submit]');
         if (batchForm && batchDeleteSubmit) {
-            batchForm.addEventListener('submit', function (event) {
-                const selected = document.querySelectorAll('.image-checkbox:checked').length;
-                if (selected === 0) {
-                    event.preventDefault();
-                    alert(@json(__('admin.image_detail.error.select_delete')));
+            batchForm.addEventListener('submit', async function (event) {
+                if (batchForm.dataset.imageDeleteConfirmed === 'true') {
+                    delete batchForm.dataset.imageDeleteConfirmed;
                     return;
                 }
-                let confirmed = false;
-                try {
-                    confirmed = window.confirm(@json(__('admin.image_detail.confirm_delete_selected_prefix')) + ' ' + selected + ' ' + @json(__('admin.image_detail.confirm_delete_selected_suffix'))) === true;
-                } catch {
-                    confirmed = false;
+                event.preventDefault();
+                const selected = document.querySelectorAll('.image-checkbox:checked').length;
+                if (selected === 0) {
+                    window.AdminActionDialog?.notice?.({
+                        tone: 'info',
+                        title: @json(__('admin.action_dialog.info_title')),
+                        message: @json(__('admin.image_detail.error.select_delete')),
+                    });
+                    return;
                 }
-                if (!confirmed) {
-                    event.preventDefault();
-                }
+                const title = @json(__('admin.image_detail.confirm_delete_selected_prefix')) + ' ' + selected + ' ' + @json(__('admin.image_detail.confirm_delete_selected_suffix'));
+                const confirmed = await window.AdminActionDialog?.confirm?.({
+                    title,
+                    message: @json(__('admin.action_dialog.generic_impact')),
+                    tone: 'danger',
+                    confirmLabel: @json(__('admin.image_detail.delete_selected')),
+                    opener: event.submitter,
+                });
+                if (confirmed !== true) return;
+                batchForm.dataset.imageDeleteConfirmed = 'true';
+                batchForm.requestSubmit(event.submitter instanceof HTMLButtonElement ? event.submitter : undefined);
             });
             batchDeleteSubmit.disabled = false;
             batchDeleteSubmit.removeAttribute('aria-disabled');

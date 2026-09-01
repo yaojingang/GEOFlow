@@ -49,6 +49,10 @@ function progressFixture() {
         '[data-ai-quality-progress-elapsed]',
         '[data-ai-quality-progress-error]',
     ]) elements.set(selector, new FakeElement());
+    const cardElements = new Map([
+        ['[data-ai-quality-compact-progress]', new FakeElement()],
+        ['[data-ai-quality-compact-message]', new FakeElement()],
+    ]);
 
     return {
         attributes: new Map(),
@@ -62,6 +66,16 @@ function progressFixture() {
             statusUrl: '/admin/articles/504/ai-quality/status',
         },
         elements,
+        cardElements,
+        closest(selector) {
+            if (selector !== '[data-ai-quality-collapsible]') return null;
+
+            return {
+                querySelector(cardSelector) {
+                    return cardElements.get(cardSelector) ?? null;
+                },
+            };
+        },
         querySelector(selector) {
             return elements.get(selector) ?? null;
         },
@@ -100,6 +114,8 @@ test('the quality progress renderer updates the live phase, truthful percentage 
     assert.equal(root.elements.get('[data-ai-quality-progress-bar]').attributes.get('aria-valuenow'), '56');
     assert.equal(root.elements.get('[data-ai-quality-progress-segments]').textContent, '已完成 2 / 4 个分段');
     assert.equal(root.elements.get('[data-ai-quality-progress-elapsed]').textContent, '已用时 20 秒，常规文章最长约 1 分钟');
+    assert.equal(root.cardElements.get('[data-ai-quality-compact-progress]').textContent, '56%');
+    assert.equal(root.cardElements.get('[data-ai-quality-compact-message]').textContent, '已完成 2/4 个内容分段');
     assert.equal(resultLabel.textContent, '抽样质检中');
     assert.equal(root.attributes.get('aria-busy'), 'true');
 });

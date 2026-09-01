@@ -8,6 +8,7 @@ use App\Models\Article;
 use App\Models\SiteSetting;
 use App\Models\TitleGenerationRun;
 use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
+use App\Services\GeoFlow\AiModelTestDiagnosisService;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiUsageReservation;
 use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
@@ -48,6 +49,7 @@ class AiModelController extends Controller
         private readonly SafeOutboundHttpClient $safeHttp,
         private readonly Factory $http,
         private readonly AiUsageQuotaService $usageQuota,
+        private readonly AiModelTestDiagnosisService $modelTestDiagnosis,
         private readonly AiWorkspaceModelCapabilityProbe $aiWorkspaceModelProbe,
         private readonly ArticleAiQualityInvalidationService $qualityInvalidationService,
     ) {}
@@ -313,6 +315,7 @@ class AiModelController extends Controller
         $startedAt = microtime(true);
         $reservation = null;
         $workspaceProbeAttempted = false;
+        $apiKey = '';
 
         try {
             $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
@@ -324,13 +327,33 @@ class AiModelController extends Controller
                 && OpenAiRuntimeProvider::resolveChatDriver((string) ($model->api_url ?? ''), $modelName) === 'openai';
 
             if ($endpoint === '') {
-                return $this->modelTestResponse(false, __('admin.ai_models.test_error_api_url_missing'), $startedAt, $modelType);
+                return $this->modelTestResponse(
+                    false,
+                    __('admin.ai_models.test_error_api_url_missing'),
+                    $startedAt,
+                    $modelType,
+                    diagnosis: $this->modelTestDiagnosis->forLocalFailure('api_url_missing'),
+                );
             }
             if ($apiKey === '') {
-                return $this->modelTestResponse(false, __('admin.ai_models.test_error_api_key_missing'), $startedAt, $modelType, $endpoint);
+                return $this->modelTestResponse(
+                    false,
+                    __('admin.ai_models.test_error_api_key_missing'),
+                    $startedAt,
+                    $modelType,
+                    $endpoint,
+                    diagnosis: $this->modelTestDiagnosis->forLocalFailure('api_key_missing'),
+                );
             }
             if ($modelName === '') {
-                return $this->modelTestResponse(false, __('admin.ai_models.test_error_model_missing'), $startedAt, $modelType, $endpoint);
+                return $this->modelTestResponse(
+                    false,
+                    __('admin.ai_models.test_error_model_missing'),
+                    $startedAt,
+                    $modelType,
+                    $endpoint,
+                    diagnosis: $this->modelTestDiagnosis->forLocalFailure('model_id_missing'),
+                );
             }
 
             // 停用模型也可诊断，所有真实上游请求继续纳入每日额度和用量审计。
@@ -342,6 +365,7 @@ class AiModelController extends Controller
                     $startedAt,
                     $modelType,
                     $endpoint,
+                    diagnosis: $this->modelTestDiagnosis->forLocalFailure('daily_limit_reached'),
                 );
             }
 
@@ -402,7 +426,8 @@ class AiModelController extends Controller
                     $startedAt,
                     $modelType,
                     $endpoint,
-                    $response->status()
+                    $response->status(),
+                    diagnosis: $this->modelTestDiagnosis->forHttpFailure($model, $apiKey, $response->status()),
                 );
             }
 
@@ -419,7 +444,8 @@ class AiModelController extends Controller
                     $startedAt,
                     $modelType,
                     $endpoint,
-                    $response->status()
+                    $response->status(),
+                    diagnosis: $this->modelTestDiagnosis->forInvalidResponse($model, $apiKey),
                 );
             }
 
@@ -457,7 +483,8 @@ class AiModelController extends Controller
                 false,
                 __('admin.ai_models.test_exception', ['message' => $this->safeExceptionDetail($exception)]),
                 $startedAt,
-                $this->normalizeModelType((string) ($model->model_type ?? 'chat'))
+                $this->normalizeModelType((string) ($model->model_type ?? 'chat')),
+                diagnosis: $this->modelTestDiagnosis->forException($exception, $model, $apiKey),
             );
         }
     }
@@ -601,7 +628,7 @@ class AiModelController extends Controller
                 'id' => (int) $model->id,
                 'name' => (string) $model->name,
                 'version' => (string) ($model->version ?? ''),
-                'model_id' => (string) $model->model_id,
+                'model_id' => $this->modelTestDiagnosis->modelIdForDisplay((string) $model->model_id),
                 'model_type' => $modelType,
                 'api_url' => (string) ($model->api_url ?? ''),
                 'failover_priority' => (int) ($model->failover_priority ?? 100),
@@ -612,7 +639,7 @@ class AiModelController extends Controller
                 'max_tokens' => $supportsMaxTokens && $model->max_tokens !== null ? (int) $model->max_tokens : null,
                 'task_count' => (int) ($model->content_task_count ?? 0) + (int) ($model->quality_task_count ?? 0),
                 'article_count' => (int) ($model->article_count ?? 0),
-                'masked_api_key' => $this->maskApiKey((string) ($model->getRawOriginal('api_key') ?? '')),
+                'api_key_configured' => $this->decryptApiKey((string) ($model->getRawOriginal('api_key') ?? '')) !== '',
                 'is_default_embedding' => $modelType === 'embedding' && $defaultEmbeddingModelId === (int) $model->id,
                 'workspace_readiness_status' => $workspaceReadinessStatus,
                 'workspace_readiness_profile' => (array) ($model->ai_workspace_readiness_profile ?? []),
@@ -637,10 +664,10 @@ class AiModelController extends Controller
             ->orderBy('name')
             ->orderByDesc('id')
             ->get()
-            ->map(static fn (AiModel $model): array => [
+            ->map(fn (AiModel $model): array => [
                 'id' => (int) $model->id,
                 'name' => (string) $model->name,
-                'model_id' => (string) ($model->model_id ?? ''),
+                'model_id' => $this->modelTestDiagnosis->modelIdForDisplay((string) ($model->model_id ?? '')),
             ])
             ->all();
     }
@@ -663,10 +690,10 @@ class AiModelController extends Controller
             ->orderBy('failover_priority')
             ->orderBy('name')
             ->get()
-            ->map(static fn (AiModel $model): array => [
+            ->map(fn (AiModel $model): array => [
                 'id' => (int) $model->id,
                 'name' => (string) $model->name,
-                'model_id' => (string) ($model->model_id ?? ''),
+                'model_id' => $this->modelTestDiagnosis->modelIdForDisplay((string) ($model->model_id ?? '')),
             ])
             ->all();
     }
@@ -792,14 +819,6 @@ class AiModelController extends Controller
         } catch (Throwable) {
             return false;
         }
-    }
-
-    /**
-     * 对 API key 做掩码显示。
-     */
-    private function maskApiKey(string $storedApiKey): string
-    {
-        return $this->apiKeyCrypto->mask($storedApiKey);
     }
 
     /**
@@ -1030,16 +1049,22 @@ class AiModelController extends Controller
         string $endpoint = '',
         ?int $httpStatus = null,
         array $extraMeta = [],
+        ?array $diagnosis = null,
     ): JsonResponse {
+        $meta = [
+            'model_type' => $modelType,
+            'http_status' => $httpStatus,
+            'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+            'endpoint' => $success ? $endpoint : '',
+        ] + $extraMeta;
+        if (! $success && $diagnosis !== null) {
+            $meta['diagnosis'] = $diagnosis;
+        }
+
         return response()->json([
             'success' => $success,
             'message' => $message,
-            'meta' => [
-                'model_type' => $modelType,
-                'http_status' => $httpStatus,
-                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
-                'endpoint' => $success ? $endpoint : '',
-            ] + $extraMeta,
+            'meta' => $meta,
         ], $success ? 200 : 422);
     }
 
@@ -1095,8 +1120,16 @@ class AiModelController extends Controller
     private function sanitizeRemoteText(string $text, string $apiKey): string
     {
         $sanitized = str_replace($apiKey, '[redacted]', $text);
+        if (strlen($apiKey) >= 8) {
+            $prefix = substr($apiKey, 0, 8);
+            $suffix = substr($apiKey, -4);
+            $sanitized = str_replace($prefix, '[redacted]', $sanitized);
+            $sanitized = preg_replace('/(?:\*|•|x){2,}\s*'.preg_quote($suffix, '/').'/iu', '[redacted]', $sanitized) ?? $sanitized;
+            $sanitized = str_replace($suffix, '[redacted]', $sanitized);
+        }
         $sanitized = preg_replace('/\bBearer\s+[A-Za-z0-9._~+\/=:-]{8,}/iu', 'Bearer [redacted]', $sanitized) ?? $sanitized;
         $sanitized = preg_replace('/\bsk-[A-Za-z0-9_-]{8,}\b/u', '[redacted]', $sanitized) ?? $sanitized;
+        $sanitized = preg_replace('/\bark-[A-Za-z0-9._-]{4,}\b/iu', '[redacted]', $sanitized) ?? $sanitized;
         $sanitized = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $sanitized) ?? $sanitized;
         $sanitized = preg_replace('/\s+/u', ' ', trim($sanitized)) ?? trim($sanitized);
 

@@ -4,37 +4,23 @@ function setDestructiveButtonEnabled(button, enabled) {
     else button.setAttribute('aria-disabled', 'true');
 }
 
-function confirmed(confirmAction, message) {
-    if (!message) return false;
-
-    try {
-        return confirmAction(message) === true;
-    } catch {
-        return false;
-    }
-}
-
-export function initializeConfirmedLibraryActions(
-    root,
-    confirmAction = (message) => window.confirm(message),
-) {
+export function initializeConfirmedLibraryActions(root, actionDialog = globalThis.window?.AdminActionDialog) {
+    const controllerReady = typeof actionDialog === 'function' || typeof actionDialog?.confirm === 'function';
+    if (!controllerReady) return;
     root.querySelectorAll('[data-library-confirm-form]').forEach((form) => {
         const submitButton = form.querySelector('[data-library-detail-destructive-submit]');
         if (!submitButton) throw new Error('Confirmed library action markup is incomplete.');
 
-        form.addEventListener('submit', (event) => {
-            if (!confirmed(confirmAction, form.dataset.confirmMessage || '')) event.preventDefault();
-        });
         setDestructiveButtonEnabled(submitButton, true);
     });
 }
 
-export function initializeKeywordBatchActions(
-    root,
-    confirmAction = (message) => window.confirm(message),
-) {
+export function initializeKeywordBatchActions(root, actionDialog = globalThis.window?.AdminActionDialog) {
     const form = root.querySelector('[data-keyword-batch-form]');
     if (!form) return;
+
+    const controllerReady = typeof actionDialog === 'function' || typeof actionDialog?.confirm === 'function';
+    if (!controllerReady) return;
 
     const panel = root.querySelector('[data-keyword-batch-panel]');
     const submitButton = form.querySelector('[data-keyword-batch-submit]');
@@ -49,6 +35,7 @@ export function initializeKeywordBatchActions(
     const updateSelection = () => {
         const count = selectedCount();
         counter.textContent = (form.dataset.selectedTemplate || '{count}').replace('{count}', String(count));
+        form.dataset.adminConfirmTitle = (form.dataset.confirmTemplate || '').replace('{count}', String(count));
         setDestructiveButtonEnabled(submitButton, count > 0);
     };
     const closePanel = () => {
@@ -61,9 +48,7 @@ export function initializeKeywordBatchActions(
     };
 
     form.addEventListener('submit', (event) => {
-        const count = selectedCount();
-        const message = (form.dataset.confirmTemplate || '').replace('{count}', String(count));
-        if (count === 0 || !confirmed(confirmAction, message)) event.preventDefault();
+        if (selectedCount() === 0) event.preventDefault();
     });
     toggles.forEach((toggle) => {
         toggle.addEventListener('click', () => {
@@ -81,10 +66,7 @@ export function initializeKeywordBatchActions(
     updateSelection();
 }
 
-export function initializeLibraryDetailActions(
-    root,
-    confirmAction = (message) => window.confirm(message),
-) {
-    initializeConfirmedLibraryActions(root, confirmAction);
-    initializeKeywordBatchActions(root, confirmAction);
+export function initializeLibraryDetailActions(root, actionDialog = globalThis.window?.AdminActionDialog) {
+    initializeConfirmedLibraryActions(root, actionDialog);
+    initializeKeywordBatchActions(root, actionDialog);
 }

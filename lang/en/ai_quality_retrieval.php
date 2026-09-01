@@ -1,0 +1,37 @@
+<?php
+
+return [
+    'title' => 'Inspection method',
+    'help' => 'Availability follows the selected knowledge bases. New configurations use the most precise available method.',
+    'available' => 'Available',
+    'unavailable' => 'Unavailable',
+    'unavailable_reasons' => 'Why this is unavailable',
+    'select_knowledge_base' => 'Select at least one knowledge base',
+    'selection_unavailable' => 'No inspection method is currently available. Select a question mark to view the reasons.',
+    'details' => 'View details for :mode',
+    'inherit' => 'Follow task',
+    'inherit_help' => 'Use the inspection method saved on the task.',
+    'source_task' => 'Knowledge bases are managed by the task',
+    'source_article' => 'Knowledge bases are managed by this article',
+    'current_execution' => 'Last execution: :mode',
+    'results' => [
+        'primary_title' => ':mode',
+        'participates_in_scoring' => 'Included in scoring',
+        'strategy_version' => 'Strategy :version',
+        'primary_tokens' => 'Model inspection :tokens tokens',
+        'atomic_shadow_title' => 'Atomic-fact shadow verification',
+        'atomic_formal_title' => 'Atomic-fact verification',
+        'validation_only' => 'Validation data · Not included in scoring',
+        'algorithm_version' => 'Algorithm :version',
+        'fact_versions' => 'Fact versions :versions',
+        'atomic_tokens' => 'Atomic verification :tokens tokens',
+        'coverage' => 'Coverage :rate%',
+        'none' => 'None',
+        'metrics' => ['supported' => 'Supported', 'contradicted' => 'Conflicts', 'uncovered' => 'Uncovered', 'ambiguous' => 'Ambiguous', 'fallback' => 'Fallback', 'elapsed' => 'Elapsed'],
+    ],
+    'modes' => [
+        'atomic_first' => ['label' => 'Atomic inspection', 'badge' => 'Precision first', 'description' => 'Verify claims against published atomic facts, then use chunks for uncovered claims.'],
+        'chunk' => ['label' => 'Chunk inspection', 'badge' => 'Balanced', 'description' => 'Retrieve relevant chunks for each claim to balance accuracy, cost, and speed.'],
+        'knowledge_broad' => ['label' => 'Knowledge inspection', 'badge' => 'Coverage first', 'description' => 'Sample broadly across paragraphs and front, middle, and back regions with higher noise, token use, and latency.'],
+    ],
+];

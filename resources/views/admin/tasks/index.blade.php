@@ -70,7 +70,7 @@
                     <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
                     {{ __('admin.button.create_task') }}
                 </a>
-                <button onclick="executeAllActiveTasks()" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                <button type="button" data-run-all-tasks class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                     <i data-lucide="play" class="w-4 h-4 mr-2"></i>
                     {{ __('admin.button.run_all_tasks') }}
                 </button>
@@ -245,6 +245,17 @@
                                             @if((int) ($qualityStats['pending'] ?? 0) > 0)
                                                 <a href="{{ route('admin.articles.index', ['task_id' => (int) $task['id'], 'ai_quality_status' => 'pending']) }}" class="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-100">{{ __('admin.tasks.ai_quality.pending_count', ['count' => (int) $qualityStats['pending']]) }}</a>
                                             @endif
+                                            @php
+                                                $optimizationStats = is_array($task['ai_quality_optimization_stats'] ?? null)
+                                                    ? $task['ai_quality_optimization_stats']
+                                                    : [];
+                                            @endphp
+                                            @if((int) ($optimizationStats['active'] ?? 0) > 0)
+                                                <span class="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-100">{{ __('admin.tasks.ai_quality.optimizing_count', ['count' => (int) $optimizationStats['active']]) }}</span>
+                                            @endif
+                                            @if((int) ($optimizationStats['needs_review'] ?? 0) > 0)
+                                                <span class="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700 ring-1 ring-orange-100">{{ __('admin.tasks.ai_quality.optimization_review_count', ['count' => (int) $optimizationStats['needs_review']]) }}</span>
+                                            @endif
                                         </div>
                                     @endif
                                 </td>
@@ -260,7 +271,7 @@
                                             @csrf
                                             <input type="hidden" name="status" value="{{ $task['status'] }}">
                                             <label class="inline-flex items-center">
-                                                <input type="checkbox" @checked(($task['status'] ?? '') === 'active') onchange="handleStatusToggle({{ (int) $task['id'] }}, this)" class="rounded border-gray-300 text-blue-600 shadow-sm">
+                                                <input type="checkbox" @checked(($task['status'] ?? '') === 'active') data-task-status-toggle data-task-id="{{ (int) $task['id'] }}" class="rounded border-gray-300 text-blue-600 shadow-sm">
                                                 <span class="ml-2 text-sm {{ ($task['status'] ?? '') === 'active' ? 'text-green-600' : 'text-gray-500' }}">
                                                     {{ ($task['status'] ?? '') === 'active' ? __('admin.tasks.status.enabled') : __('admin.tasks.status.disabled') }}
                                                 </span>
@@ -277,11 +288,11 @@
                                     <div class="flex items-center justify-end gap-1.5 sm:gap-2">
                                         @if($task['can_manage'] ?? true)
                                             @if (($task['status'] ?? '') === 'active')
-                                                <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="stop" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                                <button type="button" data-batch-action="stop" data-task-id="{{ (int) $task['id'] }}" data-task-name="{{ $task['name'] ?? '' }}" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
                                                     <i data-lucide="square" class="w-4 h-4"></i>
                                                 </button>
                                             @else
-                                                <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="start" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                                <button type="button" data-batch-action="start" data-task-id="{{ (int) $task['id'] }}" data-task-name="{{ $task['name'] ?? '' }}" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
                                                     <i data-lucide="play" class="w-4 h-4"></i>
                                                 </button>
                                             @endif
@@ -296,12 +307,11 @@
                                         </a>
 
                                         @if($task['can_manage'] ?? true)
-                                            <form method="POST" action="{{ route('admin.tasks.delete', ['taskId' => (int) $task['id']]) }}" class="inline" data-task-delete-form data-task-name="{{ $task['name'] ?? '' }}">
+                                            <form method="POST" action="{{ route('admin.tasks.delete', ['taskId' => (int) $task['id']]) }}" class="inline" data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.tasks.delete_dialog.title') }} “{{ $task['name'] ?? '' }}”" data-admin-confirm-message="{{ __('admin.tasks.delete_dialog.impact') }}" data-admin-confirm-label="{{ __('admin.tasks.delete_dialog.confirm') }}">
                                                 @csrf
-                                                <button type="button" class="inline-flex items-center justify-center w-8 h-8 text-red-600 [@media(hover:hover)]:hover:text-red-800 [@media(hover:hover)]:hover:bg-red-50 rounded-md transition-[background-color,color,transform] duration-150 active:scale-[.96] border border-red-200" title="{{ __('admin.tasks.action.delete') }}" aria-label="{{ __('admin.tasks.action.delete') }}" data-task-delete-trigger>
+                                                <button type="submit" class="inline-flex items-center justify-center w-8 h-8 text-red-600 [@media(hover:hover)]:hover:text-red-800 [@media(hover:hover)]:hover:bg-red-50 rounded-md transition-[background-color,color,transform] duration-150 active:scale-[.96] border border-red-200" title="{{ __('admin.tasks.action.delete') }}" aria-label="{{ __('admin.tasks.action.delete') }}" data-admin-confirm-submit disabled aria-disabled="true">
                                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                                 </button>
-                                                <button type="submit" data-task-delete-submit hidden tabindex="-1"></button>
                                             </form>
                                         @endif
                                     </div>
@@ -397,11 +407,14 @@
                                                     'trash_sequence' => (int) ($task['trash_sequence'] ?? 0),
                                                 ]) }}"
                                                 class="inline-flex"
-                                                data-task-restore-form
-                                                onsubmit="return confirm({{ \Illuminate\Support\Js::from(__('admin.tasks.trash.confirm_restore', ['name' => $task['name']])) }})"
+                                                data-admin-confirm-form
+                                                data-admin-confirm-tone="success"
+                                                data-admin-confirm-title="{{ __('admin.tasks.trash.confirm_restore', ['name' => $task['name']]) }}"
+                                                data-admin-confirm-message="{{ __('admin.action_dialog.generic_impact') }}"
+                                                data-admin-confirm-label="{{ __('admin.tasks.trash.action_restore') }}"
                                             >
                                                 @csrf
-                                                <button type="submit" class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-emerald-300 [@media(hover:hover)]:hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:scale-[.96]">
+                                                <button type="submit" class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-emerald-300 [@media(hover:hover)]:hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:scale-[.96]" data-admin-confirm-submit disabled aria-disabled="true">
                                                     <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
                                                     <span>{{ __('admin.tasks.trash.action_restore') }}</span>
                                                 </button>
@@ -471,41 +484,7 @@
     </div>
 
     <dialog
-        class="fixed inset-0 m-auto w-[min(448px,calc(100vw-2rem))] max-w-none overflow-hidden overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_64px_rgba(15,23,42,0.24)] backdrop:bg-gray-950/40"
-        data-task-delete-dialog
-        data-deleting-label="{{ __('admin.tasks.delete_dialog.deleting') }}"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="task-delete-title"
-        aria-describedby="task-delete-description task-delete-impact"
-    >
-        <div class="flex items-start gap-4 px-6 pb-5 pt-6 max-[359px]:px-5">
-            <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600" aria-hidden="true">
-                <i data-lucide="trash-2" class="h-5 w-5"></i>
-            </span>
-            <div class="min-w-0 flex-1">
-                <h2 id="task-delete-title" class="text-lg font-semibold leading-7 text-gray-900">{{ __('admin.tasks.delete_dialog.title') }}</h2>
-                <p id="task-delete-description" class="mt-2 text-sm leading-6 text-gray-600">
-                    {{ __('admin.tasks.delete_dialog.description_before') }}<strong class="break-words font-semibold text-gray-900" data-task-delete-name></strong>{{ __('admin.tasks.delete_dialog.description_after') }}
-                </p>
-                <div id="task-delete-impact" class="mt-4 flex items-start gap-2.5 rounded-xl bg-gray-50 px-3.5 py-3 text-sm leading-6 text-gray-600">
-                    <i data-lucide="archive" class="mt-1 h-4 w-4 shrink-0 text-gray-500" aria-hidden="true"></i>
-                    <span>{{ __('admin.tasks.delete_dialog.impact') }}</span>
-                </div>
-            </div>
-        </div>
-        <div class="flex justify-end gap-2.5 border-t border-gray-100 bg-gray-50 px-6 py-4 max-[359px]:flex-col max-[359px]:px-5">
-            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-[background-color,border-color,color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96]" data-task-delete-cancel autofocus>
-                {{ __('admin.tasks.delete_dialog.cancel') }}
-            </button>
-            <button type="button" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-red-600 px-4 text-sm font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 active:scale-[.96] disabled:cursor-wait disabled:bg-red-400" data-task-delete-confirm>
-                <span data-task-delete-confirm-label>{{ __('admin.tasks.delete_dialog.confirm') }}</span>
-            </button>
-        </div>
-    </dialog>
-
-    <dialog
-        class="fixed inset-0 m-auto w-[min(600px,calc(100vw-2rem))] max-w-none overflow-hidden overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-gray-950/45"
+        class="fixed inset-0 m-auto w-[min(600px,calc(100vw-2rem))] max-w-none overflow-hidden overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-[rgba(15,23,42,0.48)]"
         data-task-index-readiness-dialog
         data-blocked-title="{{ __('admin.task_create.readiness.dialog_blocked_title') }}"
         data-warning-title="{{ __('admin.task_create.readiness.dialog_warning_title') }}"
@@ -577,15 +556,43 @@ const TASK_I18N = @json($taskI18n, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES
 const TASK_HEALTH_URL = @js(\App\Support\AdminWeb::routePath('admin.tasks.health').'?page='.(int) ($pagination['page'] ?? 1));
 const TASK_BATCH_URL = @js(\App\Support\AdminWeb::routePath('admin.tasks.batch'));
 const TASK_INITIAL_OVERVIEW = @json($taskInitialOverview, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-
 function renderIcons(target = document) {
     if (window.GeoFlowAdminUi?.refreshIcons) { window.GeoFlowAdminUi.refreshIcons(target); return; }
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
 }
 
-function showNotification(type, message) { if (window.AdminUtils && typeof window.AdminUtils.showToast === 'function') { window.AdminUtils.showToast(message, type); return; } alert(message); }
+function showNotification(type, message) {
+    if (type === 'error') {
+        void window.AdminActionDialog?.alert?.({
+            title: @json(__('admin.action_dialog.error_title')),
+            message,
+            guidance: @json(__('admin.action_dialog.error_guidance')),
+            tone: 'error',
+            confirmLabel: @json(__('admin.action_dialog.close')),
+        });
+        return;
+    }
+    window.GeoFlowAdminUi?.showToast?.(message, type);
+}
 
 function setButtonLoading(btn, text, classes) { btn.disabled = true; btn.className = classes; btn.innerHTML = `<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i><span class="sr-only">${text}</span>`; renderIcons(btn); }
+
+async function openTaskLifecycleDialog({ title, description, confirmLabel, tone = 'start', trigger = null, onConfirm, onCancel = null }) {
+    if (!window.AdminActionDialog?.confirm) {
+        onCancel?.();
+        trigger?.focus?.();
+        return;
+    }
+    const confirmed = await window.AdminActionDialog.confirm({
+        title,
+        message: String(description ?? '').replaceAll('\\n', '\n'),
+        confirmLabel,
+        tone: tone === 'stop' ? 'warning' : 'success',
+        opener: trigger,
+    });
+    if (confirmed) onConfirm?.();
+    else onCancel?.();
+}
 
 function updateBatchButton(btn, taskId, taskName, isActive) {
     if (!btn) return;
@@ -595,7 +602,8 @@ function updateBatchButton(btn, taskId, taskName, isActive) {
     btn.innerHTML = isActive ? '<i data-lucide="square" class="w-4 h-4"></i>' : '<i data-lucide="play" class="w-4 h-4"></i>';
     btn.title = isActive ? TASK_I18N.stopBatch : TASK_I18N.startBatch;
     btn.setAttribute('aria-label', btn.title);
-    btn.onclick = isActive ? () => stopBatchExecution(taskId, taskName) : () => startBatchExecution(taskId, taskName);
+    btn.dataset.taskId = taskId;
+    btn.dataset.taskName = taskName;
     renderIcons(btn);
 }
 
@@ -769,7 +777,17 @@ function scheduleTaskSnapshot() {
 }
 
 function startBatchExecution(taskId, taskName) {
-    if (!confirm(TASK_I18N.confirmStart.replace('__NAME__', taskName))) return;
+    const btn = document.getElementById(`batch-btn-${taskId}`);
+    openTaskLifecycleDialog({
+        title: TASK_I18N.startBatch,
+        description: TASK_I18N.confirmStart.replace('__NAME__', taskName),
+        confirmLabel: TASK_I18N.startBatch,
+        trigger: btn,
+        onConfirm: () => performStartBatchExecution(taskId, taskName),
+    });
+}
+
+function performStartBatchExecution(taskId, taskName) {
     const btn = document.getElementById(`batch-btn-${taskId}`);
     setButtonLoading(btn, TASK_I18N.starting, 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-green-200 bg-green-50 text-green-600 cursor-wait');
     fetch(TASK_BATCH_URL, {
@@ -801,7 +819,18 @@ function startBatchExecution(taskId, taskName) {
 }
 
 function stopBatchExecution(taskId, taskName) {
-    if (!confirm(TASK_I18N.confirmStop.replace('__NAME__', taskName))) return;
+    const btn = document.getElementById(`batch-btn-${taskId}`);
+    openTaskLifecycleDialog({
+        title: TASK_I18N.stopBatch,
+        description: TASK_I18N.confirmStop.replace('__NAME__', taskName),
+        confirmLabel: TASK_I18N.stopBatch,
+        tone: 'stop',
+        trigger: btn,
+        onConfirm: () => performStopBatchExecution(taskId, taskName),
+    });
+}
+
+function performStopBatchExecution(taskId, taskName) {
     const btn = document.getElementById(`batch-btn-${taskId}`);
     setButtonLoading(btn, TASK_I18N.stopping, 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-orange-200 bg-orange-50 text-orange-600 cursor-wait');
     fetch(TASK_BATCH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) }, body: JSON.stringify({ task_id: taskId, action: 'stop' }) }).then(response => response.json()).then(data => { if (!data.success) { showNotification('error', TASK_I18N.stopFailed.replace('__MESSAGE__', data.message)); updateBatchButton(btn, taskId, taskName, true); return; } showNotification('success', TASK_I18N.taskStopped.replace('__NAME__', taskName)); updateBatchButton(btn, taskId, taskName, false); requestTaskSnapshot(); }).catch(error => { showNotification('error', TASK_I18N.requestFailed.replace('__MESSAGE__', error.message)); updateBatchButton(btn, taskId, taskName, true); });
@@ -810,7 +839,16 @@ function stopBatchExecution(taskId, taskName) {
 function executeAllActiveTasks() {
     const buttons = Array.from(document.querySelectorAll('[id^="batch-btn-"]')).filter(btn => btn.dataset.batchAction === 'start');
     if (buttons.length === 0) { showNotification('info', TASK_I18N.noRunnable); return; }
-    if (!confirm(TASK_I18N.confirmRunAll)) return;
+    openTaskLifecycleDialog({
+        title: TASK_I18N.startBatch,
+        description: TASK_I18N.confirmRunAll,
+        confirmLabel: TASK_I18N.startBatch,
+        trigger: document.querySelector('[data-run-all-tasks]'),
+        onConfirm: () => performAllActiveTasks(buttons),
+    });
+}
+
+function performAllActiveTasks(buttons) {
     let completed = 0; let success = 0; let firstReadiness = null; let hadNetworkFailure = false;
     const finishBulkExecution = () => {
         if (completed !== buttons.length) return;
@@ -853,14 +891,39 @@ function executeAllActiveTasks() {
 function handleStatusToggle(taskId, checkbox) {
     const form = checkbox.closest('form');
     const currentStatus = form.querySelector('input[name="status"]').value;
-    const nextLabel = checkbox.checked ? TASK_I18N.activating : TASK_I18N.pausing;
-    const statusSpan = form.querySelector('label span');
-    if (!confirm(checkbox.checked ? TASK_I18N.confirmActivate : TASK_I18N.confirmPause)) { checkbox.checked = currentStatus === 'active'; return; }
-    checkbox.disabled = true;
-    statusSpan.textContent = nextLabel;
-    statusSpan.className = `ml-2 text-sm ${checkbox.checked ? 'text-blue-600' : 'text-orange-600'}`;
-    form.submit();
+    const activating = checkbox.checked;
+    openTaskLifecycleDialog({
+        title: activating ? TASK_I18N.activating : TASK_I18N.pausing,
+        description: activating ? TASK_I18N.confirmActivate : TASK_I18N.confirmPause,
+        confirmLabel: activating ? TASK_I18N.activating : TASK_I18N.pausing,
+        tone: activating ? 'start' : 'stop',
+        trigger: checkbox,
+        onCancel: () => { checkbox.checked = currentStatus === 'active'; },
+        onConfirm: () => {
+            const statusSpan = form.querySelector('label span');
+            checkbox.disabled = true;
+            statusSpan.textContent = activating ? TASK_I18N.activating : TASK_I18N.pausing;
+            statusSpan.className = `ml-2 text-sm ${activating ? 'text-blue-600' : 'text-orange-600'}`;
+            form.submit();
+        },
+    });
 }
+
+document.querySelector('[data-run-all-tasks]')?.addEventListener('click', executeAllActiveTasks);
+document.querySelectorAll('[data-batch-action][data-task-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const taskId = Number(btn.dataset.taskId);
+        const taskName = btn.dataset.taskName || '';
+        if (btn.dataset.batchAction === 'stop') {
+            stopBatchExecution(taskId, taskName);
+            return;
+        }
+        startBatchExecution(taskId, taskName);
+    });
+});
+document.querySelectorAll('[data-task-status-toggle][data-task-id]').forEach(checkbox => {
+    checkbox.addEventListener('change', () => handleStatusToggle(Number(checkbox.dataset.taskId), checkbox));
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!window.GeoFlowAdminUi?.refreshIcons) renderIcons();

@@ -1381,7 +1381,7 @@ class ImageLibrarySecurityTest extends TestCase
         $this->assertCount(1, Storage::disk('public')->allFiles('uploads/images'));
     }
 
-    public function test_multipart_idempotency_conflicts_when_the_same_key_is_used_by_a_different_token(): void
+    public function test_multipart_idempotency_is_namespaced_for_different_tokens(): void
     {
         Storage::fake('public');
         $library = $this->createImageLibrary();
@@ -1402,10 +1402,9 @@ class ImageLibrarySecurityTest extends TestCase
         ])->post("/api/v1/materials/image-libraries/{$library->id}/items", [
             'image' => $this->gifUpload(),
         ])
-            ->assertStatus(409)
-            ->assertJsonPath('error.code', 'idempotency_conflict');
+            ->assertCreated();
 
-        $this->assertSame(1, Image::query()->where('library_id', $library->id)->count());
+        $this->assertSame(2, Image::query()->where('library_id', $library->id)->count());
         $this->assertCount(1, Storage::disk('public')->allFiles('uploads/images'));
     }
 
@@ -1510,13 +1509,11 @@ class ImageLibrarySecurityTest extends TestCase
         Storage::fake('public');
         $library = $this->createImageLibrary();
         $idempotencyKey = 'persistent-reservation';
-        $routeKey = 'POST /materials/{type}/{id}/items';
         $reservationObserved = false;
         $eventName = 'eloquent.creating: '.Image::class;
-        Event::listen($eventName, static function () use ($idempotencyKey, $routeKey, &$reservationObserved): never {
+        Event::listen($eventName, static function () use ($idempotencyKey, &$reservationObserved): never {
             $row = ApiIdempotencyKey::query()
                 ->where('idempotency_key', $idempotencyKey)
-                ->where('route_key', $routeKey)
                 ->first();
             $reservationObserved = $row?->state === 'in_progress'
                 && $row->fingerprint_version === 2
@@ -1540,7 +1537,6 @@ class ImageLibrarySecurityTest extends TestCase
             $this->assertTrue($reservationObserved);
             $this->assertDatabaseMissing('api_idempotency_keys', [
                 'idempotency_key' => $idempotencyKey,
-                'route_key' => $routeKey,
             ]);
             $this->assertDatabaseMissing('images', ['library_id' => $library->id]);
             $this->assertSame([], Storage::disk('public')->allFiles('uploads/images'));
@@ -1554,7 +1550,6 @@ class ImageLibrarySecurityTest extends TestCase
         Storage::fake('public');
         $library = $this->createImageLibrary();
         $idempotencyKey = 'fresh-persistent-reservation';
-        $routeKey = 'POST /materials/{type}/{id}/items';
         $headers = [
             'Authorization' => 'Bearer '.$this->materialsToken(),
             'Accept' => 'application/json',
@@ -1569,7 +1564,6 @@ class ImageLibrarySecurityTest extends TestCase
 
         ApiIdempotencyKey::query()
             ->where('idempotency_key', $idempotencyKey)
-            ->where('route_key', $routeKey)
             ->update([
                 'state' => 'in_progress',
                 'owner_token' => hash('sha256', 'fresh-reservation-owner'),
@@ -1595,7 +1589,6 @@ class ImageLibrarySecurityTest extends TestCase
         Storage::fake('public');
         $library = $this->createImageLibrary();
         $idempotencyKey = 'stale-persistent-reservation';
-        $routeKey = 'POST /materials/{type}/{id}/items';
         $headers = [
             'Authorization' => 'Bearer '.$this->materialsToken(),
             'Accept' => 'application/json',
@@ -1610,7 +1603,6 @@ class ImageLibrarySecurityTest extends TestCase
 
         ApiIdempotencyKey::query()
             ->where('idempotency_key', $idempotencyKey)
-            ->where('route_key', $routeKey)
             ->update([
                 'state' => 'in_progress',
                 'owner_token' => hash('sha256', 'stale-reservation-owner'),
@@ -1637,7 +1629,6 @@ class ImageLibrarySecurityTest extends TestCase
         Storage::fake('public');
         $library = $this->createImageLibrary();
         $idempotencyKey = 'failed-response-finalization';
-        $routeKey = 'POST /materials/{type}/{id}/items';
         $headers = [
             'Authorization' => 'Bearer '.$this->materialsToken(),
             'Accept' => 'application/json',
@@ -1657,7 +1648,6 @@ class ImageLibrarySecurityTest extends TestCase
 
             $this->assertDatabaseMissing('api_idempotency_keys', [
                 'idempotency_key' => $idempotencyKey,
-                'route_key' => $routeKey,
             ]);
             $this->assertDatabaseMissing('images', ['library_id' => $library->id]);
             $this->assertSame([], Storage::disk('public')->allFiles('uploads/images'));

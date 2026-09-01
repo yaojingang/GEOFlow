@@ -65,14 +65,14 @@ final class AiWorkspaceQueueConfigurationTest extends TestCase
         foreach ([
             'README.md' => [
                 'docker compose up -d --remove-orphans',
-                'docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb',
+                'docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb',
             ],
             'docs/deployment/DEPLOYMENT.md' => [
-                '$COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb',
+                '$COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb',
                 'docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-orphans --build',
             ],
             'deploy-scripts/geoflow-docker-deploy.sh' => [
-                '"${COMPOSE[@]}" up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler reverb',
+                '"${COMPOSE[@]}" up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb',
             ],
         ] as $file => $commands) {
             $content = (string) file_get_contents($root.'/'.$file);
@@ -87,7 +87,7 @@ final class AiWorkspaceQueueConfigurationTest extends TestCase
     {
         $compose = (string) file_get_contents(dirname(__DIR__, 3).'/docker-compose.yml');
 
-        foreach (['queue', 'ai-quality-queue', 'ai-quality-backfill-queue', 'knowledge-queue', 'scheduler', 'reverb'] as $service) {
+        foreach (['queue', 'ai-quality-queue', 'ai-quality-backfill-queue', 'ai-optimization-queue', 'knowledge-queue', 'scheduler', 'reverb'] as $service) {
             $serviceBlock = $this->composeServiceBlock($compose, $service);
 
             self::assertStringContainsString('COMPOSER_ON_START: "false"', $serviceBlock, $service);

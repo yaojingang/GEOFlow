@@ -283,10 +283,17 @@ geoflow article publish ARTICLE_ID [--idempotency-key KEY]
 geoflow article ai-quality-status ARTICLE_ID
 geoflow article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]
 geoflow article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]
+geoflow article ai-optimize ARTICLE_ID [--level pass|excellent_80|excellent_90] [--model-id MODEL_ID] [--idempotency-key KEY]
+geoflow article ai-optimization-status ARTICLE_ID
+geoflow article ai-optimization-candidate ARTICLE_ID
+geoflow article ai-optimization-apply ARTICLE_ID --run-id RUN_ID --candidate-hash HASH --idempotency-key KEY
+geoflow article ai-optimization-cancel ARTICLE_ID --run-id RUN_ID --idempotency-key KEY
 geoflow article trash ARTICLE_ID [--idempotency-key KEY]
 ```
 
 `ai-quality-status` 返回当前阶段、已用时间、业务截止时间和安全错误码。AI 质检复查会让旧结果失效并按当前文章与任务策略重新排队。人工放行仅适用于达到最低人工分数且没有严重问题的结果，`--reason` 必须填写可审计的核查依据。
+
+AI 优化默认生成影子候选，正式文章保持原状。`ai-optimization-status` 查看轮次和分数，`ai-optimization-candidate` 查看安全截断后的修改片段。应用候选必须显式提交运行 ID、候选哈希和幂等键。没有绑定任务的文章需要通过 `--model-id` 指定聊天模型。
 
 文章创建和更新都支持以下直接字段：
 

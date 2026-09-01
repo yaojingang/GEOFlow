@@ -64,6 +64,8 @@ return [
     'knowledge_base_create' => 'ナレッジを作成',
     'knowledge_base_edit' => 'ナレッジを編集',
     'knowledge_base_detail' => 'ナレッジ詳細',
+    'knowledge_base_chunks' => 'ナレッジチャンク管理',
+    'knowledge_base_facts' => 'アトミックファクト管理',
     'enterprise_knowledge' => '企業ナレッジ',
     'enterprise_knowledge_create' => 'ナレッジ案件を作成',
     'enterprise_knowledge_detail' => 'ナレッジ案件の詳細',

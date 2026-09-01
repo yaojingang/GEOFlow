@@ -30,6 +30,9 @@
         'images' => 'bg-violet-500',
         'authors' => 'bg-indigo-500',
         'url-import' => 'bg-cyan-500',
+        'knowledge-current' => 'bg-blue-600',
+        'knowledge-chunks' => 'bg-emerald-500',
+        'knowledge-facts' => 'bg-violet-500',
     ];
 @endphp
 

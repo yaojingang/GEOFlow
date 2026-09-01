@@ -974,7 +974,17 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
         if (!state.conversationId || state.generating) return;
         const conversationId = state.conversationId;
         const viewId = state.viewId;
-        const title = windowRef.prompt(labels.renamePrompt ?? '输入新的会话名称', state.title)?.trim();
+        const title = (await windowRef.AdminActionDialog?.prompt?.({
+            title: labels.renamePrompt ?? '输入新的会话名称',
+            message: '',
+            fieldLabel: labels.renamePrompt ?? '输入新的会话名称',
+            value: state.title,
+            maxLength: 80,
+            required: true,
+            requiredMessage: labels.dialogRequired ?? '',
+            cancelLabel: labels.dialogCancel ?? '',
+            opener: rename,
+        }))?.trim();
         if (!title) return;
         try {
             const payload = await fetchJson(replaceTemplate(root.dataset.updateUrlTemplate, conversationId), {

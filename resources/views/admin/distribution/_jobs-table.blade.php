@@ -54,7 +54,7 @@
                                 <span class="text-gray-400">{{ __('admin.distribution.job_state.remote_copy_deleted') }}</span>
                             @elseif ($job->article)
                                 <a href="{{ route('admin.distribution.article.edit', ['distributionId' => (int) $job->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.distribution.button.edit_remote_article') }}</a>
-                                <form method="POST" action="{{ route('admin.distribution.article.delete', ['distributionId' => (int) $job->id], false) }}" data-distribution-delete-form data-confirm-message="{{ __('admin.articles.confirm.delete_title') }}" data-deleting-label="{{ __('admin.distribution.job_state.remote_copy_deleting') }}" data-deleted-label="{{ __('admin.distribution.job_state.remote_copy_deleted') }}">
+                                <form method="POST" action="{{ route('admin.distribution.article.delete', ['distributionId' => (int) $job->id], false) }}" data-distribution-delete-form data-confirm-message="{{ __('admin.articles.confirm.delete_title') }}" data-deleting-label="{{ __('admin.distribution.job_state.remote_copy_deleting') }}" data-deleted-label="{{ __('admin.distribution.job_state.remote_copy_deleted') }}" data-failed-template="{{ __('admin.distribution.message.remote_article_delete_failed', ['message' => '__MESSAGE__']) }}">
                                     @csrf
                                     <button type="submit" class="text-red-600 hover:text-red-800">{{ __('admin.distribution.button.delete_remote_article') }}</button>
                                 </form>
@@ -92,7 +92,14 @@
                 event.preventDefault();
 
                 const confirmMessage = form.dataset.confirmMessage || '';
-                if (confirmMessage && ! window.confirm(confirmMessage)) return;
+                const confirmed = await window.AdminActionDialog?.confirm?.({
+                    title: confirmMessage,
+                    message: @js(__('admin.action_dialog.generic_impact')),
+                    tone: 'danger',
+                    confirmLabel: @js(__('admin.distribution.button.delete_remote_article')),
+                    opener: event.submitter,
+                });
+                if (confirmed !== true) return;
 
                 const button = form.querySelector('button[type="submit"]');
                 const statusCell = form.closest('[data-distribution-delete-status]');
@@ -119,8 +126,16 @@
                     }
 
                     if (statusCell && deletedLabel) {
-                        statusCell.innerHTML = `<span class="text-gray-400">${deletedLabel}</span>`;
+                        const deletedStatus = document.createElement('span');
+                        deletedStatus.className = 'text-gray-400';
+                        deletedStatus.textContent = deletedLabel;
+                        statusCell.replaceChildren(deletedStatus);
                     }
+                    window.AdminActionDialog?.notice?.({
+                        title: @js(__('admin.action_dialog.success_title')),
+                        message: @js(__('admin.distribution.message.remote_article_deleted')),
+                        tone: 'success',
+                    });
                 } catch (error) {
                     if (button) {
                         button.disabled = false;
@@ -128,6 +143,13 @@
                         button.textContent = @js(__('admin.distribution.button.delete_remote_article'));
                     }
                     console.error(error);
+                    await window.AdminActionDialog?.alert?.({
+                        title: @js(__('admin.action_dialog.error_title')),
+                        message: (form.dataset.failedTemplate || '__MESSAGE__').replace('__MESSAGE__', error.message || ''),
+                        guidance: @js(__('admin.action_dialog.error_guidance')),
+                        tone: 'error',
+                        confirmLabel: @js(__('admin.action_dialog.close')),
+                    });
                 }
             });
         </script>

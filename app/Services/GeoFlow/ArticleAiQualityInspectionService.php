@@ -5,20 +5,27 @@ namespace App\Services\GeoFlow;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\DeadlineAwareArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
+use App\Exceptions\ApiException;
 use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Jobs\ProcessArticleAiQualityJob;
 use App\Models\AiModel;
 use App\Models\Article;
+use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiQualityCheck;
+use App\Models\ArticleAiQualityRollout;
 use App\Models\ArticleAiQualitySegment;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TaskRun;
+use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
+use App\Support\GeoFlow\AiQualityRetrievalBasis;
+use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
@@ -30,7 +37,7 @@ class ArticleAiQualityInspectionService
         private readonly ArticleAiQualityPolicyResolver $policyResolver,
         private readonly ArticleAiQualityFingerprint $fingerprint,
         private readonly ArticleFactCandidateExtractor $factExtractor,
-        private readonly ArticleAiQualityEvidenceBuilder $evidenceBuilder,
+        private readonly ArticleAiQualityRetrievalCoordinator $retrievalCoordinator,
         private readonly ArticleAiQualityEvidenceCache $evidenceCache,
         private readonly ArticleAiQualityPrincipleCompiler $principleCompiler,
         private readonly ArticleAiQualitySegmenter $segmenter,
@@ -41,8 +48,11 @@ class ArticleAiQualityInspectionService
         private readonly ArticleAiQualityScorer $scorer,
         private readonly ArticleAiQualityScorerV2 $scorerV2,
         private readonly ArticleAiQualityVersionPolicy $versionPolicy,
+        private readonly ArticleAiQualityRolloutPolicy $rolloutPolicy,
+        private readonly ArticleAtomicFactInspector $atomicFactInspector,
         private readonly ArticleAiQualityReviewer $reviewer,
         private readonly ArticleAiQualityWorkerLiveness $workerLiveness,
+        private readonly AiQualityAuditService $auditService,
     ) {}
 
     public function requestManualInspection(
@@ -52,12 +62,27 @@ class ArticleAiQualityInspectionService
         ?int $auditAdminId = null,
         ?int $apiTokenId = null,
         ?array $requestedWorkflowState = null,
+        bool $allowSampling = true,
+        bool $rejectWhenOptimizationActive = false,
+        ?int $expectedPolicyVersion = null,
     ): ArticleAiQualityCheck {
-        return DB::transaction(function () use ($article, $trigger, $dispatch, $auditAdminId, $apiTokenId, $requestedWorkflowState): ArticleAiQualityCheck {
+        return DB::transaction(function () use ($article, $trigger, $dispatch, $auditAdminId, $apiTokenId, $requestedWorkflowState, $allowSampling, $rejectWhenOptimizationActive, $expectedPolicyVersion): ArticleAiQualityCheck {
             $article = Article::query()
                 ->whereKey((int) $article->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+            $currentPolicyVersion = max(1, (int) $article->ai_quality_policy_version);
+            if ($expectedPolicyVersion !== null && $currentPolicyVersion !== $expectedPolicyVersion) {
+                throw new ApiException(
+                    'article_ai_quality_config_version_conflict',
+                    'AI 质检配置已更新，请刷新后重试',
+                    409,
+                    [
+                        'expected_config_version' => $expectedPolicyVersion,
+                        'current_config_version' => $currentPolicyVersion,
+                    ],
+                );
+            }
             if ($article->task_id) {
                 $task = Task::withTrashed()->whereKey((int) $article->task_id)->lockForUpdate()->first();
                 if ($task instanceof Task) {
@@ -65,7 +90,20 @@ class ArticleAiQualityInspectionService
                     $article->setRelation('task', $task);
                 }
             }
+            if ($rejectWhenOptimizationActive && ArticleAiOptimizationRun::query()
+                ->where('article_id', (int) $article->id)
+                ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES)
+                ->lockForUpdate()
+                ->exists()) {
+                throw new ArticleAiOptimizationException(
+                    'article_ai_optimization_recheck_conflict',
+                    httpStatus: 409,
+                );
+            }
             $policy = $this->policyResolver->resolveForManualInspection($article);
+            if (! $allowSampling) {
+                $policy['timeout_sampling_enabled'] = false;
+            }
             $this->policyResolver->assertExecutable($policy);
             $article->forceFill([
                 'ai_quality_required_at_creation' => true,
@@ -112,9 +150,36 @@ class ArticleAiQualityInspectionService
                     'requested_workflow_state' => $requestedWorkflowState,
                 ]),
             ])->save();
+            $this->auditService->record('article_quality_check_requested', [
+                'task_id' => $article->task_id ? (int) $article->task_id : null,
+                'article_id' => (int) $article->id,
+                'article_ai_quality_check_id' => (int) $check->id,
+                'admin_id' => $auditAdminId,
+                'api_token_id' => $apiTokenId,
+                'policy_version' => (int) ($policy['policy_version'] ?? 1),
+                'basis_hash' => (string) $check->retrieval_basis_hash,
+                'reason_code' => $trigger,
+                'metadata' => [
+                    'requested_retrieval_mode' => (string) $check->requested_retrieval_mode,
+                    'inspection_scope' => (string) $check->inspection_scope,
+                ],
+            ]);
 
             return $check;
         });
+    }
+
+    public function dispatchQueuedInspection(ArticleAiQualityCheck|int $check): void
+    {
+        $checkId = $check instanceof ArticleAiQualityCheck ? (int) $check->id : $check;
+        if ($checkId <= 0 || ! ArticleAiQualityCheck::query()
+            ->whereKey($checkId)
+            ->where('status', 'queued')
+            ->exists()) {
+            return;
+        }
+
+        $this->dispatchCheck($checkId);
     }
 
     public function createOrReuse(
@@ -171,6 +236,15 @@ class ArticleAiQualityInspectionService
                 $promptTemplate,
                 (string) $versionSelection['execution'],
             );
+            $retrievalMode = (string) ($policy['retrieval_mode'] ?? AiQualityRetrievalMode::legacyDefault());
+            $retrievalBasis = AiQualityRetrievalBasis::make(
+                $retrievalMode,
+                (int) ($policy['policy_version'] ?? 1),
+                array_values($fingerprintInput['knowledge'] ?? []),
+                $this->rolloutPolicy->state(),
+                $this->retrievalCoordinator->strategyVersion($retrievalMode),
+                $this->retrievalExecutionOptions(),
+            );
             $inputFingerprint = $this->fingerprint->make($fingerprintInput, $versionSelection['algorithm_version']);
             $activeKey = hash('sha256', (int) $article->id."\0".$inputFingerprint);
 
@@ -218,6 +292,8 @@ class ArticleAiQualityInspectionService
                 ->first();
             if ($previous
                 && ! hash_equals((string) $previous->input_fingerprint, $inputFingerprint)
+                && ! ((string) $previous->status === 'stale'
+                    && (string) $previous->error_code === 'quality_basis_changed')
                 && in_array((string) $previous->status, ['queued', 'running', 'completed', 'failed', 'stale'], true)) {
                 $previous->forceFill([
                     'status' => 'stale',
@@ -262,7 +338,14 @@ class ArticleAiQualityInspectionService
                     $createdAt,
                     $primaryDeadlineAt,
                     $deadlineAt,
+                    $retrievalMode,
+                    $retrievalBasis,
                 ): ArticleAiQualityCheck {
+                    $storedEpoch = (int) data_get($retrievalBasis->toArray(), 'rollout.epoch', 1);
+                    $committedEpoch = max(1, (int) (ArticleAiQualityRollout::query()->whereKey(1)->value('epoch') ?? 1));
+                    if ($storedEpoch !== $committedEpoch) {
+                        throw new ArticleAiQualityRuntimeException('ai_quality_rollout_epoch_changed', true);
+                    }
                     $check = ArticleAiQualityCheck::query()->create([
                         'article_id' => (int) $article->id,
                         'task_id' => $article->task_id ? (int) $article->task_id : null,
@@ -274,6 +357,9 @@ class ArticleAiQualityInspectionService
                         'active_dedupe_key' => $activeKey,
                         'status' => 'queued',
                         'inspection_scope' => 'full',
+                        'requested_retrieval_mode' => $retrievalMode,
+                        'retrieval_strategy_version' => (string) data_get($retrievalBasis->toArray(), 'strategy_version'),
+                        'retrieval_basis_hash' => $retrievalBasis->hash(),
                         'primary_deadline_at' => $primaryDeadlineAt,
                         'deadline_at' => $deadlineAt,
                         'pass_score' => (int) $policy['pass_score'],
@@ -306,6 +392,7 @@ class ArticleAiQualityInspectionService
                             'policy_snapshot' => $policySnapshot,
                             'principle_snapshot' => $principleSnapshot,
                             'current_phase' => 'queued',
+                            'retrieval_basis' => $retrievalBasis->toArray(),
                         ],
                         'created_at' => $createdAt,
                         'updated_at' => $createdAt,
@@ -320,6 +407,11 @@ class ArticleAiQualityInspectionService
                             'status' => 'queued',
                         ]);
                     }
+                    $this->createRetrievalSourceLedger(
+                        $check,
+                        $retrievalMode,
+                        array_values($fingerprintInput['knowledge'] ?? []),
+                    );
 
                     return $check;
                 });
@@ -336,6 +428,232 @@ class ArticleAiQualityInspectionService
 
             return $check;
         });
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $sources
+     */
+    private function createRetrievalSourceLedger(
+        ArticleAiQualityCheck $check,
+        string $retrievalMode,
+        array $sources,
+    ): void {
+        $dependencyKinds = match ($retrievalMode) {
+            AiQualityRetrievalMode::ATOMIC_FIRST => ['atomic', 'chunk'],
+            AiQualityRetrievalMode::KNOWLEDGE_BROAD => ['raw_content'],
+            default => ['chunk'],
+        };
+
+        foreach ($sources as $source) {
+            foreach ($dependencyKinds as $dependencyKind) {
+                $check->sources()->create([
+                    'knowledge_base_id' => (int) ($source['id'] ?? 0) ?: null,
+                    'knowledge_base_name_snapshot' => (string) ($source['name'] ?? '知识库'),
+                    'dependency_kind' => $dependencyKind,
+                    'source_hash' => $dependencyKind === 'raw_content'
+                        ? (string) ($source['raw_content_hash'] ?? '')
+                        : (string) ($source['chunk_source_hash'] ?? ''),
+                    'chunk_serving_generation' => (string) ($source['chunk_serving_generation'] ?? '') ?: null,
+                    'chunk_manifest_hash' => (string) ($source['chunk_manifest_hash'] ?? '') ?: null,
+                    'fact_revision_id' => (int) data_get($source, 'atomic_facts.revision_id') ?: null,
+                    'fact_library_hash' => (string) data_get($source, 'atomic_facts.library_hash', '') ?: null,
+                    'readiness_status' => 'ready',
+                ]);
+            }
+        }
+    }
+
+    /** @param array<string,mixed> $candidateSnapshot */
+    public function createOptimizationCandidate(
+        Article $article,
+        array $candidateSnapshot,
+        ArticleAiQualityCheck $baseline,
+        int $runId,
+        string $trigger,
+        bool $dispatch = true,
+    ): ArticleAiQualityCheck {
+        $check = DB::transaction(function () use ($article, $candidateSnapshot, $baseline, $runId, $trigger): ArticleAiQualityCheck {
+            $article = Article::query()->whereKey((int) $article->id)->lockForUpdate()->firstOrFail();
+            if ($article->task_id) {
+                $task = Task::withTrashed()->whereKey((int) $article->task_id)->lockForUpdate()->first();
+                if ($task instanceof Task) {
+                    $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                    $article->setRelation('task', $task);
+                }
+            }
+            $run = ArticleAiOptimizationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();
+            if ((int) $run->article_id !== (int) $article->id
+                || ! in_array((string) $run->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
+                throw new ArticleAiOptimizationException('article_ai_optimization_run_stale');
+            }
+            $baseline = ArticleAiQualityCheck::query()->whereKey((int) $baseline->id)->lockForUpdate()->firstOrFail();
+            if ((int) $baseline->article_id !== (int) $article->id || (string) $baseline->status !== 'completed') {
+                throw new ArticleAiOptimizationException('article_ai_optimization_baseline_invalid');
+            }
+
+            $executionMeta = is_array($baseline->execution_meta) ? $baseline->execution_meta : [];
+            $storedPolicy = is_array($executionMeta['policy_snapshot'] ?? null)
+                ? $executionMeta['policy_snapshot']
+                : (array) ($article->ai_quality_policy_snapshot ?? []);
+            $storedPolicy['timeout_sampling_enabled'] = false;
+            $storedPolicy['retrieval_mode'] = (string) (
+                $baseline->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()
+            );
+            $storedPolicy['retrieval_mode_explicit'] = (bool) ($storedPolicy['retrieval_mode_explicit'] ?? false);
+            $policy = $this->policyResolver->fromArticleSnapshot(
+                $storedPolicy,
+                (string) ($storedPolicy['source'] ?? 'article_snapshot'),
+            );
+            $this->policyResolver->assertExecutable($policy);
+            $modelCandidates = $this->policyResolver->modelCandidates($policy);
+            $policy['model_candidates'] = $modelCandidates;
+            $snapshot = array_replace(
+                $this->policyResolver->articleSnapshot($article),
+                array_intersect_key($candidateSnapshot, array_flip(['title', 'excerpt', 'content', 'keywords', 'meta_description'])),
+            );
+            $candidateArticle = clone $article;
+            $candidateArticle->forceFill($snapshot);
+            $versionSelection = is_array($executionMeta['version_selection'] ?? null)
+                ? $executionMeta['version_selection']
+                : $this->versionPolicy->selection((int) $article->id);
+            $baselineRules = $this->rulesForCheck($baseline);
+            if (! $this->retrievalBasisMatches($baseline, $policy, $baselineRules)) {
+                throw new ArticleAiOptimizationException('article_ai_optimization_baseline_stale');
+            }
+            $principleSnapshot = is_array($executionMeta['principle_snapshot'] ?? null)
+                ? $executionMeta['principle_snapshot']
+                : null;
+            if ((string) ($versionSelection['principles'] ?? 'v1') === 'v2') {
+                $fullRules = $this->rules();
+                $principleSnapshot = $this->principleCompiler->compile(
+                    $snapshot,
+                    $fullRules,
+                    array_values($this->policyResolver->fingerprintInput(
+                        $candidateArticle,
+                        $policy,
+                        $fullRules,
+                    )['knowledge'] ?? []),
+                    is_array($policy['publication_context'] ?? null) ? $policy['publication_context'] : [],
+                );
+                $rules = $this->principleCompiler->rules($principleSnapshot);
+                $fingerprintRules = $fullRules;
+            } else {
+                $rules = $baselineRules;
+                $fingerprintRules = $rules;
+            }
+            $inputFingerprint = $this->currentFingerprint(
+                $candidateArticle,
+                $policy,
+                $fingerprintRules,
+                $versionSelection,
+            );
+            $activeKey = hash('sha256', $runId."\0".$inputFingerprint."\0optimization_candidate");
+            $existing = ArticleAiQualityCheck::query()->where('active_dedupe_key', $activeKey)->first();
+            if ($existing instanceof ArticleAiQualityCheck) {
+                return $existing;
+            }
+
+            $segments = $this->segmenter->segment((string) ($snapshot['content'] ?? ''));
+            $createdAt = now();
+            $deadlineAt = $createdAt->copy()->addSeconds((int) config('geoflow.ai_quality_deadline_seconds', 180));
+            $prompt = $policy['prompt'];
+            $model = $policy['model'];
+            $promptTemplate = (string) ($baseline->prompt_template_snapshot ?: $prompt->content);
+            $check = ArticleAiQualityCheck::query()->create([
+                'article_id' => (int) $article->id,
+                'task_id' => $article->task_id ? (int) $article->task_id : null,
+                'prompt_id' => (int) $prompt->id,
+                'ai_model_id' => (int) $model->id,
+                'request_key' => (string) Str::uuid(),
+                'active_dedupe_key' => $activeKey,
+                'status' => 'queued',
+                'inspection_scope' => 'full',
+                'requested_retrieval_mode' => (string) (
+                    $baseline->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()
+                ),
+                'retrieval_strategy_version' => (string) $baseline->retrieval_strategy_version,
+                'retrieval_basis_hash' => (string) $baseline->retrieval_basis_hash,
+                'primary_deadline_at' => $deadlineAt,
+                'deadline_at' => $deadlineAt,
+                'pass_score' => (int) $policy['pass_score'],
+                'manual_override_min_score' => (int) $policy['manual_override_min_score'],
+                'segment_count' => count($segments),
+                'article_snapshot' => $snapshot,
+                'prompt_template_snapshot' => mb_substr($promptTemplate, 0, 50000, 'UTF-8'),
+                'advertising_rules_snapshot' => $rules,
+                'model_snapshot' => array_replace($this->modelSnapshot($model), [
+                    'selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
+                    'candidate_ids' => array_values(array_map(static fn (AiModel $candidate): int => (int) $candidate->id, $modelCandidates)),
+                ]),
+                'article_content_hash' => hash('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE)),
+                'prompt_hash' => hash('sha256', $promptTemplate),
+                'knowledge_hash' => (string) $baseline->knowledge_hash,
+                'input_fingerprint' => $inputFingerprint,
+                'algorithm_version' => (string) ($versionSelection['algorithm_version'] ?? $baseline->algorithm_version),
+                'gate_applied' => false,
+                'evaluation_mode' => 'optimization_candidate',
+                'baseline_check_id' => (int) $baseline->id,
+                'scoring_version' => (string) ($versionSelection['scoring'] ?? $baseline->scoring_version),
+                'execution_meta' => [
+                    'trigger' => $trigger,
+                    'optimization_run_id' => $runId,
+                    'policy_source' => $policy['source'] ?? 'unknown',
+                    'knowledge_base_ids' => array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])),
+                    'model_selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
+                    'model_candidate_ids' => array_values(array_map(static fn (AiModel $candidate): int => (int) $candidate->id, $modelCandidates)),
+                    'model_attempts' => [],
+                    'segment_runs' => [],
+                    'version_selection' => $versionSelection,
+                    'principle_snapshot' => $principleSnapshot,
+                    'policy_snapshot' => array_replace($this->policyResolver->snapshot($policy), ['timeout_sampling_enabled' => false]),
+                    'requested_workflow_state' => $this->sanitizeRequestedWorkflowState(
+                        is_array($executionMeta['requested_workflow_state'] ?? null)
+                            ? $executionMeta['requested_workflow_state']
+                            : null,
+                    ),
+                    'current_phase' => 'queued',
+                    'retrieval_basis' => data_get($executionMeta, 'retrieval_basis', []),
+                ],
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ]);
+
+            foreach ($segments as $segment) {
+                $check->segments()->create([
+                    'segment_index' => (int) $segment['index'],
+                    'start_offset' => (int) $segment['start_offset'],
+                    'end_offset' => (int) $segment['end_offset'],
+                    'input_hash' => (string) $segment['input_hash'],
+                    'status' => 'queued',
+                ]);
+            }
+            $baseline->loadMissing('sources');
+            foreach ($baseline->sources as $source) {
+                $check->sources()->create([
+                    ...$source->only([
+                        'knowledge_base_id',
+                        'knowledge_base_name_snapshot',
+                        'dependency_kind',
+                        'source_hash',
+                        'chunk_serving_generation',
+                        'chunk_manifest_hash',
+                        'fact_revision_id',
+                        'fact_library_hash',
+                        'readiness_status',
+                        'used_provider',
+                        'used_at',
+                    ]),
+                ]);
+            }
+
+            return $check;
+        });
+
+        if ($dispatch && (string) $check->status === 'queued') {
+            DB::afterCommit(fn () => $this->dispatchCheck((int) $check->id));
+        }
+
+        return $check;
     }
 
     public function process(
@@ -356,6 +674,17 @@ class ArticleAiQualityInspectionService
         }
         if (! $check->article) {
             return $this->markCancelled($check, 'article_unavailable');
+        }
+        if ((string) $check->evaluation_mode === 'optimization_candidate') {
+            $optimizationRunId = (int) data_get($check->execution_meta, 'optimization_run_id', 0);
+            $optimizationActive = $optimizationRunId > 0 && ArticleAiOptimizationRun::query()
+                ->whereKey($optimizationRunId)
+                ->where('article_id', (int) $check->article_id)
+                ->whereIn('status', ArticleAiOptimizationRun::ACTIVE_STATUSES)
+                ->exists();
+            if (! $optimizationActive) {
+                return $this->markCancelled($check, 'optimization_run_inactive');
+            }
         }
         $storedArticleSnapshot = is_array($check->article_snapshot) ? $check->article_snapshot : [];
         if (Str::length((string) ($storedArticleSnapshot['content'] ?? ''))
@@ -386,6 +715,10 @@ class ArticleAiQualityInspectionService
             $storedPolicy,
             (string) ($storedPolicy['source'] ?? $executionMeta['policy_source'] ?? 'article_snapshot'),
         );
+        $rules = $this->rulesForCheck($check);
+        if (! $this->retrievalBasisMatches($check, $policy, $rules)) {
+            return $this->markStale($check, 'ai_quality_retrieval_source_stale');
+        }
         $this->policyResolver->assertExecutable($policy);
         $candidateIds = array_values(array_filter(array_map(
             'intval',
@@ -396,13 +729,13 @@ class ArticleAiQualityInspectionService
             : AiModel::query()->whereIn('id', $candidateIds)->get()->sortBy(
                 static fn (AiModel $model): int => array_search((int) $model->id, $candidateIds, true),
             )->values()->all();
-        $rules = $this->rulesForCheck($check);
         $executionVersion = (string) data_get($executionMeta, 'version_selection.execution', 'legacy');
         $currentArticleHash = hash('sha256', json_encode(
             $this->policyResolver->articleSnapshot($check->article),
             JSON_UNESCAPED_UNICODE,
         ));
-        if (! hash_equals((string) $check->article_content_hash, $currentArticleHash)) {
+        if ((string) $check->evaluation_mode !== 'optimization_candidate'
+            && ! hash_equals((string) $check->article_content_hash, $currentArticleHash)) {
             return $this->markStale($check);
         }
 
@@ -424,6 +757,7 @@ class ArticleAiQualityInspectionService
                 'started_at' => $check->started_at ?: now(),
                 'error_code' => null,
                 'error_message' => null,
+                'retrieval_failure_code' => null,
                 'updated_at' => now(),
             ]);
         if ($claimed !== 1) {
@@ -437,6 +771,7 @@ class ArticleAiQualityInspectionService
             : 0;
 
         $articleSnapshot = is_array($check->article_snapshot) ? $check->article_snapshot : [];
+        $inspectionSnapshot = $articleSnapshot;
         if (is_array($check->fact_candidates_snapshot) && is_array($check->evidence_snapshot)) {
             $facts = $check->fact_candidates_snapshot;
             $evidence = $check->evidence_snapshot;
@@ -444,13 +779,20 @@ class ArticleAiQualityInspectionService
                 'fact_candidates' => $facts,
                 'evidence' => $evidence,
                 'knowledge_coverage' => (string) ($check->knowledge_coverage ?: 'insufficient'),
+                'retrieval_meta' => is_array($executionMeta['retrieval'] ?? null)
+                    ? $executionMeta['retrieval']
+                    : [],
+                'effective_retrieval_mode' => (string) (
+                    $check->effective_retrieval_mode ?: $check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()
+                ),
+                'retrieval_strategy_version' => (string) $check->retrieval_strategy_version,
             ];
             $timings['claim_extraction'] = (int) ($timings['claim_extraction'] ?? 0);
             $timings['evidence_retrieval'] = (int) ($timings['evidence_retrieval'] ?? 0);
             $evidenceCacheMeta = ['status' => 'persisted_snapshot', 'key' => null];
         } else {
             $stageStartedAt = hrtime(true);
-            $facts = $this->factExtractor->extract($articleSnapshot, 1000);
+            $facts = $this->factExtractor->extract($inspectionSnapshot, 1000);
             $timings['claim_extraction'] = $this->elapsedMilliseconds($stageStartedAt);
 
             $stageStartedAt = hrtime(true);
@@ -466,28 +808,36 @@ class ArticleAiQualityInspectionService
                         $check->article?->generation_evidence_snapshot ?? [],
                         JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
                     )),
-                    'retrieval_version' => 3,
+                    'retrieval_version' => 4,
+                    'retrieval_mode' => (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()),
+                    'retrieval_basis_hash' => (string) $check->retrieval_basis_hash,
                     'limits' => [
                         (int) config('geoflow.ai_quality_max_evidence', 12),
                         (int) config('geoflow.ai_quality_max_evidence_characters', 6000),
                         (int) config('geoflow.ai_quality_max_fact_retrievals', 6),
                     ],
-                ], fn (): array => $this->evidenceBuilder->build(
+                ], fn (): array => $this->retrievalCoordinator->retrieve(
+                    (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()),
                     $policy['knowledge_base_ids'] ?? [],
-                    $articleSnapshot,
+                    $inspectionSnapshot,
                     $facts,
-                    (int) config('geoflow.ai_quality_max_evidence', 12),
-                    (int) config('geoflow.ai_quality_max_evidence_characters', 6000),
-                    (int) config('geoflow.ai_quality_max_fact_retrievals', 6),
-                    is_array($check->article?->generation_evidence_snapshot)
-                        ? $check->article->generation_evidence_snapshot
-                        : [],
-                ));
+                    [
+                        'max_evidence' => (int) config('geoflow.ai_quality_max_evidence', 12),
+                        'max_characters' => (int) config('geoflow.ai_quality_max_evidence_characters', 6000),
+                        'max_fact_retrievals' => (int) config('geoflow.ai_quality_max_fact_retrievals', 6),
+                        'generation_evidence' => is_array($check->article?->generation_evidence_snapshot)
+                            ? $check->article->generation_evidence_snapshot
+                            : [],
+                        'serving_generations' => $this->frozenServingGenerations($check),
+                    ],
+                )->toArray());
                 $evidenceResult = $cacheResult['value'];
                 $evidenceCacheMeta = [
                     'status' => $cacheResult['hit'] ? 'hit' : 'miss',
                     'key' => $cacheResult['key'],
                 ];
+            } catch (InvalidArgumentException $exception) {
+                throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', false, $exception);
             } catch (Throwable $exception) {
                 throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', true, $exception);
             }
@@ -495,12 +845,14 @@ class ArticleAiQualityInspectionService
             $facts = $evidenceResult['fact_candidates'];
             $evidence = $evidenceResult['evidence'];
         }
+        $effectiveRetrievalMode = $this->effectiveRetrievalMode($check, $evidenceResult);
 
         $executionMeta = array_replace($executionMeta, [
             'current_phase' => 'inspecting',
             'timings_ms' => $timings,
             'evidence_cache' => $evidenceCacheMeta,
             'generation_evidence_reused_count' => (int) ($evidenceResult['generation_evidence_reused_count'] ?? 0),
+            'retrieval' => is_array($evidenceResult['retrieval_meta'] ?? null) ? $evidenceResult['retrieval_meta'] : [],
         ]);
 
         $evidenceStored = ArticleAiQualityCheck::query()
@@ -511,12 +863,15 @@ class ArticleAiQualityInspectionService
                 'fact_candidates_snapshot' => json_encode($facts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'evidence_snapshot' => json_encode($evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'knowledge_coverage' => $evidenceResult['knowledge_coverage'],
+                'effective_retrieval_mode' => $effectiveRetrievalMode,
+                'retrieval_strategy_version' => (string) ($evidenceResult['retrieval_strategy_version'] ?? $check->retrieval_strategy_version),
                 'execution_meta' => json_encode($executionMeta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'updated_at' => now(),
             ]);
         if ($evidenceStored !== 1) {
             return $this->latestCheck($checkId);
         }
+        $this->markRetrievalSourcesUsed($checkId, $evidenceResult);
 
         $validatedResults = [];
         $rawResults = [];
@@ -526,7 +881,7 @@ class ArticleAiQualityInspectionService
         $modelAttempts = [];
         $segmentRuns = is_array($executionMeta['segment_runs'] ?? null) ? $executionMeta['segment_runs'] : [];
         $modelCandidates = $this->policyResolver->modelCandidates($policy);
-        $segments = $this->segmenter->segment((string) ($articleSnapshot['content'] ?? ''));
+        $segments = $this->segmenter->segment((string) ($inspectionSnapshot['content'] ?? ''));
 
         foreach ($segments as $segmentData) {
             $segment = $check->segments->firstWhere('segment_index', (int) $segmentData['index']);
@@ -534,7 +889,9 @@ class ArticleAiQualityInspectionService
                 throw new RuntimeException('ai_quality_segment_missing');
             }
             if ($segment->status === 'completed' && is_array($segment->validated_result)) {
-                $validatedResults[] = $segment->validated_result;
+                $validatedResults[] = $this->resultValidator->normalizeLegacyRemovedDisclosureArtifacts(
+                    $segment->validated_result,
+                );
                 $rawResults[] = $segment->model_result;
                 $runMeta = is_array($segmentRuns[(string) $segmentData['index']] ?? null)
                     ? $segmentRuns[(string) $segmentData['index']]
@@ -561,9 +918,9 @@ class ArticleAiQualityInspectionService
             $segmentEvidence = $this->evidenceForFacts($evidence, $segmentFacts);
             $stageStartedAt = hrtime(true);
             $instructions = $this->promptRenderer->render((string) $check->prompt_template_snapshot, [
-                'article_title' => (string) ($articleSnapshot['title'] ?? ''),
-                'article_excerpt' => (string) ($articleSnapshot['excerpt'] ?? ''),
-                'article_outline' => $this->outline((string) ($articleSnapshot['content'] ?? '')),
+                'article_title' => (string) ($inspectionSnapshot['title'] ?? ''),
+                'article_excerpt' => (string) ($inspectionSnapshot['excerpt'] ?? ''),
+                'article_outline' => $this->outline((string) ($inspectionSnapshot['content'] ?? '')),
                 'article_content' => (string) $segmentData['content'],
                 'keywords' => (string) ($articleSnapshot['keywords'] ?? ''),
                 'meta_description' => (string) ($articleSnapshot['meta_description'] ?? ''),
@@ -589,7 +946,10 @@ class ArticleAiQualityInspectionService
             $lastException = null;
             $modelTotalMs = 0;
             $validationMs = 0;
-            foreach ($modelCandidates as $candidateIndex => $candidate) {
+            $candidateQueue = array_values($modelCandidates);
+            $invalidOutputRetries = [];
+            for ($candidateIndex = 0; $candidateIndex < count($candidateQueue); $candidateIndex++) {
+                $candidate = $candidateQueue[$candidateIndex];
                 if ((string) $candidate->status !== 'active'
                     || ! in_array((string) ($candidate->model_type ?? ''), ['', 'chat'], true)) {
                     $attempts[] = $this->modelAttempt($segmentData, $candidate, 'skipped', 'model_unavailable', 0);
@@ -607,7 +967,7 @@ class ArticleAiQualityInspectionService
                         break;
                     }
                     $availableRequestSeconds = max(1, (int) floor($remainingSeconds - $persistenceReserveSeconds));
-                    $remainingCandidateCount = max(1, count($modelCandidates) - $candidateIndex);
+                    $remainingCandidateCount = max(1, count($candidateQueue) - $candidateIndex);
                     $candidateBudgetSeconds = $remainingCandidateCount > 1
                         ? max(10, (int) floor($availableRequestSeconds * 0.65))
                         : $availableRequestSeconds;
@@ -666,13 +1026,21 @@ class ArticleAiQualityInspectionService
                     break;
                 } catch (Throwable $exception) {
                     $lastException = $exception;
+                    $errorCode = $this->safeErrorCode($exception);
                     $attempts[] = $this->modelAttempt(
                         $segmentData,
                         $candidate,
                         'failed',
-                        $this->safeErrorCode($exception),
+                        $errorCode,
                         $this->elapsedMilliseconds($candidateStartedAt),
                     );
+                    $modelId = (int) $candidate->id;
+                    if ($errorCode === 'invalid_model_output'
+                        && ! isset($invalidOutputRetries[$modelId])
+                        && $this->remainingDeadlineSeconds($deadlineAt) > $persistenceReserveSeconds + 10) {
+                        $invalidOutputRetries[$modelId] = true;
+                        array_splice($candidateQueue, $candidateIndex + 1, 0, [$candidate]);
+                    }
                 }
             }
             if (! is_array($review)) {
@@ -722,10 +1090,17 @@ class ArticleAiQualityInspectionService
         }
 
         $aggregate = $this->aggregate($validatedResults, $evidenceResult['knowledge_coverage']);
+        $atomicFacts = $this->atomicFactsFromRetrievalResult($check, $evidenceResult, $articleSnapshot, $policy);
+        if ((bool) ($atomicFacts['formal'] ?? false)) {
+            $aggregate['issues'] = array_values(array_merge($aggregate['issues'], (array) data_get($atomicFacts, 'inspection.issues', [])));
+        }
+        $executionMeta['atomic_facts'] = $atomicFacts;
+        $usage = $this->withRetrievalUsageBreakdown($usage, $atomicFacts);
         $scoringStartedAt = hrtime(true);
         $score = (string) $check->scoring_version === 'v2'
             ? $this->scorerV2->score($aggregate, (int) $check->pass_score, (int) $check->manual_override_min_score)
             : $this->scorer->score($aggregate, (int) $check->pass_score, (int) $check->manual_override_min_score);
+        $score = $this->applyRetrievalDecisionCaps($score, $check, $evidenceResult, $atomicFacts);
         $timings = $this->aggregateTimings($timings, $segmentRuns);
         $timings['scoring'] = $this->elapsedMilliseconds($scoringStartedAt);
         $timings['persistence'] = 0;
@@ -747,11 +1122,17 @@ class ArticleAiQualityInspectionService
             $segmentRuns,
             $timings,
             $completedAt,
+            $executionMeta,
         ): int {
+            $committedEpoch = max(1, (int) (ArticleAiQualityRollout::query()
+                ->whereKey(1)
+                ->lockForUpdate()
+                ->value('epoch') ?? 1));
             $current = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
             if (! $current
                 || (string) $current->status !== 'running'
                 || (string) $current->inspection_scope !== 'full'
+                || ! $this->rolloutEpochMatches($current, $committedEpoch)
                 || $this->remainingDeadlineSeconds($this->primaryDeadlineAt($current)) <= 0) {
                 return 0;
             }
@@ -789,6 +1170,7 @@ class ArticleAiQualityInspectionService
                     'usage_meta' => json_encode($usage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                     'execution_meta' => json_encode(
                         array_replace(is_array($current->execution_meta) ? $current->execution_meta : [], [
+                            'atomic_facts' => $executionMeta['atomic_facts'] ?? [],
                             'output_modes' => array_values(array_unique($modes)),
                             'completed_segments' => count($validatedResults),
                             'model_attempts' => $modelAttempts,
@@ -835,7 +1217,7 @@ class ArticleAiQualityInspectionService
         ])->save();
 
         $check = $this->latestCheck($checkId);
-        $this->applyCompletedWorkflow($check->loadMissing(['article', 'task']));
+        $this->continueAfterCompletedCheck($check->loadMissing(['article', 'task']));
         if ((bool) data_get($check->execution_meta, 'version_selection.shadow_v2', false)) {
             $this->createShadowScore($check, $aggregate);
         }
@@ -881,6 +1263,10 @@ class ArticleAiQualityInspectionService
         }
 
         return DB::transaction(function () use ($checkId, $errorCode, $dispatch): bool {
+            $taskId = (int) (ArticleAiQualityCheck::query()->whereKey($checkId)->value('task_id') ?? 0);
+            $task = $taskId > 0
+                ? Task::query()->whereKey($taskId)->lockForUpdate()->first()
+                : null;
             $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
             $executionMeta = is_array($check?->execution_meta) ? $check->execution_meta : [];
             $policySnapshot = is_array($executionMeta['policy_snapshot'] ?? null)
@@ -890,6 +1276,9 @@ class ArticleAiQualityInspectionService
                 || ! in_array((string) $check->status, ['queued', 'running'], true)
                 || (string) $check->inspection_scope !== 'full'
                 || ! (bool) ($policySnapshot['timeout_sampling_enabled'] ?? false)
+                || ! $task instanceof Task
+                || ! (bool) $task->ai_quality_enabled
+                || ! (bool) $task->ai_quality_timeout_sampling_enabled
                 || $this->remainingDeadlineSeconds($this->deadlineAt($check)) <= 0) {
                 return false;
             }
@@ -995,8 +1384,15 @@ class ArticleAiQualityInspectionService
             $policySnapshot,
             (string) ($policySnapshot['source'] ?? 'article_snapshot'),
         );
-        $this->policyResolver->assertExecutable($policy);
         $rules = $this->rulesForCheck($check);
+        if (! $this->retrievalBasisMatches($check, $policy, $rules)) {
+            return $this->markStale($check, 'ai_quality_retrieval_source_stale');
+        }
+        $this->policyResolver->assertExecutable($policy);
+        ArticleAiQualityCheck::query()->whereKey($checkId)->where('status', 'running')->update([
+            'retrieval_failure_code' => null,
+            'updated_at' => now(),
+        ]);
         $extractedFacts = $this->factExtractor->extract($articleSnapshot, 1000);
         $facts = $this->mergeSampledFacts(
             $extractedFacts,
@@ -1013,19 +1409,35 @@ class ArticleAiQualityInspectionService
             ) && (string) ($fact['coverage_status'] ?? 'insufficient') !== 'sufficient')) {
                 $knowledgeCoverage = 'insufficient';
             }
+            $evidenceResult = [
+                'evidence' => $evidence,
+                'fact_candidates' => $facts,
+                'knowledge_coverage' => $knowledgeCoverage,
+                'effective_retrieval_mode' => (string) (
+                    $check->effective_retrieval_mode ?: $check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()
+                ),
+                'retrieval_strategy_version' => (string) $check->retrieval_strategy_version,
+                'retrieval_meta' => is_array($executionMeta['retrieval'] ?? null) ? $executionMeta['retrieval'] : [],
+            ];
         } else {
             try {
-                $evidenceResult = $this->evidenceBuilder->build(
+                $evidenceResult = $this->retrievalCoordinator->retrieve(
+                    (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()),
                     $policy['knowledge_base_ids'] ?? [],
                     $articleSnapshot,
                     $facts,
-                    (int) config('geoflow.ai_quality_max_evidence', 12),
-                    (int) config('geoflow.ai_quality_max_evidence_characters', 6000),
-                    (int) config('geoflow.ai_quality_max_fact_retrievals', 6),
-                    is_array($check->article->generation_evidence_snapshot)
-                        ? $check->article->generation_evidence_snapshot
-                        : [],
-                );
+                    [
+                        'max_evidence' => (int) config('geoflow.ai_quality_max_evidence', 12),
+                        'max_characters' => (int) config('geoflow.ai_quality_max_evidence_characters', 6000),
+                        'max_fact_retrievals' => (int) config('geoflow.ai_quality_max_fact_retrievals', 6),
+                        'generation_evidence' => is_array($check->article->generation_evidence_snapshot)
+                            ? $check->article->generation_evidence_snapshot
+                            : [],
+                        'serving_generations' => $this->frozenServingGenerations($check),
+                    ],
+                )->toArray();
+            } catch (InvalidArgumentException $exception) {
+                throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', false, $exception);
             } catch (Throwable $exception) {
                 throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', true, $exception);
             }
@@ -1033,6 +1445,7 @@ class ArticleAiQualityInspectionService
             $evidence = is_array($evidenceResult['evidence'] ?? null) ? $evidenceResult['evidence'] : [];
             $knowledgeCoverage = (string) ($evidenceResult['knowledge_coverage'] ?? 'insufficient');
         }
+        $effectiveRetrievalMode = $this->effectiveRetrievalMode($check, $evidenceResult);
 
         $riskScan = $this->riskScanner->scan($articleSnapshot);
         $sample = $this->sampleBuilder->build(
@@ -1051,6 +1464,9 @@ class ArticleAiQualityInspectionService
         $coverage['fact_candidates_prompted'] = count($promptFacts);
 
         $executionMeta['current_phase'] = 'sampling';
+        $executionMeta['retrieval'] = is_array($evidenceResult['retrieval_meta'] ?? null)
+            ? $evidenceResult['retrieval_meta']
+            : (is_array($executionMeta['retrieval'] ?? null) ? $executionMeta['retrieval'] : []);
         $executionMeta['fallback'] = array_replace(
             is_array($executionMeta['fallback'] ?? null) ? $executionMeta['fallback'] : [],
             ['coverage_built_at' => now()->toIso8601String()],
@@ -1064,12 +1480,15 @@ class ArticleAiQualityInspectionService
                 'evidence_snapshot' => json_encode($evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'knowledge_coverage' => $knowledgeCoverage,
                 'coverage_meta' => json_encode($coverage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'effective_retrieval_mode' => $effectiveRetrievalMode,
+                'retrieval_strategy_version' => (string) ($evidenceResult['retrieval_strategy_version'] ?? $check->retrieval_strategy_version),
                 'execution_meta' => json_encode($executionMeta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'updated_at' => now(),
             ]);
         if ($snapshotStored !== 1) {
             return $this->latestCheck($checkId);
         }
+        $this->markRetrievalSourcesUsed($checkId, $evidenceResult ?? []);
 
         $executionVersion = (string) data_get($executionMeta, 'version_selection.execution', 'legacy');
         $instructions = $this->promptRenderer->render((string) $check->prompt_template_snapshot, [
@@ -1130,9 +1549,15 @@ class ArticleAiQualityInspectionService
             ->filter(static fn (ArticleAiQualitySegment $segment): bool => (string) $segment->status === 'completed'
                 && is_array($segment->validated_result))
             ->pluck('validated_result')
+            ->map(fn (array $result): array => $this->resultValidator->normalizeLegacyRemovedDisclosureArtifacts($result))
             ->values()
             ->all();
         $aggregate = $this->aggregate(array_merge($completedSegmentResults, [$validated]), $knowledgeCoverage);
+        $atomicFacts = $this->atomicFactsFromRetrievalResult($check, $evidenceResult ?? [], $articleSnapshot, $policy);
+        if ((bool) ($atomicFacts['formal'] ?? false)) {
+            $aggregate['issues'] = array_values(array_merge($aggregate['issues'], (array) data_get($atomicFacts, 'inspection.issues', [])));
+        }
+        $executionMeta['atomic_facts'] = $atomicFacts;
 
         foreach ((array) ($riskScan['matches'] ?? []) as $match) {
             if ((string) ($match['severity'] ?? '') !== 'blocked') {
@@ -1154,6 +1579,7 @@ class ArticleAiQualityInspectionService
         $score = (string) $check->scoring_version === 'v2'
             ? $this->scorerV2->score($aggregate, (int) $check->pass_score, (int) $check->manual_override_min_score)
             : $this->scorer->score($aggregate, (int) $check->pass_score, (int) $check->manual_override_min_score);
+        $score = $this->applyRetrievalDecisionCaps($score, $check, $evidenceResult ?? [], $atomicFacts);
         $gateReasons = array_values(is_array($score['gate_reasons'] ?? null) ? $score['gate_reasons'] : []);
         $coverageSafe = ! (bool) ($coverage['mandatory_overflow'] ?? true)
             && (int) ($coverage['mandatory_claims_covered'] ?? -1) === (int) ($coverage['mandatory_claims_total'] ?? 0)
@@ -1192,8 +1618,21 @@ class ArticleAiQualityInspectionService
             $coverage['safe_for_auto_release'] = false;
             $coverage['gate_reasons'] = array_values(array_unique($gateReasons));
         }
+        $primaryUsage = $this->mergeUsage([], is_array($review['usage'] ?? null) ? $review['usage'] : []);
+        foreach ((array) ($executionMeta['segment_runs'] ?? []) as $segmentRun) {
+            if (is_array($segmentRun)) {
+                $primaryUsage = $this->mergeUsage(
+                    $primaryUsage,
+                    is_array($segmentRun['usage'] ?? null) ? $segmentRun['usage'] : [],
+                );
+            }
+        }
+        $usage = $this->withRetrievalUsageBreakdown($primaryUsage, $atomicFacts);
 
         $completedAt = now();
+        if (! $this->rolloutEpochMatches($check)) {
+            return $this->markStale($check, 'ai_quality_rollout_epoch_changed');
+        }
         $completed = ArticleAiQualityCheck::query()
             ->whereKey($checkId)
             ->where('status', 'running')
@@ -1219,8 +1658,9 @@ class ArticleAiQualityInspectionService
                 'truncated_issue_count' => (int) ($aggregate['truncated_issue_count'] ?? 0),
                 'coverage_meta' => json_encode($coverage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'raw_model_output' => json_encode($storedRaw, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                'usage_meta' => json_encode($this->mergeUsage([], is_array($review['usage'] ?? null) ? $review['usage'] : []), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'usage_meta' => json_encode($usage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'execution_meta' => json_encode(array_replace($executionMeta, [
+                    'atomic_facts' => $atomicFacts,
                     'current_phase' => 'finished',
                     'output_modes' => [(string) ($review['mode'] ?? '')],
                     'workflow_apply' => [
@@ -1241,7 +1681,7 @@ class ArticleAiQualityInspectionService
         }
 
         $completedCheck = $this->latestCheck($checkId);
-        $this->applyCompletedWorkflow($completedCheck->loadMissing(['article', 'task']));
+        $this->continueAfterCompletedCheck($completedCheck->loadMissing(['article', 'task']));
 
         return $this->latestCheck($checkId);
     }
@@ -1596,7 +2036,7 @@ class ArticleAiQualityInspectionService
         return $this->latestCheck($checkId);
     }
 
-    private function markStale(ArticleAiQualityCheck $check): ArticleAiQualityCheck
+    private function markStale(ArticleAiQualityCheck $check, string $errorCode = 'input_changed'): ArticleAiQualityCheck
     {
         ArticleAiQualityCheck::query()
             ->whereKey((int) $check->id)
@@ -1605,7 +2045,8 @@ class ArticleAiQualityInspectionService
                 'status' => 'stale',
                 'decision' => null,
                 'active_dedupe_key' => null,
-                'error_code' => 'input_changed',
+                'error_code' => $errorCode,
+                'retrieval_failure_code' => $errorCode === 'ai_quality_retrieval_source_stale' ? $errorCode : null,
                 'error_message' => '文章或质检依据已经变化。',
                 'finished_at' => now(),
                 'updated_at' => now(),
@@ -1615,7 +2056,7 @@ class ArticleAiQualityInspectionService
             ->whereIn('status', ['queued', 'running', 'failed'])
             ->update([
                 'status' => 'stale',
-                'error_code' => 'input_changed',
+                'error_code' => $errorCode,
                 'error_message' => '文章或质检依据已经变化。',
                 'finished_at' => now(),
                 'updated_at' => now(),
@@ -1623,6 +2064,187 @@ class ArticleAiQualityInspectionService
         $this->holdUnpublishedArticleForReview((int) $check->article_id);
 
         return $this->latestCheck((int) $check->id);
+    }
+
+    /**
+     * @param  array<string,mixed>  $policy
+     * @param  array<string,mixed>  $rules
+     */
+    public function retrievalBasisMatches(ArticleAiQualityCheck $check, array $policy, array $rules): bool
+    {
+        $storedHash = trim((string) $check->retrieval_basis_hash);
+        if ($storedHash === '') {
+            return false;
+        }
+        if ($check->sources()->where('readiness_status', 'legacy_unknown')->exists()) {
+            return false;
+        }
+
+        $storedEpoch = max(1, (int) data_get($check->execution_meta, 'retrieval_basis.rollout.epoch', 1));
+        $committedEpoch = max(1, (int) (ArticleAiQualityRollout::query()->whereKey(1)->value('epoch') ?? 1));
+        if ($storedEpoch !== $committedEpoch) {
+            return false;
+        }
+
+        $mode = (string) ($check->requested_retrieval_mode
+            ?: ($policy['retrieval_mode'] ?? AiQualityRetrievalMode::legacyDefault()));
+        $fingerprintInput = $this->policyResolver->fingerprintInput($check->article, $policy, $rules);
+        $basis = AiQualityRetrievalBasis::make(
+            $mode,
+            (int) ($policy['policy_version'] ?? 1),
+            array_values($fingerprintInput['knowledge'] ?? []),
+            $this->rolloutPolicy->state(),
+            $this->retrievalCoordinator->strategyVersion($mode),
+            $this->retrievalExecutionOptions(),
+        );
+
+        return hash_equals($storedHash, $basis->hash());
+    }
+
+    public function rolloutEpochMatches(ArticleAiQualityCheck $check, ?int $committedEpoch = null): bool
+    {
+        $storedEpoch = max(1, (int) data_get($check->execution_meta, 'retrieval_basis.rollout.epoch', 1));
+        $committedEpoch ??= max(1, (int) (ArticleAiQualityRollout::query()->whereKey(1)->value('epoch') ?? 1));
+
+        return $storedEpoch === $committedEpoch;
+    }
+
+    /** @return array<string,mixed> */
+    private function retrievalExecutionOptions(): array
+    {
+        return [
+            'max_sources' => 5,
+            'max_evidence' => (int) config('geoflow.ai_quality_max_evidence', 12),
+            'max_characters' => (int) config('geoflow.ai_quality_max_evidence_characters', 6000),
+            'max_fact_retrievals' => (int) config('geoflow.ai_quality_max_fact_retrievals', 6),
+            'max_atomic_claims' => (int) config('geoflow.ai_quality_max_atomic_claims', 24),
+            'sampled_max_characters' => (int) config('geoflow.ai_quality_sampled_max_characters', 6000),
+            'sampled_max_ranges' => (int) config('geoflow.ai_quality_sampled_max_ranges', 12),
+        ];
+    }
+
+    /** @return array<int,string> */
+    private function frozenServingGenerations(ArticleAiQualityCheck $check): array
+    {
+        return collect((array) data_get($check->execution_meta, 'retrieval_basis.knowledge_sources', []))
+            ->mapWithKeys(static function (array $source): array {
+                $knowledgeBaseId = (int) ($source['id'] ?? 0);
+                $generation = trim((string) ($source['chunk_serving_generation'] ?? ''));
+
+                return $knowledgeBaseId > 0 && $generation !== '' ? [$knowledgeBaseId => $generation] : [];
+            })
+            ->all();
+    }
+
+    /** @param array<string,mixed> $retrievalResult */
+    private function effectiveRetrievalMode(ArticleAiQualityCheck $check, array $retrievalResult): string
+    {
+        $requestedMode = (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault());
+        $effectiveMode = (string) ($retrievalResult['effective_retrieval_mode'] ?? '');
+        if (! AiQualityRetrievalMode::isValid($effectiveMode) || $effectiveMode !== $requestedMode) {
+            throw new ArticleAiQualityRuntimeException('evidence_retrieval_failed', false);
+        }
+
+        return $effectiveMode;
+    }
+
+    /** @param array<string,mixed> $retrievalResult */
+    private function markRetrievalSourcesUsed(int $checkId, array $retrievalResult): void
+    {
+        $path = array_values(array_filter(array_map(
+            'strval',
+            (array) data_get($retrievalResult, 'retrieval_meta.path', []),
+        )));
+        $providers = [
+            'raw_content' => [
+                'provider' => in_array('knowledge_broad', $path, true) ? 'knowledge_broad' : null,
+                'source_key' => 'knowledge_broad',
+            ],
+            'atomic' => [
+                'provider' => in_array('atomic', $path, true) ? 'atomic' : null,
+                'source_key' => 'atomic',
+            ],
+            'chunk' => [
+                'provider' => in_array('chunk', $path, true) || in_array('chunk_fallback', $path, true)
+                    ? (in_array('chunk_fallback', $path, true) ? 'chunk_fallback' : 'chunk')
+                    : null,
+                'source_key' => 'chunk',
+            ],
+        ];
+        $sourceMap = data_get($retrievalResult, 'retrieval_meta.source_knowledge_base_ids');
+        foreach ($providers as $dependencyKind => $providerConfig) {
+            $provider = $providerConfig['provider'];
+            if ($provider === null) {
+                continue;
+            }
+            $query = DB::table('article_ai_quality_check_sources')
+                ->where('article_ai_quality_check_id', $checkId)
+                ->where('dependency_kind', $dependencyKind);
+            if (is_array($sourceMap)) {
+                $sourceIds = array_values(array_unique(array_filter(array_map(
+                    'intval',
+                    (array) ($sourceMap[$providerConfig['source_key']] ?? []),
+                ))));
+                if ($sourceIds === []) {
+                    continue;
+                }
+                $query->whereIn('knowledge_base_id', $sourceIds);
+            }
+            $query->update([
+                'used_provider' => $provider,
+                'used_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string,mixed>  $score
+     * @param  array<string,mixed>  $retrievalResult
+     * @param  array<string,mixed>  $atomicFacts
+     * @return array<string,mixed>
+     */
+    private function applyRetrievalDecisionCaps(
+        array $score,
+        ArticleAiQualityCheck $check,
+        array $retrievalResult,
+        array $atomicFacts,
+    ): array {
+        $reasons = array_values(is_array($score['gate_reasons'] ?? null) ? $score['gate_reasons'] : []);
+        $mode = (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault());
+        if ($mode === AiQualityRetrievalMode::KNOWLEDGE_BROAD) {
+            $hasUnreviewedEvidence = collect($retrievalResult['evidence'] ?? [])->contains(
+                static fn (array $item): bool => ! in_array(
+                    strtolower((string) data_get($item, 'metadata.review_status', 'unreviewed')),
+                    ['reviewed', 'approved', 'verified'],
+                    true,
+                ),
+            );
+            if ($hasUnreviewedEvidence) {
+                $reasons[] = 'knowledge_governance_review_required';
+            }
+            if ((string) $check->inspection_scope === 'fallback_sampled') {
+                $reasons[] = 'knowledge_broad_sampled_review_required';
+            }
+        }
+        if ((int) data_get($retrievalResult, 'retrieval_meta.prompt_injection_risk_count', 0) > 0) {
+            $reasons[] = 'knowledge_prompt_injection_review_required';
+        }
+        if ($mode === AiQualityRetrievalMode::ATOMIC_FIRST) {
+            if ((int) data_get($atomicFacts, 'inspection.uninspected_claim_count', 0) !== 0) {
+                $reasons[] = 'ai_quality_retrieval_claim_coverage_incomplete';
+            }
+            if ((int) data_get($atomicFacts, 'inspection.conflict_count', 0) > 0) {
+                $reasons[] = 'ai_quality_retrieval_cross_kb_conflict';
+            }
+        }
+        $reasons = array_values(array_unique($reasons));
+        if ($reasons !== [] && (string) ($score['decision'] ?? '') === 'passed') {
+            $score['decision'] = 'needs_review';
+        }
+        $score['gate_reasons'] = $reasons;
+
+        return $score;
     }
 
     private function markCancelled(ArticleAiQualityCheck $check, string $code): ArticleAiQualityCheck
@@ -1678,6 +2300,71 @@ class ArticleAiQualityInspectionService
                 $results,
             )),
         ];
+    }
+
+    /** @param array<string,mixed> $articleSnapshot @param array<string,mixed> $policy @return array<string,mixed> */
+    private function atomicFactsForCheck(ArticleAiQualityCheck $check, array $articleSnapshot, array $policy): array
+    {
+        if ((string) $check->requested_retrieval_mode === AiQualityRetrievalMode::ATOMIC_FIRST) {
+            return [
+                'mode' => 'atomic_first_pending',
+                'formal' => false,
+                'shadow' => false,
+            ];
+        }
+
+        $shadow = $this->rolloutPolicy->atomicShadowEnabled((int) $check->article_id);
+        if (! $shadow) {
+            return ['mode' => 'disabled', 'formal' => false, 'shadow' => false];
+        }
+
+        $content = collect(['title', 'excerpt', 'content', 'keywords', 'meta_description'])
+            ->map(static fn (string $field): string => trim((string) ($articleSnapshot[$field] ?? '')))
+            ->filter()
+            ->implode("\n");
+        $inspection = $this->atomicFactInspector->inspect($content, array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])));
+
+        return [
+            'mode' => 'shadow',
+            'formal' => false,
+            'shadow' => true,
+            'inspection' => $inspection,
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $retrievalResult
+     * @param  array<string,mixed>  $articleSnapshot
+     * @param  array<string,mixed>  $policy
+     * @return array<string,mixed>
+     */
+    private function atomicFactsFromRetrievalResult(
+        ArticleAiQualityCheck $check,
+        array $retrievalResult,
+        array $articleSnapshot,
+        array $policy,
+    ): array {
+        if ((string) $check->requested_retrieval_mode === AiQualityRetrievalMode::ATOMIC_FIRST) {
+            $inspection = data_get($retrievalResult, 'retrieval_meta.atomic_facts');
+            if (! is_array($inspection)) {
+                $inspection = data_get($check->execution_meta, 'retrieval.atomic_facts');
+            }
+
+            return is_array($inspection)
+                ? [
+                    'mode' => 'atomic_first',
+                    'formal' => true,
+                    'shadow' => false,
+                    'inspection' => $inspection,
+                ]
+                : [
+                    'mode' => 'atomic_first_unavailable',
+                    'formal' => false,
+                    'shadow' => false,
+                ];
+        }
+
+        return $this->atomicFactsForCheck($check, $articleSnapshot, $policy);
     }
 
     /** @param array<string, mixed> $aggregate */
@@ -1895,9 +2582,26 @@ class ArticleAiQualityInspectionService
         ];
     }
 
+    private function continueAfterCompletedCheck(ArticleAiQualityCheck $check): void
+    {
+        if ((string) $check->evaluation_mode === 'optimization_candidate') {
+            app(ArticleAiOptimizationCoordinator::class)->candidateCompleted((int) $check->id);
+
+            return;
+        }
+
+        $this->applyCompletedWorkflow($check);
+    }
+
     public function applyCompletedWorkflow(ArticleAiQualityCheck|int $check): void
     {
         $checkId = $check instanceof ArticleAiQualityCheck ? (int) $check->id : $check;
+        if ($this->supersedeCompletedCheckWhenBasisChanged($checkId)) {
+            return;
+        }
+        if (app(ArticleAiOptimizationCoordinator::class)->interceptCompletedWorkflow($checkId)) {
+            return;
+        }
         if (! $this->beginWorkflowApplyAttempt($checkId)) {
             return;
         }
@@ -1953,14 +2657,114 @@ class ArticleAiQualityInspectionService
                 && in_array((string) ($requestedWorkflowState['status'] ?? ''), ['published', 'private'], true)
                 ? $requestedWorkflowState
                 : ['status' => 'draft', 'review_status' => 'approved', 'published_at' => null];
-            $article = $check->article->fresh();
+            $this->applyPassedWorkflowUnderRolloutFence($checkId, $targetState);
+        } catch (Throwable $exception) {
+            $this->failWorkflowApplyAttempt($checkId);
+            report($exception);
+        }
+    }
+
+    /** @param array{status:string,review_status:string,published_at:mixed} $targetState */
+    private function applyPassedWorkflowUnderRolloutFence(int $checkId, array $targetState): bool
+    {
+        $checkInfo = ArticleAiQualityCheck::query()->whereKey($checkId)->first(['article_id', 'task_id']);
+        if (! $checkInfo) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($checkId, $checkInfo, $targetState): bool {
+            $rollout = ArticleAiQualityRollout::query()->whereKey(1)->lockForUpdate()->first();
+            $committedEpoch = max(1, (int) ($rollout?->epoch ?? 1));
+            $article = Article::query()->whereKey((int) $checkInfo->article_id)->lockForUpdate()->first();
+            if (! $article) {
+                return false;
+            }
+            $task = $checkInfo->task_id
+                ? Task::withTrashed()->whereKey((int) $checkInfo->task_id)->lockForUpdate()->first()
+                : null;
+            if ($task instanceof Task && ! $task->trashed()) {
+                $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                $article->setRelation('task', $task);
+            }
+            $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
+            if (! $check
+                || (string) $check->status !== 'completed'
+                || (string) $check->decision !== 'passed') {
+                return false;
+            }
+            $check->setRelation('article', $article);
+            if ($task instanceof Task && ! $task->trashed()) {
+                $check->setRelation('task', $task);
+            }
+
+            $this->rolloutPolicy->forget();
+            $manualReviewRequired = (bool) data_get(
+                $check->execution_meta,
+                'policy_snapshot.manual_review_required',
+                true,
+            );
+            $sampledAutoReleaseAuthorized = (string) $check->inspection_scope !== 'fallback_sampled'
+                || (
+                    (bool) data_get($check->execution_meta, 'policy_snapshot.timeout_sampling_enabled', false)
+                    && (bool) ($task?->ai_quality_timeout_sampling_enabled ?? false)
+                    && $this->versionPolicy->sampledAutoReleaseEnabled()
+                    && (bool) data_get($check->coverage_meta, 'safe_for_auto_release', false)
+                );
+            if (! $task instanceof Task
+                || $task->trashed()
+                || $manualReviewRequired
+                || (bool) $task->need_review
+                || ! $sampledAutoReleaseAuthorized
+                || (string) $article->review_status === 'rejected') {
+                $this->setWorkflowApplyStatus($check, 'succeeded');
+
+                return true;
+            }
+
+            $basisIsCurrent = $this->rolloutEpochMatches($check, $committedEpoch);
+            try {
+                $policy = $this->policyResolver->resolve($article);
+                $this->policyResolver->assertExecutable($policy);
+                $currentFingerprint = $this->currentFingerprint(
+                    $article,
+                    $policy,
+                    $this->rules(),
+                    $this->versionPolicy->selection((int) $article->id),
+                );
+                $basisIsCurrent = $basisIsCurrent
+                    && hash_equals((string) $check->input_fingerprint, $currentFingerprint)
+                    && $this->retrievalBasisMatches($check, $policy, $this->rules());
+            } catch (Throwable $exception) {
+                $basisIsCurrent = false;
+                report($exception);
+            }
+            if (! $basisIsCurrent) {
+                $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
+                $executionMeta['workflow_apply'] = [
+                    'status' => 'superseded',
+                    'attempts' => (int) data_get($executionMeta, 'workflow_apply.attempts', 0),
+                    'error_code' => 'quality_basis_changed',
+                    'updated_at' => now()->toIso8601String(),
+                ];
+                $check->forceFill([
+                    'status' => 'stale',
+                    'active_dedupe_key' => null,
+                    'error_code' => 'quality_basis_changed',
+                    'error_message' => '质检依据已更新，系统将使用最新依据重新质检。',
+                    'execution_meta' => $executionMeta,
+                    'finished_at' => $check->finished_at ?: now(),
+                ])->save();
+
+                return false;
+            }
+
             $targetAlreadyApplied = (string) $article->status === (string) $targetState['status']
                 && (string) $article->review_status === (string) $targetState['review_status'];
             if (! $targetAlreadyApplied) {
                 if ((string) $article->status !== 'draft') {
-                    $this->updateWorkflowApply($checkId, 'succeeded');
+                    $this->setWorkflowApplyStatus($check, 'succeeded');
 
-                    return;
+                    return true;
                 }
                 $article = app(ArticleWorkflowTransitionService::class)->transition(
                     $article,
@@ -1974,11 +2778,107 @@ class ArticleAiQualityInspectionService
             if ((string) $article->status === 'published') {
                 app(DistributionOrchestrator::class)->enqueueForArticle($article, throwOnFailure: true);
             }
-            $this->updateWorkflowApply($checkId, 'succeeded');
+            $this->setWorkflowApplyStatus($check, 'succeeded');
+
+            return true;
+        }, 3);
+    }
+
+    private function setWorkflowApplyStatus(
+        ArticleAiQualityCheck $check,
+        string $status,
+        ?string $errorCode = null,
+    ): void {
+        $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
+        $workflowApply = is_array($executionMeta['workflow_apply'] ?? null)
+            ? $executionMeta['workflow_apply']
+            : [];
+        $executionMeta['workflow_apply'] = [
+            'status' => $status,
+            'attempts' => (int) ($workflowApply['attempts'] ?? 0),
+            'error_code' => $errorCode,
+            'updated_at' => now()->toIso8601String(),
+        ];
+        $check->forceFill(['execution_meta' => $executionMeta])->save();
+    }
+
+    private function supersedeCompletedCheckWhenBasisChanged(int $checkId): bool
+    {
+        $check = ArticleAiQualityCheck::query()->with(['article.task'])->find($checkId);
+        if (! $check
+            || (string) $check->status !== 'completed'
+            || ! (bool) $check->gate_applied
+            || (string) $check->evaluation_mode === 'optimization_candidate'
+            || ! $check->article) {
+            return false;
+        }
+
+        $article = $check->article;
+        $policy = $this->policyResolver->resolve($article);
+        $basisChanged = ! (bool) ($policy['required'] ?? false);
+        try {
+            if (! $basisChanged) {
+                $this->policyResolver->assertExecutable($policy);
+                $currentFingerprint = $this->currentFingerprint(
+                    $article,
+                    $policy,
+                    $this->rules(),
+                    $this->versionPolicy->selection((int) $article->id),
+                );
+                $basisChanged = ! hash_equals((string) $check->input_fingerprint, $currentFingerprint)
+                    || ! $this->retrievalBasisMatches($check, $policy, $this->rules());
+            }
         } catch (Throwable $exception) {
-            $this->failWorkflowApplyAttempt($checkId);
+            $basisChanged = true;
             report($exception);
         }
+        if (! $basisChanged) {
+            return false;
+        }
+
+        $superseded = DB::transaction(function () use ($checkId): bool {
+            $locked = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
+            if (! $locked || (string) $locked->status !== 'completed') {
+                return false;
+            }
+            $executionMeta = is_array($locked->execution_meta) ? $locked->execution_meta : [];
+            $executionMeta['workflow_apply'] = [
+                'status' => 'superseded',
+                'attempts' => (int) data_get($executionMeta, 'workflow_apply.attempts', 0),
+                'error_code' => 'quality_basis_changed',
+                'updated_at' => now()->toIso8601String(),
+            ];
+            $locked->forceFill([
+                'status' => 'stale',
+                'active_dedupe_key' => null,
+                'error_code' => 'quality_basis_changed',
+                'error_message' => '质检依据已更新，系统将使用最新依据重新质检。',
+                'execution_meta' => $executionMeta,
+                'finished_at' => $locked->finished_at ?: now(),
+            ])->save();
+
+            return true;
+        });
+        if (! $superseded) {
+            return true;
+        }
+
+        $this->holdUnpublishedArticleForReview((int) $article->id);
+        if ((bool) ($policy['required'] ?? false)) {
+            try {
+                $this->createOrReuse(
+                    $article->fresh(),
+                    trigger: 'quality_basis_changed',
+                    dispatch: true,
+                    force: true,
+                    resolvedPolicy: $policy,
+                );
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return true;
     }
 
     public function retryCompletedWorkflow(ArticleAiQualityCheck|int $check): bool
@@ -2020,7 +2920,10 @@ class ArticleAiQualityInspectionService
     {
         return DB::transaction(function () use ($checkId): bool {
             $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
-            if (! $check || (string) $check->status !== 'completed') {
+            if (! $check
+                || (string) $check->status !== 'completed'
+                || ! (bool) $check->gate_applied
+                || (string) $check->evaluation_mode === 'optimization_candidate') {
                 return false;
             }
 
@@ -2029,7 +2932,7 @@ class ArticleAiQualityInspectionService
                 ? $executionMeta['workflow_apply']
                 : [];
             $status = (string) ($workflowApply['status'] ?? 'pending');
-            if (in_array($status, ['succeeded', 'exhausted'], true)) {
+            if (in_array($status, ['succeeded', 'exhausted', 'waiting_optimization'], true)) {
                 return false;
             }
             if ($status === 'processing' && ! $this->workflowApplyIsStale($workflowApply)) {
@@ -2149,7 +3052,7 @@ class ArticleAiQualityInspectionService
             $trigger = is_array($check?->execution_meta)
                 ? (string) ($check->execution_meta['trigger'] ?? '')
                 : '';
-            $queue = in_array($trigger, ['reconcile', 'backfill'], true)
+            $queue = in_array($trigger, ['reconcile', 'backfill', 'optimization_task_candidate'], true)
                 ? (string) config('geoflow.ai_quality_backfill_queue', 'ai-quality-backfill')
                 : (string) config('geoflow.ai_quality_queue', 'ai-quality');
             $expectedScope = (string) ($check?->inspection_scope ?: 'full');
@@ -2226,6 +3129,30 @@ class ArticleAiQualityInspectionService
                 }
             }
         }
+    }
+
+    /**
+     * @param  array<string,mixed>  $usage
+     * @param  array<string,mixed>  $atomicFacts
+     * @return array<string,mixed>
+     */
+    private function withRetrievalUsageBreakdown(array $usage, array $atomicFacts): array
+    {
+        $primaryReview = $this->mergeUsage([], $usage);
+        $atomicUsage = (array) data_get($atomicFacts, 'inspection.usage', []);
+        $atomicPrompt = (int) ($atomicUsage['prompt_tokens'] ?? $atomicUsage['input_tokens'] ?? 0);
+        $atomicCompletion = (int) ($atomicUsage['completion_tokens'] ?? $atomicUsage['output_tokens'] ?? 0);
+        $atomicTotal = (int) ($atomicUsage['total_tokens'] ?? ($atomicPrompt + $atomicCompletion));
+
+        return [
+            ...$primaryReview,
+            'primary_review' => $primaryReview,
+            'atomic_verification' => [
+                'prompt_tokens' => $atomicPrompt,
+                'completion_tokens' => $atomicCompletion,
+                'total_tokens' => $atomicTotal,
+            ],
+        ];
     }
 
     /**

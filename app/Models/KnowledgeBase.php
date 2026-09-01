@@ -15,12 +15,16 @@ class KnowledgeBase extends Model
         'chunk_sync_status' => 'idle',
         'chunk_source_hash' => '',
         'chunk_sync_require_real_embedding' => false,
+        'ai_quality_content_hash' => '',
+        'ai_quality_content_length' => 0,
     ];
 
     protected $fillable = [
         'name',
         'description',
         'content',
+        'ai_quality_content_hash',
+        'ai_quality_content_length',
         'character_count',
         'used_task_count',
         'file_type',
@@ -37,6 +41,9 @@ class KnowledgeBase extends Model
         'chunk_sync_status',
         'chunk_sync_token',
         'chunk_source_hash',
+        'chunk_serving_generation',
+        'chunk_serving_source_hash',
+        'chunk_manifest_hash',
         'chunk_sync_error',
         'chunk_sync_require_real_embedding',
         'chunk_synced_at',
@@ -46,6 +53,7 @@ class KnowledgeBase extends Model
     {
         return [
             'character_count' => 'integer',
+            'ai_quality_content_length' => 'integer',
             'used_task_count' => 'integer',
             'word_count' => 'integer',
             'usage_count' => 'integer',
@@ -55,9 +63,25 @@ class KnowledgeBase extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::saving(function (self $knowledgeBase): void {
+            if ($knowledgeBase->isDirty('content') || trim((string) $knowledgeBase->ai_quality_content_hash) === '') {
+                $content = (string) ($knowledgeBase->content ?? '');
+                $knowledgeBase->ai_quality_content_hash = hash('sha256', $content);
+                $knowledgeBase->ai_quality_content_length = mb_strlen($content, 'UTF-8');
+            }
+        });
+    }
+
     public function chunks(): HasMany
     {
         return $this->hasMany(KnowledgeChunk::class, 'knowledge_base_id');
+    }
+
+    public function factLibrary(): HasOne
+    {
+        return $this->hasOne(KnowledgeFactLibrary::class);
     }
 
     public function systemBinding(): HasOne
@@ -84,6 +108,13 @@ class KnowledgeBase extends Model
         return $this->systemBinding()->exists();
     }
 
+    public function servingChunkSourceHash(): string
+    {
+        $serving = trim((string) $this->chunk_serving_source_hash);
+
+        return $serving !== '' ? $serving : trim((string) $this->chunk_source_hash);
+    }
+
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'knowledge_base_id');
@@ -96,5 +127,15 @@ class KnowledgeBase extends Model
             ->withTimestamps()
             ->orderByPivot('sort_order')
             ->orderBy('tasks.id');
+    }
+
+    public function aiQualityArticles(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Article::class,
+            'article_ai_quality_knowledge_bases'
+        )
+            ->withPivot(['sort_order'])
+            ->withTimestamps();
     }
 }

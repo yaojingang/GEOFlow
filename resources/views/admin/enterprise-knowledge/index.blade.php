@@ -82,9 +82,9 @@
                                         {{ __('admin.enterprise_knowledge.edit') }}
                                     </a>
                                     @php($confirmDeleteMessage = __('admin.enterprise_knowledge.confirm_delete', ['name' => (string) $project->name]))
-                                    <form method="POST" action="{{ route('admin.enterprise-knowledge.delete', ['projectId' => (int) $project->id]) }}" onsubmit="return confirm(@json($confirmDeleteMessage))">
+                                    <form method="POST" action="{{ route('admin.enterprise-knowledge.delete', ['projectId' => (int) $project->id]) }}" data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ $confirmDeleteMessage }}" data-admin-confirm-message="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.enterprise_knowledge.delete') }}">
                                         @csrf
-                                        <button type="submit" class="inline-flex items-center rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">
+                                        <button type="submit" class="inline-flex items-center rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50" data-admin-confirm-submit disabled aria-disabled="true">
                                             <i data-lucide="trash-2" class="mr-2 h-4 w-4"></i>
                                             {{ __('admin.enterprise_knowledge.delete') }}
                                         </button>

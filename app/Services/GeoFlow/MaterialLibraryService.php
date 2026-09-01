@@ -21,6 +21,7 @@ use App\Services\AiWorkspace\SystemKnowledgeBaseManager;
 use App\Support\LibraryImportPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -168,20 +169,33 @@ class MaterialLibraryService
         $type = $this->normalizeType($type);
         $row = $this->findMaterial($type, $id);
         $imageFilePaths = [];
+        $knowledgeFilePaths = [];
 
-        DB::transaction(function () use ($type, $row, $id, &$imageFilePaths): void {
-            match ($type) {
-                'categories' => $this->deleteCategory($id),
-                'authors' => $this->deleteAuthor($id),
-                'keyword-libraries' => $this->deleteKeywordLibrary($id),
-                'title-libraries' => $this->deleteTitleLibrary($id),
-                'image-libraries' => $imageFilePaths = $this->deleteImageLibrary($id),
-                'knowledge-bases' => $this->deleteKnowledgeBase($row),
-            };
-        }, 3);
+        try {
+            DB::transaction(function () use ($type, $row, $id, &$imageFilePaths, &$knowledgeFilePaths): void {
+                match ($type) {
+                    'categories' => $this->deleteCategory($id),
+                    'authors' => $this->deleteAuthor($id),
+                    'keyword-libraries' => $this->deleteKeywordLibrary($id),
+                    'title-libraries' => $this->deleteTitleLibrary($id),
+                    'image-libraries' => $imageFilePaths = $this->deleteImageLibrary($id),
+                    'knowledge-bases' => $knowledgeFilePaths = $this->deleteKnowledgeBase($row),
+                };
+            }, 3);
+        } catch (QueryException $exception) {
+            $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+            if ($type === 'knowledge-bases' && in_array($sqlState, ['23000', '23503'], true)) {
+                throw new ApiException('material_in_use', '知识库仍被任务或文章引用，无法删除', 409);
+            }
+
+            throw $exception;
+        }
         $cleanupFailed = $imageFilePaths !== []
             ? $this->managedImages->cleanupUnreferenced($imageFilePaths)
             : 0;
+        if ($knowledgeFilePaths !== []) {
+            $this->cleanupFiles($knowledgeFilePaths);
+        }
 
         return [
             'id' => $id,
@@ -1075,22 +1089,57 @@ class MaterialLibraryService
         return $filePaths;
     }
 
-    private function deleteKnowledgeBase(Model $row): void
+    /** @return list<string> */
+    private function deleteKnowledgeBase(Model $row): array
     {
+        $locked = KnowledgeBase::query()->whereKey((int) $row->id)->lockForUpdate()->firstOrFail();
         try {
-            $this->systemKnowledgeBases->assertDeletable($row);
+            $this->systemKnowledgeBases->assertDeletable($locked);
         } catch (SystemKnowledgeBaseDeletionException $exception) {
             throw new ApiException('system_knowledge_protected', $exception->getMessage(), 409);
         }
 
-        $id = (int) $row->id;
+        $id = (int) $locked->id;
         $taskCount = $this->knowledgeBaseTaskCount($id);
-        if ($taskCount > 0) {
-            throw new ApiException('material_in_use', '知识库仍被任务引用，无法删除', 409, ['task_count' => $taskCount]);
+        $articleCount = Schema::hasTable('article_ai_quality_knowledge_bases')
+            ? (int) DB::table('article_ai_quality_knowledge_bases')
+                ->where('knowledge_base_id', $id)
+                ->distinct()
+                ->count('article_id')
+            : 0;
+        if ($taskCount + $articleCount > 0) {
+            throw new ApiException('material_in_use', '知识库仍被任务或文章引用，无法删除', 409, [
+                'task_count' => $taskCount,
+                'article_count' => $articleCount,
+            ]);
         }
         KnowledgeChunk::query()->where('knowledge_base_id', $id)->delete();
-        KnowledgeBase::query()->whereKey($id)->delete();
-        $this->cleanupFiles([(string) ($row->file_path ?? '')]);
+        $locked->delete();
+
+        return $this->knowledgeFilePaths((string) ($locked->file_path ?? ''));
+    }
+
+    /** @return list<string> */
+    private function knowledgeFilePaths(string $storedValue): array
+    {
+        $storedValue = trim($storedValue);
+        if ($storedValue === '') {
+            return [];
+        }
+        $decoded = json_decode($storedValue, true);
+        $paths = is_array($decoded) ? $decoded : [$storedValue];
+
+        return collect($paths)
+            ->filter(static fn (mixed $path): bool => is_string($path))
+            ->map(static fn (string $path): string => trim(str_replace('\\', '/', $path)))
+            ->filter(static fn (string $path): bool => $path !== ''
+                && ! str_starts_with($path, '/')
+                && preg_match('/^[A-Za-z]:\//', $path) !== 1
+                && ! str_contains('/'.$path.'/', '/../')
+                && (str_starts_with($path, 'knowledge-bases/') || str_starts_with($path, 'uploads/knowledge/')))
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function knowledgeBaseTaskCount(int $knowledgeBaseId): int
