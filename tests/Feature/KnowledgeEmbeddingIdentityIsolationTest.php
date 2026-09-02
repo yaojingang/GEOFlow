@@ -652,9 +652,11 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
 
     public function test_embedding_profile_migration_rolls_back_and_reapplies(): void
     {
+        $providerWidthMigration = require database_path('migrations/2026_09_02_155000_expand_knowledge_embedding_provider_columns.php');
         $profileMigration = require database_path('migrations/2026_09_02_154000_harden_knowledge_embedding_profiles.php');
         $migration = require database_path('migrations/2026_09_02_153000_add_embedding_fingerprint_to_knowledge_index.php');
 
+        $providerWidthMigration->down();
         $profileMigration->down();
         $migration->down();
         $this->assertFalse(Schema::hasColumn('knowledge_bases', 'chunk_embedding_fingerprint'));
@@ -663,6 +665,7 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
 
         $migration->up();
         $profileMigration->up();
+        $providerWidthMigration->up();
         $this->assertTrue(Schema::hasColumns('knowledge_bases', [
             'chunk_embedding_fingerprint',
             'chunk_embedding_dimensions',
@@ -679,6 +682,69 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
             'embedding_profile_version',
             'embedding_profile_digest',
         ]));
+    }
+
+    public function test_provider_width_migration_rolls_back_and_reapplies(): void
+    {
+        $migration = require database_path('migrations/2026_09_02_155000_expand_knowledge_embedding_provider_columns.php');
+
+        $migration->down();
+        $this->assertTrue(Schema::hasColumn('knowledge_bases', 'chunk_embedding_provider'));
+        $this->assertTrue(Schema::hasColumn('knowledge_chunks', 'embedding_provider'));
+        $this->assertTrue(Schema::hasColumn('knowledge_chunk_sync_rows', 'embedding_provider'));
+
+        $migration->up();
+        $this->assertTrue(Schema::hasColumn('knowledge_bases', 'chunk_embedding_provider'));
+        $this->assertTrue(Schema::hasColumn('knowledge_chunks', 'embedding_provider'));
+        $this->assertTrue(Schema::hasColumn('knowledge_chunk_sync_rows', 'embedding_provider'));
+    }
+
+    public function test_five_hundred_character_provider_url_survives_staging_and_serving(): void
+    {
+        Queue::fake();
+        Http::fake(['*' => Http::response(['data' => [['embedding' => [0.1, 0.2, 0.3]]]])]);
+        $providerUrl = 'https://system.test/'.str_repeat('A', 480);
+        $this->assertSame(500, strlen($providerUrl));
+
+        $superAdmin = $this->admin('long-provider-owner', 'super_admin');
+        $model = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => $providerUrl,
+        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $model->id],
+        );
+        $knowledgeBase = $this->knowledgeBase(['content' => '长 Provider URL 索引。']);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $this->assertTrue($coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true));
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            (string) $knowledgeBase->content,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+        $service->embedStagingBatch(
+            (int) $knowledgeBase->id,
+            $token,
+            0,
+            SystemAiIdentity::knowledgeIndex(),
+            true,
+        );
+
+        $this->assertSame(
+            $providerUrl,
+            (string) DB::table('knowledge_chunk_sync_rows')->where('sync_token', $token)->value('embedding_provider'),
+        );
+        $this->assertTrue($service->finalizeStagingSync(
+            (int) $knowledgeBase->id,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        ));
+        $this->assertSame($providerUrl, (string) $knowledgeBase->fresh()->chunk_embedding_provider);
+        $this->assertSame($providerUrl, (string) $knowledgeBase->chunks()->firstOrFail()->embedding_provider);
     }
 
     private function indexedKnowledgeBase(AiModel $model, array $vector): KnowledgeBase

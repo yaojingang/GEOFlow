@@ -23,6 +23,7 @@ class AiQualityRetrievalMigrationTest extends TestCase
             database_path('migrations/2026_08_31_120329_add_epoch_to_article_ai_quality_rollouts_table.php'),
             database_path('migrations/2026_08_31_120330_create_ai_quality_audit_events_table.php'),
             database_path('migrations/2026_09_02_154000_harden_knowledge_embedding_profiles.php'),
+            database_path('migrations/2026_09_02_155000_expand_knowledge_embedding_provider_columns.php'),
         ];
         $migrations = array_map(static fn (string $path): object => require $path, $paths);
 

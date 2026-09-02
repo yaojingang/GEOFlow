@@ -34,6 +34,18 @@ final class KnowledgeEmbeddingModelFingerprintTest extends TestCase
         $this->assertNotSame($fingerprint->configurationRevision($original), $fingerprint->configurationRevision($this->model('https://ai.example.test/v1', 'embedding-v1', 'encrypted-key-b')));
     }
 
+    public function test_provider_normalization_preserves_path_case(): void
+    {
+        $fingerprint = new KnowledgeEmbeddingModelFingerprint;
+        $upperPath = $this->model('HTTPS://AI.Example.test/Gateway/V1?token=secret', 'embedding-v1');
+        $samePath = $this->model('https://ai.example.test/Gateway/V1', 'embedding-v1');
+        $lowerPath = $this->model('https://ai.example.test/gateway/v1', 'embedding-v1');
+
+        $this->assertSame('https://ai.example.test/Gateway/V1', $fingerprint->provider($upperPath));
+        $this->assertSame($fingerprint->forModel($upperPath, 1536), $fingerprint->forModel($samePath, 1536));
+        $this->assertNotSame($fingerprint->forModel($upperPath, 1536), $fingerprint->forModel($lowerPath, 1536));
+    }
+
     private function model(string $url, string $identifier, string $encryptedKey = 'encrypted-key'): AiModel
     {
         $model = new AiModel;
