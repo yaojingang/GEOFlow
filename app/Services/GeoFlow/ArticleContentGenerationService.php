@@ -85,12 +85,41 @@ final class ArticleContentGenerationService
 
     public function deferredStream(AiModel $aiModel, string $prompt): ArticleContentStreamSession
     {
-        [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_editor');
+        $runtime = $this->resolveRuntime($aiModel, 'article_editor');
 
         $reservation = $this->reserveDailyUsage($aiModel);
         if ($reservation === null) {
             throw new RuntimeException('AI 模型不可用或已达到今日调用上限');
         }
+
+        return $this->deferredStreamWithRuntime($prompt, $runtime, $reservation);
+    }
+
+    public function deferredStreamWithReservation(
+        AiModel $aiModel,
+        string $prompt,
+        AiUsageReservation $reservation,
+    ): ArticleContentStreamSession {
+        try {
+            $runtime = $this->resolveRuntime($aiModel, 'article_editor');
+        } catch (Throwable $exception) {
+            $this->releaseDailyUsage($reservation);
+
+            throw $exception;
+        }
+
+        return $this->deferredStreamWithRuntime($prompt, $runtime, $reservation);
+    }
+
+    /**
+     * @param  array{MarkdownContentWriterAgent,string,string,string}  $runtime
+     */
+    private function deferredStreamWithRuntime(
+        string $prompt,
+        array $runtime,
+        AiUsageReservation $reservation,
+    ): ArticleContentStreamSession {
+        [$agent, $providerName, $modelId, $providerUrl] = $runtime;
 
         try {
             $upstream = $agent->stream($prompt, [], $providerName, $modelId);
@@ -154,20 +183,6 @@ final class ArticleContentGenerationService
     public function providerTimeoutSeconds(): int
     {
         return MarkdownContentWriterAgent::PROVIDER_TIMEOUT_SECONDS;
-    }
-
-    public function assertStreamReady(AiModel $aiModel): void
-    {
-        $this->resolveRuntime($aiModel, 'article_editor_preflight');
-        $usageDate = $aiModel->usage_date instanceof \DateTimeInterface
-            ? $aiModel->usage_date->format('Y-m-d')
-            : trim((string) $aiModel->usage_date);
-        $usedToday = $usageDate === now()->toDateString()
-            ? max(0, (int) $aiModel->used_today)
-            : 0;
-        if ((int) $aiModel->daily_limit > 0 && $usedToday >= (int) $aiModel->daily_limit) {
-            throw new RuntimeException('AI 模型不可用或已达到今日调用上限');
-        }
     }
 
     /**

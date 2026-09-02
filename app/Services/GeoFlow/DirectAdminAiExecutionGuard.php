@@ -73,32 +73,47 @@ final readonly class DirectAdminAiExecutionGuard
     /** @return array{model:AiModel,source:string} */
     public function resolveModel(DirectAdminAiExecutionContext $context): array
     {
-        $admin = $this->assertCurrent($context);
-        if ($context->requestedModelId !== null) {
-            $model = $this->assertModelCurrent($context, $context->requestedModelId, $admin);
-            $this->runtimeGate->assertExecutable($model, $context->capability);
-
-            return $this->selection($admin, $model);
-        }
-
-        foreach ($this->modelResolver->resolveCandidates($admin, $context->capability) as $candidate) {
+        foreach ($this->candidateSelections($context) as $selection) {
             try {
-                $model = $this->assertModelCurrent($context, $candidate, $admin);
+                $model = $this->assertModelCurrent($context, $selection['model']);
                 $this->runtimeGate->assertExecutable($model, $context->capability);
-            } catch (AiModelRuntimeEligibilityException) {
+            } catch (AiModelRuntimeEligibilityException $exception) {
+                if ($context->requestedModelId !== null) {
+                    throw $exception;
+                }
+
                 continue;
             } catch (AiModelAccessException $exception) {
-                if ($exception->getErrorCode() === AiModelAccessException::AI_MODEL_UNAVAILABLE) {
+                if ($context->requestedModelId === null
+                    && $exception->getErrorCode() === AiModelAccessException::AI_MODEL_UNAVAILABLE) {
                     continue;
                 }
 
                 throw $exception;
             }
 
-            return $this->selection($admin, $model);
+            return ['model' => $model, 'source' => $selection['source']];
         }
 
-        throw AiModelAccessException::modelUnavailable($admin);
+        throw AiModelAccessException::modelUnavailable($this->assertCurrent($context));
+    }
+
+    /** @return list<array{model:AiModel,source:string}> */
+    public function candidateSelections(DirectAdminAiExecutionContext $context): array
+    {
+        $admin = $this->assertCurrent($context);
+        if ($context->requestedModelId !== null) {
+            return [$this->selection(
+                $admin,
+                $this->assertModelCurrent($context, $context->requestedModelId, $admin),
+            )];
+        }
+
+        return $this->modelResolver
+            ->resolveCandidates($admin, $context->capability)
+            ->map(fn (AiModel $model): array => $this->selection($admin, $model))
+            ->values()
+            ->all();
     }
 
     /** @return array{model:AiModel,source:string} */

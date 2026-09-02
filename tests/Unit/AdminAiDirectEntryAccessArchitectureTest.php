@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Console\Commands\EvaluateArticleAiQualityCommand;
 use App\Http\Controllers\Admin\ArticleEditorAssistantController;
+use App\Services\GeoFlow\DirectAdminAiModelInvocationGateway;
 use PHPUnit\Framework\Attributes\Test;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -16,6 +17,7 @@ final class AdminAiDirectEntryAccessArchitectureTest extends TestCase
         foreach ([
             ArticleEditorAssistantController::class,
             EvaluateArticleAiQualityCommand::class,
+            DirectAdminAiModelInvocationGateway::class,
         ] as $class) {
             $source = $this->classSource($class);
 
@@ -34,20 +36,18 @@ final class AdminAiDirectEntryAccessArchitectureTest extends TestCase
     public function article_editor_consumes_the_lazy_stream_inside_the_guarded_invocation_lock(): void
     {
         $source = $this->methodSource(ArticleEditorAssistantController::class, 'generate');
-        $lock = strpos($source, 'acquireForInvocation(');
-        $guard = strpos($source, 'assertModelCurrent(', $lock === false ? 0 : $lock);
-        $stream = strpos($source, 'generationService->deferredStream(', $guard === false ? 0 : $guard);
+        $acquire = strpos($source, 'invocationGateway->acquire(');
+        $stream = strpos($source, 'generationService->deferredStreamWithReservation(', $acquire === false ? 0 : $acquire);
         $iteration = strpos($source, 'foreach ($stream as $event)', $stream === false ? 0 : $stream);
         $replacement = strpos($source, "'article_content_replacement'", $iteration === false ? 0 : $iteration);
         $success = strpos($source, 'streamSession->complete(', $replacement === false ? 0 : $replacement);
         $done = strpos($source, 'data: [DONE]', $success === false ? 0 : $success);
-        $release = strpos($source, 'invocationLocks->release(', $done === false ? 0 : $done);
+        $release = strpos($source, 'invocation?->close(', $done === false ? 0 : $done);
 
-        foreach ([$lock, $guard, $stream, $iteration, $replacement, $success, $done, $release] as $position) {
+        foreach ([$acquire, $stream, $iteration, $replacement, $success, $done, $release] as $position) {
             $this->assertIsInt($position);
         }
-        $this->assertLessThan($guard, $lock);
-        $this->assertLessThan($stream, $guard);
+        $this->assertLessThan($stream, $acquire);
         $this->assertLessThan($iteration, $stream);
         $this->assertLessThan($replacement, $iteration);
         $this->assertLessThan($success, $replacement);
@@ -61,19 +61,19 @@ final class AdminAiDirectEntryAccessArchitectureTest extends TestCase
     public function live_quality_reviews_are_guarded_and_locked_before_report_persistence(): void
     {
         $review = $this->methodSource(EvaluateArticleAiQualityCommand::class, 'reviewLive');
-        $lock = strpos($review, 'acquireForInvocation(');
-        $firstGuard = strpos($review, 'assertModelCurrent(', $lock === false ? 0 : $lock);
-        $provider = strpos($review, 'reviewer->', $firstGuard === false ? 0 : $firstGuard);
+        $acquire = strpos($review, 'invocationGateway->acquire(');
+        $provider = strpos($review, 'reviewer->', $acquire === false ? 0 : $acquire);
         $secondGuard = strpos($review, 'assertModelCurrent(', $provider === false ? 0 : $provider);
-        $release = strpos($review, 'invocationLocks->release(', $secondGuard === false ? 0 : $secondGuard);
+        $success = strpos($review, 'invocation->recordSuccess(', $secondGuard === false ? 0 : $secondGuard);
+        $release = strpos($review, 'invocation->close(', $success === false ? 0 : $success);
 
-        foreach ([$lock, $firstGuard, $provider, $secondGuard, $release] as $position) {
+        foreach ([$acquire, $provider, $secondGuard, $success, $release] as $position) {
             $this->assertIsInt($position);
         }
-        $this->assertLessThan($firstGuard, $lock);
-        $this->assertLessThan($provider, $firstGuard);
+        $this->assertLessThan($provider, $acquire);
         $this->assertLessThan($secondGuard, $provider);
-        $this->assertLessThan($release, $secondGuard);
+        $this->assertLessThan($success, $secondGuard);
+        $this->assertLessThan($release, $success);
         $this->assertStringContainsString('finally', $review);
 
         foreach (['handle', 'handleArticleComparison'] as $method) {
@@ -103,9 +103,29 @@ final class AdminAiDirectEntryAccessArchitectureTest extends TestCase
         $this->assertStringContainsString('finally', $publisher);
 
         $failure = $this->methodSource(EvaluateArticleAiQualityCommand::class, 'failLive');
-        $this->assertStringContainsString('$ownedCheckpointPath', $failure);
-        $this->assertStringNotContainsString(".'.json'", $failure);
-        $this->assertStringNotContainsString(".'.md'", $failure);
+        $this->assertStringNotContainsString('File::delete(', $failure);
+    }
+
+    #[Test]
+    public function direct_admin_invocations_recheck_and_reserve_each_candidate_inside_the_model_lock(): void
+    {
+        $source = $this->methodSource(DirectAdminAiModelInvocationGateway::class, 'acquire');
+        $lock = strpos($source, 'acquireForInvocation(');
+        $guard = strpos($source, 'assertModelCurrent(', $lock === false ? 0 : $lock);
+        $runtime = strpos($source, 'runtimeGate->assertExecutable(', $guard === false ? 0 : $guard);
+        $reservation = strpos($source, 'usageQuota->reserveModel(', $runtime === false ? 0 : $runtime);
+        $return = strpos($source, 'new DirectAdminAiModelInvocation(', $reservation === false ? 0 : $reservation);
+        $release = strpos($source, 'invocationLocks->release(', $lock === false ? 0 : $lock);
+
+        foreach ([$lock, $guard, $runtime, $reservation, $return, $release] as $position) {
+            $this->assertIsInt($position);
+        }
+        $this->assertLessThan($guard, $lock);
+        $this->assertLessThan($runtime, $guard);
+        $this->assertLessThan($reservation, $runtime);
+        $this->assertLessThan($return, $reservation);
+        $this->assertStringContainsString('$explicit', $source);
+        $this->assertStringContainsString('foreach (', $source);
     }
 
     private function classSource(string $class): string

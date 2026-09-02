@@ -8,11 +8,11 @@ use App\Http\Controllers\Controller;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Title;
-use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
 use App\Services\GeoFlow\ArticleContentGenerationService;
 use App\Services\GeoFlow\ArticleContentPromptRenderer;
 use App\Services\GeoFlow\DirectAdminAiExecutionGuard;
+use App\Services\GeoFlow\DirectAdminAiModelInvocationGateway;
 use App\Services\GeoFlow\KnowledgeRetrievalService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -32,7 +32,7 @@ final class ArticleEditorAssistantController extends Controller
         private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
         private readonly ArticleCitationMarkerCleaner $citationMarkerCleaner,
         private readonly DirectAdminAiExecutionGuard $executionGuard,
-        private readonly AiModelInvocationLock $invocationLocks,
+        private readonly DirectAdminAiModelInvocationGateway $invocationGateway,
     ) {}
 
     public function titles(Request $request): JsonResponse
@@ -155,15 +155,19 @@ final class ArticleEditorAssistantController extends Controller
         );
 
         $response = response()->stream(function () use ($aiModel, $contentPrompt, $executionContext, $knowledgeBase): iterable {
-            $invocationLock = null;
+            $invocation = null;
             $streamSession = null;
             try {
-                $invocationLock = $this->invocationLocks->acquireForInvocation(
-                    (int) $aiModel->id,
+                $invocation = $this->invocationGateway->acquire(
+                    $executionContext,
                     $this->generationService->providerTimeoutSeconds() + 60,
                 );
-                $aiModel = $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
-                $streamSession = $this->generationService->deferredStream($aiModel, $contentPrompt);
+                $aiModel = $invocation->model;
+                $streamSession = $this->generationService->deferredStreamWithReservation(
+                    $aiModel,
+                    $contentPrompt,
+                    $invocation->reservation,
+                );
                 $stream = $streamSession->stream;
                 foreach ($stream as $event) {
                     $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
@@ -202,7 +206,7 @@ final class ArticleEditorAssistantController extends Controller
                 yield $this->safeSseError('ai_model_unavailable');
             } finally {
                 $streamSession?->abort();
-                $this->invocationLocks->release($invocationLock);
+                $invocation?->close();
             }
         }, headers: ['Content-Type' => 'text/event-stream']);
         $response->headers->set('Cache-Control', 'no-cache, no-transform');

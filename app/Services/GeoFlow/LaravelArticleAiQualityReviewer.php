@@ -5,7 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Ai\Agents\ArticleQualityJsonReviewerAgent;
 use App\Ai\Agents\ArticleQualityReviewerAgent;
 use App\Ai\Agents\LegacyArticleQualityReviewerAgent;
-use App\Contracts\VersionAwareArticleAiQualityReviewer;
+use App\Contracts\PreReservedArticleAiQualityReviewer;
 use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Models\AiModel;
 use App\Services\Outbound\OutboundRequestFailedException;
@@ -15,7 +15,7 @@ use JsonException;
 use RuntimeException;
 use Throwable;
 
-final readonly class LaravelArticleAiQualityReviewer implements VersionAwareArticleAiQualityReviewer
+final readonly class LaravelArticleAiQualityReviewer implements PreReservedArticleAiQualityReviewer
 {
     public function __construct(
         private ApiKeyCrypto $apiKeyCrypto,
@@ -55,6 +55,54 @@ final readonly class LaravelArticleAiQualityReviewer implements VersionAwareArti
 
             throw $exception;
         }
+
+        return $this->reviewWithReservation(
+            $model,
+            $instructions,
+            $timeoutSeconds,
+            $executionVersion,
+            $reservation,
+        );
+    }
+
+    public function reviewWithinReservedVersion(
+        AiModel $model,
+        string $instructions,
+        int $timeoutSeconds,
+        string $executionVersion,
+        AiUsageReservation $reservation,
+    ): array {
+        if (! in_array($executionVersion, ['legacy', 'fast_v2'], true)) {
+            $this->usageQuota->releaseModel($reservation);
+
+            throw new RuntimeException('ai_quality_execution_version_invalid');
+        }
+
+        try {
+            $this->circuitBreaker->beforeRequest($model);
+        } catch (Throwable $exception) {
+            $this->usageQuota->releaseModel($reservation);
+
+            throw $exception;
+        }
+
+        return $this->reviewWithReservation(
+            $model,
+            $instructions,
+            $timeoutSeconds,
+            $executionVersion,
+            $reservation,
+        );
+    }
+
+    /** @return array<string,mixed> */
+    private function reviewWithReservation(
+        AiModel $model,
+        string $instructions,
+        int $timeoutSeconds,
+        string $executionVersion,
+        AiUsageReservation $reservation,
+    ): array {
         $externalRequestAttempted = false;
 
         try {

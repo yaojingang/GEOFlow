@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Data\Ai\DirectAdminAiExecutionContext;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -15,6 +16,7 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Services\Admin\AdminAiModelMutationService;
 use App\Services\GeoFlow\ArticleContentGenerationService;
+use App\Services\GeoFlow\DirectAdminAiInvocationBoundaryHook;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Database\Events\QueryExecuted;
@@ -330,6 +332,56 @@ class AdminArticleAssistantTest extends TestCase
         $this->assertSame(1, (int) $shared->fresh()->total_used);
     }
 
+    public function test_ai_generation_skips_a_personal_candidate_whose_last_quota_is_consumed_before_lock(): void
+    {
+        MarkdownContentWriterAgent::fake(['## 竞态后共享模型生成'])->preventStrayPrompts();
+        $provider = $this->namedAdmin('assistant_race_shared_provider', 'super_admin');
+        $admin = $this->createAdmin('assistant_quota_race');
+        $admin->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $personal = $this->createModel(['name' => '仅余一次个人模型', 'daily_limit' => 1]);
+        $this->modelOwner = $provider;
+        $shared = $this->createModel(['name' => '竞态共享模型', 'model_id' => 'race-shared-chat']);
+        $state = (object) ['consumed' => false];
+        $this->app->instance(
+            DirectAdminAiInvocationBoundaryHook::class,
+            new class((int) $personal->id, $state) extends DirectAdminAiInvocationBoundaryHook
+            {
+                public function __construct(
+                    private readonly int $personalModelId,
+                    private readonly object $state,
+                ) {}
+
+                public function beforeCandidateLock(DirectAdminAiExecutionContext $context, AiModel $candidate): void
+                {
+                    if ($this->state->consumed || (int) $candidate->id !== $this->personalModelId) {
+                        return;
+                    }
+                    $this->state->consumed = true;
+                    DB::table('ai_models')->where('id', $this->personalModelId)->update([
+                        'used_today' => 1,
+                        'total_used' => 1,
+                        'usage_date' => now()->toDateString(),
+                    ]);
+                }
+            },
+        );
+        $prompt = $this->createPrompt();
+        $knowledgeBase = $this->createKnowledgeBase();
+
+        $response = $this->actingAs($admin, 'admin')->postJson(route('admin.articles.editor.generate'), [
+            'title' => '额度竞态测试',
+            'knowledge_base_id' => $knowledgeBase->id,
+            'prompt_id' => $prompt->id,
+        ]);
+
+        $response->assertOk();
+        $this->assertStringContainsString('竞态后共享模型生成', $response->streamedContent());
+        $this->assertTrue($state->consumed);
+        $this->assertSame(1, (int) $personal->fresh()->total_used);
+        $this->assertSame(1, (int) $shared->fresh()->used_today);
+        $this->assertSame(1, (int) $shared->fresh()->total_used);
+    }
+
     public function test_ai_generation_rejects_system_and_ordinary_admin_peer_models_before_streaming(): void
     {
         MarkdownContentWriterAgent::fake()->preventStrayPrompts();
@@ -422,7 +474,7 @@ class AdminArticleAssistantTest extends TestCase
                 return;
             }
             $adminReads++;
-            if ($adminReads === 4) {
+            if ($adminReads === 5) {
                 $revoked = true;
                 DB::table('admins')->where('id', $admin->id)->increment('ai_config_access_version');
             }
@@ -502,7 +554,7 @@ class AdminArticleAssistantTest extends TestCase
                 return;
             }
             $adminReads++;
-            if ($adminReads === 7) {
+            if ($adminReads === 8) {
                 $revoked = true;
                 DB::table('admins')->where('id', $admin->id)->increment('ai_config_access_version');
             }
