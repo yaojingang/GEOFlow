@@ -13,9 +13,11 @@ use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelMutationService;
 use App\Services\GeoFlow\ArticleContentGenerationService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -278,6 +280,254 @@ class AdminArticleAssistantTest extends TestCase
         );
     }
 
+    public function test_ai_generation_automatically_prefers_personal_then_uses_shared_fallback(): void
+    {
+        MarkdownContentWriterAgent::fake([
+            '## 个人模型生成',
+            '## 共享模型生成',
+        ])->preventStrayPrompts();
+        $provider = $this->namedAdmin('assistant_shared_provider', 'super_admin');
+        $admin = $this->createAdmin('assistant_personal_first');
+        $admin->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $personal = $this->createModel(['name' => '个人模型', 'failover_priority' => 100]);
+        $this->modelOwner = $provider;
+        $shared = $this->createModel(['name' => '共享模型', 'model_id' => 'shared-chat', 'failover_priority' => 1]);
+        $prompt = $this->createPrompt();
+        $knowledgeBase = $this->createKnowledgeBase();
+        $payload = [
+            'title' => '自动模型选择',
+            'knowledge_base_id' => $knowledgeBase->id,
+            'prompt_id' => $prompt->id,
+        ];
+
+        $personalResponse = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.generate'), $payload);
+        $personalResponse->assertOk();
+        $this->assertStringContainsString('个人模型生成', $personalResponse->streamedContent());
+        $this->assertSame(1, (int) $personal->fresh()->total_used);
+        $this->assertSame(0, (int) $shared->fresh()->total_used);
+
+        $personal->forceFill(['status' => 'inactive'])->save();
+        $sharedResponse = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.generate'), $payload);
+        $sharedResponse->assertOk();
+        $this->assertStringContainsString('共享模型生成', $sharedResponse->streamedContent());
+        $this->assertSame(1, (int) $shared->fresh()->total_used);
+    }
+
+    public function test_ai_generation_rejects_system_and_ordinary_admin_peer_models_before_streaming(): void
+    {
+        MarkdownContentWriterAgent::fake()->preventStrayPrompts();
+        $ordinary = $this->createAdmin('assistant_isolated_ordinary');
+        $system = $this->createModel();
+        $system->forceFill(['access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY])->save();
+        $embedding = $this->createModel(['name' => '个人向量模型', 'model_type' => 'embedding']);
+        $superAdmin = $this->namedAdmin('assistant_isolated_super', 'super_admin');
+        $prompt = $this->createPrompt();
+        $knowledgeBase = $this->createKnowledgeBase();
+        $payload = [
+            'title' => '隔离模型测试',
+            'knowledge_base_id' => $knowledgeBase->id,
+            'prompt_id' => $prompt->id,
+        ];
+
+        foreach ([
+            [$ordinary, $system],
+            [$ordinary, $embedding],
+            [$superAdmin, $this->createModel(['name' => '普通管理员私有模型'])],
+        ] as [$actor, $forbiddenModel]) {
+            $this->actingAs($actor, 'admin')
+                ->postJson(route('admin.articles.editor.generate'), $payload + [
+                    'ai_model_id' => $forbiddenModel->id,
+                ])
+                ->assertNotFound()
+                ->assertJsonPath('error_code', 'ai_model_not_accessible');
+        }
+
+        MarkdownContentWriterAgent::assertNeverPrompted();
+    }
+
+    public function test_ai_generation_stops_before_the_first_event_when_access_is_revoked_during_lazy_stream_start(): void
+    {
+        $admin = $this->createAdmin('assistant_stream_revoked');
+        $model = $this->createModel([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('stream-secret-key'),
+            'api_url' => 'https://stream-secret.example.test/v1',
+        ]);
+        MarkdownContentWriterAgent::fake(function () use ($admin): string {
+            Admin::query()->whereKey($admin->id)->increment('ai_config_access_version');
+
+            return '此内容不得输出';
+        })->preventStrayPrompts();
+        $prompt = $this->createPrompt();
+        $knowledgeBase = $this->createKnowledgeBase();
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.generate'), [
+                'title' => '流式撤权',
+                'knowledge_base_id' => $knowledgeBase->id,
+                'prompt_id' => $prompt->id,
+                'ai_model_id' => $model->id,
+            ]);
+
+        $response->assertOk();
+        $streamed = $response->streamedContent();
+        $this->assertStringContainsString('"type":"error"', $streamed);
+        $this->assertStringContainsString('ai_config_access_revoked', $streamed);
+        $this->assertStringNotContainsString('此内容不得输出', $streamed);
+        $this->assertStringNotContainsString('article_content_replacement', $streamed);
+        $this->assertStringNotContainsString('[DONE]', $streamed);
+        $this->assertStringNotContainsString('stream-secret-key', $streamed);
+        $this->assertStringNotContainsString('stream-secret.example.test', $streamed);
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+        $this->assertSame(0, (int) $knowledgeBase->fresh()->usage_count);
+    }
+
+    public function test_ai_generation_stops_subsequent_deltas_and_finalization_when_access_is_revoked_midstream(): void
+    {
+        $admin = $this->createAdmin('assistant_midstream_revoked');
+        $model = $this->createModel();
+        MarkdownContentWriterAgent::fake(['第一段 第二段 第三段'])->preventStrayPrompts();
+        $prompt = $this->createPrompt();
+        $knowledgeBase = $this->createKnowledgeBase();
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.generate'), [
+                'title' => '流式中途撤权',
+                'knowledge_base_id' => $knowledgeBase->id,
+                'prompt_id' => $prompt->id,
+                'ai_model_id' => $model->id,
+            ]);
+
+        $adminReads = 0;
+        $revoked = false;
+        DB::listen(function (QueryExecuted $query) use ($admin, &$adminReads, &$revoked): void {
+            $sql = strtolower($query->sql);
+            if ($revoked || (! str_contains($sql, 'from "admins"') && ! str_contains($sql, 'from `admins`'))) {
+                return;
+            }
+            $adminReads++;
+            if ($adminReads === 4) {
+                $revoked = true;
+                DB::table('admins')->where('id', $admin->id)->increment('ai_config_access_version');
+            }
+        });
+
+        $response->assertOk();
+        $streamed = $response->streamedContent();
+        $this->assertTrue($revoked);
+        $this->assertStringContainsString(trim((string) json_encode('第一段'), '"'), $streamed);
+        $this->assertStringNotContainsString(trim((string) json_encode('第二段'), '"'), $streamed);
+        $this->assertStringContainsString('ai_config_access_revoked', $streamed);
+        $this->assertStringNotContainsString('article_content_replacement', $streamed);
+        $this->assertStringNotContainsString('[DONE]', $streamed);
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+        $this->assertSame(0, (int) $knowledgeBase->fresh()->usage_count);
+    }
+
+    public function test_ai_generation_holds_the_model_mutation_lock_for_the_lazy_stream_lifetime_and_releases_it(): void
+    {
+        $admin = $this->createAdmin('assistant_stream_lock');
+        $model = $this->createModel();
+        $blockedMutation = null;
+        MarkdownContentWriterAgent::fake(function () use ($admin, $model, &$blockedMutation): string {
+            $blockedMutation = app(AdminAiModelMutationService::class)->update(
+                $admin,
+                (int) $model->id,
+                ['name' => 'blocked during editor stream'],
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+            );
+
+            return '锁内生成内容';
+        })->preventStrayPrompts();
+        $prompt = $this->createPrompt();
+        $knowledgeBase = $this->createKnowledgeBase();
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.generate'), [
+                'title' => '锁测试',
+                'knowledge_base_id' => $knowledgeBase->id,
+                'prompt_id' => $prompt->id,
+                'ai_model_id' => $model->id,
+            ]);
+        $response->assertOk();
+        $this->assertStringContainsString('[DONE]', $response->streamedContent());
+
+        $this->assertNotNull($blockedMutation);
+        $this->assertFalse($blockedMutation->succeeded());
+        $this->assertSame('task', $blockedMutation->error);
+        $this->assertTrue(app(AdminAiModelMutationService::class)->update(
+            $admin,
+            (int) $model->id,
+            ['name' => 'allowed after editor stream'],
+            AiModel::ACCESS_SCOPE_USER_CONTENT,
+        )->succeeded());
+    }
+
+    public function test_ai_generation_rechecks_access_after_provider_success_before_final_replacement_and_knowledge_usage(): void
+    {
+        $admin = $this->createAdmin('assistant_final_revoked');
+        $model = $this->createModel();
+        MarkdownContentWriterAgent::fake(['provider 已完整返回'])->preventStrayPrompts();
+        $prompt = $this->createPrompt();
+        $knowledgeBase = $this->createKnowledgeBase();
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.generate'), [
+                'title' => '最终落库前撤权',
+                'knowledge_base_id' => $knowledgeBase->id,
+                'prompt_id' => $prompt->id,
+                'ai_model_id' => $model->id,
+            ]);
+        $revoked = false;
+        DB::listen(function (QueryExecuted $query) use ($admin, &$revoked): void {
+            $sql = strtolower($query->sql);
+            if ($revoked || ! str_starts_with($sql, 'update "ai_models"') || ! str_contains($sql, 'total_used')) {
+                return;
+            }
+            $revoked = true;
+            DB::table('admins')->where('id', $admin->id)->increment('ai_config_access_version');
+        });
+
+        $response->assertOk();
+        $streamed = $response->streamedContent();
+        $this->assertTrue($revoked);
+        $this->assertStringContainsString('ai_config_access_revoked', $streamed);
+        $this->assertStringNotContainsString('article_content_replacement', $streamed);
+        $this->assertStringNotContainsString('[DONE]', $streamed);
+        $this->assertSame(0, (int) $knowledgeBase->fresh()->usage_count);
+        $this->assertSame(1, (int) $model->fresh()->total_used, 'A completed provider call remains attributable for quota and cost accounting.');
+    }
+
+    public function test_ai_generation_releases_the_invocation_lock_after_a_stream_exception(): void
+    {
+        $admin = $this->createAdmin('assistant_stream_exception_lock');
+        $model = $this->createModel();
+        MarkdownContentWriterAgent::fake(
+            fn (): never => throw new \RuntimeException('secret provider failure'),
+        )->preventStrayPrompts();
+        $prompt = $this->createPrompt();
+        $knowledgeBase = $this->createKnowledgeBase();
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.articles.editor.generate'), [
+                'title' => '异常锁释放',
+                'knowledge_base_id' => $knowledgeBase->id,
+                'prompt_id' => $prompt->id,
+                'ai_model_id' => $model->id,
+            ]);
+        $response->assertOk();
+        $streamed = $response->streamedContent();
+        $this->assertStringContainsString('ai_model_unavailable', $streamed);
+        $this->assertStringNotContainsString('secret provider failure', $streamed);
+        $this->assertTrue(app(AdminAiModelMutationService::class)->update(
+            $admin,
+            (int) $model->id,
+            ['name' => 'allowed after stream exception'],
+            AiModel::ACCESS_SCOPE_USER_CONTENT,
+        )->succeeded());
+    }
+
     public function test_ai_generation_reserves_daily_quota_atomically(): void
     {
         $model = $this->createModel(['daily_limit' => 1]);
@@ -471,16 +721,21 @@ class AdminArticleAssistantTest extends TestCase
 
     private function createAdmin(string $suffix): Admin
     {
-        $this->modelOwner = Admin::query()->create([
-            'username' => 'article_'.$suffix,
-            'password' => 'secret-123',
-            'email' => $suffix.'@example.com',
-            'display_name' => 'Article Assistant Admin',
-            'role' => 'admin',
-            'status' => 'active',
-        ]);
+        $this->modelOwner = $this->namedAdmin('article_'.$suffix, 'admin', $suffix.'@example.com');
 
         return $this->modelOwner;
+    }
+
+    private function namedAdmin(string $username, string $role, ?string $email = null): Admin
+    {
+        return Admin::query()->create([
+            'username' => $username,
+            'password' => 'secret-123',
+            'email' => $email ?? $username.'@example.com',
+            'display_name' => 'Article Assistant Admin',
+            'role' => $role,
+            'status' => 'active',
+        ]);
     }
 
     private function createPrompt(array $overrides = []): Prompt

@@ -3,9 +3,11 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Exceptions\AiModelAccessException;
 use App\Models\AiModel;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Closure;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\StreamableAgentResponse;
@@ -51,8 +53,11 @@ final class ArticleContentGenerationService
         return $response;
     }
 
-    public function stream(AiModel $aiModel, string $prompt): StreamableAgentResponse
-    {
+    public function stream(
+        AiModel $aiModel,
+        string $prompt,
+        ?Closure $beforeSuccess = null,
+    ): StreamableAgentResponse {
         [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_editor');
 
         $reservation = $this->reserveDailyUsage($aiModel);
@@ -74,7 +79,7 @@ final class ArticleContentGenerationService
 
         return new StreamableAgentResponse(
             $upstream->invocationId,
-            function () use ($upstream, $reservation, $providerUrl): iterable {
+            function () use ($upstream, $reservation, $providerUrl, $beforeSuccess): iterable {
                 $completed = false;
 
                 try {
@@ -82,8 +87,21 @@ final class ArticleContentGenerationService
                         yield $event;
                     }
 
+                    if (OpenAiRuntimeProvider::normalizeGeneratedText((string) ($upstream->text ?? '')) === '') {
+                        $this->releaseDailyUsage($reservation);
+                        $completed = true;
+
+                        return;
+                    }
+
+                    $beforeSuccess?->__invoke();
+                    $this->recordSuccessfulUsage($reservation);
                     $completed = true;
                 } catch (Throwable $exception) {
+                    if ($exception instanceof AiModelAccessException) {
+                        throw $exception;
+                    }
+
                     throw new RuntimeException(
                         'AI 生成失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl),
                         0,
@@ -94,14 +112,6 @@ final class ArticleContentGenerationService
                         $this->releaseDailyUsage($reservation);
                     }
                 }
-
-                if (OpenAiRuntimeProvider::normalizeGeneratedText((string) ($upstream->text ?? '')) === '') {
-                    $this->releaseDailyUsage($reservation);
-
-                    return;
-                }
-
-                $this->recordSuccessfulUsage($reservation);
             },
             new Meta($providerName, $modelId),
         );
@@ -120,6 +130,20 @@ final class ArticleContentGenerationService
     public function providerTimeoutSeconds(): int
     {
         return MarkdownContentWriterAgent::PROVIDER_TIMEOUT_SECONDS;
+    }
+
+    public function assertStreamReady(AiModel $aiModel): void
+    {
+        $this->resolveRuntime($aiModel, 'article_editor_preflight');
+        $usageDate = $aiModel->usage_date instanceof \DateTimeInterface
+            ? $aiModel->usage_date->format('Y-m-d')
+            : trim((string) $aiModel->usage_date);
+        $usedToday = $usageDate === now()->toDateString()
+            ? max(0, (int) $aiModel->used_today)
+            : 0;
+        if ((int) $aiModel->daily_limit > 0 && $usedToday >= (int) $aiModel->daily_limit) {
+            throw new RuntimeException('AI 模型不可用或已达到今日调用上限');
+        }
     }
 
     /**

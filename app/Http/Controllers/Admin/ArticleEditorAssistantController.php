@@ -4,14 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\AiModelAccessException;
 use App\Http\Controllers\Controller;
-use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Title;
-use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
 use App\Services\GeoFlow\ArticleContentGenerationService;
 use App\Services\GeoFlow\ArticleContentPromptRenderer;
+use App\Services\GeoFlow\DirectAdminAiExecutionGuard;
 use App\Services\GeoFlow\KnowledgeRetrievalService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -19,7 +19,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
-use Laravel\Ai\Responses\StreamedAgentResponse;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
@@ -31,7 +30,8 @@ final class ArticleEditorAssistantController extends Controller
         private readonly ArticleContentGenerationService $generationService,
         private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
         private readonly ArticleCitationMarkerCleaner $citationMarkerCleaner,
-        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
+        private readonly DirectAdminAiExecutionGuard $executionGuard,
+        private readonly AiModelInvocationLock $invocationLocks,
     ) {}
 
     public function titles(Request $request): JsonResponse
@@ -95,14 +95,9 @@ final class ArticleEditorAssistantController extends Controller
                 Rule::exists('prompts', 'id')->where(fn ($query) => $query->where('type', 'content')),
             ],
             'ai_model_id' => [
-                'required',
+                'nullable',
                 'integer',
-                Rule::exists('ai_models', 'id')->where(fn ($query) => $query
-                    ->where('status', 'active')
-                    ->where(fn ($modelQuery) => $modelQuery
-                        ->whereNull('model_type')
-                        ->orWhere('model_type', '')
-                        ->orWhere('model_type', 'chat'))),
+                'min:1',
             ],
         ]);
 
@@ -110,20 +105,25 @@ final class ArticleEditorAssistantController extends Controller
             ->whereKey((int) $validated['knowledge_base_id'])
             ->firstOrFail(['id']);
         $prompt = Prompt::query()->whereKey((int) $validated['prompt_id'])->where('type', 'content')->firstOrFail();
-        $aiModel = AiModel::query()
-            ->whereKey((int) $validated['ai_model_id'])
-            ->where('status', 'active')
-            ->where(function (Builder $query): void {
-                $query->whereNull('model_type')->orWhere('model_type', '')->orWhere('model_type', 'chat');
-            })
-            ->firstOrFail();
         try {
-            $this->adminAiModelAccessResolver->assertUsable($request->user('admin'), $aiModel);
+            $executionContext = $this->executionGuard->freeze(
+                $request->user('admin'),
+                'article_editor',
+                (int) $knowledgeBase->id,
+                requestedModelId: isset($validated['ai_model_id']) ? (int) $validated['ai_model_id'] : null,
+            );
+            $selection = $this->executionGuard->resolveModel($executionContext);
+            $aiModel = $selection['model'];
+            $this->generationService->assertStreamReady($aiModel);
         } catch (AiModelAccessException $exception) {
             return response()->json([
                 'message' => $exception->getErrorCode(),
                 'error_code' => $exception->getErrorCode(),
             ], 404);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (Throwable) {
+            return response()->json(['message' => __('admin.article_assistant.generate.failed')], 500);
         }
 
         $knowledgeContext = $this->knowledgeRetrievalService->retrieveContext(
@@ -149,53 +149,69 @@ final class ArticleEditorAssistantController extends Controller
             $knowledgeContext,
         );
 
-        try {
-            $stream = $this->generationService->stream($aiModel, $contentPrompt);
-        } catch (RuntimeException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
-        } catch (Throwable $exception) {
-            report($exception);
-
-            return response()->json(['message' => __('admin.article_assistant.generate.failed')], 500);
-        }
-
-        $stream->then(function (StreamedAgentResponse $response) use ($aiModel, $knowledgeBase): void {
-            if (trim((string) ($response->text ?? '')) === '') {
-                return;
-            }
-
+        $response = response()->stream(function () use ($aiModel, $contentPrompt, $executionContext, $knowledgeBase): iterable {
+            $invocationLock = null;
             try {
-                KnowledgeBase::query()->whereKey((int) $knowledgeBase->id)->update([
-                    'usage_count' => DB::raw('COALESCE(usage_count,0)+1'),
-                    'updated_at' => now(),
-                ]);
-            } catch (Throwable $exception) {
-                report($exception);
-                Log::warning('Article assistant knowledge usage statistics update failed.', [
-                    'knowledge_base_id' => (int) $knowledgeBase->id,
+                $invocationLock = $this->invocationLocks->acquireForInvocation(
+                    (int) $aiModel->id,
+                    $this->generationService->providerTimeoutSeconds() + 60,
+                );
+                $aiModel = $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                $stream = $this->generationService->stream(
+                    $aiModel,
+                    $contentPrompt,
+                    fn () => $this->executionGuard->assertModelCurrent($executionContext, $aiModel),
+                );
+                foreach ($stream as $event) {
+                    $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                    yield 'data: '.($event)."\n\n";
+                }
+
+                $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                $content = $this->citationMarkerCleaner->cleanContent((string) $stream->text);
+                if ($content !== '') {
+                    DB::transaction(function () use ($executionContext, $aiModel, $knowledgeBase): void {
+                        $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                        KnowledgeBase::query()->whereKey((int) $knowledgeBase->id)->increment('usage_count');
+                        $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                    });
+                }
+                $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                $payload = json_encode([
+                    'type' => 'article_content_replacement',
+                    'content' => $content,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                if (is_string($payload)) {
+                    yield 'data: '.$payload."\n\n";
+                }
+
+                $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                yield "data: [DONE]\n\n";
+            } catch (AiModelAccessException $exception) {
+                yield $this->safeSseError($exception->getErrorCode());
+            } catch (Throwable) {
+                Log::warning('Article assistant stream stopped safely.', [
+                    'execution' => $executionContext->toSafeArray(),
                     'ai_model_id' => (int) $aiModel->id,
                 ]);
+                yield $this->safeSseError('ai_model_unavailable');
+            } finally {
+                $this->invocationLocks->release($invocationLock);
             }
-        });
-
-        $response = response()->stream(function () use ($stream): iterable {
-            foreach ($stream as $event) {
-                yield 'data: '.($event)."\n\n";
-            }
-
-            $payload = json_encode([
-                'type' => 'article_content_replacement',
-                'content' => $this->citationMarkerCleaner->cleanContent((string) $stream->text),
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            if (is_string($payload)) {
-                yield 'data: '.$payload."\n\n";
-            }
-
-            yield "data: [DONE]\n\n";
         }, headers: ['Content-Type' => 'text/event-stream']);
         $response->headers->set('Cache-Control', 'no-cache, no-transform');
         $response->headers->set('X-Accel-Buffering', 'no');
 
         return $response;
+    }
+
+    private function safeSseError(string $errorCode): string
+    {
+        $payload = json_encode([
+            'type' => 'error',
+            'error_code' => $errorCode,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return 'data: '.(is_string($payload) ? $payload : '{"type":"error","error_code":"ai_model_unavailable"}')."\n\n";
     }
 }

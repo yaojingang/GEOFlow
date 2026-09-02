@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Contracts\ArticleAiQualityReviewer;
+use App\Models\Admin;
 use App\Models\AiModel;
+use App\Services\Admin\AdminAiModelMutationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
@@ -74,7 +76,8 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
             '--output' => $basePath,
         ])->assertSuccessful();
 
-        $report = json_decode((string) File::get($basePath.'.json'), true, flags: JSON_THROW_ON_ERROR);
+        $reportJson = (string) File::get($basePath.'.json');
+        $report = json_decode($reportJson, true, flags: JSON_THROW_ON_ERROR);
         $this->assertEquals(1.0, $report['metrics']['safe_false_block_rate']);
         $this->assertFalse($report['production_gate_ready']);
     }
@@ -136,12 +139,17 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
             }
         };
         $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $admin = $this->admin('live-evaluation-owner');
         $model = AiModel::query()->create([
             'name' => 'Live evaluation fake model',
             'model_id' => 'live-evaluation-fake-model',
             'model_type' => 'chat',
             'status' => 'active',
         ]);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $directory = storage_path('framework/testing/ai-quality-evaluation-live');
         File::ensureDirectoryExists($directory);
         $datasetPath = $directory.'/dataset.json';
@@ -175,6 +183,7 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
             '--dataset' => $datasetPath,
             '--output' => $basePath,
             '--live' => true,
+            '--admin' => $admin->id,
             '--model' => $model->id,
         ])->assertSuccessful();
 
@@ -189,5 +198,290 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         );
         $this->assertCount(2, $reviewer->instructions);
         $this->assertStringContainsString('fallback_sampled', $reviewer->instructions[1]);
+    }
+
+    public function test_live_evaluation_requires_an_active_execution_admin_before_reviewer_or_output(): void
+    {
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-admin-required');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+        ])->assertFailed();
+
+        $this->assertSame([], $reviewer->modelIds);
+        $this->assertFileDoesNotExist($basePath.'.json');
+        $this->assertFileDoesNotExist($basePath.'.md');
+
+        $inactive = $this->admin('live-inactive-admin');
+        $model = $this->model($inactive, 'inactive-admin-model');
+        $inactive->forceFill(['status' => 'inactive'])->save();
+        [$inactiveDataset, $inactiveBase] = $this->liveFixture('live-inactive-admin');
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $inactiveDataset,
+            '--output' => $inactiveBase,
+            '--live' => true,
+            '--admin' => $inactive->id,
+            '--model' => $model->id,
+        ])->assertFailed();
+        $this->assertSame([], $reviewer->modelIds);
+        $this->assertFileDoesNotExist($inactiveBase.'.json');
+        $this->assertFileDoesNotExist($inactiveBase.'.md');
+    }
+
+    public function test_live_evaluation_automatically_prefers_the_admins_personal_model_over_shared_fallback(): void
+    {
+        $provider = $this->admin('live-shared-provider');
+        $admin = $this->admin('live-personal-consumer', 'admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $shared = $this->model($provider, 'shared-model', 1);
+        $personal = $this->model($admin, 'personal-model', 100);
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-personal-first');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+        ])->assertSuccessful();
+
+        $this->assertSame([$personal->id], $reviewer->modelIds);
+        $this->assertNotSame($shared->id, $reviewer->modelIds[0]);
+        $reportJson = (string) File::get($basePath.'.json');
+        $report = json_decode($reportJson, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($admin->id, $report['execution']['admin_id']);
+        $this->assertSame($personal->id, $report['model_id']);
+        $this->assertSame('personal', $report['execution']['model_source']);
+        $this->assertArrayNotHasKey('api_key', $report['execution']);
+        $this->assertArrayNotHasKey('api_url', $report['execution']);
+        $this->assertStringNotContainsString('test-secret-', $reportJson);
+        $this->assertStringNotContainsString('secret.example.test', $reportJson);
+
+        $personal->forceFill(['status' => 'inactive'])->save();
+        [$fallbackDataset, $fallbackBase] = $this->liveFixture('live-shared-fallback');
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $fallbackDataset,
+            '--output' => $fallbackBase,
+            '--live' => true,
+            '--admin' => $admin->id,
+        ])->assertSuccessful();
+        $fallbackReport = json_decode((string) File::get($fallbackBase.'.json'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame([$personal->id, $shared->id], $reviewer->modelIds);
+        $this->assertSame($shared->id, $fallbackReport['model_id']);
+        $this->assertSame('shared', $fallbackReport['execution']['model_source']);
+    }
+
+    public function test_live_evaluation_rejects_a_peer_or_system_model_before_reviewer_or_output(): void
+    {
+        $admin = $this->admin('live-isolated-admin', 'admin');
+        $peer = $this->admin('live-peer-admin', 'admin');
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+
+        foreach ([
+            'peer' => $this->model($peer, 'peer-model'),
+            'system' => $this->model($admin, 'system-model', scope: AiModel::ACCESS_SCOPE_SYSTEM_ONLY),
+            'embedding' => tap($this->model($admin, 'embedding-model'), static function (AiModel $model): void {
+                $model->forceFill(['model_type' => 'embedding'])->save();
+            }),
+        ] as $suffix => $model) {
+            [$datasetPath, $basePath] = $this->liveFixture('live-reject-'.$suffix);
+
+            $this->artisan('geoflow:evaluate-ai-quality', [
+                '--dataset' => $datasetPath,
+                '--output' => $basePath,
+                '--live' => true,
+                '--admin' => $admin->id,
+                '--model' => $model->id,
+            ])->assertFailed();
+
+            $this->assertFileDoesNotExist($basePath.'.json');
+            $this->assertFileDoesNotExist($basePath.'.md');
+        }
+
+        $this->assertSame([], $reviewer->modelIds);
+    }
+
+    public function test_live_evaluation_discards_the_result_when_access_is_revoked_during_review(): void
+    {
+        $admin = $this->admin('live-revoked-admin', 'admin');
+        $model = $this->model($admin, 'revoked-model');
+        $reviewer = $this->recordingReviewer(function () use ($admin): void {
+            Admin::query()->whereKey($admin->id)->increment('ai_config_access_version');
+        });
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-revoked-during-review');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+            '--model' => $model->id,
+        ])->assertFailed();
+
+        $this->assertSame([$model->id], $reviewer->modelIds);
+        $this->assertFileDoesNotExist($basePath.'.json');
+        $this->assertFileDoesNotExist($basePath.'.md');
+    }
+
+    public function test_live_evaluation_holds_the_model_mutation_lock_for_each_review_and_releases_it(): void
+    {
+        $admin = $this->admin('live-review-lock-owner');
+        $model = $this->model($admin, 'live-review-lock-model');
+        $blockedMutation = null;
+        $reviewer = $this->recordingReviewer(function () use ($admin, $model, &$blockedMutation): void {
+            $blockedMutation = app(AdminAiModelMutationService::class)->update(
+                $admin,
+                (int) $model->id,
+                ['name' => 'blocked during CLI review'],
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+            );
+        });
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-review-lock');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+            '--model' => $model->id,
+        ])->assertSuccessful();
+
+        $this->assertNotNull($blockedMutation);
+        $this->assertFalse($blockedMutation->succeeded());
+        $this->assertSame('task', $blockedMutation->error);
+        $this->assertTrue(app(AdminAiModelMutationService::class)->update(
+            $admin,
+            (int) $model->id,
+            ['name' => 'allowed after CLI review'],
+            AiModel::ACCESS_SCOPE_USER_CONTENT,
+        )->succeeded());
+    }
+
+    public function test_live_evaluation_rejects_an_inactive_shared_provider_before_reviewer_or_output(): void
+    {
+        $provider = $this->admin('live-inactive-provider');
+        $admin = $this->admin('live-inactive-provider-consumer', 'admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $model = $this->model($provider, 'inactive-provider-model');
+        $provider->forceFill(['status' => 'inactive'])->save();
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-inactive-provider');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+            '--model' => $model->id,
+        ])->assertFailed();
+
+        $this->assertSame([], $reviewer->modelIds);
+        $this->assertFileDoesNotExist($basePath.'.json');
+        $this->assertFileDoesNotExist($basePath.'.md');
+    }
+
+    /** @return object&ArticleAiQualityReviewer */
+    private function recordingReviewer(?\Closure $afterReview = null): object
+    {
+        return new class($afterReview) implements ArticleAiQualityReviewer
+        {
+            /** @var list<int> */
+            public array $modelIds = [];
+
+            public function __construct(private readonly ?\Closure $afterReview) {}
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->modelIds[] = (int) $model->id;
+                ($this->afterReview ?? static function (): void {})();
+
+                return [
+                    'result' => [
+                        'summary' => '检查完成。',
+                        'promotion_context' => 'informational',
+                        'reviewed_claim_hashes' => [],
+                        'issues' => [],
+                        'uncertainties' => [],
+                        'truncated_issue_count' => 0,
+                    ],
+                    'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 2],
+                ];
+            }
+        };
+    }
+
+    /** @return array{string,string} */
+    private function liveFixture(string $name): array
+    {
+        $directory = storage_path('framework/testing/'.$name);
+        File::deleteDirectory($directory);
+        File::ensureDirectoryExists($directory);
+        $datasetPath = $directory.'/dataset.json';
+        $basePath = $directory.'/report';
+        File::put($datasetPath, json_encode([
+            'version' => $name,
+            'requirements' => ['total_cases' => 1, 'calibration' => 1, 'regression' => 0, 'blind' => 0],
+            'cases' => [[
+                'id' => 'safe-case',
+                'split' => 'calibration',
+                'inspection_scope' => 'full',
+                'article' => ['title' => 'Safe', 'content' => 'Safe content.'],
+                'facts' => [],
+                'evidence' => [],
+                'expected' => ['decision' => 'passed', 'issue_codes' => []],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+
+        return [$datasetPath, $basePath];
+    }
+
+    /** @param array<string,mixed> $attributes */
+    private function admin(string $username, string $role = 'super_admin', array $attributes = []): Admin
+    {
+        $admin = Admin::query()->create([
+            'username' => $username,
+            'password' => 'secret-123',
+            'email' => $username.'@example.com',
+            'display_name' => $username,
+            'role' => $role,
+            'status' => 'active',
+        ]);
+        $admin->forceFill($attributes)->save();
+
+        return $admin;
+    }
+
+    private function model(
+        Admin $owner,
+        string $name,
+        int $priority = 100,
+        string $scope = AiModel::ACCESS_SCOPE_USER_CONTENT,
+    ): AiModel {
+        $model = AiModel::query()->create([
+            'name' => $name,
+            'api_key' => 'test-secret-'.$name,
+            'api_url' => 'https://secret.example.test/v1',
+            'model_id' => $name,
+            'model_type' => 'chat',
+            'failover_priority' => $priority,
+            'status' => 'active',
+        ]);
+        $model->forceFill([
+            'owner_admin_id' => $owner->id,
+            'access_scope' => $scope,
+        ])->save();
+
+        return $model;
     }
 }

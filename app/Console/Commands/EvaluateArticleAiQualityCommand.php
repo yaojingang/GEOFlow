@@ -4,9 +4,13 @@ namespace App\Console\Commands;
 
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
+use App\Data\Ai\DirectAdminAiExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\KnowledgeBase;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\AiQualityEvaluationDataset;
 use App\Services\GeoFlow\ArticleAiQualityEvidenceBuilder;
 use App\Services\GeoFlow\ArticleAiQualityPromptRenderer;
@@ -15,6 +19,7 @@ use App\Services\GeoFlow\ArticleAiQualitySampleBuilder;
 use App\Services\GeoFlow\ArticleAiQualityScorerV2;
 use App\Services\GeoFlow\ArticleFactCandidateExtractor;
 use App\Services\GeoFlow\ArticleRiskScanner;
+use App\Services\GeoFlow\DirectAdminAiExecutionGuard;
 use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -30,6 +35,7 @@ class EvaluateArticleAiQualityCommand extends Command
         {--dataset= : Golden dataset JSON path}
         {--output= : Output path without extension}
         {--live : Call a configured model instead of using saved predictions}
+        {--admin= : Active administrator ID whose AI configuration is used by live evaluation}
         {--model= : AI model database ID used by live evaluation}
         {--articles= : Comma-separated article IDs for a real comparison run}
         {--knowledge-base= : Knowledge base ID for a real comparison run}
@@ -49,6 +55,8 @@ class EvaluateArticleAiQualityCommand extends Command
         private readonly ArticleFactCandidateExtractor $factExtractor,
         private readonly ArticleAiQualityEvidenceBuilder $evidenceBuilder,
         private readonly ArticleAtomicFactInspector $atomicFactInspector,
+        private readonly DirectAdminAiExecutionGuard $executionGuard,
+        private readonly AiModelInvocationLock $invocationLocks,
     ) {
         parent::__construct();
     }
@@ -75,10 +83,14 @@ class EvaluateArticleAiQualityCommand extends Command
         }
 
         $live = (bool) $this->option('live');
-        $model = $live ? $this->liveModel() : null;
-        if ($live && ! $model instanceof AiModel) {
+        $execution = $live ? $this->liveExecution('ai_quality_evaluation') : null;
+        if ($live && $execution === null) {
+            $this->deleteLiveOutputs($this->outputBasePath());
+
             return self::FAILURE;
         }
+        $model = $execution['model'] ?? null;
+        $context = $execution['context'] ?? null;
         if ($live) {
             $repeat = max(1, min(5, (int) $this->option('repeat')));
             $this->components->warn("Live evaluation will call {$model->name} for ".(count($cases) * $repeat).' requests and consume provider quota.');
@@ -93,8 +105,17 @@ class EvaluateArticleAiQualityCommand extends Command
             }
             $repeatPredictions = [];
             if ($live) {
-                for ($attempt = 0; $attempt < $repeat; $attempt++) {
-                    $repeatPredictions[] = $this->evaluateLiveCase($case, $model);
+                try {
+                    for ($attempt = 0; $attempt < $repeat; $attempt++) {
+                        $repeatPredictions[] = $this->evaluateLiveCase($case, $model, $context);
+                    }
+                } catch (AiModelAccessException $exception) {
+                    return $this->failLiveAccess($exception, $this->outputBasePath());
+                } catch (\Throwable) {
+                    return $this->failLive(
+                        AiModelAccessException::AI_MODEL_UNAVAILABLE,
+                        $this->outputBasePath(),
+                    );
                 }
                 $prediction = $repeatPredictions[0] ?? [];
             } else {
@@ -168,6 +189,10 @@ class EvaluateArticleAiQualityCommand extends Command
             'mode' => $live ? 'live' : 'offline',
             'evaluation_scope' => $live ? 'production_components' : 'saved_predictions',
             'model_id' => $model?->id,
+            'execution' => $execution === null ? null : array_merge(
+                $context->toSafeArray(),
+                ['model_id' => (int) $model->id, 'model_source' => $execution['source']],
+            ),
             'dataset' => [
                 'path' => $this->portablePath($datasetPath),
                 'version' => (string) ($dataset['version'] ?? 'unknown'),
@@ -183,8 +208,22 @@ class EvaluateArticleAiQualityCommand extends Command
         ];
 
         $outputBase = $this->outputBasePath();
+        if ($live) {
+            try {
+                $this->executionGuard->assertModelCurrent($context, $model);
+            } catch (AiModelAccessException $exception) {
+                return $this->failLiveAccess($exception, $outputBase);
+            }
+        }
         File::ensureDirectoryExists(dirname($outputBase));
         File::put($outputBase.'.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+        if ($live) {
+            try {
+                $this->executionGuard->assertModelCurrent($context, $model);
+            } catch (AiModelAccessException $exception) {
+                return $this->failLiveAccess($exception, $outputBase);
+            }
+        }
         File::put($outputBase.'.md', $this->markdown($report));
 
         $this->components->info('AI quality evaluation completed.');
@@ -198,8 +237,11 @@ class EvaluateArticleAiQualityCommand extends Command
     }
 
     /** @param array<string,mixed> $case @return array<string,mixed> */
-    private function evaluateLiveCase(array $case, AiModel $model): array
-    {
+    private function evaluateLiveCase(
+        array $case,
+        AiModel $model,
+        DirectAdminAiExecutionContext $context,
+    ): array {
         $article = is_array($case['article'] ?? null) ? $case['article'] : [];
         $facts = is_array($case['facts'] ?? null) ? array_values($case['facts']) : [];
         $evidence = is_array($case['evidence'] ?? null) ? array_values($case['evidence']) : [];
@@ -239,14 +281,7 @@ class EvaluateArticleAiQualityCommand extends Command
         ]);
 
         $startedAt = hrtime(true);
-        $review = $this->reviewer instanceof VersionAwareArticleAiQualityReviewer
-            ? $this->reviewer->reviewWithinVersion(
-                $model,
-                $instructions,
-                (int) config('geoflow.ai_quality_request_timeout_seconds', 160),
-                'fast_v2',
-            )
-            : $this->reviewer->review($model, $instructions);
+        $review = $this->reviewLive($context, $model, $instructions);
         $validated = $this->validator->validate(
             is_array($review['result'] ?? null) ? $review['result'] : [],
             $article,
@@ -335,10 +370,14 @@ class EvaluateArticleAiQualityCommand extends Command
 
             return self::INVALID;
         }
-        $model = $this->liveModel();
-        if (! $model instanceof AiModel) {
+        $execution = $this->liveExecution('ai_quality_article_comparison');
+        if ($execution === null) {
+            $this->deleteLiveOutputs($this->outputBasePath(), $this->outputBasePath().'.partial.json');
+
             return self::FAILURE;
         }
+        $model = $execution['model'];
+        $context = $execution['context'];
         $repeat = max(1, min(5, (int) $this->option('repeat')));
         $articles = Article::query()->whereIn('id', $articleIds)->get()->keyBy('id');
         if ($articles->count() !== count($articleIds) || ! KnowledgeBase::query()->whereKey($knowledgeBaseId)->exists()) {
@@ -356,6 +395,9 @@ class EvaluateArticleAiQualityCommand extends Command
             && data_get($checkpoint, 'request.article_ids') === $articleIds
             && (int) data_get($checkpoint, 'request.knowledge_base_id') === $knowledgeBaseId
             && (int) data_get($checkpoint, 'request.model_id') === (int) $model->id
+            && (int) data_get($checkpoint, 'request.admin_id') === $context->adminId
+            && (int) data_get($checkpoint, 'request.access_version') === $context->accessVersion
+            && (int) data_get($checkpoint, 'request.policy_version') === $context->policyVersion
             && (int) data_get($checkpoint, 'request.repeat') === $repeat
                 ? array_values($checkpoint['calls']) : [];
         $completedKeys = collect($calls)->mapWithKeys(fn (array $call): array => [$call['attempt'].'|'.$call['article_id'].'|'.$call['mode'] => true]);
@@ -378,20 +420,24 @@ class EvaluateArticleAiQualityCommand extends Command
                         continue;
                     }
                     $prediction = null;
-                    $lastException = null;
                     foreach ([1, 2] as $providerAttempt) {
                         try {
-                            $prediction = $this->evaluateLiveCase($this->comparisonCase($snapshot, $knowledgeBaseId, $mode), $model);
+                            $prediction = $this->evaluateLiveCase(
+                                $this->comparisonCase($snapshot, $knowledgeBaseId, $mode),
+                                $model,
+                                $context,
+                            );
                             break;
-                        } catch (\Throwable $exception) {
-                            $lastException = $exception;
+                        } catch (AiModelAccessException $exception) {
+                            return $this->failLiveAccess($exception, $outputBase, $checkpointPath);
+                        } catch (\Throwable) {
                             if ($providerAttempt === 1) {
                                 $this->components->warn("Transient model failure for article {$articleId} ({$mode}); retrying once.");
                             }
                         }
                     }
                     if (! is_array($prediction)) {
-                        $prediction = ['decision' => 'error', 'score' => 0, 'issues' => [], 'prompt_tokens' => 0, 'completion_tokens' => 0, 'latency_ms' => 0, 'error_code' => $lastException instanceof \Throwable ? $lastException->getMessage() : 'provider_error'];
+                        $prediction = ['decision' => 'error', 'score' => 0, 'issues' => [], 'prompt_tokens' => 0, 'completion_tokens' => 0, 'latency_ms' => 0, 'error_code' => AiModelAccessException::AI_MODEL_UNAVAILABLE];
                     }
                     $calls[] = array_replace($prediction, [
                         'article_id' => $articleId,
@@ -401,7 +447,15 @@ class EvaluateArticleAiQualityCommand extends Command
                         'expected_decision' => $gold[$articleId] ?? 'needs_review',
                     ]);
                     File::put($checkpointPath, json_encode([
-                        'request' => ['article_ids' => $articleIds, 'knowledge_base_id' => $knowledgeBaseId, 'model_id' => $model->id, 'repeat' => $repeat],
+                        'request' => [
+                            'article_ids' => $articleIds,
+                            'knowledge_base_id' => $knowledgeBaseId,
+                            'model_id' => $model->id,
+                            'admin_id' => $context->adminId,
+                            'access_version' => $context->accessVersion,
+                            'policy_version' => $context->policyVersion,
+                            'repeat' => $repeat,
+                        ],
                         'calls' => $calls,
                     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                     $this->line(sprintf('[%d/%d] article=%d mode=%s decision=%s tokens=%d latency=%dms', count($calls), $totalCalls, $articleId, $mode, $prediction['decision'], $prediction['prompt_tokens'] + $prediction['completion_tokens'], $prediction['latency_ms']));
@@ -421,6 +475,10 @@ class EvaluateArticleAiQualityCommand extends Command
             'mode' => 'live',
             'evaluation_scope' => 'local_atomic_comparison',
             'model' => ['id' => $model->id, 'name' => $model->name, 'model_id' => $model->model_id],
+            'execution' => array_merge(
+                $context->toSafeArray(),
+                ['model_id' => (int) $model->id, 'model_source' => $execution['source']],
+            ),
             'knowledge_base_id' => $knowledgeBaseId,
             'case_set' => [
                 'version' => self::LOCAL_ATOMIC_CASE_SET_VERSION,
@@ -437,7 +495,17 @@ class EvaluateArticleAiQualityCommand extends Command
             'local_atomic_gate_ready' => $caseSetMatches && (bool) data_get($metrics, 'gate_checks.all_passed', false),
             'calls' => $calls,
         ];
+        try {
+            $this->executionGuard->assertModelCurrent($context, $model);
+        } catch (AiModelAccessException $exception) {
+            return $this->failLiveAccess($exception, $outputBase, $checkpointPath);
+        }
         File::put($outputBase.'.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+        try {
+            $this->executionGuard->assertModelCurrent($context, $model);
+        } catch (AiModelAccessException $exception) {
+            return $this->failLiveAccess($exception, $outputBase, $checkpointPath);
+        }
         File::put($outputBase.'.md', $this->comparisonMarkdown($report));
         File::delete($checkpointPath);
         $this->components->info('Article comparison completed.');
@@ -639,22 +707,98 @@ class EvaluateArticleAiQualityCommand extends Command
         return $coverage;
     }
 
-    private function liveModel(): ?AiModel
+    /** @return array{context:DirectAdminAiExecutionContext,model:AiModel,source:string}|null */
+    private function liveExecution(string $source): ?array
     {
-        $query = AiModel::query()
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')->orWhereIn('model_type', ['', 'chat']);
-            });
-        if ((int) $this->option('model') > 0) {
-            $query->whereKey((int) $this->option('model'));
+        $adminId = (int) $this->option('admin');
+        if ($adminId <= 0) {
+            $this->components->error(AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE);
+
+            return null;
         }
-        $model = $query->orderBy('failover_priority')->orderBy('id')->first();
-        if (! $model) {
-            $this->components->error('No active chat model is available for live evaluation.');
+        $admin = Admin::query()->find($adminId);
+        if (! $admin instanceof Admin) {
+            $this->components->error(AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE);
+
+            return null;
         }
 
-        return $model;
+        try {
+            $context = $this->executionGuard->freeze(
+                $admin,
+                $source,
+                $adminId,
+                requestedModelId: (int) $this->option('model') > 0
+                    ? (int) $this->option('model')
+                    : null,
+            );
+            $selection = $this->executionGuard->resolveModel($context);
+
+            return [
+                'context' => $context,
+                'model' => $selection['model'],
+                'source' => $selection['source'],
+            ];
+        } catch (AiModelAccessException $exception) {
+            $this->components->error($exception->getErrorCode());
+
+            return null;
+        }
+    }
+
+    /** @return array<string,mixed> */
+    private function reviewLive(
+        DirectAdminAiExecutionContext $context,
+        AiModel $model,
+        string $instructions,
+    ): array {
+        $timeoutSeconds = max(1, (int) config('geoflow.ai_quality_request_timeout_seconds', 160));
+        $lock = $this->invocationLocks->acquireForInvocation((int) $model->id, $timeoutSeconds + 60);
+
+        try {
+            $currentModel = $this->executionGuard->assertModelCurrent($context, $model);
+            $review = $this->reviewer instanceof VersionAwareArticleAiQualityReviewer
+                ? $this->reviewer->reviewWithinVersion(
+                    $currentModel,
+                    $instructions,
+                    $timeoutSeconds,
+                    'fast_v2',
+                )
+                : $this->reviewer->review($currentModel, $instructions);
+            $this->executionGuard->assertModelCurrent($context, $currentModel);
+
+            return $review;
+        } finally {
+            $this->invocationLocks->release($lock);
+        }
+    }
+
+    private function failLiveAccess(
+        AiModelAccessException $exception,
+        string $outputBase,
+        ?string $checkpointPath = null,
+    ): int {
+        return $this->failLive($exception->getErrorCode(), $outputBase, $checkpointPath);
+    }
+
+    private function failLive(
+        string $errorCode,
+        string $outputBase,
+        ?string $checkpointPath = null,
+    ): int {
+        $this->deleteLiveOutputs($outputBase, $checkpointPath);
+        $this->components->error($errorCode);
+
+        return self::FAILURE;
+    }
+
+    private function deleteLiveOutputs(string $outputBase, ?string $checkpointPath = null): void
+    {
+        File::delete(array_values(array_filter([
+            $outputBase.'.json',
+            $outputBase.'.md',
+            $checkpointPath,
+        ])));
     }
 
     /** @param array<string,mixed> $outcome @return array{decision:string,issue_codes:list<string>} */
