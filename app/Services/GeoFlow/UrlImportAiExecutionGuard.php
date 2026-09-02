@@ -19,7 +19,7 @@ final class UrlImportAiExecutionGuard
     ) {}
 
     /**
-     * @return array{model_access_admin_id:int,model_access_admin_role:string,ai_config_access_version:int,requested_ai_model_id:int,resolver_policy_version:int}
+     * @return array{model_access_admin_id:int,model_access_admin_role:string,ai_config_access_version:int,requested_ai_model_id:int,requested_ai_model_snapshot:string,resolver_policy_version:int}
      */
     public function snapshotForCreation(Admin $actor, AiModel $requestedModel): array
     {
@@ -39,6 +39,7 @@ final class UrlImportAiExecutionGuard
             'model_access_admin_role' => $admin->isSuperAdmin() ? 'super_admin' : 'admin',
             'ai_config_access_version' => max(1, (int) $admin->ai_config_access_version),
             'requested_ai_model_id' => (int) $model->getKey(),
+            'requested_ai_model_snapshot' => $this->safeModelSnapshot($model),
             'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
         ];
     }
@@ -48,18 +49,53 @@ final class UrlImportAiExecutionGuard
         $currentJob = $this->lockWhenTransactional(UrlImportJob::query()->whereKey($job->getKey()))->first();
         $expectedLease = trim((string) ($job->execution_lease_token ?? ''));
         $currentLease = trim((string) ($currentJob?->execution_lease_token ?? ''));
-        if ($expectedLease !== '' && ($currentLease === '' || ! hash_equals($expectedLease, $currentLease))) {
+        if ($expectedLease === ''
+            || (string) ($currentJob?->status ?? '') !== 'running'
+            || $currentLease === ''
+            || ! hash_equals($expectedLease, $currentLease)
+            || $currentJob?->lease_expires_at === null
+            || $currentJob->lease_expires_at->isPast()) {
             throw AiModelAccessException::configAccessRevokedForAdminId(
                 (int) ($job->model_access_admin_id ?? 0),
             );
         }
+
+        return $this->assertIdentityCurrent($currentJob, $model, true);
+    }
+
+    public function assertCommitCurrent(
+        UrlImportJob $job,
+        string $expectedResultHash,
+        AiModel|int|null $model = null,
+    ): Admin {
+        $currentJob = $this->lockWhenTransactional(UrlImportJob::query()->whereKey($job->getKey()))->first();
+        $currentResultHash = hash('sha256', (string) ($currentJob?->result_json ?? ''));
+        if ((string) ($currentJob?->status ?? '') !== 'completed'
+            || trim((string) ($currentJob?->execution_lease_token ?? '')) !== ''
+            || $currentJob?->lease_expires_at !== null
+            || ! hash_equals($expectedResultHash, $currentResultHash)) {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                (int) ($job->model_access_admin_id ?? 0),
+            );
+        }
+
+        return $this->assertIdentityCurrent($currentJob, $model, false);
+    }
+
+    private function assertIdentityCurrent(
+        ?UrlImportJob $currentJob,
+        AiModel|int|null $model,
+        bool $requiresRequestedModel,
+    ): Admin {
         $adminId = (int) ($currentJob?->model_access_admin_id ?? 0);
         $storedRole = trim((string) ($currentJob?->model_access_admin_role ?? ''));
         $storedAccessVersion = (int) ($currentJob?->ai_config_access_version ?? 0);
         $storedPolicyVersion = (int) ($currentJob?->resolver_policy_version ?? 0);
         $requestedModelId = (int) ($currentJob?->requested_ai_model_id ?? 0);
+        $requestedModelSnapshot = trim((string) ($currentJob?->requested_ai_model_snapshot ?? ''));
         if ($adminId <= 0 || $storedRole === '' || $storedAccessVersion <= 0
-            || $requestedModelId <= 0
+            || ($requiresRequestedModel && $requestedModelId <= 0)
+            || (! $requiresRequestedModel && $requestedModelId <= 0 && $requestedModelSnapshot === '')
             || $storedPolicyVersion !== AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION) {
             throw AiModelAccessException::configAccessRevokedForAdminId(max(0, $adminId));
         }
@@ -81,9 +117,32 @@ final class UrlImportAiExecutionGuard
                 throw AiModelAccessException::modelUnavailable($admin);
             }
             $this->modelAccessResolver->assertLockedUsable($admin, $currentModel);
+        } elseif (! $requiresRequestedModel) {
+            $this->assertSnapshotOwnerCurrent($admin, $currentJob);
         }
 
         return $admin;
+    }
+
+    private function assertSnapshotOwnerCurrent(Admin $admin, UrlImportJob $job): void
+    {
+        $snapshotJson = trim((string) ($job->resolved_ai_model_snapshot ?: $job->requested_ai_model_snapshot));
+        $snapshot = json_decode($snapshotJson, true);
+        $ownerId = is_array($snapshot) ? (int) ($snapshot['owner_admin_id'] ?? 0) : 0;
+        if ($ownerId <= 0) {
+            throw AiModelAccessException::configAccessRevoked($admin);
+        }
+        if ($ownerId === (int) $admin->getKey()) {
+            return;
+        }
+        if ($admin->isSuperAdmin() || (int) ($admin->shared_ai_config_owner_id ?? 0) !== $ownerId) {
+            throw AiModelAccessException::configAccessRevoked($admin);
+        }
+
+        $owner = $this->lockWhenTransactional(Admin::query()->whereKey($ownerId))->first();
+        if (! $owner instanceof Admin || (string) $owner->status !== 'active') {
+            throw AiModelAccessException::configOwnerInactive($admin, $ownerId);
+        }
     }
 
     /** @return Collection<int, AiModel> */
@@ -125,6 +184,7 @@ final class UrlImportAiExecutionGuard
 
             $lockedJob->forceFill([
                 'resolved_ai_model_id' => $model->getKey(),
+                'resolved_ai_model_snapshot' => $this->safeModelSnapshot($model),
                 'resolved_model_source' => $source,
                 'model_resolved_at' => now(),
             ])->save();
@@ -136,5 +196,17 @@ final class UrlImportAiExecutionGuard
     private function lockWhenTransactional(Builder $query): Builder
     {
         return DB::transactionLevel() > 0 ? $query->lockForUpdate() : $query;
+    }
+
+    private function safeModelSnapshot(AiModel $model): string
+    {
+        return json_encode([
+            'id' => (int) $model->getKey(),
+            'owner_admin_id' => (int) $model->owner_admin_id,
+            'name' => (string) $model->name,
+            'version' => (string) $model->version,
+            'model_type' => (string) $model->model_type,
+            'access_scope' => (string) $model->access_scope,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     }
 }

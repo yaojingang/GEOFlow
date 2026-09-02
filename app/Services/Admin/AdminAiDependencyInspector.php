@@ -13,6 +13,7 @@ use App\Models\KnowledgeFactGenerationRun;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\TitleGenerationRun;
+use App\Models\UrlImportJob;
 use Illuminate\Support\Facades\Schema;
 
 final class AdminAiDependencyInspector
@@ -55,6 +56,7 @@ final class AdminAiDependencyInspector
             pendingTaskCounts: $this->pendingTaskCounts($admin),
             executionTaskCount: $this->executionTaskCount($admin),
             executionTaskRunCount: $this->executionTaskRunCount($admin),
+            executionUrlImportJobCount: $this->executionUrlImportJobCount($admin),
         );
     }
 
@@ -64,6 +66,7 @@ final class AdminAiDependencyInspector
      *   article_ai_optimization_runs: int,
      *   knowledge_fact_generation_runs: int,
      *   ai_workspace_runs: int,
+     *   url_import_jobs: int,
      *   total: int
      * }
      */
@@ -74,6 +77,7 @@ final class AdminAiDependencyInspector
             'article_ai_optimization_runs' => $this->pendingArticleAiOptimizationRunCount($admin),
             'knowledge_fact_generation_runs' => $this->pendingKnowledgeFactGenerationRunCount($admin),
             'ai_workspace_runs' => $this->pendingAiWorkspaceRunCount($admin),
+            'url_import_jobs' => $this->pendingUrlImportJobCount($admin),
         ];
 
         return [...$counts, 'total' => array_sum($counts)];
@@ -169,6 +173,28 @@ final class AdminAiDependencyInspector
             ->count();
     }
 
+    private function pendingUrlImportJobCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new UrlImportJob)->getTable(), [
+            'model_access_admin_id',
+            'status',
+            'retryable_failure',
+        ])) {
+            return 0;
+        }
+
+        return UrlImportJob::query()
+            ->where('model_access_admin_id', $admin->getKey())
+            ->where(function ($query): void {
+                $query->whereIn('status', ['queued', 'running'])
+                    ->orWhere(function ($retryable): void {
+                        $retryable->where('status', 'failed')
+                            ->where('retryable_failure', true);
+                    });
+            })
+            ->count();
+    }
+
     private function executionTaskCount(Admin $admin): int
     {
         if (! $this->hasRequiredColumns((new Task)->getTable(), ['model_access_admin_id'])) {
@@ -187,6 +213,17 @@ final class AdminAiDependencyInspector
         }
 
         return TaskRun::query()
+            ->where('model_access_admin_id', $admin->getKey())
+            ->count();
+    }
+
+    private function executionUrlImportJobCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new UrlImportJob)->getTable(), ['model_access_admin_id'])) {
+            return 0;
+        }
+
+        return UrlImportJob::query()
             ->where('model_access_admin_id', $admin->getKey())
             ->count();
     }

@@ -35,6 +35,8 @@ final class UrlImportProcessingService
 {
     private const AI_ANALYSIS_MAX_ATTEMPTS = 3;
 
+    private const EXECUTION_LEASE_SECONDS = 600;
+
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly SafeOutboundHttpClient $safeHttp,
@@ -194,12 +196,7 @@ final class UrlImportProcessingService
         if ($result === []) {
             throw new \RuntimeException(__('admin.url_import.error.commit_before_parse'));
         }
-        if (($result['import']['status'] ?? '') === 'imported' && is_array($result['import']['summary'] ?? null)) {
-            /** @var array{knowledge_base:int,keyword_library:int,title_library:int,keywords:int,titles:int} $summary */
-            $summary = $result['import']['summary'];
-
-            return $summary;
-        }
+        $expectedResultHash = hash('sha256', (string) $job->result_json);
 
         /** @var array<string, mixed> $page */
         $page = is_array($result['page'] ?? null) ? $result['page'] : [];
@@ -240,7 +237,7 @@ final class UrlImportProcessingService
             throw new \RuntimeException(__('admin.url_import.error.ai_titles_missing'));
         }
 
-        $summary = DB::transaction(function () use ($job, $baseName, $knowledgeContent, $knowledgeDescription, $keywords, $titles): array {
+        $summary = DB::transaction(function () use ($job, $expectedResultHash, $baseName, $knowledgeContent, $knowledgeDescription, $keywords, $titles): array {
             $lockedJob = UrlImportJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
             $lockedResult = $this->decodeResult($lockedJob);
             if (($lockedResult['import']['status'] ?? '') === 'imported'
@@ -249,9 +246,14 @@ final class UrlImportProcessingService
             }
 
             $resolvedModelId = (int) ($lockedJob->resolved_ai_model_id ?? 0);
-            $this->executionGuard->assertCurrent(
-                $job,
-                $resolvedModelId > 0 ? $resolvedModelId : $lockedJob->requested_ai_model_id,
+            $hasResolvedSnapshot = trim((string) ($lockedJob->resolved_ai_model_snapshot ?? '')) !== '';
+            $commitModel = $resolvedModelId > 0
+                ? $resolvedModelId
+                : ($hasResolvedSnapshot ? null : $lockedJob->requested_ai_model_id);
+            $this->executionGuard->assertCommitCurrent(
+                $lockedJob,
+                $expectedResultHash,
+                $commitModel,
             );
 
             $knowledgeBase = KnowledgeBase::query()->create([
@@ -315,8 +317,11 @@ final class UrlImportProcessingService
             ];
             $lockedJob->forceFill([
                 'result_json' => json_encode($lockedResult, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
+                'status' => 'imported',
                 'current_step' => 'imported',
                 'progress_percent' => 100,
+                'execution_lease_token' => null,
+                'lease_expires_at' => null,
             ])->save();
             $this->log($lockedJob, 'info', __('admin.url_import.log.import_done'));
 
@@ -1290,10 +1295,31 @@ PROMPT;
      */
     private function updateStep(UrlImportJob $job, string $step, int $progress, array $extra = []): void
     {
-        $job->update(array_merge([
+        $lease = trim((string) ($job->execution_lease_token ?? ''));
+        if ($lease === '') {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                (int) ($job->model_access_admin_id ?? 0),
+            );
+        }
+
+        $attributes = array_merge([
             'current_step' => $step,
             'progress_percent' => max(0, min(100, $progress)),
-        ], $extra));
+            'lease_expires_at' => now()->addSeconds(self::EXECUTION_LEASE_SECONDS),
+        ], $extra);
+        $affected = UrlImportJob::query()
+            ->whereKey($job->getKey())
+            ->where('status', 'running')
+            ->where('execution_lease_token', $lease)
+            ->where('lease_expires_at', '>', now())
+            ->update($attributes);
+        if ($affected !== 1) {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                (int) ($job->model_access_admin_id ?? 0),
+            );
+        }
+
+        $job->forceFill($attributes);
     }
 
     /** @param array<string, mixed> $result */
@@ -1316,6 +1342,7 @@ PROMPT;
                 'error_message' => '',
                 'retryable_failure' => true,
                 'execution_lease_token' => null,
+                'lease_expires_at' => null,
                 'finished_at' => now(),
             ])->save();
         });
@@ -1338,11 +1365,15 @@ PROMPT;
             default => $retryable ? null : $message,
         };
 
-        $query = UrlImportJob::query()->whereKey($job->getKey());
+        $query = UrlImportJob::query()
+            ->whereKey($job->getKey())
+            ->where('status', 'running')
+            ->where('lease_expires_at', '>', now());
         $lease = trim((string) ($job->execution_lease_token ?? ''));
-        if ($lease !== '') {
-            $query->where('execution_lease_token', $lease);
+        if ($lease === '') {
+            return $job->refresh();
         }
+        $query->where('execution_lease_token', $lease);
         $affected = $query->update([
             'status' => 'failed',
             'progress_percent' => 100,
@@ -1350,6 +1381,7 @@ PROMPT;
             'error_message' => $message,
             'retryable_failure' => $retryable,
             'execution_lease_token' => null,
+            'lease_expires_at' => null,
             'finished_at' => now(),
             'updated_at' => now(),
         ]);
@@ -1366,17 +1398,23 @@ PROMPT;
     {
         return DB::transaction(function () use ($job): array {
             $lockedJob = UrlImportJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
-            if ((string) $lockedJob->status === 'failed' && ! (bool) $lockedJob->retryable_failure) {
-                return ['job' => $lockedJob, 'claimed' => false];
-            }
-            if ((string) $lockedJob->status === 'running'
-                && trim((string) ($lockedJob->execution_lease_token ?? '')) !== '') {
+            $status = (string) $lockedJob->status;
+            $lease = trim((string) ($lockedJob->execution_lease_token ?? ''));
+            $leaseExpired = $lockedJob->lease_expires_at !== null && $lockedJob->lease_expires_at->isPast();
+            $claimable = match ($status) {
+                'queued' => $lease === '',
+                'failed' => (bool) $lockedJob->retryable_failure && ($lease === '' || $leaseExpired),
+                'running' => $lease === '' || $leaseExpired,
+                default => false,
+            };
+            if (! $claimable) {
                 return ['job' => $lockedJob, 'claimed' => false];
             }
 
             $lockedJob->forceFill([
                 'status' => 'running',
                 'execution_lease_token' => (string) Str::uuid(),
+                'lease_expires_at' => now()->addSeconds(self::EXECUTION_LEASE_SECONDS),
                 'error_code' => null,
                 'error_message' => '',
                 'retryable_failure' => true,

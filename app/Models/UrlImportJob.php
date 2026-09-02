@@ -36,11 +36,14 @@ class UrlImportJob extends Model
         'model_access_admin_role',
         'ai_config_access_version',
         'requested_ai_model_id',
+        'requested_ai_model_snapshot',
         'resolver_policy_version',
         'resolved_ai_model_id',
+        'resolved_ai_model_snapshot',
         'resolved_model_source',
         'model_resolved_at',
         'execution_lease_token',
+        'lease_expires_at',
         'started_at',
         'finished_at',
     ];
@@ -56,6 +59,7 @@ class UrlImportJob extends Model
             'resolver_policy_version' => 'integer',
             'resolved_ai_model_id' => 'integer',
             'model_resolved_at' => 'datetime',
+            'lease_expires_at' => 'datetime',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
         ];

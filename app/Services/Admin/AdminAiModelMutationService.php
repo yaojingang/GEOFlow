@@ -6,6 +6,7 @@ use App\Data\Admin\AdminAiModelMutationResult;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\TitleGenerationRun;
+use App\Models\UrlImportJob;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -78,6 +79,7 @@ final class AdminAiModelMutationService
 
             $taskCount = $lockedModel->tasks()->withTrashed()->count()
                 + $lockedModel->qualityTasks()->withTrashed()->count();
+            $taskCount += $this->activeUrlImportCount($modelId);
             if ($taskCount > 0) {
                 return new AdminAiModelMutationResult($lockedModel, 'task', $taskCount);
             }
@@ -130,6 +132,23 @@ final class AdminAiModelMutationService
                 TitleGenerationRun::STATUS_QUEUED,
                 TitleGenerationRun::STATUS_RUNNING,
             ])
+            ->count();
+    }
+
+    private function activeUrlImportCount(int $modelId): int
+    {
+        return UrlImportJob::query()
+            ->where(function ($query) use ($modelId): void {
+                $query->where('requested_ai_model_id', $modelId)
+                    ->orWhere('resolved_ai_model_id', $modelId);
+            })
+            ->where(function ($query): void {
+                $query->whereIn('status', ['queued', 'running'])
+                    ->orWhere(function ($retryable): void {
+                        $retryable->where('status', 'failed')
+                            ->where('retryable_failure', true);
+                    });
+            })
             ->count();
     }
 

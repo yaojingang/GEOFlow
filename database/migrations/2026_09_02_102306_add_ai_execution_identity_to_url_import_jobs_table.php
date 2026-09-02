@@ -23,16 +23,19 @@ return new class extends Migration
                 ->nullable()
                 ->after('ai_config_access_version')
                 ->constrained('ai_models')
-                ->restrictOnDelete();
-            $table->unsignedBigInteger('resolver_policy_version')->nullable()->after('requested_ai_model_id');
+                ->nullOnDelete();
+            $table->text('requested_ai_model_snapshot')->nullable()->after('requested_ai_model_id');
+            $table->unsignedBigInteger('resolver_policy_version')->nullable()->after('requested_ai_model_snapshot');
             $table->foreignId('resolved_ai_model_id')
                 ->nullable()
                 ->after('resolver_policy_version')
                 ->constrained('ai_models')
-                ->restrictOnDelete();
-            $table->enum('resolved_model_source', ['personal', 'shared'])->nullable()->after('resolved_ai_model_id');
+                ->nullOnDelete();
+            $table->text('resolved_ai_model_snapshot')->nullable()->after('resolved_ai_model_id');
+            $table->enum('resolved_model_source', ['personal', 'shared'])->nullable()->after('resolved_ai_model_snapshot');
             $table->timestamp('model_resolved_at')->nullable()->after('resolved_model_source');
             $table->uuid('execution_lease_token')->nullable()->after('model_resolved_at');
+            $table->timestamp('lease_expires_at')->nullable()->after('execution_lease_token');
             $table->string('error_code', 100)->nullable()->after('error_message');
             $table->boolean('retryable_failure')->default(true)->after('error_code');
 
@@ -63,11 +66,14 @@ return new class extends Migration
                 'model_access_admin_role',
                 'ai_config_access_version',
                 'requested_ai_model_id',
+                'requested_ai_model_snapshot',
                 'resolver_policy_version',
                 'resolved_ai_model_id',
+                'resolved_ai_model_snapshot',
                 'resolved_model_source',
                 'model_resolved_at',
                 'execution_lease_token',
+                'lease_expires_at',
                 'error_code',
                 'retryable_failure',
             ]);

@@ -10,6 +10,8 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
+use App\Services\Admin\AdminAiDependencyInspector;
+use App\Services\Admin\AdminAiModelMutationService;
 use App\Services\AiWorkspace\AiCapabilityExecutor;
 use App\Services\GeoFlow\UrlImportAiExecutionGuard;
 use App\Services\GeoFlow\UrlImportProcessingService;
@@ -39,6 +41,10 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         ]);
         $admin->forceFill(['ai_config_access_version' => 7])->save();
         $model = $this->model($admin, 'url-identity-model');
+        $model->forceFill([
+            'name' => 'URL identity display',
+            'model_id' => 'sensitive-provider-deployment',
+        ])->save();
 
         $this->actingAs($admin, 'admin')
             ->post(route('admin.url-import.store'), [
@@ -54,6 +60,9 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         $this->assertSame(7, (int) $job->ai_config_access_version);
         $this->assertSame(1, (int) $job->resolver_policy_version);
         $this->assertSame((int) $model->id, (int) $job->requested_ai_model_id);
+        $this->assertStringContainsString('URL identity display', (string) $job->requested_ai_model_snapshot);
+        $this->assertStringNotContainsString('sensitive-provider-deployment', (string) $job->requested_ai_model_snapshot);
+        $this->assertStringNotContainsString('url-import-secret', (string) $job->requested_ai_model_snapshot);
         $this->assertNull($job->resolved_ai_model_id);
         $this->assertNull($job->resolved_model_source);
         $this->assertStringNotContainsString('url-import-secret', $job->toJson());
@@ -141,6 +150,8 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         $this->assertSame(['url-personal-model'], array_values(array_unique($requestedModels)));
         $this->assertSame((int) $personal->id, (int) $processed->resolved_ai_model_id);
         $this->assertSame('personal', $processed->resolved_model_source);
+        $this->assertStringContainsString('url-personal-model', (string) $processed->resolved_ai_model_snapshot);
+        $this->assertStringNotContainsString('url-import-secret', (string) $processed->resolved_ai_model_snapshot);
         $this->assertNotNull($processed->model_resolved_at);
     }
 
@@ -388,6 +399,76 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         $this->assertSame('', (string) $processed->result_json);
     }
 
+    public function test_a_stale_queued_instance_cannot_reclaim_a_terminal_job(): void
+    {
+        $admin = $this->admin('url-stale-terminal-admin');
+        $model = $this->model($admin, 'url-stale-terminal-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/stale-terminal');
+        $staleQueuedJob = $job->fresh();
+        $terminalResult = json_encode(['import' => ['status' => 'preview']], JSON_THROW_ON_ERROR);
+        UrlImportJob::query()->whereKey($job->id)->update([
+            'status' => 'completed',
+            'current_step' => 'preview',
+            'progress_percent' => 100,
+            'result_json' => $terminalResult,
+            'execution_lease_token' => null,
+            'finished_at' => now(),
+        ]);
+        Http::fake();
+
+        $processed = app(UrlImportProcessingService::class)->process($staleQueuedJob);
+
+        Http::assertNothingSent();
+        $this->assertSame('completed', $processed->status);
+        $this->assertSame($terminalResult, $processed->result_json);
+        $this->assertNull($processed->execution_lease_token);
+    }
+
+    public function test_an_empty_worker_lease_cannot_bypass_the_running_lease_guard(): void
+    {
+        $admin = $this->admin('url-empty-lease-admin');
+        $model = $this->model($admin, 'url-empty-lease-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/empty-lease');
+        $job->forceFill([
+            'status' => 'running',
+            'execution_lease_token' => '11111111-1111-4111-8111-111111111111',
+        ])->save();
+        $emptyLeaseWorker = $job->fresh();
+        $emptyLeaseWorker->forceFill(['execution_lease_token' => null]);
+
+        try {
+            app(UrlImportAiExecutionGuard::class)->recordResolvedModel($emptyLeaseWorker, $model);
+            $this->fail('Expected an empty URL import worker lease to be rejected.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $exception->getErrorCode());
+        }
+
+        $this->assertNull($job->refresh()->resolved_ai_model_id);
+    }
+
+    public function test_an_expired_lease_is_recovered_then_reauthorized_before_external_work(): void
+    {
+        $admin = $this->admin('url-expired-lease-admin');
+        $model = $this->model($admin, 'url-expired-lease-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/expired-lease');
+        $job->forceFill([
+            'status' => 'running',
+            'execution_lease_token' => '11111111-1111-4111-8111-111111111111',
+            'lease_expires_at' => now()->subMinute(),
+        ])->save();
+        $admin->increment('ai_config_access_version');
+        Http::fake();
+
+        $processed = app(UrlImportProcessingService::class)->process($job);
+
+        Http::assertNothingSent();
+        $this->assertSame('failed', $processed->status);
+        $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $processed->error_code);
+        $this->assertFalse($processed->retryable_failure);
+        $this->assertNull($processed->execution_lease_token);
+        $this->assertNull($processed->lease_expires_at);
+    }
+
     public function test_provider_errors_are_sanitized_in_job_and_log_storage(): void
     {
         $admin = $this->admin('url-sanitize-admin');
@@ -439,6 +520,70 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         $this->assertSame('preview', data_get($storedResult, 'import.status'));
     }
 
+    public function test_commit_rejects_a_stale_preview_when_the_locked_result_has_changed(): void
+    {
+        $admin = $this->admin('url-stale-commit-admin');
+        $model = $this->model($admin, 'url-stale-commit-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/stale-commit');
+        $requestedModels = [];
+        $this->fakeSuccessfulImport('https://source.test/stale-commit', $requestedModels);
+        $completed = app(UrlImportProcessingService::class)->process($job);
+        $stalePreview = $completed->fresh();
+        $changedResult = json_decode((string) $completed->result_json, true, flags: JSON_THROW_ON_ERROR);
+        data_set($changedResult, 'analysis.summary', 'A concurrently replaced preview.');
+        UrlImportJob::query()->whereKey($completed->id)->update([
+            'result_json' => json_encode($changedResult, JSON_THROW_ON_ERROR),
+        ]);
+
+        try {
+            app(UrlImportProcessingService::class)->commit($stalePreview);
+            $this->fail('Expected a stale URL import preview to be rejected.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $exception->getErrorCode());
+        }
+
+        $this->assertDatabaseCount((new KnowledgeBase)->getTable(), 0);
+        $this->assertDatabaseCount((new KeywordLibrary)->getTable(), 0);
+        $this->assertDatabaseCount((new TitleLibrary)->getTable(), 0);
+        $this->assertSame('completed', $completed->refresh()->status);
+    }
+
+    public function test_url_jobs_block_admin_and_model_deletion_while_active_and_preserve_safe_snapshots_after_completion(): void
+    {
+        $provider = $this->admin('url-deletion-lifecycle-provider', ['role' => 'super_admin']);
+        $admin = $this->admin('url-deletion-lifecycle-admin');
+        $admin->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $model = $this->model($provider, 'url-deletion-lifecycle-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/delete-lifecycle');
+
+        $dependencies = app(AdminAiDependencyInspector::class)->deletionDependencies($admin);
+        $this->assertSame(0, $dependencies->ownedModelCount);
+        $this->assertSame(1, $dependencies->pendingTaskCounts['url_import_jobs']);
+        $this->assertSame(1, $dependencies->executionUrlImportJobCount);
+        $this->assertTrue($dependencies->blocksDeletion());
+        $blocked = app(AdminAiModelMutationService::class)->delete($provider, (int) $model->id);
+        $this->assertSame('task', $blocked->error);
+        $this->assertSame(1, $blocked->dependencyCount);
+        $this->assertModelExists($model);
+
+        $requestedModels = [];
+        $this->fakeSuccessfulImport('https://source.test/delete-lifecycle', $requestedModels);
+        $job = app(UrlImportProcessingService::class)->process($job);
+        $this->assertSame('completed', $job->status, (string) $job->error_message);
+
+        $deleted = app(AdminAiModelMutationService::class)->delete($provider, (int) $model->id);
+        $this->assertTrue($deleted->succeeded());
+        $job->refresh();
+        $this->assertNull($job->requested_ai_model_id);
+        $this->assertNull($job->resolved_ai_model_id);
+        $this->assertStringContainsString('url-deletion-lifecycle-model', (string) $job->requested_ai_model_snapshot);
+        $this->assertStringContainsString('url-deletion-lifecycle-model', (string) $job->resolved_ai_model_snapshot);
+
+        $summary = app(UrlImportProcessingService::class)->commit($job);
+        $this->assertGreaterThan(0, $summary['knowledge_base']);
+        $this->assertSame('imported', $job->refresh()->status);
+    }
+
     public function test_url_import_execution_identity_migration_rolls_back_and_reapplies(): void
     {
         $migration = require database_path('migrations/2026_09_02_102306_add_ai_execution_identity_to_url_import_jobs_table.php');
@@ -447,6 +592,8 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
             $migration->down();
             $this->assertFalse(Schema::hasColumn('url_import_jobs', 'model_access_admin_id'));
             $this->assertFalse(Schema::hasColumn('url_import_jobs', 'execution_lease_token'));
+            $this->assertFalse(Schema::hasColumn('url_import_jobs', 'lease_expires_at'));
+            $this->assertFalse(Schema::hasColumn('url_import_jobs', 'requested_ai_model_snapshot'));
 
             $migration->up();
             $this->assertTrue(Schema::hasColumns('url_import_jobs', [
@@ -459,6 +606,9 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
                 'resolved_model_source',
                 'model_resolved_at',
                 'execution_lease_token',
+                'lease_expires_at',
+                'requested_ai_model_snapshot',
+                'resolved_ai_model_snapshot',
                 'error_code',
                 'retryable_failure',
             ]));

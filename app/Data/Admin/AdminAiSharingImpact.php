@@ -6,7 +6,7 @@ final readonly class AdminAiSharingImpact
 {
     /**
      * @param  list<int>  $sharedDefaultModelIds
-     * @param  array{title_generation_runs: int, article_ai_optimization_runs: int, knowledge_fact_generation_runs: int, ai_workspace_runs: int, total: int}  $pendingTaskCounts
+     * @param  array{title_generation_runs: int, article_ai_optimization_runs: int, knowledge_fact_generation_runs: int, ai_workspace_runs: int, url_import_jobs: int, total: int}  $pendingTaskCounts
      */
     public function __construct(
         public array $sharedDefaultModelIds,
