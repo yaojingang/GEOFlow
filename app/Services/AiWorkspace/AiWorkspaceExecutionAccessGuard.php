@@ -112,23 +112,27 @@ final readonly class AiWorkspaceExecutionAccessGuard
     {
         if ($context->runId !== null) {
             $run = $this->lockWhenTransactional(AiWorkspaceRun::query()->whereKey($context->runId))->first();
+            if (! $run instanceof AiWorkspaceRun) {
+                throw new AiWorkspaceRuntimeGuardException('AI 工作台运行已经结束或不存在。');
+            }
             $leaseField = $context->leaseKind === 'resolution' ? 'resolution_lease_owner' : 'execution_lease_token';
             $expiresField = $context->leaseKind === 'resolution' ? 'resolution_lease_expires_at' : 'execution_lease_expires_at';
-            $lease = trim((string) ($run?->{$leaseField} ?? ''));
+            $lease = trim((string) $run->{$leaseField});
             $allowedStates = $context->leaseKind === 'resolution'
                 ? ['received', 'planning', 'validating_plan', 'answering']
                 : ['running', 'cancel_requested'];
-            if (! $run instanceof AiWorkspaceRun
-                || ! $this->identityComplete($run)
-                || ! in_array((string) $run->state, $allowedStates, true)
+            if (! $this->identityComplete($run)
                 || (int) $run->model_access_admin_id !== $context->modelAccessAdminId
                 || (string) $run->model_access_admin_role !== $context->modelAccessAdminRole
                 || (int) $run->ai_config_access_version !== $context->aiConfigAccessVersion
-                || (int) $run->resolver_policy_version !== $context->resolverPolicyVersion
+                || (int) $run->resolver_policy_version !== $context->resolverPolicyVersion) {
+                throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+            }
+            if (! in_array((string) $run->state, $allowedStates, true)
                 || ! hash_equals((string) $context->leaseToken(), $lease)
                 || $run->{$expiresField} === null
                 || $run->{$expiresField}->isPast()) {
-                throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+                throw new AiWorkspaceRuntimeGuardException('AI 工作台执行状态或租约已经变化。');
             }
         }
 

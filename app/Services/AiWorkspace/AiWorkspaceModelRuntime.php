@@ -734,6 +734,11 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
 
             return;
         }
+        if ($exception instanceof AiWorkspaceRuntimeGuardException) {
+            $usageAttempt->discarded('ai_result_not_committed', $usage);
+
+            return;
+        }
         $providerReturned
             ? $usageAttempt->discarded('ai_result_not_committed', $usage)
             : $usageAttempt->failed('ai_provider_request_failed', $usage);

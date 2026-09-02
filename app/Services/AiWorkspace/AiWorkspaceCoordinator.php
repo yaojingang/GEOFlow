@@ -211,7 +211,17 @@ final readonly class AiWorkspaceCoordinator
         try {
             $executionContext = $this->executionGuard->contextFromResolutionRun($run, $leaseOwner);
             $admin = $this->executionGuard->assertCurrent($executionContext);
-        } catch (Throwable) {
+        } catch (AiWorkspaceRuntimeGuardException) {
+            AiWorkspaceRun::query()
+                ->whereKey($runId)
+                ->where('resolution_lease_owner', $leaseOwner)
+                ->update([
+                    'resolution_lease_owner' => null,
+                    'resolution_lease_expires_at' => null,
+                ]);
+
+            return;
+        } catch (AiModelAccessException) {
             $this->stopResolution($runId, $leaseOwner, 'authorization_revoked', '管理员已停用、不存在或授权版本已变化。');
 
             return;
@@ -237,6 +247,7 @@ final readonly class AiWorkspaceCoordinator
 
             return;
         }
+        $planUsageDelivery = null;
         try {
             $resolutionPrompt = $this->resolutionPrompt($run);
             $this->renewResolutionLease($runId, $leaseOwner);
@@ -363,7 +374,6 @@ final readonly class AiWorkspaceCoordinator
             $this->realtime->broadcast($planning);
             $draftSteps = $resolution->workflowSteps;
             $planSourceReceipt = $intentReceipt;
-            $planUsageDelivery = null;
             if ($resolution->source === 'model') {
                 try {
                     $this->renewResolutionLease($runId, $leaseOwner);
@@ -465,6 +475,9 @@ final readonly class AiWorkspaceCoordinator
             $this->engine->prepare($planning->fresh(), $plan, $leaseOwner, $planSourceReceipt);
             $planUsageDelivery?->succeeded();
         } catch (Throwable $exception) {
+            $exception instanceof AiModelAccessException
+                ? $planUsageDelivery?->revoked($exception->getErrorCode())
+                : $planUsageDelivery?->discarded('ai_result_not_committed');
             $fresh = AiWorkspaceRun::query()->findOrFail($runId);
             if ($fresh->isTerminal()) {
                 return;

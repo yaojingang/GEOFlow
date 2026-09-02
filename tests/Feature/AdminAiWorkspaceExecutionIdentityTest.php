@@ -23,6 +23,7 @@ use App\Services\AiWorkspace\AiWorkspaceExecutionAccessGuard;
 use App\Services\AiWorkspace\AiWorkspaceModelReadiness;
 use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
 use App\Services\AiWorkspace\AiWorkspaceModelUsageDelivery;
+use App\Services\AiWorkspace\AiWorkspaceRuntimeGuardException;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Generator;
 use GuzzleHttp\Psr7\Response as PsrResponse;
@@ -360,6 +361,139 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         self::assertSame(AiModelUsageEvent::STATUS_REVOKED, $events[1]->status);
     }
 
+    public function test_persisted_workspace_cancellation_discards_usage_and_preserves_the_partial_answer(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-persisted-cancel-owner', 'super_admin');
+        $this->model($admin, 'workspace-persisted-cancel-model');
+        $run = app(AiWorkspaceCoordinator::class)->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请生成一个允许用户中途取消的回答。',
+        );
+        $calls = 0;
+        AdminHelpAssistant::fake(function () use ($admin, $run, &$calls): string {
+            $calls++;
+            if ($calls === 1) {
+                return json_encode([
+                    'mode' => 'answer',
+                    'intent' => 'answer cancellable question',
+                ], JSON_THROW_ON_ERROR);
+            }
+
+            $run->forceFill([
+                'answer' => '已经持久化的回答片段',
+                'answer_chunk_sequence' => 1,
+                'answer_is_partial' => true,
+            ])->save();
+            app(AiWorkflowEngine::class)->cancel($admin, $run->fresh());
+
+            return '取消后返回的供应商内容';
+        })->preventStrayPrompts();
+
+        app(AiWorkspaceCoordinator::class)->resolveRun((string) $run->id, (string) Str::uuid7());
+
+        $cancelled = $run->fresh();
+        self::assertSame(2, $calls);
+        self::assertSame('cancelled', $cancelled->state);
+        self::assertSame('已经持久化的回答片段', $cancelled->answer);
+        self::assertTrue((bool) $cancelled->answer_is_partial);
+        self::assertNotSame('authorization_revoked', $cancelled->failure_code);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        self::assertCount(2, $events);
+        self::assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $events[0]->status);
+        self::assertSame(AiModelUsageEvent::STATUS_DISCARDED, $events[1]->status);
+    }
+
+    public function test_workspace_provider_result_is_discarded_when_the_resolution_lease_is_lost(): void
+    {
+        $admin = $this->admin('workspace-provider-lease-lost', 'super_admin');
+        $this->model($admin, 'workspace-provider-lease-lost-model');
+        [$run, $context] = $this->answeringRunContext($admin, 'provider-lease-lost');
+        AdminHelpAssistant::fake(function () use ($run): string {
+            $run->forceFill([
+                'resolution_lease_owner' => (string) Str::uuid7(),
+                'resolution_lease_expires_at' => now()->addMinute(),
+            ])->save();
+
+            return '旧租约取得的供应商结果';
+        })->preventStrayPrompts();
+
+        try {
+            app(AiWorkspaceModelRuntime::class)->answer('问题', '上下文', [], $context);
+            self::fail('A stale resolution lease must reject the provider result.');
+        } catch (AiWorkspaceRuntimeGuardException $exception) {
+            self::assertSame('AI 工作台执行状态或租约已经变化。', $exception->getMessage());
+        }
+
+        $event = AiModelUsageEvent::query()->sole();
+        self::assertSame(AiModelUsageEvent::STATUS_DISCARDED, $event->status);
+        self::assertSame('ai_result_not_committed', $event->error_code);
+        self::assertSame('answering', $run->fresh()->state);
+        self::assertNull($run->fresh()->failure_code);
+    }
+
+    public function test_persisted_workspace_plan_usage_is_revoked_when_access_changes_before_prepare_commits(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-persisted-plan-race', 'super_admin');
+        $this->model($admin, 'workspace-persisted-plan-race-model');
+        AdminHelpAssistant::fake([
+            json_encode([
+                'mode' => 'workflow',
+                'intent' => '生成运营日报',
+                'candidate_capabilities' => [[
+                    'key' => 'analytics.daily_report',
+                    'confidence' => 1,
+                    'reason' => '用户需要日报',
+                ]],
+                'known_parameters' => [],
+                'requested_steps' => [[
+                    'operation_id' => 'daily-report',
+                    'capability' => 'analytics.daily_report',
+                    'parameters' => [],
+                ]],
+                'semantic_confidence' => 1,
+                'object_confidence' => 1,
+                'completeness_confidence' => 1,
+            ], JSON_THROW_ON_ERROR),
+            json_encode(['steps' => [[
+                'capability' => 'analytics.daily_report',
+                'parameters' => [],
+            ]]], JSON_THROW_ON_ERROR),
+        ])->preventStrayPrompts();
+        $run = app(AiWorkspaceCoordinator::class)->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请生成一份运营日报。',
+        );
+        $modelCompletions = 0;
+        $revoked = false;
+        DB::listen(function (QueryExecuted $query) use ($admin, &$modelCompletions, &$revoked): void {
+            if ($revoked || ! str_contains(strtolower($query->sql), 'ai_workspace_trace_events')) {
+                return;
+            }
+            if (! collect($query->bindings)->contains('model.completed')) {
+                return;
+            }
+            $modelCompletions++;
+            if ($modelCompletions === 2) {
+                $revoked = true;
+                Admin::query()->whereKey($admin->id)->increment('ai_config_access_version');
+            }
+        });
+
+        app(AiWorkspaceCoordinator::class)->resolveRun((string) $run->id, (string) Str::uuid7());
+
+        self::assertTrue($revoked);
+        self::assertSame('failed', $run->fresh()->state);
+        self::assertSame('authorization_revoked', $run->fresh()->failure_code);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        self::assertCount(2, $events);
+        self::assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $events[0]->status);
+        self::assertSame(AiModelUsageEvent::STATUS_REVOKED, $events[1]->status);
+    }
+
     public function test_fallback_model_is_registered_before_outbound_and_blocks_update_and_delete(): void
     {
         Queue::fake();
@@ -563,7 +697,7 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
 
         self::assertSame('queued', $run->fresh()->state);
         self::assertNull($run->fresh()->execution_lease_token);
-        $this->expectException(AiModelAccessException::class);
+        $this->expectException(AiWorkspaceRuntimeGuardException::class);
         $guard->assertCurrent($oldContext);
     }
 
@@ -992,8 +1126,8 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         try {
             $guard->recordResolvedModel($context, $model);
             self::fail('The stale resolution worker must lose its commit lease.');
-        } catch (AiModelAccessException $exception) {
-            self::assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $exception->getErrorCode());
+        } catch (AiWorkspaceRuntimeGuardException $exception) {
+            self::assertSame('AI 工作台执行状态或租约已经变化。', $exception->getMessage());
         }
 
         self::assertNull($run->fresh()->resolved_ai_model_id);
@@ -1019,7 +1153,7 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         $context = $guard->contextFromResolutionRun($run->fresh(), $lease);
         $run->forceFill(['state' => 'failed'])->save();
 
-        $this->expectException(AiModelAccessException::class);
+        $this->expectException(AiWorkspaceRuntimeGuardException::class);
         try {
             $guard->recordResolvedModel($context, $model);
         } finally {
