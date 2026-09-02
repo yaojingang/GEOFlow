@@ -863,6 +863,14 @@ class EvaluateArticleAiQualityCommand extends Command
 
         try {
             $currentModel = $invocation->model;
+            $invocation->beginUsageAttempt(
+                requestPayload: $instructions,
+                operation: 'article_quality.review',
+                businessSource: 'ai_quality_live_cli',
+                sourceType: 'ai_quality_evaluation',
+                sourceId: $execution->context->sourceId,
+                callKey: $execution->nextUsageCallKey(),
+            );
             if ($this->reviewer instanceof PreReservedArticleAiQualityReviewer) {
                 $review = $this->reviewer->reviewWithinReservedVersion(
                     $currentModel,
@@ -883,9 +891,17 @@ class EvaluateArticleAiQualityCommand extends Command
                 $review = $this->reviewer->review($currentModel, $instructions);
             }
             $this->executionGuard->assertModelCurrent($execution->context, $currentModel);
-            $invocation->recordSuccess();
+            $invocation->recordSuccess($review['usage'] ?? null);
 
             return $review;
+        } catch (AiModelAccessException $exception) {
+            $invocation->recordRevoked($exception->getErrorCode());
+
+            throw $exception;
+        } catch (\Throwable $exception) {
+            $invocation->recordProviderFailure();
+
+            throw $exception;
         } finally {
             $invocation->close();
         }

@@ -7,12 +7,16 @@ use App\Data\Ai\KnowledgeFactGenerationExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\KnowledgeFactAiGenerationException;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
+use App\Services\Admin\AiModelUsageAttempt;
+use App\Services\Admin\AiModelUsageAttemptFactory;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\AiWorkspace\AiWorkspaceModelReadiness;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Closure;
 use Illuminate\Support\Facades\DB;
 use Laravel\Ai\Exceptions\InsufficientCreditsException;
 use RuntimeException;
@@ -28,6 +32,7 @@ class KnowledgeFactAiGenerator
         private readonly KnowledgeFactGenerationAiExecutionGuard $executionGuard,
         private readonly AiModelInvocationLock $invocationLocks,
         private readonly AiModelFailoverDecider $failoverDecider,
+        private readonly AiModelUsageAttemptFactory $usageAttempts,
     ) {}
 
     /** @param list<array<string,string>> $evidence @return list<array<string,mixed>> */
@@ -36,11 +41,17 @@ class KnowledgeFactAiGenerator
         array $evidence,
         int $count,
         ?KnowledgeFactGenerationExecutionContext $executionContext = null,
+        ?Closure $persistResult = null,
+        ?string $usageRequestId = null,
+        string $usageCallKey = 'candidate-1',
     ): array {
         $invocationLock = null;
         $reservation = null;
         $requested = false;
         $finalized = false;
+        $providerReturned = false;
+        $usageAttempt = null;
+        $responseUsage = null;
         try {
             $invocationLock = $this->invocationLocks->acquireForInvocation((int) $model->getKey());
             $invocationModel = $this->currentModelForInvocation($model, $executionContext);
@@ -65,8 +76,29 @@ class KnowledgeFactAiGenerator
                 $executionContext,
             );
             $prompt = "最多提取 {$count} 条事实。只使用以下 JSON 证据：\n".json_encode($evidence, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($executionContext instanceof KnowledgeFactGenerationExecutionContext) {
+                $usageAttempt = $this->usageAttempts->beginForAdmin(
+                    model: $prePromptModel,
+                    executionAdminId: $executionContext->modelAccessAdminId,
+                    accessVersion: $executionContext->aiConfigAccessVersion,
+                    executionScope: AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN,
+                    modelSource: $this->usageAttempts->sourceFor(
+                        $prePromptModel,
+                        $executionContext->modelAccessAdminId,
+                    ),
+                    requestId: $usageRequestId ?? $this->usageAttempts->requestId(),
+                    requestPayload: $prompt,
+                    callKey: $usageCallKey,
+                    operation: 'knowledge_fact.generate',
+                    businessSource: 'knowledge_fact_generation',
+                    sourceType: 'knowledge_fact_generation_run',
+                    sourceId: $executionContext->runId,
+                );
+            }
             $requested = true;
             $response = (new KnowledgeFactGeneratorAgent)->prompt($prompt, [], $provider, (string) $invocationModel->model_id, 150);
+            $providerReturned = true;
+            $responseUsage = $response->usage ?? null;
             $facts = is_array($response->structured['facts'] ?? null) ? array_slice($response->structured['facts'], 0, $count) : [];
             $allowed = array_column($evidence, 'evidence_key');
             $facts = array_values(array_filter(array_map(fn (mixed $fact): ?array => $this->normalizeCandidate($fact, $allowed), $facts)));
@@ -88,10 +120,35 @@ class KnowledgeFactAiGenerator
                     report($exception);
                 }
             }, 3);
+            if ($persistResult instanceof Closure) {
+                $current = $this->currentModelForInvocation($invocationModel, $executionContext);
+                $this->assertConfigurationUnchanged(
+                    $configurationFingerprint,
+                    $current,
+                    $executionContext,
+                );
+                $persisted = DB::transaction(
+                    fn (): mixed => $persistResult($facts, $current),
+                    3,
+                );
+                if (is_array($persisted)) {
+                    $facts = array_values($persisted);
+                }
+            }
             $finalized = true;
+            $usageAttempt?->succeeded($responseUsage);
 
             return $facts;
         } catch (Throwable $exception) {
+            if ($usageAttempt instanceof AiModelUsageAttempt) {
+                if ($exception instanceof AiModelAccessException) {
+                    $usageAttempt->revoked($exception->getErrorCode(), $responseUsage);
+                } elseif ($providerReturned) {
+                    $usageAttempt->discarded('knowledge_fact_result_not_committed', $responseUsage);
+                } else {
+                    $usageAttempt->failed('ai_provider_request_failed');
+                }
+            }
             if ($reservation !== null && ! $finalized) {
                 $requested
                     ? $this->quota->recordModelAttempt($reservation)
@@ -107,6 +164,7 @@ class KnowledgeFactAiGenerator
                     && $this->failoverDecider->shouldFailover($exception),
             );
         } finally {
+            $usageAttempt?->discarded('knowledge_fact_result_not_committed', $responseUsage);
             $this->invocationLocks->release($invocationLock);
         }
     }

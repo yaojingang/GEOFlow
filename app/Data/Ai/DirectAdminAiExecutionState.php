@@ -7,6 +7,8 @@ use App\Services\GeoFlow\DirectAdminAiModelInvocation;
 
 final class DirectAdminAiExecutionState
 {
+    private int $usageAttemptSequence = 0;
+
     public function __construct(
         public readonly DirectAdminAiExecutionContext $context,
         public AiModel $model,
@@ -17,5 +19,12 @@ final class DirectAdminAiExecutionState
     {
         $this->model = $invocation->model;
         $this->source = $invocation->source;
+    }
+
+    public function nextUsageCallKey(): string
+    {
+        $this->usageAttemptSequence++;
+
+        return 'provider-'.$this->usageAttemptSequence;
     }
 }

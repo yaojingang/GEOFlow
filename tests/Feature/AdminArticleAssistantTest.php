@@ -6,6 +6,7 @@ use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Data\Ai\DirectAdminAiExecutionContext;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
@@ -272,6 +273,11 @@ class AdminArticleAssistantTest extends TestCase
         $this->assertSame(1, (int) $model->fresh()->used_today);
         $this->assertSame(1, (int) $model->fresh()->total_used);
         $this->assertSame(1, (int) $knowledgeBase->fresh()->usage_count);
+        $usageEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $usageEvent->status);
+        $this->assertSame(AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN, $usageEvent->execution_scope);
+        $this->assertSame($admin->id, $usageEvent->execution_admin_id);
+        $this->assertSame($admin->id, $usageEvent->config_owner_admin_id);
 
         MarkdownContentWriterAgent::assertPrompted(
             fn ($prompt): bool => str_contains($prompt->prompt, 'GEO 内容工程')
@@ -330,6 +336,12 @@ class AdminArticleAssistantTest extends TestCase
         $sharedResponse->assertOk();
         $this->assertStringContainsString('共享模型生成', $sharedResponse->streamedContent());
         $this->assertSame(1, (int) $shared->fresh()->total_used);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_PERSONAL, $events[0]->model_source);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SHARED, $events[1]->model_source);
+        $this->assertSame($provider->id, $events[1]->config_owner_admin_id);
+        $this->assertSame($admin->id, $events[1]->execution_admin_id);
     }
 
     public function test_ai_generation_skips_a_personal_candidate_whose_last_quota_is_consumed_before_lock(): void
@@ -412,6 +424,7 @@ class AdminArticleAssistantTest extends TestCase
         }
 
         MarkdownContentWriterAgent::assertNeverPrompted();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_ai_generation_stops_before_the_first_event_when_access_is_revoked_during_lazy_stream_start(): void
@@ -474,7 +487,7 @@ class AdminArticleAssistantTest extends TestCase
                 return;
             }
             $adminReads++;
-            if ($adminReads === 5) {
+            if ($adminReads === 7) {
                 $revoked = true;
                 DB::table('admins')->where('id', $admin->id)->increment('ai_config_access_version');
             }
@@ -569,6 +582,9 @@ class AdminArticleAssistantTest extends TestCase
         $this->assertSame(0, (int) $knowledgeBase->fresh()->usage_count);
         $this->assertSame(0, (int) $model->fresh()->used_today);
         $this->assertSame(0, (int) $model->fresh()->total_used, 'A revoked result cannot be counted as a delivered success.');
+        $usageEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $usageEvent->status);
+        $this->assertSame('ai_config_access_revoked', $usageEvent->error_code);
     }
 
     public function test_ai_generation_releases_the_invocation_lock_after_a_stream_exception(): void

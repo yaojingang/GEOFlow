@@ -5,6 +5,9 @@ namespace App\Services\GeoFlow;
 use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
+use App\Services\Admin\AiModelUsageAttempt;
+use App\Services\Admin\AiModelUsageAttemptFactory;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use Closure;
 use Laravel\Ai\Responses\AgentResponse;
@@ -17,6 +20,7 @@ final readonly class WorkerAiModelInvocationGateway
         private AiExecutionAccessGuard $accessGuard,
         private AiModelInvocationLock $invocationLocks,
         private ArticleContentGenerationService $generationService,
+        private AiModelUsageAttemptFactory $usageAttempts,
     ) {}
 
     /**
@@ -40,19 +44,62 @@ final readonly class WorkerAiModelInvocationGateway
             $modelId,
             $this->generationService->providerTimeoutSeconds() + self::PERSISTENCE_MARGIN_SECONDS,
         );
+        $usageAttempt = null;
+        $providerReturned = false;
+        $response = null;
 
         try {
             $currentModel = $this->accessGuard->assertModelCurrent($executionContext, $modelId);
             $receipt = $this->receiptFor($executionContext, $currentModel);
-            $response = $this->generationService->generate($currentModel, $prompt);
+            $usageRequestId = $this->usageAttempts->requestId();
+            $response = $this->generationService->generate(
+                $currentModel,
+                $prompt,
+                function (AiModel $providerModel) use (&$usageAttempt, $executionContext, $usageRequestId, $prompt): void {
+                    $usageAttempt = $this->usageAttempts->beginForAdmin(
+                        model: $providerModel,
+                        executionAdminId: $executionContext->modelAccessAdminId,
+                        accessVersion: $executionContext->aiConfigAccessVersion,
+                        executionScope: AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN,
+                        modelSource: $this->usageAttempts->sourceFor(
+                            $providerModel,
+                            $executionContext->modelAccessAdminId,
+                        ),
+                        requestId: $usageRequestId,
+                        requestPayload: $prompt,
+                        callKey: 'candidate-1',
+                        operation: 'article.generate',
+                        businessSource: 'worker_article_generation',
+                        sourceType: $executionContext->sourceType,
+                        sourceId: $executionContext->sourceId,
+                    );
+                },
+            );
+            $providerReturned = true;
             $currentModel = $this->assertReceiptCurrent($executionContext, $receipt);
 
-            return $persistResponse([
+            $result = $persistResponse([
                 'model' => $currentModel,
                 'response' => $response,
                 'receipt' => $receipt,
             ]);
+            $usageAttempt?->succeeded($response->usage ?? null);
+
+            return $result;
+        } catch (AiModelAccessException $exception) {
+            $usageAttempt?->revoked($exception->getErrorCode(), $response?->usage ?? null);
+
+            throw $exception;
+        } catch (\Throwable $exception) {
+            if ($usageAttempt instanceof AiModelUsageAttempt) {
+                $providerReturned
+                    ? $usageAttempt->discarded('ai_result_persistence_failed', $response?->usage ?? null)
+                    : $usageAttempt->failed('ai_provider_request_failed');
+            }
+
+            throw $exception;
         } finally {
+            $usageAttempt?->discarded('ai_result_not_committed', $response?->usage ?? null);
             $this->invocationLocks->release($invocationLock);
         }
     }

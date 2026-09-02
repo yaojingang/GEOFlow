@@ -9,6 +9,7 @@ use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
@@ -469,6 +470,10 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         ]], $report['models_used']);
         $this->assertSame($personal->id, $report['cases'][0]['resolved_model_id']);
         $this->assertSame('personal', $report['cases'][0]['resolved_model_source']);
+        $usageEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $usageEvent->status);
+        $this->assertSame('ai_quality_live_cli', $usageEvent->business_source);
+        $this->assertSame($admin->id, $usageEvent->execution_admin_id);
 
         $personal->forceFill([
             'daily_limit' => 1,
@@ -522,6 +527,11 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertSame('mixed', $report['execution']['model_source']);
         $this->assertSame([$personal->id, $shared->id], array_column($report['calls'], 'resolved_model_id'));
         $this->assertSame(['personal', 'shared'], array_column($report['calls'], 'resolved_model_source'));
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertSame($events[0]->request_id, $events[1]->request_id);
+        $this->assertSame(['provider-1', 'provider-2'], $events->pluck('call_key')->all());
+        $this->assertSame(['personal', 'shared'], $events->pluck('model_source')->all());
     }
 
     public function test_live_evaluation_skips_a_personal_candidate_whose_last_quota_is_consumed_before_lock(): void
@@ -763,6 +773,9 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertSame([$model->id], $reviewer->modelIds);
         $this->assertSame('historical-json', File::get($basePath.'.json'));
         $this->assertSame('historical-markdown', File::get($basePath.'.md'));
+        $usageEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $usageEvent->status);
+        $this->assertSame('ai_config_access_revoked', $usageEvent->error_code);
     }
 
     public function test_live_report_publish_restores_the_historical_pair_when_access_changes_during_commit(): void

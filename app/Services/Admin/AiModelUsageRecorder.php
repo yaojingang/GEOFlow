@@ -55,7 +55,6 @@ final class AiModelUsageRecorder
                 'regex:/\A[a-z0-9_.:-]+\z/i',
             ],
             'status' => ['required', Rule::in([
-                AiModelUsageEvent::STATUS_STARTED,
                 AiModelUsageEvent::STATUS_SUCCEEDED,
                 AiModelUsageEvent::STATUS_FAILED,
                 AiModelUsageEvent::STATUS_DISCARDED,

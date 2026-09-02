@@ -21,7 +21,7 @@ final class ArticleContentGenerationService
         private readonly AiUsageQuotaService $usageQuota,
     ) {}
 
-    public function generate(AiModel $aiModel, string $prompt): AgentResponse
+    public function generate(AiModel $aiModel, string $prompt, ?Closure $beforeProvider = null): AgentResponse
     {
         [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_content');
 
@@ -31,6 +31,7 @@ final class ArticleContentGenerationService
         }
 
         try {
+            $beforeProvider?->__invoke($aiModel);
             $response = $agent->prompt($prompt, [], $providerName, $modelId);
         } catch (Throwable $exception) {
             $this->releaseDailyUsage($reservation);
@@ -99,6 +100,7 @@ final class ArticleContentGenerationService
         AiModel $aiModel,
         string $prompt,
         AiUsageReservation $reservation,
+        ?Closure $beforeProvider = null,
     ): ArticleContentStreamSession {
         try {
             $runtime = $this->resolveRuntime($aiModel, 'article_editor');
@@ -108,7 +110,7 @@ final class ArticleContentGenerationService
             throw $exception;
         }
 
-        return $this->deferredStreamWithRuntime($prompt, $runtime, $reservation);
+        return $this->deferredStreamWithRuntime($prompt, $runtime, $reservation, $beforeProvider);
     }
 
     /**
@@ -118,10 +120,12 @@ final class ArticleContentGenerationService
         string $prompt,
         array $runtime,
         AiUsageReservation $reservation,
+        ?Closure $beforeProvider = null,
     ): ArticleContentStreamSession {
         [$agent, $providerName, $modelId, $providerUrl] = $runtime;
 
         try {
+            $beforeProvider?->__invoke();
             $upstream = $agent->stream($prompt, [], $providerName, $modelId);
         } catch (Throwable $exception) {
             $this->releaseDailyUsage($reservation);

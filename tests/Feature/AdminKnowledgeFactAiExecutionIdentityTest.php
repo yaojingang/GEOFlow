@@ -8,6 +8,7 @@ use App\Jobs\FinalizeKnowledgeFactGenerationJob;
 use App\Jobs\GenerateKnowledgeFactBatchJob;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFact;
@@ -332,6 +333,14 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         KnowledgeFactGeneratorAgent::assertPrompted(
             static fn ($prompt): bool => $prompt->model === (string) $shared->model_id,
         );
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertSame(AiModelUsageEvent::STATUS_FAILED, $events[0]->status);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_PERSONAL, $events[0]->model_source);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $events[1]->status);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SHARED, $events[1]->model_source);
+        $this->assertSame($owner->id, $events[1]->config_owner_admin_id);
+        $this->assertSame($admin->id, $events[1]->execution_admin_id);
     }
 
     public function test_runtime_model_rate_limit_is_shared_across_runs_and_releases_before_fallback(): void
@@ -824,6 +833,9 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         $this->assertFalse((bool) $run->retryable_failure);
         $this->assertSame([], (array) data_get($run->result_json, 'candidates'));
         $this->assertSame(0, (int) $requested->fresh()->total_used);
+        $usageEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $usageEvent->status);
+        $this->assertSame('ai_config_access_revoked', $usageEvent->error_code);
     }
 
     public function test_finalize_discards_candidates_when_access_is_revoked_before_materialization(): void

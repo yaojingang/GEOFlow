@@ -7,12 +7,15 @@ use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
 use App\Models\Task;
 use App\Services\Admin\AiModelUsageAccessSnapshot;
+use App\Services\Admin\AiModelUsageAttempt;
+use App\Services\Admin\AiModelUsageAttemptFactory;
 use App\Services\Admin\AiModelUsageLedgerSchema;
 use App\Services\Admin\AiModelUsageRecorder;
 use Illuminate\Database\Query\Grammars\PostgresGrammar;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use LogicException;
@@ -21,6 +24,101 @@ use Tests\TestCase;
 class AiModelUsageEventTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_production_attempt_records_one_terminal_event_with_normalized_tokens_and_frozen_shared_attribution(): void
+    {
+        $owner = $this->admin('owner', 'super_admin');
+        $executor = $this->admin('executor', 'admin', [
+            'shared_ai_config_owner_id' => $owner->id,
+            'ai_config_access_version' => 9,
+        ]);
+        $model = $this->model($owner);
+        $factory = app(AiModelUsageAttemptFactory::class);
+        $requestId = $factory->requestId();
+        $attempt = $factory->beginForAdmin(
+            model: $model,
+            executionAdminId: $executor->id,
+            accessVersion: 9,
+            executionScope: AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN,
+            modelSource: AiModelUsageEvent::MODEL_SOURCE_SHARED,
+            requestId: $requestId,
+            requestPayload: 'private prompt that must only be hashed',
+            callKey: 'candidate-1',
+            operation: 'article.generate',
+            businessSource: 'worker_article_generation',
+            sourceType: Task::class,
+            sourceId: 42,
+        );
+
+        $executor->forceFill([
+            'shared_ai_config_owner_id' => null,
+            'ai_config_access_version' => 10,
+        ])->save();
+        $attempt->revoked('ai_config_access_revoked', [
+            'promptTokens' => 11,
+            'completionTokens' => 7,
+        ]);
+        $attempt->failed('must_not_create_a_second_event');
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame($requestId, $event->request_id);
+        $this->assertSame(hash('sha256', 'private prompt that must only be hashed'), $event->request_payload_digest);
+        $this->assertSame($owner->id, $event->config_owner_admin_id);
+        $this->assertSame($executor->id, $event->execution_admin_id);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SHARED, $event->model_source);
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
+        $this->assertSame(11, $event->input_tokens);
+        $this->assertSame(7, $event->output_tokens);
+        $this->assertSame(18, $event->total_tokens);
+        $this->assertStringNotContainsString('private prompt', json_encode($event->getAttributes(), JSON_THROW_ON_ERROR));
+    }
+
+    public function test_production_attempt_is_best_effort_when_attribution_cannot_be_captured(): void
+    {
+        $owner = $this->admin('owner', 'super_admin');
+        $model = $this->model($owner);
+        $factory = app(AiModelUsageAttemptFactory::class);
+        $attempt = $factory->beginForAdmin(
+            model: $model,
+            executionAdminId: 999999,
+            accessVersion: 1,
+            executionScope: AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN,
+            modelSource: AiModelUsageEvent::MODEL_SOURCE_PERSONAL,
+            requestId: $factory->requestId(),
+            requestPayload: 'payload',
+            callKey: 'primary',
+            operation: 'article.generate',
+            businessSource: 'article_editor',
+        );
+
+        $attempt->succeeded(['prompt_tokens' => 1, 'completion_tokens' => 2]);
+
+        $this->assertTrue($attempt->isFinalized());
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+    }
+
+    public function test_terminal_recording_failure_does_not_escape_into_the_business_call(): void
+    {
+        $owner = $this->admin('owner', 'super_admin');
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $snapshot = $this->snapshot($model, null, AiModelUsageEvent::MODEL_SOURCE_SYSTEM);
+        $attempt = new AiModelUsageAttempt(
+            $snapshot,
+            app(AiModelUsageRecorder::class),
+            [
+                'call_key' => 'primary',
+                'operation' => 'system.test',
+                'business_source' => 'telemetry_test',
+                'source_type' => null,
+                'source_id' => null,
+            ],
+        );
+
+        Schema::drop('ai_model_usage_events');
+        $attempt->succeeded(['prompt_tokens' => 1, 'completion_tokens' => 1]);
+
+        $this->assertTrue($attempt->isFinalized());
+    }
 
     public function test_recorder_persists_whitelisted_usage_metadata_without_sensitive_payloads(): void
     {
@@ -307,6 +405,7 @@ class AiModelUsageEventTest extends TestCase
         $recorder = app(AiModelUsageRecorder::class);
 
         foreach ([
+            ['status' => AiModelUsageEvent::STATUS_STARTED],
             ['status' => 'mystery'],
             ['input_tokens' => -1],
             ['output_tokens' => -1],

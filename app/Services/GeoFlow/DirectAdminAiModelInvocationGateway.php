@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Data\Ai\DirectAdminAiExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\AiModelRuntimeEligibilityException;
+use App\Services\Admin\AiModelUsageAttemptFactory;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\AiWorkspace\AiWorkspaceModelUnavailableException;
 use Closure;
@@ -17,6 +18,7 @@ final readonly class DirectAdminAiModelInvocationGateway
         private AiUsageQuotaService $usageQuota,
         private AiModelInvocationLock $invocationLocks,
         private DirectAdminAiInvocationBoundaryHook $boundaryHook,
+        private AiModelUsageAttemptFactory $usageAttempts,
     ) {}
 
     public function acquire(
@@ -48,6 +50,8 @@ final readonly class DirectAdminAiModelInvocationGateway
                     $lock,
                     $this->usageQuota,
                     $this->invocationLocks,
+                    $this->usageAttempts,
+                    $context,
                 );
             } catch (AiModelRuntimeEligibilityException|AiWorkspaceModelUnavailableException $exception) {
                 $this->invocationLocks->release($lock);

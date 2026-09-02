@@ -6,6 +6,7 @@ use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Data\Ai\AiExecutionContext;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\Admin\AdminAiModelMutationService;
@@ -108,6 +109,11 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
 
         $this->assertTrue($callbackEntered);
         $this->assertSame('persisted', $result);
+        $usageEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $usageEvent->status);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_PERSONAL, $usageEvent->model_source);
+        $this->assertSame(10, $usageEvent->input_tokens);
+        $this->assertSame(20, $usageEvent->output_tokens);
         $mutationLock = $locks->acquireForMutation((int) $model->id);
         $this->assertNotNull($mutationLock);
         $locks->release($mutationLock);
@@ -135,6 +141,10 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         } catch (\RuntimeException $exception) {
             $this->assertSame('persistence failed', $exception->getMessage());
         }
+
+        $usageEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, $usageEvent->status);
+        $this->assertSame('ai_result_persistence_failed', $usageEvent->error_code);
 
         $mutationLock = $locks->acquireForMutation((int) $model->id);
         $this->assertNotNull($mutationLock);
@@ -317,12 +327,21 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
-        foreach ([$primary, $fallback] as $model) {
-            $model->forceFill([
-                'owner_admin_id' => $admin->id,
-                'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
-            ])->save();
-        }
+        $provider = Admin::query()->create([
+            'username' => 'worker-failover-provider',
+            'password' => 'safe-password',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $admin->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $primary->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $fallback->forceFill([
+            'owner_admin_id' => $provider->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $task = Task::query()->create([
             'name' => 'Worker failover task',
             'ai_model_id' => (int) $primary->id,
@@ -366,6 +385,14 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         Http::assertSentCount(2);
         Http::assertSent(fn ($request): bool => $request->url() === 'https://primary.test/v1/chat/completions');
         Http::assertSent(fn ($request): bool => $request->url() === 'https://fallback.test/v1/chat/completions');
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertSame(AiModelUsageEvent::STATUS_FAILED, $events[0]->status);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_PERSONAL, $events[0]->model_source);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $events[1]->status);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SHARED, $events[1]->model_source);
+        $this->assertSame($provider->id, $events[1]->config_owner_admin_id);
+        $this->assertSame($admin->id, $events[1]->execution_admin_id);
     }
 
     /**

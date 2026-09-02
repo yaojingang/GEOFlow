@@ -300,17 +300,33 @@ class KnowledgeFactGenerationCoordinator
         $candidates = $this->executionGuard->resolveCandidates($context);
         $facts = null;
         $resolvedModel = null;
+        $usageRequestId = (string) Str::uuid();
         foreach ($candidates as $candidateIndex => $candidate) {
             $currentModel = $this->executionGuard->registerCandidate($context, $candidate);
             $this->modelRateLimiter->reserve($currentModel);
             try {
+                $persistedModel = null;
                 $facts = $this->generator->generate(
                     $currentModel,
                     $hydratedEvidence,
                     min((int) config('geoflow.knowledge_fact_generation_batch_size', 25), $generationLimit),
                     $context,
+                    function (array $generatedFacts, AiModel $providerModel) use ($run, $context, $sequence, $inputHash, &$persistedModel): array {
+                        $persistedModel = $providerModel;
+
+                        return $this->persistBatchResult(
+                            $run,
+                            $context,
+                            $sequence,
+                            $inputHash,
+                            $generatedFacts,
+                            $providerModel,
+                        );
+                    },
+                    $usageRequestId,
+                    'candidate-'.($candidateIndex + 1).'-batch-'.$context->batchAttempt,
                 );
-                $resolvedModel = $currentModel;
+                $resolvedModel = $persistedModel ?? $currentModel;
 
                 break;
             } catch (Throwable $exception) {
@@ -334,53 +350,68 @@ class KnowledgeFactGenerationCoordinator
         if (! is_array($facts) || ! $resolvedModel instanceof AiModel) {
             throw new \RuntimeException('knowledge_fact_generation_model_unavailable');
         }
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $facts
+     * @return list<array<string,mixed>>
+     */
+    private function persistBatchResult(
+        KnowledgeFactGenerationRun $run,
+        KnowledgeFactGenerationExecutionContext $context,
+        int $sequence,
+        string $inputHash,
+        array $facts,
+        AiModel $resolvedModel,
+    ): array {
         $existingKeys = $run->library->facts()->where('is_enabled', true)->pluck('stable_key')->all();
         if ($run->mode === 'supplement') {
             $facts = array_values(array_filter($facts, fn (array $fact): bool => ! in_array($fact['stable_key'], $existingKeys, true)));
         } elseif ($run->mode === 'refresh_stale') {
             $facts = array_values(array_filter($facts, fn (array $fact): bool => in_array($fact['stable_key'], $existingKeys, true)));
         }
-        DB::transaction(function () use ($runId, $sequence, $inputHash, $facts, $context, $resolvedModel): void {
-            $admin = $this->executionGuard->assertCurrent($context, $resolvedModel);
-            $locked = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();
-            if (! $locked->isActive() || $locked->cancel_requested_at !== null) {
-                throw AiModelAccessException::configAccessRevoked($admin);
-            }
-            $result = (array) $locked->result_json;
-            $result['candidates'] = array_slice(array_merge((array) ($result['candidates'] ?? []), $facts), 0, 200);
-            $source = (int) $resolvedModel->owner_admin_id === (int) $admin->getKey()
-                ? 'personal'
-                : 'shared';
-            $result['batches'][(string) $sequence] = [
-                'input_hash' => $inputHash,
-                'status' => 'completed',
-                'candidate_count' => count($facts),
+
+        $admin = $this->executionGuard->assertCurrent($context, $resolvedModel);
+        $locked = KnowledgeFactGenerationRun::query()->whereKey($run->getKey())->lockForUpdate()->firstOrFail();
+        if (! $locked->isActive() || $locked->cancel_requested_at !== null) {
+            throw AiModelAccessException::configAccessRevoked($admin);
+        }
+        $result = (array) $locked->result_json;
+        $result['candidates'] = array_slice(array_merge((array) ($result['candidates'] ?? []), $facts), 0, 200);
+        $source = (int) $resolvedModel->owner_admin_id === (int) $admin->getKey()
+            ? 'personal'
+            : 'shared';
+        $result['batches'][(string) $sequence] = [
+            'input_hash' => $inputHash,
+            'status' => 'completed',
+            'candidate_count' => count($facts),
+            'resolved_ai_model_id' => (int) $resolvedModel->getKey(),
+            'resolved_model_source' => $source,
+        ];
+        $claims = (array) $locked->batch_claims_json;
+        $claim = (array) ($claims[(string) $sequence] ?? []);
+        $claim['status'] = 'completed';
+        $claim['candidate_count'] = count($facts);
+        $claim['resolved_ai_model_id'] = (int) $resolvedModel->getKey();
+        $claim['resolved_model_source'] = $source;
+        $claim['lease_token'] = null;
+        $claim['lease_expires_at'] = null;
+        $claims[(string) $sequence] = $claim;
+        $updates = [
+            'result_json' => $result,
+            'batch_claims_json' => $claims,
+            'result_hash' => hash('sha256', json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)),
+        ];
+        if ($locked->resolved_ai_model_id === null) {
+            $updates += [
                 'resolved_ai_model_id' => (int) $resolvedModel->getKey(),
                 'resolved_model_source' => $source,
+                'model_resolved_at' => now(),
             ];
-            $claims = (array) $locked->batch_claims_json;
-            $claim = (array) ($claims[(string) $sequence] ?? []);
-            $claim['status'] = 'completed';
-            $claim['candidate_count'] = count($facts);
-            $claim['resolved_ai_model_id'] = (int) $resolvedModel->getKey();
-            $claim['resolved_model_source'] = $source;
-            $claim['lease_token'] = null;
-            $claim['lease_expires_at'] = null;
-            $claims[(string) $sequence] = $claim;
-            $updates = [
-                'result_json' => $result,
-                'batch_claims_json' => $claims,
-                'result_hash' => hash('sha256', json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)),
-            ];
-            if ($locked->resolved_ai_model_id === null) {
-                $updates += [
-                    'resolved_ai_model_id' => (int) $resolvedModel->getKey(),
-                    'resolved_model_source' => $source,
-                    'model_resolved_at' => now(),
-                ];
-            }
-            $locked->forceFill($updates)->save();
-        }, 3);
+        }
+        $locked->forceFill($updates)->save();
+
+        return $facts;
     }
 
     public function releaseBatchForRetry(

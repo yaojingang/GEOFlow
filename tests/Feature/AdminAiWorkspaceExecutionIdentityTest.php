@@ -13,6 +13,7 @@ use App\Models\Admin;
 use App\Models\AdminAiSetting;
 use App\Models\AiConversationMessage;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\AiWorkspaceRun;
 use App\Services\Admin\AdminAiModelMutationService;
 use App\Services\AiWorkspace\AiConversationRepository;
@@ -206,6 +207,14 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         AdminHelpAssistant::assertPrompted(
             static fn ($prompt): bool => $prompt->model === (string) $shared->model_id,
         );
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        self::assertCount(2, $events);
+        self::assertSame(AiModelUsageEvent::STATUS_FAILED, $events[0]->status);
+        self::assertSame(AiModelUsageEvent::MODEL_SOURCE_PERSONAL, $events[0]->model_source);
+        self::assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $events[1]->status);
+        self::assertSame(AiModelUsageEvent::MODEL_SOURCE_SHARED, $events[1]->model_source);
+        self::assertSame($provider->id, $events[1]->config_owner_admin_id);
+        self::assertSame($admin->id, $events[1]->execution_admin_id);
     }
 
     public function test_fallback_model_is_registered_before_outbound_and_blocks_update_and_delete(): void

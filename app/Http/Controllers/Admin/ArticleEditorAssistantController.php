@@ -157,6 +157,8 @@ final class ArticleEditorAssistantController extends Controller
         $response = response()->stream(function () use ($aiModel, $contentPrompt, $executionContext, $knowledgeBase): iterable {
             $invocation = null;
             $streamSession = null;
+            $stream = null;
+            $providerReturned = false;
             try {
                 $invocation = $this->invocationGateway->acquire(
                     $executionContext,
@@ -167,12 +169,20 @@ final class ArticleEditorAssistantController extends Controller
                     $aiModel,
                     $contentPrompt,
                     $invocation->reservation,
+                    fn () => $invocation->beginUsageAttempt(
+                        requestPayload: $contentPrompt,
+                        operation: 'article_editor.generate',
+                        businessSource: 'article_editor',
+                        sourceType: KnowledgeBase::class,
+                        sourceId: (int) $knowledgeBase->id,
+                    ),
                 );
                 $stream = $streamSession->stream;
                 foreach ($stream as $event) {
                     $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
                     yield 'data: '.($event)."\n\n";
                 }
+                $providerReturned = true;
 
                 $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
                 $content = $this->citationMarkerCleaner->cleanContent((string) $stream->text);
@@ -195,10 +205,17 @@ final class ArticleEditorAssistantController extends Controller
                     });
                 }
                 $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                $invocation->recordDelivered($stream->usage ?? null);
                 yield "data: [DONE]\n\n";
             } catch (AiModelAccessException $exception) {
+                $invocation?->recordRevoked($exception->getErrorCode(), $stream?->usage ?? null);
                 yield $this->safeSseError($exception->getErrorCode());
             } catch (Throwable) {
+                if ($providerReturned) {
+                    $invocation?->recordDiscarded('ai_result_persistence_failed', $stream?->usage ?? null);
+                } else {
+                    $invocation?->recordProviderFailure();
+                }
                 Log::warning('Article assistant stream stopped safely.', [
                     'execution' => $executionContext->toSafeArray(),
                     'ai_model_id' => (int) $aiModel->id,
