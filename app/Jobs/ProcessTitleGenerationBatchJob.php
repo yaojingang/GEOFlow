@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Services\GeoFlow\TitleGenerationCoordinator;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -63,11 +65,21 @@ final class ProcessTitleGenerationBatchJob implements ShouldBeUnique, ShouldQueu
 
     public function handle(TitleGenerationCoordinator $coordinator): void
     {
-        $coordinator->processBatch(
-            $this->runId,
-            $this->batchSequence,
-            $this->leaseToken,
-        );
+        try {
+            $coordinator->processBatch(
+                $this->runId,
+                $this->batchSequence,
+                $this->leaseToken,
+            );
+        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            $coordinator->markFailed(
+                $this->runId,
+                $this->batchSequence,
+                $this->leaseToken,
+                $exception,
+                false,
+            );
+        }
     }
 
     public function failed(?Throwable $exception = null): void
@@ -77,6 +89,7 @@ final class ProcessTitleGenerationBatchJob implements ShouldBeUnique, ShouldQueu
             $this->batchSequence,
             $this->leaseToken,
             $exception ?? new \RuntimeException('title_generation_batch_failed'),
+            true,
         );
     }
 }

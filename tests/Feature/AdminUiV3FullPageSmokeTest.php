@@ -340,6 +340,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'title_library_id' => $titleLibrary->id,
             'status' => TitleGenerationRun::STATUS_COMPLETED,
         ], [
+            'created_by_admin_id' => $admin->id,
             'requested_count' => 1,
             'batch_size' => 1,
             'model_request_budget' => 3,

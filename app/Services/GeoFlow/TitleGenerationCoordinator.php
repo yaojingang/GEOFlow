@@ -2,6 +2,9 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Ai\TitleGenerationExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Exceptions\TitleGenerationException;
 use App\Jobs\ProcessTitleGenerationBatchJob;
 use App\Jobs\ResumeTitleGenerationRunJob;
@@ -11,6 +14,7 @@ use App\Models\KeywordLibrary;
 use App\Models\Title;
 use App\Models\TitleGenerationRun;
 use App\Models\TitleLibrary;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use App\Support\LibraryImportPolicy;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +26,8 @@ final class TitleGenerationCoordinator
 {
     public function __construct(
         private readonly TitleAiGenerationService $generationService,
+        private readonly ?TitleGenerationAiExecutionGuard $aiExecutionGuard = null,
+        private readonly ?AiExecutionErrorSanitizer $errorSanitizer = null,
     ) {}
 
     /**
@@ -39,6 +45,15 @@ final class TitleGenerationCoordinator
                 if (! KeywordLibrary::query()->whereKey($payload['keyword_library_id'])->lockForUpdate()->first()) {
                     throw new TitleGenerationException('title_generation_no_keywords');
                 }
+                $executionAdmin = $adminId !== null && $adminId > 0
+                    ? Admin::query()->whereKey($adminId)->lockForUpdate()->firstOrFail()
+                    : null;
+                if ($executionAdmin instanceof Admin && (string) $executionAdmin->status !== 'active') {
+                    throw new TitleGenerationException('ai_execution_admin_inactive');
+                }
+                if (! $executionAdmin instanceof Admin && $this->executionGuard()->identityRequired()) {
+                    throw new TitleGenerationException('ai_config_access_revoked');
+                }
                 $aiModel = AiModel::query()
                     ->whereKey($payload['ai_model_id'])
                     ->where('status', 'active')
@@ -48,9 +63,9 @@ final class TitleGenerationCoordinator
                 if (! $aiModel) {
                     throw new TitleGenerationException('title_generation_ai_model_unavailable');
                 }
-                if ($adminId !== null && $adminId > 0) {
-                    Admin::query()->whereKey($adminId)->lockForUpdate()->firstOrFail();
-                }
+                $executionIdentity = $executionAdmin instanceof Admin
+                    ? $this->executionGuard()->snapshotForCreation($executionAdmin, $aiModel)
+                    : null;
 
                 if (TitleGenerationRun::query()->where('active_key', $this->activeKey((int) $library->getKey()))->exists()) {
                     throw new TitleGenerationException('title_generation_active');
@@ -61,11 +76,19 @@ final class TitleGenerationCoordinator
                     (int) $payload['title_count'],
                 );
 
-                $run = TitleGenerationRun::query()->create([
+                $run = TitleGenerationRun::query()->forceCreate([
                     'title_library_id' => (int) $library->getKey(),
                     'keyword_library_id' => $payload['keyword_library_id'],
                     'ai_model_id' => $payload['ai_model_id'],
                     'created_by_admin_id' => $adminId,
+                    'model_access_admin_id' => $executionIdentity['model_access_admin_id'] ?? null,
+                    'model_access_admin_role' => $executionIdentity['model_access_admin_role'] ?? null,
+                    'ai_config_access_version' => $executionIdentity['ai_config_access_version'] ?? null,
+                    'requested_ai_model_id' => $executionIdentity['requested_ai_model_id'] ?? null,
+                    'resolved_ai_model_id' => null,
+                    'resolved_model_source' => null,
+                    'model_resolved_at' => null,
+                    'resolver_policy_version' => $executionIdentity['resolver_policy_version'] ?? null,
                     'status' => TitleGenerationRun::STATUS_QUEUED,
                     'active_key' => $this->activeKey((int) $library->getKey()),
                     'requested_count' => $payload['title_count'],
@@ -134,26 +157,50 @@ final class TitleGenerationCoordinator
         return $run->fresh() ?? $run;
     }
 
-    public function retry(TitleGenerationRun $run): TitleGenerationRun
+    private function executionGuard(): TitleGenerationAiExecutionGuard
     {
-        $run = DB::transaction(function () use ($run): TitleGenerationRun {
+        return $this->aiExecutionGuard ?? app(TitleGenerationAiExecutionGuard::class);
+    }
+
+    public function retry(TitleGenerationRun $run, Admin|int|null $actor = null): TitleGenerationRun
+    {
+        $run = DB::transaction(function () use ($run, $actor): TitleGenerationRun {
             $lockedRun = TitleGenerationRun::query()->whereKey($run->getKey())->lockForUpdate()->firstOrFail();
             TitleLibrary::query()->whereKey($lockedRun->title_library_id)->lockForUpdate()->firstOrFail();
 
             if (! $lockedRun->isRetryable()) {
                 throw new TitleGenerationException('title_generation_not_retryable');
             }
-            $aiModel = AiModel::query()
-                ->whereKey($lockedRun->ai_model_id)
-                ->where('status', 'active')
-                ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
-                ->lockForUpdate()
-                ->first();
-            if (! $aiModel) {
-                throw new TitleGenerationException('title_generation_ai_model_unavailable');
-            }
-            if ($lockedRun->created_by_admin_id !== null) {
-                Admin::query()->whereKey($lockedRun->created_by_admin_id)->lockForUpdate()->first();
+            $actorId = $actor instanceof Admin ? (int) $actor->getKey() : (int) ($actor ?? 0);
+            if ($this->executionGuard()->identityComplete($lockedRun)) {
+                if ($actorId !== (int) $lockedRun->model_access_admin_id) {
+                    throw new TitleGenerationException('ai_model_not_accessible');
+                }
+                $this->executionGuard()->assertFrozenIdentityCurrent(
+                    $lockedRun,
+                    (int) $lockedRun->requested_ai_model_id,
+                );
+            } else {
+                if ($this->executionGuard()->identityMalformed($lockedRun)
+                    || $this->executionGuard()->identityRequired()) {
+                    throw new TitleGenerationException('ai_config_access_revoked');
+                }
+                if ((int) ($lockedRun->created_by_admin_id ?? 0) > 0) {
+                    $this->executionGuard()->resolveLegacyCandidates(
+                        (int) $lockedRun->created_by_admin_id,
+                        (int) $lockedRun->ai_model_id,
+                    );
+                } else {
+                    $aiModel = AiModel::query()
+                        ->whereKey($lockedRun->ai_model_id)
+                        ->where('status', 'active')
+                        ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
+                        ->lockForUpdate()
+                        ->first();
+                    if (! $aiModel) {
+                        throw new TitleGenerationException('title_generation_ai_model_unavailable');
+                    }
+                }
             }
 
             if (TitleGenerationRun::query()
@@ -163,8 +210,8 @@ final class TitleGenerationCoordinator
                 throw new TitleGenerationException('title_generation_active');
             }
             $this->enforceSubmissionCapacity(
-                (int) $lockedRun->ai_model_id,
-                $lockedRun->created_by_admin_id,
+                (int) ($lockedRun->requested_ai_model_id ?? $lockedRun->ai_model_id),
+                $lockedRun->model_access_admin_id ?? $lockedRun->created_by_admin_id,
                 max(0, (int) $lockedRun->requested_count - (int) $lockedRun->saved_count),
             );
 
@@ -179,6 +226,8 @@ final class TitleGenerationCoordinator
                 'batch_attempt_count' => 0,
                 'manual_retry_count' => (int) $lockedRun->manual_retry_count + 1,
                 'failure_code' => null,
+                'error_code' => null,
+                'retryable_failure' => true,
                 'last_error' => null,
                 'failed_at' => null,
                 'cancelled_at' => null,
@@ -202,10 +251,16 @@ final class TitleGenerationCoordinator
         return $run->fresh() ?? $run;
     }
 
-    public function cancel(TitleGenerationRun $run): TitleGenerationRun
+    public function cancel(TitleGenerationRun $run, Admin|int|null $actor = null): TitleGenerationRun
     {
-        return DB::transaction(function () use ($run): TitleGenerationRun {
+        return DB::transaction(function () use ($run, $actor): TitleGenerationRun {
             $lockedRun = TitleGenerationRun::query()->whereKey($run->getKey())->lockForUpdate()->firstOrFail();
+            if ($this->executionGuard()->identityComplete($lockedRun)) {
+                $actorId = $actor instanceof Admin ? (int) $actor->getKey() : (int) ($actor ?? 0);
+                if ($actorId !== (int) $lockedRun->model_access_admin_id) {
+                    throw new TitleGenerationException('ai_model_not_accessible');
+                }
+            }
             if (! $lockedRun->isActive()) {
                 throw new TitleGenerationException('title_generation_not_cancellable');
             }
@@ -251,12 +306,22 @@ final class TitleGenerationCoordinator
         }
 
         $batchSize = min((int) $run->batch_size, $remainingCount, $requestBudgetRemaining);
-        $aiModel = AiModel::query()
-            ->whereKey($run->ai_model_id)
-            ->where('status', 'active')
-            ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
-            ->first();
-        if (! $aiModel) {
+        $executionContext = $this->executionGuard()->identityComplete($run)
+            ? $this->executionGuard()->contextFromClaimedRun($run)
+            : null;
+        $candidates = $executionContext instanceof TitleGenerationExecutionContext
+            ? $this->executionGuard()->resolveCandidates($executionContext)
+            : ((int) ($run->created_by_admin_id ?? 0) > 0
+                ? $this->executionGuard()->resolveLegacyCandidates(
+                    (int) $run->created_by_admin_id,
+                    (int) $run->ai_model_id,
+                )
+                : AiModel::query()
+                    ->whereKey($run->ai_model_id)
+                    ->where('status', 'active')
+                    ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
+                    ->get());
+        if ($candidates->isEmpty()) {
             throw new RuntimeException('title_generation_ai_model_unavailable');
         }
 
@@ -268,16 +333,41 @@ final class TitleGenerationCoordinator
         $previousLocale = app()->getLocale();
         app()->setLocale((string) $run->locale);
 
+        $result = null;
+        $resolvedModel = null;
         try {
-            $result = $this->generationService->generateTitles(
-                $aiModel,
-                $keywords,
-                $batchSize,
-                (string) $run->title_style,
-                $this->buildBatchPrompt($run),
-            );
+            foreach ($candidates as $candidateIndex => $candidate) {
+                if ($executionContext instanceof TitleGenerationExecutionContext) {
+                    $this->executionGuard()->assertCurrent($executionContext, $candidate);
+                    $this->executionGuard()->recordResolvedModel($executionContext, $candidate);
+                }
+                $result = $this->generationService->generateTitles(
+                    $candidate,
+                    $keywords,
+                    $batchSize,
+                    (string) $run->title_style,
+                    $this->buildBatchPrompt($run),
+                );
+                if ($result->succeeded()) {
+                    $resolvedModel = $candidate;
+                    if ($executionContext instanceof TitleGenerationExecutionContext) {
+                        $this->executionGuard()->assertCurrent($executionContext, $candidate);
+                    }
+
+                    break;
+                }
+
+                $hasNextCandidate = $candidateIndex < $candidates->count() - 1;
+                if (! $result->retryable || ! $hasNextCandidate) {
+                    break;
+                }
+            }
         } finally {
             app()->setLocale($previousLocale);
+        }
+
+        if (! $result instanceof TitleGenerationOutcome) {
+            throw new RuntimeException('title_generation_ai_model_unavailable');
         }
 
         if (! $result->succeeded()) {
@@ -297,6 +387,12 @@ final class TitleGenerationCoordinator
                 return;
             }
 
+            if (! $result->retryable) {
+                throw PermanentAiProviderException::fromProviderFailure(
+                    new RuntimeException($result->failureCode ?? 'title_generation_model_failed'),
+                );
+            }
+
             throw new RuntimeException('title_generation_model_failed:'.($result->failureCode ?? 'unknown'));
         }
 
@@ -311,6 +407,8 @@ final class TitleGenerationCoordinator
             count($rawTitles),
             $validTitles,
             $invalidCount,
+            $executionContext,
+            $resolvedModel,
         );
 
         if ($nextRun?->status === TitleGenerationRun::STATUS_QUEUED) {
@@ -327,9 +425,14 @@ final class TitleGenerationCoordinator
         }
     }
 
-    public function markFailed(int $runId, int $batchSequence, string $leaseToken, Throwable $exception): void
-    {
-        DB::transaction(function () use ($runId, $batchSequence, $leaseToken, $exception): void {
+    public function markFailed(
+        int $runId,
+        int $batchSequence,
+        string $leaseToken,
+        Throwable $exception,
+        bool $retryable = true,
+    ): void {
+        DB::transaction(function () use ($runId, $batchSequence, $leaseToken, $exception, $retryable): void {
             $run = TitleGenerationRun::query()->whereKey($runId)->lockForUpdate()->first();
             if (! $run || (int) $run->batch_sequence !== $batchSequence) {
                 return;
@@ -351,8 +454,21 @@ final class TitleGenerationCoordinator
                 'dispatch_token' => null,
                 'lease_token' => null,
                 'lease_expires_at' => null,
-                'failure_code' => 'batch_failed',
-                'last_error' => $this->safeBatchFailureCode($exception),
+                'failure_code' => $retryable ? 'batch_failed' : 'permanent_ai_failure',
+                'error_code' => $exception instanceof AiModelAccessException
+                    ? $exception->getErrorCode()
+                    : ($exception instanceof PermanentAiProviderException
+                        ? $exception->getErrorCode()
+                        : null),
+                'retryable_failure' => $retryable,
+                'last_error' => $this->executionErrorSanitizer()->sanitize(
+                    match (true) {
+                        $exception instanceof AiModelAccessException => $exception->getErrorCode(),
+                        $exception instanceof PermanentAiProviderException => $exception->getErrorCode(),
+                        default => $this->safeBatchFailureCode($exception),
+                    },
+                    $retryable ? 'title_generation_batch_failed' : 'title_generation_permanent_ai_failure',
+                ),
                 'failed_at' => now(),
             ])->save();
         }, 3);
@@ -390,6 +506,54 @@ final class TitleGenerationCoordinator
                         && $lockedRun->lease_expires_at?->isPast());
                 if (! $isRecoverable) {
                     return null;
+                }
+
+                if ($this->executionGuard()->identityMalformed($lockedRun)
+                    || ($this->executionGuard()->identityRequired()
+                        && ! $this->executionGuard()->identityComplete($lockedRun))) {
+                    $lockedRun->forceFill([
+                        'status' => (int) $lockedRun->saved_count > 0
+                            ? TitleGenerationRun::STATUS_PARTIAL
+                            : TitleGenerationRun::STATUS_FAILED,
+                        'active_key' => null,
+                        'available_at' => null,
+                        'dispatch_token' => null,
+                        'lease_token' => null,
+                        'lease_expires_at' => null,
+                        'failure_code' => 'permanent_ai_failure',
+                        'error_code' => AiModelAccessException::AI_CONFIG_ACCESS_REVOKED,
+                        'retryable_failure' => false,
+                        'last_error' => AiModelAccessException::AI_CONFIG_ACCESS_REVOKED,
+                        'failed_at' => now(),
+                    ])->save();
+
+                    return null;
+                }
+                if ($this->executionGuard()->identityComplete($lockedRun)) {
+                    try {
+                        $this->executionGuard()->assertFrozenIdentityCurrent(
+                            $lockedRun,
+                            (int) $lockedRun->requested_ai_model_id,
+                        );
+                    } catch (AiModelAccessException $exception) {
+                        $lockedRun->forceFill([
+                            'status' => (int) $lockedRun->saved_count > 0
+                                ? TitleGenerationRun::STATUS_PARTIAL
+                                : TitleGenerationRun::STATUS_FAILED,
+                            'active_key' => null,
+                            'available_at' => null,
+                            'dispatch_token' => null,
+                            'lease_token' => null,
+                            'lease_expires_at' => null,
+                            'failure_code' => 'permanent_ai_failure',
+                            'error_code' => $exception->getErrorCode(),
+                            'retryable_failure' => false,
+                            'last_error' => $exception->getErrorCode(),
+                            'failed_at' => now(),
+                        ])->save();
+
+                        return null;
+                    }
                 }
 
                 $dispatchToken = $lockedRun->status === TitleGenerationRun::STATUS_RUNNING
@@ -434,6 +598,41 @@ final class TitleGenerationCoordinator
                 return null;
             }
 
+            try {
+                if (! $this->executionGuard()->identityComplete($lockedRun)) {
+                    if ($this->executionGuard()->identityMalformed($lockedRun)
+                        || $this->executionGuard()->identityRequired()) {
+                        throw AiModelAccessException::configAccessRevokedForAdminId(
+                            (int) ($lockedRun->model_access_admin_id ?? 0),
+                        );
+                    }
+
+                    return $lockedRun;
+                }
+                $this->executionGuard()->assertFrozenIdentityCurrent(
+                    $lockedRun,
+                    (int) $lockedRun->requested_ai_model_id,
+                );
+            } catch (AiModelAccessException $exception) {
+                $lockedRun->forceFill([
+                    'status' => (int) $lockedRun->saved_count > 0
+                        ? TitleGenerationRun::STATUS_PARTIAL
+                        : TitleGenerationRun::STATUS_FAILED,
+                    'active_key' => null,
+                    'available_at' => null,
+                    'dispatch_token' => null,
+                    'lease_token' => null,
+                    'lease_expires_at' => null,
+                    'failure_code' => 'permanent_ai_failure',
+                    'error_code' => $exception->getErrorCode(),
+                    'retryable_failure' => false,
+                    'last_error' => $exception->getErrorCode(),
+                    'failed_at' => now(),
+                ])->save();
+
+                return null;
+            }
+
             return $lockedRun;
         }, 3);
 
@@ -473,6 +672,28 @@ final class TitleGenerationCoordinator
                 return null;
             }
 
+            if ($this->executionGuard()->identityMalformed($run)
+                || ($this->executionGuard()->identityRequired()
+                    && ! $this->executionGuard()->identityComplete($run))) {
+                $run->forceFill([
+                    'status' => (int) $run->saved_count > 0
+                        ? TitleGenerationRun::STATUS_PARTIAL
+                        : TitleGenerationRun::STATUS_FAILED,
+                    'active_key' => null,
+                    'available_at' => null,
+                    'dispatch_token' => null,
+                    'lease_token' => null,
+                    'lease_expires_at' => null,
+                    'failure_code' => 'permanent_ai_failure',
+                    'error_code' => AiModelAccessException::AI_CONFIG_ACCESS_REVOKED,
+                    'retryable_failure' => false,
+                    'last_error' => AiModelAccessException::AI_CONFIG_ACCESS_REVOKED,
+                    'failed_at' => now(),
+                ])->save();
+
+                return null;
+            }
+
             $attemptCount = (int) $run->batch_attempt_count + 1;
             if ($attemptCount > (int) config('geoflow.title_ai_max_batch_attempts', 3)) {
                 $run->forceFill([
@@ -504,6 +725,11 @@ final class TitleGenerationCoordinator
                 'last_error' => null,
             ])->save();
 
+            if ($this->executionGuard()->identityComplete($run)) {
+                $context = $this->executionGuard()->contextFromClaimedRun($run);
+                $this->executionGuard()->assertCurrent($context, $context->requestedModelId);
+            }
+
             return $run;
         }, 3);
     }
@@ -521,6 +747,8 @@ final class TitleGenerationCoordinator
         int $generatedCount,
         array $titles,
         int $invalidCount,
+        ?TitleGenerationExecutionContext $executionContext = null,
+        ?AiModel $resolvedModel = null,
     ): ?TitleGenerationRun {
         return DB::transaction(function () use (
             $runId,
@@ -531,6 +759,8 @@ final class TitleGenerationCoordinator
             $generatedCount,
             $titles,
             $invalidCount,
+            $executionContext,
+            $resolvedModel,
         ): ?TitleGenerationRun {
             $run = TitleGenerationRun::query()->whereKey($runId)->lockForUpdate()->first();
             if (! $run
@@ -538,6 +768,9 @@ final class TitleGenerationCoordinator
                 || (int) $run->batch_sequence !== $batchSequence
                 || ! hash_equals((string) $run->lease_token, $leaseToken)) {
                 return null;
+            }
+            if ($executionContext instanceof TitleGenerationExecutionContext) {
+                $this->executionGuard()->assertCurrent($executionContext, $resolvedModel);
             }
 
             $legacyExisting = $titles === []
@@ -736,7 +969,7 @@ final class TitleGenerationCoordinator
 
         $dispatch = ProcessTitleGenerationBatchJob::dispatch(
             (int) $run->getKey(),
-            (int) $run->ai_model_id,
+            (int) ($run->requested_ai_model_id ?? $run->ai_model_id),
             (int) $run->batch_sequence,
             $leaseToken,
         )->onQueue('geoflow');
@@ -923,7 +1156,13 @@ final class TitleGenerationCoordinator
         $activeStatuses = [TitleGenerationRun::STATUS_QUEUED, TitleGenerationRun::STATUS_RUNNING];
         if ($adminId !== null && $adminId > 0) {
             $activeRunCount = TitleGenerationRun::query()
-                ->where('created_by_admin_id', $adminId)
+                ->where(function ($query) use ($adminId): void {
+                    $query->where('model_access_admin_id', $adminId)
+                        ->orWhere(function ($legacy) use ($adminId): void {
+                            $legacy->whereNull('model_access_admin_id')
+                                ->where('created_by_admin_id', $adminId);
+                        });
+                })
                 ->whereIn('status', $activeStatuses)
                 ->count();
             if ($activeRunCount >= (int) config('geoflow.title_ai_max_active_runs_per_admin', 3)) {
@@ -932,7 +1171,11 @@ final class TitleGenerationCoordinator
         }
 
         $pendingTitleCount = (int) TitleGenerationRun::query()
-            ->where('ai_model_id', $aiModelId)
+            ->where(function ($query) use ($aiModelId): void {
+                $query->where('ai_model_id', $aiModelId)
+                    ->orWhere('requested_ai_model_id', $aiModelId)
+                    ->orWhere('resolved_ai_model_id', $aiModelId);
+            })
             ->whereIn('status', $activeStatuses)
             ->selectRaw('COALESCE(SUM(requested_count - saved_count), 0) as pending_count')
             ->value('pending_count');
@@ -949,6 +1192,11 @@ final class TitleGenerationCoordinator
         return preg_match('/^title_generation_[a-z_]+(?::[a-z_]+)?$/', $code) === 1
             ? Str::limit($code, 200, '')
             : 'title_generation_batch_failed';
+    }
+
+    private function executionErrorSanitizer(): AiExecutionErrorSanitizer
+    {
+        return $this->errorSanitizer ?? app(AiExecutionErrorSanitizer::class);
     }
 
     private function isUniqueConstraintViolation(QueryException $exception): bool

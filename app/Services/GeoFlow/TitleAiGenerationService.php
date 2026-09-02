@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Ai\Agents\TitleGeneratorAgent;
 use App\Models\AiModel;
 use App\Models\Title;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Throwable;
@@ -25,6 +26,7 @@ class TitleAiGenerationService
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly AiUsageQuotaService $usageQuota,
+        private readonly AiModelFailoverDecider $failoverDecider,
     ) {}
 
     /**
@@ -70,14 +72,17 @@ class TitleAiGenerationService
                 $this->recordAttempt($reservation);
             }
 
-            return TitleGenerationOutcome::failed($this->safeFailureCode($exception));
+            return TitleGenerationOutcome::failed(
+                $this->safeFailureCode($exception),
+                retryable: $this->failoverDecider->shouldFailover($exception),
+            );
         }
 
         if ($reservation instanceof AiUsageReservation) {
             $this->recordAttempt($reservation);
         }
 
-        return TitleGenerationOutcome::failed('empty_result');
+        return TitleGenerationOutcome::failed('empty_result', retryable: true);
     }
 
     /**

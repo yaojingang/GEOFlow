@@ -32,7 +32,7 @@ final class AiModelReferenceCatalog
         TitleLibrary::class => ['ai_model_id'],
         EnterpriseKnowledgeProject::class => ['ai_model_id', 'requested_ai_model_id', 'resolved_ai_model_id'],
         SiteThemeReplication::class => ['ai_model_id'],
-        TitleGenerationRun::class => ['ai_model_id'],
+        TitleGenerationRun::class => ['ai_model_id', 'requested_ai_model_id', 'resolved_ai_model_id'],
         ArticleAiQualityCheck::class => ['ai_model_id'],
         ArticleAiOptimizationStep::class => ['ai_model_id'],
         KnowledgeFactGenerationRun::class => ['ai_model_id'],

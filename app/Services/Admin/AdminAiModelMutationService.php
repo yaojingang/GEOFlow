@@ -129,7 +129,11 @@ final class AdminAiModelMutationService
     private function activeTitleGenerationCount(int $modelId): int
     {
         return TitleGenerationRun::query()
-            ->where('ai_model_id', $modelId)
+            ->where(function ($query) use ($modelId): void {
+                $query->where('ai_model_id', $modelId)
+                    ->orWhere('requested_ai_model_id', $modelId)
+                    ->orWhere('resolved_ai_model_id', $modelId);
+            })
             ->whereIn('status', [
                 TitleGenerationRun::STATUS_QUEUED,
                 TitleGenerationRun::STATUS_RUNNING,

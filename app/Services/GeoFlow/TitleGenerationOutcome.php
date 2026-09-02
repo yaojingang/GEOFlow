@@ -17,22 +17,23 @@ final readonly class TitleGenerationOutcome
         private string $status,
         public array $titles,
         public ?string $failureCode,
+        public bool $retryable,
     ) {}
 
     /** @param  list<string>  $titles */
     public static function success(array $titles): self
     {
-        return new self(self::STATUS_SUCCESS, $titles, null);
+        return new self(self::STATUS_SUCCESS, $titles, null, false);
     }
 
     public static function quotaExhausted(): self
     {
-        return new self(self::STATUS_QUOTA_EXHAUSTED, [], 'ai_daily_limit_reached');
+        return new self(self::STATUS_QUOTA_EXHAUSTED, [], 'ai_daily_limit_reached', true);
     }
 
-    public static function failed(string $failureCode): self
+    public static function failed(string $failureCode, bool $retryable = false): self
     {
-        return new self(self::STATUS_FAILED, [], $failureCode);
+        return new self(self::STATUS_FAILED, [], $failureCode, $retryable);
     }
 
     public function succeeded(): bool

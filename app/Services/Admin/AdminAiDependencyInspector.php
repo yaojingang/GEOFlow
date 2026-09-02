@@ -59,6 +59,7 @@ final class AdminAiDependencyInspector
             executionTaskRunCount: $this->executionTaskRunCount($admin),
             executionUrlImportJobCount: $this->executionUrlImportJobCount($admin),
             executionEnterpriseKnowledgeProjectCount: $this->executionEnterpriseKnowledgeProjectCount($admin),
+            executionTitleGenerationRunCount: $this->executionTitleGenerationRunCount($admin),
         );
     }
 
@@ -97,12 +98,25 @@ final class AdminAiDependencyInspector
             return 0;
         }
         $availableColumns = array_fill_keys(Schema::getColumnListing($table), true);
+        $hasModelAccessAdminId = isset($availableColumns['model_access_admin_id']);
         $hasAiModelId = isset($availableColumns['ai_model_id']);
         $hasFailureCode = isset($availableColumns['failure_code']);
         $hasManualRetryCount = isset($availableColumns['manual_retry_count']);
 
-        return TitleGenerationRun::query()
-            ->where('created_by_admin_id', $admin->getKey())
+        $query = TitleGenerationRun::query();
+        if ($hasModelAccessAdminId) {
+            $query->where(function ($identity) use ($admin): void {
+                $identity->where('model_access_admin_id', $admin->getKey())
+                    ->orWhere(function ($legacy) use ($admin): void {
+                        $legacy->whereNull('model_access_admin_id')
+                            ->where('created_by_admin_id', $admin->getKey());
+                    });
+            });
+        } else {
+            $query->where('created_by_admin_id', $admin->getKey());
+        }
+
+        return $query
             ->where(function ($query) use ($hasAiModelId, $hasFailureCode, $hasManualRetryCount): void {
                 $query->whereIn('status', [
                     TitleGenerationRun::STATUS_QUEUED,
@@ -261,6 +275,17 @@ final class AdminAiDependencyInspector
         }
 
         return EnterpriseKnowledgeProject::query()
+            ->where('model_access_admin_id', $admin->getKey())
+            ->count();
+    }
+
+    private function executionTitleGenerationRunCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new TitleGenerationRun)->getTable(), ['model_access_admin_id'])) {
+            return 0;
+        }
+
+        return TitleGenerationRun::query()
             ->where('model_access_admin_id', $admin->getKey())
             ->count();
     }
