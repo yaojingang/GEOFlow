@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Data\Api\TaskRunData;
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Models\AiModel;
@@ -18,6 +19,7 @@ use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\TaskSchedule;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -52,6 +54,7 @@ class TaskLifecycleService
         private AiQualityRetrievalReadinessService $aiQualityRetrievalReadinessService,
         private AiQualityAuditService $aiQualityAuditService,
         private TaskRunData $taskRunData,
+        private AdminAiModelAccessResolver $adminAiModelAccessResolver,
     ) {}
 
     /**
@@ -87,7 +90,8 @@ class TaskLifecycleService
         ?int $auditAdminId = null,
         ?int $apiTokenId = null,
     ): array {
-        $normalized = $this->normalizeTaskInput($data, false);
+        $accessAdmin = $this->accessAdmin($auditAdminId);
+        $normalized = $this->normalizeTaskInput($data, false, $accessAdmin);
         if (! empty($normalized['ai_quality_enabled'])) {
             $readiness = $this->aiQualityRetrievalReadinessService->inspect($normalized['knowledge_base_ids'] ?? []);
             $mode = $normalized['ai_quality_retrieval_mode'] ?? $readiness['highest_available_mode'];
@@ -108,8 +112,9 @@ class TaskLifecycleService
             );
         }
 
-        $taskId = DB::transaction(function () use ($normalized, $auditAdminId, $apiTokenId): int {
+        $taskId = DB::transaction(function () use ($normalized, $auditAdminId, $apiTokenId, $accessAdmin): int {
             $executionIdentity = $this->aiExecutionContextFactory->identityForTaskCreation($auditAdminId);
+            $this->assertSelectedModelsUsable($accessAdmin, $normalized);
             $task = Task::query()->create([
                 'name' => $normalized['name'],
                 'title_library_id' => $normalized['title_library_id'],
@@ -207,7 +212,9 @@ class TaskLifecycleService
 
         $taskId = DB::transaction(function () use ($name, $articleLimit, $publishInterval, $executionAdmin): int {
             $executionIdentity = $this->aiExecutionContextFactory->identityForTaskCreation($executionAdmin);
-            $dependencies = $this->resolveDraftTaskDependencies();
+            $accessAdmin = $this->accessAdmin($executionAdmin);
+            $dependencies = $this->resolveDraftTaskDependencies($accessAdmin);
+            $this->assertSelectedModelsUsable($accessAdmin, $dependencies);
             $task = Task::query()->create([
                 'name' => $name,
                 'title_library_id' => $dependencies['title_library_id'],
@@ -249,22 +256,20 @@ class TaskLifecycleService
     }
 
     /** @return array{title_library_id:int,prompt_id:int,ai_model_id:int} */
-    private function resolveDraftTaskDependencies(): array
+    private function resolveDraftTaskDependencies(Admin $accessAdmin): array
     {
         $titleLibraryId = TitleLibrary::query()->orderByDesc('id')->value('id');
         $promptId = Prompt::query()
             ->where('type', 'content')
             ->orderByDesc('id')
             ->value('id');
-        $aiModelId = AiModel::query()
-            ->where('status', 'active')
+        $aiModelId = $this->adminAiModelAccessResolver
+            ->usableQuery($accessAdmin)
             ->where(function ($query): void {
                 $query->whereNull('model_type')
                     ->orWhere('model_type', '')
                     ->orWhere('model_type', 'chat');
             })
-            ->orderBy('failover_priority')
-            ->orderByDesc('id')
             ->value('id');
 
         $missing = [];
@@ -327,6 +332,7 @@ class TaskLifecycleService
         ?int $apiTokenId = null,
     ): array {
         $this->ensureTaskExists($taskId);
+        $accessAdmin = $this->accessAdmin($auditAdminId);
         $qualityFields = [
             'knowledge_base_id', 'knowledge_base_ids', 'ai_quality_enabled', 'ai_quality_retrieval_mode',
             'ai_quality_timeout_sampling_enabled', 'ai_quality_prompt_id', 'ai_quality_model_id',
@@ -344,7 +350,7 @@ class TaskLifecycleService
                 'required_field' => 'config_version',
             ]);
         }
-        $normalized = $this->normalizeTaskInput($data, true);
+        $normalized = $this->normalizeTaskInput($data, true, $accessAdmin);
         if (empty($normalized)) {
             throw new ApiException('validation_failed', '没有可更新的字段', 422);
         }
@@ -360,7 +366,7 @@ class TaskLifecycleService
         unset($normalized['knowledge_base_ids']);
         $samplingWasDisabled = false;
 
-        DB::transaction(function () use (&$qualityConfigurationChanged, &$qualityControlConfigurationChanged, &$optimizationLevelChanged, &$optimizationWasDisabled, &$samplingWasDisabled, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask, $auditAdminId, $apiTokenId, $qualityConfigurationRequested, $expectedQualityVersion): void {
+        DB::transaction(function () use (&$qualityConfigurationChanged, &$qualityControlConfigurationChanged, &$optimizationLevelChanged, &$optimizationWasDisabled, &$samplingWasDisabled, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask, $auditAdminId, $apiTokenId, $qualityConfigurationRequested, $expectedQualityVersion, $accessAdmin): void {
             Article::withTrashed()
                 ->where('task_id', $taskId)
                 ->orderBy('id')
@@ -393,8 +399,14 @@ class TaskLifecycleService
                     'publish_scope',
                     'distribution_strategy',
                     'need_review',
+                    'model_access_admin_id',
                 ]);
             $this->assertCanManageHostedTask($current, $canManageHostedTask);
+            $this->assertSelectedModelsUsable($accessAdmin, $normalized);
+            $executionAdminId = (int) ($current->model_access_admin_id ?? 0);
+            if ($executionAdminId > 0 && $executionAdminId !== (int) ($accessAdmin?->getKey() ?? 0)) {
+                $this->assertSelectedModelsUsable($this->accessAdmin($executionAdminId), $normalized);
+            }
             if ($qualityConfigurationRequested
                 && $expectedQualityVersion !== null
                 && $this->taskConfigurationVersion($current) !== $expectedQualityVersion) {
@@ -1070,7 +1082,7 @@ class TaskLifecycleService
      *
      * @throws ApiException 字段校验失败时抛 422，并附带 field_errors
      */
-    private function normalizeTaskInput(array $data, bool $isUpdate): array
+    private function normalizeTaskInput(array $data, bool $isUpdate, ?Admin $accessAdmin = null): array
     {
         $output = [];
         $fieldErrors = [];
@@ -1139,7 +1151,7 @@ class TaskLifecycleService
             } elseif (! empty($config['prompt_quality'])) {
                 $exists = Prompt::query()->whereKey($id)->where('type', 'quality_check')->exists();
             } elseif (! empty($config['ai_active_chat'])) {
-                $exists = AiModel::query()
+                $model = AiModel::query()
                     ->whereKey($id)
                     ->where('status', 'active')
                     ->where(function ($q) {
@@ -1147,7 +1159,11 @@ class TaskLifecycleService
                             ->orWhere('model_type', '')
                             ->orWhere('model_type', 'chat');
                     })
-                    ->exists();
+                    ->first();
+                $exists = $model instanceof AiModel;
+                if ($exists && $accessAdmin instanceof Admin) {
+                    $this->assertModelUsable($accessAdmin, $model, $field);
+                }
             } else {
                 $exists = $modelClass::query()->whereKey($id)->exists();
             }
@@ -1340,6 +1356,71 @@ class TaskLifecycleService
         }
 
         return $output;
+    }
+
+    private function accessAdmin(Admin|int|null $admin): ?Admin
+    {
+        if ($admin instanceof Admin) {
+            return $admin;
+        }
+        if ($admin === null || $admin <= 0) {
+            return null;
+        }
+
+        $accessAdmin = Admin::query()->find($admin);
+        if (! $accessAdmin instanceof Admin) {
+            throw new ApiException('ai_execution_admin_inactive', '执行管理员不可用', 409);
+        }
+
+        return $accessAdmin;
+    }
+
+    /** @param array<string, mixed> $normalized */
+    private function assertSelectedModelsUsable(?Admin $accessAdmin, array $normalized): void
+    {
+        if (! $accessAdmin instanceof Admin) {
+            return;
+        }
+
+        foreach (['ai_model_id', 'ai_quality_model_id'] as $field) {
+            $modelId = (int) ($normalized[$field] ?? 0);
+            if ($modelId <= 0) {
+                continue;
+            }
+            $model = AiModel::query()->find($modelId);
+            if (! $model instanceof AiModel) {
+                throw new ApiException(
+                    'ai_model_unavailable',
+                    '选择的 AI 模型当前不可用',
+                    409,
+                    ['field_errors' => [$field => '选择的 AI 模型当前不可用']],
+                );
+            }
+            $this->assertModelUsable($accessAdmin, $model, $field);
+        }
+    }
+
+    private function assertModelUsable(Admin $accessAdmin, AiModel $model, string $field): void
+    {
+        try {
+            $this->adminAiModelAccessResolver->assertUsable($accessAdmin, $model);
+        } catch (AiModelAccessException $exception) {
+            if ($exception->getErrorCode() === AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE) {
+                throw new ApiException(
+                    $exception->getErrorCode(),
+                    '选择的 AI 模型不可访问',
+                    404,
+                    ['field_errors' => [$field => '选择的 AI 模型不可访问']],
+                );
+            }
+
+            throw new ApiException(
+                $exception->getErrorCode(),
+                '选择的 AI 模型当前不可用',
+                409,
+                ['field_errors' => [$field => '选择的 AI 模型当前不可用']],
+            );
+        }
     }
 
     /**

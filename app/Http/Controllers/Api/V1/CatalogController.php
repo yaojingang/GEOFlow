@@ -18,6 +18,6 @@ class CatalogController extends BaseApiController
      */
     public function show(Request $request, CatalogGeoFlowService $catalog): JsonResponse
     {
-        return $this->success($request, $catalog->getCatalog());
+        return $this->success($request, $catalog->getCatalog($this->auth($request)->auditAdminId));
     }
 }

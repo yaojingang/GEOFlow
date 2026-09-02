@@ -19,11 +19,13 @@ final readonly class SharedAiModelData
 
     public static function fromModel(AiModel $model, bool $isShared): self
     {
+        $modelType = trim((string) $model->model_type);
+
         return new self(
             id: (int) $model->getKey(),
             name: (string) $model->name,
             version: (string) $model->version,
-            modelType: (string) $model->model_type,
+            modelType: $modelType === '' ? 'chat' : $modelType,
             status: (string) $model->status,
             failoverPriority: (int) $model->failover_priority,
             isAvailable: (string) $model->status === 'active'

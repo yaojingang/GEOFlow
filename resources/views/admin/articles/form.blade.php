@@ -456,7 +456,7 @@
                                             <select id="article-ai-optimization-model" class="block w-full appearance-none truncate rounded-md border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                                 <option value="">{{ __('admin.article_assistant.generate.model_placeholder') }}</option>
                                                 @foreach(($formOptions['ai_models'] ?? []) as $modelOption)
-                                                    <option value="{{ $modelOption['id'] }}">{{ $modelOption['name'] }}@if($modelOption['model_id'] !== '') · {{ $modelOption['model_id'] }}@endif</option>
+                                                    <option value="{{ $modelOption['id'] }}">{{ $modelOption['name'] }}</option>
                                                 @endforeach
                                             </select>
                                             <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
@@ -1227,7 +1227,7 @@
                                                 <select id="article-ai-model" class="block w-full appearance-none truncate rounded-md border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                                     <option value="">{{ __('admin.article_assistant.generate.model_placeholder') }}</option>
                                                     @foreach(($formOptions['ai_models'] ?? []) as $modelOption)
-                                                        <option value="{{ $modelOption['id'] }}">{{ $modelOption['name'] }}@if($modelOption['model_id'] !== '') · {{ $modelOption['model_id'] }}@endif</option>
+                                                        <option value="{{ $modelOption['id'] }}">{{ $modelOption['name'] }}</option>
                                                     @endforeach
                                                 </select>
                                                 <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>

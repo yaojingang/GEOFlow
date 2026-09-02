@@ -5,11 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\KnowledgeFacts\KnowledgeFactRequest;
 use App\Models\Admin;
-use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFactLibrary;
 use App\Models\KnowledgeFactValue;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactEditor;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactLibraryPresenter;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactPublisher;
@@ -21,8 +21,12 @@ use Illuminate\View\View;
 
 class KnowledgeFactController extends Controller
 {
-    public function index(Request $request, int $knowledgeBaseId, KnowledgeFactLibraryPresenter $presenter): View
-    {
+    public function index(
+        Request $request,
+        int $knowledgeBaseId,
+        KnowledgeFactLibraryPresenter $presenter,
+        AdminAiModelAccessResolver $modelAccessResolver,
+    ): View {
         $knowledgeBase = KnowledgeBase::query()->with(['systemBinding', 'factLibrary.activeRevision'])->findOrFail($knowledgeBaseId);
         $library = $knowledgeBase->factLibrary()->firstOrCreate([]);
         $status = trim((string) $request->query('status', ''));
@@ -53,7 +57,14 @@ class KnowledgeFactController extends Controller
             'publishReadiness' => $presenter->publishReadiness($library),
             'mergeTargets' => $library->facts()->where('is_enabled', true)->orderBy('label')->limit(200)->get(['id', 'label']),
             'factEvidenceChunks' => $knowledgeBase->chunks()->select(['id', 'knowledge_base_id', 'section_path', 'content_hash'])->orderBy('chunk_index')->limit(200)->get(),
-            'factGenerationModels' => AiModel::query()->where('status', 'active')->whereNotIn('model_type', ['embedding', 'image'])->orderBy('name')->get(['id', 'name', 'model_id']),
+            'factGenerationModels' => $modelAccessResolver
+                ->usableQuery($this->admin($request))
+                ->where(function ($query): void {
+                    $query->whereNull('model_type')
+                        ->orWhere('model_type', '')
+                        ->orWhere('model_type', 'chat');
+                })
+                ->get(['id', 'name']),
             'factGenerationRuns' => $library->generationRuns()->latest('id')->limit(10)->get(),
             'activeGenerationRun' => $activeRun ? $presenter->generationRun($activeRun, $knowledgeBaseId) : null,
             'systemReadOnly' => $knowledgeBase->isSystemManaged() && $request->user('admin')?->canManageProtectedWorkflows() !== true,
@@ -183,7 +194,7 @@ class KnowledgeFactController extends Controller
         return $knowledgeBase->factLibrary()->firstOrCreate([]);
     }
 
-    private function admin(KnowledgeFactRequest $request): Admin
+    private function admin(Request $request): Admin
     {
         /** @var Admin $admin */
         $admin = $request->user('admin');

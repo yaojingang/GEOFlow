@@ -6,7 +6,7 @@ use App\Exceptions\DistributionTaskRevisionMismatch;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\TaskTitleReadinessRequest;
-use App\Models\AiModel;
+use App\Models\Admin;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
@@ -15,6 +15,7 @@ use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\AiQualityRetrievalReadinessService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
@@ -50,6 +51,7 @@ class TaskController extends Controller
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly TaskTitleReadinessService $taskTitleReadinessService,
         private readonly AiQualityRetrievalReadinessService $aiQualityRetrievalReadinessService,
+        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
     ) {}
 
     public function titleReadiness(TaskTitleReadinessRequest $request): JsonResponse
@@ -313,7 +315,7 @@ class TaskController extends Controller
      */
     public function create(): View
     {
-        $formOptions = $this->loadTaskFormOptions();
+        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin());
 
         // 创建页选项与 tasks.php 数据口径一致（库/模型/作者/分类）。
         return view('admin.tasks.form', [
@@ -391,7 +393,7 @@ class TaskController extends Controller
             return redirect()->route('admin.tasks.index')->withErrors($e->getMessage());
         }
 
-        $formOptions = $this->loadTaskFormOptions();
+        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin());
         $taskModel = Task::query()->whereKey($taskId)->firstOrFail();
 
         return view('admin.tasks.form', [
@@ -676,7 +678,7 @@ class TaskController extends Controller
      *     distributionChannels: list<array{id:int,name:string,domain:string}>
      * }
      */
-    private function loadTaskFormOptions(): array
+    private function loadTaskFormOptions(Admin $actor): array
     {
         // 直接附带标题总数与可用数，避免 Blade 层再次查询。
         $titleLibraries = TitleLibrary::query()
@@ -719,18 +721,16 @@ class TaskController extends Controller
             ])
             ->all();
 
-        $aiModels = AiModel::query()
-            ->select(['id', 'name'])
-            ->where('status', 'active')
+        $aiModels = $this->adminAiModelAccessResolver
+            ->usableQuery($actor)
             ->where(function ($query): void {
                 $query->whereNull('model_type')
                     ->orWhere('model_type', '')
                     ->orWhere('model_type', 'chat');
             })
             ->orderBy('failover_priority')
-            ->orderByDesc('id')
             ->get()
-            ->map(static fn (AiModel $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
+            ->map(static fn ($row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
 
         // 兼容上游展示：图库名称 + 图片数量。
@@ -1100,6 +1100,14 @@ class TaskController extends Controller
     private function canManageHostedTask(): bool
     {
         return auth('admin')->user()?->isSuperAdmin() === true;
+    }
+
+    private function authenticatedAdmin(): Admin
+    {
+        $admin = auth('admin')->user();
+        abort_unless($admin instanceof Admin, 401);
+
+        return $admin;
     }
 
     /**

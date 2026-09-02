@@ -1572,6 +1572,7 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $model->forceFill(['owner_admin_id' => $admin->id])->save();
         $readToken = $admin->createToken('optimization-read', ['articles:read'])->plainTextToken;
         $publishToken = $admin->createToken('optimization-publish', ['articles:publish'])->plainTextToken;
         $endpoint = "/api/v1/articles/{$article->id}/ai-quality/optimization";

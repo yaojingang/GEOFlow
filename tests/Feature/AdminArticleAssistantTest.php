@@ -24,6 +24,8 @@ class AdminArticleAssistantTest extends TestCase
 {
     use RefreshDatabase;
 
+    private ?Admin $modelOwner = null;
+
     public function test_create_page_renders_title_picker_and_ai_generation_options(): void
     {
         $admin = $this->createAdmin('assistant_page');
@@ -469,7 +471,7 @@ class AdminArticleAssistantTest extends TestCase
 
     private function createAdmin(string $suffix): Admin
     {
-        return Admin::query()->create([
+        $this->modelOwner = Admin::query()->create([
             'username' => 'article_'.$suffix,
             'password' => 'secret-123',
             'email' => $suffix.'@example.com',
@@ -477,6 +479,8 @@ class AdminArticleAssistantTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+
+        return $this->modelOwner;
     }
 
     private function createPrompt(array $overrides = []): Prompt
@@ -510,7 +514,7 @@ class AdminArticleAssistantTest extends TestCase
 
     private function createModel(array $overrides = []): AiModel
     {
-        return AiModel::query()->create(array_merge([
+        $model = AiModel::query()->create(array_merge([
             'name' => '测试聊天模型',
             'version' => 'test',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -523,5 +527,13 @@ class AdminArticleAssistantTest extends TestCase
             'total_used' => 0,
             'status' => 'active',
         ], $overrides));
+        if ($this->modelOwner instanceof Admin) {
+            $model->forceFill([
+                'owner_admin_id' => $this->modelOwner->id,
+                'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            ])->save();
+        }
+
+        return $model;
     }
 }

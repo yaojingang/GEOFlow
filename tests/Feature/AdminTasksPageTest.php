@@ -549,6 +549,10 @@ class AdminTasksPageTest extends TestCase
             'api_url' => 'https://api.example.com/v1',
             'status' => 'active',
         ]);
+        $aiModel->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $prompt = Prompt::query()->create([
             'name' => '正文提示词',
             'type' => 'content',

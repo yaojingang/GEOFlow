@@ -2,6 +2,8 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Admin\SharedAiModelData;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Author;
 use App\Models\Category;
@@ -10,31 +12,18 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
 
 class CatalogGeoFlowService
 {
+    public function __construct(private readonly AdminAiModelAccessResolver $modelAccessResolver) {}
+
     /**
      * @return array<string, mixed>
      */
-    public function getCatalog(): array
+    public function getCatalog(Admin|int $actor): array
     {
-        $models = AiModel::query()
-            ->where('status', 'active')
-            ->where(function ($q) {
-                $q->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->orderBy('name')
-            ->get(['id', 'name', 'model_id', 'model_type', 'status'])
-            ->map(fn (AiModel $m) => [
-                'id' => $m->id,
-                'name' => $m->name,
-                'model_id' => $m->model_id,
-                'model_type' => ($m->model_type === null || $m->model_type === '') ? 'chat' : $m->model_type,
-                'status' => $m->status,
-            ])
-            ->all();
+        $models = $this->catalogModels($actor);
 
         $prompts = Prompt::query()
             ->where('type', 'content')
@@ -105,5 +94,27 @@ class CatalogGeoFlowService
             'authors' => $authors,
             'categories' => $categories,
         ];
+    }
+
+    /** @return list<array<string, int|string|bool>> */
+    private function catalogModels(Admin|int $actor): array
+    {
+        $admin = $actor instanceof Admin
+            ? $actor
+            : Admin::query()->findOrFail($actor);
+
+        return $this->modelAccessResolver
+            ->usableQuery($admin)
+            ->where(function ($query): void {
+                $query->whereIn('model_type', ['chat', 'embedding'])
+                    ->orWhereNull('model_type')
+                    ->orWhere('model_type', '');
+            })
+            ->get()
+            ->map(static fn (AiModel $model): array => SharedAiModelData::fromModel(
+                $model,
+                (int) $model->owner_admin_id !== (int) $admin->getKey(),
+            )->toArray())
+            ->all();
     }
 }

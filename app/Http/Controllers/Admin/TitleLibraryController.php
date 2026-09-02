@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\TitleGenerationException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\GenerateTitlesWithAiRequest;
@@ -11,6 +12,7 @@ use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleGenerationRun;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\TitleGenerationCoordinator;
 use App\Support\AdminWeb;
 use App\Support\LibraryImportPolicy;
@@ -34,7 +36,8 @@ class TitleLibraryController extends Controller
     private const DETAIL_PER_PAGE = 20;
 
     public function __construct(
-        private TitleGenerationCoordinator $titleGenerationCoordinator
+        private TitleGenerationCoordinator $titleGenerationCoordinator,
+        private AdminAiModelAccessResolver $adminAiModelAccessResolver,
     ) {}
 
     /**
@@ -117,7 +120,7 @@ class TitleLibraryController extends Controller
     /**
      * AI 生成标题页。
      */
-    public function aiGenerate(int $libraryId): View|RedirectResponse
+    public function aiGenerate(Request $request, int $libraryId): View|RedirectResponse
     {
         $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
 
@@ -126,12 +129,10 @@ class TitleLibraryController extends Controller
             ->withCount(['keywords as keyword_count'])
             ->orderByDesc('created_at')
             ->get();
-        $aiModels = AiModel::query()
-            ->select(['id', 'name', 'model_id'])
-            ->where('status', 'active')
+        $aiModels = $this->adminAiModelAccessResolver
+            ->usableQuery($request->user('admin'))
             ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
-            ->orderBy('name')
-            ->get();
+            ->get(['id', 'name']);
 
         return view('admin.title-libraries.ai-generate', [
             'pageTitle' => __('admin.title_ai_generate.page_title'),
@@ -161,12 +162,21 @@ class TitleLibraryController extends Controller
         ];
 
         try {
+            $model = AiModel::query()->findOrFail($payload['ai_model_id']);
+            $this->adminAiModelAccessResolver->assertUsable($request->user('admin'), $model);
             $this->titleGenerationCoordinator->start(
                 $library,
                 $payload,
                 (int) $request->user('admin')?->getAuthIdentifier(),
                 app()->getLocale(),
             );
+        } catch (AiModelAccessException $exception) {
+            return back()
+                ->withInput($request->only([
+                    'keyword_library_id', 'ai_model_id', 'title_count', 'title_style',
+                    'custom_prompt', 'confirmed_keyword_reuse',
+                ]))
+                ->withErrors(['ai_model_id' => $exception->getErrorCode()]);
         } catch (TitleGenerationException $exception) {
             return back()
                 ->withInput($request->only([

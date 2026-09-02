@@ -218,7 +218,14 @@ final class AdminAiModelAccessResolver
             ->userContent()
             ->active()
             ->unarchived()
-            ->when($modelType !== null, static fn (Builder $query): Builder => $query->where('model_type', $modelType))
+            ->when($modelType === 'chat', static fn (Builder $query): Builder => $query->where(
+                static function (Builder $chat): void {
+                    $chat->whereNull('model_type')
+                        ->orWhere('model_type', '')
+                        ->orWhere('model_type', 'chat');
+                },
+            ))
+            ->when($modelType !== null && $modelType !== 'chat', static fn (Builder $query): Builder => $query->where('model_type', $modelType))
             ->inFailoverOrder();
     }
 

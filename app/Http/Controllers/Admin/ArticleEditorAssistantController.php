@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\AiModelAccessException;
 use App\Http\Controllers\Controller;
 use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Title;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
 use App\Services\GeoFlow\ArticleContentGenerationService;
 use App\Services\GeoFlow\ArticleContentPromptRenderer;
@@ -29,6 +31,7 @@ final class ArticleEditorAssistantController extends Controller
         private readonly ArticleContentGenerationService $generationService,
         private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
         private readonly ArticleCitationMarkerCleaner $citationMarkerCleaner,
+        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
     ) {}
 
     public function titles(Request $request): JsonResponse
@@ -114,6 +117,14 @@ final class ArticleEditorAssistantController extends Controller
                 $query->whereNull('model_type')->orWhere('model_type', '')->orWhere('model_type', 'chat');
             })
             ->firstOrFail();
+        try {
+            $this->adminAiModelAccessResolver->assertUsable($request->user('admin'), $aiModel);
+        } catch (AiModelAccessException $exception) {
+            return response()->json([
+                'message' => $exception->getErrorCode(),
+                'error_code' => $exception->getErrorCode(),
+            ], 404);
+        }
 
         $knowledgeContext = $this->knowledgeRetrievalService->retrieveContext(
             (int) $knowledgeBase->id,

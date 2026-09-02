@@ -17,6 +17,7 @@ use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\AiQualityAuditService;
 use App\Services\GeoFlow\AiQualityRetrievalReadinessService;
@@ -781,6 +782,7 @@ class ApiV1ContractTest extends TestCase
             'model_type' => 'chat',
             'status' => 'active',
         ]);
+        $this->assignModelOwner($model, $admin);
         $prompt = Prompt::query()->create([
             'name' => 'Task Create Prompt',
             'type' => 'content',
@@ -833,6 +835,7 @@ class ApiV1ContractTest extends TestCase
             'model_type' => 'chat',
             'status' => 'active',
         ]);
+        $this->assignModelOwner($model, $admin);
         $prompt = Prompt::query()->create([
             'name' => 'Timeout Sampling API Prompt',
             'type' => 'content',
@@ -876,6 +879,7 @@ class ApiV1ContractTest extends TestCase
             'model_type' => 'chat',
             'status' => 'active',
         ]);
+        $this->assignModelOwner($model, $admin);
         $prompt = Prompt::query()->create([
             'name' => 'Task Create Prompt With Knowledge',
             'type' => 'content',
@@ -979,6 +983,7 @@ class ApiV1ContractTest extends TestCase
             app(AiQualityRetrievalReadinessService::class),
             app(AiQualityAuditService::class),
             app(TaskRunData::class),
+            app(AdminAiModelAccessResolver::class),
         );
 
         $baselineTransactionLevel = DB::transactionLevel();
@@ -1083,5 +1088,13 @@ class ApiV1ContractTest extends TestCase
             ->assertJsonPath('error.details.trashed_count', 1);
 
         $this->assertModelExists($author);
+    }
+
+    private function assignModelOwner(AiModel $model, Admin $admin): void
+    {
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
     }
 }
