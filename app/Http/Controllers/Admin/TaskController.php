@@ -671,7 +671,7 @@ class TaskController extends Controller
      * @return array{
      *     titleLibraries: list<array{id:int,name:string}>,
      *     prompts: list<array{id:int,name:string}>,
-     *     aiModels: list<array{id:int,name:string,disabled?:bool,current_inaccessible?:bool}>,
+     *     aiModels: list<array{id:int,name:string,disabled?:bool,current_inaccessible?:bool,current_inaccessible_for?:list<string>}>,
      *     imageLibraries: list<array{id:int,name:string,count:int}>,
      *     knowledgeBases: list<array{id:int,name:string}>,
      *     authors: list<array{id:int,name:string}>,
@@ -733,20 +733,28 @@ class TaskController extends Controller
             ->get()
             ->map(static fn ($row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
-        $currentModelId = (int) ($task?->ai_model_id ?? 0);
-        if ($currentModelId > 0 && ! collect($aiModels)->contains('id', $currentModelId)) {
-            $currentModel = AiModel::query()
-                ->select(['id', 'name'])
-                ->whereKey($currentModelId)
-                ->first();
-            if ($currentModel instanceof AiModel) {
-                $aiModels[] = [
-                    'id' => (int) $currentModel->id,
-                    'name' => (string) $currentModel->name,
-                    'disabled' => true,
-                    'current_inaccessible' => true,
-                ];
+        $inaccessibleCurrentFields = collect([
+            'ai_model_id' => (int) ($task?->ai_model_id ?? 0),
+            'ai_quality_model_id' => (int) ($task?->ai_quality_model_id ?? 0),
+        ])->filter(static fn (int $modelId): bool => $modelId > 0)
+            ->reject(static fn (int $modelId): bool => collect($aiModels)->contains('id', $modelId))
+            ->groupBy(static fn (int $modelId): int => $modelId);
+        foreach ($inaccessibleCurrentFields->keys() as $modelId) {
+            $currentModel = AiModel::query()->select(['id', 'name'])->find((int) $modelId);
+            if (! $currentModel instanceof AiModel) {
+                continue;
             }
+            $fields = collect(['ai_model_id', 'ai_quality_model_id'])
+                ->filter(static fn (string $field): bool => (int) ($task?->{$field} ?? 0) === (int) $modelId)
+                ->values()
+                ->all();
+            $aiModels[] = [
+                'id' => (int) $currentModel->id,
+                'name' => (string) $currentModel->name,
+                'disabled' => true,
+                'current_inaccessible' => true,
+                'current_inaccessible_for' => $fields,
+            ];
         }
 
         // 兼容上游展示：图库名称 + 图片数量。

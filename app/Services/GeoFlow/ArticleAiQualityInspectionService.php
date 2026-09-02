@@ -5,9 +5,11 @@ namespace App\Services\GeoFlow;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\DeadlineAwareArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
 use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Jobs\ProcessArticleAiQualityJob;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
@@ -18,6 +20,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\AiQualityRetrievalBasis;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Carbon\CarbonInterface;
@@ -53,6 +56,9 @@ class ArticleAiQualityInspectionService
         private readonly ArticleAiQualityReviewer $reviewer,
         private readonly ArticleAiQualityWorkerLiveness $workerLiveness,
         private readonly AiQualityAuditService $auditService,
+        private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
+        private readonly AiExecutionContextFactory $aiExecutionContextFactory,
+        private readonly AiModelFailoverDecider $aiModelFailoverDecider,
     ) {}
 
     public function requestManualInspection(
@@ -65,8 +71,9 @@ class ArticleAiQualityInspectionService
         bool $allowSampling = true,
         bool $rejectWhenOptimizationActive = false,
         ?int $expectedPolicyVersion = null,
+        ?array $aiExecutionSnapshot = null,
     ): ArticleAiQualityCheck {
-        return DB::transaction(function () use ($article, $trigger, $dispatch, $auditAdminId, $apiTokenId, $requestedWorkflowState, $allowSampling, $rejectWhenOptimizationActive, $expectedPolicyVersion): ArticleAiQualityCheck {
+        return DB::transaction(function () use ($article, $trigger, $dispatch, $auditAdminId, $apiTokenId, $requestedWorkflowState, $allowSampling, $rejectWhenOptimizationActive, $expectedPolicyVersion, $aiExecutionSnapshot): ArticleAiQualityCheck {
             $article = Article::query()
                 ->whereKey((int) $article->id)
                 ->lockForUpdate()
@@ -127,6 +134,7 @@ class ArticleAiQualityInspectionService
                 dispatch: $dispatch,
                 force: true,
                 resolvedPolicy: $policy,
+                aiExecutionSnapshot: $aiExecutionSnapshot,
             );
             if (! $check instanceof ArticleAiQualityCheck) {
                 throw new RuntimeException('ai_quality_policy_unavailable');
@@ -189,8 +197,9 @@ class ArticleAiQualityInspectionService
         bool $dispatch = true,
         bool $force = false,
         ?array $resolvedPolicy = null,
+        ?array $aiExecutionSnapshot = null,
     ): ?ArticleAiQualityCheck {
-        return DB::transaction(function () use ($article, $taskRun, $trigger, $dispatch, $force, $resolvedPolicy): ?ArticleAiQualityCheck {
+        return DB::transaction(function () use ($article, $taskRun, $trigger, $dispatch, $force, $resolvedPolicy, $aiExecutionSnapshot): ?ArticleAiQualityCheck {
             $article = Article::query()
                 ->whereKey((int) $article->id)
                 ->lockForUpdate()
@@ -212,9 +221,28 @@ class ArticleAiQualityInspectionService
                 return null;
             }
 
+            $aiExecutionSnapshot = $this->qualityExecutionSnapshot(
+                $article,
+                $taskRun,
+                $aiExecutionSnapshot,
+                ($policy['model'] ?? null) instanceof AiModel ? (int) $policy['model']->id : null,
+            );
+            if ($aiExecutionSnapshot !== null) {
+                $executionAdmin = $this->aiExecutionAccessGuard->assertPersistedAdminSnapshot(
+                    $aiExecutionSnapshot,
+                    $article->task_id ? (int) $article->task_id : null,
+                );
+                $policy = $this->policyResolver->forExecutionAdmin($policy, $executionAdmin);
+            }
             $this->policyResolver->assertExecutable($policy);
             $modelCandidates = $this->policyResolver->modelCandidates($policy);
             $policy['model_candidates'] = $modelCandidates;
+            if ($aiExecutionSnapshot !== null) {
+                $aiExecutionSnapshot['model_candidate_ids'] = array_values(array_map(
+                    static fn (AiModel $candidate): int => (int) $candidate->id,
+                    $modelCandidates,
+                ));
+            }
             $articleSnapshot = $this->policyResolver->articleSnapshot($article);
             $versionSelection = $this->versionPolicy->selection((int) $article->id);
             $fullRules = $this->rules();
@@ -340,6 +368,7 @@ class ArticleAiQualityInspectionService
                     $deadlineAt,
                     $retrievalMode,
                     $retrievalBasis,
+                    $aiExecutionSnapshot,
                 ): ArticleAiQualityCheck {
                     $storedEpoch = (int) data_get($retrievalBasis->toArray(), 'rollout.epoch', 1);
                     $committedEpoch = max(1, (int) (ArticleAiQualityRollout::query()->whereKey(1)->value('epoch') ?? 1));
@@ -386,6 +415,7 @@ class ArticleAiQualityInspectionService
                             'knowledge_base_ids' => array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])),
                             'model_selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
                             'model_candidate_ids' => array_values(array_map(static fn (AiModel $candidate): int => (int) $candidate->id, $modelCandidates)),
+                            'ai_execution' => $aiExecutionSnapshot,
                             'model_attempts' => [],
                             'segment_runs' => [],
                             'version_selection' => $versionSelection,
@@ -504,9 +534,32 @@ class ArticleAiQualityInspectionService
                 $storedPolicy,
                 (string) ($storedPolicy['source'] ?? 'article_snapshot'),
             );
+            $runExecutionMeta = is_array($run->execution_meta) ? $run->execution_meta : [];
+            $aiExecutionSnapshot = $this->qualityExecutionSnapshot($article, null, [
+                'model_access_admin_id' => $runExecutionMeta['model_access_admin_id'] ?? null,
+                'model_access_admin_role' => $runExecutionMeta['model_access_admin_role'] ?? null,
+                'ai_config_access_version' => $runExecutionMeta['ai_config_access_version'] ?? null,
+                'resolver_policy_version' => $runExecutionMeta['resolver_policy_version'] ?? null,
+                'source_type' => 'article_ai_optimization_run',
+                'source_id' => (int) $run->id,
+            ], ($policy['model'] ?? null) instanceof AiModel ? (int) $policy['model']->id : null);
+            if ($aiExecutionSnapshot === null) {
+                throw AiModelAccessException::configAccessRevokedForAdminId(
+                    (int) ($runExecutionMeta['model_access_admin_id'] ?? 0),
+                );
+            }
+            $executionAdmin = $this->aiExecutionAccessGuard->assertPersistedAdminSnapshot(
+                $aiExecutionSnapshot,
+                $article->task_id ? (int) $article->task_id : null,
+            );
+            $policy = $this->policyResolver->forExecutionAdmin($policy, $executionAdmin);
             $this->policyResolver->assertExecutable($policy);
             $modelCandidates = $this->policyResolver->modelCandidates($policy);
             $policy['model_candidates'] = $modelCandidates;
+            $aiExecutionSnapshot['model_candidate_ids'] = array_values(array_map(
+                static fn (AiModel $candidate): int => (int) $candidate->id,
+                $modelCandidates,
+            ));
             $snapshot = array_replace(
                 $this->policyResolver->articleSnapshot($article),
                 array_intersect_key($candidateSnapshot, array_flip(['title', 'excerpt', 'content', 'keywords', 'meta_description'])),
@@ -601,6 +654,7 @@ class ArticleAiQualityInspectionService
                     'knowledge_base_ids' => array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])),
                     'model_selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
                     'model_candidate_ids' => array_values(array_map(static fn (AiModel $candidate): int => (int) $candidate->id, $modelCandidates)),
+                    'ai_execution' => $aiExecutionSnapshot,
                     'model_attempts' => [],
                     'segment_runs' => [],
                     'version_selection' => $versionSelection,
@@ -708,6 +762,15 @@ class ArticleAiQualityInspectionService
         }
 
         $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
+        $aiExecutionSnapshot = is_array($executionMeta['ai_execution'] ?? null)
+            ? $executionMeta['ai_execution']
+            : null;
+        $executionAdmin = $aiExecutionSnapshot !== null
+            ? $this->aiExecutionAccessGuard->assertPersistedAdminSnapshot(
+                $aiExecutionSnapshot,
+                $check->task_id ? (int) $check->task_id : null,
+            )
+            : null;
         $storedPolicy = is_array($executionMeta['policy_snapshot'] ?? null)
             ? $executionMeta['policy_snapshot']
             : (is_array($check->article->ai_quality_policy_snapshot) ? $check->article->ai_quality_policy_snapshot : []);
@@ -729,6 +792,15 @@ class ArticleAiQualityInspectionService
             : AiModel::query()->whereIn('id', $candidateIds)->get()->sortBy(
                 static fn (AiModel $model): int => array_search((int) $model->id, $candidateIds, true),
             )->values()->all();
+        $requestedModelId = (int) ($aiExecutionSnapshot['requested_model_id'] ?? $check->ai_model_id ?? 0);
+        if ($executionAdmin instanceof Admin && $requestedModelId > 0) {
+            $this->aiExecutionAccessGuard->assertModelForPersistedAdminSnapshot(
+                $aiExecutionSnapshot,
+                $requestedModelId,
+                $check->task_id ? (int) $check->task_id : null,
+                $executionAdmin,
+            );
+        }
         $executionVersion = (string) data_get($executionMeta, 'version_selection.execution', 'legacy');
         $currentArticleHash = hash('sha256', json_encode(
             $this->policyResolver->articleSnapshot($check->article),
@@ -956,6 +1028,27 @@ class ArticleAiQualityInspectionService
 
                     continue;
                 }
+                if ($aiExecutionSnapshot !== null) {
+                    try {
+                        $candidate = $this->aiExecutionAccessGuard->assertModelForPersistedAdminSnapshot(
+                            $aiExecutionSnapshot,
+                            $candidate,
+                            $check->task_id ? (int) $check->task_id : null,
+                            $executionAdmin,
+                        );
+                    } catch (AiModelAccessException $exception) {
+                        if ((int) $candidate->id === $requestedModelId
+                            || ! in_array($exception->getErrorCode(), [
+                                AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE,
+                                AiModelAccessException::AI_MODEL_UNAVAILABLE,
+                            ], true)) {
+                            throw $exception;
+                        }
+                        $attempts[] = $this->modelAttempt($segmentData, $candidate, 'skipped', $exception->getErrorCode(), 0);
+
+                        continue;
+                    }
+                }
 
                 $candidateStartedAt = hrtime(true);
                 try {
@@ -991,6 +1084,13 @@ class ArticleAiQualityInspectionService
                     } finally {
                         $modelTotalMs += $this->elapsedMilliseconds($modelStartedAt);
                     }
+                    if ($aiExecutionSnapshot !== null) {
+                        $this->aiExecutionAccessGuard->assertModelForPersistedAdminSnapshot(
+                            $aiExecutionSnapshot,
+                            $candidate,
+                            $check->task_id ? (int) $check->task_id : null,
+                        );
+                    }
                     if ($this->remainingDeadlineSeconds($deadlineAt) <= $persistenceReserveSeconds) {
                         throw new ArticleAiQualityRuntimeException('inspection_deadline_exceeded', false);
                     }
@@ -1025,6 +1125,9 @@ class ArticleAiQualityInspectionService
                     $review = $candidateReview;
                     break;
                 } catch (Throwable $exception) {
+                    if ($exception instanceof AiModelAccessException) {
+                        throw $exception;
+                    }
                     $lastException = $exception;
                     $errorCode = $this->safeErrorCode($exception);
                     $attempts[] = $this->modelAttempt(
@@ -1040,6 +1143,21 @@ class ArticleAiQualityInspectionService
                         && $this->remainingDeadlineSeconds($deadlineAt) > $persistenceReserveSeconds + 10) {
                         $invalidOutputRetries[$modelId] = true;
                         array_splice($candidateQueue, $candidateIndex + 1, 0, [$candidate]);
+                    }
+                    if ($errorCode !== 'invalid_model_output'
+                        && $this->aiModelFailoverDecider->isPermanentProviderFailure($exception)) {
+                        throw $exception;
+                    }
+                    if ($errorCode !== 'invalid_model_output'
+                        && ! $this->aiModelFailoverDecider->shouldFailover($exception)
+                        && ! in_array($errorCode, [
+                            'model_timeout',
+                            'provider_timeout',
+                            'provider_rate_limited',
+                            'provider_gateway_error',
+                            'provider_circuit_open',
+                        ], true)) {
+                        throw $exception;
                     }
                 }
             }
@@ -1072,7 +1190,15 @@ class ArticleAiQualityInspectionService
             ];
             [$storedSegmentRaw, $segmentRawTruncated] = $this->boundedRawPayload($raw);
             $runMeta['raw_model_output_truncated'] = $segmentRawTruncated;
-            if (! $this->completeSegment($checkId, (int) $segment->id, $storedSegmentRaw, $validated, $runMeta)) {
+            if (! $this->completeSegment(
+                $checkId,
+                (int) $segment->id,
+                $storedSegmentRaw,
+                $validated,
+                $runMeta,
+                $aiExecutionSnapshot,
+                (int) data_get($review, 'model.id', (int) $candidate->id),
+            )) {
                 return $this->latestCheck($checkId);
             }
 
@@ -1123,6 +1249,7 @@ class ArticleAiQualityInspectionService
             $timings,
             $completedAt,
             $executionMeta,
+            $aiExecutionSnapshot,
         ): int {
             $committedEpoch = max(1, (int) (ArticleAiQualityRollout::query()
                 ->whereKey(1)
@@ -1135,6 +1262,12 @@ class ArticleAiQualityInspectionService
                 || ! $this->rolloutEpochMatches($current, $committedEpoch)
                 || $this->remainingDeadlineSeconds($this->primaryDeadlineAt($current)) <= 0) {
                 return 0;
+            }
+            if ($aiExecutionSnapshot !== null) {
+                $this->aiExecutionAccessGuard->assertPersistedAdminSnapshot(
+                    $aiExecutionSnapshot,
+                    $current->task_id ? (int) $current->task_id : null,
+                );
             }
 
             return ArticleAiQualityCheck::query()
@@ -1915,15 +2048,36 @@ class ArticleAiQualityInspectionService
     }
 
     /** @param array<string, mixed> $raw @param array<string, mixed> $validated @param array<string, mixed> $runMeta */
-    private function completeSegment(int $checkId, int $segmentId, array $raw, array $validated, array $runMeta): bool
-    {
-        return DB::transaction(function () use ($checkId, $segmentId, $raw, $validated, $runMeta): bool {
+    private function completeSegment(
+        int $checkId,
+        int $segmentId,
+        array $raw,
+        array $validated,
+        array $runMeta,
+        ?array $aiExecutionSnapshot = null,
+        ?int $resolvedModelId = null,
+    ): bool {
+        return DB::transaction(function () use ($checkId, $segmentId, $raw, $validated, $runMeta, $aiExecutionSnapshot, $resolvedModelId): bool {
             $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
             if (! $check
                 || (string) $check->status !== 'running'
                 || (string) $check->inspection_scope !== 'full'
                 || $this->remainingDeadlineSeconds($this->primaryDeadlineAt($check)) <= 0) {
                 return false;
+            }
+            if ($aiExecutionSnapshot !== null) {
+                $admin = $this->aiExecutionAccessGuard->assertPersistedAdminSnapshot(
+                    $aiExecutionSnapshot,
+                    $check->task_id ? (int) $check->task_id : null,
+                );
+                if ($resolvedModelId !== null && $resolvedModelId > 0) {
+                    $this->aiExecutionAccessGuard->assertModelForPersistedAdminSnapshot(
+                        $aiExecutionSnapshot,
+                        $resolvedModelId,
+                        $check->task_id ? (int) $check->task_id : null,
+                        $admin,
+                    );
+                }
             }
             $segment = ArticleAiQualitySegment::query()
                 ->whereKey($segmentId)
@@ -3276,8 +3430,91 @@ class ArticleAiQualityInspectionService
         return [$executionMeta, $usage];
     }
 
+    /**
+     * @param  array<string,mixed>|null  $override
+     * @return array<string,int|string|list<int>|null>|null
+     */
+    private function qualityExecutionSnapshot(
+        Article $article,
+        ?TaskRun $taskRun,
+        ?array $override,
+        ?int $requestedModelId,
+    ): ?array {
+        if (is_array($override)) {
+            $snapshot = [
+                'model_access_admin_id' => (int) ($override['model_access_admin_id'] ?? 0),
+                'model_access_admin_role' => trim((string) ($override['model_access_admin_role'] ?? '')),
+                'ai_config_access_version' => (int) ($override['ai_config_access_version'] ?? 0),
+                'resolver_policy_version' => (int) ($override['resolver_policy_version'] ?? 0),
+                'requested_model_id' => $requestedModelId,
+                'source_type' => trim((string) ($override['source_type'] ?? 'article_ai_quality_check')),
+                'source_id' => (int) ($override['source_id'] ?? $article->task_id ?? $article->id),
+            ];
+
+            return $snapshot['model_access_admin_id'] > 0
+                && $snapshot['model_access_admin_role'] !== ''
+                && $snapshot['ai_config_access_version'] > 0
+                && $snapshot['resolver_policy_version'] > 0
+                    ? $snapshot
+                    : null;
+        }
+
+        if ($taskRun instanceof TaskRun) {
+            $snapshot = [
+                'model_access_admin_id' => (int) ($taskRun->model_access_admin_id ?? 0),
+                'model_access_admin_role' => trim((string) ($taskRun->model_access_admin_role ?? '')),
+                'ai_config_access_version' => (int) ($taskRun->ai_config_access_version ?? 0),
+                'resolver_policy_version' => (int) ($taskRun->resolver_policy_version ?? 0),
+                'requested_model_id' => $requestedModelId,
+                'source_type' => 'task_run',
+                'source_id' => (int) $taskRun->id,
+            ];
+
+            return $snapshot['model_access_admin_id'] > 0
+                && $snapshot['model_access_admin_role'] !== ''
+                && $snapshot['ai_config_access_version'] > 0
+                && $snapshot['resolver_policy_version'] > 0
+                    ? $snapshot
+                    : null;
+        }
+
+        $task = $article->relationLoaded('task') && $article->task instanceof Task
+            ? $article->task
+            : ($article->task_id ? Task::withTrashed()->find((int) $article->task_id) : null);
+        if (! $task instanceof Task || $task->trashed()) {
+            return null;
+        }
+        $adminId = (int) ($task->model_access_admin_id ?? 0);
+        $admin = $adminId > 0 ? Admin::query()->find($adminId) : null;
+        if (! $admin instanceof Admin) {
+            return null;
+        }
+
+        $snapshot = [
+            'model_access_admin_id' => $adminId,
+            'model_access_admin_role' => trim((string) ($task->model_access_admin_role ?? $this->aiExecutionContextFactory->normalizedRole($admin))),
+            'ai_config_access_version' => max(1, (int) $admin->ai_config_access_version),
+            'resolver_policy_version' => (int) ($task->model_access_policy_version ?? 0),
+            'requested_model_id' => $requestedModelId,
+            'source_type' => 'task',
+            'source_id' => (int) $task->id,
+        ];
+        if ($snapshot['model_access_admin_role'] === '' || $snapshot['resolver_policy_version'] <= 0) {
+            if ($this->aiExecutionContextFactory->identityRequired()) {
+                throw AiModelAccessException::configAccessRevoked($admin);
+            }
+
+            return null;
+        }
+
+        return $snapshot;
+    }
+
     private function safeErrorCode(Throwable $exception): string
     {
+        if ($exception instanceof AiModelAccessException) {
+            return $exception->getErrorCode();
+        }
         if ($exception instanceof ArticleAiQualityRuntimeException) {
             return $exception->safeCode();
         }

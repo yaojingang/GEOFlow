@@ -6,6 +6,7 @@ use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\Admin\AdminAiModelAccessResolver;
 use Illuminate\Database\Eloquent\Builder;
@@ -40,6 +41,66 @@ final class AiExecutionAccessGuard
         }
 
         return $admin;
+    }
+
+    /** @param array<string,mixed> $snapshot */
+    public function assertPersistedAdminSnapshot(array $snapshot, ?int $taskId = null): Admin
+    {
+        $adminId = (int) ($snapshot['model_access_admin_id'] ?? 0);
+        $admin = $this->lockWhenTransactional(Admin::query()->whereKey($adminId))->first();
+        if (! $admin instanceof Admin || (string) $admin->status !== 'active') {
+            throw AiModelAccessException::executionAdminInactiveForId($adminId);
+        }
+        if ((string) ($snapshot['model_access_admin_role'] ?? '') !== $this->contextFactory->normalizedRole($admin)
+            || (int) ($snapshot['ai_config_access_version'] ?? 0) !== max(1, (int) $admin->ai_config_access_version)
+            || (int) ($snapshot['resolver_policy_version'] ?? 0) !== AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION) {
+            throw AiModelAccessException::configAccessRevoked($admin);
+        }
+
+        if ($taskId !== null && $taskId > 0) {
+            $task = $this->lockWhenTransactional(Task::withTrashed()->whereKey($taskId))->first();
+            if (! $task instanceof Task
+                || $task->trashed()
+                || (int) ($task->model_access_admin_id ?? 0) !== $adminId
+                || (string) ($task->model_access_admin_role ?? '') !== (string) $snapshot['model_access_admin_role']
+                || (int) ($task->model_access_policy_version ?? 0) !== AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION) {
+                throw AiModelAccessException::configAccessRevoked($admin);
+            }
+        }
+
+        return $admin;
+    }
+
+    /** @param array<string,mixed> $snapshot */
+    public function assertModelForPersistedAdminSnapshot(
+        array $snapshot,
+        AiModel|int $model,
+        ?int $taskId = null,
+        ?Admin $currentAdmin = null,
+    ): AiModel {
+        $admin = $currentAdmin ?? $this->assertPersistedAdminSnapshot($snapshot, $taskId);
+        $modelId = $model instanceof AiModel ? (int) $model->getKey() : $model;
+        $currentModel = $this->lockWhenTransactional(AiModel::query()->whereKey($modelId))->first();
+        if (! $currentModel instanceof AiModel) {
+            throw AiModelAccessException::modelUnavailable($admin);
+        }
+
+        if (! $admin->isSuperAdmin()
+            && (int) $currentModel->owner_admin_id !== (int) $admin->getKey()
+            && (int) ($admin->shared_ai_config_owner_id ?? 0) === (int) $currentModel->owner_admin_id) {
+            $provider = $this->lockWhenTransactional(
+                Admin::query()->whereKey((int) $currentModel->owner_admin_id),
+            )->first();
+            if (! $provider instanceof Admin
+                || (string) $provider->status !== 'active'
+                || ! $provider->isSuperAdmin()) {
+                throw AiModelAccessException::configOwnerInactive($admin, (int) $currentModel->owner_admin_id);
+            }
+        }
+
+        $this->modelAccessResolver->assertLockedUsable($admin, $currentModel);
+
+        return $currentModel;
     }
 
     public function assertModelCurrent(

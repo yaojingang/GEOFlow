@@ -96,6 +96,26 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         $this->assertSame(ArticleAiOptimizationRun::STATUS_AWAITING_QUALITY, $run->status);
         $this->assertNotSame((int) $staleCheck->id, (int) $run->source_check_id);
         $this->assertSame('queued', $run->sourceCheck?->status);
+        $this->assertSame(
+            data_get($run->execution_meta, 'model_access_admin_id'),
+            data_get($run->sourceCheck?->execution_meta, 'ai_execution.model_access_admin_id'),
+        );
+        $this->assertSame(
+            data_get($run->execution_meta, 'ai_config_access_version'),
+            data_get($run->sourceCheck?->execution_meta, 'ai_execution.ai_config_access_version'),
+        );
+        $this->assertSame(
+            data_get($run->execution_meta, 'model_access_admin_role'),
+            data_get($run->sourceCheck?->execution_meta, 'ai_execution.model_access_admin_role'),
+        );
+        $this->assertSame(
+            data_get($run->execution_meta, 'resolver_policy_version'),
+            data_get($run->sourceCheck?->execution_meta, 'ai_execution.resolver_policy_version'),
+        );
+        $this->assertSame(
+            data_get($run->sourceCheck?->execution_meta, 'model_candidate_ids'),
+            data_get($run->sourceCheck?->execution_meta, 'ai_execution.model_candidate_ids'),
+        );
     }
 
     public function test_model_resolution_failure_after_claim_releases_the_lease_for_queue_retry(): void
@@ -281,6 +301,26 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         $this->assertFalse($candidate->gate_applied);
         $this->assertSame('full', $candidate->inspection_scope);
         $this->assertStringContainsString('有助于改善体验', (string) data_get($candidate->article_snapshot, 'content'));
+        $this->assertSame(
+            data_get($run->execution_meta, 'model_access_admin_id'),
+            data_get($candidate->execution_meta, 'ai_execution.model_access_admin_id'),
+        );
+        $this->assertSame(
+            data_get($run->execution_meta, 'ai_config_access_version'),
+            data_get($candidate->execution_meta, 'ai_execution.ai_config_access_version'),
+        );
+        $this->assertSame(
+            data_get($run->execution_meta, 'model_access_admin_role'),
+            data_get($candidate->execution_meta, 'ai_execution.model_access_admin_role'),
+        );
+        $this->assertSame(
+            data_get($run->execution_meta, 'resolver_policy_version'),
+            data_get($candidate->execution_meta, 'ai_execution.resolver_policy_version'),
+        );
+        $this->assertSame(
+            data_get($candidate->execution_meta, 'model_candidate_ids'),
+            data_get($candidate->execution_meta, 'ai_execution.model_candidate_ids'),
+        );
 
         $candidate->forceFill([
             'status' => 'completed',
@@ -531,6 +571,8 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         );
         app(ArticleAiOptimizationCoordinator::class)->process((int) $run->id);
 
+        $run->refresh();
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_EVALUATING, $run->status);
         $step = ArticleAiOptimizationStep::query()->where('run_id', $run->id)->firstOrFail();
         $candidate = ArticleAiQualityCheck::query()->find((int) $step->output_check_id);
         $this->assertCount(3, $fake->repairTasks);
@@ -1168,6 +1210,12 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
 
         app(ArticleAiOptimizationCoordinator::class)->process((int) $run->id);
 
+        $run->refresh();
+        $this->assertSame(
+            ArticleAiOptimizationRun::STATUS_EVALUATING,
+            $run->status,
+            json_encode(['stop_reason' => $run->stop_reason, 'error_code' => $run->error_code]),
+        );
         $step = ArticleAiOptimizationStep::query()->where('run_id', $run->id)->firstOrFail();
         $this->assertSame((int) $fallback->id, (int) $step->ai_model_id);
         $this->assertSame([$primary->id, $fallback->id], array_column($fake->calls, 'model_id'));
@@ -1223,6 +1271,102 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         );
         $this->assertSame($executor->id, data_get($run->execution_meta, 'model_access_admin_id'));
         $this->assertSame(1, data_get($run->execution_meta, 'ai_config_access_version'));
+    }
+
+    public function test_requested_shared_model_stays_first_before_personal_and_remaining_shared_fallbacks(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        config()->set('geoflow.ai_quality_optimization_max_model_attempts', 3);
+        config()->set('geoflow.ai_quality_request_timeout_seconds', 30);
+        Queue::fake();
+        [$article, $personalPrimary, $source] = $this->qualityArticle();
+        $executor = Admin::query()->findOrFail((int) $personalPrimary->owner_admin_id);
+        $provider = Admin::query()->create([
+            'username' => 'requested-shared-provider',
+            'password' => 'password',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $executor->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $personalFallback = $this->optimizationModel($executor, 'requested-shared-personal-fallback', 1);
+        $requestedShared = $this->optimizationModel($provider, 'requested-shared-primary', 50);
+        $remainingShared = $this->optimizationModel($provider, 'requested-shared-fallback', 1);
+        $article->task()->update([
+            'ai_model_id' => $requestedShared->id,
+            'model_selection_mode' => 'smart_failover',
+        ]);
+        $this->refreshQualityCheck($article, $source);
+
+        $run = app(ArticleAiOptimizationCoordinator::class)->start(
+            $article->fresh(),
+            'excellent_80',
+            $requestedShared,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            requestedByAdminId: $executor->id,
+            dispatch: false,
+        );
+
+        $this->assertSame(
+            [$requestedShared->id, $personalFallback->id, $personalPrimary->id],
+            data_get($run->execution_meta, 'optimization_model_ids'),
+        );
+    }
+
+    public function test_archiving_a_non_primary_fallback_after_start_does_not_stale_the_run(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $primary, $source] = $this->qualityArticle();
+        $executor = Admin::query()->findOrFail((int) $primary->owner_admin_id);
+        $article->task()->update(['model_selection_mode' => 'smart_failover']);
+        $fallback = $this->optimizationModel($executor, 'archived-after-start-fallback', 1);
+        $this->refreshQualityCheck($article, $source);
+        $fake = new class implements ArticleAiOptimizationRefiner
+        {
+            /** @var list<int> */
+            public array $calls = [];
+
+            public function refine(AiModel $model, string $instructions, int $timeoutSeconds, int $quotaReserve = 0): array
+            {
+                $this->calls[] = (int) $model->id;
+                preg_match('/"base_article_hash":"([a-f0-9]{64})"/', $instructions, $matches);
+
+                return [
+                    'result' => [
+                        'base_article_hash' => (string) ($matches[1] ?? ''),
+                        'strategy' => 'excellent_80',
+                        'operations' => [[
+                            'field' => 'content',
+                            'anchor_start' => 5,
+                            'anchor_end' => 13,
+                            'replace_start' => 5,
+                            'replace_end' => 13,
+                            'old_text_hash' => hash('sha256', '保证100%有效'),
+                            'replacement' => '有助于改善体验',
+                            'issue_codes' => ['ad_absolute_claim'],
+                            'root_cause_keys' => ['ad_absolute_claim:content:5'],
+                            'evidence_keys' => [],
+                        ]],
+                    ],
+                    'model' => ['id' => (int) $model->id],
+                    'mode' => 'structured',
+                ];
+            }
+        };
+        $this->app->instance(ArticleAiOptimizationRefiner::class, $fake);
+        $run = app(ArticleAiOptimizationCoordinator::class)->start(
+            $article->fresh(),
+            'excellent_80',
+            $primary,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+        $fallback->forceFill(['archived_at' => now()])->save();
+
+        app(ArticleAiOptimizationCoordinator::class)->process((int) $run->id);
+
+        $this->assertSame([$primary->id], $fake->calls);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_EVALUATING, $run->fresh()->status);
     }
 
     #[DataProvider('permanentOptimizationProviderStatusProvider')]
@@ -2263,7 +2407,11 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'evidence_snapshot' => [],
             'finished_at' => now(),
         ])->save();
-        $qualityPolicy = app(ArticleAiQualityPolicyResolver::class)->resolveForManualInspection($article->fresh());
+        $qualityPolicyResolver = app(ArticleAiQualityPolicyResolver::class);
+        $qualityPolicy = $qualityPolicyResolver->forExecutionAdmin(
+            $qualityPolicyResolver->resolveForManualInspection($article->fresh()),
+            $executionAdmin,
+        );
         $versionSelection = app(ArticleAiQualityVersionPolicy::class)->selection((int) $article->id);
         $fullRules = app(ArticleAiQualityInspectionService::class)->rules();
         $principleSnapshot = app(ArticleAiQualityPrincipleCompiler::class)->compile(
@@ -2335,7 +2483,11 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         $article = $article->fresh();
         $resolver = app(ArticleAiQualityPolicyResolver::class);
         $inspectionService = app(ArticleAiQualityInspectionService::class);
-        $policy = $resolver->resolveForManualInspection($article);
+        $executionAdmin = Admin::query()->findOrFail((int) $article->task?->model_access_admin_id);
+        $policy = $resolver->forExecutionAdmin(
+            $resolver->resolveForManualInspection($article),
+            $executionAdmin,
+        );
         $versionSelection = app(ArticleAiQualityVersionPolicy::class)->selection((int) $article->id);
         $snapshot = $resolver->articleSnapshot($article);
         $fullRules = $inspectionService->rules();
@@ -2349,6 +2501,11 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             ? app(ArticleAiQualityPrincipleCompiler::class)->rules($principleSnapshot)
             : $fullRules;
         $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
+        $candidateIds = array_values(array_map(
+            static fn (AiModel $candidate): int => (int) $candidate->id,
+            $resolver->modelCandidates($policy),
+        ));
+        $aiExecution = is_array($executionMeta['ai_execution'] ?? null) ? $executionMeta['ai_execution'] : [];
 
         $check->forceFill([
             'article_snapshot' => $snapshot,
@@ -2363,6 +2520,8 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'advertising_rules_snapshot' => $rules,
             'execution_meta' => array_replace($executionMeta, [
                 'policy_snapshot' => $resolver->snapshot($policy),
+                'model_candidate_ids' => $candidateIds,
+                'ai_execution' => array_replace($aiExecution, ['model_candidate_ids' => $candidateIds]),
                 'version_selection' => $versionSelection,
                 'principle_snapshot' => $principleSnapshot,
             ]),

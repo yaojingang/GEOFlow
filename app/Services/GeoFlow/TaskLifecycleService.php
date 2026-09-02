@@ -414,6 +414,30 @@ class TaskLifecycleService
             if ($executionAdminId > 0 && $executionAdminId !== (int) ($accessAdmin?->getKey() ?? 0)) {
                 $this->assertSelectedModelsUsable($this->accessAdmin($executionAdminId), $changedModels);
             }
+            $effectiveAiQualityEnabledForAccess = array_key_exists('ai_quality_enabled', $normalized)
+                ? (bool) $normalized['ai_quality_enabled']
+                : (bool) $current->ai_quality_enabled;
+            $effectiveAutoOptimizationEnabledForAccess = $effectiveAiQualityEnabledForAccess
+                && (array_key_exists('ai_quality_auto_optimize_enabled', $normalized)
+                    ? (bool) $normalized['ai_quality_auto_optimize_enabled']
+                    : (bool) $current->ai_quality_auto_optimize_enabled);
+            $mustRevalidateExecutionModels = ($status === 'active' && (string) $current->status !== 'active')
+                || (! (bool) $current->ai_quality_enabled && $effectiveAiQualityEnabledForAccess)
+                || (! (bool) $current->ai_quality_auto_optimize_enabled && $effectiveAutoOptimizationEnabledForAccess);
+            if ($mustRevalidateExecutionModels) {
+                $effectiveContentModelId = (int) ($normalized['ai_model_id'] ?? $current->ai_model_id ?? 0);
+                $effectiveQualityModelId = (int) ($normalized['ai_quality_model_id'] ?? $current->ai_quality_model_id ?? 0);
+                if ($effectiveQualityModelId <= 0) {
+                    $effectiveQualityModelId = $effectiveContentModelId;
+                }
+                $executionAdmin = $executionAdminId > 0
+                    ? $this->accessAdmin($executionAdminId)
+                    : $accessAdmin;
+                $this->assertSelectedModelsUsable($executionAdmin, [
+                    'ai_model_id' => $effectiveContentModelId,
+                    'ai_quality_model_id' => $effectiveQualityModelId,
+                ]);
+            }
             if ($qualityConfigurationRequested
                 && $expectedQualityVersion !== null
                 && $this->taskConfigurationVersion($current) !== $expectedQualityVersion) {

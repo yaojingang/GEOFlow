@@ -148,7 +148,10 @@ final class ArticleAiOptimizationCoordinator
                     $executionAdmin,
                 );
 
-                $qualityPolicy = $this->qualityPolicyResolver->resolveForManualInspection($lockedArticle);
+                $qualityPolicy = $this->qualityPolicyResolver->forExecutionAdmin(
+                    $this->qualityPolicyResolver->resolveForManualInspection($lockedArticle),
+                    $executionAdmin,
+                );
                 $this->qualityPolicyResolver->assertExecutable($qualityPolicy);
                 $qualityVersionSelection = $this->qualityVersionPolicy->selection((int) $lockedArticle->id);
                 $currentQualityFingerprint = $this->inspectionService->currentFingerprint(
@@ -157,14 +160,30 @@ final class ArticleAiOptimizationCoordinator
                     $this->inspectionService->rules(),
                     $qualityVersionSelection,
                 );
-                $sourceCheckId = ArticleAiQualityCheck::query()
+                $qualityCandidateIds = array_values(array_map(
+                    static fn (AiModel $candidate): int => (int) $candidate->id,
+                    $this->qualityPolicyResolver->modelCandidates($qualityPolicy),
+                ));
+                $sourceCheck = ArticleAiQualityCheck::query()
                     ->where('article_id', (int) $lockedArticle->id)
                     ->where('gate_applied', true)
                     ->where('status', 'completed')
                     ->where('inspection_scope', 'full')
                     ->where('input_fingerprint', $currentQualityFingerprint)
                     ->latest('id')
-                    ->value('id');
+                    ->limit(50)
+                    ->get()
+                    ->first(function (ArticleAiQualityCheck $check) use ($executionAdmin, $qualityCandidateIds): bool {
+                        $snapshot = data_get($check->execution_meta, 'ai_execution');
+
+                        return is_array($snapshot)
+                            && (int) ($snapshot['model_access_admin_id'] ?? 0) === (int) $executionAdmin->id
+                            && (string) ($snapshot['model_access_admin_role'] ?? '') === $this->aiExecutionContextFactory->normalizedRole($executionAdmin)
+                            && (int) ($snapshot['ai_config_access_version'] ?? 0) === max(1, (int) $executionAdmin->ai_config_access_version)
+                            && (int) ($snapshot['resolver_policy_version'] ?? 0) === AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION
+                            && array_values(array_map('intval', (array) ($snapshot['model_candidate_ids'] ?? []))) === $qualityCandidateIds;
+                    });
+                $sourceCheckId = $sourceCheck?->id;
                 $policy = $this->optimizationPolicy->resolve(
                     $strategy,
                     (int) ($qualityPolicy['pass_score'] ?? 85),
@@ -2184,6 +2203,21 @@ final class ArticleAiOptimizationCoordinator
         );
     }
 
+    /** @return array<string,int|string|null> */
+    private function qualityExecutionSnapshotForRun(ArticleAiOptimizationRun $run): array
+    {
+        $executionMeta = is_array($run->execution_meta) ? $run->execution_meta : [];
+
+        return [
+            'model_access_admin_id' => (int) ($executionMeta['model_access_admin_id'] ?? 0),
+            'model_access_admin_role' => (string) ($executionMeta['model_access_admin_role'] ?? ''),
+            'ai_config_access_version' => (int) ($executionMeta['ai_config_access_version'] ?? 0),
+            'resolver_policy_version' => (int) ($executionMeta['resolver_policy_version'] ?? 0),
+            'source_type' => 'article_ai_optimization_run',
+            'source_id' => (int) $run->id,
+        ];
+    }
+
     private function isPermanentOptimizationFailure(Throwable $exception): bool
     {
         if ($exception instanceof ArticleAiOptimizationException
@@ -2239,13 +2273,9 @@ final class ArticleAiOptimizationCoordinator
             ->filter(static fn (AiModel $model): bool => (int) $model->owner_admin_id === (int) $executionAdmin->id);
         $shared = $candidates
             ->reject(static fn (AiModel $model): bool => (int) $model->owner_admin_id === (int) $executionAdmin->id);
-        $ordered = (int) $requested->owner_admin_id === (int) $executionAdmin->id
-            ? collect([$requested])
-                ->concat($personal->reject(static fn (AiModel $model): bool => (int) $model->id === (int) $requested->id))
-                ->concat($shared)
-            : $personal
-                ->concat([$requested])
-                ->concat($shared->reject(static fn (AiModel $model): bool => (int) $model->id === (int) $requested->id));
+        $ordered = collect([$requested])
+            ->concat($personal->reject(static fn (AiModel $model): bool => (int) $model->id === (int) $requested->id))
+            ->concat($shared->reject(static fn (AiModel $model): bool => (int) $model->id === (int) $requested->id));
 
         return $ordered
             ->take($this->modelAttemptLimit())
@@ -2389,6 +2419,12 @@ final class ArticleAiOptimizationCoordinator
         ?Task $task,
         string $trigger,
     ): string {
+        $primaryQualityPolicy = $qualityPolicy;
+        $primaryQualityPolicy['model_candidates'] = ($qualityPolicy['model'] ?? null) instanceof AiModel
+            ? [$qualityPolicy['model']]
+            : [];
+        $primaryOptimizationModel = $optimizationModels[0] ?? null;
+
         return $this->optimizationPolicy->hash([
             'algorithm_version' => self::ALGORITHM_VERSION,
             'patch_validator_version' => ArticleAiOptimizationPatchValidator::VERSION,
@@ -2396,7 +2432,7 @@ final class ArticleAiOptimizationCoordinator
             'optimization_policy' => $policy,
             'quality_fingerprint_input' => $this->qualityPolicyResolver->fingerprintInput(
                 $article,
-                $qualityPolicy,
+                $primaryQualityPolicy,
                 $this->inspectionService->rules(),
             ),
             'optimization_model_selection_mode' => (string) ($task?->model_selection_mode ?? 'fixed'),
@@ -2404,15 +2440,15 @@ final class ArticleAiOptimizationCoordinator
                 'enabled' => (bool) $task?->ai_quality_auto_optimize_enabled,
                 'strategy' => (string) ($task?->ai_quality_optimization_level ?? ''),
             ] : null,
-            'optimization_models' => array_map(static fn (AiModel $model): array => [
-                'id' => (int) $model->id,
-                'model_id' => (string) $model->model_id,
-                'version' => (string) $model->version,
-                'status' => (string) $model->status,
-                'api_url' => (string) $model->api_url,
-                'max_tokens' => $model->max_tokens === null ? null : (int) $model->max_tokens,
-                'failover_priority' => $model->failover_priority === null ? null : (int) $model->failover_priority,
-            ], $optimizationModels),
+            'optimization_models' => $primaryOptimizationModel instanceof AiModel ? [[
+                'id' => (int) $primaryOptimizationModel->id,
+                'model_id' => (string) $primaryOptimizationModel->model_id,
+                'version' => (string) $primaryOptimizationModel->version,
+                'status' => (string) $primaryOptimizationModel->status,
+                'api_url' => (string) $primaryOptimizationModel->api_url,
+                'max_tokens' => $primaryOptimizationModel->max_tokens === null ? null : (int) $primaryOptimizationModel->max_tokens,
+                'failover_priority' => $primaryOptimizationModel->failover_priority === null ? null : (int) $primaryOptimizationModel->failover_priority,
+            ]] : [],
         ]);
     }
 
@@ -2425,13 +2461,16 @@ final class ArticleAiOptimizationCoordinator
             if (! $primary instanceof AiModel) {
                 return false;
             }
-            $qualityPolicy = $this->qualityPolicyResolver->resolveForManualInspection($article);
+            $executionAdmin = $this->assertOptimizationExecutionCurrent($run);
+            $qualityPolicy = $this->qualityPolicyResolver->forExecutionAdmin(
+                $this->qualityPolicyResolver->resolveForManualInspection($article),
+                $executionAdmin,
+            );
             $this->qualityPolicyResolver->assertExecutable($qualityPolicy);
             $policy = $this->optimizationPolicy->resolve(
                 (string) $run->strategy,
                 (int) ($qualityPolicy['pass_score'] ?? 85),
             );
-            $executionAdmin = $this->assertOptimizationExecutionCurrent($run);
             $models = $this->optimizationModelCandidates($primary, $article->task, $executionAdmin);
 
             return hash_equals(
@@ -2547,6 +2586,7 @@ final class ArticleAiOptimizationCoordinator
                     dispatch: false,
                     auditAdminId: $requestedByAdminId,
                     allowSampling: false,
+                    aiExecutionSnapshot: $this->qualityExecutionSnapshotForRun($run),
                 );
                 $run->forceFill(['source_check_id' => (int) $source->id])->save();
             }

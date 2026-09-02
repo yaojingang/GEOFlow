@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -148,6 +149,75 @@ class AdminAiModelEntryAccessTest extends TestCase
         ]);
     }
 
+    public function test_reactivating_a_paused_task_revalidates_its_persisted_content_model(): void
+    {
+        $provider = $this->admin('reactivation-provider', 'super_admin');
+        $actor = $this->admin('reactivation-actor', 'admin', $provider);
+        $shared = $this->model($provider, 'Reactivation Shared Chat', 'chat');
+        $created = $this->actingWithToken($actor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $shared->id))
+            ->assertCreated();
+        $taskId = (int) $created->json('data.id');
+        $actor->forceFill([
+            'shared_ai_config_owner_id' => null,
+            'ai_config_access_version' => (int) $actor->ai_config_access_version + 1,
+        ])->save();
+
+        try {
+            app(TaskLifecycleService::class)->updateTask(
+                $taskId,
+                ['status' => 'active'],
+                auditAdminId: (int) $actor->id,
+            );
+            $this->fail('Expected reactivation to reject the revoked content model.');
+        } catch (ApiException $exception) {
+            $this->assertSame('ai_model_not_accessible', $exception->getErrorCode());
+            $this->assertArrayHasKey('ai_model_id', $exception->getDetails()['field_errors']);
+        }
+
+        $this->assertSame('paused', Task::query()->findOrFail($taskId)->status);
+    }
+
+    public function test_reenabling_quality_or_auto_optimization_revalidates_the_effective_quality_model(): void
+    {
+        $provider = $this->admin('quality-reenable-provider', 'super_admin');
+        $actor = $this->admin('quality-reenable-actor', 'admin', $provider);
+        $personal = $this->model($actor, 'Quality Reenable Personal Chat', 'chat');
+        $sharedQuality = $this->model($provider, 'Quality Reenable Shared Chat', 'chat');
+        $created = $this->actingWithToken($actor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $personal->id))
+            ->assertCreated();
+        $taskId = (int) $created->json('data.id');
+        Task::query()->whereKey($taskId)->update([
+            'ai_quality_enabled' => false,
+            'ai_quality_auto_optimize_enabled' => false,
+            'ai_quality_model_id' => $sharedQuality->id,
+        ]);
+        $actor->forceFill([
+            'shared_ai_config_owner_id' => null,
+            'ai_config_access_version' => (int) $actor->ai_config_access_version + 1,
+        ])->save();
+
+        foreach ([
+            ['ai_quality_enabled' => true],
+            ['ai_quality_enabled' => true, 'ai_quality_auto_optimize_enabled' => true],
+        ] as $update) {
+            try {
+                app(TaskLifecycleService::class)->updateTask(
+                    $taskId,
+                    $update,
+                    auditAdminId: (int) $actor->id,
+                );
+                $this->fail('Expected the re-enabled quality model to be rejected.');
+            } catch (ApiException $exception) {
+                $this->assertSame('ai_model_not_accessible', $exception->getErrorCode());
+                $this->assertArrayHasKey('ai_quality_model_id', $exception->getDetails()['field_errors']);
+            }
+        }
+
+        $this->assertFalse((bool) Task::query()->findOrFail($taskId)->ai_quality_enabled);
+    }
+
     public function test_task_update_validates_a_new_model_against_the_persisted_execution_admin(): void
     {
         $executor = $this->admin('executor', 'admin');
@@ -214,28 +284,36 @@ class AdminAiModelEntryAccessTest extends TestCase
         $executor = $this->admin('form-executor', 'admin');
         $editor = $this->admin('form-editor', 'super_admin');
         $executorModel = $this->model($executor, 'Executor Private Form Model', 'chat');
+        $executorQualityModel = $this->model($executor, 'Executor Private Quality Model', 'chat');
         $this->model($editor, 'Editor Form Model', 'chat');
         Category::query()->create(['name' => 'Task form category', 'slug' => 'task-form-category']);
         $created = $this->actingWithToken($executor, ['tasks:write'])
             ->postJson('/api/v1/tasks', $this->taskPayload((int) $executorModel->id))
             ->assertCreated();
         $taskId = (int) $created->json('data.id');
+        Task::query()->whereKey($taskId)->update(['ai_quality_model_id' => $executorQualityModel->id]);
 
         $response = $this->actingAs($editor, 'admin')
             ->get(route('admin.tasks.edit', ['taskId' => $taskId]))
             ->assertOk();
 
-        $response->assertViewHas('formOptions', function (array $options) use ($executorModel): bool {
+        $response->assertViewHas('formOptions', function (array $options) use ($executorModel, $executorQualityModel): bool {
             $current = collect($options['aiModels'])->firstWhere('id', $executorModel->id);
+            $quality = collect($options['aiModels'])->firstWhere('id', $executorQualityModel->id);
 
             return is_array($current)
                 && ($current['disabled'] ?? false) === true
                 && ($current['current_inaccessible'] ?? false) === true
-                && array_keys($current) === ['id', 'name', 'disabled', 'current_inaccessible'];
+                && ($current['current_inaccessible_for'] ?? null) === ['ai_model_id']
+                && is_array($quality)
+                && ($quality['disabled'] ?? false) === true
+                && ($quality['current_inaccessible_for'] ?? null) === ['ai_quality_model_id'];
         });
         $response
             ->assertSee('Executor Private Form Model')
+            ->assertSee('Executor Private Quality Model')
             ->assertSee('type="hidden" name="ai_model_id" value="'.$executorModel->id.'"', false)
+            ->assertSee('type="hidden" name="ai_quality_model_id" value="'.$executorQualityModel->id.'"', false)
             ->assertDontSee('catalog-secret')
             ->assertDontSee('provider.example');
 
@@ -247,6 +325,7 @@ class AdminAiModelEntryAccessTest extends TestCase
                 'title_library_id' => $task->title_library_id,
                 'prompt_id' => $task->prompt_id,
                 'ai_model_id' => $executorModel->id,
+                'ai_quality_model_id' => $executorQualityModel->id,
                 'status' => 'paused',
                 'article_limit' => 1,
                 'draft_limit' => 1,
@@ -262,6 +341,7 @@ class AdminAiModelEntryAccessTest extends TestCase
             'id' => $taskId,
             'name' => 'Web governed rename',
             'ai_model_id' => $executorModel->id,
+            'ai_quality_model_id' => $executorQualityModel->id,
         ]);
     }
 

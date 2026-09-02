@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\DeadlineAwareArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Jobs\ProcessArticleAiQualityJob;
 use App\Jobs\ReconcileArticleAiQualityJob;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiQualityCheck;
@@ -28,8 +30,11 @@ use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use App\Services\GeoFlow\KnowledgeRetrievalService;
 use Carbon\Carbon;
+use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Contracts\Queue\Queue as QueueContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Queue;
 use InvalidArgumentException;
 use Mockery;
@@ -808,6 +813,151 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertLessThanOrEqual(110, $reviewer->timeouts[0]);
         $this->assertGreaterThanOrEqual(150, $reviewer->timeouts[1]);
         $this->assertLessThanOrEqual(160, $reviewer->timeouts[1]);
+    }
+
+    public function test_execution_bound_quality_check_uses_requested_then_personal_then_shared_candidates_only(): void
+    {
+        config()->set('geoflow.ai_quality_max_model_candidates', 3);
+        $provider = $this->qualityAdmin('quality-provider', 'super_admin');
+        $executor = $this->qualityAdmin('quality-executor', 'admin', $provider);
+        $peer = $this->qualityAdmin('quality-peer', 'admin');
+        $article = $this->createQualityFixture('execution-candidates', needReview: true);
+        $primary = $article->task->aiModel;
+        $primary->forceFill([
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+            'failover_priority' => 50,
+        ])->save();
+        $personal = $this->qualityModel($executor, 'quality-personal-fallback', 1);
+        $shared = $this->qualityModel($provider, 'quality-shared-fallback', 0);
+        $this->qualityModel($peer, 'quality-peer-model', 0);
+        $this->qualityModel($provider, 'quality-system-model', 0, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $archived = $this->qualityModel($executor, 'quality-archived-model', 0);
+        $archived->forceFill(['archived_at' => now()])->save();
+        $article->task->forceFill([
+            'model_selection_mode' => 'smart_failover',
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse(
+            $article->fresh(),
+            dispatch: false,
+        );
+
+        $this->assertSame(
+            [$primary->id, $personal->id, $shared->id],
+            data_get($check->execution_meta, 'model_candidate_ids'),
+        );
+        $this->assertSame($executor->id, data_get($check->execution_meta, 'ai_execution.model_access_admin_id'));
+        $this->assertSame(
+            [$primary->id, $personal->id, $shared->id],
+            data_get($check->execution_meta, 'ai_execution.model_candidate_ids'),
+        );
+    }
+
+    public function test_execution_access_revoked_after_provider_response_discards_quality_result(): void
+    {
+        $executor = $this->qualityAdmin('quality-late-revocation', 'admin');
+        $article = $this->createQualityFixture('late-access-revocation', needReview: true);
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        $reviewer = new class((int) $executor->id) implements ArticleAiQualityReviewer
+        {
+            public int $calls = 0;
+
+            public function __construct(private readonly int $adminId) {}
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->calls++;
+                Admin::query()->whereKey($this->adminId)->increment('ai_config_access_version');
+
+                return [
+                    'result' => [
+                        'summary' => '该结果应因撤权而丢弃。',
+                        'promotion_context' => 'informational',
+                        'knowledge_coverage' => 'sufficient',
+                        'issues' => [],
+                        'uncertainties' => [],
+                    ],
+                    'model' => ['id' => (int) $model->id],
+                    'mode' => 'structured',
+                ];
+            }
+        };
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+
+        try {
+            $service->process($check);
+            $this->fail('Expected the quality execution access snapshot to be revoked.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame('ai_config_access_revoked', $exception->getErrorCode());
+        }
+
+        $this->assertSame(1, $reviewer->calls);
+        $this->assertSame(0, (int) $check->fresh()->completed_segment_count);
+        $this->assertNull($check->fresh()->raw_model_output);
+        $this->assertNull($check->segments()->firstOrFail()->validated_result);
+    }
+
+    public function test_permanent_quality_provider_rejection_does_not_switch_candidates(): void
+    {
+        config()->set('geoflow.ai_quality_max_model_candidates', 2);
+        $executor = $this->qualityAdmin('quality-permanent-rejection', 'admin');
+        $article = $this->createQualityFixture('permanent-rejection', needReview: true);
+        $primary = $article->task->aiModel;
+        $primary->forceFill([
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $fallback = $this->qualityModel($executor, 'quality-unused-permanent-fallback', 1);
+        $article->task->forceFill([
+            'model_selection_mode' => 'smart_failover',
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        $reviewer = new class implements ArticleAiQualityReviewer
+        {
+            /** @var list<int> */
+            public array $calls = [];
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->calls[] = (int) $model->id;
+
+                throw new RequestException(new Response(new PsrResponse(401, [], '{}')));
+            }
+        };
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $job = new ProcessArticleAiQualityJob((int) $check->id);
+
+        try {
+            $job->handle($service);
+            $this->fail('Expected the permanent provider rejection to fail the job.');
+        } catch (RequestException) {
+            // The persisted terminal state is asserted below.
+        }
+
+        $this->assertSame([$primary->id], $reviewer->calls);
+        $this->assertNotContains($fallback->id, $reviewer->calls);
+        $this->assertSame('failed', $check->fresh()->status);
+        $this->assertFalse((bool) data_get($check->fresh()->execution_meta, 'retryable_failure'));
     }
 
     public function test_it_runs_a_check_persists_evidence_and_uses_backend_scoring(): void
@@ -1908,5 +2058,45 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
             'status' => 'draft',
             'review_status' => 'pending',
         ]);
+    }
+
+    private function qualityAdmin(string $username, string $role, ?Admin $provider = null): Admin
+    {
+        $admin = Admin::query()->create([
+            'username' => $username,
+            'password' => 'password',
+            'role' => $role,
+            'status' => 'active',
+        ]);
+        $admin->forceFill([
+            'shared_ai_config_owner_id' => $provider?->id,
+            'ai_config_access_version' => 1,
+        ])->save();
+
+        return $admin;
+    }
+
+    private function qualityModel(
+        Admin $owner,
+        string $modelId,
+        int $priority,
+        string $scope = AiModel::ACCESS_SCOPE_USER_CONTENT,
+    ): AiModel {
+        $model = AiModel::query()->create([
+            'name' => $modelId,
+            'version' => '1',
+            'api_key' => 'test',
+            'model_id' => $modelId,
+            'model_type' => 'chat',
+            'api_url' => 'https://example.test',
+            'status' => 'active',
+            'failover_priority' => $priority,
+        ]);
+        $model->forceFill([
+            'owner_admin_id' => $owner->id,
+            'access_scope' => $scope,
+        ])->save();
+
+        return $model;
     }
 }
