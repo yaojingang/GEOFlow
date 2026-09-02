@@ -8,7 +8,7 @@ final readonly class AdminAiSharingChangeResult
 {
     /**
      * @param  list<int>  $clearedDefaultModelIds
-     * @param  array{title_generation_runs: int, article_ai_optimization_runs: int, knowledge_fact_generation_runs: int, ai_workspace_runs: int, url_import_jobs: int, total: int}  $pendingImpactCounts
+     * @param  array{title_generation_runs: int, article_ai_optimization_runs: int, knowledge_fact_generation_runs: int, ai_workspace_runs: int, url_import_jobs: int, enterprise_knowledge_projects: int, total: int}  $pendingImpactCounts
      */
     public function __construct(
         public Admin $admin,

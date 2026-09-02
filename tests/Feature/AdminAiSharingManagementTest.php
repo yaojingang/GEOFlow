@@ -50,6 +50,7 @@ class AdminAiSharingManagementTest extends TestCase
             'knowledge_fact_generation_runs' => 0,
             'ai_workspace_runs' => 0,
             'url_import_jobs' => 0,
+            'enterprise_knowledge_projects' => 0,
             'total' => 1,
         ], app(AdminAiDependencyInspector::class)->pendingTaskCounts($admin));
     }
@@ -146,6 +147,7 @@ class AdminAiSharingManagementTest extends TestCase
             'knowledge_fact_generation_runs',
             'ai_workspace_runs',
             'url_import_jobs',
+            'enterprise_knowledge_projects',
         ] as $table) {
             $temporaryTable = $table.'_temporarily_unavailable';
             Schema::rename($table, $temporaryTable);
@@ -991,6 +993,7 @@ class AdminAiSharingManagementTest extends TestCase
             'knowledge_fact_generation_runs' => 0,
             'ai_workspace_runs' => 0,
             'url_import_jobs' => 0,
+            'enterprise_knowledge_projects' => 0,
             'total' => 1,
         ], $serialized['pending_impact_counts']);
         $this->assertArrayNotHasKey('api_key', $serialized);

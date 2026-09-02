@@ -30,7 +30,7 @@ final class AiModelReferenceCatalog
         AdminAiSetting::class => ['default_chat_model_id', 'default_embedding_model_id'],
         Task::class => ['ai_model_id', 'ai_quality_model_id'],
         TitleLibrary::class => ['ai_model_id'],
-        EnterpriseKnowledgeProject::class => ['ai_model_id'],
+        EnterpriseKnowledgeProject::class => ['ai_model_id', 'requested_ai_model_id', 'resolved_ai_model_id'],
         SiteThemeReplication::class => ['ai_model_id'],
         TitleGenerationRun::class => ['ai_model_id'],
         ArticleAiQualityCheck::class => ['ai_model_id'],

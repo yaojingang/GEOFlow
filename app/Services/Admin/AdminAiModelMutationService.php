@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Data\Admin\AdminAiModelMutationResult;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\EnterpriseKnowledgeProject;
 use App\Models\TitleGenerationRun;
 use App\Models\UrlImportJob;
 use Illuminate\Support\Arr;
@@ -80,6 +81,7 @@ final class AdminAiModelMutationService
             $taskCount = $lockedModel->tasks()->withTrashed()->count()
                 + $lockedModel->qualityTasks()->withTrashed()->count();
             $taskCount += $this->activeUrlImportCount($modelId);
+            $taskCount += $this->activeEnterpriseKnowledgeCount($modelId);
             if ($taskCount > 0) {
                 return new AdminAiModelMutationResult($lockedModel, 'task', $taskCount);
             }
@@ -144,6 +146,23 @@ final class AdminAiModelMutationService
             })
             ->where(function ($query): void {
                 $query->whereIn('status', ['queued', 'running'])
+                    ->orWhere(function ($retryable): void {
+                        $retryable->where('status', 'failed')
+                            ->where('retryable_failure', true);
+                    });
+            })
+            ->count();
+    }
+
+    private function activeEnterpriseKnowledgeCount(int $modelId): int
+    {
+        return EnterpriseKnowledgeProject::query()
+            ->where(function ($query) use ($modelId): void {
+                $query->where('requested_ai_model_id', $modelId)
+                    ->orWhere('resolved_ai_model_id', $modelId);
+            })
+            ->where(function ($query): void {
+                $query->whereIn('status', ['queued', 'processing'])
                     ->orWhere(function ($retryable): void {
                         $retryable->where('status', 'failed')
                             ->where('retryable_failure', true);

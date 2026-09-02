@@ -3,14 +3,18 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\EnterpriseKnowledgeProject;
 use App\Models\EnterpriseKnowledgeRevision;
 use App\Models\KnowledgeBase;
+use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -74,20 +78,39 @@ final class EnterpriseKnowledgeDraftService
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly KnowledgeChunkSyncCoordinator $chunkSyncCoordinator,
         private readonly AiUsageQuotaService $usageQuota,
+        private readonly AdminAiModelAccessResolver $modelAccessResolver,
+        private readonly EnterpriseKnowledgeAiExecutionGuard $executionGuard,
+        private readonly AiModelFailoverDecider $failoverDecider,
+        private readonly AiExecutionErrorSanitizer $errorSanitizer,
     ) {}
+
+    public function assertAnalysisModelReady(Admin $admin): AiModel
+    {
+        $model = $this->modelAccessResolver->resolveCandidates($admin, 'chat')->first();
+        if (! $model instanceof AiModel) {
+            throw new \RuntimeException(__('admin.url_import.error.ai_model_required'));
+        }
+
+        $this->prepareAiRuntime($model);
+
+        return $model;
+    }
 
     /** @param array<string,mixed> $data */
     public function createWorkspaceDraft(array $data, Admin $admin): EnterpriseKnowledgeProject
     {
-        return DB::transaction(function () use ($data, $admin): EnterpriseKnowledgeProject {
+        $model = $this->assertAnalysisModelReady($admin);
+
+        return DB::transaction(function () use ($data, $admin, $model): EnterpriseKnowledgeProject {
             $content = trim((string) ($data['content'] ?? ''));
-            $project = EnterpriseKnowledgeProject::query()->create([
+            $identity = $this->executionGuard->snapshotForCreation($admin, $model);
+            $project = EnterpriseKnowledgeProject::query()->create(array_merge([
                 'name' => trim((string) ($data['name'] ?? '')),
                 'description' => trim((string) ($data['description'] ?? '')),
                 'status' => 'draft',
                 'draft_content' => $content,
                 'created_by_admin_id' => (int) $admin->id,
-            ]);
+            ], $identity));
             EnterpriseKnowledgeRevision::query()->create([
                 'enterprise_knowledge_project_id' => (int) $project->id,
                 'content' => $content,
@@ -112,9 +135,14 @@ final class EnterpriseKnowledgeDraftService
         $fallback = $this->buildFallbackDraft($project, $sourceText, $sourceBlocks);
         $fallback['content'] = $this->ensureSourceCoverage((string) $fallback['content'], $sourceFacts);
 
-        foreach ($this->resolveAnalysisModels() as $model) {
+        foreach ($this->executionGuard->resolveCandidates($project) as $model) {
             try {
-                $runtime = $this->prepareAiRuntime($model);
+                $executionAdmin = $this->executionGuard->assertCurrent($project, $model);
+                try {
+                    $runtime = $this->prepareAiRuntime($model);
+                } catch (Throwable) {
+                    throw AiModelAccessException::modelUnavailable($executionAdmin, $model);
+                }
                 $content = $this->generateAiDraftContent($project, $sourceText, $sourceBlocks, $sourceFacts, $runtime);
                 if ($content === '') {
                     throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_empty'));
@@ -133,14 +161,28 @@ final class EnterpriseKnowledgeDraftService
                     ]));
                 }
 
+                $this->executionGuard->recordResolvedModel($project, $model);
+
                 return [
                     'content' => $content,
                     'source' => 'ai',
                     'model_id' => (int) $model->id,
                     'error' => null,
                 ];
+            } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+                throw $exception;
             } catch (Throwable $exception) {
-                $fallback['error'] = OpenAiRuntimeProvider::normalizeApiException($exception, (string) $model->api_url);
+                if ($this->failoverDecider->isPermanentProviderFailure($exception)) {
+                    throw PermanentAiProviderException::fromProviderFailure($exception);
+                }
+
+                $fallback['error'] = $this->errorSanitizer->sanitize(
+                    OpenAiRuntimeProvider::normalizeApiException($exception, (string) $model->api_url),
+                    'enterprise_knowledge_generation_failed',
+                );
+                if (! $this->failoverDecider->shouldFailover($exception)) {
+                    return $fallback;
+                }
             }
         }
 
@@ -352,6 +394,7 @@ PROMPT;
             $agent,
             $this->buildUserPrompt($project, $sourceText, $sourceBlocks),
             $runtime,
+            $project,
         );
     }
 
@@ -373,6 +416,7 @@ PROMPT;
                 $agent,
                 $this->buildModuleUserPrompt($project, $sourceBlocks, $sourceFacts, $module),
                 $runtime,
+                $project,
             );
             $noiseResidues = $this->draftNoiseResidues($moduleContent);
             if ($noiseResidues !== []) {
@@ -1157,23 +1201,6 @@ MARKDOWN;
     }
 
     /**
-     * @return Collection<int, AiModel>
-     */
-    private function resolveAnalysisModels(): Collection
-    {
-        return AiModel::query()
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->orderBy('failover_priority')
-            ->orderBy('id')
-            ->get();
-    }
-
-    /**
      * @return array{provider:string,model_id:string,base_url:string,model:AiModel}
      */
     private function prepareAiRuntime(AiModel $model): array
@@ -1204,8 +1231,13 @@ MARKDOWN;
     /**
      * @param  array{provider:string,model_id:string,base_url:string,model:AiModel}  $runtime
      */
-    private function promptWithQuota(MarkdownContentWriterAgent $agent, string $prompt, array $runtime): string
-    {
+    private function promptWithQuota(
+        MarkdownContentWriterAgent $agent,
+        string $prompt,
+        array $runtime,
+        EnterpriseKnowledgeProject $project,
+    ): string {
+        $this->executionGuard->heartbeat($project, $runtime['model']);
         $reservation = $this->usageQuota->reserveModel($runtime['model']);
         if ($reservation === null) {
             throw new \RuntimeException('AI model has reached its daily usage limit.');
@@ -1219,6 +1251,7 @@ MARKDOWN;
                 (string) $runtime['model_id'],
             );
             $content = trim(OpenAiRuntimeProvider::normalizeGeneratedText($this->responseText($response)));
+            $this->executionGuard->assertCurrent($project, $runtime['model']);
             if ($content === '') {
                 throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_empty'));
             }

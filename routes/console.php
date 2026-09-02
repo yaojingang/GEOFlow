@@ -121,6 +121,11 @@ Schedule::command('geoflow:recover-url-imports')
     ->onOneServer()
     ->withoutOverlapping(2);
 
+Schedule::command('geoflow:recover-enterprise-knowledge-drafts')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(2);
+
 Schedule::command('geoflow:recover-title-generations')
     ->everyFiveMinutes()
     ->onOneServer()
