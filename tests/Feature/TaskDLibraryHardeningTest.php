@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\ImageLibrary;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
@@ -11,6 +12,7 @@ use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Services\GeoFlow\MaterialLibraryService;
 use App\Services\GeoFlow\UrlImportProcessingService;
+use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\LibraryImportPolicy;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
@@ -360,7 +362,7 @@ class TaskDLibraryHardeningTest extends TestCase
             'keywords' => ['safe keyword'],
             'titles' => ['safe title'],
         ]);
-        $admin = $this->createAdmin('url-commit-failure');
+        $admin = $failingJob->executionAdmin()->firstOrFail();
         $secret = 'task-d-secret-database-message';
         Exceptions::fake();
         DB::statement("CREATE TRIGGER task_d_url_commit_failure BEFORE INSERT ON knowledge_bases BEGIN SELECT RAISE(ABORT, '{$secret}'); END");
@@ -775,6 +777,26 @@ class TaskDLibraryHardeningTest extends TestCase
             'import' => ['status' => 'preview', 'summary' => null],
         ];
 
+        $suffix = UrlImportJob::query()->count() + 1;
+        $admin = $this->createAdmin('task-d-url-import-'.$suffix);
+        $model = AiModel::query()->create([
+            'name' => 'Task D URL import model '.$suffix,
+            'version' => '',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('task-d-url-import-key'),
+            'model_id' => 'task-d-url-import-model-'.$suffix,
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.test/v1',
+            'failover_priority' => 10,
+            'daily_limit' => 100,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+
         return UrlImportJob::query()->create([
             'url' => 'https://example.test/task-d',
             'normalized_url' => 'https://example.test/task-d',
@@ -788,6 +810,14 @@ class TaskDLibraryHardeningTest extends TestCase
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE,
             ),
             'created_by' => 'task-d-test',
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'super_admin',
+            'ai_config_access_version' => 1,
+            'requested_ai_model_id' => $model->id,
+            'resolver_policy_version' => 1,
+            'resolved_ai_model_id' => $model->id,
+            'resolved_model_source' => 'personal',
+            'model_resolved_at' => now(),
         ]);
     }
 }

@@ -170,6 +170,11 @@ class Admin extends Authenticatable
         return $this->hasMany(TaskRun::class, 'model_access_admin_id');
     }
 
+    public function aiExecutionUrlImportJobs(): HasMany
+    {
+        return $this->hasMany(UrlImportJob::class, 'model_access_admin_id');
+    }
+
     public function activityLogs(): HasMany
     {
         return $this->hasMany(AdminActivityLog::class, 'admin_id');
