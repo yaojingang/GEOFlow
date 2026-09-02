@@ -2,6 +2,8 @@
 
 namespace App\Contracts\AiWorkspace;
 
+use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Models\Admin;
 use Generator;
 
 interface AdminHelpResponder
@@ -15,7 +17,7 @@ interface AdminHelpResponder
         string $prompt,
         string $knowledgeContext,
         iterable $messages = [],
-        ?int $adminId = null,
+        Admin|AiWorkspaceExecutionContext|int|null $actor = null,
     ): Generator;
 
     /** @param iterable<int, mixed> $messages */
@@ -23,6 +25,6 @@ interface AdminHelpResponder
         string $prompt,
         string $knowledgeContext,
         iterable $messages = [],
-        ?int $adminId = null,
+        Admin|AiWorkspaceExecutionContext|int|null $actor = null,
     ): string;
 }

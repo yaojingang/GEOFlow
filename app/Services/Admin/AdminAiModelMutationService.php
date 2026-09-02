@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Data\Admin\AdminAiModelMutationResult;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiWorkspaceRun;
 use App\Models\EnterpriseKnowledgeProject;
 use App\Models\TitleGenerationRun;
 use App\Models\UrlImportJob;
@@ -57,6 +58,9 @@ final class AdminAiModelMutationService
             if ($this->activeTitleGenerationCount($modelId) > 0) {
                 return new AdminAiModelMutationResult($lockedModel, 'title_generation');
             }
+            if ($this->activeAiWorkspaceRunCount($modelId) > 0) {
+                return new AdminAiModelMutationResult($lockedModel, 'task');
+            }
 
             $lockedModel->fill(Arr::except($attributes, ['access_scope']));
             $lockedModel->forceFill(['access_scope' => $scope])->save();
@@ -82,6 +86,7 @@ final class AdminAiModelMutationService
                 + $lockedModel->qualityTasks()->withTrashed()->count();
             $taskCount += $this->activeUrlImportCount($modelId);
             $taskCount += $this->activeEnterpriseKnowledgeCount($modelId);
+            $taskCount += $this->activeAiWorkspaceRunCount($modelId);
             if ($taskCount > 0) {
                 return new AdminAiModelMutationResult($lockedModel, 'task', $taskCount);
             }
@@ -190,6 +195,23 @@ final class AdminAiModelMutationService
                 $query->whereIn('status', ['queued', 'processing'])
                     ->orWhere(function ($retryable): void {
                         $retryable->where('status', 'failed')
+                            ->where('retryable_failure', true);
+                    });
+            })
+            ->count();
+    }
+
+    private function activeAiWorkspaceRunCount(int $modelId): int
+    {
+        return AiWorkspaceRun::query()
+            ->where(function ($query) use ($modelId): void {
+                $query->where('requested_ai_model_id', $modelId)
+                    ->orWhere('resolved_ai_model_id', $modelId);
+            })
+            ->where(function ($query): void {
+                $query->whereNotIn('state', AiWorkspaceRun::TERMINAL_STATES)
+                    ->orWhere(function ($retryable): void {
+                        $retryable->whereIn('state', ['failed', 'partially_completed'])
                             ->where('retryable_failure', true);
                     });
             })

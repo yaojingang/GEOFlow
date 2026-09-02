@@ -60,6 +60,7 @@ final class AdminAiDependencyInspector
             executionUrlImportJobCount: $this->executionUrlImportJobCount($admin),
             executionEnterpriseKnowledgeProjectCount: $this->executionEnterpriseKnowledgeProjectCount($admin),
             executionTitleGenerationRunCount: $this->executionTitleGenerationRunCount($admin),
+            executionAiWorkspaceRunCount: $this->executionAiWorkspaceRunCount($admin),
         );
     }
 
@@ -286,6 +287,17 @@ final class AdminAiDependencyInspector
         }
 
         return TitleGenerationRun::query()
+            ->where('model_access_admin_id', $admin->getKey())
+            ->count();
+    }
+
+    private function executionAiWorkspaceRunCount(Admin $admin): int
+    {
+        if (! $this->hasRequiredColumns((new AiWorkspaceRun)->getTable(), ['model_access_admin_id'])) {
+            return 0;
+        }
+
+        return AiWorkspaceRun::query()
             ->where('model_access_admin_id', $admin->getKey())
             ->count();
     }

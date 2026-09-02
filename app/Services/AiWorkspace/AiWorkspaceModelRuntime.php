@@ -4,8 +4,14 @@ namespace App\Services\AiWorkspace;
 
 use App\Ai\Agents\AdminHelpAssistant;
 use App\Contracts\AiWorkspace\AdminHelpResponder;
+use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Services\GeoFlow\AiUsageQuotaService;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Generator;
@@ -27,6 +33,9 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         private ApiKeyCrypto $apiKeyCrypto,
         private AiUsageQuotaService $usageQuota,
         private AiWorkspaceModelReadiness $readiness,
+        private AiWorkspaceExecutionAccessGuard $executionGuard,
+        private AiModelFailoverDecider $failoverDecider,
+        private AiExecutionErrorSanitizer $errorSanitizer,
     ) {}
 
     /**
@@ -37,8 +46,9 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         string $prompt,
         string $knowledgeContext,
         iterable $messages = [],
-        ?int $adminId = null,
+        Admin|AiWorkspaceExecutionContext|int|null $actor = null,
     ): Generator {
+        $context = $this->executionContext($actor);
         $cache = $this->acquireConcurrencySlot();
         $lastException = null;
         $attempts = 0;
@@ -51,7 +61,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         $firstTextMilliseconds = null;
 
         try {
-            foreach ($this->models() as $model) {
+            foreach ($this->models($context) as $model) {
                 $attempts++;
                 $reservation = null;
                 $emitted = false;
@@ -64,8 +74,9 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                 $plainTextFallback = false;
 
                 try {
+                    $this->executionGuard->assertCurrent($context, $model);
                     $timeout = $this->remainingAttemptTimeout($deadline);
-                    [$provider, $reservation, $driver] = $this->modelContext($model, $adminId);
+                    [$provider, $reservation, $driver] = $this->modelContext($model, $context->modelAccessAdminId);
                     $agent = new AdminHelpAssistant(
                         $messages,
                         $knowledgeContext,
@@ -143,6 +154,8 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     if ($answer === '') {
                         throw new RuntimeException('AI 模型未返回文本内容。');
                     }
+                    $this->executionGuard->assertCurrent($context, $model);
+                    $this->executionGuard->recordResolvedModel($context, $model);
                     $this->usageQuota->recordModelSuccess($reservation);
                     $this->recordProviderSuccess($model);
                     $totalMilliseconds = $this->elapsedMilliseconds($startedAtNanoseconds);
@@ -168,8 +181,13 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         'usage' => $usage,
                     ];
                 } catch (Throwable $exception) {
+                    if ($exception instanceof AiModelAccessException || $exception instanceof PermanentAiProviderException) {
+                        throw $exception;
+                    }
                     if ($this->streamCompletedSuccessfully($streamEnded, $finishReason) && trim($answer) !== '') {
-                        report($exception);
+                        $this->executionGuard->assertCurrent($context, $model);
+                        $this->executionGuard->recordResolvedModel($context, $model);
+                        report(new RuntimeException($this->errorSanitizer->sanitize($exception)));
                         $this->usageQuota->recordModelSuccess($reservation);
                         $this->recordProviderSuccess($model);
                         $totalMilliseconds = $this->elapsedMilliseconds($startedAtNanoseconds);
@@ -197,13 +215,20 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         ];
                     }
                     $lastException = $this->runtimeException($exception, $model);
+                    if ($this->failoverDecider->isPermanentProviderFailure($exception)) {
+                        throw PermanentAiProviderException::fromProviderFailure($lastException);
+                    }
                     $recoverable = $this->isRecoverableProviderFailure($exception);
                     if ($emitted) {
                         $this->recordProviderFailure($model);
                         throw $lastException;
                     }
                     if (! $recoverable) {
-                        throw $lastException;
+                        if ($exception instanceof AiWorkspaceRuntimeGuardException) {
+                            throw $exception;
+                        }
+
+                        throw PermanentAiProviderException::fromProviderFailure($lastException);
                     }
                     $fallbackCount++;
                     if (! $exception instanceof AiWorkspaceModelUnavailableException) {
@@ -228,19 +253,22 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         string $prompt,
         string $knowledgeContext,
         iterable $messages = [],
-        ?int $adminId = null,
+        Admin|AiWorkspaceExecutionContext|int|null $actor = null,
     ): string {
-        return $this->withConcurrencySlot(function () use ($prompt, $knowledgeContext, $messages, $adminId): string {
+        $context = $this->executionContext($actor);
+
+        return $this->withConcurrencySlot(function () use ($prompt, $knowledgeContext, $messages, $context): string {
             $lastException = null;
             $attempt = 0;
             $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
 
-            foreach ($this->models() as $model) {
+            foreach ($this->models($context) as $model) {
                 $attempt++;
                 $reservation = null;
                 try {
+                    $this->executionGuard->assertCurrent($context, $model);
                     $timeout = $this->remainingAttemptTimeout($deadline);
-                    [$provider, $reservation] = $this->modelContext($model, $adminId);
+                    [$provider, $reservation] = $this->modelContext($model, $context->modelAccessAdminId);
                     $agent = new AdminHelpAssistant(
                         $messages,
                         $knowledgeContext,
@@ -252,6 +280,8 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     if ($answer === '') {
                         throw new RuntimeException('AI 模型未返回文本内容。');
                     }
+                    $this->executionGuard->assertCurrent($context, $model);
+                    $this->executionGuard->recordResolvedModel($context, $model);
                     $this->usageQuota->recordModelSuccess($reservation);
                     $this->recordProviderSuccess($model);
                     $this->recordReadinessSuccess($model, false);
@@ -261,9 +291,19 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     if ($reservation !== null) {
                         $this->usageQuota->recordModelAttempt($reservation);
                     }
+                    if ($exception instanceof AiModelAccessException || $exception instanceof PermanentAiProviderException) {
+                        throw $exception;
+                    }
                     $lastException = $this->runtimeException($exception, $model);
+                    if ($this->failoverDecider->isPermanentProviderFailure($exception)) {
+                        throw PermanentAiProviderException::fromProviderFailure($lastException);
+                    }
                     if (! $this->isRecoverableProviderFailure($exception)) {
-                        throw $lastException;
+                        if ($exception instanceof AiWorkspaceRuntimeGuardException) {
+                            throw $exception;
+                        }
+
+                        throw PermanentAiProviderException::fromProviderFailure($lastException);
                     }
                     if (! $exception instanceof AiWorkspaceModelUnavailableException) {
                         $this->recordProviderFailure($model);
@@ -276,14 +316,84 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         });
     }
 
+    /** @return array<string,mixed> */
+    public function resolveIntent(
+        string $prompt,
+        Admin|AiWorkspaceExecutionContext|int|null $actor = null,
+        ?callable $onComplete = null,
+    ): array {
+        $text = $this->answer($prompt, '请将请求解析为受控工作台意图 JSON。', [], $actor);
+        $decoded = json_decode($text, true);
+        $result = is_array($decoded) ? $decoded : [];
+        if ($onComplete !== null) {
+            $onComplete(['stage' => 'intent', 'completed' => true]);
+        }
+
+        return $result;
+    }
+
+    /** @param array<string,mixed> $resolution @return list<array<string,mixed>> */
+    public function draftPlan(
+        string $prompt,
+        array $resolution,
+        Admin|AiWorkspaceExecutionContext|int|null $actor = null,
+        ?callable $onComplete = null,
+    ): array {
+        $text = $this->answer(
+            $prompt,
+            '请依据已解析意图生成受控步骤 JSON：'.json_encode($resolution, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            [],
+            $actor,
+        );
+        $decoded = json_decode($text, true);
+        $steps = is_array($decoded) ? (array) ($decoded['steps'] ?? $decoded) : [];
+        if ($onComplete !== null) {
+            $onComplete(['stage' => 'plan', 'completed' => true]);
+        }
+
+        return array_values(array_filter($steps, 'is_array'));
+    }
+
+    /**
+     * @param  iterable<int,mixed>  $messages
+     */
+    public function streamAnswer(
+        string $prompt,
+        callable $onDelta,
+        iterable $messages = [],
+        Admin|AiWorkspaceExecutionContext|int|null $actor = null,
+        ?callable $onComplete = null,
+    ): string {
+        $stream = $this->stream($prompt, '', $messages, $actor);
+        foreach ($stream as $event) {
+            if (is_array($event) && ($event['type'] ?? null) === 'delta') {
+                $onDelta((string) ($event['content'] ?? ''));
+            }
+        }
+        $result = $stream->getReturn();
+        if ($onComplete !== null) {
+            $onComplete(is_array($result) ? (array) ($result['meta'] ?? []) : []);
+        }
+
+        return is_array($result) ? trim((string) ($result['answer'] ?? '')) : trim((string) $result);
+    }
+
     /** @return array{provider:string,endpoint:string,http_status:int,latency_ms:int,raw_preview:string} */
     public function probePlainText(AiModel $model, string $prompt, ?int $timeout = null): array
     {
-        $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
-        $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
-        $modelId = trim((string) $model->model_id);
+        try {
+            $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
+            $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
+            $modelId = trim((string) $model->model_id);
+        } catch (Throwable) {
+            throw PermanentAiProviderException::fromProviderFailure(
+                new RuntimeException('ai_model_configuration_invalid'),
+            );
+        }
         if ($providerUrl === '' || $apiKey === '' || $modelId === '') {
-            throw new AiWorkspaceModelUnavailableException('对话模型配置不完整');
+            throw PermanentAiProviderException::fromProviderFailure(
+                new RuntimeException('ai_model_configuration_invalid'),
+            );
         }
 
         $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
@@ -316,11 +426,19 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
     /** @return array{provider:string,endpoint:string,http_status:int,latency_ms:int,raw_preview:string,delta_count:int} */
     public function probeStreaming(AiModel $model, string $prompt, ?int $timeout = null): array
     {
-        $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
-        $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
-        $modelId = trim((string) $model->model_id);
+        try {
+            $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
+            $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
+            $modelId = trim((string) $model->model_id);
+        } catch (Throwable) {
+            throw PermanentAiProviderException::fromProviderFailure(
+                new RuntimeException('ai_model_configuration_invalid'),
+            );
+        }
         if ($providerUrl === '' || $apiKey === '' || $modelId === '') {
-            throw new AiWorkspaceModelUnavailableException('对话模型配置不完整');
+            throw PermanentAiProviderException::fromProviderFailure(
+                new RuntimeException('ai_model_configuration_invalid'),
+            );
         }
 
         $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
@@ -377,22 +495,32 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
     }
 
     /** @return iterable<int, AiModel> */
-    private function models(): iterable
+    private function models(AiWorkspaceExecutionContext $context): iterable
     {
-        $models = AiModel::query()
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')->orWhereNotIn('model_type', ['embedding', 'image']);
-            })
-            ->orderBy('failover_priority')
-            ->orderBy('id')
-            ->get()
+        $models = $this->executionGuard
+            ->resolveCandidates($context)
             ->filter(fn (AiModel $model): bool => $this->readiness->canAttempt($model));
         $available = $models
             ->reject(fn (AiModel $model): bool => Cache::has($this->providerCircuitKey($model)))
             ->values();
 
         return $available->isNotEmpty() ? $available : $models->take(1)->values();
+    }
+
+    private function executionContext(Admin|AiWorkspaceExecutionContext|int|null $actor): AiWorkspaceExecutionContext
+    {
+        if ($actor instanceof AiWorkspaceExecutionContext) {
+            return $actor;
+        }
+        $actorId = is_int($actor) ? $actor : 0;
+        if (is_int($actor)) {
+            $actor = Admin::query()->find($actor);
+        }
+        if (! $actor instanceof Admin) {
+            throw AiModelAccessException::executionAdminInactiveForId($actorId);
+        }
+
+        return $this->executionGuard->directContext($actor);
     }
 
     /** @return array{string, mixed, string} */
@@ -406,11 +534,19 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
             $adminBudgetTtl = max(60, now()->diffInSeconds(now()->endOfDay()));
         }
 
-        $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
-        $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
-        $modelId = trim((string) $model->model_id);
+        try {
+            $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
+            $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
+            $modelId = trim((string) $model->model_id);
+        } catch (Throwable) {
+            throw PermanentAiProviderException::fromProviderFailure(
+                new RuntimeException('ai_model_configuration_invalid'),
+            );
+        }
         if ($providerUrl === '' || $apiKey === '' || $modelId === '') {
-            throw new AiWorkspaceModelUnavailableException('对话模型配置不完整');
+            throw PermanentAiProviderException::fromProviderFailure(
+                new RuntimeException('ai_model_configuration_invalid'),
+            );
         }
 
         if ($adminBudgetKey !== null && $adminBudgetTtl !== null) {
@@ -438,6 +574,14 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         } catch (Throwable $exception) {
             if ($adminBudgetReserved) {
                 RateLimiter::decrement((string) $adminBudgetKey, (int) $adminBudgetTtl);
+            }
+
+            if (! $exception instanceof AiWorkspaceModelUnavailableException
+                && ! $exception instanceof AiWorkspaceRuntimeGuardException
+                && ! $exception instanceof PermanentAiProviderException) {
+                throw PermanentAiProviderException::fromProviderFailure(
+                    new RuntimeException('ai_model_configuration_invalid'),
+                );
             }
 
             throw $exception;
@@ -518,15 +662,19 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
     private function runtimeException(Throwable $exception, AiModel $model): RuntimeException
     {
         return new RuntimeException(
-            OpenAiRuntimeProvider::normalizeApiException($exception, (string) $model->api_url),
-            0,
-            $exception,
+            $this->errorSanitizer->sanitize(
+                OpenAiRuntimeProvider::normalizeApiException($exception, (string) $model->api_url),
+                'AI provider request failed',
+            ),
         );
     }
 
     private function isRecoverableProviderFailure(Throwable $exception): bool
     {
-        return ! $exception instanceof AiWorkspaceRuntimeGuardException;
+        return $exception instanceof AiWorkspaceModelUnavailableException
+            || $this->failoverDecider->shouldFailover($exception)
+            || str_contains($exception->getMessage(), '未返回文本内容')
+            || str_contains($exception->getMessage(), '流式响应未正常完成');
     }
 
     private function boundedBackoff(int $attempt, float $deadline): void
@@ -551,7 +699,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         try {
             $this->readiness->recordRuntimeSuccess($model, $streamingObserved, $performance);
         } catch (Throwable $exception) {
-            report($exception);
+            report(new RuntimeException($this->errorSanitizer->sanitize($exception)));
         }
     }
 

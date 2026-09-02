@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Models\AdminAiSetting;
 use App\Models\AiVisibilityRun;
+use App\Models\AiWorkspaceRun;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiOptimizationStep;
@@ -36,6 +37,7 @@ final class AiModelReferenceCatalog
         ArticleAiQualityCheck::class => ['ai_model_id'],
         ArticleAiOptimizationStep::class => ['ai_model_id'],
         KnowledgeFactGenerationRun::class => ['ai_model_id'],
+        AiWorkspaceRun::class => ['requested_ai_model_id', 'resolved_ai_model_id'],
     ];
 
     /**

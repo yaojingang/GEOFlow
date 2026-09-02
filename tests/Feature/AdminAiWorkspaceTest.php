@@ -517,7 +517,8 @@ final class AdminAiWorkspaceTest extends TestCase
         config()->set('geoflow.admin_ui_v3_enabled', true);
         config()->set('ai-workspace.runtime_enabled', true);
         config()->set('ai-workspace.require_verified_model', false);
-        AiModel::query()->create([
+        $admin = $this->admin($username);
+        $model = AiModel::query()->create([
             'name' => 'Workspace Test',
             'version' => '1',
             'api_key' => 'unused',
@@ -526,8 +527,12 @@ final class AdminAiWorkspaceTest extends TestCase
             'api_url' => 'https://example.invalid/v1',
             'status' => 'active',
         ]);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
 
-        return $this->admin($username);
+        return $admin;
     }
 
     private function admin(string $username, string $role = 'super_admin'): Admin
@@ -561,7 +566,7 @@ final class FakeAdminHelpResponder implements AdminHelpResponder
         private readonly bool $failAnswer = false,
     ) {}
 
-    public function stream(string $prompt, string $knowledgeContext, iterable $messages = [], ?int $adminId = null): Generator
+    public function stream(string $prompt, string $knowledgeContext, iterable $messages = [], mixed $actor = null): Generator
     {
         $this->streamCalls++;
         $this->prompts[] = $prompt;
@@ -595,7 +600,7 @@ final class FakeAdminHelpResponder implements AdminHelpResponder
         ];
     }
 
-    public function answer(string $prompt, string $knowledgeContext, iterable $messages = [], ?int $adminId = null): string
+    public function answer(string $prompt, string $knowledgeContext, iterable $messages = [], mixed $actor = null): string
     {
         $this->answerCalls++;
         if ($this->failAnswer) {

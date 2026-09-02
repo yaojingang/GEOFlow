@@ -15,6 +15,8 @@ return [
     'knowledge_hybrid_min_semantic_score' => 0.62,
     'turn_total_char_budget' => 24000,
     'conversation_generation_lease_seconds' => max(30, (int) env('GEOFLOW_AI_WORKSPACE_GENERATION_LEASE_SECONDS', 180)),
+    'resolution_lease_minutes' => max(1, (int) env('GEOFLOW_AI_WORKSPACE_RESOLUTION_LEASE_MINUTES', 3)),
+    'execution_lease_minutes' => max(1, (int) env('GEOFLOW_AI_WORKSPACE_EXECUTION_LEASE_MINUTES', 15)),
     'require_verified_model' => filter_var(env('GEOFLOW_AI_WORKSPACE_REQUIRE_VERIFIED_MODEL', true), FILTER_VALIDATE_BOOLEAN),
     'prompt_versions' => [
         'admin_help' => '2.0.0',

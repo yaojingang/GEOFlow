@@ -165,8 +165,9 @@ final class AiConversationRepository
         string $content,
         array $meta = [],
         array $usage = [],
+        ?callable $beforePersist = null,
     ): ?AiConversationMessage {
-        return DB::transaction(function () use ($conversation, $generationId, $content, $meta, $usage): ?AiConversationMessage {
+        return DB::transaction(function () use ($conversation, $generationId, $content, $meta, $usage, $beforePersist): ?AiConversationMessage {
             $lockedConversation = AiConversation::query()->whereKey($conversation->getKey())->lockForUpdate()->firstOrFail();
             if ($lockedConversation->archived_at !== null) {
                 return null;
@@ -175,6 +176,10 @@ final class AiConversationRepository
             $userMessage = $this->pendingGenerationMessage($lockedConversation, $generationId);
             if (! $userMessage instanceof AiConversationMessage) {
                 return null;
+            }
+
+            if ($beforePersist !== null) {
+                $beforePersist();
             }
 
             $message = $this->newMessage($lockedConversation, 'assistant', $content, $meta, $usage);

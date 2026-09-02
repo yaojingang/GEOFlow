@@ -15,6 +15,7 @@ final readonly class AdminAiDependencySummary
         public int $executionUrlImportJobCount = 0,
         public int $executionEnterpriseKnowledgeProjectCount = 0,
         public int $executionTitleGenerationRunCount = 0,
+        public int $executionAiWorkspaceRunCount = 0,
     ) {}
 
     public function blocksDeletion(): bool
@@ -26,7 +27,8 @@ final readonly class AdminAiDependencySummary
             || $this->executionTaskRunCount > 0
             || $this->executionUrlImportJobCount > 0
             || $this->executionEnterpriseKnowledgeProjectCount > 0
-            || $this->executionTitleGenerationRunCount > 0;
+            || $this->executionTitleGenerationRunCount > 0
+            || $this->executionAiWorkspaceRunCount > 0;
     }
 
     /** @return array<string, int> */
@@ -41,12 +43,14 @@ final readonly class AdminAiDependencySummary
                 + $this->executionTaskRunCount
                 + $this->executionUrlImportJobCount
                 + $this->executionEnterpriseKnowledgeProjectCount
-                + $this->executionTitleGenerationRunCount,
+                + $this->executionTitleGenerationRunCount
+                + $this->executionAiWorkspaceRunCount,
             'execution_task_count' => $this->executionTaskCount,
             'execution_task_run_count' => $this->executionTaskRunCount,
             'execution_url_import_job_count' => $this->executionUrlImportJobCount,
             'execution_enterprise_knowledge_project_count' => $this->executionEnterpriseKnowledgeProjectCount,
             'execution_title_generation_run_count' => $this->executionTitleGenerationRunCount,
+            'execution_ai_workspace_run_count' => $this->executionAiWorkspaceRunCount,
         ];
     }
 }

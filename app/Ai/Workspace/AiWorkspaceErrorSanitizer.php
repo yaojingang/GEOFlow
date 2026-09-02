@@ -26,6 +26,7 @@ final class AiWorkspaceErrorSanitizer
             $clean,
         ) ?? $clean;
         $clean = preg_replace('#(https?://)[^/@\s]+:[^/@\s]+@#i', '$1[REDACTED]@', $clean) ?? $clean;
+        $clean = preg_replace('~https?://[^\s"\'<>]+~iu', '[REDACTED_URL]', $clean) ?? $clean;
         $clean = preg_replace('/\bsk-[A-Za-z0-9_-]{8,}\b/', '[REDACTED]', $clean) ?? $clean;
 
         return Str::limit(trim($clean), $limit, '');

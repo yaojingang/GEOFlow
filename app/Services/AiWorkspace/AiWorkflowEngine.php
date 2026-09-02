@@ -34,6 +34,7 @@ final readonly class AiWorkflowEngine
         private AiWorkspaceStateMachine $states,
         private AiWorkspaceRealtimeService $realtime,
         private AiConversationRepository $conversations,
+        private AiWorkspaceExecutionAccessGuard $executionGuard,
     ) {}
 
     public function prepare(AiWorkspaceRun $run, AiWorkflowPlan $plan, ?string $resolutionLeaseOwner = null): AiWorkspaceRun
@@ -414,6 +415,9 @@ final readonly class AiWorkflowEngine
         if ($run->payload_pruned_at !== null) {
             throw new RuntimeException('运行载荷已按留存策略清理，不能再重试。');
         }
+        if (! (bool) $run->retryable_failure) {
+            throw new RuntimeException('该运行包含永久失败，不能重新入队。');
+        }
         if (! in_array((string) $run->state, ['failed', 'partially_completed'], true)) {
             throw new RuntimeException('运行尚未结束，不能同时启动重试。');
         }
@@ -428,6 +432,9 @@ final readonly class AiWorkflowEngine
             }
             if ($lockedRun->payload_pruned_at !== null) {
                 throw new RuntimeException('运行载荷已按留存策略清理，不能再重试。');
+            }
+            if (! (bool) $lockedRun->retryable_failure) {
+                throw new RuntimeException('该运行包含永久失败，不能重新入队。');
             }
             $locked = AiWorkspaceStep::query()->lockForUpdate()->findOrFail($step->id);
             if ($locked->state !== 'failed' || $locked->external_operation || $locked->attempts >= $locked->max_attempts) {
@@ -476,7 +483,7 @@ final readonly class AiWorkflowEngine
 
                 return;
             }
-            $claim = DB::transaction(function () use ($runId): array {
+            $claim = DB::transaction(function () use ($runId, $workerToken): array {
                 $run = AiWorkspaceRun::query()->lockForUpdate()->findOrFail($runId);
                 if ($run->state === 'cancel_requested') {
                     return [
@@ -492,6 +499,10 @@ final readonly class AiWorkflowEngine
                     'run' => $this->states->transition($run, 'running', [
                         'started_at' => $run->started_at ?? now(),
                         'status_message' => '工作流正在执行。',
+                        'execution_lease_token' => $workerToken,
+                        'execution_lease_expires_at' => now()->addMinutes(
+                            max(1, (int) config('ai-workspace.execution_lease_minutes', 15)),
+                        ),
                     ]),
                     'claimed' => true,
                 ];
@@ -509,18 +520,18 @@ final readonly class AiWorkflowEngine
         }
         $this->realtime->broadcast($run);
 
-        $admin = $this->currentAdminForRun($run);
+        $admin = $this->currentAdminForRun($run, $workerToken);
         if (! $admin instanceof Admin) {
-            $this->failRun($run, 'authorization_revoked', '管理员已停用、不存在或授权版本已变化。');
+            $this->failRun($run, 'authorization_revoked', '管理员已停用、不存在或授权版本已变化。', $workerToken);
 
             return;
         }
 
         foreach ($run->steps()->orderBy('position')->get() as $step) {
             $run->refresh();
-            $admin = $this->currentAdminForRun($run);
+            $admin = $this->currentAdminForRun($run, $workerToken);
             if (! $admin instanceof Admin) {
-                $this->failRun($run, 'authorization_revoked', '管理员授权已变化，已停止后续步骤。');
+                $this->failRun($run, 'authorization_revoked', '管理员授权已变化，已停止后续步骤。', $workerToken);
 
                 return;
             }
@@ -597,7 +608,7 @@ final readonly class AiWorkflowEngine
 
                             return $this->recordExternalEvent($lockedRun, $lockedStep, 'external.prepared', '外部操作已准备', '外部操作账本已建立并完成目标摘要校验。', 'completed');
                         });
-                        $admin = $this->currentAdminForRun($run);
+                        $admin = $this->currentAdminForRun($run, $workerToken);
                         if (! $admin instanceof Admin || ! $capability->allows($admin)) {
                             throw new RuntimeException('外部请求发出前授权已变化。');
                         }
@@ -675,7 +686,7 @@ final readonly class AiWorkflowEngine
         $hasFailures = $states->contains(static fn (string $state): bool => in_array($state, ['failed', 'skipped'], true));
         $hasUnfinished = $states->contains(static fn (string $state): bool => in_array($state, ['pending', 'running'], true));
         if ($hasUnfinished) {
-            $this->failRun($run, 'dependency_deadlock', '工作流依赖无法继续，请重新生成计划。');
+            $this->failRun($run, 'dependency_deadlock', '工作流依赖无法继续，请重新生成计划。', $workerToken);
 
             return;
         }
@@ -683,8 +694,12 @@ final readonly class AiWorkflowEngine
             ? ($completedCount > 0 ? 'partially_completed' : 'failed')
             : 'completed';
         $summary = $run->artifacts()->where('type', '!=', 'plan_revision')->orderBy('created_at')->pluck('content')->filter()->implode("\n");
-        $run = DB::transaction(function () use ($run, $terminal, $summary, $hasFailures, $completedCount, $admin): AiWorkspaceRun {
+        $run = DB::transaction(function () use ($run, $terminal, $summary, $hasFailures, $completedCount, $admin, $workerToken): AiWorkspaceRun {
             $locked = AiWorkspaceRun::query()->lockForUpdate()->findOrFail($run->id);
+            $this->assertExecutionLease($locked, $workerToken);
+            $this->executionGuard->assertCurrent(
+                $this->executionGuard->contextFromExecutionRun($locked, $workerToken),
+            );
             $completed = $this->states->transition($locked, $terminal, [
                 'answer' => $summary,
                 'failure_code' => $hasFailures ? 'step_failed' : null,
@@ -1157,10 +1172,13 @@ final readonly class AiWorkflowEngine
         });
     }
 
-    private function failRun(AiWorkspaceRun $run, string $code, string $message): void
+    private function failRun(AiWorkspaceRun $run, string $code, string $message, ?string $workerToken = null): void
     {
-        $failed = DB::transaction(function () use ($run, $code, $message): AiWorkspaceRun {
+        $failed = DB::transaction(function () use ($run, $code, $message, $workerToken): AiWorkspaceRun {
             $locked = AiWorkspaceRun::query()->lockForUpdate()->findOrFail($run->id);
+            if (is_string($workerToken) && $workerToken !== '') {
+                $this->assertExecutionLease($locked, $workerToken);
+            }
             if ($code === 'authorization_revoked') {
                 $locked = $this->states->touchEvent($locked, [], [
                     'event_type' => 'authorization.revoked',
@@ -1176,6 +1194,7 @@ final readonly class AiWorkflowEngine
                 'failure_code' => $code,
                 'failure_message' => $message,
                 'status_message' => $message,
+                'retryable_failure' => $code !== 'authorization_revoked',
             ]);
         });
         $failed = $this->finalizeTerminalResponse($failed);
@@ -1227,6 +1246,9 @@ final readonly class AiWorkflowEngine
                 return;
             }
             $workerToken = (string) $tokens->first();
+        }
+        if (! hash_equals(trim((string) $run->execution_lease_token), $workerToken)) {
+            return;
         }
 
         $message = AiWorkspaceErrorSanitizer::clean($exception->getMessage());
@@ -1694,7 +1716,7 @@ final readonly class AiWorkflowEngine
                 ->onConnection((string) config('ai-workspace.connection', config('queue.default')))
                 ->onQueue($this->queueNameForRun($run));
         } catch (Throwable $exception) {
-            report($exception);
+            report(new RuntimeException(AiWorkspaceErrorSanitizer::clean($exception->getMessage())));
         }
     }
 
@@ -1706,7 +1728,7 @@ final readonly class AiWorkflowEngine
                 ->onQueue($this->queueNameForRun(AiWorkspaceRun::query()->findOrFail($runId)))
                 ->delay(now()->addSeconds(5));
         } catch (Throwable $exception) {
-            report($exception);
+            report(new RuntimeException(AiWorkspaceErrorSanitizer::clean($exception->getMessage())));
         }
     }
 
@@ -1723,23 +1745,41 @@ final readonly class AiWorkflowEngine
         $current = Admin::query()->whereKey($admin->id)->where('status', 'active')->lockForUpdate()->first();
         if (! $current instanceof Admin
             || (int) $run->admin_auth_version <= 0
-            || (int) $run->admin_auth_version !== (int) $current->auth_version) {
+            || (int) $run->admin_auth_version !== (int) $current->auth_version
+            || (int) $run->model_access_admin_id !== (int) $current->getKey()) {
             throw new RuntimeException('管理员授权已变化，当前操作已停止。');
         }
+        $this->executionGuard->assertFrozenRunAdmin($run);
     }
 
-    private function currentAdminForRun(AiWorkspaceRun $run): ?Admin
+    private function currentAdminForRun(AiWorkspaceRun $run, ?string $workerToken = null): ?Admin
     {
-        $admin = Admin::query()->whereKey($run->admin_id)->where('status', 'active')->first();
-        if (! $admin instanceof Admin) {
+        try {
+            if (is_string($workerToken) && $workerToken !== '') {
+                $this->assertExecutionLease($run, $workerToken);
+            }
+            $admin = $this->executionGuard->assertFrozenRunAdmin($run);
+        } catch (Throwable) {
             return null;
         }
         if ((int) $run->admin_auth_version <= 0
-            || (int) $run->admin_auth_version !== (int) $admin->auth_version) {
+            || (int) $run->admin_auth_version !== (int) $admin->auth_version
+            || (int) $run->admin_id !== (int) $admin->getKey()) {
             return null;
         }
 
         return $admin;
+    }
+
+    private function assertExecutionLease(AiWorkspaceRun $run, string $workerToken): void
+    {
+        if (! in_array((string) $run->state, ['running', 'cancel_requested'], true)
+            || trim((string) $run->execution_lease_token) === ''
+            || ! hash_equals((string) $run->execution_lease_token, $workerToken)
+            || $run->execution_lease_expires_at === null
+            || $run->execution_lease_expires_at->isPast()) {
+            throw new RuntimeException('AI 工作台执行租约已经失效。');
+        }
     }
 
     /** @return array{AiWorkspaceRun,AiWorkspaceStep,Admin} */
@@ -1754,12 +1794,19 @@ final readonly class AiWorkflowEngine
         if (! (bool) config('ai-workspace.runtime_enabled', false)
             || ! $admin instanceof Admin
             || $lockedRun->state !== 'running'
+            || trim((string) $lockedRun->execution_lease_token) === ''
+            || ! hash_equals((string) $lockedRun->execution_lease_token, $leaseOwner)
+            || ! $lockedRun->execution_lease_expires_at?->isFuture()
             || (int) $lockedRun->admin_auth_version <= 0
             || (int) $lockedRun->admin_auth_version !== (int) $admin->auth_version
             || $lockedStep->state !== 'running'
             || ! hash_equals((string) $lockedStep->lease_owner, $leaseOwner)
             || ! $lockedStep->lease_expires_at?->isFuture()) {
             throw new RuntimeException('执行授权、运行状态或步骤租约已经变化。');
+        }
+        $persistedAdmin = $this->executionGuard->assertFrozenRunAdmin($lockedRun);
+        if ((int) $persistedAdmin->getKey() !== (int) $admin->getKey()) {
+            throw new RuntimeException('AI 工作台执行管理员身份已经变化。');
         }
         $capability = $this->registry->get((string) $lockedStep->capability_key);
         if (! $capability->allows($admin)
