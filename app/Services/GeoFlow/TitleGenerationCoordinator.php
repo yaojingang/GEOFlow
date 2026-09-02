@@ -182,25 +182,14 @@ final class TitleGenerationCoordinator
                 );
             } else {
                 if ($this->executionGuard()->identityMalformed($lockedRun)
-                    || $this->executionGuard()->identityRequired()) {
+                    || $this->executionGuard()->identityRequired()
+                    || (int) ($lockedRun->created_by_admin_id ?? 0) <= 0) {
                     throw new TitleGenerationException('ai_config_access_revoked');
                 }
-                if ((int) ($lockedRun->created_by_admin_id ?? 0) > 0) {
-                    $this->executionGuard()->resolveLegacyCandidates(
-                        (int) $lockedRun->created_by_admin_id,
-                        (int) $lockedRun->ai_model_id,
-                    );
-                } else {
-                    $aiModel = AiModel::query()
-                        ->whereKey($lockedRun->ai_model_id)
-                        ->where('status', 'active')
-                        ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
-                        ->lockForUpdate()
-                        ->first();
-                    if (! $aiModel) {
-                        throw new TitleGenerationException('title_generation_ai_model_unavailable');
-                    }
-                }
+                $this->executionGuard()->resolveLegacyCandidates(
+                    (int) $lockedRun->created_by_admin_id,
+                    (int) $lockedRun->ai_model_id,
+                );
             }
 
             if (TitleGenerationRun::query()
@@ -311,16 +300,10 @@ final class TitleGenerationCoordinator
             : null;
         $candidates = $executionContext instanceof TitleGenerationExecutionContext
             ? $this->executionGuard()->resolveCandidates($executionContext)
-            : ((int) ($run->created_by_admin_id ?? 0) > 0
-                ? $this->executionGuard()->resolveLegacyCandidates(
-                    (int) $run->created_by_admin_id,
-                    (int) $run->ai_model_id,
-                )
-                : AiModel::query()
-                    ->whereKey($run->ai_model_id)
-                    ->where('status', 'active')
-                    ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
-                    ->get());
+            : $this->executionGuard()->resolveLegacyCandidates(
+                (int) $run->created_by_admin_id,
+                (int) $run->ai_model_id,
+            );
         if ($candidates->isEmpty()) {
             throw new RuntimeException('title_generation_ai_model_unavailable');
         }
@@ -510,7 +493,9 @@ final class TitleGenerationCoordinator
 
                 if ($this->executionGuard()->identityMalformed($lockedRun)
                     || ($this->executionGuard()->identityRequired()
-                        && ! $this->executionGuard()->identityComplete($lockedRun))) {
+                        && ! $this->executionGuard()->identityComplete($lockedRun))
+                    || (! $this->executionGuard()->identityComplete($lockedRun)
+                        && (int) ($lockedRun->created_by_admin_id ?? 0) <= 0)) {
                     $lockedRun->forceFill([
                         'status' => (int) $lockedRun->saved_count > 0
                             ? TitleGenerationRun::STATUS_PARTIAL
@@ -601,7 +586,8 @@ final class TitleGenerationCoordinator
             try {
                 if (! $this->executionGuard()->identityComplete($lockedRun)) {
                     if ($this->executionGuard()->identityMalformed($lockedRun)
-                        || $this->executionGuard()->identityRequired()) {
+                        || $this->executionGuard()->identityRequired()
+                        || (int) ($lockedRun->created_by_admin_id ?? 0) <= 0) {
                         throw AiModelAccessException::configAccessRevokedForAdminId(
                             (int) ($lockedRun->model_access_admin_id ?? 0),
                         );
@@ -674,7 +660,9 @@ final class TitleGenerationCoordinator
 
             if ($this->executionGuard()->identityMalformed($run)
                 || ($this->executionGuard()->identityRequired()
-                    && ! $this->executionGuard()->identityComplete($run))) {
+                    && ! $this->executionGuard()->identityComplete($run))
+                || (! $this->executionGuard()->identityComplete($run)
+                    && (int) ($run->created_by_admin_id ?? 0) <= 0)) {
                 $run->forceFill([
                     'status' => (int) $run->saved_count > 0
                         ? TitleGenerationRun::STATUS_PARTIAL

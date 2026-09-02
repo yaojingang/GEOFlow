@@ -134,10 +134,31 @@ final class AdminAiModelMutationService
                     ->orWhere('requested_ai_model_id', $modelId)
                     ->orWhere('resolved_ai_model_id', $modelId);
             })
-            ->whereIn('status', [
-                TitleGenerationRun::STATUS_QUEUED,
-                TitleGenerationRun::STATUS_RUNNING,
-            ])
+            ->where(function ($query): void {
+                $query->whereIn('status', [
+                    TitleGenerationRun::STATUS_QUEUED,
+                    TitleGenerationRun::STATUS_RUNNING,
+                ])->orWhere(function ($retryable): void {
+                    $retryable
+                        ->whereIn('status', [
+                            TitleGenerationRun::STATUS_PARTIAL,
+                            TitleGenerationRun::STATUS_FAILED,
+                            TitleGenerationRun::STATUS_CANCELLED,
+                        ])
+                        ->whereNotNull('ai_model_id')
+                        ->where('retryable_failure', true)
+                        ->where(function ($failure): void {
+                            $failure
+                                ->whereNull('failure_code')
+                                ->orWhere('failure_code', '!=', 'request_budget_exhausted');
+                        })
+                        ->where(
+                            'manual_retry_count',
+                            '<',
+                            (int) config('geoflow.title_ai_max_manual_retries', 3),
+                        );
+                });
+            })
             ->count();
     }
 

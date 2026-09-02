@@ -142,7 +142,7 @@ class TitleGenerationQueueTest extends TestCase
     {
         Queue::fake();
         config()->set('geoflow.title_ai_batch_size', 2);
-        [, $keywordLibrary, $library, $aiModel] = $this->createFixtures();
+        [$admin, $keywordLibrary, $library, $aiModel] = $this->createFixtures();
         foreach (['第二个关键词', '第三个关键词'] as $keyword) {
             Keyword::query()->create([
                 'library_id' => $keywordLibrary->id,
@@ -163,7 +163,7 @@ class TitleGenerationQueueTest extends TestCase
             'title_style' => 'professional',
             'custom_prompt' => '',
             'confirmed_keyword_reuse' => false,
-        ], null, 'zh_CN');
+        ], (int) $admin->id, 'zh_CN');
         $firstWindow = (array) data_get($run->keyword_snapshot, 'keywords', []);
 
         Keyword::query()->where('library_id', $keywordLibrary->id)->delete();
@@ -696,6 +696,7 @@ class TitleGenerationQueueTest extends TestCase
             'active_key' => null,
             'dispatch_token' => null,
             'failure_code' => null,
+            'retryable_failure' => false,
         ])->save();
         $this->actingAs($admin, 'admin')
             ->post(route('admin.ai-models.delete', ['modelId' => $aiModel->id]))

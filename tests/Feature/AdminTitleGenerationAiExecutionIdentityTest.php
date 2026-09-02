@@ -221,6 +221,53 @@ final class AdminTitleGenerationAiExecutionIdentityTest extends TestCase
         $this->assertFalse((bool) $run->retryable_failure);
     }
 
+    public function test_default_shadow_mode_permanently_rejects_unowned_legacy_runs_before_any_model_call(): void
+    {
+        Queue::fake();
+        [, $keywordLibrary, $titleLibrary] = $this->fixtures();
+        $peer = $this->admin('title-unowned-peer');
+        $superAdmin = $this->admin('title-unowned-system-owner', ['role' => 'super_admin']);
+        $peerModel = $this->model($peer, 'title-unowned-peer-model');
+        $systemModel = $this->model($superAdmin, 'title-unowned-system-model');
+        $systemModel->forceFill(['access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY])->save();
+        $service = Mockery::mock(TitleAiGenerationService::class);
+        $service->shouldNotReceive('generateTitles');
+        $coordinator = new TitleGenerationCoordinator($service);
+
+        foreach ([$peerModel, $systemModel] as $index => $model) {
+            $dispatchToken = 'unowned-title-dispatch-'.$index;
+            $run = TitleGenerationRun::query()->create([
+                'title_library_id' => $titleLibrary->id,
+                'keyword_library_id' => $keywordLibrary->id,
+                'ai_model_id' => $model->id,
+                'status' => TitleGenerationRun::STATUS_QUEUED,
+                'active_key' => 'title-library:'.$titleLibrary->id,
+                'requested_count' => 1,
+                'batch_size' => 1,
+                'model_request_budget' => 3,
+                'title_style' => 'professional',
+                'locale' => 'zh_CN',
+                'keyword_snapshot' => ['GEO identity'],
+                'available_at' => now(),
+                'dispatch_token' => $dispatchToken,
+            ]);
+
+            (new ProcessTitleGenerationBatchJob(
+                (int) $run->id,
+                (int) $model->id,
+                0,
+                $dispatchToken,
+            ))->handle($coordinator);
+
+            $run->refresh();
+            $this->assertSame(TitleGenerationRun::STATUS_FAILED, $run->status);
+            $this->assertSame('ai_config_access_revoked', $run->error_code);
+            $this->assertFalse((bool) $run->retryable_failure);
+        }
+
+        $this->assertDatabaseCount('titles', 0);
+    }
+
     public function test_partial_persisted_identity_never_downgrades_to_legacy_global_access(): void
     {
         Queue::fake();
@@ -591,6 +638,117 @@ final class AdminTitleGenerationAiExecutionIdentityTest extends TestCase
         $this->assertFalse($blocked->succeeded());
         $this->assertSame('title_generation', $blocked->error);
         $this->assertDatabaseHas('title_generation_runs', ['id' => $run->id]);
+    }
+
+    public function test_retryable_terminal_runs_block_model_update_and_delete_across_all_title_model_snapshots(): void
+    {
+        [$admin, $keywordLibrary, $titleLibrary, $fallbackModel] = $this->fixtures();
+        $models = [
+            'ai_model_id' => $this->model($admin, 'title-retryable-legacy'),
+            'requested_ai_model_id' => $this->model($admin, 'title-retryable-requested'),
+            'resolved_ai_model_id' => $this->model($admin, 'title-retryable-resolved'),
+        ];
+        $statuses = [
+            'ai_model_id' => TitleGenerationRun::STATUS_PARTIAL,
+            'requested_ai_model_id' => TitleGenerationRun::STATUS_FAILED,
+            'resolved_ai_model_id' => TitleGenerationRun::STATUS_CANCELLED,
+        ];
+
+        foreach ($models as $column => $model) {
+            $run = TitleGenerationRun::query()->create([
+                'title_library_id' => $titleLibrary->id,
+                'keyword_library_id' => $keywordLibrary->id,
+                'ai_model_id' => $column === 'ai_model_id' ? $model->id : $fallbackModel->id,
+                'created_by_admin_id' => $admin->id,
+                'status' => $statuses[$column],
+                'requested_count' => 1,
+                'batch_size' => 1,
+                'model_request_budget' => 3,
+                'title_style' => 'professional',
+                'locale' => 'zh_CN',
+                'keyword_snapshot' => ['GEO identity'],
+                'failure_code' => 'batch_failed',
+                'manual_retry_count' => 0,
+            ]);
+            $run->forceFill([
+                $column => $model->id,
+                'retryable_failure' => true,
+            ])->save();
+
+            $updated = app(AdminAiModelMutationService::class)->update(
+                $admin,
+                (int) $model->id,
+                ['name' => $model->name.' updated'],
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+            );
+            $deleted = app(AdminAiModelMutationService::class)->delete($admin, (int) $model->id);
+
+            $this->assertFalse($updated->succeeded(), $column.' update should be blocked');
+            $this->assertSame('title_generation', $updated->error);
+            $this->assertFalse($deleted->succeeded(), $column.' delete should be blocked');
+            $this->assertSame('title_generation', $deleted->error);
+            $this->assertDatabaseHas('ai_models', ['id' => $model->id]);
+        }
+    }
+
+    public function test_non_retryable_terminal_runs_do_not_block_model_update_or_delete(): void
+    {
+        [$admin, $keywordLibrary, $titleLibrary] = $this->fixtures();
+        $maxRetries = (int) config('geoflow.title_ai_max_manual_retries', 3);
+        $cases = [
+            [
+                'model' => $this->model($admin, 'title-budget-exhausted-model'),
+                'status' => TitleGenerationRun::STATUS_FAILED,
+                'failure_code' => 'request_budget_exhausted',
+                'manual_retry_count' => 0,
+                'retryable_failure' => true,
+            ],
+            [
+                'model' => $this->model($admin, 'title-manual-retries-exhausted-model'),
+                'status' => TitleGenerationRun::STATUS_CANCELLED,
+                'failure_code' => 'batch_failed',
+                'manual_retry_count' => $maxRetries,
+                'retryable_failure' => true,
+            ],
+            [
+                'model' => $this->model($admin, 'title-permanent-failure-model'),
+                'status' => TitleGenerationRun::STATUS_PARTIAL,
+                'failure_code' => 'permanent_ai_failure',
+                'manual_retry_count' => 0,
+                'retryable_failure' => false,
+            ],
+        ];
+
+        foreach ($cases as $case) {
+            $model = $case['model'];
+            TitleGenerationRun::query()->create([
+                'title_library_id' => $titleLibrary->id,
+                'keyword_library_id' => $keywordLibrary->id,
+                'ai_model_id' => $model->id,
+                'created_by_admin_id' => $admin->id,
+                'status' => $case['status'],
+                'requested_count' => 1,
+                'batch_size' => 1,
+                'model_request_budget' => 3,
+                'title_style' => 'professional',
+                'locale' => 'zh_CN',
+                'keyword_snapshot' => ['GEO identity'],
+                'failure_code' => $case['failure_code'],
+                'manual_retry_count' => $case['manual_retry_count'],
+            ])->forceFill(['retryable_failure' => $case['retryable_failure']])->save();
+
+            $updated = app(AdminAiModelMutationService::class)->update(
+                $admin,
+                (int) $model->id,
+                ['name' => $model->name.' updated'],
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+            );
+            $this->assertTrue($updated->succeeded());
+
+            $deleted = app(AdminAiModelMutationService::class)->delete($admin, (int) $model->id);
+            $this->assertTrue($deleted->succeeded());
+            $this->assertDatabaseMissing('ai_models', ['id' => $model->id]);
+        }
     }
 
     public function test_identity_migration_rolls_back_and_reapplies_title_execution_columns(): void
