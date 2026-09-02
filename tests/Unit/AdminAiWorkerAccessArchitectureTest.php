@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\GeoFlow\WorkerAiModelInvocationGateway;
 use App\Services\GeoFlow\WorkerExecutionService;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
@@ -38,6 +39,45 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
         );
         $this->assertSame(1, substr_count($candidateSelection, 'resolveModelCandidates('));
         $this->assertDoesNotMatchRegularExpression('/\b(?:AiModel|DB)::/', $candidateSelection);
+    }
+
+    #[Test]
+    public function content_worker_provider_calls_use_the_locked_invocation_gateway(): void
+    {
+        $workerSource = file_get_contents(app_path('Services/GeoFlow/WorkerExecutionService.php'));
+
+        $this->assertIsString($workerSource);
+        $this->assertStringNotContainsString('ArticleContentGenerationService', $workerSource);
+        $this->assertStringNotContainsString('AiModelInvocationLock', $workerSource);
+        $this->assertDoesNotMatchRegularExpression('/->(?:prompt|stream)\s*\(/', $workerSource);
+
+        $workerGeneration = $this->methodSource('generateContent');
+        $this->assertStringContainsString('aiModelInvocationGateway->generate(', $workerGeneration);
+
+        $gatewaySource = file_get_contents(app_path('Services/GeoFlow/WorkerAiModelInvocationGateway.php'));
+        $this->assertIsString($gatewaySource);
+        $this->assertStringNotContainsString('AiModel::', $gatewaySource);
+        $this->assertStringNotContainsString('DB::', $gatewaySource);
+
+        $gatewayGeneration = $this->methodSource('generate', WorkerAiModelInvocationGateway::class);
+        $lockPosition = strpos($gatewayGeneration, 'acquireForInvocation(');
+        $guardPosition = strpos($gatewayGeneration, 'assertModelCurrent(');
+        $providerPosition = strpos($gatewayGeneration, 'generationService->generate(');
+        $receiptPosition = strpos($gatewayGeneration, 'assertReceiptCurrent(');
+        $releasePosition = strpos($gatewayGeneration, 'invocationLocks->release(');
+
+        foreach ([$lockPosition, $guardPosition, $providerPosition, $receiptPosition, $releasePosition] as $position) {
+            $this->assertIsInt($position);
+        }
+        $this->assertLessThan($guardPosition, $lockPosition);
+        $this->assertLessThan($providerPosition, $guardPosition);
+        $this->assertLessThan($receiptPosition, $providerPosition);
+        $this->assertLessThan($releasePosition, $receiptPosition);
+        $this->assertStringContainsString('finally', $gatewayGeneration);
+
+        $receiptGuard = $this->methodSource('assertReceiptCurrent', WorkerAiModelInvocationGateway::class);
+        $this->assertStringContainsString('accessGuard->assertModelCurrent(', $receiptGuard);
+        $this->assertStringContainsString('configurationDigest(', $receiptGuard);
     }
 
     #[Test]
@@ -94,9 +134,10 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
         return $violations;
     }
 
-    private function methodSource(string $method): string
+    /** @param class-string $class */
+    private function methodSource(string $method, string $class = WorkerExecutionService::class): string
     {
-        $reflection = new ReflectionMethod(WorkerExecutionService::class, $method);
+        $reflection = new ReflectionMethod($class, $method);
         $lines = file($reflection->getFileName());
 
         $this->assertIsArray($lines);

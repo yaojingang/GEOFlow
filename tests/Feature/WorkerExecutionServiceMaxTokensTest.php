@@ -277,11 +277,47 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
 
     private function generateContent(AiModel $model, string $prompt): string
     {
+        $admin = Admin::query()->create([
+            'username' => 'worker-content-admin-'.$model->id,
+            'password' => 'safe-password',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $task = Task::query()->create([
+            'name' => 'Worker content invocation '.$model->id,
+            'ai_model_id' => (int) $model->id,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+        ]);
+        $task->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+        ])->save();
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'running',
+            'started_at' => now(),
+        ]);
+        $run->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => (int) $admin->ai_config_access_version,
+            'requested_ai_model_id' => $model->id,
+            'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+            'execution_lease_token' => (string) Str::uuid(),
+        ])->save();
+        $context = app(AiExecutionContextFactory::class)->fromTaskRun($run);
         $service = app(WorkerExecutionService::class);
         $method = new ReflectionMethod($service, 'generateContent');
         $method->setAccessible(true);
+        $result = $method->invoke($service, $context, $model, $prompt);
 
-        return (string) $method->invoke($service, $model, $prompt);
+        return (string) $result['content'];
     }
 
     private function createChatModel(array $overrides = []): AiModel

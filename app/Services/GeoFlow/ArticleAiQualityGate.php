@@ -4,6 +4,7 @@ namespace App\Services\GeoFlow;
 
 use App\Exceptions\ArticleAiQualityGateException;
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiOptimizationStep;
@@ -19,6 +20,109 @@ class ArticleAiQualityGate
         private readonly ArticleAiQualityInspectionService $inspectionService,
         private readonly ArticleAiQualityVersionPolicy $versionPolicy,
     ) {}
+
+    /**
+     * Return the configured model when the next gate evaluation would create or refresh an AI check.
+     * This preflight is read-only so a Worker can validate its frozen identity before any dispatch.
+     */
+    public function modelIdThatWouldBeDispatched(Article $article): ?int
+    {
+        return DB::transaction(function () use ($article): ?int {
+            $article = Article::query()->whereKey((int) $article->id)->lockForUpdate()->firstOrFail();
+            if ($article->task_id) {
+                $task = Task::withTrashed()
+                    ->whereKey((int) $article->task_id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($task instanceof Task) {
+                    $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                    $article->setRelation('task', $task);
+                }
+            }
+
+            $optimization = ArticleAiOptimizationRun::query()
+                ->where('article_id', (int) $article->id)
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+            if ($optimization
+                && in_array((string) $optimization->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
+                return null;
+            }
+
+            $policy = $this->policyResolver->resolve($article);
+            if (! ($policy['required'] ?? false)) {
+                return null;
+            }
+
+            try {
+                $this->policyResolver->assertExecutable($policy);
+            } catch (\Throwable) {
+                return null;
+            }
+            $policy['model_candidates'] = $this->policyResolver->modelCandidates($policy);
+            $model = $policy['model'] ?? null;
+            if (! $model instanceof AiModel) {
+                return null;
+            }
+
+            $versionSelection = $this->versionPolicy->selection((int) $article->id);
+            $currentFingerprint = $this->inspectionService->currentFingerprint(
+                $article,
+                $policy,
+                $this->inspectionService->rules(),
+                $versionSelection,
+            );
+            $check = ArticleAiQualityCheck::query()
+                ->where('article_id', $article->id)
+                ->where('gate_applied', true)
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+
+            $optimizationStillApplies = $optimization && $check && (
+                in_array((int) $check->id, array_filter([
+                    (int) $optimization->source_check_id,
+                    (int) $optimization->best_check_id,
+                    (int) $optimization->final_check_id,
+                ]), true)
+                || ! $check->created_at
+                || ! $optimization->updated_at
+                || $check->created_at->lessThanOrEqualTo($optimization->updated_at)
+            );
+            if ($optimizationStillApplies && in_array((string) $optimization->status, [
+                ArticleAiOptimizationRun::STATUS_STALE,
+                ArticleAiOptimizationRun::STATUS_NEEDS_REVIEW,
+                ArticleAiOptimizationRun::STATUS_FAILED,
+            ], true)) {
+                return null;
+            }
+
+            if ($check === null) {
+                return (int) $model->getKey();
+            }
+            if (! hash_equals((string) $check->input_fingerprint, $currentFingerprint)
+                || ! $this->inspectionService->retrievalBasisMatches(
+                    $check,
+                    $policy,
+                    $this->inspectionService->rules(),
+                )) {
+                return (int) $model->getKey();
+            }
+            if ((string) $check->status === 'stale') {
+                return (int) $model->getKey();
+            }
+            if ((string) $check->status !== 'completed') {
+                return null;
+            }
+            if ((string) $check->inspection_scope === 'fallback_sampled'
+                && ! $this->sampledResultCanAuthorize($check, $policy)) {
+                return (int) $model->getKey();
+            }
+
+            return null;
+        });
+    }
 
     public function check(
         Article $article,

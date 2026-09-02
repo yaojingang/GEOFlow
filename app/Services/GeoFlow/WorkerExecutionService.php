@@ -45,9 +45,10 @@ class WorkerExecutionService
         private readonly ArticleRiskScanner $articleRiskScanner,
         private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
         private readonly ArticleContentPromptRenderer $articleContentPromptRenderer,
-        private readonly ArticleContentGenerationService $articleContentGenerationService,
+        private readonly WorkerAiModelInvocationGateway $aiModelInvocationGateway,
         private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
         private readonly TaskTitleReadinessService $taskTitleReadinessService,
+        private readonly ArticleAiQualityGate $articleAiQualityGate,
         private readonly ArticleAiQualityPolicyResolver $articleAiQualityPolicyResolver,
         private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
         private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
@@ -132,8 +133,11 @@ class WorkerExecutionService
                 throw new RuntimeException('任务未激活');
             }
 
-            $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent($executionContext);
-            $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $aiModel, $executionAdmin);
+            $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+            $aiModel = $this->aiModelInvocationGateway->assertReceiptCurrent(
+                $executionContext,
+                $generation['receipt'],
+            );
 
             $generationBlockReason = $this->getGenerationBlockReason($freshTask, true);
             if ($generationBlockReason !== null) {
@@ -306,6 +310,24 @@ class WorkerExecutionService
                 return null;
             }
 
+            $qualityModelId = $this->articleAiQualityGate->modelIdThatWouldBeDispatched($article);
+            if ($qualityModelId !== null) {
+                if (! $executionContext instanceof AiExecutionContext || $executionContext->requestedModelId === null) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId(
+                        (int) ($freshTask->model_access_admin_id ?? 0),
+                    );
+                }
+                $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent(
+                    $executionContext,
+                    validateRequestedModel: true,
+                );
+                $this->aiExecutionAccessGuard->assertModelCurrent(
+                    $executionContext,
+                    $qualityModelId,
+                    $executionAdmin,
+                );
+            }
+
             $publishScope = (string) ($freshTask->publish_scope ?? 'local_and_distribution');
             $targetStatus = $publishScope === 'distribution_only' ? 'private' : 'published';
             $reviewStatus = (string) ($article->review_status ?: 'approved');
@@ -422,7 +444,7 @@ class WorkerExecutionService
     /**
      * 固定模型只尝试主模型；智能切换按 failover_priority 依次尝试其它 active chat 模型。
      *
-     * @return array{content:string,model:AiModel,attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}
+     * @return array{content:string,model:AiModel,receipt:array{model_id:int,request_id:string,configuration_digest:string},attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}
      */
     private function generateContentWithModelSelection(
         Task $task,
@@ -448,13 +470,15 @@ class WorkerExecutionService
             }
 
             try {
-                $content = $this->generateContent($candidate, $contentPrompt);
+                $generated = $this->generateContent($executionContext, $candidate, $contentPrompt);
+                $candidate = $generated['model'];
                 $this->aiExecutionAccessGuard->recordResolvedModel($executionContext, $candidate);
                 $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
 
                 return [
-                    'content' => $content,
+                    'content' => $generated['content'],
                     'model' => $candidate,
+                    'receipt' => $generated['receipt'],
                     'attempts' => $attempts,
                 ];
             } catch (AiModelAccessException $exception) {
@@ -864,10 +888,21 @@ class WorkerExecutionService
 
     /**
      * 调用任务配置模型生成正文。
+     *
+     * @return array{content:string,model:AiModel,receipt:array{model_id:int,request_id:string,configuration_digest:string}}
      */
-    private function generateContent(AiModel $aiModel, string $contentPrompt): string
-    {
-        $response = $this->articleContentGenerationService->generate($aiModel, $contentPrompt);
+    private function generateContent(
+        AiExecutionContext $executionContext,
+        AiModel $aiModel,
+        string $contentPrompt,
+    ): array {
+        $invocation = $this->aiModelInvocationGateway->generate(
+            $executionContext,
+            $aiModel,
+            $contentPrompt,
+        );
+        $aiModel = $invocation['model'];
+        $response = $invocation['response'];
 
         $rawContent = (string) ($response->text ?? '');
         $content = $this->articleCitationMarkerCleaner->cleanContent(
@@ -883,7 +918,11 @@ class WorkerExecutionService
 
         $this->warnIfContentLooksTruncated($content, $aiModel, $response);
 
-        return $content;
+        return [
+            'content' => $content,
+            'model' => $aiModel,
+            'receipt' => $invocation['receipt'],
+        ];
     }
 
     /**
@@ -891,7 +930,7 @@ class WorkerExecutionService
      */
     private function resolveMaxTokens(AiModel $aiModel): int
     {
-        return $this->articleContentGenerationService->maxTokens($aiModel);
+        return $this->aiModelInvocationGateway->maxTokens($aiModel);
     }
 
     /**

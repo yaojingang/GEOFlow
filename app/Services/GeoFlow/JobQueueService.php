@@ -39,6 +39,7 @@ class JobQueueService
         private readonly AiExecutionContextFactory $aiExecutionContextFactory,
         private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
         private readonly AiExecutionErrorSanitizer $aiExecutionErrorSanitizer,
+        private readonly ArticleAiQualityGate $articleAiQualityGate,
     ) {}
 
     /**
@@ -1043,14 +1044,22 @@ class JobQueueService
             return true;
         }
 
-        $hasDueDraft = Article::query()
+        $dueDraft = Article::query()
             ->where('task_id', (int) $task->getKey())
             ->where('status', 'draft')
             ->whereIn('review_status', ['approved', 'auto_approved'])
             ->whereNull('deleted_at')
-            ->exists();
+            ->orderBy('id')
+            ->first();
+        if (! $dueDraft instanceof Article) {
+            return true;
+        }
 
-        return ! $hasDueDraft;
+        try {
+            return $this->articleAiQualityGate->modelIdThatWouldBeDispatched($dueDraft) !== null;
+        } catch (Throwable) {
+            return true;
+        }
     }
 
     private function executionIdentityAllowsDispatch(TaskRun $run): bool
@@ -1136,6 +1145,16 @@ class JobQueueService
             'execution_lease_token' => null,
             'meta' => $meta,
         ])->save();
+
+        Task::query()->whereKey((int) $run->task_id)->update([
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'next_run_at' => null,
+            'last_run_at' => now(),
+            'last_error_at' => now(),
+            'last_error_message' => $errorCode,
+            'updated_at' => now(),
+        ]);
     }
 
     private function normalizeAuthorizationErrorCode(string $errorCode): string
