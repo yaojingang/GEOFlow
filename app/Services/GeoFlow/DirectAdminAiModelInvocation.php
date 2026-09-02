@@ -54,6 +54,30 @@ final class DirectAdminAiModelInvocation
         );
     }
 
+    public function newProviderUsageAttempt(
+        string $requestPayload,
+        string $operation,
+        string $businessSource,
+        ?string $sourceType,
+        int|string|null $sourceId,
+        string $callKey,
+    ): AiModelUsageAttempt {
+        return $this->usageAttempts->beginForAdmin(
+            model: $this->model,
+            executionAdminId: $this->context->adminId,
+            accessVersion: $this->context->accessVersion,
+            executionScope: AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN,
+            modelSource: $this->source,
+            requestId: $this->context->requestId,
+            requestPayload: $requestPayload,
+            callKey: $callKey,
+            operation: $operation,
+            businessSource: $businessSource,
+            sourceType: $sourceType,
+            sourceId: $sourceId,
+        );
+    }
+
     public function recordSuccess(mixed $usage = null): void
     {
         $this->usageQuota->recordModelSuccess($this->reservation);

@@ -46,7 +46,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
 
     /**
      * @param  iterable<int, mixed>  $messages
-     * @return Generator<int, array<string, mixed>, mixed, array{answer:string,meta:array<string,mixed>,usage:array<string,int>,completion_receipt:AiWorkspaceModelExecutionReceipt}>
+     * @return Generator<int, array<string, mixed>, mixed, array{answer:string,meta:array<string,mixed>,usage:array<string,int>,completion_receipt:AiWorkspaceModelExecutionReceipt,usage_delivery:AiWorkspaceModelUsageDelivery}>
      */
     public function stream(
         string $prompt,
@@ -83,6 +83,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                 $receipt = null;
                 $invocationLock = null;
                 $usageAttempt = null;
+                $usageDelivery = null;
                 $providerReturned = false;
 
                 try {
@@ -190,7 +191,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         'total_ms' => $totalMilliseconds,
                     ];
                     $this->recordReadinessSuccess($model, ! $plainTextFallback, $performance);
-                    $usageAttempt->succeeded($usage);
+                    $usageDelivery = new AiWorkspaceModelUsageDelivery($usageAttempt, $usage);
 
                     return [
                         'answer' => $answer,
@@ -206,6 +207,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         ],
                         'usage' => $usage,
                         'completion_receipt' => $receipt,
+                        'usage_delivery' => $usageDelivery,
                     ];
                 } catch (Throwable $exception) {
                     if ($exception instanceof AiModelAccessException) {
@@ -235,7 +237,10 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                             'total_ms' => $totalMilliseconds,
                         ];
                         $this->recordReadinessSuccess($model, true, $performance);
-                        $usageAttempt?->succeeded($usage);
+                        if (! $usageAttempt instanceof AiModelUsageAttempt) {
+                            throw new RuntimeException('AI usage attempt is unavailable.');
+                        }
+                        $usageDelivery = new AiWorkspaceModelUsageDelivery($usageAttempt, $usage);
 
                         return [
                             'answer' => trim($answer),
@@ -252,6 +257,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                             ],
                             'usage' => $usage,
                             'completion_receipt' => $receipt,
+                            'usage_delivery' => $usageDelivery,
                         ];
                     }
                     $this->finalizeWorkspaceFailure(
@@ -285,7 +291,9 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         $this->boundedBackoff($attempts, $deadline);
                     }
                 } finally {
-                    $usageAttempt?->discarded('ai_result_not_delivered', $usage);
+                    if (! $usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                        $usageAttempt?->discarded('ai_result_not_delivered', $usage);
+                    }
                     $this->invocationLocks->release($invocationLock);
                     if ($reservation !== null) {
                         $this->usageQuota->recordModelAttempt($reservation);
@@ -309,7 +317,39 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
     ): string {
         $context = $this->executionContext($actor);
 
-        return $this->withConcurrencySlot(function () use ($prompt, $knowledgeContext, $messages, $context, $onResolved): string {
+        $result = $this->answerResult($prompt, $knowledgeContext, $messages, $context);
+        $delivery = $result['usage_delivery'];
+
+        try {
+            if ($onResolved !== null) {
+                $onResolved($result['completion_receipt']);
+            }
+            $delivery->succeeded();
+
+            return $result['answer'];
+        } catch (AiModelAccessException $exception) {
+            $delivery->revoked($exception->getErrorCode());
+
+            throw $exception;
+        } catch (Throwable $exception) {
+            $delivery->discarded('ai_result_not_committed');
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * @param  iterable<int,mixed>  $messages
+     * @return array{answer:string,completion_receipt:AiWorkspaceModelExecutionReceipt,usage_delivery:AiWorkspaceModelUsageDelivery}
+     */
+    private function answerResult(
+        string $prompt,
+        string $knowledgeContext,
+        iterable $messages,
+        AiWorkspaceExecutionContext $context,
+    ): array {
+
+        return $this->withConcurrencySlot(function () use ($prompt, $knowledgeContext, $messages, $context): array {
             $lastException = null;
             $attempt = 0;
             $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
@@ -323,6 +363,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                 $usageAttempt = null;
                 $providerReturned = false;
                 $usage = [];
+                $usageDelivery = null;
                 try {
                     $invocationLock = $this->invocationLocks->acquireForInvocation((int) $candidate->getKey());
                     [$model, $receipt] = $this->executionGuard->claimModelForCall($context, (int) $candidate->getKey());
@@ -354,12 +395,13 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     $this->usageQuota->recordModelSuccess($reservation);
                     $this->recordProviderSuccess($model);
                     $this->recordReadinessSuccess($model, false);
-                    if ($onResolved !== null) {
-                        $onResolved($receipt);
-                    }
-                    $usageAttempt->succeeded($usage);
+                    $usageDelivery = new AiWorkspaceModelUsageDelivery($usageAttempt, $usage);
 
-                    return $answer;
+                    return [
+                        'answer' => $answer,
+                        'completion_receipt' => $receipt,
+                        'usage_delivery' => $usageDelivery,
+                    ];
                 } catch (Throwable $exception) {
                     $this->finalizeWorkspaceFailure(
                         $usageAttempt,
@@ -389,7 +431,9 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         $this->boundedBackoff($attempt, $deadline);
                     }
                 } finally {
-                    $usageAttempt?->discarded('ai_result_not_delivered', $usage);
+                    if (! $usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                        $usageAttempt?->discarded('ai_result_not_delivered', $usage);
+                    }
                     $this->invocationLocks->release($invocationLock);
                 }
             }
@@ -404,23 +448,33 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         Admin|AiWorkspaceExecutionContext|int|null $actor = null,
         ?callable $onComplete = null,
     ): array {
-        $receipt = null;
-        $text = $this->answer(
+        $context = $this->executionContext($actor);
+        $result = $this->answerResult(
             $prompt,
             '请将请求解析为受控工作台意图 JSON。',
             [],
-            $actor,
-            static function (AiWorkspaceModelExecutionReceipt $resolved) use (&$receipt): void {
-                $receipt = $resolved;
-            },
+            $context,
         );
-        $decoded = json_decode($text, true);
-        $result = is_array($decoded) ? $decoded : [];
-        if ($onComplete !== null) {
-            $onComplete(['stage' => 'intent', 'completed' => true], $receipt);
-        }
+        $delivery = $result['usage_delivery'];
+        try {
+            $decoded = json_decode($result['answer'], true);
+            $intent = is_array($decoded) ? $decoded : [];
+            if ($onComplete !== null) {
+                $onComplete(['stage' => 'intent', 'completed' => true], $result['completion_receipt'], $delivery);
+            } else {
+                $delivery->succeeded();
+            }
 
-        return $result;
+            return $intent;
+        } catch (AiModelAccessException $exception) {
+            $delivery->revoked($exception->getErrorCode());
+
+            throw $exception;
+        } catch (Throwable $exception) {
+            $delivery->discarded('ai_result_not_committed');
+
+            throw $exception;
+        }
     }
 
     /** @param array<string,mixed> $resolution @return list<array<string,mixed>> */
@@ -430,23 +484,33 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         Admin|AiWorkspaceExecutionContext|int|null $actor = null,
         ?callable $onComplete = null,
     ): array {
-        $receipt = null;
-        $text = $this->answer(
+        $context = $this->executionContext($actor);
+        $result = $this->answerResult(
             $prompt,
             '请依据已解析意图生成受控步骤 JSON：'.json_encode($resolution, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             [],
-            $actor,
-            static function (AiWorkspaceModelExecutionReceipt $resolved) use (&$receipt): void {
-                $receipt = $resolved;
-            },
+            $context,
         );
-        $decoded = json_decode($text, true);
-        $steps = is_array($decoded) ? (array) ($decoded['steps'] ?? $decoded) : [];
-        if ($onComplete !== null) {
-            $onComplete(['stage' => 'plan', 'completed' => true], $receipt);
-        }
+        $delivery = $result['usage_delivery'];
+        try {
+            $decoded = json_decode($result['answer'], true);
+            $steps = is_array($decoded) ? (array) ($decoded['steps'] ?? $decoded) : [];
+            if ($onComplete !== null) {
+                $onComplete(['stage' => 'plan', 'completed' => true], $result['completion_receipt'], $delivery);
+            } else {
+                $delivery->succeeded();
+            }
 
-        return array_values(array_filter($steps, 'is_array'));
+            return array_values(array_filter($steps, 'is_array'));
+        } catch (AiModelAccessException $exception) {
+            $delivery->revoked($exception->getErrorCode());
+
+            throw $exception;
+        } catch (Throwable $exception) {
+            $delivery->discarded('ai_result_not_committed');
+
+            throw $exception;
+        }
     }
 
     /**
@@ -472,11 +536,15 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
             }
         }
         $result = $stream->getReturn();
+        $delivery = is_array($result) ? ($result['usage_delivery'] ?? null) : null;
         if ($onComplete !== null) {
             $onComplete(
                 is_array($result) ? (array) ($result['meta'] ?? []) : [],
                 is_array($result) ? ($result['completion_receipt'] ?? null) : null,
+                $delivery,
             );
+        } elseif ($delivery instanceof AiWorkspaceModelUsageDelivery) {
+            $delivery->succeeded();
         }
 
         return is_array($result) ? trim((string) ($result['answer'] ?? '')) : trim((string) $result);

@@ -5,7 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Ai\Agents\ArticleQualityJsonReviewerAgent;
 use App\Ai\Agents\ArticleQualityReviewerAgent;
 use App\Ai\Agents\LegacyArticleQualityReviewerAgent;
-use App\Contracts\PreReservedArticleAiQualityReviewer;
+use App\Contracts\ProviderAttemptAwareArticleAiQualityReviewer;
 use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Models\AiModel;
 use App\Services\Outbound\OutboundRequestFailedException;
@@ -15,7 +15,7 @@ use JsonException;
 use RuntimeException;
 use Throwable;
 
-final readonly class LaravelArticleAiQualityReviewer implements PreReservedArticleAiQualityReviewer
+final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptAwareArticleAiQualityReviewer
 {
     public function __construct(
         private ApiKeyCrypto $apiKeyCrypto,
@@ -65,6 +65,40 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
         );
     }
 
+    public function reviewWithinReservedVersionTrackingProviderAttempts(
+        AiModel $model,
+        string $instructions,
+        int $timeoutSeconds,
+        string $executionVersion,
+        AiUsageReservation $reservation,
+        ArticleAiQualityProviderUsageSession $usageSession,
+        bool $readinessConfirmed = false,
+    ): array {
+        if (! in_array($executionVersion, ['legacy', 'fast_v2'], true)) {
+            $this->usageQuota->releaseModel($reservation);
+
+            throw new RuntimeException('ai_quality_execution_version_invalid');
+        }
+        if (! $readinessConfirmed) {
+            try {
+                $this->circuitBreaker->beforeRequest($model);
+            } catch (Throwable $exception) {
+                $this->usageQuota->releaseModel($reservation);
+
+                throw $exception;
+            }
+        }
+
+        return $this->reviewWithReservation(
+            $model,
+            $instructions,
+            $timeoutSeconds,
+            $executionVersion,
+            $reservation,
+            $usageSession,
+        );
+    }
+
     public function reviewWithinReservedVersion(
         AiModel $model,
         string $instructions,
@@ -105,6 +139,7 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
         int $timeoutSeconds,
         string $executionVersion,
         AiUsageReservation $reservation,
+        ?ArticleAiQualityProviderUsageSession $usageSession = null,
     ): array {
         $externalRequestAttempted = false;
 
@@ -122,6 +157,8 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
             $attemptStartedAt = hrtime(true);
 
             if ($mode === 'json_fallback') {
+                $providerUsageAttempt = $usageSession?->begin($mode);
+                $providerResponseReturned = false;
                 try {
                     $externalRequestAttempted = true;
                     $response = (new ArticleQualityJsonReviewerAgent($instructions, $maxTokens))->prompt(
@@ -131,14 +168,24 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
                         (string) $model->model_id,
                         $timeout,
                     );
+                    $providerResponseReturned = true;
                     $result = $this->decodeJson((string) $response->text);
+                    if ($providerUsageAttempt !== null) {
+                        $usageSession?->providerReturned($providerUsageAttempt, $response->usage);
+                    }
                 } catch (Throwable $jsonException) {
                     $typed = $this->typedProviderException($jsonException, $baseUrl);
+                    if ($providerUsageAttempt !== null) {
+                        $providerResponseReturned
+                            ? $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null)
+                            : $usageSession?->providerFailed($providerUsageAttempt, $typed->safeCode());
+                    }
                     $this->recordReadinessAttempt($model, $mode, false, $attemptStartedAt, $typed->safeCode());
 
                     throw $typed;
                 }
             } else {
+                $providerUsageAttempt = $usageSession?->begin('structured');
                 try {
                     $externalRequestAttempted = true;
                     $agent = $usesV2Schema
@@ -152,8 +199,14 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
                         $timeout,
                     );
                     $result = $response->structured;
+                    if ($providerUsageAttempt !== null) {
+                        $usageSession?->providerReturned($providerUsageAttempt, $response->usage);
+                    }
                 } catch (Throwable $structuredException) {
                     $structuredTyped = $this->typedProviderException($structuredException, $baseUrl);
+                    if ($providerUsageAttempt !== null) {
+                        $usageSession?->providerFailed($providerUsageAttempt, $structuredTyped->safeCode());
+                    }
                     $this->recordReadinessAttempt($model, 'structured', false, $attemptStartedAt, $structuredTyped->safeCode());
                     $remainingSeconds = $timeout - ((hrtime(true) - $attemptStartedAt) / 1_000_000_000);
                     if ($remainingSeconds < 1 || ! in_array($structuredTyped->safeCode(), [
@@ -170,6 +223,8 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
                     $reservation = $fallbackReservation;
                     $externalRequestAttempted = false;
                     $attemptStartedAt = hrtime(true);
+                    $providerUsageAttempt = $usageSession?->begin($mode);
+                    $providerResponseReturned = false;
                     try {
                         $externalRequestAttempted = true;
                         $response = (new ArticleQualityJsonReviewerAgent($instructions, $maxTokens))->prompt(
@@ -179,9 +234,18 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
                             (string) $model->model_id,
                             max(1, (int) floor($remainingSeconds)),
                         );
+                        $providerResponseReturned = true;
                         $result = $this->decodeJson((string) $response->text);
+                        if ($providerUsageAttempt !== null) {
+                            $usageSession?->providerReturned($providerUsageAttempt, $response->usage);
+                        }
                     } catch (Throwable $fallbackException) {
                         $typed = $this->typedProviderException($fallbackException, $baseUrl, $structuredException);
+                        if ($providerUsageAttempt !== null) {
+                            $providerResponseReturned
+                                ? $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null)
+                                : $usageSession?->providerFailed($providerUsageAttempt, $typed->safeCode());
+                        }
                         $this->recordReadinessAttempt($model, $mode, false, $attemptStartedAt, $typed->safeCode());
 
                         throw $typed;
@@ -190,6 +254,9 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
             }
 
             if (! is_array($result) || $result === []) {
+                if ($providerUsageAttempt !== null) {
+                    $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null, 'invalid_model_output');
+                }
                 $this->recordReadinessAttempt($model, $mode, false, $attemptStartedAt, 'invalid_model_output');
                 throw new ArticleAiQualityRuntimeException('invalid_model_output');
             }

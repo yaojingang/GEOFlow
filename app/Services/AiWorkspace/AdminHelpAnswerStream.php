@@ -242,23 +242,41 @@ final readonly class AdminHelpAnswerStream
             ? $this->safeUsage($result['usage'])
             : [];
         $completionReceipt = is_array($result) ? ($result['completion_receipt'] ?? null) : null;
-        $message = $this->conversations->completeGeneration($conversation, $generationId, $completedAnswer, [
-            'knowledge_entry_ids' => array_values(array_map(static fn (array $entry): string => (string) $entry['id'], $entries)),
-            'knowledge_sources' => $retrievedKnowledge['sources'],
-            'knowledge_health' => $retrievedKnowledge['knowledge_health'],
-            'related_media' => $relatedMedia,
-            'related_features' => $relatedFeatures,
-            'suggestions' => $suggestions,
-            'generation' => $generationMeta,
-            'retrieval' => [
-                'mode' => $retrievedKnowledge['retrieval_mode'],
-                'latency_ms' => $retrievedKnowledge['retrieval_latency_ms'],
-                'fallback_reason' => $retrievedKnowledge['fallback_reason'],
-                'evidence_count' => $retrievedKnowledge['evidence_count'],
-                'followup_expanded' => (bool) ($queryContext['followup_expanded'] ?? false),
-            ],
-        ], $usage, fn () => $this->assertModelReceiptCurrent($executionContext, $completionReceipt));
+        $usageDelivery = is_array($result) ? ($result['usage_delivery'] ?? null) : null;
+        try {
+            $message = $this->conversations->completeGeneration($conversation, $generationId, $completedAnswer, [
+                'knowledge_entry_ids' => array_values(array_map(static fn (array $entry): string => (string) $entry['id'], $entries)),
+                'knowledge_sources' => $retrievedKnowledge['sources'],
+                'knowledge_health' => $retrievedKnowledge['knowledge_health'],
+                'related_media' => $relatedMedia,
+                'related_features' => $relatedFeatures,
+                'suggestions' => $suggestions,
+                'generation' => $generationMeta,
+                'retrieval' => [
+                    'mode' => $retrievedKnowledge['retrieval_mode'],
+                    'latency_ms' => $retrievedKnowledge['retrieval_latency_ms'],
+                    'fallback_reason' => $retrievedKnowledge['fallback_reason'],
+                    'evidence_count' => $retrievedKnowledge['evidence_count'],
+                    'followup_expanded' => (bool) ($queryContext['followup_expanded'] ?? false),
+                ],
+            ], $usage, fn () => $this->assertModelReceiptCurrent($executionContext, $completionReceipt));
+        } catch (AiModelAccessException $exception) {
+            if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                $usageDelivery->revoked($exception->getErrorCode());
+            }
+
+            throw $exception;
+        } catch (Throwable $exception) {
+            if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                $usageDelivery->discarded('ai_result_not_committed');
+            }
+
+            throw $exception;
+        }
         if (! $message instanceof AiConversationMessage) {
+            if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                $usageDelivery->discarded('ai_result_not_committed');
+            }
             yield $this->errorEvent(
                 'conversation_closed',
                 __('admin.ai_workspace.conversation_closed'),
@@ -267,6 +285,9 @@ final readonly class AdminHelpAnswerStream
             );
 
             return;
+        }
+        if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+            $usageDelivery->succeeded();
         }
         $conversation->refresh();
 

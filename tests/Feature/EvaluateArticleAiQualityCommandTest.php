@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\ArticleQualityJsonReviewerAgent;
+use App\Ai\Agents\ArticleQualityReviewerAgent;
 use App\Console\Commands\EvaluateArticleAiQualityCommand;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Data\Ai\DirectAdminAiExecutionContext;
@@ -491,6 +493,80 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertSame([$personal->id, $shared->id], $reviewer->modelIds);
         $this->assertSame($shared->id, $fallbackReport['model_id']);
         $this->assertSame('shared', $fallbackReport['execution']['model_source']);
+    }
+
+    public function test_live_structured_output_fallback_records_each_real_provider_call_once(): void
+    {
+        $admin = $this->admin('live-provider-attempt-ledger');
+        $model = $this->model($admin, 'live-provider-attempt-model');
+        ArticleQualityReviewerAgent::fake(static function (): never {
+            throw new ArticleAiQualityRuntimeException('structured_output_unsupported');
+        })->preventStrayPrompts();
+        ArticleQualityJsonReviewerAgent::fake([[
+            'summary' => '检查完成。',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [],
+            'issues' => [],
+            'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ]])->preventStrayPrompts();
+        [$datasetPath, $basePath] = $this->liveFixture('live-provider-attempt-ledger');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+            '--model' => $model->id,
+        ])->assertSuccessful();
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertSame($events[0]->request_id, $events[1]->request_id);
+        $this->assertSame(['provider-1', 'provider-2'], $events->pluck('call_key')->all());
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+    }
+
+    public function test_live_fallback_marks_the_returned_attempt_revoked_when_access_changes_before_acceptance(): void
+    {
+        $admin = $this->admin('live-provider-fallback-revoked');
+        $model = $this->model($admin, 'live-provider-fallback-revoked-model');
+        ArticleQualityReviewerAgent::fake(static function (): never {
+            throw new ArticleAiQualityRuntimeException('structured_output_unsupported');
+        })->preventStrayPrompts();
+        ArticleQualityJsonReviewerAgent::fake(function () use ($admin): string {
+            Admin::query()->whereKey($admin->id)->increment('ai_config_access_version');
+
+            return json_encode([
+                'summary' => '检查完成。',
+                'promotion_context' => 'informational',
+                'reviewed_claim_hashes' => [],
+                'issues' => [],
+                'uncertainties' => [],
+                'truncated_issue_count' => 0,
+            ], JSON_THROW_ON_ERROR);
+        })->preventStrayPrompts();
+        [$datasetPath, $basePath] = $this->liveFixture('live-provider-fallback-revoked');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+            '--model' => $model->id,
+        ])->assertFailed();
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_REVOKED],
+            $events->pluck('status')->all(),
+        );
+        $this->assertFileDoesNotExist($basePath.'.json');
+        $this->assertFileDoesNotExist($basePath.'.md');
     }
 
     public function test_live_evaluation_reports_each_call_when_automatic_candidates_change_between_cases(): void

@@ -22,13 +22,16 @@ use App\Services\AiWorkspace\AiWorkspaceCoordinator;
 use App\Services\AiWorkspace\AiWorkspaceExecutionAccessGuard;
 use App\Services\AiWorkspace\AiWorkspaceModelReadiness;
 use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
+use App\Services\AiWorkspace\AiWorkspaceModelUsageDelivery;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Generator;
 use GuzzleHttp\Psr7\Response as PsrResponse;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -215,6 +218,146 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         self::assertSame(AiModelUsageEvent::MODEL_SOURCE_SHARED, $events[1]->model_source);
         self::assertSame($provider->id, $events[1]->config_owner_admin_id);
         self::assertSame($admin->id, $events[1]->execution_admin_id);
+    }
+
+    public function test_workspace_stream_usage_remains_pending_until_the_consumer_commits_the_result(): void
+    {
+        $admin = $this->admin('workspace-usage-delivery-owner', 'super_admin');
+        $this->model($admin, 'workspace-usage-delivery-model');
+        AdminHelpAssistant::fake(['provider response'])->preventStrayPrompts();
+
+        $stream = app(AiWorkspaceModelRuntime::class)->stream('question', 'context', [], $admin);
+        iterator_to_array($stream);
+        $result = $stream->getReturn();
+
+        self::assertDatabaseCount('ai_model_usage_events', 0);
+        self::assertInstanceOf(
+            AiWorkspaceModelUsageDelivery::class,
+            $result['usage_delivery'] ?? null,
+        );
+
+        $result['usage_delivery']->succeeded();
+
+        $event = AiModelUsageEvent::query()->sole();
+        self::assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+    }
+
+    public function test_interactive_workspace_marks_usage_succeeded_after_complete_generation_commits(): void
+    {
+        $admin = $this->admin('workspace-complete-generation-usage', 'super_admin');
+        $this->model($admin, 'workspace-complete-generation-model');
+        $conversation = app(AiConversationRepository::class)->create($admin);
+        AdminHelpAssistant::fake(['committed interactive answer'])->preventStrayPrompts();
+
+        $stream = $this->actingAs($admin, 'admin')->postJson(
+            route('admin.ai-workspace.messages.store', ['conversation' => $conversation->id]),
+            ['prompt' => '请回答这个需要模型处理的问题。'],
+        )->assertOk()->streamedContent();
+
+        self::assertStringContainsString('event: done', $stream);
+        self::assertSame(1, AiConversationMessage::query()->where('role', 'assistant')->count());
+        self::assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, AiModelUsageEvent::query()->sole()->status);
+    }
+
+    public function test_workspace_answer_records_revoked_when_access_changes_after_provider_response_before_commit(): void
+    {
+        $admin = $this->admin('workspace-post-provider-revoked', 'super_admin');
+        $this->model($admin, 'workspace-post-provider-model');
+        $context = app(AiWorkspaceExecutionAccessGuard::class)->directContext(
+            $admin,
+            requestId: 'workspace-post-provider-race',
+        );
+        AdminHelpAssistant::fake(['provider response'])->preventStrayPrompts();
+
+        try {
+            app(AiWorkspaceModelRuntime::class)->answer(
+                'question',
+                'context',
+                [],
+                $context,
+                function ($receipt) use ($admin, $context): void {
+                    self::assertDatabaseCount('ai_model_usage_events', 0);
+                    Admin::query()->whereKey($admin->id)->increment('ai_config_access_version');
+                    app(AiWorkspaceExecutionAccessGuard::class)
+                        ->assertReceiptCurrent($context, $receipt);
+                },
+            );
+            self::fail('Expected post-provider revocation to reject the result.');
+        } catch (AiModelAccessException $exception) {
+            self::assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $exception->getErrorCode());
+        }
+
+        $event = AiModelUsageEvent::query()->sole();
+        self::assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
+        self::assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $event->error_code);
+    }
+
+    public function test_persisted_workspace_run_marks_each_attempt_succeeded_only_after_its_state_commit(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-persisted-usage-owner', 'super_admin');
+        $this->model($admin, 'workspace-persisted-usage-model');
+        AdminHelpAssistant::fake([
+            json_encode(['mode' => 'answer', 'intent' => 'answer question'], JSON_THROW_ON_ERROR),
+            'durable answer',
+        ])->preventStrayPrompts();
+        $run = app(AiWorkspaceCoordinator::class)->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请分析一个需要模型回答的复杂运营问题。',
+        );
+
+        app(AiWorkspaceCoordinator::class)->resolveRun((string) $run->id, (string) Str::uuid7());
+
+        self::assertSame('completed', $run->fresh()->state);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        self::assertCount(2, $events);
+        self::assertSame(
+            [AiModelUsageEvent::STATUS_SUCCEEDED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+        self::assertSame(AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN, $events[1]->execution_scope);
+    }
+
+    public function test_persisted_workspace_answer_is_revoked_when_access_changes_after_provider_response_before_final_state_commit(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-persisted-final-race', 'super_admin');
+        $this->model($admin, 'workspace-persisted-final-race-model');
+        AdminHelpAssistant::fake([
+            json_encode(['mode' => 'answer', 'intent' => 'answer question'], JSON_THROW_ON_ERROR),
+            'result that must be revoked',
+        ])->preventStrayPrompts();
+        $run = app(AiWorkspaceCoordinator::class)->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请分析另一个需要模型回答的复杂运营问题。',
+        );
+        $modelCompletions = 0;
+        $revoked = false;
+        DB::listen(function (QueryExecuted $query) use ($admin, &$modelCompletions, &$revoked): void {
+            if ($revoked || ! str_contains(strtolower($query->sql), 'ai_workspace_trace_events')) {
+                return;
+            }
+            if (! collect($query->bindings)->contains('model.completed')) {
+                return;
+            }
+            $modelCompletions++;
+            if ($modelCompletions === 2) {
+                $revoked = true;
+                Admin::query()->whereKey($admin->id)->increment('ai_config_access_version');
+            }
+        });
+
+        app(AiWorkspaceCoordinator::class)->resolveRun((string) $run->id, (string) Str::uuid7());
+
+        self::assertTrue($revoked);
+        self::assertSame('failed', $run->fresh()->state);
+        self::assertSame('authorization_revoked', $run->fresh()->failure_code);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        self::assertCount(2, $events);
+        self::assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $events[0]->status);
+        self::assertSame(AiModelUsageEvent::STATUS_REVOKED, $events[1]->status);
     }
 
     public function test_fallback_model_is_registered_before_outbound_and_blocks_update_and_delete(): void

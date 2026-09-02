@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\PreReservedArticleAiQualityReviewer;
+use App\Contracts\ProviderAttemptAwareArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
 use App\Data\Ai\DirectAdminAiExecutionContext;
 use App\Data\Ai\DirectAdminAiExecutionState;
@@ -20,6 +21,7 @@ use App\Services\GeoFlow\AiQualityEvaluationDataset;
 use App\Services\GeoFlow\ArticleAiQualityEvidenceBuilder;
 use App\Services\GeoFlow\ArticleAiQualityPromptRenderer;
 use App\Services\GeoFlow\ArticleAiQualityProviderCircuitBreaker;
+use App\Services\GeoFlow\ArticleAiQualityProviderUsageSession;
 use App\Services\GeoFlow\ArticleAiQualityResultValidator;
 use App\Services\GeoFlow\ArticleAiQualitySampleBuilder;
 use App\Services\GeoFlow\ArticleAiQualityScorerV2;
@@ -860,18 +862,39 @@ class EvaluateArticleAiQualityCommand extends Command
             },
         );
         $execution->adopt($invocation);
+        $usageSession = null;
 
         try {
             $currentModel = $invocation->model;
-            $invocation->beginUsageAttempt(
-                requestPayload: $instructions,
-                operation: 'article_quality.review',
-                businessSource: 'ai_quality_live_cli',
-                sourceType: 'ai_quality_evaluation',
-                sourceId: $execution->context->sourceId,
-                callKey: $execution->nextUsageCallKey(),
-            );
-            if ($this->reviewer instanceof PreReservedArticleAiQualityReviewer) {
+            if ($this->reviewer instanceof ProviderAttemptAwareArticleAiQualityReviewer) {
+                $usageSession = new ArticleAiQualityProviderUsageSession(
+                    fn (string $mode) => $invocation->newProviderUsageAttempt(
+                        requestPayload: $instructions,
+                        operation: 'article_quality.review.'.$mode,
+                        businessSource: 'ai_quality_live_cli',
+                        sourceType: 'ai_quality_evaluation',
+                        sourceId: $execution->context->sourceId,
+                        callKey: $execution->nextUsageCallKey(),
+                    ),
+                );
+                $review = $this->reviewer->reviewWithinReservedVersionTrackingProviderAttempts(
+                    $currentModel,
+                    $instructions,
+                    $timeoutSeconds,
+                    'fast_v2',
+                    $invocation->reservation,
+                    $usageSession,
+                    true,
+                );
+            } elseif ($this->reviewer instanceof PreReservedArticleAiQualityReviewer) {
+                $invocation->beginUsageAttempt(
+                    requestPayload: $instructions,
+                    operation: 'article_quality.review',
+                    businessSource: 'ai_quality_live_cli',
+                    sourceType: 'ai_quality_evaluation',
+                    sourceId: $execution->context->sourceId,
+                    callKey: $execution->nextUsageCallKey(),
+                );
                 $review = $this->reviewer->reviewWithinReservedVersion(
                     $currentModel,
                     $instructions,
@@ -881,6 +904,14 @@ class EvaluateArticleAiQualityCommand extends Command
                     true,
                 );
             } elseif ($this->reviewer instanceof VersionAwareArticleAiQualityReviewer) {
+                $invocation->beginUsageAttempt(
+                    requestPayload: $instructions,
+                    operation: 'article_quality.review',
+                    businessSource: 'ai_quality_live_cli',
+                    sourceType: 'ai_quality_evaluation',
+                    sourceId: $execution->context->sourceId,
+                    callKey: $execution->nextUsageCallKey(),
+                );
                 $review = $this->reviewer->reviewWithinVersion(
                     $currentModel,
                     $instructions,
@@ -888,17 +919,28 @@ class EvaluateArticleAiQualityCommand extends Command
                     'fast_v2',
                 );
             } else {
+                $invocation->beginUsageAttempt(
+                    requestPayload: $instructions,
+                    operation: 'article_quality.review',
+                    businessSource: 'ai_quality_live_cli',
+                    sourceType: 'ai_quality_evaluation',
+                    sourceId: $execution->context->sourceId,
+                    callKey: $execution->nextUsageCallKey(),
+                );
                 $review = $this->reviewer->review($currentModel, $instructions);
             }
             $this->executionGuard->assertModelCurrent($execution->context, $currentModel);
             $invocation->recordSuccess($review['usage'] ?? null);
+            $usageSession?->succeeded();
 
             return $review;
         } catch (AiModelAccessException $exception) {
+            $usageSession?->revoked($exception->getErrorCode());
             $invocation->recordRevoked($exception->getErrorCode());
 
             throw $exception;
         } catch (\Throwable $exception) {
+            $usageSession?->discarded('ai_result_not_committed');
             $invocation->recordProviderFailure();
 
             throw $exception;

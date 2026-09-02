@@ -244,15 +244,19 @@ final readonly class AiWorkspaceCoordinator
             $modelStatus = $this->modelReadiness->status($executionContext);
             $childRulesOnly = $run->mode === 'agent_child';
             $intentReceipt = null;
+            $intentUsageDelivery = null;
             if ($modelStatus['ready'] && ! $childRulesOnly) {
                 $this->recordModelRequest($runId, $leaseOwner, 'intent');
                 $resolution = $this->intentResolver->resolve(
                     $resolutionPrompt,
                     $executionContext,
-                    function (array $telemetry, mixed $receipt = null) use ($runId, $leaseOwner, &$intentReceipt): void {
+                    function (array $telemetry, mixed $receipt = null, mixed $usageDelivery = null) use ($runId, $leaseOwner, &$intentReceipt, &$intentUsageDelivery): void {
                         $this->recordModelCompletion($runId, $leaseOwner, $telemetry);
                         if ($receipt instanceof AiWorkspaceModelExecutionReceipt) {
                             $intentReceipt = $receipt;
+                        }
+                        if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                            $intentUsageDelivery = $usageDelivery;
                         }
                     },
                     fn (Throwable $exception) => $this->recordModelFailure($runId, $leaseOwner, 'intent', $exception),
@@ -278,15 +282,26 @@ final readonly class AiWorkspaceCoordinator
             if ($resolution->source === 'model' && ! $intentReceipt instanceof AiWorkspaceModelExecutionReceipt) {
                 throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
             }
-            $run = $this->updateResolutionOwned($runId, $leaseOwner, [
-                'mode' => $resolution->mode,
-                'intent' => $resolution->intent,
-                'resolution_source' => $modelStatus['ready'] ? $resolution->source : 'rules',
-                'resolution_score' => $resolution->score(),
-                'candidate_capabilities' => $resolution->candidates,
-                'known_parameters' => $resolution->knownParameters,
-                'missing_parameters' => $resolution->missingParameters,
-            ], modelReceipt: $intentReceipt);
+            try {
+                $run = $this->updateResolutionOwned($runId, $leaseOwner, [
+                    'mode' => $resolution->mode,
+                    'intent' => $resolution->intent,
+                    'resolution_source' => $modelStatus['ready'] ? $resolution->source : 'rules',
+                    'resolution_score' => $resolution->score(),
+                    'candidate_capabilities' => $resolution->candidates,
+                    'known_parameters' => $resolution->knownParameters,
+                    'missing_parameters' => $resolution->missingParameters,
+                ], modelReceipt: $intentReceipt);
+                $intentUsageDelivery?->succeeded();
+            } catch (AiModelAccessException $exception) {
+                $intentUsageDelivery?->revoked($exception->getErrorCode());
+
+                throw $exception;
+            } catch (Throwable $exception) {
+                $intentUsageDelivery?->discarded('ai_result_not_committed');
+
+                throw $exception;
+            }
             $this->realtime->broadcast($run);
 
             if ($resolution->mode === 'answer') {
@@ -348,6 +363,7 @@ final readonly class AiWorkspaceCoordinator
             $this->realtime->broadcast($planning);
             $draftSteps = $resolution->workflowSteps;
             $planSourceReceipt = $intentReceipt;
+            $planUsageDelivery = null;
             if ($resolution->source === 'model') {
                 try {
                     $this->renewResolutionLease($runId, $leaseOwner);
@@ -358,10 +374,13 @@ final readonly class AiWorkspaceCoordinator
                         $resolutionPrompt,
                         $resolution->toArray(),
                         $executionContext,
-                        function (array $telemetry, mixed $receipt = null) use ($runId, $leaseOwner, &$planReceipt): void {
+                        function (array $telemetry, mixed $receipt = null, mixed $usageDelivery = null) use ($runId, $leaseOwner, &$planReceipt, &$planUsageDelivery): void {
                             $this->recordModelCompletion($runId, $leaseOwner, $telemetry);
                             if ($receipt instanceof AiWorkspaceModelExecutionReceipt) {
                                 $planReceipt = $receipt;
+                            }
+                            if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                                $planUsageDelivery = $usageDelivery;
                             }
                         },
                     );
@@ -373,6 +392,9 @@ final readonly class AiWorkspaceCoordinator
                         $planSourceReceipt = $planReceipt;
                     }
                 } catch (Throwable $exception) {
+                    $exception instanceof AiModelAccessException
+                        ? $planUsageDelivery?->revoked($exception->getErrorCode())
+                        : $planUsageDelivery?->discarded('ai_result_not_committed');
                     $this->recordModelFailure($runId, $leaseOwner, 'plan', $exception);
                     if ($exception instanceof AiModelAccessException || $exception instanceof PermanentAiProviderException) {
                         throw $exception;
@@ -441,6 +463,7 @@ final readonly class AiWorkspaceCoordinator
                 $locked->forceFill(['resolution_finished_at' => now()])->save();
             });
             $this->engine->prepare($planning->fresh(), $plan, $leaseOwner, $planSourceReceipt);
+            $planUsageDelivery?->succeeded();
         } catch (Throwable $exception) {
             $fresh = AiWorkspaceRun::query()->findOrFail($runId);
             if ($fresh->isTerminal()) {
@@ -638,6 +661,7 @@ final readonly class AiWorkspaceCoordinator
             $buffer = '';
             $modelTelemetry = null;
             $modelReceipt = null;
+            $modelUsageDelivery = null;
             $hasPersistedChunk = (int) $answering->answer_chunk_sequence > 0;
             $lastFlushAt = microtime(true);
             $generatedAnswer = $this->runtime->streamAnswer(
@@ -657,10 +681,13 @@ final readonly class AiWorkspaceCoordinator
                 },
                 $context['messages'],
                 $executionContext,
-                function (array $telemetry, mixed $receipt = null) use (&$modelTelemetry, &$modelReceipt): void {
+                function (array $telemetry, mixed $receipt = null, mixed $usageDelivery = null) use (&$modelTelemetry, &$modelReceipt, &$modelUsageDelivery): void {
                     $modelTelemetry = $telemetry;
                     if ($receipt instanceof AiWorkspaceModelExecutionReceipt) {
                         $modelReceipt = $receipt;
+                    }
+                    if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                        $modelUsageDelivery = $usageDelivery;
                     }
                 },
             );
@@ -683,6 +710,7 @@ final readonly class AiWorkspaceCoordinator
                 trim((string) AiWorkspaceRun::query()->whereKey($run->id)->value('answer')),
             );
             if ($cancelled instanceof AiWorkspaceRun) {
+                $modelUsageDelivery?->discarded('ai_result_not_committed');
                 $this->realtime->broadcast($cancelled);
 
                 return;
@@ -692,6 +720,7 @@ final readonly class AiWorkspaceCoordinator
             }
         } catch (Throwable $exception) {
             if ($exception instanceof AiModelAccessException) {
+                $modelUsageDelivery?->revoked($exception->getErrorCode());
                 $this->stopResolution(
                     (string) $run->id,
                     $leaseOwner,
@@ -702,6 +731,7 @@ final readonly class AiWorkspaceCoordinator
                 return;
             }
             if ($exception instanceof PermanentAiProviderException) {
+                $modelUsageDelivery?->discarded('ai_result_not_committed');
                 $this->stopResolution(
                     (string) $run->id,
                     $leaseOwner,
@@ -714,6 +744,7 @@ final readonly class AiWorkspaceCoordinator
             $persistedAnswer = trim((string) AiWorkspaceRun::query()->whereKey($run->id)->value('answer'));
             $cancelled = $this->preserveCancelledAnswer($admin, (string) $run->id, $leaseOwner, $persistedAnswer);
             if ($cancelled instanceof AiWorkspaceRun) {
+                $modelUsageDelivery?->discarded('ai_result_not_committed');
                 $this->realtime->broadcast($cancelled);
 
                 return;
@@ -760,6 +791,7 @@ final readonly class AiWorkspaceCoordinator
                 )
                 : $this->transitionResolutionOwned((string) $run->id, $leaseOwner, 'failed', $attributes);
             if ($failed instanceof AiWorkspaceRun && $failed->failure_code !== 'authorization_revoked') {
+                $modelUsageDelivery?->discarded('ai_result_not_committed');
                 $this->realtime->broadcast($failed);
             }
 
@@ -768,20 +800,40 @@ final readonly class AiWorkspaceCoordinator
         $persistedAnswer = trim((string) AiWorkspaceRun::query()->whereKey($run->id)->value('answer'));
         $cancelled = $this->preserveCancelledAnswer($admin, (string) $run->id, $leaseOwner, $persistedAnswer);
         if ($cancelled instanceof AiWorkspaceRun) {
+            $modelUsageDelivery?->discarded('ai_result_not_committed');
             $this->realtime->broadcast($cancelled);
 
             return;
         }
-        $this->assertResolutionExecutionAllowed($answering, $admin);
-        $completed = $this->completeResolutionWithMessage($admin, $run, $leaseOwner, 'completed', $persistedAnswer, [
-            'system_operations_executed' => false,
-            'status_message' => '回答已完成。',
-            'answer_is_partial' => false,
-            'resolution_finished_at' => now(),
-        ], ['system_operations_executed' => false], $modelReceipt);
+        try {
+            $this->assertResolutionExecutionAllowed($answering, $admin);
+            $completed = $this->completeResolutionWithMessage($admin, $run, $leaseOwner, 'completed', $persistedAnswer, [
+                'system_operations_executed' => false,
+                'status_message' => '回答已完成。',
+                'answer_is_partial' => false,
+                'resolution_finished_at' => now(),
+            ], ['system_operations_executed' => false], $modelReceipt);
+        } catch (AiModelAccessException $exception) {
+            $modelUsageDelivery?->revoked($exception->getErrorCode());
+            $this->stopResolution(
+                (string) $run->id,
+                $leaseOwner,
+                'authorization_revoked',
+                '管理员 AI 配置授权已变化，供应商结果已丢弃。',
+            );
+
+            return;
+        } catch (Throwable $exception) {
+            $modelUsageDelivery?->discarded('ai_result_not_committed');
+
+            throw $exception;
+        }
         if (! $completed instanceof AiWorkspaceRun) {
+            $modelUsageDelivery?->discarded('ai_result_not_committed');
+
             return;
         }
+        $modelUsageDelivery?->succeeded();
         $this->realtime->broadcast($completed);
     }
 
@@ -985,12 +1037,12 @@ final readonly class AiWorkspaceCoordinator
             $run->fresh(),
             (string) $run->resolution_lease_owner,
         );
-        if ($requireModel && ! $this->modelReadiness->status($context)['ready']) {
-            throw new RuntimeException('AI 工作台模型已不可用。');
-        }
         $current = $this->currentAdminForRun($run->fresh());
         if (! $current instanceof Admin || (int) $current->id !== (int) $admin->id) {
-            throw new RuntimeException('管理员授权已变化，已停止请求理解。');
+            throw AiModelAccessException::configAccessRevokedForAdminId((int) $run->model_access_admin_id);
+        }
+        if ($requireModel && ! $this->modelReadiness->status($context)['ready']) {
+            throw new RuntimeException('AI 工作台模型已不可用。');
         }
     }
 
