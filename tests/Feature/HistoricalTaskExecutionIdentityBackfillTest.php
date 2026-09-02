@@ -439,6 +439,34 @@ class HistoricalTaskExecutionIdentityBackfillTest extends TestCase
         $this->assertSame(1, $run->fresh()->resolver_policy_version);
     }
 
+    public function test_historical_run_with_a_non_current_resolver_policy_cannot_restore_a_task(): void
+    {
+        $owner = $this->admin('owner', 'super_admin', 1);
+        $runAdmin = $this->admin('run-admin', 'admin', 4);
+        $task = $this->task(['status' => 'paused', 'schedule_enabled' => 0]);
+        $run = $this->taskRun($task, [
+            'status' => 'completed',
+            'model_access_admin_id' => $runAdmin->id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => 4,
+            'resolver_policy_version' => 2,
+        ]);
+
+        $arguments = $this->baseArguments($owner, $task, $run);
+        $this->artisan('geoflow:backfill-admin-ai-access', $arguments)
+            ->expectsOutputToContain('Task execution identity finding: task_run#'.$run->id.' blocking (unsupported_resolver_policy_version)')
+            ->assertSuccessful();
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$arguments,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+        ])
+            ->expectsOutput('Preflight failed: historical_task_execution_identity_conflict')
+            ->assertFailed();
+
+        $this->assertNull($task->fresh()->model_access_admin_id);
+    }
+
     public function test_completed_migration_state_rejects_a_different_parameter_set(): void
     {
         $ownerA = $this->admin('owner-a', 'super_admin', 1);

@@ -153,6 +153,16 @@ final class HistoricalTaskExecutionIdentityBackfillService
 
             $snapshot = $taskSnapshots[$taskId] ?? null;
             $runState = $this->runIdentityState($run, $admins);
+            if ($runState === 'unsupported_resolver_policy') {
+                $findings[] = $this->finding(
+                    'task_run',
+                    $runId,
+                    'blocking',
+                    'unsupported_resolver_policy_version',
+                );
+
+                continue;
+            }
             if ($runState === 'partial_or_invalid') {
                 $findings[] = $this->finding('task_run', $runId, 'blocking', 'partial_task_run_identity');
 
@@ -653,12 +663,14 @@ final class HistoricalTaskExecutionIdentityBackfillService
 
         $adminId = (int) $run->model_access_admin_id;
         $role = $this->normalizeSnapshotRole($run->model_access_admin_role);
+        if ((int) $run->resolver_policy_version !== AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION) {
+            return 'unsupported_resolver_policy';
+        }
 
         return $adminId > 0
             && $admins->has($adminId)
             && $role !== null
             && (int) $run->ai_config_access_version > 0
-            && (int) $run->resolver_policy_version > 0
             ? 'complete'
             : 'partial_or_invalid';
     }
