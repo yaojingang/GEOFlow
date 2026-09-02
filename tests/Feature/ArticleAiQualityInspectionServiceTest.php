@@ -858,6 +858,85 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         );
     }
 
+    public function test_enforced_worker_marks_a_historical_check_without_execution_identity_stale_before_outbound_work(): void
+    {
+        $article = $this->createQualityFixture('historical-missing-execution-identity', needReview: true);
+        $reviewer = new class implements ArticleAiQualityReviewer
+        {
+            public int $calls = 0;
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->calls++;
+
+                return [
+                    'result' => [
+                        'summary' => '历史任务不应使用全局模型执行。',
+                        'promotion_context' => 'informational',
+                        'knowledge_coverage' => 'sufficient',
+                        'issues' => [],
+                        'uncertainties' => [],
+                    ],
+                    'model' => ['id' => (int) $model->id],
+                    'mode' => 'structured',
+                ];
+            }
+        };
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+
+        $processed = $service->process($check);
+
+        $this->assertSame('stale', $processed->status);
+        $this->assertSame('ai_config_access_revoked', $processed->error_code);
+        $this->assertSame(0, $reviewer->calls);
+    }
+
+    public function test_enforced_worker_never_rebuilds_global_candidates_when_the_frozen_candidate_list_is_empty(): void
+    {
+        $executor = $this->qualityAdmin('quality-empty-candidates', 'admin');
+        $article = $this->createQualityFixture('empty-frozen-candidates', needReview: true);
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        $reviewer = new class implements ArticleAiQualityReviewer
+        {
+            public int $calls = 0;
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->calls++;
+
+                throw new UnexpectedValueException('Frozen candidates must be required.');
+            }
+        };
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $executionMeta = (array) $check->execution_meta;
+        $executionMeta['model_candidate_ids'] = [];
+        $executionMeta['ai_execution'] = array_replace((array) $executionMeta['ai_execution'], [
+            'model_candidate_ids' => [],
+        ]);
+        $check->forceFill(['execution_meta' => $executionMeta])->save();
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+
+        $processed = $service->process($check->fresh());
+
+        $this->assertSame('stale', $processed->status);
+        $this->assertSame('ai_config_access_revoked', $processed->error_code);
+        $this->assertSame(0, $reviewer->calls);
+    }
+
     public function test_execution_access_revoked_after_provider_response_discards_quality_result(): void
     {
         $executor = $this->qualityAdmin('quality-late-revocation', 'admin');
@@ -911,6 +990,100 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame(0, (int) $check->fresh()->completed_segment_count);
         $this->assertNull($check->fresh()->raw_model_output);
         $this->assertNull($check->segments()->firstOrFail()->validated_result);
+    }
+
+    public function test_sampled_fallback_rechecks_the_frozen_execution_identity_after_provider_response(): void
+    {
+        $executor = $this->qualityAdmin('quality-sampled-revocation', 'admin');
+        $article = $this->createQualityFixture('sampled-access-revocation', needReview: true);
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => 1,
+            'ai_quality_timeout_sampling_enabled' => true,
+        ])->save();
+        $reviewer = new class((int) $executor->id) implements ArticleAiQualityReviewer
+        {
+            public int $calls = 0;
+
+            public function __construct(private readonly int $adminId) {}
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->calls++;
+                Admin::query()->whereKey($this->adminId)->increment('ai_config_access_version');
+
+                return [
+                    'result' => [
+                        'summary' => '撤权后的抽样结果必须丢弃。',
+                        'promotion_context' => 'informational',
+                        'knowledge_coverage' => 'sufficient',
+                        'issues' => [],
+                        'uncertainties' => [],
+                    ],
+                    'model' => ['id' => (int) $model->id],
+                    'mode' => 'structured',
+                ];
+            }
+        };
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $this->assertTrue($service->tryStartSampledFallback(
+            $check,
+            new ArticleAiQualityRuntimeException('provider_timeout', true),
+            dispatch: false,
+        ));
+
+        try {
+            $service->process($check->fresh());
+            $this->fail('Expected sampled execution access to be revoked.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame('ai_config_access_revoked', $exception->getErrorCode());
+        }
+
+        $sampled = $check->fresh();
+        $this->assertSame(1, $reviewer->calls);
+        $this->assertSame('running', $sampled->status);
+        $this->assertNull($sampled->raw_model_output);
+        $this->assertNull($sampled->decision);
+    }
+
+    public function test_enforced_sampled_fallback_marks_a_legacy_check_without_execution_identity_stale(): void
+    {
+        $article = $this->createQualityFixture('sampled-missing-execution-identity', needReview: true);
+        $article->task->forceFill(['ai_quality_timeout_sampling_enabled' => true])->save();
+        $reviewer = new class implements ArticleAiQualityReviewer
+        {
+            public int $calls = 0;
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->calls++;
+
+                throw new UnexpectedValueException('Legacy sampled check must fail before outbound work.');
+            }
+        };
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $this->assertTrue($service->tryStartSampledFallback(
+            $check,
+            new ArticleAiQualityRuntimeException('provider_timeout', true),
+            dispatch: false,
+        ));
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', true);
+
+        $processed = $service->process($check->fresh());
+
+        $this->assertSame('stale', $processed->status);
+        $this->assertSame('ai_config_access_revoked', $processed->error_code);
+        $this->assertSame(0, $reviewer->calls);
     }
 
     public function test_permanent_quality_provider_rejection_does_not_switch_candidates(): void

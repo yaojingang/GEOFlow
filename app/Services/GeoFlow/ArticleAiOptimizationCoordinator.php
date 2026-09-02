@@ -253,6 +253,7 @@ final class ArticleAiOptimizationCoordinator
                         'ai_config_access_version' => max(1, (int) $executionAdmin->ai_config_access_version),
                         'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
                         'quality_policy_snapshot' => $this->qualityPolicyResolver->snapshot($qualityPolicy),
+                        'quality_model_candidate_ids' => $qualityCandidateIds,
                     ],
                 ]);
 
@@ -265,6 +266,7 @@ final class ArticleAiOptimizationCoordinator
                     if (! $sourceCheck
                         || (string) $sourceCheck->status !== 'completed'
                         || (string) $sourceCheck->inspection_scope !== 'full'
+                        || ! $this->qualityCheckMatchesRunExecution($sourceCheck, $run)
                         || ! hash_equals($baseHash, $this->riskScanner->contentHash($sourceSnapshot))) {
                         $run->forceFill(['status' => ArticleAiOptimizationRun::STATUS_AWAITING_QUALITY])->save();
                     } else {
@@ -448,6 +450,11 @@ final class ArticleAiOptimizationCoordinator
             $article = $run->article;
             if (! $article instanceof Article || ! $inputCheck instanceof ArticleAiQualityCheck) {
                 throw new ArticleAiOptimizationException('article_ai_optimization_input_unavailable');
+            }
+            if (! $this->qualityCheckMatchesRunExecution($inputCheck, $run)) {
+                $this->markRunStale($run, 'optimization_execution_snapshot_changed');
+
+                return;
             }
             $executionMeta = is_array($run->execution_meta) ? $run->execution_meta : [];
             $models = $this->modelsForRun($run, $article);
@@ -647,6 +654,12 @@ final class ArticleAiOptimizationCoordinator
 
                 return ['action' => 'none'];
             }
+            if (! $this->qualityCheckMatchesRunExecution($input, $run)
+                || ! $this->qualityCheckMatchesRunExecution($candidate, $run)) {
+                $this->markRunStale($run, 'optimization_execution_snapshot_changed');
+
+                return ['action' => 'none'];
+            }
 
             $strictAccepted = $this->candidateAccepted($input, $candidate);
             $progressAccepted = ! $strictAccepted
@@ -799,6 +812,12 @@ final class ArticleAiOptimizationCoordinator
             $candidate = $checks->get((int) $run->best_check_id);
             if (! $source instanceof ArticleAiQualityCheck || ! $candidate instanceof ArticleAiQualityCheck) {
                 throw new ArticleAiOptimizationException('article_ai_optimization_candidate_invalid');
+            }
+            if (! $this->qualityCheckMatchesRunExecution($source, $run)
+                || ! $this->qualityCheckMatchesRunExecution($candidate, $run)) {
+                $this->markRunStale($run, 'optimization_execution_snapshot_changed');
+
+                return ['error_code' => 'article_ai_optimization_stale'];
             }
             if (! $this->inspectionService->rolloutEpochMatches($source, $committedEpoch)
                 || ! $this->inspectionService->rolloutEpochMatches($candidate, $committedEpoch)) {
@@ -1254,14 +1273,22 @@ final class ArticleAiOptimizationCoordinator
             $this->setWorkflowStatusOnCheck($check, 'waiting_optimization');
             $snapshot = is_array($check->article_snapshot) ? $check->article_snapshot : [];
             if ((string) $check->inspection_scope !== 'full'
+                || ! $this->qualityCheckMatchesRunExecution($check, $run)
                 || ! hash_equals((string) $run->base_article_hash, $this->riskScanner->contentHash($snapshot))) {
-                $run->forceFill([
-                    'status' => ArticleAiOptimizationRun::STATUS_NEEDS_REVIEW,
-                    'stop_reason' => 'full_quality_check_unavailable',
-                    'active_dedupe_key' => null,
-                    'finished_at' => now(),
-                ])->save();
-                $this->setWorkflowStatusOnCheck($check, 'held_for_review', 'full_quality_check_unavailable');
+                $reason = $this->qualityCheckMatchesRunExecution($check, $run)
+                    ? 'full_quality_check_unavailable'
+                    : 'optimization_execution_snapshot_changed';
+                if ($reason === 'optimization_execution_snapshot_changed') {
+                    $this->markRunStale($run, $reason);
+                } else {
+                    $run->forceFill([
+                        'status' => ArticleAiOptimizationRun::STATUS_NEEDS_REVIEW,
+                        'stop_reason' => $reason,
+                        'active_dedupe_key' => null,
+                        'finished_at' => now(),
+                    ])->save();
+                }
+                $this->setWorkflowStatusOnCheck($check, 'held_for_review', $reason);
 
                 return 'hold';
             }
@@ -1406,6 +1433,11 @@ final class ArticleAiOptimizationCoordinator
                 || (string) $input->status !== 'completed'
                 || (string) $input->inspection_scope !== 'full') {
                 $this->markRunStale($run, 'optimization_input_changed');
+
+                return null;
+            }
+            if (! $this->qualityCheckMatchesRunExecution($input, $run)) {
+                $this->markRunStale($run, 'optimization_execution_snapshot_changed');
 
                 return null;
             }
@@ -2215,7 +2247,45 @@ final class ArticleAiOptimizationCoordinator
             'resolver_policy_version' => (int) ($executionMeta['resolver_policy_version'] ?? 0),
             'source_type' => 'article_ai_optimization_run',
             'source_id' => (int) $run->id,
+            'model_candidate_ids' => array_values(array_map(
+                'intval',
+                is_array($executionMeta['quality_model_candidate_ids'] ?? null)
+                    ? $executionMeta['quality_model_candidate_ids']
+                    : [],
+            )),
         ];
+    }
+
+    private function qualityCheckMatchesRunExecution(
+        ArticleAiQualityCheck $check,
+        ArticleAiOptimizationRun $run,
+    ): bool {
+        $runMeta = is_array($run->execution_meta) ? $run->execution_meta : [];
+        $checkSnapshot = data_get($check->execution_meta, 'ai_execution');
+        if (! is_array($checkSnapshot)) {
+            return false;
+        }
+
+        $runCandidateIds = array_values(array_unique(array_filter(array_map(
+            'intval',
+            is_array($runMeta['quality_model_candidate_ids'] ?? null)
+                ? $runMeta['quality_model_candidate_ids']
+                : [],
+        ), static fn (int $modelId): bool => $modelId > 0)));
+        $checkCandidateIds = array_values(array_unique(array_filter(array_map(
+            'intval',
+            is_array($checkSnapshot['model_candidate_ids'] ?? null)
+                ? $checkSnapshot['model_candidate_ids']
+                : [],
+        ), static fn (int $modelId): bool => $modelId > 0)));
+
+        return (int) ($checkSnapshot['model_access_admin_id'] ?? 0) > 0
+            && (int) ($checkSnapshot['model_access_admin_id'] ?? 0) === (int) ($runMeta['model_access_admin_id'] ?? 0)
+            && (string) ($checkSnapshot['model_access_admin_role'] ?? '') === (string) ($runMeta['model_access_admin_role'] ?? '')
+            && (int) ($checkSnapshot['ai_config_access_version'] ?? 0) === (int) ($runMeta['ai_config_access_version'] ?? 0)
+            && (int) ($checkSnapshot['resolver_policy_version'] ?? 0) === (int) ($runMeta['resolver_policy_version'] ?? 0)
+            && $runCandidateIds !== []
+            && $checkCandidateIds === $runCandidateIds;
     }
 
     private function isPermanentOptimizationFailure(Throwable $exception): bool
@@ -2579,7 +2649,8 @@ final class ArticleAiOptimizationCoordinator
         if ((string) $run->status === ArticleAiOptimizationRun::STATUS_AWAITING_QUALITY) {
             $source = $run->sourceCheck;
             if (! $source instanceof ArticleAiQualityCheck
-                || in_array((string) $source->status, ['failed', 'cancelled', 'stale'], true)) {
+                || in_array((string) $source->status, ['failed', 'cancelled', 'stale'], true)
+                || ! $this->qualityCheckMatchesRunExecution($source, $run)) {
                 $source = $this->inspectionService->requestManualInspection(
                     $article->fresh(),
                     trigger: 'optimization_manual',

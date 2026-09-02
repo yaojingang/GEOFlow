@@ -55,6 +55,7 @@ class TaskLifecycleService
         private AiQualityAuditService $aiQualityAuditService,
         private TaskRunData $taskRunData,
         private AdminAiModelAccessResolver $adminAiModelAccessResolver,
+        private ?TaskActivationGuard $taskActivationGuard = null,
     ) {}
 
     /**
@@ -152,6 +153,9 @@ class TaskLifecycleService
             ]);
             if ($executionIdentity !== null) {
                 $task->forceFill($executionIdentity)->save();
+            }
+            if ((string) $task->status === 'active') {
+                $this->activationGuard()->assertCanActivate($task, $accessAdmin);
             }
 
             $taskId = (int) $task->id;
@@ -400,6 +404,8 @@ class TaskLifecycleService
                     'distribution_strategy',
                     'need_review',
                     'model_access_admin_id',
+                    'model_access_admin_role',
+                    'model_access_policy_version',
                 ]);
             $this->assertCanManageHostedTask($current, $canManageHostedTask);
             $changedModels = [];
@@ -425,18 +431,7 @@ class TaskLifecycleService
                 || (! (bool) $current->ai_quality_enabled && $effectiveAiQualityEnabledForAccess)
                 || (! (bool) $current->ai_quality_auto_optimize_enabled && $effectiveAutoOptimizationEnabledForAccess);
             if ($mustRevalidateExecutionModels) {
-                $effectiveContentModelId = (int) ($normalized['ai_model_id'] ?? $current->ai_model_id ?? 0);
-                $effectiveQualityModelId = (int) ($normalized['ai_quality_model_id'] ?? $current->ai_quality_model_id ?? 0);
-                if ($effectiveQualityModelId <= 0) {
-                    $effectiveQualityModelId = $effectiveContentModelId;
-                }
-                $executionAdmin = $executionAdminId > 0
-                    ? $this->accessAdmin($executionAdminId)
-                    : $accessAdmin;
-                $this->assertSelectedModelsUsable($executionAdmin, [
-                    'ai_model_id' => $effectiveContentModelId,
-                    'ai_quality_model_id' => $effectiveQualityModelId,
-                ]);
+                $this->activationGuard()->assertCanActivate($current, $accessAdmin, $normalized);
             }
             if ($qualityConfigurationRequested
                 && $expectedQualityVersion !== null
@@ -885,19 +880,24 @@ class TaskLifecycleService
      * @param  bool  $enqueueNow  是否立即投递一条执行任务（手动启动场景）
      * @return array<string,mixed>
      */
-    public function startTask(int $taskId, bool $enqueueNow = false, bool $canManageHostedTask = false): array
-    {
+    public function startTask(
+        int $taskId,
+        bool $enqueueNow = false,
+        bool $canManageHostedTask = false,
+        Admin|int|null $operator = null,
+    ): array {
         $this->ensureTaskExists($taskId);
-        $jobId = DB::transaction(function () use ($taskId, $enqueueNow, $canManageHostedTask): ?int {
+        $jobId = DB::transaction(function () use ($taskId, $enqueueNow, $canManageHostedTask, $operator): ?int {
             $task = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
-                ->firstOrFail(['id', 'title_library_id', 'article_limit', 'created_count', 'is_loop']);
+                ->firstOrFail();
             $this->assertCanManageHostedTask($task, $canManageHostedTask);
             $this->taskTitleReadinessService->assertCanActivate(
                 $this->taskTitleReadinessService->inspectTask($task),
                 409,
             );
+            $this->activationGuard()->assertCanActivate($task, $operator);
 
             // 手动“立即执行”场景下，不把 next_run_at 强行置为 now，
             // 避免与手动入队叠加导致一次点击触发两次执行。
@@ -1401,6 +1401,11 @@ class TaskLifecycleService
         }
 
         return $accessAdmin;
+    }
+
+    private function activationGuard(): TaskActivationGuard
+    {
+        return $this->taskActivationGuard ??= app(TaskActivationGuard::class);
     }
 
     /** @param array<string, mixed> $normalized */

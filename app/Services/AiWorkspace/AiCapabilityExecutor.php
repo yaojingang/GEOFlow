@@ -477,7 +477,12 @@ final readonly class AiCapabilityExecutor implements AiWorkspaceCapabilityDriver
     {
         $result = $parameters['action'] === 'stop'
             ? $this->taskLifecycle->stopTask((int) $parameters['task_id'], $admin->isSuperAdmin())
-            : $this->taskLifecycle->startTask((int) $parameters['task_id'], false, $admin->isSuperAdmin());
+            : $this->taskLifecycle->startTask(
+                (int) $parameters['task_id'],
+                false,
+                $admin->isSuperAdmin(),
+                $admin,
+            );
 
         return new AiCapabilityResult(
             summary: $parameters['action'] === 'stop' ? '任务已暂停。' : '任务已启用。',

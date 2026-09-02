@@ -12,6 +12,7 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\TaskLifecycleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -216,6 +217,92 @@ class AdminAiModelEntryAccessTest extends TestCase
         }
 
         $this->assertFalse((bool) Task::query()->findOrFail($taskId)->ai_quality_enabled);
+    }
+
+    public function test_api_start_rejects_a_task_after_its_shared_model_access_is_revoked(): void
+    {
+        $provider = $this->admin('api-start-provider', 'super_admin');
+        $actor = $this->admin('api-start-actor', 'admin', $provider);
+        $shared = $this->model($provider, 'API Start Shared Chat', 'chat');
+        $created = $this->actingWithToken($actor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $shared->id))
+            ->assertCreated();
+        $task = Task::query()->findOrFail((int) $created->json('data.id'));
+        $this->addReadyTitle($task);
+        $actor->forceFill([
+            'shared_ai_config_owner_id' => null,
+            'ai_config_access_version' => (int) $actor->ai_config_access_version + 1,
+        ])->save();
+
+        $this->actingWithToken($actor, ['tasks:write'])
+            ->postJson('/api/v1/tasks/'.$task->id.'/start')
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'ai_model_not_accessible');
+
+        $this->assertSame('paused', $task->fresh()->status);
+        $this->assertSame(0, (int) $task->fresh()->schedule_enabled);
+    }
+
+    public function test_api_start_requires_the_operator_and_persisted_executor_to_both_access_the_models(): void
+    {
+        $executor = $this->admin('api-start-executor', 'admin');
+        $operator = $this->admin('api-start-operator', 'super_admin');
+        $privateModel = $this->model($executor, 'Executor-only Start Model', 'chat');
+        $created = $this->actingWithToken($executor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $privateModel->id))
+            ->assertCreated();
+        $task = Task::query()->findOrFail((int) $created->json('data.id'));
+        $this->addReadyTitle($task);
+
+        $this->actingWithToken($operator, ['tasks:write'])
+            ->postJson('/api/v1/tasks/'.$task->id.'/start')
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'ai_model_not_accessible');
+
+        $this->assertSame('paused', $task->fresh()->status);
+    }
+
+    public function test_admin_batch_start_rejects_a_disabled_persisted_model(): void
+    {
+        $actor = $this->admin('batch-start-actor', 'admin');
+        $model = $this->model($actor, 'Batch Start Model', 'chat');
+        $created = $this->actingWithToken($actor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $model->id))
+            ->assertCreated();
+        $task = Task::query()->findOrFail((int) $created->json('data.id'));
+        $this->addReadyTitle($task);
+        $model->forceFill(['status' => 'inactive'])->save();
+
+        $this->actingAs($actor, 'admin')
+            ->postJson(route('admin.tasks.batch'), [
+                'task_id' => $task->id,
+                'action' => 'start',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('paused', $task->fresh()->status);
+    }
+
+    public function test_admin_toggle_start_rejects_a_persisted_execution_role_change(): void
+    {
+        $actor = $this->admin('toggle-start-actor', 'admin');
+        $model = $this->model($actor, 'Toggle Start Model', 'chat');
+        $created = $this->actingWithToken($actor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $model->id))
+            ->assertCreated();
+        $task = Task::query()->findOrFail((int) $created->json('data.id'));
+        $this->addReadyTitle($task);
+        $actor->forceFill(['role' => 'super_admin'])->save();
+
+        $this->actingAs($actor->fresh(), 'admin')
+            ->post(route('admin.tasks.toggle-status', ['taskId' => $task->id]), [
+                'status' => 'paused',
+            ])
+            ->assertSessionHasErrors();
+
+        $this->assertSame('paused', $task->fresh()->status);
+        $this->assertSame(0, (int) $task->fresh()->schedule_enabled);
     }
 
     public function test_task_update_validates_a_new_model_against_the_persisted_execution_admin(): void
@@ -604,6 +691,16 @@ class AdminAiModelEntryAccessTest extends TestCase
         );
 
         return [$prompt, $titleLibrary];
+    }
+
+    private function addReadyTitle(Task $task): void
+    {
+        Title::query()->create([
+            'library_id' => (int) $task->title_library_id,
+            'title' => 'Ready title for task '.$task->id,
+            'keyword' => 'ready',
+            'used_count' => 0,
+        ]);
     }
 
     /** @param list<string> $scopes */

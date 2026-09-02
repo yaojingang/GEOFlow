@@ -118,6 +118,7 @@ class TaskController extends BaseApiController
     {
         $this->assertTaskExecutionScope($request, $task, $tokens);
         $enqueueNow = ! empty($request->input('enqueue_now'));
+        $auth = $this->auth($request);
 
         return IdempotencyService::executeJson(
             $request,
@@ -126,6 +127,7 @@ class TaskController extends BaseApiController
                 $task,
                 $enqueueNow,
                 $this->canManageHostedTask($request),
+                $auth->auditAdminId,
             )),
         );
     }

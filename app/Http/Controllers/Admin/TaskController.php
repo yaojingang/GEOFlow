@@ -247,7 +247,12 @@ class TaskController extends Controller
                 return back()->with('message', __('admin.tasks.message.paused_stopped'));
             }
 
-            $this->taskLifecycleService->startTask($taskId, false, $this->canManageHostedTask());
+            $this->taskLifecycleService->startTask(
+                $taskId,
+                false,
+                $this->canManageHostedTask(),
+                $this->authenticatedAdmin(),
+            );
 
             return back()->with('message', __('admin.tasks.message.activated'));
         } catch (TaskTitleReadinessException $e) {
@@ -550,7 +555,12 @@ class TaskController extends Controller
         try {
             $taskId = (int) $payload['task_id'];
             $result = $payload['action'] === 'start'
-                ? $this->taskLifecycleService->startTask($taskId, true, $this->canManageHostedTask())
+                ? $this->taskLifecycleService->startTask(
+                    $taskId,
+                    true,
+                    $this->canManageHostedTask(),
+                    $this->authenticatedAdmin(),
+                )
                 : $this->taskLifecycleService->stopTask($taskId, $this->canManageHostedTask());
 
             return response()->json([

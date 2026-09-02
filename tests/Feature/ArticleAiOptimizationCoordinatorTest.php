@@ -118,6 +118,124 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         );
     }
 
+    public function test_optimization_refuses_a_source_check_whose_execution_snapshot_no_longer_matches_the_run(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $model] = $this->qualityArticle();
+        $refiner = new class implements ArticleAiOptimizationRefiner
+        {
+            public int $calls = 0;
+
+            public function refine(
+                AiModel $model,
+                string $instructions,
+                int $timeoutSeconds,
+                int $quotaReserve = 0,
+            ): array {
+                $this->calls++;
+
+                throw new \RuntimeException('Mismatched quality input must not reach optimization.');
+            }
+        };
+        $this->app->instance(ArticleAiOptimizationRefiner::class, $refiner);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article,
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+        $source = $run->sourceCheck;
+        $executionMeta = (array) $source->execution_meta;
+        $executionMeta['ai_execution'] = array_replace((array) $executionMeta['ai_execution'], [
+            'ai_config_access_version' => (int) data_get($executionMeta, 'ai_execution.ai_config_access_version') + 1,
+        ]);
+        $source->forceFill(['execution_meta' => $executionMeta])->save();
+
+        $coordinator->process((int) $run->id);
+
+        $this->assertSame(0, $refiner->calls);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_STALE, $run->fresh()->status);
+        $this->assertSame('optimization_execution_snapshot_changed', $run->fresh()->stop_reason);
+    }
+
+    public function test_optimization_refuses_a_completed_candidate_whose_execution_snapshot_no_longer_matches_the_run(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $model] = $this->qualityArticle();
+        $oldText = '保证100%有效';
+        $this->app->instance(ArticleAiOptimizationRefiner::class, new class($oldText) implements ArticleAiOptimizationRefiner
+        {
+            public function __construct(private readonly string $oldText) {}
+
+            public function refine(
+                AiModel $model,
+                string $instructions,
+                int $timeoutSeconds,
+                int $quotaReserve = 0,
+            ): array {
+                preg_match('/"base_article_hash":"([a-f0-9]{64})"/', $instructions, $matches);
+
+                return [
+                    'result' => [
+                        'base_article_hash' => (string) ($matches[1] ?? ''),
+                        'strategy' => 'excellent_80',
+                        'operations' => [[
+                            'field' => 'content',
+                            'anchor_start' => 5,
+                            'anchor_end' => 13,
+                            'replace_start' => 5,
+                            'replace_end' => 13,
+                            'old_text_hash' => hash('sha256', $this->oldText),
+                            'replacement' => '有助于改善体验',
+                            'issue_codes' => ['ad_absolute_claim'],
+                            'root_cause_keys' => ['ad_absolute_claim:content:5'],
+                            'evidence_keys' => [],
+                            'reason' => '收敛绝对化承诺',
+                        ]],
+                    ],
+                    'usage' => [],
+                    'model' => ['id' => (int) $model->id],
+                    'mode' => 'structured',
+                ];
+            }
+        });
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article,
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+        $coordinator->process((int) $run->id);
+        $candidate = ArticleAiQualityCheck::query()
+            ->findOrFail((int) ArticleAiOptimizationStep::query()->where('run_id', $run->id)->value('output_check_id'));
+        $executionMeta = (array) $candidate->execution_meta;
+        $executionMeta['ai_execution'] = array_replace((array) $executionMeta['ai_execution'], [
+            'model_access_admin_role' => 'super_admin',
+        ]);
+        $candidate->forceFill([
+            'execution_meta' => $executionMeta,
+            'status' => 'completed',
+            'active_dedupe_key' => null,
+            'decision' => 'passed',
+            'score' => 88,
+            'issues' => [],
+            'gate_reasons' => [],
+            'finished_at' => now(),
+        ])->save();
+
+        $coordinator->candidateCompleted((int) $candidate->id);
+
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_STALE, $run->fresh()->status);
+        $this->assertSame('optimization_execution_snapshot_changed', $run->fresh()->stop_reason);
+        $this->assertNull($run->fresh()->candidate_hash);
+    }
+
     public function test_model_resolution_failure_after_claim_releases_the_lease_for_queue_retry(): void
     {
         config()->set('geoflow.ai_quality_optimization_enabled', true);
