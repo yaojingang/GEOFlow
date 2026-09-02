@@ -80,6 +80,7 @@ return [
     'site_url' => rtrim((string) env('SITE_URL', 'http://localhost'), '/'),
     'knowledge_fact_generation_max_per_run' => 200,
     'knowledge_fact_generation_batch_size' => 25,
+    'knowledge_fact_generation_rate_per_minute' => max(1, min(600, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_RATE_PER_MINUTE', 10))),
     'knowledge_fact_generation_max_batch_attempts' => max(1, min(10, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_MAX_BATCH_ATTEMPTS', 3))),
     'knowledge_fact_generation_batch_lease_seconds' => max(180, min(600, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_BATCH_LEASE_SECONDS', 210))),
     'knowledge_fact_generation_max_recovery_attempts' => max(1, min(10, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_MAX_RECOVERY_ATTEMPTS', 3))),

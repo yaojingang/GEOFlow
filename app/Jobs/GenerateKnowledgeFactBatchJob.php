@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Data\Ai\KnowledgeFactGenerationExecutionContext;
 use App\Exceptions\AiModelAccessException;
+use App\Exceptions\KnowledgeFactModelRateLimitExceeded;
 use App\Exceptions\PermanentAiProviderException;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
 use Illuminate\Bus\Batchable;
@@ -73,6 +74,12 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
             $coordinator->processClaimedBatch($context, $this->evidence);
+        } catch (KnowledgeFactModelRateLimitExceeded $exception) {
+            if ($context instanceof KnowledgeFactGenerationExecutionContext) {
+                $coordinator->releaseBatchForRetry($context);
+            }
+
+            $this->release($exception->retryAfterSeconds());
         } catch (AiModelAccessException|PermanentAiProviderException $exception) {
             $coordinator->recordBatchFailure(
                 $this->runId,

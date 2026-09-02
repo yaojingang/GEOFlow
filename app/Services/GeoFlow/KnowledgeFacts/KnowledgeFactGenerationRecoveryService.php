@@ -34,7 +34,15 @@ final readonly class KnowledgeFactGenerationRecoveryService
             (int) config('geoflow.knowledge_fact_generation_batch_lease_seconds', 210),
         ));
         $runIds = KnowledgeFactGenerationRun::query()
-            ->whereIn('status', KnowledgeFactGenerationRun::ACTIVE_STATUSES)
+            ->where(function ($state): void {
+                $state->whereIn('status', KnowledgeFactGenerationRun::ACTIVE_STATUSES)
+                    ->orWhere(function ($retryable): void {
+                        $retryable->whereIn('status', [
+                            KnowledgeFactGenerationRun::STATUS_FAILED,
+                            'partial',
+                        ])->where('retryable_failure', true);
+                    });
+            })
             ->where('updated_at', '<=', $candidateBefore)
             ->orderBy('id')
             ->limit(max(1, min(500, $limit)))
@@ -78,9 +86,22 @@ final readonly class KnowledgeFactGenerationRecoveryService
                     'active_key' => null,
                     'finalizer_lease_token' => null,
                     'finalizer_lease_expires_at' => null,
+                    'retryable_failure' => false,
                     'cancelled_at' => now(),
                 ])->save();
                 $library->forceFill(['workflow_status' => 'idle'])->save();
+
+                return null;
+            }
+            if ((string) $run->status === 'partial') {
+                $run->forceFill([
+                    'active_key' => null,
+                    'job_batch_id' => null,
+                    'finalizer_lease_token' => null,
+                    'finalizer_lease_expires_at' => null,
+                    'retryable_failure' => false,
+                ])->save();
+                $library->forceFill(['workflow_status' => 'review_required'])->save();
 
                 return null;
             }
@@ -121,6 +142,7 @@ final readonly class KnowledgeFactGenerationRecoveryService
                     'active_key' => null,
                     'finalizer_lease_token' => null,
                     'finalizer_lease_expires_at' => null,
+                    'retryable_failure' => false,
                     'completed_at' => now(),
                 ])->save();
                 $library->forceFill(['workflow_status' => 'review_required'])->save();
@@ -128,10 +150,24 @@ final readonly class KnowledgeFactGenerationRecoveryService
                 return null;
             }
 
+            $activeKey = 'knowledge-fact-library:'.$library->id;
+            if (KnowledgeFactGenerationRun::query()
+                ->where('active_key', $activeKey)
+                ->whereKeyNot($run->id)
+                ->exists()) {
+                $this->failPermanently(
+                    $run,
+                    $library,
+                    'knowledge_fact_generation_recovery_superseded',
+                );
+
+                return null;
+            }
+
             $nextAttempt = (int) $run->execution_attempt + 1;
             $finalizerToken = (string) Str::uuid7();
             $oldClaims = (array) $run->batch_claims_json;
-            if ($oldClaims !== [] && $this->claimsAreTerminal($oldClaims)) {
+            if ($oldClaims !== [] && $this->claimsAreCompleted($oldClaims)) {
                 $claims = collect($oldClaims)
                     ->map(function (mixed $claim) use ($nextAttempt): array {
                         $normalized = (array) $claim;
@@ -170,7 +206,7 @@ final readonly class KnowledgeFactGenerationRecoveryService
                     JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE,
                 ));
                 $oldClaim = (array) ($oldClaims[(string) $sequence] ?? []);
-                if (in_array((string) ($oldClaim['status'] ?? ''), ['completed', 'failed'], true)
+                if ((string) ($oldClaim['status'] ?? '') === 'completed'
                     && hash_equals((string) ($oldClaim['input_hash'] ?? ''), $inputHash)) {
                     $oldClaim['execution_attempt'] = $nextAttempt;
                     $oldClaim['dispatch_token'] = null;
@@ -230,6 +266,13 @@ final readonly class KnowledgeFactGenerationRecoveryService
 
     private function isRecoverable(KnowledgeFactGenerationRun $run): bool
     {
+        if (in_array((string) $run->status, [
+            KnowledgeFactGenerationRun::STATUS_FAILED,
+            'partial',
+        ], true)) {
+            return (bool) $run->retryable_failure
+                && $run->updated_at?->lte(now()->subSeconds($this->recoveryStaleSeconds())) === true;
+        }
         if (! $run->isActive()) {
             return false;
         }
@@ -336,14 +379,10 @@ final readonly class KnowledgeFactGenerationRecoveryService
     }
 
     /** @param array<string, mixed> $claims */
-    private function claimsAreTerminal(array $claims): bool
+    private function claimsAreCompleted(array $claims): bool
     {
         return collect($claims)->every(
-            static fn (mixed $claim): bool => in_array(
-                (string) data_get($claim, 'status'),
-                ['completed', 'failed'],
-                true,
-            ),
+            static fn (mixed $claim): bool => (string) data_get($claim, 'status') === 'completed',
         );
     }
 
@@ -357,6 +396,7 @@ final readonly class KnowledgeFactGenerationRecoveryService
     ): void {
         $run->forceFill([
             'status' => KnowledgeFactGenerationRun::STATUS_RUNNING,
+            'active_key' => 'knowledge-fact-library:'.$library->id,
             'execution_attempt' => $executionAttempt,
             'job_batch_id' => null,
             'batch_claims_json' => $claims,

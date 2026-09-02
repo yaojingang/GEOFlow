@@ -21,6 +21,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Ai\Exceptions\InsufficientCreditsException;
 use Tests\TestCase;
@@ -327,6 +328,122 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
             static fn ($prompt): bool => $prompt->model === (string) $requested->model_id,
         );
         KnowledgeFactGeneratorAgent::assertPrompted(
+            static fn ($prompt): bool => $prompt->model === (string) $shared->model_id,
+        );
+    }
+
+    public function test_runtime_model_rate_limit_is_shared_across_runs_and_releases_before_fallback(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        config()->set('geoflow.knowledge_fact_generation_rate_per_minute', 1);
+        Bus::fake();
+        $admin = $this->admin('knowledge-runtime-rate-shared');
+        $requested = $this->model($admin, 'knowledge-runtime-rate-model', ['failover_priority' => 1]);
+        $fallback = $this->model($admin, 'knowledge-runtime-rate-fallback', ['failover_priority' => 2]);
+        [$firstBase, $firstChunk] = $this->knowledgeFixtures('Knowledge runtime rate first');
+        [$secondBase, $secondChunk] = $this->knowledgeFixtures('Knowledge runtime rate second');
+        $firstRun = app(KnowledgeFactGenerationCoordinator::class)->start(
+            KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $firstBase->id]),
+            $requested,
+            $admin,
+            'initial',
+            1,
+        );
+        $secondRun = app(KnowledgeFactGenerationCoordinator::class)->start(
+            KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $secondBase->id]),
+            $requested,
+            $admin,
+            'initial',
+            1,
+        );
+        $calls = 0;
+        KnowledgeFactGeneratorAgent::fake(function () use (&$calls, $firstChunk): array {
+            $calls++;
+
+            return ['facts' => [$this->validFact($firstChunk)]];
+        })->preventStrayPrompts();
+        $firstClaim = data_get($firstRun->fresh()->batch_claims_json, '1');
+        app(KnowledgeFactGenerationCoordinator::class)->processBatch(
+            (int) $firstRun->id,
+            1,
+            (string) data_get($firstClaim, 'input_hash'),
+            $this->evidenceDescriptors($firstChunk),
+            (int) $firstRun->execution_attempt,
+            (string) data_get($firstClaim, 'dispatch_token'),
+        );
+
+        $secondClaim = data_get($secondRun->fresh()->batch_claims_json, '1');
+        $secondJob = (new GenerateKnowledgeFactBatchJob(
+            (int) $secondRun->id,
+            1,
+            (string) data_get($secondClaim, 'input_hash'),
+            $this->evidenceDescriptors($secondChunk),
+            (int) $secondRun->execution_attempt,
+            (string) data_get($secondClaim, 'dispatch_token'),
+        ))->withFakeQueueInteractions();
+        $secondJob->handle(app(KnowledgeFactGenerationCoordinator::class));
+
+        $secondJob->assertReleased();
+        $this->assertSame(1, $calls);
+        $this->assertSame(
+            1,
+            RateLimiter::attempts('knowledge-fact-generation:model:'.$requested->id),
+        );
+        $secondRun->refresh();
+        $this->assertSame('queued', data_get($secondRun->batch_claims_json, '1.status'));
+        $this->assertNull(data_get($secondRun->batch_claims_json, '1.resolved_ai_model_id'));
+        $this->assertNull(data_get($secondRun->batch_claims_json, '1.resolved_model_source'));
+        KnowledgeFactGeneratorAgent::assertNotPrompted(
+            static fn ($prompt): bool => $prompt->model === (string) $fallback->model_id,
+        );
+    }
+
+    public function test_shared_fallback_model_rate_limit_releases_without_invoking_later_candidates(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        config()->set('geoflow.knowledge_fact_generation_rate_per_minute', 1);
+        Bus::fake();
+        $owner = $this->admin('knowledge-runtime-shared-owner', ['role' => 'super_admin']);
+        $admin = $this->admin('knowledge-runtime-shared-consumer');
+        $admin->forceFill(['shared_ai_config_owner_id' => $owner->id])->save();
+        $requested = $this->model($admin, 'knowledge-runtime-personal', ['failover_priority' => 1]);
+        $shared = $this->model($owner, 'knowledge-runtime-shared', ['failover_priority' => 1]);
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge runtime shared fallback');
+        $run = app(KnowledgeFactGenerationCoordinator::class)->start(
+            KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]),
+            $requested,
+            $admin,
+            'initial',
+            1,
+        );
+        RateLimiter::hit('knowledge-fact-generation:model:'.$shared->id, 60);
+        $calls = 0;
+        KnowledgeFactGeneratorAgent::fake(function () use (&$calls): never {
+            $calls++;
+
+            throw $this->requestException(429, 'temporary primary failure');
+        })->preventStrayPrompts();
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        $job = (new GenerateKnowledgeFactBatchJob(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            $this->evidenceDescriptors($chunk),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+        ))->withFakeQueueInteractions();
+
+        $job->handle(app(KnowledgeFactGenerationCoordinator::class));
+
+        $job->assertReleased();
+        $this->assertSame(1, $calls);
+        $run->refresh();
+        $this->assertSame('queued', data_get($run->batch_claims_json, '1.status'));
+        $this->assertNull(data_get($run->batch_claims_json, '1.resolved_ai_model_id'));
+        KnowledgeFactGeneratorAgent::assertPrompted(
+            static fn ($prompt): bool => $prompt->model === (string) $requested->model_id,
+        );
+        KnowledgeFactGeneratorAgent::assertNotPrompted(
             static fn ($prompt): bool => $prompt->model === (string) $shared->model_id,
         );
     }
@@ -829,6 +946,7 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
 
         $run->refresh();
         $this->assertSame(KnowledgeFactGenerationRun::STATUS_COMPLETED, $run->status);
+        $this->assertFalse($run->retryable_failure);
         $this->assertNull($run->finalizer_lease_token);
         $this->assertDatabaseHas('knowledge_facts', [
             'library_id' => $library->id,
@@ -838,6 +956,45 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         $this->assertDatabaseHas('knowledge_fact_evidences', [
             'knowledge_chunk_id' => $chunk->id,
             'source_hash' => $chunk->source_hash,
+        ]);
+    }
+
+    public function test_partial_finalization_releases_retry_dependencies_after_materializing_results(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        Bus::fake();
+        $admin = $this->admin('knowledge-finalize-partial');
+        $model = $this->model($admin, 'knowledge-finalize-partial-model');
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge finalize partial');
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $coordinator = app(KnowledgeFactGenerationCoordinator::class);
+        $run = $coordinator->start($library, $model, $admin, 'initial', 2);
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        KnowledgeFactGeneratorAgent::fake([
+            ['facts' => [$this->validFact($chunk)]],
+        ])->preventStrayPrompts();
+        (new GenerateKnowledgeFactBatchJob(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            $this->evidenceDescriptors($chunk),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+        ))->handle($coordinator);
+
+        (new FinalizeKnowledgeFactGenerationJob(
+            (int) $run->id,
+            (int) $run->execution_attempt,
+            (string) $run->fresh()->finalizer_lease_token,
+        ))->handle($coordinator);
+
+        $run->refresh();
+        $this->assertSame('partial', $run->status);
+        $this->assertFalse($run->retryable_failure);
+        $this->assertNull($run->active_key);
+        $this->assertDatabaseHas('knowledge_facts', [
+            'library_id' => $library->id,
+            'origin_generation_run_id' => $run->id,
         ]);
     }
 

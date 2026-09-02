@@ -110,6 +110,54 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
         }
     }
 
+    public function test_terminal_nonretryable_knowledge_fact_history_allows_admin_hard_deletion(): void
+    {
+        $superAdmin = $this->admin('knowledge-fact-delete-super', ['role' => 'super_admin']);
+        $executionAdmin = $this->admin('knowledge-fact-delete-executor');
+        $model = $this->model($superAdmin, 'knowledge-fact-delete-model');
+        $run = $this->generationRun(
+            $this->library(),
+            $executionAdmin,
+            KnowledgeFactGenerationRun::STATUS_COMPLETED,
+            [
+                'model_access_admin_id' => $executionAdmin->id,
+                'model_access_admin_role' => 'admin',
+                'ai_config_access_version' => 1,
+                'requested_ai_model_id' => $model->id,
+                'resolver_policy_version' => 1,
+                'retryable_failure' => false,
+            ],
+        );
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.delete', ['adminId' => $executionAdmin->id]))
+            ->assertRedirect(route('admin.admin-users.index'))
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertModelMissing($executionAdmin);
+        $this->assertNull($run->refresh()->model_access_admin_id);
+        $this->assertNull($run->created_by_admin_id);
+    }
+
+    public function test_knowledge_fact_execution_admin_foreign_key_migration_is_reversible(): void
+    {
+        $migration = require database_path(
+            'migrations/2026_09_03_000000_set_null_on_knowledge_fact_execution_admin_delete.php',
+        );
+
+        $this->assertSame('set null', $this->knowledgeFactExecutionAdminForeignKeyDeleteRule());
+
+        try {
+            $migration->down();
+
+            $this->assertSame('restrict', $this->knowledgeFactExecutionAdminForeignKeyDeleteRule());
+        } finally {
+            $migration->up();
+        }
+
+        $this->assertSame('set null', $this->knowledgeFactExecutionAdminForeignKeyDeleteRule());
+    }
+
     public function test_active_knowledge_fact_model_snapshots_block_model_update_and_delete(): void
     {
         $admin = $this->admin('knowledge-fact-model-owner');
@@ -290,7 +338,7 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
         $this->assertSame(1, $historicalBatch['historical_structured_reference_count']);
     }
 
-    public function test_batch_rate_limit_uses_only_the_registered_actual_model_or_stable_identity(): void
+    public function test_batch_middleware_rate_limit_is_a_stable_admin_guard_and_rejects_forged_claims(): void
     {
         $admin = $this->admin('knowledge-fact-rate-admin');
         $model = $this->model($admin, 'knowledge-fact-rate-model');
@@ -322,7 +370,7 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
         );
 
         $this->assertSame(
-            'knowledge-fact-generation:model:'.$model->id,
+            'knowledge-fact-generation:admin:'.$admin->id,
             $limiter($registeredJob)->key,
         );
 
@@ -330,7 +378,7 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
         unset($claims['1']['resolved_ai_model_id']);
         $run->forceFill(['batch_claims_json' => $claims])->save();
         $this->assertSame(
-            'knowledge-fact-generation:admin:'.$admin->id.':run:'.$run->id,
+            'knowledge-fact-generation:admin:'.$admin->id,
             $limiter($registeredJob)->key,
         );
 
@@ -416,6 +464,164 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
             ->expectsOutput('Recovered knowledge fact generation runs: 0; dispatch failures: 0')
             ->assertSuccessful();
         Bus::assertBatchCount(1);
+    }
+
+    public function test_recovery_requeues_a_retryable_failed_batch_and_clears_stale_model_attribution(): void
+    {
+        Bus::fake();
+        config()->set('geoflow.knowledge_fact_generation_recovery_stale_seconds', 1);
+        $admin = $this->admin('knowledge-fact-failed-batch-admin');
+        $model = $this->model($admin, 'knowledge-fact-failed-batch-model');
+        $library = $this->library();
+        $chunk = $library->knowledgeBase->chunks()->firstOrFail();
+        $evidence = $this->evidenceDescriptors($chunk);
+        $inputHash = hash('sha256', json_encode($evidence, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+        $run = $this->generationRun(
+            $library,
+            $admin,
+            KnowledgeFactGenerationRun::STATUS_FAILED,
+            [
+                'source_hash' => $library->knowledgeBase->servingChunkSourceHash(),
+                'base_working_version' => (int) $library->working_version,
+                'ai_model_id' => $model->id,
+                'model_access_admin_id' => $admin->id,
+                'model_access_admin_role' => 'admin',
+                'ai_config_access_version' => 1,
+                'requested_ai_model_id' => $model->id,
+                'resolver_policy_version' => 1,
+                'execution_attempt' => 1,
+                'retryable_failure' => true,
+                'batch_claims_json' => ['1' => [
+                    'input_hash' => $inputHash,
+                    'status' => 'failed',
+                    'dispatch_token' => null,
+                    'execution_attempt' => 1,
+                    'attempt_count' => 1,
+                    'resolved_ai_model_id' => $model->id,
+                    'resolved_model_source' => 'personal',
+                    'model_resolved_at' => now()->toIso8601String(),
+                ]],
+                'result_json' => [
+                    'candidates' => [],
+                    'conflicts' => [],
+                    'batches' => ['1' => [
+                        'input_hash' => $inputHash,
+                        'status' => 'failed',
+                    ]],
+                ],
+            ],
+        );
+        DB::table('knowledge_fact_generation_runs')
+            ->where('id', $run->id)
+            ->update(['updated_at' => now()->subMinutes(10)]);
+
+        $this->artisan('geoflow:recover-knowledge-fact-generations')
+            ->expectsOutput('Recovered knowledge fact generation runs: 1; dispatch failures: 0')
+            ->assertSuccessful();
+
+        $run->refresh();
+        $claim = (array) data_get($run->batch_claims_json, '1');
+        $this->assertSame(KnowledgeFactGenerationRun::STATUS_RUNNING, $run->status);
+        $this->assertSame(2, $run->execution_attempt);
+        $this->assertSame('knowledge-fact-library:'.$library->id, $run->active_key);
+        $this->assertSame('queued', $claim['status']);
+        $this->assertSame(1, $claim['attempt_count']);
+        $this->assertArrayNotHasKey('resolved_ai_model_id', $claim);
+        $this->assertArrayNotHasKey('resolved_model_source', $claim);
+        $this->assertArrayNotHasKey('model_resolved_at', $claim);
+        $this->assertNotNull($run->job_batch_id);
+        Bus::assertBatchCount(1);
+    }
+
+    public function test_recovery_redispatches_a_lost_finalizer_for_a_retryable_failed_run(): void
+    {
+        Bus::fake();
+        config()->set('geoflow.knowledge_fact_generation_recovery_stale_seconds', 1);
+        $admin = $this->admin('knowledge-fact-failed-finalizer-admin');
+        $model = $this->model($admin, 'knowledge-fact-failed-finalizer-model');
+        $library = $this->library();
+        $run = $this->generationRun(
+            $library,
+            $admin,
+            KnowledgeFactGenerationRun::STATUS_FAILED,
+            [
+                'source_hash' => $library->knowledgeBase->servingChunkSourceHash(),
+                'base_working_version' => (int) $library->working_version,
+                'ai_model_id' => $model->id,
+                'model_access_admin_id' => $admin->id,
+                'model_access_admin_role' => 'admin',
+                'ai_config_access_version' => 1,
+                'requested_ai_model_id' => $model->id,
+                'resolver_policy_version' => 1,
+                'execution_attempt' => 1,
+                'retryable_failure' => true,
+                'batch_claims_json' => ['1' => [
+                    'input_hash' => 'completed-input',
+                    'status' => 'completed',
+                    'dispatch_token' => null,
+                    'execution_attempt' => 1,
+                    'attempt_count' => 1,
+                    'resolved_ai_model_id' => $model->id,
+                ]],
+                'error_code' => 'knowledge_fact_generation_finalize_failed',
+            ],
+        );
+        DB::table('knowledge_fact_generation_runs')
+            ->where('id', $run->id)
+            ->update(['updated_at' => now()->subMinutes(10)]);
+
+        $this->artisan('geoflow:recover-knowledge-fact-generations')
+            ->expectsOutput('Recovered knowledge fact generation runs: 1; dispatch failures: 0')
+            ->assertSuccessful();
+
+        $run->refresh();
+        $this->assertSame(KnowledgeFactGenerationRun::STATUS_RUNNING, $run->status);
+        $this->assertSame(2, $run->execution_attempt);
+        $this->assertSame('knowledge-fact-library:'.$library->id, $run->active_key);
+        Bus::assertBatchCount(0);
+        Bus::assertDispatched(FinalizeKnowledgeFactGenerationJob::class, function (FinalizeKnowledgeFactGenerationJob $job) use ($run): bool {
+            return $job->runId === (int) $run->id
+                && $job->executionAttempt === 2
+                && $job->leaseToken === $run->finalizer_lease_token;
+        });
+    }
+
+    public function test_recovery_closes_retryable_partial_history_without_dispatching_duplicate_work(): void
+    {
+        Bus::fake();
+        config()->set('geoflow.knowledge_fact_generation_recovery_stale_seconds', 1);
+        $admin = $this->admin('knowledge-fact-partial-history-admin');
+        $model = $this->model($admin, 'knowledge-fact-partial-history-model');
+        $library = $this->library();
+        $run = $this->generationRun(
+            $library,
+            $admin,
+            'partial',
+            [
+                'source_hash' => $library->knowledgeBase->servingChunkSourceHash(),
+                'base_working_version' => (int) $library->working_version,
+                'ai_model_id' => $model->id,
+                'model_access_admin_id' => $admin->id,
+                'model_access_admin_role' => 'admin',
+                'ai_config_access_version' => 1,
+                'requested_ai_model_id' => $model->id,
+                'resolver_policy_version' => 1,
+                'retryable_failure' => true,
+            ],
+        );
+        DB::table('knowledge_fact_generation_runs')
+            ->where('id', $run->id)
+            ->update(['updated_at' => now()->subMinutes(10)]);
+
+        $this->artisan('geoflow:recover-knowledge-fact-generations')
+            ->expectsOutput('Recovered knowledge fact generation runs: 0; dispatch failures: 0')
+            ->assertSuccessful();
+
+        $run->refresh();
+        $this->assertSame('partial', $run->status);
+        $this->assertFalse($run->retryable_failure);
+        $this->assertNull($run->active_key);
+        Bus::assertNothingDispatched();
     }
 
     public function test_recovery_reclaims_stale_running_claims_with_missing_or_invalid_lease_metadata(): void
@@ -920,6 +1126,15 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
         return KnowledgeFactLibrary::query()->create([
             'knowledge_base_id' => $knowledgeBase->id,
         ]);
+    }
+
+    private function knowledgeFactExecutionAdminForeignKeyDeleteRule(): string
+    {
+        $foreignKey = collect(Schema::getForeignKeys('knowledge_fact_generation_runs'))
+            ->firstOrFail(static fn (array $key): bool => $key['columns'] === ['model_access_admin_id']
+                && $key['foreign_table'] === 'admins');
+
+        return strtolower((string) $foreignKey['on_delete']);
     }
 
     /** @return list<array<string, string>> */

@@ -208,10 +208,7 @@ class AppServiceProvider extends ServiceProvider
 
             $key = 'knowledge-fact-generation:invalid';
             if ($validClaim) {
-                $resolvedModelId = (int) data_get($claim, 'resolved_ai_model_id');
-                $key = $resolvedModelId > 0
-                    ? 'knowledge-fact-generation:model:'.$resolvedModelId
-                    : 'knowledge-fact-generation:admin:'.(int) $run->model_access_admin_id.':run:'.$run->id;
+                $key = 'knowledge-fact-generation:admin:'.(int) $run->model_access_admin_id;
             }
 
             return Limit::perMinute((int) config('geoflow.knowledge_fact_generation_rate_per_minute', 10))

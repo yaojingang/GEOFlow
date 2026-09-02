@@ -32,6 +32,7 @@ class KnowledgeFactGenerationCoordinator
         private readonly AiWorkspaceModelReadiness $readiness,
         private readonly KnowledgeFactValuePolicy $valuePolicy,
         private readonly KnowledgeFactGenerationAiExecutionGuard $executionGuard,
+        private readonly KnowledgeFactGenerationModelRateLimiter $modelRateLimiter,
         private readonly AiModelFailoverDecider $failoverDecider,
         private readonly AiExecutionErrorSanitizer $errorSanitizer,
     ) {}
@@ -300,6 +301,7 @@ class KnowledgeFactGenerationCoordinator
         $resolvedModel = null;
         foreach ($candidates as $candidateIndex => $candidate) {
             $currentModel = $this->executionGuard->registerCandidate($context, $candidate);
+            $this->modelRateLimiter->reserve($currentModel);
             try {
                 $facts = $this->generator->generate(
                     $currentModel,
@@ -589,10 +591,13 @@ class KnowledgeFactGenerationCoordinator
             $result['conflicts'] = $conflicts;
             $failedBatches = count(array_filter((array) ($result['batches'] ?? []), fn ($batch) => data_get($batch, 'status') === 'failed'));
             $status = $created === 0 && $conflicts === [] ? 'failed' : (($created < $generationLimit || $conflicts !== [] || $failedBatches > 0) ? 'partial' : 'completed');
+            $retryableFailure = $status === KnowledgeFactGenerationRun::STATUS_FAILED
+                && $failedBatches > 0;
             $run->forceFill([
                 'status' => $status,
                 'active_key' => null,
                 'result_json' => $result,
+                'retryable_failure' => $retryableFailure,
                 'finalizer_lease_token' => null,
                 'finalizer_lease_expires_at' => null,
                 $status === 'failed' ? 'failed_at' : 'completed_at' => now(),
@@ -706,7 +711,12 @@ class KnowledgeFactGenerationCoordinator
                 return;
             }
             $library = KnowledgeFactLibrary::query()->whereKey($run->library_id)->lockForUpdate()->firstOrFail();
-            $run->forceFill(['status' => 'obsolete', 'active_key' => null, 'completed_at' => now()])->save();
+            $run->forceFill([
+                'status' => 'obsolete',
+                'active_key' => null,
+                'retryable_failure' => false,
+                'completed_at' => now(),
+            ])->save();
             $library->forceFill(['workflow_status' => 'review_required'])->save();
         }, 3);
     }
@@ -716,14 +726,24 @@ class KnowledgeFactGenerationCoordinator
         DB::transaction(function () use ($runId): void {
             $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();
             $library = KnowledgeFactLibrary::query()->whereKey($run->library_id)->lockForUpdate()->firstOrFail();
-            $run->forceFill(['status' => 'completed', 'active_key' => null, 'completed_at' => now()])->save();
+            $run->forceFill([
+                'status' => 'completed',
+                'active_key' => null,
+                'retryable_failure' => false,
+                'completed_at' => now(),
+            ])->save();
             $library->forceFill(['workflow_status' => 'idle'])->save();
         }, 3);
     }
 
     private function markCancelled(KnowledgeFactGenerationRun $run, KnowledgeFactLibrary $library): void
     {
-        $run->forceFill(['status' => 'cancelled', 'active_key' => null, 'cancelled_at' => now()])->save();
+        $run->forceFill([
+            'status' => 'cancelled',
+            'active_key' => null,
+            'retryable_failure' => false,
+            'cancelled_at' => now(),
+        ])->save();
         $library->forceFill(['workflow_status' => 'idle'])->save();
     }
 

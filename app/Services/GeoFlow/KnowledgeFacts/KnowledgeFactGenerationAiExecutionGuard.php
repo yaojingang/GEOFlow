@@ -147,7 +147,13 @@ final readonly class KnowledgeFactGenerationAiExecutionGuard
             $claims = (array) $run->batch_claims_json;
             $claim = (array) ($claims[(string) $context->batchSequence] ?? []);
             $claim['status'] = 'queued';
+            $claim['lease_token'] = null;
             $claim['lease_expires_at'] = null;
+            unset(
+                $claim['resolved_ai_model_id'],
+                $claim['resolved_model_source'],
+                $claim['model_resolved_at'],
+            );
             $claims[(string) $context->batchSequence] = $claim;
             $run->forceFill(['batch_claims_json' => $claims])->save();
         }, 3);
