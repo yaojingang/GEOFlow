@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\AdminHelpAssistant;
+use App\Ai\Workspace\AiPlanCompiler;
 use App\Contracts\AiWorkspace\AdminHelpResponder;
 use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Data\Ai\AiWorkspaceModelExecutionReceipt;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\PermanentAiProviderException;
 use App\Models\Admin;
@@ -351,6 +353,98 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         } catch (AiModelAccessException) {
             self::assertSame('第一段', $run->fresh()->answer);
             self::assertSame(1, (int) $run->fresh()->answer_chunk_sequence);
+        }
+    }
+
+    public function test_intent_persistence_transaction_rejects_a_changed_actual_model_receipt(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-intent-receipt-race', 'super_admin');
+        $model = $this->model($admin, 'workspace-intent-receipt-model');
+        $coordinator = app(AiWorkspaceCoordinator::class);
+        $run = $coordinator->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请识别请求意图。',
+        );
+        $lease = (string) Str::uuid7();
+        $run->forceFill([
+            'state' => 'received',
+            'resolution_lease_owner' => $lease,
+            'resolution_lease_expires_at' => now()->addMinute(),
+        ])->save();
+        $guard = app(AiWorkspaceExecutionAccessGuard::class);
+        $context = $guard->contextFromResolutionRun($run->fresh(), $lease);
+        $receipt = null;
+        AdminHelpAssistant::fake([json_encode([
+            'mode' => 'answer',
+            'intent' => 'stale intent',
+        ], JSON_THROW_ON_ERROR)])->preventStrayPrompts();
+        app(AiWorkspaceModelRuntime::class)->resolveIntent(
+            '请识别请求意图。',
+            $context,
+            static function (array $telemetry, mixed $resolved) use (&$receipt, $model): void {
+                $receipt = $resolved;
+                $model->forceFill(['api_url' => 'https://changed.example.invalid/v1'])->save();
+            },
+        );
+        self::assertInstanceOf(AiWorkspaceModelExecutionReceipt::class, $receipt);
+        $persist = new \ReflectionMethod($coordinator, 'updateResolutionOwned');
+        $persist->setAccessible(true);
+
+        try {
+            $persist->invoke($coordinator, (string) $run->id, $lease, [
+                'intent' => 'stale intent',
+                'resolution_source' => 'model',
+            ], null, $receipt);
+            self::fail('A changed model receipt must stop intent persistence.');
+        } catch (AiModelAccessException) {
+            self::assertNull($run->fresh()->intent);
+            self::assertNull($run->fresh()->resolution_source);
+        }
+    }
+
+    public function test_plan_prepare_transaction_rejects_a_changed_actual_model_receipt(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-plan-receipt-race', 'super_admin');
+        $model = $this->model($admin, 'workspace-plan-receipt-model');
+        $run = app(AiWorkspaceCoordinator::class)->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请生成受控执行计划。',
+        );
+        $lease = (string) Str::uuid7();
+        $run->forceFill([
+            'state' => 'planning',
+            'resolution_lease_owner' => $lease,
+            'resolution_lease_expires_at' => now()->addMinute(),
+        ])->save();
+        $guard = app(AiWorkspaceExecutionAccessGuard::class);
+        $context = $guard->contextFromResolutionRun($run->fresh(), $lease);
+        $receipt = null;
+        AdminHelpAssistant::fake([json_encode(['steps' => [[
+            'capability' => 'analytics.daily_report',
+            'parameters' => [],
+        ]]], JSON_THROW_ON_ERROR)])->preventStrayPrompts();
+        $draft = app(AiWorkspaceModelRuntime::class)->draftPlan(
+            '请生成受控执行计划。',
+            ['intent' => '生成运营日报'],
+            $context,
+            static function (array $telemetry, mixed $resolved) use (&$receipt, $model): void {
+                $receipt = $resolved;
+                $model->forceFill(['model_id' => 'workspace-plan-receipt-model-v2'])->save();
+            },
+        );
+        self::assertInstanceOf(AiWorkspaceModelExecutionReceipt::class, $receipt);
+        $plan = app(AiPlanCompiler::class)->compile($admin, '生成运营日报', $draft);
+
+        try {
+            app(AiWorkflowEngine::class)->prepare($run->fresh(), $plan, $lease, $receipt);
+            self::fail('A changed model receipt must stop plan persistence.');
+        } catch (AiModelAccessException) {
+            self::assertNull($run->fresh()->plan);
+            self::assertSame(0, $run->steps()->count());
         }
     }
 

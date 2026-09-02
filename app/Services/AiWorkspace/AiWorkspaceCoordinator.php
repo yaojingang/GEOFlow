@@ -243,12 +243,18 @@ final readonly class AiWorkspaceCoordinator
             $this->assertResolutionExecutionAllowed($run, $admin, false);
             $modelStatus = $this->modelReadiness->status($executionContext);
             $childRulesOnly = $run->mode === 'agent_child';
+            $intentReceipt = null;
             if ($modelStatus['ready'] && ! $childRulesOnly) {
                 $this->recordModelRequest($runId, $leaseOwner, 'intent');
                 $resolution = $this->intentResolver->resolve(
                     $resolutionPrompt,
                     $executionContext,
-                    fn (array $telemetry) => $this->recordModelCompletion($runId, $leaseOwner, $telemetry),
+                    function (array $telemetry, mixed $receipt = null) use ($runId, $leaseOwner, &$intentReceipt): void {
+                        $this->recordModelCompletion($runId, $leaseOwner, $telemetry);
+                        if ($receipt instanceof AiWorkspaceModelExecutionReceipt) {
+                            $intentReceipt = $receipt;
+                        }
+                    },
                     fn (Throwable $exception) => $this->recordModelFailure($runId, $leaseOwner, 'intent', $exception),
                 );
             } else {
@@ -269,6 +275,9 @@ final readonly class AiWorkspaceCoordinator
 
                 return;
             }
+            if ($resolution->source === 'model' && ! $intentReceipt instanceof AiWorkspaceModelExecutionReceipt) {
+                throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
+            }
             $run = $this->updateResolutionOwned($runId, $leaseOwner, [
                 'mode' => $resolution->mode,
                 'intent' => $resolution->intent,
@@ -277,7 +286,7 @@ final readonly class AiWorkspaceCoordinator
                 'candidate_capabilities' => $resolution->candidates,
                 'known_parameters' => $resolution->knownParameters,
                 'missing_parameters' => $resolution->missingParameters,
-            ]);
+            ], modelReceipt: $intentReceipt);
             $this->realtime->broadcast($run);
 
             if ($resolution->mode === 'answer') {
@@ -338,19 +347,30 @@ final readonly class AiWorkspaceCoordinator
             }
             $this->realtime->broadcast($planning);
             $draftSteps = $resolution->workflowSteps;
+            $planSourceReceipt = $intentReceipt;
             if ($resolution->source === 'model') {
                 try {
                     $this->renewResolutionLease($runId, $leaseOwner);
                     $this->assertResolutionExecutionAllowed($planning, $admin);
                     $this->recordModelRequest($runId, $leaseOwner, 'plan');
+                    $planReceipt = null;
                     $modelDraft = $this->runtime->draftPlan(
                         $resolutionPrompt,
                         $resolution->toArray(),
                         $executionContext,
-                        fn (array $telemetry) => $this->recordModelCompletion($runId, $leaseOwner, $telemetry),
+                        function (array $telemetry, mixed $receipt = null) use ($runId, $leaseOwner, &$planReceipt): void {
+                            $this->recordModelCompletion($runId, $leaseOwner, $telemetry);
+                            if ($receipt instanceof AiWorkspaceModelExecutionReceipt) {
+                                $planReceipt = $receipt;
+                            }
+                        },
                     );
                     if ($modelDraft !== []) {
+                        if (! $planReceipt instanceof AiWorkspaceModelExecutionReceipt) {
+                            throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
+                        }
                         $draftSteps = $modelDraft;
+                        $planSourceReceipt = $planReceipt;
                     }
                 } catch (Throwable $exception) {
                     $this->recordModelFailure($runId, $leaseOwner, 'plan', $exception);
@@ -398,10 +418,15 @@ final readonly class AiWorkspaceCoordinator
 
                 return;
             }
-            DB::transaction(function () use ($runId, $leaseOwner): void {
-                $this->lockResolutionOwner($runId, $leaseOwner)->forceFill(['resolution_finished_at' => now()])->save();
+            DB::transaction(function () use ($runId, $leaseOwner, $planSourceReceipt): void {
+                $locked = $this->lockResolutionOwner($runId, $leaseOwner);
+                if ($planSourceReceipt instanceof AiWorkspaceModelExecutionReceipt) {
+                    $context = $this->executionGuard->contextFromResolutionRun($locked, $leaseOwner);
+                    $this->executionGuard->assertReceiptCurrent($context, $planSourceReceipt);
+                }
+                $locked->forceFill(['resolution_finished_at' => now()])->save();
             });
-            $this->engine->prepare($planning->fresh(), $plan, $leaseOwner);
+            $this->engine->prepare($planning->fresh(), $plan, $leaseOwner, $planSourceReceipt);
         } catch (Throwable $exception) {
             $fresh = AiWorkspaceRun::query()->findOrFail($runId);
             if ($fresh->isTerminal()) {
@@ -954,10 +979,19 @@ final readonly class AiWorkspaceCoordinator
     }
 
     /** @param array<string,mixed> $attributes */
-    private function updateResolutionOwned(string $runId, string $leaseOwner, array $attributes, ?array $trace = null): AiWorkspaceRun
-    {
-        return DB::transaction(function () use ($runId, $leaseOwner, $attributes, $trace): AiWorkspaceRun {
+    private function updateResolutionOwned(
+        string $runId,
+        string $leaseOwner,
+        array $attributes,
+        ?array $trace = null,
+        ?AiWorkspaceModelExecutionReceipt $modelReceipt = null,
+    ): AiWorkspaceRun {
+        return DB::transaction(function () use ($runId, $leaseOwner, $attributes, $trace, $modelReceipt): AiWorkspaceRun {
             $run = $this->lockResolutionOwner($runId, $leaseOwner);
+            if ($modelReceipt instanceof AiWorkspaceModelExecutionReceipt) {
+                $context = $this->executionGuard->contextFromResolutionRun($run, $leaseOwner);
+                $this->executionGuard->assertReceiptCurrent($context, $modelReceipt);
+            }
 
             return $this->states->touchEvent($run, $attributes + [
                 'status_message' => '已理解请求，正在选择安全的处理路径。',

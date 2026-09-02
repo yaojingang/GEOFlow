@@ -263,10 +263,11 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         string $knowledgeContext,
         iterable $messages = [],
         Admin|AiWorkspaceExecutionContext|int|null $actor = null,
+        ?callable $onResolved = null,
     ): string {
         $context = $this->executionContext($actor);
 
-        return $this->withConcurrencySlot(function () use ($prompt, $knowledgeContext, $messages, $context): string {
+        return $this->withConcurrencySlot(function () use ($prompt, $knowledgeContext, $messages, $context, $onResolved): string {
             $lastException = null;
             $attempt = 0;
             $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
@@ -294,6 +295,9 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     $this->usageQuota->recordModelSuccess($reservation);
                     $this->recordProviderSuccess($model);
                     $this->recordReadinessSuccess($model, false);
+                    if ($onResolved !== null) {
+                        $onResolved($receipt);
+                    }
 
                     return $answer;
                 } catch (Throwable $exception) {
@@ -331,11 +335,20 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         Admin|AiWorkspaceExecutionContext|int|null $actor = null,
         ?callable $onComplete = null,
     ): array {
-        $text = $this->answer($prompt, '请将请求解析为受控工作台意图 JSON。', [], $actor);
+        $receipt = null;
+        $text = $this->answer(
+            $prompt,
+            '请将请求解析为受控工作台意图 JSON。',
+            [],
+            $actor,
+            static function (AiWorkspaceModelExecutionReceipt $resolved) use (&$receipt): void {
+                $receipt = $resolved;
+            },
+        );
         $decoded = json_decode($text, true);
         $result = is_array($decoded) ? $decoded : [];
         if ($onComplete !== null) {
-            $onComplete(['stage' => 'intent', 'completed' => true]);
+            $onComplete(['stage' => 'intent', 'completed' => true], $receipt);
         }
 
         return $result;
@@ -348,16 +361,20 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         Admin|AiWorkspaceExecutionContext|int|null $actor = null,
         ?callable $onComplete = null,
     ): array {
+        $receipt = null;
         $text = $this->answer(
             $prompt,
             '请依据已解析意图生成受控步骤 JSON：'.json_encode($resolution, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             [],
             $actor,
+            static function (AiWorkspaceModelExecutionReceipt $resolved) use (&$receipt): void {
+                $receipt = $resolved;
+            },
         );
         $decoded = json_decode($text, true);
         $steps = is_array($decoded) ? (array) ($decoded['steps'] ?? $decoded) : [];
         if ($onComplete !== null) {
-            $onComplete(['stage' => 'plan', 'completed' => true]);
+            $onComplete(['stage' => 'plan', 'completed' => true], $receipt);
         }
 
         return array_values(array_filter($steps, 'is_array'));

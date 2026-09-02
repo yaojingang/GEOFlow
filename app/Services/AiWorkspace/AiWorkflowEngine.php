@@ -9,6 +9,7 @@ use App\Ai\Workspace\AiPayloadDigest;
 use App\Ai\Workspace\AiPlanCompiler;
 use App\Ai\Workspace\AiWorkflowPlan;
 use App\Ai\Workspace\AiWorkspaceErrorSanitizer;
+use App\Data\Ai\AiWorkspaceModelExecutionReceipt;
 use App\Jobs\ProcessAiWorkspaceRunJob;
 use App\Models\Admin;
 use App\Models\AiWorkspaceApproval;
@@ -37,10 +38,18 @@ final readonly class AiWorkflowEngine
         private AiWorkspaceExecutionAccessGuard $executionGuard,
     ) {}
 
-    public function prepare(AiWorkspaceRun $run, AiWorkflowPlan $plan, ?string $resolutionLeaseOwner = null): AiWorkspaceRun
-    {
-        $run = DB::transaction(function () use ($run, $plan, $resolutionLeaseOwner): AiWorkspaceRun {
+    public function prepare(
+        AiWorkspaceRun $run,
+        AiWorkflowPlan $plan,
+        ?string $resolutionLeaseOwner = null,
+        ?AiWorkspaceModelExecutionReceipt $modelReceipt = null,
+    ): AiWorkspaceRun {
+        $run = DB::transaction(function () use ($run, $plan, $resolutionLeaseOwner, $modelReceipt): AiWorkspaceRun {
             $locked = AiWorkspaceRun::query()->lockForUpdate()->findOrFail($run->id);
+            if ($modelReceipt instanceof AiWorkspaceModelExecutionReceipt && is_string($resolutionLeaseOwner)) {
+                $context = $this->executionGuard->contextFromResolutionRun($locked, $resolutionLeaseOwner);
+                $this->executionGuard->assertReceiptCurrent($context, $modelReceipt);
+            }
             if (! $this->currentAdminForRun($locked) instanceof Admin) {
                 throw new RuntimeException('管理员授权已变化，不能写入执行计划。');
             }
