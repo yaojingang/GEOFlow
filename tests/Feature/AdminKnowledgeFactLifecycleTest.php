@@ -537,6 +537,7 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
     {
         Bus::fake();
         config()->set('geoflow.knowledge_fact_generation_recovery_stale_seconds', 1);
+        config()->set('geoflow.knowledge_fact_generation_max_recovery_attempts', 1);
         $admin = $this->admin('knowledge-fact-failed-finalizer-admin');
         $model = $this->model($admin, 'knowledge-fact-failed-finalizer-model');
         $library = $this->library();
@@ -576,14 +577,14 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
 
         $run->refresh();
         $this->assertSame(KnowledgeFactGenerationRun::STATUS_RUNNING, $run->status);
-        $this->assertSame(2, $run->execution_attempt);
+        $this->assertSame(1, $run->execution_attempt);
         $this->assertSame('knowledge-fact-library:'.$library->id, $run->active_key);
         $firstFinalizerToken = $run->finalizer_lease_token;
         $this->assertTrue($run->finalizer_lease_expires_at?->isFuture() === true);
         Bus::assertBatchCount(0);
         Bus::assertDispatched(FinalizeKnowledgeFactGenerationJob::class, function (FinalizeKnowledgeFactGenerationJob $job) use ($run): bool {
             return $job->runId === (int) $run->id
-                && $job->executionAttempt === 2
+                && $job->executionAttempt === 1
                 && $job->leaseToken === $run->finalizer_lease_token;
         });
 
@@ -594,7 +595,7 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
             ->expectsOutput('Recovered knowledge fact generation runs: 0; dispatch failures: 0')
             ->assertSuccessful();
         $run->refresh();
-        $this->assertSame(2, $run->execution_attempt);
+        $this->assertSame(1, $run->execution_attempt);
         $this->assertSame($firstFinalizerToken, $run->finalizer_lease_token);
         Bus::assertDispatchedTimes(FinalizeKnowledgeFactGenerationJob::class, 1);
 
@@ -606,8 +607,8 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
             ->expectsOutput('Recovered knowledge fact generation runs: 1; dispatch failures: 0')
             ->assertSuccessful();
         $run->refresh();
-        $this->assertSame(3, $run->execution_attempt);
-        $this->assertNotSame($firstFinalizerToken, $run->finalizer_lease_token);
+        $this->assertSame(1, $run->execution_attempt);
+        $this->assertSame($firstFinalizerToken, $run->finalizer_lease_token);
         Bus::assertDispatchedTimes(FinalizeKnowledgeFactGenerationJob::class, 2);
     }
 
@@ -712,7 +713,7 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
         Bus::assertBatchCount(2);
     }
 
-    public function test_recovery_dispatches_only_a_rotated_finalizer_when_all_claims_are_terminal(): void
+    public function test_recovery_redispatches_the_same_finalizer_when_all_claims_are_terminal(): void
     {
         Bus::fake();
         config()->set('geoflow.knowledge_fact_generation_recovery_stale_seconds', 1);
@@ -745,6 +746,7 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
                 'finalizer_lease_token' => (string) Str::uuid7(),
             ],
         );
+        $finalizerToken = (string) $run->finalizer_lease_token;
         DB::table('knowledge_fact_generation_runs')
             ->where('id', $run->id)
             ->update(['updated_at' => now()->subMinutes(10)]);
@@ -754,13 +756,14 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
             ->assertSuccessful();
 
         $run->refresh();
-        $this->assertSame(2, $run->execution_attempt);
-        $this->assertNull(data_get($run->batch_claims_json, '1.dispatch_token'));
+        $this->assertSame(1, $run->execution_attempt);
+        $this->assertSame('old-completed-token', data_get($run->batch_claims_json, '1.dispatch_token'));
         $this->assertNull(data_get($run->batch_claims_json, '1.lease_token'));
+        $this->assertSame($finalizerToken, $run->finalizer_lease_token);
         Bus::assertBatchCount(0);
         Bus::assertDispatched(FinalizeKnowledgeFactGenerationJob::class, function (FinalizeKnowledgeFactGenerationJob $job) use ($run): bool {
             return $job->runId === (int) $run->id
-                && $job->executionAttempt === 2
+                && $job->executionAttempt === 1
                 && $job->leaseToken === $run->finalizer_lease_token
                 && $job->queue === 'knowledge'
                 && $job->afterCommit === true;

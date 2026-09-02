@@ -1152,6 +1152,73 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         ]);
     }
 
+    public function test_repeated_expired_finalizer_dispatches_keep_identity_and_materialize_once(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        config()->set('geoflow.knowledge_fact_generation_recovery_stale_seconds', 1);
+        config()->set('geoflow.knowledge_fact_generation_max_recovery_attempts', 1);
+        config()->set('geoflow.knowledge_fact_generation_finalizer_pending_seconds', 60);
+        Bus::fake();
+        $admin = $this->admin('knowledge-finalizer-redispatch');
+        $model = $this->model($admin, 'knowledge-finalizer-redispatch-model');
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge finalizer redispatch');
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $coordinator = app(KnowledgeFactGenerationCoordinator::class);
+        $run = $coordinator->start($library, $model, $admin, 'initial', 1);
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        KnowledgeFactGeneratorAgent::fake([
+            ['facts' => [$this->validFact($chunk)]],
+        ])->preventStrayPrompts();
+        (new GenerateKnowledgeFactBatchJob(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            $this->evidenceDescriptors($chunk),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+        ))->handle($coordinator);
+
+        $run->refresh();
+        $originalAttempt = (int) $run->execution_attempt;
+        $originalToken = (string) $run->finalizer_lease_token;
+
+        for ($redispatch = 1; $redispatch <= 4; $redispatch++) {
+            KnowledgeFactGenerationRun::query()->whereKey($run->id)->update([
+                'finalizer_lease_expires_at' => now()->subSecond(),
+                'updated_at' => now()->subMinutes(10),
+            ]);
+
+            $this->artisan('geoflow:recover-knowledge-fact-generations')
+                ->expectsOutput('Recovered knowledge fact generation runs: 1; dispatch failures: 0')
+                ->assertSuccessful();
+
+            $run->refresh();
+            $this->assertSame(KnowledgeFactGenerationRun::STATUS_RUNNING, $run->status);
+            $this->assertSame($originalAttempt, $run->execution_attempt);
+            $this->assertSame($originalToken, $run->finalizer_lease_token);
+            $this->assertNotSame(
+                'knowledge_fact_generation_recovery_attempts_exhausted',
+                $run->error_code,
+            );
+        }
+
+        Bus::assertDispatchedTimes(FinalizeKnowledgeFactGenerationJob::class, 4);
+        $queuedFinalizer = new FinalizeKnowledgeFactGenerationJob(
+            (int) $run->id,
+            $originalAttempt,
+            $originalToken,
+        );
+        $queuedFinalizer->handle($coordinator);
+        $queuedFinalizer->handle($coordinator);
+
+        $run->refresh();
+        $this->assertSame(KnowledgeFactGenerationRun::STATUS_COMPLETED, $run->status);
+        $this->assertFalse($run->retryable_failure);
+        $this->assertDatabaseCount('knowledge_facts', 1);
+        $this->assertDatabaseCount('knowledge_fact_values', 1);
+        $this->assertDatabaseCount('knowledge_fact_evidences', 1);
+    }
+
     public function test_partial_finalization_releases_retry_dependencies_after_materializing_results(): void
     {
         config()->set('ai-workspace.require_verified_model', false);
@@ -1240,6 +1307,7 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         $this->assertSame(KnowledgeFactGenerationRun::STATUS_FAILED, $run->status);
         $this->assertSame('knowledge_fact_generation_finalize_failed', $run->error_code);
         $this->assertSame('knowledge_fact_generation_finalize_failed', $run->error_message);
+        $this->assertSame($job->leaseToken, $run->finalizer_lease_token);
         $this->assertDatabaseCount('knowledge_facts', 0);
         $this->assertDatabaseCount('knowledge_fact_evidences', 0);
     }

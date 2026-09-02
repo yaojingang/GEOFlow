@@ -677,7 +677,6 @@ class KnowledgeFactGenerationCoordinator
                     'knowledge_fact_generation_finalize_failed',
                 ),
                 'retryable_failure' => true,
-                'finalizer_lease_token' => null,
                 'finalizer_lease_expires_at' => null,
                 'failed_at' => now(),
             ])->save();

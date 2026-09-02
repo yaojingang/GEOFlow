@@ -110,12 +110,6 @@ final readonly class KnowledgeFactGenerationRecoveryService
 
                 return null;
             }
-            if ($this->recoveryAttemptsExhausted($run)) {
-                $this->failPermanently($run, $library, self::ATTEMPTS_EXHAUSTED);
-
-                return null;
-            }
-
             try {
                 if (! $this->executionGuard->identityComplete($run)) {
                     throw AiModelAccessException::configAccessRevokedForAdminId(
@@ -164,31 +158,36 @@ final readonly class KnowledgeFactGenerationRecoveryService
                 return null;
             }
 
-            $nextAttempt = (int) $run->execution_attempt + 1;
-            $finalizerToken = (string) Str::uuid7();
             $oldClaims = (array) $run->batch_claims_json;
             if ($oldClaims !== [] && $this->claimsAreCompleted($oldClaims)) {
-                $claims = collect($oldClaims)
-                    ->map(function (mixed $claim) use ($nextAttempt): array {
-                        $normalized = (array) $claim;
-                        $normalized['execution_attempt'] = $nextAttempt;
-                        $normalized['dispatch_token'] = null;
-                        $normalized['lease_token'] = null;
-                        $normalized['lease_expires_at'] = null;
-
-                        return $normalized;
-                    })
-                    ->all();
-                $this->freezeAttempt($run, $library, $nextAttempt, $claims, $finalizerToken);
-                $this->markFinalizerPending($run);
+                $executionAttempt = (int) $run->execution_attempt;
+                $finalizerToken = trim((string) $run->finalizer_lease_token);
+                if ($finalizerToken === '') {
+                    $finalizerToken = (string) Str::uuid7();
+                }
+                $this->refreshFinalizerPending(
+                    $run,
+                    $library,
+                    $executionAttempt,
+                    $finalizerToken,
+                );
 
                 return new KnowledgeFactGenerationRecoveryDispatch(
                     (int) $run->id,
-                    $nextAttempt,
+                    $executionAttempt,
                     $finalizerToken,
                     [],
                 );
             }
+
+            if ($this->recoveryAttemptsExhausted($run)) {
+                $this->failPermanently($run, $library, self::ATTEMPTS_EXHAUSTED);
+
+                return null;
+            }
+
+            $nextAttempt = (int) $run->execution_attempt + 1;
+            $finalizerToken = (string) Str::uuid7();
 
             $groups = $this->evidenceGroups($run, $library);
             if ($groups === []) {
@@ -433,6 +432,29 @@ final readonly class KnowledgeFactGenerationRecoveryService
                 $this->finalizerPendingSeconds(),
             ),
         ])->save();
+    }
+
+    private function refreshFinalizerPending(
+        KnowledgeFactGenerationRun $run,
+        KnowledgeFactLibrary $library,
+        int $executionAttempt,
+        string $finalizerToken,
+    ): void {
+        $run->forceFill([
+            'status' => KnowledgeFactGenerationRun::STATUS_RUNNING,
+            'active_key' => 'knowledge-fact-library:'.$library->id,
+            'execution_attempt' => $executionAttempt,
+            'job_batch_id' => null,
+            'finalizer_lease_token' => $finalizerToken,
+            'finalizer_lease_expires_at' => now()->addSeconds(
+                $this->finalizerPendingSeconds(),
+            ),
+            'error_code' => null,
+            'error_message' => null,
+            'retryable_failure' => true,
+            'failed_at' => null,
+        ])->save();
+        $library->forceFill(['workflow_status' => 'generating'])->save();
     }
 
     private function failPermanently(
