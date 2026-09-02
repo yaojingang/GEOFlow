@@ -31,14 +31,14 @@ class TaskController extends BaseApiController
         $statusQuery = $request->query('status');
         $searchQuery = $request->query('search');
 
-        $data = $tasks->listTasks(
-            $request->integer('page', 1),
-            $request->integer('per_page', 20),
-            [
+        $data = $tasks->listTasksForApi(
+            page: $request->integer('page', 1),
+            perPage: $request->integer('per_page', 20),
+            filters: [
                 'status' => is_string($statusQuery) ? trim($statusQuery) : null,
                 'search' => is_string($searchQuery) ? trim($searchQuery) : null,
             ],
-            $viewer,
+            viewer: $viewer,
         );
 
         return $this->success($request, $data);
@@ -58,11 +58,11 @@ class TaskController extends BaseApiController
         $response = IdempotencyService::executeJson(
             $request,
             'POST /tasks',
-            fn (): JsonResponse => $this->success($request, $tasks->createTask(
-                $data,
-                $auth->auditAdminId,
-                (int) ($auth->token['id'] ?? 0),
-                $viewer,
+            fn (): JsonResponse => $this->success($request, $tasks->createTaskForApi(
+                data: $data,
+                auditAdminId: $auth->auditAdminId,
+                apiTokenId: (int) ($auth->token['id'] ?? 0),
+                viewer: $viewer,
             ), 201),
         );
 
@@ -76,7 +76,7 @@ class TaskController extends BaseApiController
     {
         $viewer = $this->executionAdmin($request);
 
-        return $this->success($request, $tasks->getTask($task, $viewer));
+        return $this->success($request, $tasks->getTaskForApi(taskId: $task, viewer: $viewer));
     }
 
     /**
@@ -93,13 +93,13 @@ class TaskController extends BaseApiController
         $response = IdempotencyService::executeJson(
             $request,
             'PATCH /tasks/{id}',
-            fn (): JsonResponse => $this->success($request, $tasks->updateTask(
-                $task,
-                $data,
-                $this->canManageHostedTask($viewer),
-                $auth->auditAdminId,
-                (int) ($auth->token['id'] ?? 0),
-                $viewer,
+            fn (): JsonResponse => $this->success($request, $tasks->updateTaskForApi(
+                taskId: $task,
+                data: $data,
+                canManageHostedTask: $this->canManageHostedTask($viewer),
+                auditAdminId: $auth->auditAdminId,
+                apiTokenId: (int) ($auth->token['id'] ?? 0),
+                viewer: $viewer,
             )),
         );
 
@@ -136,12 +136,11 @@ class TaskController extends BaseApiController
         $response = IdempotencyService::executeJson(
             $request,
             'POST /tasks/{id}/start',
-            fn (): JsonResponse => $this->success($request, $tasks->startTask(
-                $task,
-                $enqueueNow,
-                $this->canManageHostedTask($viewer),
-                $viewer,
-                $viewer,
+            fn (): JsonResponse => $this->success($request, $tasks->startTaskForApi(
+                taskId: $task,
+                enqueueNow: $enqueueNow,
+                canManageHostedTask: $this->canManageHostedTask($viewer),
+                viewer: $viewer,
             )),
         );
 
@@ -159,10 +158,10 @@ class TaskController extends BaseApiController
         $response = IdempotencyService::executeJson(
             $request,
             'POST /tasks/{id}/stop',
-            fn (): JsonResponse => $this->success($request, $tasks->stopTask(
-                $task,
-                $this->canManageHostedTask($viewer),
-                $viewer,
+            fn (): JsonResponse => $this->success($request, $tasks->stopTaskForApi(
+                taskId: $task,
+                canManageHostedTask: $this->canManageHostedTask($viewer),
+                viewer: $viewer,
             )),
         );
 
@@ -184,12 +183,12 @@ class TaskController extends BaseApiController
         return IdempotencyService::executeJson(
             $request,
             'POST /tasks/{id}/enqueue',
-            fn (): JsonResponse => $this->success($request, $tasks->enqueueTask(
-                $task,
-                $jobType,
-                ['source' => 'api_enqueue'],
-                $this->canManageHostedTask($viewer),
-                $viewer,
+            fn (): JsonResponse => $this->success($request, $tasks->enqueueTaskForApi(
+                taskId: $task,
+                jobType: $jobType,
+                payload: ['source' => 'api_enqueue'],
+                canManageHostedTask: $this->canManageHostedTask($viewer),
+                viewer: $viewer,
             ), 201),
         );
     }
@@ -233,11 +232,11 @@ class TaskController extends BaseApiController
         $status = $request->query('status');
         $statusStr = is_string($status) ? trim($status) : '';
 
-        return $this->success($request, $tasks->listTaskJobs(
-            $task,
-            $statusStr !== '' ? $statusStr : null,
-            $request->integer('limit', 20),
-            $viewer,
+        return $this->success($request, $tasks->listTaskJobsForApi(
+            taskId: $task,
+            status: $statusStr !== '' ? $statusStr : null,
+            limit: $request->integer('limit', 20),
+            viewer: $viewer,
         ));
     }
 
@@ -252,7 +251,7 @@ class TaskController extends BaseApiController
             return $response;
         }
 
-        $current = $tasks->getTask((int) $taskId, $viewer);
+        $current = $tasks->getTaskForApi(taskId: (int) $taskId, viewer: $viewer);
         $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
         foreach ([
             'ai_model_id',

@@ -35,6 +35,39 @@ final class TaskRunData
         'follow_up_generation',
     ];
 
+    private const PUBLIC_ACTIONS = [
+        'await_ai_quality',
+        'generate_draft',
+        'noop',
+        'publish_draft',
+    ];
+
+    private const PUBLIC_AI_QUALITY_STATUSES = [
+        'cancelled',
+        'completed',
+        'failed',
+        'pending',
+        'queued',
+        'running',
+        'skipped',
+        'stale',
+    ];
+
+    private const PUBLIC_TITLE_READINESS_STATUSES = ['blocked', 'ready', 'warning'];
+
+    private const PUBLIC_TASK_STATUSES = ['active', 'paused'];
+
+    private const PUBLIC_TITLE_ISSUES = [
+        'loop_reuses_titles',
+        'title_library_empty',
+        'title_library_exhausted',
+        'title_library_missing',
+        'title_library_shared',
+        'title_library_shortage',
+    ];
+
+    private const PUBLIC_TITLE_ISSUE_SEVERITIES = ['blocking', 'warning'];
+
     public function __construct(
         private readonly PublicExecutionErrorProjector $errorProjector,
     ) {}
@@ -107,80 +140,152 @@ final class TaskRunData
         return $workerId === '' ? null : mb_substr($workerId, 0, 120, 'UTF-8');
     }
 
-    /** @param array<string|int,mixed> $meta @return array<string|int,mixed> */
+    /** @param array<string,mixed> $meta @return array<string,mixed> */
     private function projectMeta(array $meta): array
     {
         $projected = [];
-        foreach ($meta as $key => $value) {
-            $normalizedKey = is_string($key) ? $this->normalizeMetaKey($key) : '';
-            if ($normalizedKey !== '' && $this->isSensitiveMetaKey($normalizedKey)) {
-                continue;
-            }
+        $this->copyEnum($projected, $meta, 'action', self::PUBLIC_ACTIONS);
+        foreach (['author_id', 'category_id', 'image_count', 'knowledge_length', 'publish_interval', 'task_id', 'title_id'] as $key) {
+            $this->copyNonNegativeInteger($projected, $meta, $key);
+        }
+        $this->copyTimestamp($projected, $meta, 'available_at');
+        $this->copyEnum($projected, $meta, 'model_selection_mode', ['fixed', 'smart_failover']);
+        $this->copyBoolean($projected, $meta, 'retryable');
+        $this->copyStableErrorCode($projected, $meta, 'last_error');
+        $this->copyStableErrorCode($projected, $meta, 'reason');
 
-            if (is_array($value)) {
-                $projected[$key] = $this->projectMeta($value);
-            } elseif (is_string($value)) {
-                if (in_array($normalizedKey, ['error', 'errormessage', 'lasterror', 'reason'], true)) {
-                    $projected[$key] = $this->errorProjector->stableCode(null, $value);
-                } else {
-                    $projected[$key] = mb_substr(
-                        $this->errorProjector->sanitizedMetaText($value),
-                        0,
-                        240,
-                        'UTF-8',
-                    );
-                }
-            } elseif (is_int($value) || is_float($value) || is_bool($value) || $value === null) {
-                $projected[$key] = $value;
-            }
+        if (is_array($meta['ai_quality'] ?? null)) {
+            $projected['ai_quality'] = $this->projectAiQuality($meta['ai_quality']);
+        }
+        if (is_array($meta['title_readiness'] ?? null)) {
+            $projected['title_readiness'] = $this->projectTitleReadiness($meta['title_readiness']);
         }
 
         return $projected;
     }
 
-    private function isSensitiveMetaKey(string $normalizedKey): bool
+    /** @param array<string,mixed> $quality @return array<string,mixed> */
+    private function projectAiQuality(array $quality): array
     {
-        return $normalizedKey === 'key'
-            || $normalizedKey === 'model'
-            || $normalizedKey === 'provider'
-            || $normalizedKey === 'response'
-            || $normalizedKey === 'output'
-            || $normalizedKey === 'message'
-            || str_contains($normalizedKey, 'modelattempt')
-            || str_ends_with($normalizedKey, 'modelid')
-            || str_ends_with($normalizedKey, 'modelname')
-            || str_starts_with($normalizedKey, 'usedmodel')
-            || str_starts_with($normalizedKey, 'requestedmodel')
-            || str_starts_with($normalizedKey, 'resolvedmodel')
-            || str_contains($normalizedKey, 'modelaccessadmin')
-            || str_contains($normalizedKey, 'executionadmin')
-            || str_contains($normalizedKey, 'owneradmin')
-            || str_contains($normalizedKey, 'configowner')
-            || str_contains($normalizedKey, 'accessversion')
-            || str_contains($normalizedKey, 'policyversion')
-            || str_contains($normalizedKey, 'executionlease')
-            || str_contains($normalizedKey, 'apikey')
-            || str_contains($normalizedKey, 'apiurl')
-            || str_contains($normalizedKey, 'baseurl')
-            || $normalizedKey === 'url'
-            || str_ends_with($normalizedKey, 'url')
-            || str_contains($normalizedKey, 'endpoint')
-            || str_contains($normalizedKey, 'prompt')
-            || str_contains($normalizedKey, 'content')
-            || str_contains($normalizedKey, 'providerresponse')
-            || str_contains($normalizedKey, 'rawresponse')
-            || str_contains($normalizedKey, 'rawoutput')
-            || str_contains($normalizedKey, 'authorization')
-            || str_contains($normalizedKey, 'password')
-            || str_contains($normalizedKey, 'secret')
-            || str_contains($normalizedKey, 'token')
-            || str_contains($normalizedKey, 'bearer')
-            || str_contains($normalizedKey, 'credential');
+        $projected = [];
+        $this->copyBoolean($projected, $quality, 'required');
+        $this->copyNullablePositiveInteger($projected, $quality, 'check_id');
+        $this->copyNullableEnum($projected, $quality, 'status', self::PUBLIC_AI_QUALITY_STATUSES);
+
+        return $projected;
     }
 
-    private function normalizeMetaKey(string $key): string
+    /** @param array<string,mixed> $readiness @return array<string,mixed> */
+    private function projectTitleReadiness(array $readiness): array
     {
-        return preg_replace('/[^a-z0-9]+/', '', strtolower($key)) ?? '';
+        $projected = [];
+        $this->copyEnum($projected, $readiness, 'status', self::PUBLIC_TITLE_READINESS_STATUSES);
+        foreach (['can_save', 'can_activate', 'requires_acknowledgement'] as $key) {
+            $this->copyBoolean($projected, $readiness, $key);
+        }
+
+        if (is_array($readiness['library'] ?? null)) {
+            $library = [];
+            foreach (['total', 'used', 'available'] as $key) {
+                $this->copyNonNegativeInteger($library, $readiness['library'], $key);
+            }
+            $projected['library'] = $library;
+        }
+        if (is_array($readiness['task'] ?? null)) {
+            $task = [];
+            $this->copyNullablePositiveInteger($task, $readiness['task'], 'id');
+            $this->copyEnum($task, $readiness['task'], 'status', self::PUBLIC_TASK_STATUSES);
+            foreach (['article_limit', 'created_count', 'remaining'] as $key) {
+                $this->copyNonNegativeInteger($task, $readiness['task'], $key);
+            }
+            $this->copyBoolean($task, $readiness['task'], 'is_loop');
+            $projected['task'] = $task;
+        }
+        foreach (['shortage', 'suggested_article_limit', 'conflict_count'] as $key) {
+            $this->copyNonNegativeInteger($projected, $readiness, $key);
+        }
+
+        if (is_array($readiness['issues'] ?? null)) {
+            $issues = [];
+            foreach ($readiness['issues'] as $issue) {
+                if (! is_array($issue)
+                    || ! in_array($issue['code'] ?? null, self::PUBLIC_TITLE_ISSUES, true)
+                    || ! in_array($issue['severity'] ?? null, self::PUBLIC_TITLE_ISSUE_SEVERITIES, true)) {
+                    continue;
+                }
+                $issues[] = [
+                    'code' => $issue['code'],
+                    'severity' => $issue['severity'],
+                ];
+            }
+            $projected['issues'] = $issues;
+        }
+
+        return $projected;
+    }
+
+    /** @param array<string,mixed> $target @param array<string,mixed> $source @param list<string> $allowed */
+    private function copyEnum(array &$target, array $source, string $key, array $allowed): void
+    {
+        if (is_string($source[$key] ?? null) && in_array($source[$key], $allowed, true)) {
+            $target[$key] = $source[$key];
+        }
+    }
+
+    /** @param array<string,mixed> $target @param array<string,mixed> $source @param list<string> $allowed */
+    private function copyNullableEnum(array &$target, array $source, string $key, array $allowed): void
+    {
+        if (! array_key_exists($key, $source)) {
+            return;
+        }
+        if ($source[$key] === null || (is_string($source[$key]) && in_array($source[$key], $allowed, true))) {
+            $target[$key] = $source[$key];
+        }
+    }
+
+    /** @param array<string,mixed> $target @param array<string,mixed> $source */
+    private function copyBoolean(array &$target, array $source, string $key): void
+    {
+        if (is_bool($source[$key] ?? null)) {
+            $target[$key] = $source[$key];
+        }
+    }
+
+    /** @param array<string,mixed> $target @param array<string,mixed> $source */
+    private function copyNonNegativeInteger(array &$target, array $source, string $key): void
+    {
+        if (is_int($source[$key] ?? null) && $source[$key] >= 0) {
+            $target[$key] = $source[$key];
+        }
+    }
+
+    /** @param array<string,mixed> $target @param array<string,mixed> $source */
+    private function copyNullablePositiveInteger(array &$target, array $source, string $key): void
+    {
+        if (! array_key_exists($key, $source)) {
+            return;
+        }
+        if ($source[$key] === null || (is_int($source[$key]) && $source[$key] > 0)) {
+            $target[$key] = $source[$key];
+        }
+    }
+
+    /** @param array<string,mixed> $target @param array<string,mixed> $source */
+    private function copyTimestamp(array &$target, array $source, string $key): void
+    {
+        $value = $source[$key] ?? null;
+        if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:?\d{2})?$/D', $value) === 1) {
+            $target[$key] = $value;
+        }
+    }
+
+    /** @param array<string,mixed> $target @param array<string,mixed> $source */
+    private function copyStableErrorCode(array &$target, array $source, string $key): void
+    {
+        $code = $this->errorProjector->stableCode(null, $source[$key] ?? null);
+        if ($code !== null) {
+            $target[$key] = $code;
+        }
     }
 
     private function assertViewerSnapshot(Admin $viewer): void

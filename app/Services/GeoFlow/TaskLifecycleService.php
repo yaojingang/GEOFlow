@@ -58,6 +58,86 @@ class TaskLifecycleService
         private ?TaskActivationGuard $taskActivationGuard = null,
     ) {}
 
+    /** @return array{items:list<array<string,mixed>>,pagination:array{page:int,per_page:int,total:int,total_pages:int}} */
+    public function listTasksForApi(int $page, int $perPage, array $filters, Admin $viewer): array
+    {
+        return $this->listTasks($page, $perPage, $filters, $viewer);
+    }
+
+    /** @param array<string,mixed> $data @return array<string,mixed> */
+    public function createTaskForApi(
+        array $data,
+        int $auditAdminId,
+        int $apiTokenId,
+        Admin $viewer,
+    ): array {
+        return $this->createTask($data, $auditAdminId, $apiTokenId, $viewer);
+    }
+
+    /** @return array<string,mixed> */
+    public function getTaskForApi(int $taskId, Admin $viewer): array
+    {
+        return $this->getTask($taskId, $viewer);
+    }
+
+    /** @param array<string,mixed> $data @return array<string,mixed> */
+    public function updateTaskForApi(
+        int $taskId,
+        array $data,
+        bool $canManageHostedTask,
+        int $auditAdminId,
+        int $apiTokenId,
+        Admin $viewer,
+    ): array {
+        return $this->updateTask(
+            $taskId,
+            $data,
+            $canManageHostedTask,
+            $auditAdminId,
+            $apiTokenId,
+            $viewer,
+        );
+    }
+
+    /** @return array<string,mixed> */
+    public function startTaskForApi(
+        int $taskId,
+        bool $enqueueNow,
+        bool $canManageHostedTask,
+        Admin $viewer,
+    ): array {
+        return $this->startTask($taskId, $enqueueNow, $canManageHostedTask, $viewer, $viewer);
+    }
+
+    /** @return array<string,mixed> */
+    public function stopTaskForApi(int $taskId, bool $canManageHostedTask, Admin $viewer): array
+    {
+        return $this->stopTask($taskId, $canManageHostedTask, $viewer);
+    }
+
+    /** @param array<string,mixed> $payload @return array{task_id:int,job_id:int,status:string} */
+    public function enqueueTaskForApi(
+        int $taskId,
+        string $jobType,
+        array $payload,
+        bool $canManageHostedTask,
+        Admin $viewer,
+    ): array {
+        return $this->enqueueTask($taskId, $jobType, $payload, $canManageHostedTask);
+    }
+
+    /** @return array{items:list<array<string,mixed>>} */
+    public function listTaskJobsForApi(int $taskId, ?string $status, int $limit, Admin $viewer): array
+    {
+        return $this->listTaskJobs($taskId, $status, $limit, $viewer);
+    }
+
+    /** @return array<string,mixed> */
+    public function getJobForApi(int $jobId, Admin $viewer): array
+    {
+        return $this->getJob($jobId, $viewer);
+    }
+
     /**
      * 分页查询任务列表（含 pending/running 运行计数）。
      *
@@ -986,7 +1066,6 @@ class TaskLifecycleService
         string $jobType = 'generate_article',
         array $payload = [],
         bool $canManageHostedTask = false,
-        ?Admin $executionViewer = null,
     ): array {
         $jobId = DB::transaction(function () use ($taskId, $jobType, $payload, $canManageHostedTask): ?int {
             $task = Task::query()

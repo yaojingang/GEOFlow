@@ -4,10 +4,14 @@ namespace Tests\Unit;
 
 use App\Http\Controllers\Api\V1\JobController;
 use App\Http\Controllers\Api\V1\TaskController;
+use App\Models\Admin;
+use App\Services\GeoFlow\TaskLifecycleService;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use ReflectionMethod;
+use ReflectionNamedType;
 use Tests\TestCase;
+use TypeError;
 
 final class ApiTaskModelProjectionArchitectureTest extends TestCase
 {
@@ -31,16 +35,14 @@ final class ApiTaskModelProjectionArchitectureTest extends TestCase
 
     #[DataProvider('viewerBoundTaskServiceCalls')]
     #[Test]
-    public function task_api_service_calls_carry_the_non_null_viewer(string $method, string $serviceMethod): void
+    public function task_api_service_calls_use_the_dedicated_non_nullable_projection_boundary(string $method, string $serviceMethod): void
     {
         $source = $this->methodSource(TaskController::class, $method);
 
         $this->assertStringContainsString('$viewer = $this->executionAdmin($request);', $source, $method);
-        $this->assertMatchesRegularExpression(
-            '/\$tasks->'.preg_quote($serviceMethod, '/').'\s*\([\s\S]*\$viewer\s*,?\s*\)/',
-            $source,
-            $method,
-        );
+        $this->assertStringContainsString('$tasks->'.$serviceMethod.'(', $source, $method);
+        $this->assertStringContainsString('viewer: $viewer', $source, $method);
+        $this->assertSame([], $this->unsafeProjectionCalls($source), $method);
     }
 
     #[Test]
@@ -49,8 +51,9 @@ final class ApiTaskModelProjectionArchitectureTest extends TestCase
         $source = $this->methodSource(JobController::class, 'show');
 
         $this->assertStringContainsString('$viewer = $this->executionAdmin($request);', $source);
-        $this->assertStringContainsString('$tasks->getJob($job, $viewer)', $source);
-        $this->assertStringNotContainsString('$tasks->getJob($job)', $source);
+        $this->assertStringContainsString('$tasks->getJobForApi(', $source);
+        $this->assertStringContainsString('viewer: $viewer', $source);
+        $this->assertSame([], $this->unsafeProjectionCalls($source));
     }
 
     #[Test]
@@ -62,13 +65,65 @@ final class ApiTaskModelProjectionArchitectureTest extends TestCase
         $this->assertIsString($controller);
         $this->assertIsString($monitoring);
         $this->assertDoesNotMatchRegularExpression(
-            '/->getTask\s*\(\s*\$task\s*\)/',
+            '/->getTask\s*\(/',
             $controller,
             'API task detail reads must never select the anonymous governance projection.',
         );
         $this->assertStringContainsString('AdminAiModelAccessResolver $adminAiModelAccessResolver', $monitoring);
         $this->assertStringContainsString('->usableQuery($modelViewer)', $monitoring);
         $this->assertStringContainsString('?Admin $modelViewer = null', $monitoring);
+    }
+
+    #[Test]
+    public function api_projection_boundary_rejects_a_cosmetic_viewer_and_nullable_governance_call(): void
+    {
+        $cosmeticViewer = <<<'PHP'
+        $viewer = $this->executionAdmin($request);
+        $viewerWasResolved = $viewer->id > 0;
+        return $tasks->getTask($task, null);
+        PHP;
+        $nullableDedicatedCall = <<<'PHP'
+        $viewer = $this->executionAdmin($request);
+        return $tasks->getTaskForApi(taskId: $task, viewer: null);
+        PHP;
+
+        $this->assertSame(['getTask'], $this->unsafeProjectionCalls($cosmeticViewer));
+        $this->assertSame(['nullable_api_viewer'], $this->unsafeProjectionCalls($nullableDedicatedCall));
+    }
+
+    #[Test]
+    public function api_controller_directory_never_calls_nullable_task_projection_methods(): void
+    {
+        $paths = glob(app_path('Http/Controllers/Api/**/*.php')) ?: [];
+        $this->assertNotEmpty($paths);
+
+        foreach ($paths as $path) {
+            $source = file_get_contents($path);
+            $this->assertIsString($source, $path);
+            $this->assertSame([], $this->unsafeProjectionCalls($source), $path);
+        }
+    }
+
+    #[Test]
+    public function dedicated_api_projection_method_rejects_a_null_viewer_at_the_type_boundary(): void
+    {
+        $this->expectException(TypeError::class);
+
+        app(TaskLifecycleService::class)->getTaskForApi(1, null);
+    }
+
+    #[DataProvider('apiProjectionMethods')]
+    #[Test]
+    public function dedicated_api_projection_methods_require_a_non_nullable_admin(string $method): void
+    {
+        $reflection = new ReflectionMethod(TaskLifecycleService::class, $method);
+        $viewer = collect($reflection->getParameters())->firstWhere('name', 'viewer');
+
+        $this->assertNotNull($viewer, $method);
+        $this->assertFalse($viewer->allowsNull(), $method);
+        $type = $viewer->getType();
+        $this->assertInstanceOf(ReflectionNamedType::class, $type, $method);
+        $this->assertSame(Admin::class, $type->getName(), $method);
     }
 
     /** @return array<string, array{string}> */
@@ -99,15 +154,47 @@ final class ApiTaskModelProjectionArchitectureTest extends TestCase
     public static function viewerBoundTaskServiceCalls(): array
     {
         return [
-            'listTasks' => ['index', 'listTasks'],
-            'getTask' => ['show', 'getTask'],
-            'createTask' => ['store', 'createTask'],
-            'updateTask' => ['update', 'updateTask'],
-            'startTask' => ['start', 'startTask'],
-            'stopTask' => ['stop', 'stopTask'],
-            'enqueueTask' => ['enqueue', 'enqueueTask'],
-            'listTaskJobs' => ['jobs', 'listTaskJobs'],
+            'listTasks' => ['index', 'listTasksForApi'],
+            'getTask' => ['show', 'getTaskForApi'],
+            'createTask' => ['store', 'createTaskForApi'],
+            'updateTask' => ['update', 'updateTaskForApi'],
+            'startTask' => ['start', 'startTaskForApi'],
+            'stopTask' => ['stop', 'stopTaskForApi'],
+            'enqueueTask' => ['enqueue', 'enqueueTaskForApi'],
+            'listTaskJobs' => ['jobs', 'listTaskJobsForApi'],
         ];
+    }
+
+    /** @return array<string, array{string}> */
+    public static function apiProjectionMethods(): array
+    {
+        return collect([
+            'listTasksForApi',
+            'getTaskForApi',
+            'createTaskForApi',
+            'updateTaskForApi',
+            'startTaskForApi',
+            'stopTaskForApi',
+            'enqueueTaskForApi',
+            'listTaskJobsForApi',
+            'getJobForApi',
+        ])->mapWithKeys(static fn (string $method): array => [$method => [$method]])->all();
+    }
+
+    /** @return list<string> */
+    private function unsafeProjectionCalls(string $source): array
+    {
+        $violations = [];
+        foreach (['listTasks', 'getTask', 'createTask', 'updateTask', 'startTask', 'stopTask', 'enqueueTask', 'listTaskJobs', 'getJob'] as $method) {
+            if (preg_match('/->'.preg_quote($method, '/').'\s*\(/', $source) === 1) {
+                $violations[] = $method;
+            }
+        }
+        if (preg_match('/->\w+ForApi\s*\([^;]*\bviewer\s*:\s*null\b/s', $source) === 1) {
+            $violations[] = 'nullable_api_viewer';
+        }
+
+        return $violations;
     }
 
     /** @param class-string $class */

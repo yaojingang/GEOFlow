@@ -605,6 +605,8 @@ class ApiV1ContractTest extends TestCase
                     'execution_lease_token' => 'nested-lease-secret',
                 ]],
                 'ai_quality' => [
+                    'required' => true,
+                    'check_id' => 778899,
                     'status' => 'queued',
                     'nested' => [[
                         'MODEL_ID' => 112233,
@@ -620,7 +622,41 @@ class ApiV1ContractTest extends TestCase
                 ],
                 'title_readiness' => [
                     'status' => 'blocked',
-                    'reason' => 'provider https://readiness.example.test api_key=readiness-key Private Readiness Model',
+                    'can_save' => false,
+                    'can_activate' => false,
+                    'requires_acknowledgement' => true,
+                    'shortage' => 2,
+                    'suggested_article_limit' => 3,
+                    'conflict_count' => 1,
+                    'library' => [
+                        'id' => 991122,
+                        'name' => 'Peer Model Hidden In Library Name',
+                        'total' => 5,
+                        'used' => 2,
+                        'available' => 3,
+                        'diagnostic' => 'Peer Model Hidden In Library Diagnostic',
+                    ],
+                    'task' => [
+                        'id' => (int) $task->id,
+                        'status' => 'active',
+                        'article_limit' => 5,
+                        'created_count' => 2,
+                        'remaining' => 3,
+                        'is_loop' => false,
+                        'identifier' => 991122,
+                    ],
+                    'issues' => [[
+                        'code' => 'title_library_shortage',
+                        'severity' => 'blocking',
+                        'label' => 'Peer Model Hidden In Issue Label',
+                    ], [
+                        'code' => 'untrusted_peer_model_name',
+                        'severity' => 'blocking',
+                    ]],
+                    'diagnostic' => 'Peer Model Hidden In Readiness Diagnostic',
+                    'identifier' => 991122,
+                    'value' => 'Peer Model Hidden In Value',
+                    'label' => 'Peer Model Hidden In Label',
                     'MODEL_ATTEMPTS' => [['model_name' => 'Attempt Private Model']],
                 ],
                 'used_model_id' => 246810,
@@ -668,8 +704,37 @@ class ApiV1ContractTest extends TestCase
         $this->assertSame('api_enqueue', data_get($detail, 'payload.source'));
         $this->assertSame('ai_config_access_revoked', data_get($detail, 'error_code'));
         $this->assertSame('任务执行未完成', data_get($detail, 'error_message'));
-        $this->assertSame('task_execution_failed', data_get($detail, 'task_run_summary.meta.title_readiness.reason'));
-        $this->assertSame('still-safe', data_get($detail, 'task_run_summary.meta.ai_quality.nested.0.safe_status'));
+        $this->assertSame([
+            'required' => true,
+            'check_id' => 778899,
+            'status' => 'queued',
+        ], data_get($detail, 'task_run_summary.meta.ai_quality'));
+        $this->assertSame([
+            'status' => 'blocked',
+            'can_save' => false,
+            'can_activate' => false,
+            'requires_acknowledgement' => true,
+            'library' => [
+                'total' => 5,
+                'used' => 2,
+                'available' => 3,
+            ],
+            'task' => [
+                'id' => (int) $task->id,
+                'status' => 'active',
+                'article_limit' => 5,
+                'created_count' => 2,
+                'remaining' => 3,
+                'is_loop' => false,
+            ],
+            'shortage' => 2,
+            'suggested_article_limit' => 3,
+            'conflict_count' => 1,
+            'issues' => [[
+                'code' => 'title_library_shortage',
+                'severity' => 'blocking',
+            ]],
+        ], data_get($detail, 'task_run_summary.meta.title_readiness'));
         foreach (['model_attempts', 'used_model_id', 'used_model_name'] as $modelReferenceKey) {
             $this->assertArrayNotHasKey($modelReferenceKey, data_get($detail, 'task_run_summary.meta', []));
         }
@@ -707,6 +772,14 @@ class ApiV1ContractTest extends TestCase
             'camouflaged.example.test',
             'sk-camouflaged-secret',
             'Camouflaged Private Model',
+            'Peer Model Hidden In Library Name',
+            'Peer Model Hidden In Library Diagnostic',
+            'Peer Model Hidden In Issue Label',
+            'Peer Model Hidden In Readiness Diagnostic',
+            'Peer Model Hidden In Value',
+            'Peer Model Hidden In Label',
+            'untrusted_peer_model_name',
+            '991122',
         ] as $secret) {
             $this->assertStringNotContainsString($secret, $serialized);
         }

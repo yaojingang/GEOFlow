@@ -20,6 +20,6 @@ class JobController extends BaseApiController
     {
         $viewer = $this->executionAdmin($request);
 
-        return $this->success($request, $tasks->getJob($job, $viewer));
+        return $this->success($request, $tasks->getJobForApi(jobId: $job, viewer: $viewer));
     }
 }
