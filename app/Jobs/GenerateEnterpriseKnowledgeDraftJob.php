@@ -12,6 +12,7 @@ use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Throwable;
 
 final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
@@ -22,7 +23,20 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
 
     public int $timeout = 600;
 
-    public function __construct(public readonly int $projectId) {}
+    /**
+     * The serialized claim lease lets Laravel's reconstructed failed callback
+     * prove that it still owns the execution it is trying to fail.
+     */
+    public ?string $claimLeaseToken = null;
+
+    private ?string $claimedExecutionLeaseToken = null;
+
+    public function __construct(public readonly int $projectId, ?string $claimLeaseToken = null)
+    {
+        $this->claimLeaseToken = is_string($claimLeaseToken) && Str::isUuid($claimLeaseToken)
+            ? $claimLeaseToken
+            : (string) Str::uuid();
+    }
 
     /** @return list<string> */
     public function tags(): array
@@ -45,11 +59,13 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
             return;
         }
 
-        $claim = $executionGuard->claim($project);
+        $claimLeaseToken = $this->originalClaimLeaseToken() ?? (string) Str::uuid();
+        $claim = $executionGuard->claim($project, $claimLeaseToken);
         $project = $claim['project'];
         if (! $claim['claimed']) {
             return;
         }
+        $this->claimedExecutionLeaseToken = trim((string) $project->execution_lease_token);
 
         try {
             $executionGuard->assertCurrent($project, $project->requested_ai_model_id);
@@ -67,17 +83,40 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
             $this->updateProgress($project, 'writing', 92, __('admin.enterprise_knowledge.progress_message.writing'));
             $this->persistDraft($project, $content, $validationItems, $draft, $executionGuard);
         } catch (AiModelAccessException|PermanentAiProviderException $exception) {
-            $this->markFailed($project, $exception, false, $errorSanitizer);
+            $this->markFailed(
+                $project,
+                $exception,
+                false,
+                $errorSanitizer,
+                $this->claimedExecutionLeaseToken,
+            );
         } catch (Throwable $exception) {
-            $this->markFailed($project, $exception, true, $errorSanitizer);
+            $this->markFailed(
+                $project,
+                $exception,
+                true,
+                $errorSanitizer,
+                $this->claimedExecutionLeaseToken,
+            );
         }
     }
 
     public function failed(?Throwable $exception = null): void
     {
+        $claimLeaseToken = $this->originalClaimLeaseToken();
+        if ($claimLeaseToken === null) {
+            return;
+        }
+
         $project = EnterpriseKnowledgeProject::query()->whereKey($this->projectId)->first();
         if ($project instanceof EnterpriseKnowledgeProject && $exception instanceof Throwable) {
-            $this->markFailed($project, $exception, true, app(AiExecutionErrorSanitizer::class));
+            $this->markFailed(
+                $project,
+                $exception,
+                true,
+                app(AiExecutionErrorSanitizer::class),
+                $claimLeaseToken,
+            );
         }
     }
 
@@ -169,6 +208,7 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
         Throwable $exception,
         bool $retryable,
         AiExecutionErrorSanitizer $errorSanitizer,
+        ?string $claimLeaseToken,
     ): void {
         $fallback = $exception instanceof AiModelAccessException
             ? $exception->getErrorCode()
@@ -179,15 +219,15 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
             $exception instanceof PermanentAiProviderException => $exception->getErrorCode(),
             default => $retryable ? null : $fallback,
         };
-        $lease = trim((string) ($project->execution_lease_token ?? ''));
-        if ($lease === '') {
+        $claimLeaseToken = trim((string) $claimLeaseToken);
+        if (! Str::isUuid($claimLeaseToken)) {
             return;
         }
 
         EnterpriseKnowledgeProject::query()
             ->whereKey($project->getKey())
             ->where('status', 'processing')
-            ->where('execution_lease_token', $lease)
+            ->where('execution_lease_token', $claimLeaseToken)
             ->where('lease_expires_at', '>', now())
             ->update([
                 'status' => 'failed',
@@ -199,6 +239,13 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
                 'lease_expires_at' => null,
                 'updated_at' => now(),
             ]);
+    }
+
+    private function originalClaimLeaseToken(): ?string
+    {
+        $claimLeaseToken = trim((string) ($this->claimLeaseToken ?? ''));
+
+        return Str::isUuid($claimLeaseToken) ? $claimLeaseToken : null;
     }
 
     private function progressJson(

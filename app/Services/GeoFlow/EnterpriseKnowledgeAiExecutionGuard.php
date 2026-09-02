@@ -48,9 +48,15 @@ final class EnterpriseKnowledgeAiExecutionGuard
     }
 
     /** @return array{project:EnterpriseKnowledgeProject,claimed:bool} */
-    public function claim(EnterpriseKnowledgeProject $project): array
-    {
-        return DB::transaction(function () use ($project): array {
+    public function claim(
+        EnterpriseKnowledgeProject $project,
+        ?string $claimLeaseToken = null,
+    ): array {
+        $claimLeaseToken = is_string($claimLeaseToken) && Str::isUuid($claimLeaseToken)
+            ? $claimLeaseToken
+            : (string) Str::uuid();
+
+        return DB::transaction(function () use ($project, $claimLeaseToken): array {
             $lockedProject = EnterpriseKnowledgeProject::query()
                 ->whereKey($project->getKey())
                 ->lockForUpdate()
@@ -71,7 +77,7 @@ final class EnterpriseKnowledgeAiExecutionGuard
 
             $lockedProject->forceFill([
                 'status' => 'processing',
-                'execution_lease_token' => (string) Str::uuid(),
+                'execution_lease_token' => $claimLeaseToken,
                 'lease_expires_at' => now()->addSeconds(self::EXECUTION_LEASE_SECONDS),
                 'error_code' => null,
                 'error_message' => null,

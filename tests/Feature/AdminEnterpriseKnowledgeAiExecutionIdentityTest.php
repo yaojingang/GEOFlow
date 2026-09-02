@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -36,7 +37,7 @@ final class AdminEnterpriseKnowledgeAiExecutionIdentityTest extends TestCase
         $this->withoutMiddleware(ValidateCsrfToken::class);
     }
 
-    public function test_web_creation_freezes_ai_identity_and_queues_only_the_project_id(): void
+    public function test_web_creation_freezes_ai_identity_and_queues_without_admin_credentials(): void
     {
         Queue::fake();
         $admin = $this->admin('enterprise-identity-owner', ['role' => 'super_admin']);
@@ -62,7 +63,8 @@ final class AdminEnterpriseKnowledgeAiExecutionIdentityTest extends TestCase
         Queue::assertPushed(
             GenerateEnterpriseKnowledgeDraftJob::class,
             fn (GenerateEnterpriseKnowledgeDraftJob $job): bool => $job->projectId === (int) $project->id
-                && ! property_exists($job, 'adminId'),
+                && ! property_exists($job, 'adminId')
+                && Str::isUuid((string) $job->claimLeaseToken),
         );
         $serialized = serialize(new GenerateEnterpriseKnowledgeDraftJob((int) $project->id));
         $this->assertStringNotContainsString('enterprise-identity-secret', $serialized);
@@ -208,6 +210,61 @@ final class AdminEnterpriseKnowledgeAiExecutionIdentityTest extends TestCase
         Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'shared-unused.test'));
     }
 
+    public function test_modular_permanent_provider_rejection_does_not_retry_as_single_pass_or_use_shared(): void
+    {
+        $provider = $this->admin('enterprise-modular-permanent-provider', ['role' => 'super_admin']);
+        $admin = $this->admin('enterprise-modular-permanent-admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $personal = $this->model($admin, 'enterprise-modular-permanent-personal', [
+            'api_url' => 'https://modular-personal-reject.test/v1',
+        ]);
+        $this->model($provider, 'enterprise-modular-permanent-shared', [
+            'api_url' => 'https://modular-shared-unused.test/v1',
+        ]);
+        $project = $this->executionProject($admin, $personal, '企业模块化永久失败');
+        $this->addSources($project, 2);
+        Http::fake(fn () => Http::response(['error' => ['message' => 'unsupported capability']], 422));
+
+        (new GenerateEnterpriseKnowledgeDraftJob((int) $project->id))
+            ->handle(app(EnterpriseKnowledgeDraftService::class));
+
+        $project->refresh();
+        $this->assertSame('failed', $project->status);
+        $this->assertSame('ai_provider_request_rejected', $project->error_code);
+        $this->assertFalse($project->retryable_failure);
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'modular-shared-unused.test'));
+    }
+
+    public function test_modular_transient_failure_can_fall_back_to_single_pass_on_the_same_model(): void
+    {
+        $admin = $this->admin('enterprise-modular-transient-admin');
+        $model = $this->model($admin, 'enterprise-modular-transient-model', [
+            'api_url' => 'https://modular-transient.test/v1',
+        ]);
+        $project = $this->executionProject($admin, $model, '企业模块化临时失败');
+        $this->addSources($project, 2);
+        $attempt = 0;
+        Http::fake(function () use (&$attempt) {
+            $attempt++;
+            if ($attempt === 1) {
+                return Http::response(['error' => ['message' => 'temporary overload']], 500);
+            }
+
+            return Http::response($this->chatCompletion($this->completeDraftContent('单次降级草稿')), 200);
+        });
+
+        (new GenerateEnterpriseKnowledgeDraftJob((int) $project->id))
+            ->handle(app(EnterpriseKnowledgeDraftService::class));
+
+        $project->refresh();
+        $this->assertSame('reviewing', $project->status, (string) $project->error_message);
+        $this->assertSame((int) $model->id, (int) $project->resolved_ai_model_id);
+        $this->assertStringContainsString('单次降级草稿', (string) $project->draft_content);
+        Http::assertSentCount(2);
+    }
+
     public function test_missing_requested_model_credentials_never_uses_shared_fallback(): void
     {
         $provider = $this->admin('enterprise-missing-key-provider', ['role' => 'super_admin']);
@@ -340,6 +397,52 @@ final class AdminEnterpriseKnowledgeAiExecutionIdentityTest extends TestCase
         $this->assertSame(0, EnterpriseKnowledgeRevision::query()
             ->where('enterprise_knowledge_project_id', $project->id)
             ->count());
+    }
+
+    public function test_reconstructed_failed_callback_cannot_overwrite_a_new_worker_lease(): void
+    {
+        $admin = $this->admin('enterprise-failed-callback-admin');
+        $model = $this->model($admin, 'enterprise-failed-callback-model');
+        $project = $this->executionProject($admin, $model, '企业失败回调隔离');
+        $guard = app(EnterpriseKnowledgeAiExecutionGuard::class);
+        $oldJob = new GenerateEnterpriseKnowledgeDraftJob((int) $project->id);
+        $oldClaim = $guard->claim($project, $oldJob->claimLeaseToken);
+        $project->forceFill([
+            'execution_lease_token' => $oldClaim['project']->execution_lease_token,
+            'lease_expires_at' => now()->subMinute(),
+        ])->save();
+        $newJob = new GenerateEnterpriseKnowledgeDraftJob((int) $project->id);
+        $newClaim = $guard->claim($project->refresh(), $newJob->claimLeaseToken);
+        $newLease = (string) $newClaim['project']->execution_lease_token;
+        $reconstructedOldJob = unserialize(serialize($oldJob));
+
+        $reconstructedOldJob->failed(new RuntimeException('old worker timeout'));
+
+        $project->refresh();
+        $this->assertSame('processing', $project->status);
+        $this->assertSame($newLease, (string) $project->execution_lease_token);
+        $this->assertNull($project->error_code);
+        $this->assertNull($project->error_message);
+    }
+
+    public function test_legacy_failed_callback_without_an_original_lease_leaves_recovery_state_untouched(): void
+    {
+        $admin = $this->admin('enterprise-legacy-failed-callback-admin');
+        $model = $this->model($admin, 'enterprise-legacy-failed-callback-model');
+        $project = $this->executionProject($admin, $model, '企业旧任务失败回调');
+        $guard = app(EnterpriseKnowledgeAiExecutionGuard::class);
+        $claim = $guard->claim($project);
+        $lease = (string) $claim['project']->execution_lease_token;
+        $legacyJob = new GenerateEnterpriseKnowledgeDraftJob((int) $project->id);
+        $legacyJob->claimLeaseToken = null;
+
+        $legacyJob->failed(new RuntimeException('legacy timeout'));
+
+        $project->refresh();
+        $this->assertSame('processing', $project->status);
+        $this->assertSame($lease, (string) $project->execution_lease_token);
+        $this->assertNull($project->error_code);
+        $this->assertNull($project->error_message);
     }
 
     public function test_scheduled_recovery_is_idempotent_and_skips_terminal_projects(): void
@@ -546,6 +649,20 @@ final class AdminEnterpriseKnowledgeAiExecutionIdentityTest extends TestCase
 
             return $project;
         });
+    }
+
+    private function addSources(EnterpriseKnowledgeProject $project, int $count): void
+    {
+        foreach (range(1, $count) as $index) {
+            EnterpriseKnowledgeSource::query()->create([
+                'enterprise_knowledge_project_id' => $project->id,
+                'original_name' => 'source-'.$index.'.md',
+                'file_type' => 'markdown',
+                'content' => '# 补充资料 '.$index."\n".'企业产品能力、应用场景和审核流程。',
+                'character_count' => 24,
+                'sort_order' => $index,
+            ]);
+        }
     }
 
     /** @return array<string,mixed> */

@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\PermanentAiProviderException;
+use App\Exceptions\RecoverableEnterpriseKnowledgeModuleException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\EnterpriseKnowledgeProject;
@@ -19,6 +20,9 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
+use Laravel\Ai\Exceptions\AiException;
+use Laravel\Ai\Exceptions\FailoverableException;
 use Throwable;
 
 final class EnterpriseKnowledgeDraftService
@@ -172,7 +176,7 @@ final class EnterpriseKnowledgeDraftService
             } catch (AiModelAccessException|PermanentAiProviderException $exception) {
                 throw $exception;
             } catch (Throwable $exception) {
-                if ($this->failoverDecider->isPermanentProviderFailure($exception)) {
+                if ($this->isPermanentAiFailure($exception)) {
                     throw PermanentAiProviderException::fromProviderFailure($exception);
                 }
 
@@ -369,9 +373,16 @@ PROMPT;
         if ($this->shouldUseModularDraft($sourceText, $sourceBlocks)) {
             try {
                 return $this->generateModularAiDraft($project, $sourceBlocks, $sourceFacts, $runtime);
-            } catch (Throwable) {
-                // Fall back to the original single-pass request for providers that do
-                // not follow section-scoped instructions reliably.
+            } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+                throw $exception;
+            } catch (Throwable $exception) {
+                if ($this->isPermanentAiFailure($exception)) {
+                    throw PermanentAiProviderException::fromProviderFailure($exception);
+                }
+                if (! $exception instanceof RecoverableEnterpriseKnowledgeModuleException
+                    && ! $this->failoverDecider->shouldFailover($exception)) {
+                    throw $exception;
+                }
             }
         }
 
@@ -420,17 +431,21 @@ PROMPT;
             );
             $noiseResidues = $this->draftNoiseResidues($moduleContent);
             if ($noiseResidues !== []) {
-                throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_noise', [
-                    'items' => implode('、', $noiseResidues),
-                ]));
+                throw RecoverableEnterpriseKnowledgeModuleException::invalidOutput(
+                    __('admin.enterprise_knowledge.error.ai_noise', [
+                        'items' => implode('、', $noiseResidues),
+                    ]),
+                );
             }
 
             foreach ($module['sections'] as $section) {
                 $body = $this->extractMarkdownSectionBody($moduleContent, $section);
                 if ($body === '') {
-                    throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_incomplete', [
-                        'sections' => $section,
-                    ]));
+                    throw RecoverableEnterpriseKnowledgeModuleException::invalidOutput(
+                        __('admin.enterprise_knowledge.error.ai_incomplete', [
+                            'sections' => $section,
+                        ]),
+                    );
                 }
                 $sections[$section] = $body;
             }
@@ -440,14 +455,23 @@ PROMPT;
         foreach (self::REQUIRED_SECTIONS as $section) {
             $body = trim((string) ($sections[$section] ?? ''));
             if ($body === '') {
-                throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_incomplete', [
-                    'sections' => $section,
-                ]));
+                throw RecoverableEnterpriseKnowledgeModuleException::invalidOutput(
+                    __('admin.enterprise_knowledge.error.ai_incomplete', [
+                        'sections' => $section,
+                    ]),
+                );
             }
             $parts[] = '## '.$section."\n".$body;
         }
 
         return trim(implode("\n\n", $parts));
+    }
+
+    private function isPermanentAiFailure(Throwable $exception): bool
+    {
+        return $this->failoverDecider->isPermanentProviderFailure($exception)
+            || $exception instanceof InvalidArgumentException
+            || ($exception instanceof AiException && ! $exception instanceof FailoverableException);
     }
 
     private function responseText(mixed $response): string
