@@ -60,6 +60,7 @@ final class AdminAiDependencyInspector
             executionUrlImportJobCount: $this->executionUrlImportJobCount($admin),
             executionEnterpriseKnowledgeProjectCount: $this->executionEnterpriseKnowledgeProjectCount($admin),
             executionTitleGenerationRunCount: $this->executionTitleGenerationRunCount($admin),
+            executionKnowledgeFactGenerationRunCount: $this->pendingKnowledgeFactGenerationRunCount($admin),
             executionAiWorkspaceRunCount: $this->executionAiWorkspaceRunCount($admin),
         );
     }
@@ -164,16 +165,41 @@ final class AdminAiDependencyInspector
 
     private function pendingKnowledgeFactGenerationRunCount(Admin $admin): int
     {
-        if (! $this->hasRequiredColumns((new KnowledgeFactGenerationRun)->getTable(), [
+        $table = (new KnowledgeFactGenerationRun)->getTable();
+        if (! $this->hasRequiredColumns($table, [
             'created_by_admin_id',
             'status',
         ])) {
             return 0;
         }
+        $hasModelAccessAdminId = Schema::hasColumn($table, 'model_access_admin_id');
+        $hasRetryableFailure = Schema::hasColumn($table, 'retryable_failure');
 
-        return KnowledgeFactGenerationRun::query()
-            ->where('created_by_admin_id', $admin->getKey())
-            ->whereIn('status', KnowledgeFactGenerationRun::ACTIVE_STATUSES)
+        $query = KnowledgeFactGenerationRun::query();
+        if ($hasModelAccessAdminId) {
+            $query->where(function ($identity) use ($admin): void {
+                $identity->where('model_access_admin_id', $admin->getKey())
+                    ->orWhere(function ($legacy) use ($admin): void {
+                        $legacy->whereNull('model_access_admin_id')
+                            ->where('created_by_admin_id', $admin->getKey());
+                    });
+            });
+        } else {
+            $query->where('created_by_admin_id', $admin->getKey());
+        }
+
+        return $query
+            ->where(function ($state) use ($hasRetryableFailure): void {
+                $state->whereIn('status', KnowledgeFactGenerationRun::ACTIVE_STATUSES);
+                if ($hasRetryableFailure) {
+                    $state->orWhere(function ($retryable): void {
+                        $retryable->whereIn('status', [
+                            KnowledgeFactGenerationRun::STATUS_FAILED,
+                            'partial',
+                        ])->where('retryable_failure', true);
+                    });
+                }
+            })
             ->count();
     }
 

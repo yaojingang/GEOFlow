@@ -38,13 +38,16 @@ final class StructuredAiModelReferenceParser
         $references = [];
         $findings = [];
         foreach ($paths as $pathDefinition) {
-            [$present, $rawValue] = $this->pathValue($payload, $pathDefinition['path']);
-            if (! $present || $rawValue === null) {
+            [$present, $rawValues] = $this->pathValues($payload, $pathDefinition['path']);
+            if (! $present || $rawValues === []) {
                 continue;
             }
 
             $path = $jsonColumn.'.'.$pathDefinition['path'];
-            if ($pathDefinition['many']) {
+            if (str_contains($pathDefinition['path'], '*')) {
+                $values = $rawValues;
+            } elseif ($pathDefinition['many']) {
+                $rawValue = $rawValues[0] ?? null;
                 if (! is_array($rawValue) || ! array_is_list($rawValue)) {
                     $findings[] = ['path' => $path, 'reason' => 'invalid_model_id'];
 
@@ -52,7 +55,7 @@ final class StructuredAiModelReferenceParser
                 }
                 $values = $rawValue;
             } else {
-                $values = [$rawValue];
+                $values = [$rawValues[0] ?? null];
             }
 
             $modelIds = [];
@@ -78,20 +81,47 @@ final class StructuredAiModelReferenceParser
         return ['references' => $references, 'findings' => $findings];
     }
 
-    /** @param array<string, mixed> $payload
-     * @return array{bool,mixed}
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{bool,list<mixed>}
      */
-    private function pathValue(array $payload, string $path): array
+    private function pathValues(array $payload, string $path): array
     {
-        $value = $payload;
-        foreach (explode('.', $path) as $segment) {
-            if (! is_array($value) || ! array_key_exists($segment, $value)) {
-                return [false, null];
-            }
-            $value = $value[$segment];
+        return $this->collectPathValues($payload, explode('.', $path));
+    }
+
+    /**
+     * @param  list<string>  $segments
+     * @return array{bool,list<mixed>}
+     */
+    private function collectPathValues(mixed $value, array $segments): array
+    {
+        if ($segments === []) {
+            return [true, [$value]];
         }
 
-        return [true, $value];
+        $segment = array_shift($segments);
+        if ($segment === '*') {
+            if (! is_array($value)) {
+                return [false, []];
+            }
+
+            $present = false;
+            $values = [];
+            foreach ($value as $child) {
+                [$childPresent, $childValues] = $this->collectPathValues($child, $segments);
+                $present = $present || $childPresent;
+                array_push($values, ...$childValues);
+            }
+
+            return [$present, $values];
+        }
+
+        if (! is_array($value) || ! array_key_exists($segment, $value)) {
+            return [false, []];
+        }
+
+        return $this->collectPathValues($value[$segment], $segments);
     }
 
     private function positiveModelId(mixed $value): ?int

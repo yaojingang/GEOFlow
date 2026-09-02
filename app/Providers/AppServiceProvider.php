@@ -193,10 +193,29 @@ class AppServiceProvider extends ServiceProvider
                 ->by('title-generation:model:'.$job->aiModelId);
         });
         RateLimiter::for('knowledge-fact-generation', function (GenerateKnowledgeFactBatchJob $job): Limit {
-            $modelId = (int) KnowledgeFactGenerationRun::query()->whereKey($job->runId)->value('ai_model_id');
+            $run = KnowledgeFactGenerationRun::query()
+                ->whereKey($job->runId)
+                ->first(['id', 'status', 'model_access_admin_id', 'execution_attempt', 'batch_claims_json']);
+            $claim = (array) data_get($run?->batch_claims_json, (string) $job->sequence, []);
+            $validClaim = $run instanceof KnowledgeFactGenerationRun
+                && $run->isActive()
+                && (int) $run->execution_attempt === $job->executionAttempt
+                && (int) data_get($claim, 'execution_attempt') === $job->executionAttempt
+                && hash_equals((string) data_get($claim, 'input_hash'), $job->inputHash)
+                && (string) data_get($claim, 'dispatch_token') !== ''
+                && $job->claimToken !== ''
+                && hash_equals((string) data_get($claim, 'dispatch_token'), $job->claimToken);
+
+            $key = 'knowledge-fact-generation:invalid';
+            if ($validClaim) {
+                $resolvedModelId = (int) data_get($claim, 'resolved_ai_model_id');
+                $key = $resolvedModelId > 0
+                    ? 'knowledge-fact-generation:model:'.$resolvedModelId
+                    : 'knowledge-fact-generation:admin:'.(int) $run->model_access_admin_id.':run:'.$run->id;
+            }
 
             return Limit::perMinute((int) config('geoflow.knowledge_fact_generation_rate_per_minute', 10))
-                ->by('knowledge-fact-generation:model:'.$modelId);
+                ->by($key);
         });
         RateLimiter::for('title-generation-submissions', function (Request $request): array {
             $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);

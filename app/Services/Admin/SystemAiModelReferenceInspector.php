@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Models\AiModel;
+use App\Models\KnowledgeFactGenerationRun;
 use App\Models\SiteSetting;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -167,8 +168,32 @@ final class SystemAiModelReferenceInspector
                         $method = $index === 0 ? 'whereIn' : 'orWhereIn';
                         $query->{$method}($column, $candidateIds);
                     }
-                })
-                ->orderBy($model->getKeyName());
+                });
+            if ($modelClass === KnowledgeFactGenerationRun::class
+                && Schema::hasColumns($table, ['status', 'retryable_failure'])) {
+                $query->where(function ($state): void {
+                    $state->whereIn('status', KnowledgeFactGenerationRun::ACTIVE_STATUSES)
+                        ->orWhere(function ($retryable): void {
+                            $retryable->whereIn('status', [
+                                KnowledgeFactGenerationRun::STATUS_FAILED,
+                                'partial',
+                            ])->where('retryable_failure', true);
+                        })
+                        ->orWhere(function ($unknown): void {
+                            $knownStatuses = [
+                                ...KnowledgeFactGenerationRun::ACTIVE_STATUSES,
+                                KnowledgeFactGenerationRun::STATUS_COMPLETED,
+                                KnowledgeFactGenerationRun::STATUS_FAILED,
+                                KnowledgeFactGenerationRun::STATUS_CANCELLED,
+                                KnowledgeFactGenerationRun::STATUS_OBSOLETE,
+                                'partial',
+                            ];
+                            $unknown->whereNull('status')
+                                ->orWhereNotIn('status', $knownStatuses);
+                        });
+                });
+            }
+            $query->orderBy($model->getKeyName());
             if ($lockForUpdate) {
                 $query->lockForUpdate();
             }

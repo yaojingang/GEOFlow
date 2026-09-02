@@ -138,6 +138,11 @@ Schedule::command('geoflow:recover-title-generations')
     ->onOneServer()
     ->withoutOverlapping(10);
 
+Schedule::command('geoflow:recover-knowledge-fact-generations')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
 Schedule::command('geoflow:reconcile-ai-quality')
     ->everyMinute()
     ->onOneServer()

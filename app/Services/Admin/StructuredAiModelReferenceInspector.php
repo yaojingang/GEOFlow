@@ -61,6 +61,10 @@ final class StructuredAiModelReferenceInspector
             if ($activeBooleanColumn !== null && ! Schema::hasColumn($table, $activeBooleanColumn)) {
                 continue;
             }
+            $retryableBooleanColumn = $definition['retryable_boolean_column'] ?? null;
+            if ($retryableBooleanColumn !== null && ! Schema::hasColumn($table, $retryableBooleanColumn)) {
+                continue;
+            }
             if (isset($definition['active_parent_guard'])
                 && ! $this->parentGuardIsAvailable($definition['active_parent_guard'])) {
                 unset($definition['active_parent_guard']);
@@ -109,6 +113,7 @@ final class StructuredAiModelReferenceInspector
                         $knownStatuses = array_values(array_unique([
                             ...($definition['active_statuses'] ?? []),
                             ...($definition['terminal_statuses'] ?? []),
+                            ...($definition['retryable_statuses'] ?? []),
                         ]));
                         $query->whereNull($statusColumn);
                         if ($knownStatuses !== []) {
@@ -164,10 +169,29 @@ final class StructuredAiModelReferenceInspector
     {
         $statusColumn = $definition['status_column'] ?? null;
         if ($statusColumn !== null) {
-            $statuses = $state === 'active'
-                ? ($definition['active_statuses'] ?? [])
-                : ($definition['terminal_statuses'] ?? []);
-            $query->whereIn($statusColumn, $statuses);
+            $retryableStatuses = $definition['retryable_statuses'] ?? [];
+            $retryableBooleanColumn = $definition['retryable_boolean_column'] ?? null;
+            $query->where(function (Builder $stateQuery) use ($definition, $retryableStatuses, $retryableBooleanColumn, $state, $statusColumn): void {
+                $statuses = $state === 'active'
+                    ? ($definition['active_statuses'] ?? [])
+                    : ($definition['terminal_statuses'] ?? []);
+                $stateQuery->whereIn($statusColumn, $statuses);
+                if ($retryableBooleanColumn === null || $retryableStatuses === []) {
+                    return;
+                }
+
+                $stateQuery->orWhere(function (Builder $retryable) use ($retryableStatuses, $retryableBooleanColumn, $state, $statusColumn): void {
+                    $retryable->whereIn($statusColumn, $retryableStatuses);
+                    if ($state === 'active') {
+                        $retryable->where($retryableBooleanColumn, true);
+                    } else {
+                        $retryable->where(function (Builder $notRetryable) use ($retryableBooleanColumn): void {
+                            $notRetryable->whereNull($retryableBooleanColumn)
+                                ->orWhere($retryableBooleanColumn, false);
+                        });
+                    }
+                });
+            });
 
             return;
         }

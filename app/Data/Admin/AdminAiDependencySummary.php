@@ -15,6 +15,7 @@ final readonly class AdminAiDependencySummary
         public int $executionUrlImportJobCount = 0,
         public int $executionEnterpriseKnowledgeProjectCount = 0,
         public int $executionTitleGenerationRunCount = 0,
+        public int $executionKnowledgeFactGenerationRunCount = 0,
         public int $executionAiWorkspaceRunCount = 0,
     ) {}
 
@@ -28,6 +29,7 @@ final readonly class AdminAiDependencySummary
             || $this->executionUrlImportJobCount > 0
             || $this->executionEnterpriseKnowledgeProjectCount > 0
             || $this->executionTitleGenerationRunCount > 0
+            || $this->executionKnowledgeFactGenerationRunCount > 0
             || $this->executionAiWorkspaceRunCount > 0;
     }
 
@@ -50,6 +52,7 @@ final readonly class AdminAiDependencySummary
             'execution_url_import_job_count' => $this->executionUrlImportJobCount,
             'execution_enterprise_knowledge_project_count' => $this->executionEnterpriseKnowledgeProjectCount,
             'execution_title_generation_run_count' => $this->executionTitleGenerationRunCount,
+            'execution_knowledge_fact_generation_run_count' => $this->executionKnowledgeFactGenerationRunCount,
             'execution_ai_workspace_run_count' => $this->executionAiWorkspaceRunCount,
         ];
     }

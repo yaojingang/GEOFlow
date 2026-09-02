@@ -36,7 +36,11 @@ final class AiModelReferenceCatalog
         TitleGenerationRun::class => ['ai_model_id', 'requested_ai_model_id', 'resolved_ai_model_id'],
         ArticleAiQualityCheck::class => ['ai_model_id'],
         ArticleAiOptimizationStep::class => ['ai_model_id'],
-        KnowledgeFactGenerationRun::class => ['ai_model_id'],
+        KnowledgeFactGenerationRun::class => [
+            'ai_model_id',
+            'requested_ai_model_id',
+            'resolved_ai_model_id',
+        ],
         AiWorkspaceRun::class => ['requested_ai_model_id', 'resolved_ai_model_id'],
     ];
 
@@ -53,6 +57,8 @@ final class AiModelReferenceCatalog
      *   status_column?:string,
      *   active_statuses?:list<string>,
      *   terminal_statuses?:list<string>,
+     *   retryable_statuses?:list<string>,
+     *   retryable_boolean_column?:string,
      *   active_boolean_column?:string,
      *   active_parent_guard?:array{
      *     model:class-string,
@@ -112,6 +118,22 @@ final class AiModelReferenceCatalog
                 'active_null_columns' => ['deleted_at'],
             ],
         ],
+        [
+            'model' => KnowledgeFactGenerationRun::class,
+            'json_column' => 'batch_claims_json',
+            'paths' => [
+                ['path' => '*.resolved_ai_model_id', 'many' => true],
+            ],
+            'status_column' => 'status',
+            'active_statuses' => KnowledgeFactGenerationRun::ACTIVE_STATUSES,
+            'terminal_statuses' => [
+                KnowledgeFactGenerationRun::STATUS_COMPLETED,
+                KnowledgeFactGenerationRun::STATUS_CANCELLED,
+                KnowledgeFactGenerationRun::STATUS_OBSOLETE,
+            ],
+            'retryable_statuses' => [KnowledgeFactGenerationRun::STATUS_FAILED, 'partial'],
+            'retryable_boolean_column' => 'retryable_failure',
+        ],
     ];
 
     /**
@@ -152,6 +174,12 @@ final class AiModelReferenceCatalog
         TaskRun::class => [
             'meta.used_model_id',
             'meta.model_attempts.*.model_id',
+        ],
+        KnowledgeFactGenerationRun::class => [
+            'ai_model_id',
+            'requested_ai_model_id',
+            'resolved_ai_model_id',
+            'batch_claims_json.*.resolved_ai_model_id',
         ],
     ];
 }

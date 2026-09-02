@@ -7,6 +7,7 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiWorkspaceRun;
 use App\Models\EnterpriseKnowledgeProject;
+use App\Models\KnowledgeFactGenerationRun;
 use App\Models\TitleGenerationRun;
 use App\Models\UrlImportJob;
 use App\Services\AiWorkspace\AiModelInvocationLock;
@@ -68,6 +69,9 @@ final class AdminAiModelMutationService
                 if ($this->activeAiWorkspaceRunCount($modelId) > 0) {
                     return new AdminAiModelMutationResult($lockedModel, 'task');
                 }
+                if ($this->activeKnowledgeFactGenerationIds($modelId) !== []) {
+                    return new AdminAiModelMutationResult($lockedModel, 'task');
+                }
 
                 $lockedModel->fill(Arr::except($attributes, ['access_scope']));
                 $lockedModel->forceFill(['access_scope' => $scope])->save();
@@ -103,6 +107,7 @@ final class AdminAiModelMutationService
                 $taskCount += $this->activeUrlImportCount($modelId);
                 $taskCount += $this->activeEnterpriseKnowledgeCount($modelId);
                 $taskCount += $this->activeAiWorkspaceRunCount($modelId);
+                $taskCount += count($this->activeKnowledgeFactGenerationIds($modelId));
                 if ($taskCount > 0) {
                     return new AdminAiModelMutationResult($lockedModel, 'task', $taskCount);
                 }
@@ -235,6 +240,45 @@ final class AdminAiModelMutationService
                     });
             })
             ->count();
+    }
+
+    /** @return list<int> */
+    private function activeKnowledgeFactGenerationIds(int $modelId): array
+    {
+        $runIds = [];
+        KnowledgeFactGenerationRun::query()
+            ->where(function ($state): void {
+                $state->whereIn('status', KnowledgeFactGenerationRun::ACTIVE_STATUSES)
+                    ->orWhere(function ($retryable): void {
+                        $retryable->whereIn('status', [
+                            KnowledgeFactGenerationRun::STATUS_FAILED,
+                            'partial',
+                        ])->where('retryable_failure', true);
+                    });
+            })
+            ->select([
+                'id',
+                'ai_model_id',
+                'requested_ai_model_id',
+                'resolved_ai_model_id',
+                'batch_claims_json',
+            ])
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->chunkById(200, function ($runs) use ($modelId, &$runIds): void {
+                foreach ($runs as $run) {
+                    if ((int) $run->ai_model_id === $modelId
+                        || (int) $run->requested_ai_model_id === $modelId
+                        || (int) $run->resolved_ai_model_id === $modelId
+                        || collect((array) $run->batch_claims_json)->contains(
+                            static fn (mixed $claim): bool => (int) data_get($claim, 'resolved_ai_model_id') === $modelId,
+                        )) {
+                        $runIds[] = (int) $run->getKey();
+                    }
+                }
+            });
+
+        return $runIds;
     }
 
     private function isUsableSystemEmbedding(AiModel $model): bool

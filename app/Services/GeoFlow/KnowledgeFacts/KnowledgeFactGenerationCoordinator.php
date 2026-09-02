@@ -134,6 +134,7 @@ class KnowledgeFactGenerationCoordinator
                 fn ($query) => $query->whereNull('generation_key'),
             )
             ->select(['id', 'knowledge_base_id', 'content_hash'])
+            ->orderBy('id')
             ->get();
         $evidence = $chunks->map(fn ($chunk) => [
             'evidence_key' => 'chunk:'.$chunk->id.':'.substr((string) $chunk->content_hash, 0, 12),
@@ -185,7 +186,7 @@ class KnowledgeFactGenerationCoordinator
         foreach (array_slice($groups, 0, $jobCount) as $index => $group) {
             $sequence = $index + 1;
             $claim = $claims[(string) $sequence];
-            $jobs[] = new GenerateKnowledgeFactBatchJob(
+            $job = new GenerateKnowledgeFactBatchJob(
                 $run->id,
                 $sequence,
                 (string) $claim['input_hash'],
@@ -193,6 +194,8 @@ class KnowledgeFactGenerationCoordinator
                 (int) $run->execution_attempt,
                 (string) $claim['dispatch_token'],
             );
+            $job->afterCommit();
+            $jobs[] = $job;
         }
         $runId = $run->id;
         $executionAttempt = (int) $run->execution_attempt;
