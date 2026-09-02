@@ -8,15 +8,22 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Task;
 use App\Models\TaskRun;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\AiExecutionContextFactory;
+use App\Services\GeoFlow\ArticleContentGenerationService;
+use App\Services\GeoFlow\WorkerAiModelInvocationGateway;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use Illuminate\Cache\Lock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Enums\Lab;
+use ReflectionClass;
 use ReflectionMethod;
+use ReflectionProperty;
 use Tests\TestCase;
 
 class WorkerExecutionServiceMaxTokensTest extends TestCase
@@ -34,6 +41,35 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $this->assertSame(['max_output_tokens' => 8192], $agent->providerOptions(Lab::OpenAI));
         $this->assertSame(['maxOutputTokens' => 8192], $agent->providerOptions('gemini'));
         $this->assertSame(['maxOutputTokens' => 8192], $agent->providerOptions(Lab::Gemini));
+    }
+
+    public function test_worker_invocation_lock_covers_the_provider_timeout_and_persistence_margin(): void
+    {
+        $timeoutAttribute = (new ReflectionClass(MarkdownContentWriterAgent::class))
+            ->getAttributes(Timeout::class)[0]
+            ->newInstance();
+        $providerTimeout = app(ArticleContentGenerationService::class)->providerTimeoutSeconds();
+        $leaseSeconds = $providerTimeout + WorkerAiModelInvocationGateway::PERSISTENCE_MARGIN_SECONDS;
+
+        $this->assertSame(MarkdownContentWriterAgent::PROVIDER_TIMEOUT_SECONDS, $timeoutAttribute->value);
+        $this->assertSame(240, $providerTimeout);
+        $this->assertGreaterThanOrEqual($providerTimeout + 60, $leaseSeconds);
+
+        $locks = app(AiModelInvocationLock::class);
+        $invocationLock = $locks->acquireForInvocation(999_991, $leaseSeconds);
+        $seconds = new ReflectionProperty(Lock::class, 'seconds');
+        $this->assertSame($leaseSeconds, $seconds->getValue($invocationLock));
+
+        $this->travel($providerTimeout)->seconds();
+        $this->assertNull($locks->acquireForMutation(999_991));
+        $this->travel(WorkerAiModelInvocationGateway::PERSISTENCE_MARGIN_SECONDS - 1)->seconds();
+        $this->assertNull($locks->acquireForMutation(999_991));
+        $this->travel(2)->seconds();
+        $replacement = $locks->acquireForMutation(999_991);
+        $this->assertNotNull($replacement);
+
+        $locks->release($replacement);
+        $locks->release($invocationLock);
     }
 
     public function test_generate_content_sends_configured_model_max_tokens(): void

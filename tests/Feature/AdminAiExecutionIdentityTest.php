@@ -1498,6 +1498,64 @@ class AdminAiExecutionIdentityTest extends TestCase
         $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, TaskRun::query()->findOrFail((int) $runId)->error_code);
     }
 
+    public function test_due_draft_quality_dispatch_uses_the_quality_model_when_the_content_model_is_inactive(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('due-quality-model-runner');
+        $contentModel = $this->model($admin, 'due-quality-content-model');
+        $qualityModel = $this->model($admin, 'due-quality-review-model');
+        [$task] = $this->generationTask($admin, $contentModel, 'Due quality model selection');
+        $this->configureAiQuality($task, $qualityModel);
+        $task->forceFill(['next_publish_at' => now()->subMinute(), 'publish_scope' => 'local_only'])->save();
+        $article = $this->approvedDraft($task, 'due-quality-model-selection');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $contentModel->forceFill(['status' => 'inactive'])->save();
+        Http::preventStrayRequests();
+
+        (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+
+        Http::assertNothingSent();
+        Queue::assertPushed(ProcessArticleAiQualityJob::class, 1);
+        $check = $article->aiQualityChecks()->firstOrFail();
+        $this->assertSame((int) $qualityModel->id, (int) $check->ai_model_id);
+        $this->assertSame('completed', TaskRun::query()->findOrFail((int) $runId)->status);
+        $this->assertSame('active', $task->fresh()->status);
+        $this->assertSame(1, (int) $task->fresh()->schedule_enabled);
+        $this->assertSame('draft', $article->fresh()->status);
+    }
+
+    public function test_due_draft_quality_dispatch_fails_before_enqueue_when_the_quality_model_is_unavailable(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('due-quality-unavailable-runner');
+        $contentModel = $this->model($admin, 'due-quality-available-content');
+        $qualityModel = $this->model($admin, 'due-quality-unavailable-review');
+        [$task] = $this->generationTask($admin, $contentModel, 'Due unavailable quality model');
+        $this->configureAiQuality($task, $qualityModel);
+        $task->forceFill(['next_publish_at' => now()->subMinute(), 'publish_scope' => 'local_only'])->save();
+        $article = $this->approvedDraft($task, 'due-quality-unavailable');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $qualityModel->forceFill(['status' => 'inactive'])->save();
+        Http::preventStrayRequests();
+
+        (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+
+        Http::assertNothingSent();
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame('failed', $run->status);
+        $this->assertSame(AiModelAccessException::AI_MODEL_UNAVAILABLE, $run->error_code);
+        $this->assertSame('paused', $task->fresh()->status);
+        $this->assertSame(0, (int) $task->fresh()->schedule_enabled);
+        $this->assertSame(0, $article->aiQualityChecks()->count());
+    }
+
     public function test_permanent_ai_authorization_failure_pauses_the_task_and_prevents_future_schedules(): void
     {
         Queue::fake();

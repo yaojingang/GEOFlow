@@ -75,7 +75,10 @@ class WorkerExecutionService
 
         $publishResult = $this->publishDueDraftArticle($task, $executionContext, $executionStartedAt);
         if ($publishResult !== null) {
-            $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
+            if ($publishResult['article_id'] !== null
+                && (string) ($publishResult['meta']['action'] ?? '') === 'publish_draft') {
+                $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
+            }
 
             return $publishResult;
         }
@@ -262,7 +265,7 @@ class WorkerExecutionService
     /**
      * 发布一个已审核草稿。生成与发布解耦后，Worker 每次执行优先释放到期草稿。
      *
-     * @return array{article_id:int, title:string, message:string, meta:array<string,mixed>}|null
+     * @return array{article_id:int|null, title:string, message:string, meta:array<string,mixed>}|null
      */
     private function publishDueDraftArticle(
         Task $task,
@@ -297,6 +300,13 @@ class WorkerExecutionService
                 return null;
             }
 
+            if ($executionContext instanceof AiExecutionContext) {
+                $this->jobQueueService->lockRunningJobForWorker(
+                    $executionContext,
+                    (int) $freshTask->getKey(),
+                );
+            }
+
             /** @var Article|null $article */
             $article = Article::query()
                 ->whereKey((int) $candidateArticleId)
@@ -312,15 +322,12 @@ class WorkerExecutionService
 
             $qualityModelId = $this->articleAiQualityGate->modelIdThatWouldBeDispatched($article);
             if ($qualityModelId !== null) {
-                if (! $executionContext instanceof AiExecutionContext || $executionContext->requestedModelId === null) {
+                if (! $executionContext instanceof AiExecutionContext) {
                     throw AiModelAccessException::configAccessRevokedForAdminId(
                         (int) ($freshTask->model_access_admin_id ?? 0),
                     );
                 }
-                $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent(
-                    $executionContext,
-                    validateRequestedModel: true,
-                );
+                $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent($executionContext);
                 $this->aiExecutionAccessGuard->assertModelCurrent(
                     $executionContext,
                     $qualityModelId,
@@ -344,8 +351,32 @@ class WorkerExecutionService
                     $reviewStatus !== 'auto_approved',
                     $fallbackWorkflow,
                 );
-            } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
+            } catch (ArticleRiskGateException) {
                 return null;
+            } catch (ArticleAiQualityGateException $exception) {
+                if ($qualityModelId === null || $exception->getCheck() === null) {
+                    return null;
+                }
+
+                $result = [
+                    'article_id' => null,
+                    'title' => (string) $article->title,
+                    'message' => '草稿等待 AI 质检',
+                    'meta' => [
+                        'task_id' => (int) $freshTask->id,
+                        'action' => 'await_ai_quality',
+                        'ai_quality_check_id' => (int) $exception->getCheck()->id,
+                        'ai_quality_error_code' => $exception->getErrorCode(),
+                    ],
+                ];
+                $this->completePersistedExecution(
+                    $freshTask,
+                    $result,
+                    $executionContext,
+                    $executionStartedAt ?? microtime(true),
+                );
+
+                return $result;
             }
 
             $publishInterval = $this->normalizePublishInterval($freshTask);

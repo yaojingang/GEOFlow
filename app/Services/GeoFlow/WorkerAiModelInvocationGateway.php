@@ -10,6 +10,8 @@ use Laravel\Ai\Responses\AgentResponse;
 
 final readonly class WorkerAiModelInvocationGateway
 {
+    public const PERSISTENCE_MARGIN_SECONDS = 60;
+
     public function __construct(
         private AiExecutionAccessGuard $accessGuard,
         private AiModelInvocationLock $invocationLocks,
@@ -29,7 +31,10 @@ final readonly class WorkerAiModelInvocationGateway
             throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
         }
 
-        $invocationLock = $this->invocationLocks->acquireForInvocation($modelId);
+        $invocationLock = $this->invocationLocks->acquireForInvocation(
+            $modelId,
+            $this->generationService->providerTimeoutSeconds() + self::PERSISTENCE_MARGIN_SECONDS,
+        );
 
         try {
             $currentModel = $this->accessGuard->assertModelCurrent($executionContext, $modelId);

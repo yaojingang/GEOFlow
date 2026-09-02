@@ -117,6 +117,11 @@ final class ArticleContentGenerationService
         return max(256, (int) config('geoflow.content_max_tokens', 16384));
     }
 
+    public function providerTimeoutSeconds(): int
+    {
+        return MarkdownContentWriterAgent::PROVIDER_TIMEOUT_SECONDS;
+    }
+
     /**
      * 原子预占一次调用额度，避免并发请求同时越过每日上限。
      */

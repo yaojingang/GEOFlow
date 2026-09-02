@@ -6,7 +6,9 @@ use App\Services\GeoFlow\WorkerAiModelInvocationGateway;
 use App\Services\GeoFlow\WorkerExecutionService;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
+use ReflectionClass;
 use ReflectionMethod;
+use ReflectionNamedType;
 use Tests\TestCase;
 
 class AdminAiWorkerAccessArchitectureTest extends TestCase
@@ -78,6 +80,100 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
         $receiptGuard = $this->methodSource('assertReceiptCurrent', WorkerAiModelInvocationGateway::class);
         $this->assertStringContainsString('accessGuard->assertModelCurrent(', $receiptGuard);
         $this->assertStringContainsString('configurationDigest(', $receiptGuard);
+        $this->assertStringContainsString('providerTimeoutSeconds()', $gatewayGeneration);
+        $this->assertStringContainsString('PERSISTENCE_MARGIN_SECONDS', $gatewayGeneration);
+    }
+
+    #[Test]
+    public function content_worker_direct_collaborators_match_the_reviewed_ai_boundary(): void
+    {
+        $constructor = (new ReflectionClass(WorkerExecutionService::class))->getConstructor();
+        $this->assertNotNull($constructor);
+        $dependencies = array_map(static function ($parameter): string {
+            $type = $parameter->getType();
+
+            return $type instanceof ReflectionNamedType ? $type->getName() : '';
+        }, $constructor->getParameters());
+
+        $this->assertSame([
+            'App\\Services\\GeoFlow\\KnowledgeRetrievalService',
+            'App\\Services\\GeoFlow\\DistributionOrchestrator',
+            'App\\Services\\GeoFlow\\ArticleRiskScanner',
+            'App\\Services\\GeoFlow\\ArticleWorkflowTransitionService',
+            'App\\Services\\GeoFlow\\ArticleContentPromptRenderer',
+            WorkerAiModelInvocationGateway::class,
+            'App\\Services\\GeoFlow\\ArticleCitationMarkerCleaner',
+            'App\\Services\\GeoFlow\\TaskTitleReadinessService',
+            'App\\Services\\GeoFlow\\ArticleAiQualityGate',
+            'App\\Services\\GeoFlow\\ArticleAiQualityPolicyResolver',
+            'App\\Services\\GeoFlow\\ArticleAiQualityInspectionService',
+            'App\\Services\\GeoFlow\\AiExecutionAccessGuard',
+            'App\\Support\\GeoFlow\\AiExecutionErrorSanitizer',
+            'App\\Support\\GeoFlow\\AiModelFailoverDecider',
+            'App\\Services\\GeoFlow\\JobQueueService',
+        ], $dependencies);
+
+        $modelBoundaryClasses = [
+            'App\\Services\\GeoFlow\\ArticleWorkflowTransitionService',
+            'App\\Services\\GeoFlow\\ArticleAiQualityGate',
+            'App\\Services\\GeoFlow\\ArticleAiQualityPolicyResolver',
+            'App\\Services\\GeoFlow\\ArticleAiQualityInspectionService',
+            'App\\Services\\GeoFlow\\AiExecutionAccessGuard',
+        ];
+        foreach ($dependencies as $dependency) {
+            $reflection = new ReflectionClass($dependency);
+            $file = $reflection->getFileName();
+            $this->assertIsString($file);
+            $source = file_get_contents($file);
+            $this->assertIsString($source);
+
+            if ($dependency !== WorkerAiModelInvocationGateway::class) {
+                $this->assertStringNotContainsString('ArticleContentGenerationService', $source, $dependency);
+                $this->assertStringNotContainsString('MarkdownContentWriterAgent', $source, $dependency);
+                $this->assertDoesNotMatchRegularExpression('/->(?:prompt|stream)\s*\(/', $source, $dependency);
+            }
+            if (! in_array($dependency, $modelBoundaryClasses, true)) {
+                $this->assertSame([], $this->workerModelBoundaryViolations($source), $dependency);
+            }
+        }
+    }
+
+    #[Test]
+    public function worker_database_writes_follow_task_then_run_then_article_lock_order(): void
+    {
+        $claim = $this->methodSource('claimPendingJobById', 'App\\Services\\GeoFlow\\JobQueueService');
+        $taskLock = strpos($claim, 'lockTaskForClaim(');
+        $runLock = strpos($claim, 'lockRunForClaim(');
+        $this->assertIsInt($taskLock);
+        $this->assertIsInt($runLock);
+        $this->assertLessThan($runLock, $taskLock);
+
+        $publish = $this->methodSource('publishDueDraftArticle');
+        $transactionStart = strpos($publish, 'return DB::transaction(');
+        $taskLock = strpos($publish, 'lockForUpdate()', $transactionStart);
+        $runLock = strpos($publish, 'lockRunningJobForWorker(', $taskLock);
+        $articleLock = strpos($publish, '$article = Article::query()', $runLock);
+        foreach ([$transactionStart, $taskLock, $runLock, $articleLock] as $position) {
+            $this->assertIsInt($position);
+        }
+        $this->assertLessThan($runLock, $taskLock);
+        $this->assertLessThan($articleLock, $runLock);
+
+        $completion = $this->methodSource('completeJob', 'App\\Services\\GeoFlow\\JobQueueService');
+        $taskLock = strpos($completion, 'Task::query()');
+        $runLock = strpos($completion, 'TaskRun::query()');
+        $this->assertIsInt($taskLock);
+        $this->assertIsInt($runLock);
+        $this->assertLessThan($runLock, $taskLock);
+
+        foreach (['recoverStaleJobs', 'recoverStalePendingJobs'] as $recoveryMethod) {
+            $recovery = $this->methodSource($recoveryMethod, 'App\\Services\\GeoFlow\\JobQueueService');
+            $taskLock = strpos($recovery, 'lockTaskForRecovery(');
+            $runLock = strpos($recovery, '$run = TaskRun::query()', $taskLock === false ? 0 : $taskLock);
+            $this->assertIsInt($taskLock, $recoveryMethod);
+            $this->assertIsInt($runLock, $recoveryMethod);
+            $this->assertLessThan($runLock, $taskLock, $recoveryMethod);
+        }
     }
 
     #[Test]

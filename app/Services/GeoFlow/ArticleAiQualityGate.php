@@ -55,16 +55,17 @@ class ArticleAiQualityGate
                 return null;
             }
 
-            try {
-                $this->policyResolver->assertExecutable($policy);
-            } catch (\Throwable) {
-                return null;
-            }
-            $policy['model_candidates'] = $this->policyResolver->modelCandidates($policy);
             $model = $policy['model'] ?? null;
             if (! $model instanceof AiModel) {
                 return null;
             }
+
+            try {
+                $this->policyResolver->assertExecutable($policy);
+            } catch (\Throwable) {
+                return (int) $model->getKey();
+            }
+            $policy['model_candidates'] = $this->policyResolver->modelCandidates($policy);
 
             $versionSelection = $this->versionPolicy->selection((int) $article->id);
             $currentFingerprint = $this->inspectionService->currentFingerprint(
